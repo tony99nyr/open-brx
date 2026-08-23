@@ -369,3 +369,62 @@ The **host drives respawn**, the gun does not self-revive:
 |---|---|
 | `$SFLASH,*` | No arguments. Sent by the host periodically during play (4x here, ~30–60 s apart), never near a hit or death. Purpose unknown. |
 | `$HLOOP,<a>,<b>,*` | Seen only as `$HLOOP,0,0,*`, immediately after each death. Was a §7d lead from LaserTagMods sources; now confirmed live. |
+
+## 7g. Callsign's game model (operator walkthrough, 2026-08-23)
+
+How the official app structures a game, from the operator driving both phones for the
+§7f capture. Useful because it tells us which app-level concepts map onto which frames.
+
+### Flow
+
+1. **Host phone** creates a game: name → game type → settings → create.
+2. **Client phone** waits **~1 minute** for the game to appear as joinable, joins,
+   picks primary + secondary weapons, hits ready.
+3. **Host launches.** Both taggers go live.
+4. In-game the app shows a HUD: health, shield, ammo, current weapon.
+
+### Game types
+
+| Type | Sub-modes |
+|---|---|
+| Team Arena | Arena, Team Arena, Team Snipers, Capture the Flag |
+| Battle Royale | — |
+| Battle Lines | — |
+| Faction Wars | — |
+| Infection | — |
+
+The §7e/§7f captures are both **Team Arena → Team Arena**.
+
+### Settings exposed, and where they probably live
+
+Time limit, score to win, respawn type, respawn time, indoor/outdoor mode, weapon
+selection, weapon respawn, voice.
+
+- **Respawn time** is a *game setting*, which is why §7f's ~10 s gap between `$HP,0`
+  and `$SPAWN,,*` is the app obeying config, not app latency. Host-driven respawn is
+  by design.
+- **Weapon selection** maps to the three `$WEAP` frames: slot 0 primary, slot 1
+  secondary, slot 4 melee (always sent, never user-selected).
+- **Time / score-to-win / indoor-outdoor** are most likely `$GSET` tokens —
+  `$GSET,1,0,1,0,1,0,50,1,*` carries a `50` that may be score-to-win.
+- **HUD** is fed by `$LCD`/`$ALCD` echoes; the app does not track health/ammo
+  independently, the gun reports it.
+
+### Architectural implications
+
+- **The phone is the game engine.** The tagger enforces nothing: it does not know the
+  rules, the score, or the clock, and it does not revive itself. Everything is host
+  logic pushed over the serial protocol. Our `server/` can therefore replace the app
+  outright without touching the gun.
+- **There is a separate phone-to-phone lobby layer.** Game discovery/join/ready is not
+  BLE — the ~1 minute before a game appears suggests a **cloud round-trip**, not local
+  discovery. An open replacement needs its own answer here; possibly related to the
+  `$BRXSERVER` / `$SSID` / `$PASS` commands in §7d. **Unverified — worth capturing the
+  phone's network traffic (not BLE) to find out.**
+
+### Suggested experiment: decode `$GSET` by differential capture
+
+Capture the same game type twice, changing exactly one setting (e.g. score to win
+50 → 25), and diff the `$GSET` frames. The `diff_captures` tool already exists for this.
+Repeat per setting to build the field map — the same method proposed for `$WEAP`'s
+44 tokens.
