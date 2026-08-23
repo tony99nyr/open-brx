@@ -1,109 +1,87 @@
-# Handoff — continue BRX work on the MacBook
+# Handoff — BRX work, state as of 2026-08-23 (evening)
 
-**Date:** 2026-08-23. **From:** Claude session on Tony's Windows/WSL2 PC.
-**You are:** Claude on Tony's MacBook, picking up mid-investigation with the tagger in hand.
-Read `CLAUDE.md` first, then this. Protocol ground truth: `protocol/brx-protocol.md`
-(especially §7a session findings — everything verified today is recorded there).
+**You are:** Claude picking this up on Tony's MacBook. Read `CLAUDE.md` first, then this.
+Protocol ground truth: `protocol/brx-protocol.md` — §7e (game start) and §7f (combat) are
+the important new sections.
 
-## Fresh-Mac bootstrap (do this first)
+## The headline: remote game start is SOLVED
 
-This MacBook is brand new. `bash dotfiles/setup-mac.sh` installs Tony's shell environment
-(Homebrew, oh-my-zsh + his plugins, gh, bat, pnpm, python, git config) — idempotent, then
-`gh auth login` and a new terminal. His WSL `.zshrc` had a plaintext `GH_TOKEN`; it was
-deliberately NOT carried over — gh handles GitHub auth here, and the old token should be
-revoked (remind Tony if he hasn't).
+The project's central blocker is gone. `python -m brx_mcp startgame <uuid>` configures a
+tagger and takes it live — verified on hardware, gun fires, ammo decrements. The sequence
+is in §7e, transcribed from a PacketLogger capture of the official iOS Callsign app.
 
-## The immediate mission
+Three things had been missing, which is why every earlier attempt configured the gun but
+never made it live:
+1. `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` after spawn — undocumented until today.
+2. All seven `$BMAP` entries, plus `$BMAP,0,0,,,,,*` **again after** `$SPAWN`.
+3. `$SPAWN,,*` with the empty token, not `$SPAWN,*`.
 
-The BLE link from the Windows PC to the tagger **degraded from rock-solid (75–90 s
-sessions) to dying 5–10 s after every connect**, and we exhausted every Windows-side
-fix (driver restarts, bond removal, phone unplugged, WiFi confirmed off, tagger
-power-cycles). Your first job is the **cross-check**: does macOS hold the link?
+Combat, death and host-driven respawn are captured too (§7f).
 
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ./mcp
-python -m brx_mcp scan                      # expect "Tactix2-3D4F" (UUID address on macOS)
-python -m brx_mcp listen <uuid> 40          # heartbeat prints link state every 5 s
-```
+## Environment (macOS, already set up)
 
-- macOS pops a Bluetooth permission prompt for the terminal — Tony must allow it.
-- **Link holds 40 s** (with Tony pressing buttons → `$BUT` events streaming):
-  Windows radio (Qualcomm FastConnect 7800) was the problem. Proceed to "Next protocol
-  work" below, on the Mac permanently.
-- **Link dies at ~5–10 s here too:** the tagger itself is in a bad state — it changed
-  after the official Android app connected earlier today (the app *bonded* the tagger
-  and renamed it via `$NAME,Tactix2,*`, proving persistent state). Suspects: tagger
-  bond table, app-written config. Reset of last resort: Battle Company's USB updater
-  (factory restore — never modify firmware otherwise). Try `pair` first:
-  `python -m brx_mcp listen <uuid> 40 pair` (pairing extended survival on Windows).
+- venv: `.venv` built with `/opt/homebrew/bin/python3.13` (system python3 is 3.9 — too old).
+  `pip install -e ./mcp`. Extras installed for tooling: `pyserial`, `numpy`.
+- The `mcp` PyPI package resolved to **2.0.0**, which moved `mcp.server.fastmcp` →
+  `mcp.server.mcpserver`. **`server.py` (MCP-server mode) is therefore broken.** The CLI
+  is unaffected. Fix by pinning `mcp>=1.2,<2` or porting the ~15 decorators.
+- `cat` is aliased to `bat` in this shell — use `sed -n`/`python` for file reads in scripts.
 
-## Hardware & identity
+## Hardware truths learned today
 
-- Tagger: Battle Company BRX, **Gen2/3**, firmware **v4.32**, advertises as
-  **Tactix2-3D4F** (Nordic UART service). Windows saw MAC `FE:AD:FD:10:3D:4F`;
-  macOS will show a per-machine UUID — re-scan, don't reuse the MAC.
-- There is also an untested **headset** and (unprobed) **Smart Grenade**.
-- Battery telemetry arrives free in-session: `$VOLTS,<pack_mV>,<cell_mV>,~%,~%,*`
-  (was ~7.65 V / 55% today).
+- **Two taggers, both `v4.32` / `devhost.03`, `devHost 1`** — these are developer/host
+  images, not retail. Callsign warns "supported version is until v2.01e" (an UPPER bound —
+  the guns are ahead of the app's range) but the warning is **soft**: games still run.
+- **The MCU is a Teensy.** Micro-USB enumerates as `USB Serial` / `Teensyduino`.
+- **USB console commands are `QUERY` and `SETUP`** (from LaserTagMods' notes). `QUERY` is
+  read-only and dumps everything: versions, serial/head PIN, voltages, NRF + devHost flags.
+  A backup lives in `~/.brx-mcp/device-backups/`. `SETUP` is factory provisioning
+  (asks for the headset serial); entering it and power-cycling out changed **nothing**.
+- **Firmware cannot be backed up** — Teensy's HalfKay bootloader is write-only. Do not
+  reflash without Battle Company supplying a rollback image. The email to them was never
+  sent; that's still the open question about what `devhost.03` is.
+- The `$` protocol is a **115200 UART**; BLE and the Gen1 HC-05 are both bridges onto it.
+  There is no external accessory port, so a wired tap means opening the gun.
 
-## Experiment protocol (agreed with Tony)
+## BLE: it works, connecting is just flaky
 
-- **Power-cycle the tagger between experiments** — connections lock the on-gun
-  controls and leave state behind; a fresh boot per test keeps results attributable.
-- One BLE central at a time; the phone app must be force-closed during our sessions.
-- Volume: use `$VOL,30,0,*`, never the app's 100 — it's painfully loud indoors.
-- All sends: known-safe list enforced in `mcp/brx_mcp/protocol.py`; panic =
-  `$CLEAR,*` + `$SP,99,*`; power-cycle always restores.
-- CLI experiment commands (in `mcp/brx_mcp/__main__.py`): `scan`, `identify <addr>`,
-  `listen <addr> [s] [pair]`, `probe <addr> [s]`, `diag <addr>`, `startgame <addr> [s]`.
-  All print raw frames; `diag`/`startgame` narrate what Tony should watch/hear.
+**Do not repeat today's wrong turn.** We spent hours concluding the link "dies after 6 s"
+and even that the firmware's BLE stack was broken. Both were wrong. Reality:
 
-## State of the protocol investigation
+- **Establishment is intermittent (~1 in 3), holding is fine.** A clean session runs 75 s+
+  (ours) and 80 s+ (the app, §7e). `ble.py` now retries 5×; that was the whole fix.
+- The lesson: never conclude anything about the link from two or three attempts.
 
-**Solved today** (details + exact frames in `protocol/brx-protocol.md` §7a):
-- Idle taggers are silent; any BLE connection opens the event tap (`$BUT`, `$VOLTS`)
-  and locks on-gun controls until power-cycle. "Phone connected" voice = central attached.
-- Official app connect ritual (HCI snoop, no `$PHONE`): `$STOP` → `$PLAYX,0` →
-  `$VOL,100,0` → `$PLAY,VA20,3,9` ("connection established"), once per session
-  `$NAME`/`$VERSION`.
-- Button map verified; `$VERSION` query; `$LCD`/`$ALCD` display echoes decode HP/armor/
-  mag/reserve; writes must be MTU-chunked (~20 B, handled in `ble.py`).
+## What's worth doing next
 
-**Unsolved — the big one: remote game start.** Config is *accepted* (`$GSET`, `$PSET`
-health triplet, `$WEAP` slot 0, `$SIR` rules — all echoed via `$LCD`/`$ALCD`, and
-`$PBWEAP,0,*` triggers a reload sound = "game starting"), but the gun never goes live:
-trigger/buttons give the "disabled" chirp, no local firing, no `$HP` stream. Current
-sequence in `GAME_SEQUENCE` (`__main__.py`). Untested hypotheses, in order:
-1. **Capture a working app game session.** The Android app couldn't hold its BLE
-   connection (never started a game), so our HCI snoop only caught the connect ritual.
-   If the app works on iPhone: capture with Apple's Bluetooth logging profile +
-   PacketLogger on the Mac, then parse with `python -m brx_mcp.btsnoop <log>` (btsnoop
-   format; PacketLogger can export .btsnoop). This is the highest-value single capture.
-2. `$BMAP` restores button functions in app mode (tested trigger→0, alt→97 once,
-   inconclusive due to link drops — retest on stable link, watch for alt-fire making a
-   reload sound).
-3. Try `$SPAWN,,*` variant, `$START` *after* config, `$UR`/`$IT`/`$RP` family probes.
+1. **Differential captures to decode `$GSET`** — capture the same game type twice with one
+   setting changed (e.g. score-to-win 50 → 25) and diff. `diff_captures` already exists.
+   Same method cracks `$WEAP`'s 44 tokens. Highest value for the game engine.
+2. **Two-tagger capture with distinct player IDs** — §7f could not confirm `$HIR` shooter
+   attribution because every hit read `1,1` in a 2-player game.
+3. **Fix `server.py`** for the mcp 2.0 API if MCP-server mode is wanted.
+4. **The lobby question** (§7g): game discovery between phones takes ~1 minute and is not
+   BLE — it looks like a cloud round-trip. An open system needs its own answer. Capturing
+   the phone's *network* traffic (not Bluetooth) would settle it.
 
-**Also unstarted:** sound-bank mapping (`$PLAY` id sweep with Tony logging what plays —
-confirmed so far: `VA20` = "connection established"; `U16` also connect-related),
-`$WEAP` 44-token field map (method: one-setting-at-a-time app captures +
-`diff_captures`), Smart Grenade BLE probe, headset link protocol.
+## Dead ends — don't redo these
+
+- **Sound-bank sweep by microphone.** Built it, and the negative control failed: a nonsense
+  id (`ZZ99`) still produced audio, so the tagger appears to play a fallback sound for
+  unknown ids. "Audio detected" never proved "id exists". If the sound bank is ever wanted,
+  **read the SD card** (it holds the sound files) — a directory listing beats hours of
+  probing. Nobody has located the SD slot yet; it is probably internal.
+- **`listen ... pair` on macOS** — CoreBluetooth has no pairing API. Now a no-op, not a crash.
+- **Chasing the version gate.** It is soft. Games run on v4.32 regardless.
 
 ## Working agreements with Tony
 
-- Tony is hands-on and fast — give him one clear physical instruction at a time
-  (press X, listen for Y, power-cycle) and tell him exactly what to report.
-- Long-running listens: launch in background, tell Tony what to do *while* it runs,
-  read the capture after. His observations (sounds/LEDs) + wire log together are the
-  experiment — neither alone is enough.
-- Never modify tagger firmware; credit LaserTagMods (JEDGE/JBOX) in public docs.
-- MIT-licensed public project eventually; repo currently private (`tony99nyr/battlecompany`).
-
-## MCP server (optional on the Mac)
-
-The same package is a Claude Code MCP server:
-`claude mcp add brx -- <path-to-venv>/bin/python -m brx_mcp` — tools: scan/identify/
-connect/disconnect/send/send_batch/get_events/wait_for/session_log/diff_captures/panic,
-resources `brx://protocol`, `brx://known-devices`, `brx://captures/{label}`. For tight
-experiment loops the CLI commands above work without any MCP registration.
+- Hands-on and fast: give one clear physical instruction at a time and say exactly what to
+  report. Power-cycle between experiments.
+- **His observations are data.** "No disconnect voice" and "it works maybe 1 in 3" each
+  overturned a confident wrong conclusion today. Ask for what he hears, and believe it.
+- Volume: `CLAUDE.md` says 30, but **30 is measurably inaudible** for weapon audio — the
+  app uses 69. `startgame` takes volume as a CLI arg; the default is still 30 per the rule.
+- Never modify tagger firmware; credit LaserTagMods (JEDGE/JBOX) publicly.
+- **LaserTagMods' repos carry no license** (all rights reserved). Their protocol *findings*
+  are restated independently in our docs — do not copy their code into this MIT project.
