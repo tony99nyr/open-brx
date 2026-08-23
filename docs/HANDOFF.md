@@ -5,6 +5,14 @@
 Read `CLAUDE.md` first, then this. Protocol ground truth: `protocol/brx-protocol.md`
 (especially §7a session findings — everything verified today is recorded there).
 
+## Fresh-Mac bootstrap (do this first)
+
+This MacBook is brand new. `bash dotfiles/setup-mac.sh` installs Tony's shell environment
+(Homebrew, oh-my-zsh + his plugins, gh, bat, pnpm, python, git config) — idempotent, then
+`gh auth login` and a new terminal. His WSL `.zshrc` had a plaintext `GH_TOKEN`; it was
+deliberately NOT carried over — gh handles GitHub auth here, and the old token should be
+revoked (remind Tony if he hasn't).
+
 ## The immediate mission
 
 The BLE link from the Windows PC to the tagger **degraded from rock-solid (75–90 s

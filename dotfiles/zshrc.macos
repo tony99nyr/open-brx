@@ -1,0 +1,32 @@
+# Tony's zsh setup — macOS port of the WSL config (sanitized: no tokens here;
+# use `gh auth login` for GitHub credentials).
+
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="robbyrussell"
+
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting you-should-use zsh-bat nvm zsh-nvm)
+
+source $ZSH/oh-my-zsh.sh
+
+# Homebrew (Apple Silicon path; Intel Macs use /usr/local)
+if [ -x /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x /usr/local/bin/brew ]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+fi
+
+# pnpm
+export PNPM_HOME="$HOME/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+
+export PATH="$HOME/.local/bin:$PATH"
+
+# Shopify Hydrogen alias to local projects
+alias h2='$(npm prefix -s)/node_modules/.bin/shopify hydrogen'
+
+# WSL-only bits intentionally not carried over: socat Chrome bridge,
+# Android SDK / JAVA_HOME, Turso path, ytdl script. Add back if needed.
