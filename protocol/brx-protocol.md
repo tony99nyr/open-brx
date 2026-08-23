@@ -227,3 +227,64 @@ already covered in §3/§4.
 **LaserTagMods** (JEDGE / JBOX) — https://github.com/LaserTagMods. Their repositories carry
 no license (all rights reserved), so nothing here is copied from their sources; these are
 independently restated observations. Anyone building on this should credit them too.
+
+## 7e. SOLVED — remote game start (iOS Callsign capture, 2026-08-23)
+
+Captured with PacketLogger from the official iOS Callsign app driving a full game on a
+Tactix2 (fw v4.32). Decoded transcript: `protocol/captures/2026-08-23-ios-callsign-game-start.txt`.
+This is the sequence that actually takes a tagger live. Three pieces were missing from our
+previous `GAME_SEQUENCE`, which is why config was accepted but the gun never fired.
+
+### The sequence (host → tagger)
+
+```
+$CLEAR,*
+$START,*
+$GSET,1,0,1,0,1,0,50,1,*
+$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*
+$WEAP,0,...   (primary)
+$WEAP,1,...   (secondary)
+$WEAP,4,...   (melee)
+$SIR,... x10  (IR event table)
+$BMAP,0,0,,,,,*          $BMAP,1,100,0,1,99,99,*   $BMAP,2,97,,,,,*
+$BMAP,3,98,,,,,*         $BMAP,4,98,,,,,*          $BMAP,5,98,,,,,*
+$BMAP,8,4,,,,,*
+$PLAYX,0,*
+$PLAY,VA81,4,6,,,,,*
+$SPAWN,,*                <-- go-live
+$AMMO,0,36,108,1,*       <-- load magazines
+$AMMO,1,6,12,1,*
+$BMAP,0,0,,,,,*          <-- trigger re-mapped AFTER spawn
+```
+
+### The three missing pieces
+
+1. **`$AMMO,<slot>,<mag>,<reserve>,<flag>,*` — previously undocumented.** Configuration
+   alone never loads ammunition; without it the gun has nothing to fire.
+2. **`$BMAP` is mandatory and is sent twice** — all seven mappings before `$SPAWN`, then
+   `$BMAP,0,0,,,,,*` again immediately after. Confirms the earlier hypothesis that the
+   "disabled" chirp was an unmapped trigger, not a refusal to start.
+3. **`$SPAWN,,*`** (with the empty token), not `$SPAWN,*`.
+
+### Confirmations from the tagger
+
+```
+<< $LCD,45,70,0,0,36,216,*     after $SPAWN: HP 45, armor 70, mag 36, reserve 216
+<< $ALCD,36,100,0,108,0,*      then 35, 34, 33 ... as the trigger is pulled
+<< $BUT,0,1,* / $BUT,0,0,*     199 trigger events, live
+<< $VOLTS,7634,3770,53,45,*    telemetry continues in-game
+```
+
+- **`$PSET` health offsets corrected:** tokens 3–5 are `<HP>,<armor>,<shield>` (`45,70,70`),
+  matching the `$LCD` echo. §3's earlier description of this field was wrong.
+- **Clean end-of-game:** `$VOL,69,0,*` → `$HLED,,6,,,,,*` → `$STOP,*` → `$CLEAR,*` →
+  `$PLAY,VS6,4,6,,,,,*`.
+- `$GLED`/`$HLED` are used for gun/headset LEDs during the pre-game lobby.
+
+### Note on how this capture became possible
+
+Earlier sessions could not hold BLE for more than ~6 s and Callsign refused to start a game
+(version gate, §7b). This capture succeeded with two conditions that were absent from every
+prior failed attempt: the **headset link was up** (`Headset Version: hds.59`, see §7c) and
+the **tagger was connected via USB**. Which of the two matters is **not yet established** —
+test them one at a time before treating either as required.
