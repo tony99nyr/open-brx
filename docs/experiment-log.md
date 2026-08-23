@@ -81,3 +81,66 @@ factory restore is last resort.
 - Android stdout buffering: run experiment CLIs with `python -u`.
 - Bugreports take 5–10 min; the btsnoop log rides inside; keep phone still while
   pulling.
+
+---
+
+## 2026-08-23 (evening) — MacBook (CoreBluetooth / bleak 3.0.2) — game start SOLVED
+
+Taggers: **Tactix2-3D4F** and **Tactix2-E20D**, both fw `v4.32` / `devhost.03`.
+macOS gives per-machine UUIDs, not MACs — the old `FE:AD:FD:10:3D:4F` is meaningless here.
+
+### 1. macOS BLE cross-check → wrong conclusion, later retracted ❌
+`listen` runs died ~6.6 s, reproducibly, on two taggers. Combined with the official app
+reconnecting every ~8 s in a capture, we concluded v4.32's BLE stack was broken and wrote
+it into the protocol doc. **This was wrong** (see #5). Cost: several hours.
+Tony's observation "the tagger never said *phone disconnected*" was the first real clue —
+the tagger latches connected state and only notices via supervision timeout.
+
+### 2. USB console found — `QUERY` / `SETUP` ✅
+Micro-USB enumerates as `USB Serial` / **Teensyduino** → the MCU is a **Teensy**, and the
+port is the manual's "Programing Port". Commands (from LaserTagMods' notes) are `QUERY`
+and `SETUP`; everything else answers `ERROR`.
+`QUERY` dumps: versions, `Serial Number/Head PIN: R0BQT` (matches the headset sticker),
+voltages, `NRFhost 1` / `NRFslave 1` / **`devHost 1`**, `BT central V: devhost.03`,
+`Tested by: JB`, `PCB-5`. Saved to `~/.brx-mcp/device-backups/`.
+`SETUP` is factory provisioning (prompts for headset SN, bilingual EN/中文). Entering it
+and power-cycling out changed **nothing** — verified by field-by-field diff.
+**Firmware cannot be backed up**: HalfKay is write-only and there is no SD card (§7h).
+
+### 3. Callsign version gate is SOFT ✅ (finding)
+App warns *"current firmware v4.32, supported version is until v2.01e"* — an **upper**
+bound; the guns are ahead of the app's range, not behind. Games still run regardless.
+
+### 4. PacketLogger captures → remote game start SOLVED ✅✅
+`btsnoop.py` decoded 0 frames from Apple's exports until fixed (datalink 1001 carries no
+HCI type byte; the type is in the record flags). After the fix: cap3 = 369 frames of a
+live game, cap4 = 372 frames of two-tagger combat.
+Missing pieces were **`$AMMO` after spawn**, **all seven `$BMAP` + `$BMAP,0,0` again
+after spawn**, and **`$SPAWN,,*`** (empty token). Details in protocol §7e/§7f.
+
+### 5. Our own code ran a live game ✅✅
+`startgame` against E20D: config → spawn → `$LCD,45,70,0,0,36,216,*` (identical to the
+app's echo) → Tony pulled the trigger and **it fired**, `$ALCD` counting 36→18.
+**The link held the full 73.8 s run.** That retires #1: establishment is intermittent
+(~1 in 3, per Tony — the app behaves the same), holding is fine. `ble.py` now retries 5×.
+
+### 6. Weapon audio silent at `$VOL,30` ✅ (finding)
+Sound ids resolve fine; 30 is simply inaudible. Measured with a mic harness: at 100 the
+sounds hit 6.8–37× noise floor, at 30 nothing rises above room noise. App uses 69.
+`startgame` now takes volume as a CLI arg (default still 30 per CLAUDE.md).
+
+### 7. Sound-bank sweep by microphone ❌ DEAD END — do not repeat
+Built a recorder + RMS event detector to enumerate sound ids unattended. **The negative
+control failed**: nonsense id `ZZ99` produced audio at 150× noise floor, so the tagger
+appears to play a fallback sound for unknown ids. "Audio detected" never proved "id
+exists", making every negative result meaningless. Two earlier detector bugs (noise floor
+sampled over the first sound; recording started before the BLE connect finished) were
+fixed and it *still* failed the control. No SD card exists to read instead (§7h).
+
+### Still open
+- `$HIR` shooter attribution — every hit read `1,1` with two default player IDs.
+- `$GSET` / `$WEAP` field maps — differential capture, one setting changed at a time.
+  The manual's stock weapon stats (§7h) are the anchors.
+- The phone-to-phone lobby (~1 min to appear) is not BLE; looks like a cloud round-trip.
+- `server.py` is broken against the `mcp` 2.0 API (`fastmcp` moved).
+- **Headset lockout (§7h) has never been controlled for** in any of our experiments.
