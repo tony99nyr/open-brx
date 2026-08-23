@@ -306,4 +306,10 @@ reportedly been the only platform Callsign works on for years. So the honest sum
 - The tagger sustains long BLE sessions with the iOS app (80+ s here, single connection).
 - Callsign's version-gate warning is **soft** — it warns about v4.32 but still runs a game.
 - Whether the headset link or USB matters is **untested**; do not assume either is required.
-- Our own client's ~6.6 s drop remains unexplained and is now the main open question.
+- Connecting is **intermittent**: the operator reports Callsign succeeding on roughly
+  1 attempt in 3, with repeated force-closes and retries in between. A session that comes
+  up cleanly then holds. This suggests the failure is in **connection establishment**, not
+  in sustaining a link.
+- Our own client's ~6.6 s drop remains unexplained and is the main open question. Note we
+  never retried in a loop — every test was a small number of single attempts. Retrying
+  connects repeatedly is the obvious untried experiment.
