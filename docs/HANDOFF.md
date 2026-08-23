@@ -75,6 +75,12 @@ health triplet, `$WEAP` slot 0, `$SIR` rules — all echoed via `$LCD`/`$ALCD`, 
 `$PBWEAP,0,*` triggers a reload sound = "game starting"), but the gun never goes live:
 trigger/buttons give the "disabled" chirp, no local firing, no `$HP` stream. Current
 sequence in `GAME_SEQUENCE` (`__main__.py`). Untested hypotheses, in order:
+0. **Manual-derived (NEW, test first — see protocol doc §7b):** (a) on-gun games start
+   with a **reload-handle pull** — push our config, then have Tony pull the reload
+   handle; the reload sound we heard may have been "ready mode". (b) **Headset lockout**:
+   a gun whose headset disconnects mid-game locks until reconnect, but shoots fine if
+   no headset was connected at boot — run the experiment once with the headset off from
+   boot, once with it paired.
 1. **Capture a working app game session.** The Android app couldn't hold its BLE
    connection (never started a game), so our HCI snoop only caught the connect ritual.
    If the app works on iPhone: capture with Apple's Bluetooth logging profile +

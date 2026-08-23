@@ -141,6 +141,34 @@ Recognizable fields (positions to be confirmed by testing): damage value, fire d
   its connection long enough to start a game).
 - Sound IDs confirmed: `VA20` = "connection established"; `U16` also played on connect.
 
+## 7b. Facts from the official BRX manual (V7, battlecompany.com)
+
+Source: https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf
+
+- **No user-accessible SD card on the BRX.** SD-card sound updates are a commercial-line
+  feature (Battle Rifle Pro/XL/BRM). The BRX has a micro-USB **"Programing Port"**
+  (distinct from the charging port) — the official updater path.
+- **On-gun game start: pull the reload handle.** Flow: mode → team/faction → weapon
+  (trigger cycles) → perk (ALT cycles) → reload-handle pull starts the game. Hypothesis
+  for remote start: our BLE config reaches "ready mode" and the tagger awaits the
+  reload-handle pull (`$BUT,2`) — test config-push + physical pull.
+- **Headset lockout:** disconnecting the headset after game start locks the gun until
+  reconnected ("prevent cheating"); the gun shoots normally if no headset was connected
+  at boot. Candidate explanation for guns refusing to fire — control for headset state.
+- Indoor/outdoor mode: hold ALT 3 s. Target mode (sighting): hold LEFT while powering on.
+- Stock weapons (name, damage, ROF, accuracy, mag): M-4 24/545/96-91/30 ·
+  SMG-X3 25/545/96-88/26 · MG-7 38/342/66-45/75 · SR-100 140/44/100-90/4 ·
+  TAC-87 120-40/150/95-80/8. (M-4 damage 24 matches token 6 of the known-good
+  `$WEAP,0` assault-rifle string — supports the damage-token hypothesis.)
+- Supremacy characters carry HP/Armor/Shield stat triplets (e.g. Soldier 100/50/–,
+  Guardian 75/–/125) — same triplet shape as `$PSET` health tokens.
+- Modes: Free For All, Team Death Match (Alpha/Bravo, perks), Supremacy (factions:
+  Resistance red / Vanguard green / Nexus blue, 9 characters), Survival (Human/Infected).
+  Settings ranges: lives ∞/1/3/5/10/15 · time off/5–30 min · respawn off/15/30/60/
+  ramp45/ramp90 · volume 1–5.
+- Headset pairing can take up to 3 min with many BT devices nearby (relevant to
+  multi-tagger events).
+
 ## 8. Safe testing notes
 
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
