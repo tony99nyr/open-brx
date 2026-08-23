@@ -51,7 +51,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
 | `$STOP,*` | Stop (captured from official app, 2026-08-23) | First command the app sends on connect |
 | `$PLAYX,0,*` | Stop/clear sound playback (captured) | Sent right after `$STOP,*` on connect |
-| `$VOL,<volume>,<n2>,*` | Set volume (captured) | App sends `$VOL,100,0,*` on connect |
+| `$VOL,<volume>,<n2>,*` | Set volume (captured) | Android app sends `$VOL,100,0,*`; iOS Callsign sends `$VOL,69,0,*` |
 | `$NAME,<name>,*` | Set tagger name (captured) | App sent `$NAME,Tactix2,*` |
 | `$VERSION,*` | Query firmware version (captured) | Reply: `$VERSION,v4.32,?,4,,devhost.03,*` |
 | `$PBWEAP,<n>,*` / `$PBTEAM,` / `$PBPERK,` | Pre-battle weapon / team / perk selection | Mirrors the on-gun menu choices |
@@ -140,6 +140,31 @@ Recognizable fields (positions to be confirmed by testing): damage value, fire d
   `$NAME,<name>,*` + `$VERSION,*`. No game-start sequence captured yet (app couldn't hold
   its connection long enough to start a game).
 - Sound IDs confirmed: `VA20` = "connection established"; `U16` also played on connect.
+
+## 7b. iOS Callsign capture — firmware version gate (verified 2026-08-23)
+
+PacketLogger btsnoop capture from an iPhone X running the official **Callsign** app,
+against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
+
+- **Callsign connect ritual** differs from the Android app's: `$STOP,*` → `$PLAYX,0,*` →
+  `$VOL,69,0,*` → `$PLAY,VA20,3,6,,,,,*` (Android used `$VOL,100,0,*` / `$PLAY,VA20,3,9`).
+  The volume and `$PLAY` arguments are therefore **app-specific, not protocol constants**.
+- Once per session the app then sends `$NAME,Tactix2,*` + `$VERSION,*`.
+- **The version reply is the last frame of the session.** In 463 s of capture across ~8
+  connection attempts, the tagger sent exactly one message:
+  `$VERSION,v4.32,?,4,,devhost.03,*`. The app never sends game config and never attempts a
+  start — it queries the version, and abandons the session. This is the on-the-wire form of
+  Callsign's "firmware update required" warning. **Remote game start cannot be captured
+  from this app until the tagger firmware is updated.**
+- **v4.32 does not sustain a BLE link.** Reconnect attempts recur roughly every 8 s
+  (~6 s session + reconnect overhead), matching the independently measured 6.6 s drop from
+  a bleak/CoreBluetooth client. Reproduced on **two different taggers**, and across
+  macOS, Windows, Android and iOS — i.e. the fault is in the tagger firmware's BLE stack,
+  not in any host or client. Battle Company's own app is dropped on the same clock.
+- **ATT MTU negotiates to 23 bytes** (client requests 293, tagger answers 23), confirming
+  the ~20-byte payload chunking in `ble.py` is required, not merely defensive.
+- Build string `devhost.03` may indicate a developer/host image rather than a retail one —
+  worth confirming with Battle Company before reflashing.
 
 ## 8. Safe testing notes
 

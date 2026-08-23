@@ -48,16 +48,18 @@ def extract_att(packets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     events = []
     for p in packets:
         d = p["data"]
-        # datalink 1001 = HCI with pseudoheader(4); 1002 = HCI UART type byte
+        # 1001 = unencapsulated HCI (Apple PacketLogger): no packet-type byte,
+        # the type lives in the record flags (bit 1: 0 = ACL, 1 = cmd/event)
+        # and the ACL header starts at offset 0.
+        # 1002 = HCI UART (Android): leading 0x02 type byte marks ACL.
         if p["datalink"] == 1001:
-            if len(d) < 5 or d[4] != 0x02:
-                # pseudoheader then packet type? Android uses 1002 mostly;
-                # fall through to try type-byte-first too
-                pass
-            d = d[4:] if len(d) > 4 and d[4] == 0x02 else d
-        if not d or d[0] != 0x02:  # ACL only
-            continue
-        acl = d[1:]
+            if p["flags"] & 0x02:  # command or event, not ACL data
+                continue
+            acl = d
+        else:
+            if not d or d[0] != 0x02:  # ACL only
+                continue
+            acl = d[1:]
         if len(acl) < 8:
             continue
         l2len, cid = struct.unpack("<HH", acl[4:8])
