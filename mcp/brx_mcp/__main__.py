@@ -5,6 +5,7 @@
   python -m brx_mcp identify <address>
   python -m brx_mcp listen <address> [seconds]   # read-only live console
   python -m brx_mcp startgame <address> [seconds] [respawn_s] [volume]
+  python -m brx_mcp deathmatch <address> [minutes] [respawn_s] [volume] [weapon]
 """
 
 from __future__ import annotations
@@ -113,6 +114,7 @@ DEFAULT_VOLUME = 30
 def volume_cmd(level: int) -> str:
     return f"$VOL,{level},0,*"
 
+
 GAME_CONFIG = [
     "$CLEAR,*",
     "$START,*",
@@ -164,6 +166,105 @@ END_SEQUENCE = ["$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
 
 # Back-compat: the config phase alone.
 GAME_SEQUENCE = GAME_CONFIG
+
+# Weapon definitions for slot 0. The first three are transcribed from the iOS
+# Callsign capture and are verified working on hardware; the rest come from
+# protocol §6 and have NOT been fired by us.
+WEAPONS = {
+    # verified (§7e capture)
+    "primary": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
+    "secondary": "$WEAP,0,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
+    "melee": "$WEAP,0,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+    # unverified (§6 doc examples)
+    "ar": "$WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
+    "charge": "$WEAP,0,,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
+}
+
+# The firmware's own menu ranges (manual §7h) — offer what the gun offers.
+RESPAWN_CHOICES = (0, 15, 30, 60)
+DURATION_CHOICES = (5, 10, 15, 20, 30)
+
+
+async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
+                      volume: int = 69, weapon: str = "primary") -> None:
+    """Free-for-all deathmatch. Host owns the clock, the rules and the score.
+
+    The tagger enforces nothing (§7g) — no clock, no score, no respawn. FFA per
+    the manual (§7h) means no teams and friendly fire on, so every hit counts.
+
+    NOTE: the $GSET token encoding is still undecoded, so we send the captured
+    value rather than guessing at a "FFA bit". That is sound precisely because
+    the gun does not enforce modes — FFA lives in this loop, not in the frame.
+    """
+    from .ble import ConnectionManager
+    if weapon not in WEAPONS:
+        print(f"unknown weapon {weapon!r}; choose from: {', '.join(WEAPONS)}",
+              file=sys.stderr)
+        sys.exit(2)
+
+    mgr = ConnectionManager()
+    await mgr.connect(address, "cli")
+
+    async def send_all(cmds, label):
+        print(f"--- {label}", file=sys.stderr)
+        for cmd in cmds:
+            await mgr.send("cli", cmd, reply_window_ms=400)
+            print(f">> {cmd}", flush=True)
+
+    config = [volume_cmd(volume)]
+    for frame in GAME_CONFIG:
+        # swap in the chosen primary; drop the capture's other weapon slots
+        if frame.startswith("$WEAP,0,"):
+            config.append(WEAPONS[weapon])
+        elif frame.startswith("$WEAP,"):
+            continue
+        else:
+            config.append(frame)
+
+    hits = deaths = respawns = 0
+    try:
+        await send_all(config, f"configuring FFA ({weapon}, volume {volume})")
+        await send_all(SPAWN_SEQUENCE, "spawning")
+
+        ends_at = time.monotonic() + minutes * 60
+        print(f"\n*** DEATHMATCH LIVE — {minutes} min, respawn {respawn_s}s ***\n",
+              file=sys.stderr)
+        last_seq = mgr.sessions["cli"].seq
+        dead_at = None
+
+        while time.monotonic() < ends_at:
+            await asyncio.sleep(1)
+            for ev in mgr.get_events("cli", since_seq=last_seq)["events"]:
+                last_seq = ev["seq"]
+                if ev["direction"] != "rx":
+                    continue
+                raw = ev["raw"]
+                if raw.startswith("$HIR,"):
+                    hits += 1
+                elif raw.startswith("$HP,0,") and dead_at is None:
+                    deaths += 1
+                    dead_at = time.monotonic()
+                    print(f"   ** DOWN (death {deaths}) — respawn in {respawn_s}s",
+                          file=sys.stderr)
+                elif raw.startswith(("$HP,", "$ALCD,", "$LCD,")):
+                    print(f"   {raw}", flush=True)
+
+            remaining = ends_at - time.monotonic()
+            if dead_at and time.monotonic() - dead_at >= respawn_s:
+                if remaining > 5:
+                    await send_all(RESPAWN_SEQUENCE, "respawn")
+                    respawns += 1
+                    last_seq = mgr.sessions["cli"].seq
+                dead_at = None
+
+        print(f"\n*** TIME — hits taken {hits}, deaths {deaths}, "
+              f"respawns {respawns} ***", file=sys.stderr)
+    finally:
+        try:
+            await send_all(END_SEQUENCE, "ending game")
+        except Exception as e:  # noqa: BLE001 — link may already be gone
+            print(f"(teardown skipped: {type(e).__name__}: {e})", file=sys.stderr)
+        await mgr.disconnect("cli")
 
 
 async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
@@ -324,6 +425,12 @@ def main() -> None:
                                int(args[2]) if len(args) > 2 else 90,
                                int(args[3]) if len(args) > 3 else 10,
                                int(args[4]) if len(args) > 4 else DEFAULT_VOLUME))
+    elif cmd == "deathmatch" and len(args) > 1:
+        asyncio.run(_deathmatch(args[1],
+                                int(args[2]) if len(args) > 2 else 5,
+                                int(args[3]) if len(args) > 3 else 15,
+                                int(args[4]) if len(args) > 4 else 69,
+                                args[5] if len(args) > 5 else "primary"))
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
     else:
