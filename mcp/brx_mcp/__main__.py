@@ -167,18 +167,50 @@ END_SEQUENCE = ["$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
 # Back-compat: the config phase alone.
 GAME_SEQUENCE = GAME_CONFIG
 
-# Weapon definitions for slot 0. The first three are transcribed from the iOS
-# Callsign capture and are verified working on hardware; the rest come from
+# Weapon definitions, stored as the frame TAIL (everything after "$WEAP,<slot>")
+# so the same weapon can be loaded into any slot. The first three are transcribed
+# from the iOS Callsign capture and are verified on hardware; the rest come from
 # protocol §6 and have NOT been fired by us.
-WEAPONS = {
+WEAPON_TAILS = {
     # verified (§7e capture)
-    "primary": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
-    "secondary": "$WEAP,0,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
-    "melee": "$WEAP,0,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+    "primary": ",,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
+    "secondary": ",2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
+    "melee": ",1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
     # unverified (§6 doc examples)
-    "ar": "$WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
-    "charge": "$WEAP,0,,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
+    "ar": ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
+    "charge": ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
 }
+
+WEAPONS = tuple(WEAPON_TAILS)
+
+# (magazine, reserve) per weapon, for the $AMMO frames sent after $SPAWN.
+# Taken from the capture for the verified three; the $WEAP token positions that
+# carry ammo are not confidently decoded, so these are stated explicitly rather
+# than parsed back out of the tail.
+WEAPON_AMMO = {
+    "primary": (36, 108),      # from $AMMO,0,36,108,1,* in the §7e capture
+    "secondary": (6, 12),      # from $AMMO,1,6,12,1,*
+    "melee": (1, 0),
+    "ar": (32, 9999999),       # unverified — from the §6 doc string
+    "charge": (20, 9999999),   # unverified
+}
+
+
+def weap(slot: int, name: str) -> str:
+    return f"$WEAP,{slot}{WEAPON_TAILS[name]}"
+
+
+def loadout(primary: str, secondary: str = "secondary") -> list[str]:
+    """Slot 0 = chosen weapon, slot 1 = something to switch TO, slot 4 = melee.
+
+    Alt-fire is mapped to function 100 ($BMAP,1,100,...) which cycles weapons —
+    with only slot 0 loaded it has nothing to cycle to and reloads instead
+    (observed 2026-08-23). The official app always sends a melee in slot 4
+    regardless of what the player picked, so we do too.
+    """
+    if secondary == primary:            # don't cycle between two identical guns
+        secondary = "primary" if primary != "primary" else "secondary"
+    return [weap(0, primary), weap(1, secondary), weap(4, "melee")]
 
 # The firmware's own menu ranges (manual §7h) — offer what the gun offers.
 RESPAWN_CHOICES = (0, 15, 30, 60)
@@ -197,7 +229,7 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
     the gun does not enforce modes — FFA lives in this loop, not in the frame.
     """
     from .ble import ConnectionManager
-    if weapon not in WEAPONS:
+    if weapon not in WEAPON_TAILS:
         print(f"unknown weapon {weapon!r}; choose from: {', '.join(WEAPONS)}",
               file=sys.stderr)
         sys.exit(2)
@@ -211,11 +243,12 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
             await mgr.send("cli", cmd, reply_window_ms=400)
             print(f">> {cmd}", flush=True)
 
+    guns = loadout(weapon)
     config = [volume_cmd(volume)]
     for frame in GAME_CONFIG:
-        # swap in the chosen primary; drop the capture's other weapon slots
+        # replace the capture's three weapons with our loadout, in place
         if frame.startswith("$WEAP,0,"):
-            config.append(WEAPONS[weapon])
+            config.extend(guns)
         elif frame.startswith("$WEAP,"):
             continue
         else:
@@ -224,7 +257,18 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
     hits = deaths = respawns = 0
     try:
         await send_all(config, f"configuring FFA ({weapon}, volume {volume})")
-        await send_all(SPAWN_SEQUENCE, "spawning")
+        # $AMMO must match the weapons we actually loaded, not the capture's
+        pri_mag, pri_res = WEAPON_AMMO[weapon]
+        sec_name = next(n for n in WEAPON_TAILS
+                        if weap(1, n) == guns[1])
+        sec_mag, sec_res = WEAPON_AMMO[sec_name]
+        spawn = [
+            "$SPAWN,,*",
+            f"$AMMO,0,{pri_mag},{pri_res},1,*",
+            f"$AMMO,1,{sec_mag},{sec_res},1,*",
+            "$BMAP,0,0,,,,,*",
+        ]
+        await send_all(spawn, "spawning")
 
         ends_at = time.monotonic() + minutes * 60
         print(f"\n*** DEATHMATCH LIVE — {minutes} min, respawn {respawn_s}s ***\n",
