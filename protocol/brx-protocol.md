@@ -165,11 +165,16 @@ against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
   sequence**. Do not reflash: the Teensy HalfKay bootloader is write-only (no backup is
   possible), and "downgrading" to v2.01e is irreversible and unverified. Confirm with
   Battle Company what `v4.32 / devhost.03` is before touching firmware.
-- **v4.32 does not sustain a BLE link.** Reconnect attempts recur roughly every 8 s
-  (~6 s session + reconnect overhead), matching the independently measured 6.6 s drop from
-  a bleak/CoreBluetooth client. Reproduced on **two different taggers**, and across
-  macOS, Windows, Android and iOS — i.e. the fault is in the tagger firmware's BLE stack,
-  not in any host or client. Battle Company's own app is dropped on the same clock.
+- ~~**v4.32 does not sustain a BLE link.**~~ **RETRACTED — see §7e.** This capture shows
+  the app reconnecting roughly every 8 s, which we read as a firmware-level BLE fault
+  because our own bleak/CoreBluetooth client independently drops at ~6.6 s on two taggers
+  and on both macOS and Windows. That inference was wrong: a later capture (§7e) shows the
+  **same tagger holding a single continuous session for 80+ seconds** with the iOS app.
+  The tagger's BLE stack is fine. The repeated reconnects here are the app's own behaviour
+  around the version gate, not a link failure.
+  **Still open:** why our bleak client drops at ~6.6 s. Treat it as a client-side bug —
+  connection parameters, notification handling, or macOS/WinRT power management — not a
+  firmware defect. Do not repeat the "firmware is broken" conclusion without new evidence.
 - **ATT MTU negotiates to 23 bytes** (client requests 293, tagger answers 23), confirming
   the ~20-byte payload chunking in `ble.py` is required, not merely defensive.
 - Build string `devhost.03` may indicate a developer/host image rather than a retail one —
@@ -292,8 +297,13 @@ edge, and whatever the app sends to respawn a downed player.
 
 ### Note on how this capture became possible
 
-Earlier sessions could not hold BLE for more than ~6 s and Callsign refused to start a game
-(version gate, §7b). This capture succeeded with two conditions that were absent from every
-prior failed attempt: the **headset link was up** (`Headset Version: hds.59`, see §7c) and
-the **tagger was connected via USB**. Which of the two matters is **not yet established** —
-test them one at a time before treating either as required.
+Earlier attempts appeared to fail, and two conditions differed here: the **headset link was
+up** (`Headset Version: hds.59`, §7c) and the **tagger was on USB**. But neither is
+established as necessary. The operator notes the app's UI makes connection state ambiguous,
+and that Callsign may well have been connected during earlier attempts too — iOS has
+reportedly been the only platform Callsign works on for years. So the honest summary is:
+
+- The tagger sustains long BLE sessions with the iOS app (80+ s here, single connection).
+- Callsign's version-gate warning is **soft** — it warns about v4.32 but still runs a game.
+- Whether the headset link or USB matters is **untested**; do not assume either is required.
+- Our own client's ~6.6 s drop remains unexplained and is now the main open question.
