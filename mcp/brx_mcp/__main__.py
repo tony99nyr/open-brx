@@ -4,7 +4,7 @@
   python -m brx_mcp scan [s]   # one-shot BLE scan (first-contact CLI)
   python -m brx_mcp identify <address>
   python -m brx_mcp listen <address> [seconds]   # read-only live console
-  python -m brx_mcp startgame <address> [seconds] [respawn_s]
+  python -m brx_mcp startgame <address> [seconds] [respawn_s] [volume]
 """
 
 from __future__ import annotations
@@ -103,8 +103,15 @@ async def _probe(address: str, listen_s: int) -> None:
 #   3. $SPAWN,,* with the empty token, not $SPAWN,*.
 # Note the app does NOT send $PHONE.
 
-# CLAUDE.md: 30 rather than the app's 69/100 — painfully loud indoors.
-VOLUME = "$VOL,30,0,*"
+# CLAUDE.md says 30 rather than the app's 100 ("painfully loud indoors").
+# BUT verified 2026-08-23: at 30 the weapon fire audio is inaudible — the sounds
+# resolve fine (R18/D0x all play), they are just too quiet to hear. The official
+# app uses 69. Kept 30 as the documented default; override per-run on the CLI.
+DEFAULT_VOLUME = 30
+
+
+def volume_cmd(level: int) -> str:
+    return f"$VOL,{level},0,*"
 
 GAME_CONFIG = [
     "$CLEAR,*",
@@ -152,14 +159,15 @@ SPAWN_SEQUENCE = [
 RESPAWN_SEQUENCE = ["$HLOOP,0,0,*", "$SPAWN,,*"]
 
 # Clean teardown, as the app does it at end of game.
-END_SEQUENCE = [VOLUME, "$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
+END_SEQUENCE = ["$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
                 "$PLAY,VS6,4,6,,,,,*"]
 
 # Back-compat: the config phase alone.
 GAME_SEQUENCE = GAME_CONFIG
 
 
-async def _startgame(address: str, listen_s: int, respawn_s: int = 10) -> None:
+async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
+                     volume: int = DEFAULT_VOLUME) -> None:
     """Run a real game: push config, spawn, then act as game host.
 
     Mirrors what the official app does (protocol §7e/§7f), including
@@ -178,7 +186,8 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10) -> None:
                 print(f"   << {r['raw']}", flush=True)
 
     try:
-        await send_all([VOLUME] + GAME_CONFIG, "configuring")
+        await send_all([volume_cmd(volume)] + GAME_CONFIG,
+                       f"configuring (volume {volume})")
         await send_all(SPAWN_SEQUENCE, "spawning (tagger goes live here)")
         print(f"\nLIVE. Listening {listen_s}s — pull the trigger, get tagged. "
               f"Auto-respawn {respawn_s}s after death.\n", file=sys.stderr)
@@ -313,7 +322,8 @@ def main() -> None:
     elif cmd == "startgame" and len(args) > 1:
         asyncio.run(_startgame(args[1],
                                int(args[2]) if len(args) > 2 else 90,
-                               int(args[3]) if len(args) > 3 else 10))
+                               int(args[3]) if len(args) > 3 else 10,
+                               int(args[4]) if len(args) > 4 else DEFAULT_VOLUME))
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
     else:
