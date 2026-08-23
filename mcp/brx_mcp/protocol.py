@@ -25,6 +25,10 @@ KNOWN_SAFE_COMMANDS = {
     "PING", "CLEAR", "START", "SPAWN", "CONNECT", "INIT", "PHONE",
     "GSET", "PSET", "WEAP", "SIR", "BMAP", "GLED", "PLAY", "AS", "SP",
     "PBWEAP", "PBTEAM", "PBPERK", "TID",
+    # Verified in the official iOS Callsign captures (protocol §7e/§7f):
+    # every one of these was sent by the app during a normal game.
+    "AMMO", "STOP", "PLAYX", "VOL", "HLED", "NAME", "VERSION", "HLOOP",
+    "SFLASH",
 }
 
 PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]

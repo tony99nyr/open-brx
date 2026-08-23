@@ -4,6 +4,7 @@
   python -m brx_mcp scan [s]   # one-shot BLE scan (first-contact CLI)
   python -m brx_mcp identify <address>
   python -m brx_mcp listen <address> [seconds]   # read-only live console
+  python -m brx_mcp startgame <address> [seconds] [respawn_s]
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 
 
 def _print(obj: object) -> None:
@@ -92,63 +94,126 @@ async def _probe(address: str, listen_s: int) -> None:
     print("Probe complete.", file=sys.stderr)
 
 
-# Known-good frames straight from protocol/brx-protocol.md §3/§5/§6.
-GAME_SEQUENCE = [
-    "$PHONE,*",
+# Verified against the official iOS Callsign app (protocol §7e). This is a
+# transcription of a capture of a real game, not a guess — earlier versions of
+# this sequence were reverse-engineered from the connect ritual and never made
+# the gun go live. Three things turned out to matter:
+#   1. $AMMO must be sent after spawn, or the gun is live with no ammunition.
+#   2. All seven $BMAP entries, and $BMAP,0,0 again AFTER $SPAWN.
+#   3. $SPAWN,,* with the empty token, not $SPAWN,*.
+# Note the app does NOT send $PHONE.
+
+# CLAUDE.md: 30 rather than the app's 69/100 — painfully loud indoors.
+VOLUME = "$VOL,30,0,*"
+
+GAME_CONFIG = [
     "$CLEAR,*",
     "$START,*",
-    "$GSET,0,0,1,0,1,0,50,1,*",
-    # Health as HP,Armor,Shield triplet (doc §3); tail tokens from doc example
-    "$PSET,63,2,500,250,150,50,,H44,JAD,V33,*",
-    # Assault Rifle in slot 0 (documented known-good definition)
-    "$WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
-    # Standard weapon IR → damage shields→armor→HP; respawn/shield/armor pickups
+    "$GSET,1,0,1,0,1,0,50,1,*",
+    # tokens 3-5 = HP,armor,shield (45,70,70); tail is the app's audio set
+    "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
+    # slot 0 primary, slot 1 secondary, slot 4 melee
+    "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
+    "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
+    "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+    # IR event table — what each incoming IR protocol does to us
     "$SIR,0,0,,1,0,0,1,,*",
     "$SIR,0,1,,36,0,0,1,,*",
-    "$SIR,1,0,H29,10,0,0,1,,*",
-    "$SIR,2,1,VA8C,11,0,0,1,,*",
-    "$SIR,3,0,VA16,13,0,0,1,,*",
-    "$AS,1,0,4,0,10,0,95,*",
-    # Pre-battle selections: team 1, equip weapon slot 0
-    "$PBTEAM,1,*",
-    "$PBWEAP,0,*",
-    # Hypothesis: phone mode unmaps buttons; restore local functions.
-    # Trigger→function 0 (fire?), alt-fire→97 (known: reload)
-    "$BMAP,0,0,*",
-    "$BMAP,1,97,*",
-    "$SPAWN,*",
-    # Some flows may want START after config to actually begin play
-    "$START,*",
-    # Immediate-feedback diagnostics: LEDs green + play a sound
-    "$GLED,1,0,1,0,10,,*",
-    "$PLAY,H29,,,,,,,*",
+    "$SIR,0,3,,37,0,0,1,,*",
+    "$SIR,8,0,,38,0,0,1,,*",
+    "$SIR,9,3,,24,10,0,,,*",
+    "$SIR,10,0,X13,1,0,100,2,60,*",
+    "$SIR,6,0,H02,1,0,90,1,40,*",
+    "$SIR,13,1,H57,1,0,0,1,,*",
+    "$SIR,13,0,H50,1,0,0,1,,*",
+    "$SIR,13,3,H49,1,0,100,0,60,*",
+    # Button map — mandatory. Without these the trigger gives the "disabled" chirp.
+    "$BMAP,0,0,,,,,*",
+    "$BMAP,1,100,0,1,99,99,*",
+    "$BMAP,2,97,,,,,*",
+    "$BMAP,3,98,,,,,*",
+    "$BMAP,4,98,,,,,*",
+    "$BMAP,5,98,,,,,*",
+    "$BMAP,8,4,,,,,*",
+    "$PLAYX,0,*",
+    "$PLAY,VA81,4,6,,,,,*",
 ]
 
+# Takes the tagger live. $AMMO loads the magazines; $BMAP,0,0 is re-sent after
+# spawn (the app does this, and the trigger does not work reliably without it).
+SPAWN_SEQUENCE = [
+    "$SPAWN,,*",
+    "$AMMO,0,36,108,1,*",
+    "$AMMO,1,6,12,1,*",
+    "$BMAP,0,0,,,,,*",
+]
 
-async def _startgame(address: str, listen_s: int) -> None:
-    """Push a minimal known-good game config, spawn the player, then listen."""
+# Respawn after death. Ammo is restored implicitly — no $AMMO needed (§7f).
+RESPAWN_SEQUENCE = ["$HLOOP,0,0,*", "$SPAWN,,*"]
+
+# Clean teardown, as the app does it at end of game.
+END_SEQUENCE = [VOLUME, "$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
+                "$PLAY,VS6,4,6,,,,,*"]
+
+# Back-compat: the config phase alone.
+GAME_SEQUENCE = GAME_CONFIG
+
+
+async def _startgame(address: str, listen_s: int, respawn_s: int = 10) -> None:
+    """Run a real game: push config, spawn, then act as game host.
+
+    Mirrors what the official app does (protocol §7e/§7f), including
+    host-driven respawn — the gun does not revive itself.
+    """
     from .ble import ConnectionManager
     mgr = ConnectionManager()
     await mgr.connect(address, "cli")
-    print("Connected. Pushing game config...", file=sys.stderr)
-    for cmd in GAME_SEQUENCE:
-        result = await mgr.send("cli", cmd, reply_window_ms=400)
-        print(f">> {cmd}", flush=True)
-        for r in result["replies_within_window"]:
-            print(f"   << {r['raw']}", flush=True)
-    print(f"\nGame pushed. Listening {listen_s}s — shoot, get shot, press "
-          "things...", file=sys.stderr)
-    last_seq = mgr.sessions["cli"].seq
-    for _ in range(listen_s):
-        await asyncio.sleep(1)
-        out = mgr.get_events("cli", since_seq=last_seq)
-        for ev in out["events"]:
-            if ev["direction"] == "rx":
-                print(f"[{ev['t_ms']:>7}ms] {ev['raw']}   {ev['parsed']}",
-                      flush=True)
-            last_seq = ev["seq"]
-    await mgr.disconnect("cli")
-    print("Done. (Game may keep running on the tagger; power-cycle resets.)",
+
+    async def send_all(cmds: list[str], label: str) -> None:
+        print(f"--- {label}", file=sys.stderr)
+        for cmd in cmds:
+            result = await mgr.send("cli", cmd, reply_window_ms=400)
+            print(f">> {cmd}", flush=True)
+            for r in result["replies_within_window"]:
+                print(f"   << {r['raw']}", flush=True)
+
+    try:
+        await send_all([VOLUME] + GAME_CONFIG, "configuring")
+        await send_all(SPAWN_SEQUENCE, "spawning (tagger goes live here)")
+        print(f"\nLIVE. Listening {listen_s}s — pull the trigger, get tagged. "
+              f"Auto-respawn {respawn_s}s after death.\n", file=sys.stderr)
+
+        last_seq = mgr.sessions["cli"].seq
+        dead_at: float | None = None
+        deaths = 0
+        for _ in range(listen_s):
+            await asyncio.sleep(1)
+            out = mgr.get_events("cli", since_seq=last_seq)
+            for ev in out["events"]:
+                if ev["direction"] == "rx":
+                    print(f"[{ev['t_ms']:>7}ms] {ev['raw']}   {ev['parsed']}",
+                          flush=True)
+                    # $HP,0,0,0,* = death (§7f). Host owns the respawn.
+                    if ev["raw"].startswith("$HP,0,") and dead_at is None:
+                        dead_at = time.monotonic()
+                        deaths += 1
+                        print(f"   ** DEATH #{deaths} — respawning in "
+                              f"{respawn_s}s", file=sys.stderr)
+                last_seq = ev["seq"]
+
+            if dead_at is not None and time.monotonic() - dead_at >= respawn_s:
+                await send_all(RESPAWN_SEQUENCE, "respawn")
+                dead_at = None
+                last_seq = mgr.sessions["cli"].seq
+        print(f"\n{deaths} death(s) handled.", file=sys.stderr)
+    finally:
+        try:
+            await send_all(END_SEQUENCE, "ending game")
+        except Exception as e:  # noqa: BLE001 — link may already be gone
+            print(f"(teardown skipped: {type(e).__name__}: {e})",
+                  file=sys.stderr)
+        await mgr.disconnect("cli")
+    print("Done. Power-cycle the tagger to clear any residual state.",
           file=sys.stderr)
 
 
@@ -246,7 +311,9 @@ def main() -> None:
     elif cmd == "probe" and len(args) > 1:
         asyncio.run(_probe(args[1], int(args[2]) if len(args) > 2 else 60))
     elif cmd == "startgame" and len(args) > 1:
-        asyncio.run(_startgame(args[1], int(args[2]) if len(args) > 2 else 90))
+        asyncio.run(_startgame(args[1],
+                               int(args[2]) if len(args) > 2 else 90,
+                               int(args[3]) if len(args) > 3 else 10))
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
     else:
