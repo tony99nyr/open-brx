@@ -46,7 +46,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, 100=weapon-cycle |
-| `$GLED,<team?>,<r>,<g>,<b>,<intensity?>,,*` | Set gun LED color/state | e.g. `$GLED,1,1,1,0,10,,*` |
+| `$GLED,<team?>,<t2>,<t3>,<t4>,<t5>,,*` | Set gun LED — **token meanings UNKNOWN** | The old `<r>,<g>,<b>` reading is **disproven**, see §7i. e.g. `$GLED,1,1,1,0,10,,*` |
 | `$PLAY,<soundID>,<volume?>,<priority?>,,,,,*` | Play a sound/voice line by ID | Sound IDs like `VA9E`, `V3M`, `VNM`, `VA1L`, `H29`… Large audio bank; IDs not fully mapped yet |
 | `$AS,...` | Applicator/game-control settings | e.g. `$AS,1,0,4,0,10,0,95,*` |
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
@@ -469,3 +469,33 @@ Source: https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL
   ramp45/ramp90 · volume 1–5.
 - Headset pairing can take up to 3 min with many BT devices nearby (relevant to
   multi-tagger events).
+
+## 7i. `$GLED` is not RGB — inconclusive probe (2026-08-23)
+
+Walked primary-colour candidates one at a time with the operator watching the gun LED:
+
+| Sent | If tokens were r,g,b | Actually observed |
+|---|---|---|
+| `$GLED,0,1,0,0,10,,*` | red | **blue** |
+| `$GLED,0,0,1,0,10,,*` | green | **red** |
+| `$GLED,0,0,0,1,10,,*` | blue | **blue** |
+| `$GLED,0,1,1,1,10,,*` | white | blue |
+| `$GLED,1,1,1,0,10,,*` | (doc example) | blue |
+| `$GLED,0,0,0,0,10,,*` | off | red |
+
+**The `<r>,<g>,<b>` interpretation in §3 is disproven** — `1,0,0` gave blue and `0,1,0`
+gave red. The operator also reported the colour changing several times during a single
+4 s hold.
+
+Two candidate explanations, neither tested:
+1. **The LED is a status indicator.** The manual (§7h) says the gun LED shows ammo and
+   health, so game state may be animating it and overriding whatever we set. The probe ran
+   outside a game, which is *not* a controlled state.
+2. **Token 1 is a team index** selecting a preset colour, and tokens 2-5 are not a colour.
+
+**Do not guess a colour constant from this data.** A proper experiment needs the tagger in
+a known, static state (ideally mid-game with health and ammo full so the status animation
+is stable), one token varied at a time, and the operator naming the colour each time.
+
+Motivation for solving it: free-for-all has no teams, so a neutral LED (white) is wanted,
+while team modes need red/green/blue — the engine needs both.
