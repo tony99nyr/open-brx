@@ -2,7 +2,8 @@
 
 **You are:** Claude picking this up on Tony's MacBook. Read `CLAUDE.md` first, then this.
 Protocol ground truth: `protocol/brx-protocol.md` — §7e (game start) and §7f (combat) are
-the important new sections.
+the important new sections. Also read `docs/reference/brx-manual-notes.md` (official
+manual, distilled) and `docs/experiment-log.md` (shared lab notebook — append your results).
 
 ## The headline: remote game start is SOLVED
 
@@ -68,9 +69,10 @@ and even that the firmware's BLE stack was broken. Both were wrong. Reality:
 
 - **Sound-bank sweep by microphone.** Built it, and the negative control failed: a nonsense
   id (`ZZ99`) still produced audio, so the tagger appears to play a fallback sound for
-  unknown ids. "Audio detected" never proved "id exists". If the sound bank is ever wanted,
-  **read the SD card** (it holds the sound files) — a directory listing beats hours of
-  probing. Nobody has located the SD slot yet; it is probably internal.
+  unknown ids. "Audio detected" never proved "id exists". **And there is no SD card to read
+  instead** — the official manual confirms the BRX has none (that's a commercial-line
+  feature). If the sound bank is ever wanted, the realistic routes are the official
+  updater's sound package or asking Battle Company; do not repeat the microphone sweep.
 - **`listen ... pair` on macOS** — CoreBluetooth has no pairing API. Now a no-op, not a crash.
 - **Chasing the version gate.** It is soft. Games run on v4.32 regardless.
 

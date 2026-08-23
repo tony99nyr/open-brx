@@ -195,8 +195,14 @@ against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
   It is presumed to be Battle Company's updater/console interface; its command set is
   unknown and was deliberately not brute-forced.
 - **Firmware cannot be backed up.** Teensy's HalfKay bootloader is write-only by design,
-  so no flash read-back is possible over USB. The SD card is the only backup, and rollback
-  depends entirely on Battle Company supplying the original image.
+  so no flash read-back is possible over USB. **There is no SD-card fallback either** — the
+  manual (§7h) confirms the BRX has no user-accessible SD card; SD sound updates are a
+  commercial-line feature (Battle Rifle Pro/XL/BRM). Rollback therefore depends *entirely*
+  on Battle Company supplying the original image. The only local backup we have is the
+  `QUERY` settings dump in `~/.brx-mcp/device-backups/`.
+- The micro-USB is the manual's **"Programing Port"** (distinct from the charging port) —
+  i.e. the console we found is the official update path, which is why `SETUP` is factory
+  provisioning.
 - **The `$` protocol runs on a hardware UART at 115200**, not USB. LaserTagMods' JEDGE
   drives it via `Serial1.println("$UP,100,5,0,*")` etc., and the Gen1 HC-05 mod bridges the
   same UART over Bluetooth Classic. The built-in BLE module is likewise a UART bridge.
@@ -262,6 +268,13 @@ $AMMO,0,36,108,1,*       <-- load magazines
 $AMMO,1,6,12,1,*
 $BMAP,0,0,,,,,*          <-- trigger re-mapped AFTER spawn
 ```
+
+### Reconciling with the manual
+
+The manual (§7h) says an on-gun game is started by **pulling the reload handle**, which had
+been our leading hypothesis for the remote-start stall. That hypothesis is **superseded**:
+the capture shows the app starting a game with no reload-handle pull at all. The handle is
+the *local* start control; `$SPAWN,,*` is the *remote* one. Both exist.
 
 ### The three missing pieces
 
@@ -428,3 +441,31 @@ Capture the same game type twice, changing exactly one setting (e.g. score to wi
 50 → 25), and diff the `$GSET` frames. The `diff_captures` tool already exists for this.
 Repeat per setting to build the field map — the same method proposed for `$WEAP`'s
 44 tokens.
+
+## 7h. Facts from the official BRX manual (V7)
+
+Source: https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf
+
+- **No user-accessible SD card on the BRX.** SD-card sound updates are a commercial-line
+  feature (Battle Rifle Pro/XL/BRM). The BRX has a micro-USB **"Programing Port"**
+  (distinct from the charging port) — the official updater path.
+- **On-gun game start: pull the reload handle.** Flow: mode → team/faction → weapon
+  (trigger cycles) → perk (ALT cycles) → reload-handle pull starts the game. Hypothesis
+  for remote start: our BLE config reaches "ready mode" and the tagger awaits the
+  reload-handle pull (`$BUT,2`) — test config-push + physical pull.
+- **Headset lockout:** disconnecting the headset after game start locks the gun until
+  reconnected ("prevent cheating"); the gun shoots normally if no headset was connected
+  at boot. Candidate explanation for guns refusing to fire — control for headset state.
+- Indoor/outdoor mode: hold ALT 3 s. Target mode (sighting): hold LEFT while powering on.
+- Stock weapons (name, damage, ROF, accuracy, mag): M-4 24/545/96-91/30 ·
+  SMG-X3 25/545/96-88/26 · MG-7 38/342/66-45/75 · SR-100 140/44/100-90/4 ·
+  TAC-87 120-40/150/95-80/8. (M-4 damage 24 matches token 6 of the known-good
+  `$WEAP,0` assault-rifle string — supports the damage-token hypothesis.)
+- Supremacy characters carry HP/Armor/Shield stat triplets (e.g. Soldier 100/50/–,
+  Guardian 75/–/125) — same triplet shape as `$PSET` health tokens.
+- Modes: Free For All, Team Death Match (Alpha/Bravo, perks), Supremacy (factions:
+  Resistance red / Vanguard green / Nexus blue, 9 characters), Survival (Human/Infected).
+  Settings ranges: lives ∞/1/3/5/10/15 · time off/5–30 min · respawn off/15/30/60/
+  ramp45/ramp90 · volume 1–5.
+- Headset pairing can take up to 3 min with many BT devices nearby (relevant to
+  multi-tagger events).
