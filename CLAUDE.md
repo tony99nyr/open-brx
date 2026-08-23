@@ -4,6 +4,11 @@ Open-source platform orchestrating Battle Company BRX laser taggers. Specs:
 `docs/brx-architecture-v0.2.md` (master plan), `docs/brx-mcp-spec.md`,
 `protocol/brx-protocol.md` (serial command reference — the ground truth for all tagger I/O).
 
+**Before any hardware/protocol work, read:** `docs/experiment-log.md` (what's been tried,
+what happened — append your own results after each session), `docs/reference/brx-manual-notes.md`
+(distilled official manual: game-start flow, headset lockout, stock weapon/character stats),
+and `docs/HANDOFF.md` (current cross-machine state). Full manual PDF: `docs/reference/`.
+
 ## Hard rules
 
 - **Never modify stock BRX firmware.** All control is over the Bluetooth serial protocol.
