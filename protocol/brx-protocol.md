@@ -154,8 +154,16 @@ against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
   connection attempts, the tagger sent exactly one message:
   `$VERSION,v4.32,?,4,,devhost.03,*`. The app never sends game config and never attempts a
   start — it queries the version, and abandons the session. This is the on-the-wire form of
-  Callsign's "firmware update required" warning. **Remote game start cannot be captured
-  from this app until the tagger firmware is updated.**
+  Callsign's version-gate warning. **Remote game start cannot be captured from this app.**
+- **The gate is an UPPER bound, not a lower one.** Callsign (latest iOS build, 2026-08-23)
+  reports verbatim: *"your current firmware version of gun is v4.32. supported version is
+  until v2.01e. please update firmware to supported version or check for callsign updates
+  if you have latest firmware version."* The taggers are **ahead of / outside** the app's
+  supported range, not behind it. Combined with the `devhost.03` build string, this
+  suggests these units run a **developer/host image that was never in the retail version
+  sequence**. Do not reflash: the Teensy HalfKay bootloader is write-only (no backup is
+  possible), and "downgrading" to v2.01e is irreversible and unverified. Confirm with
+  Battle Company what `v4.32 / devhost.03` is before touching firmware.
 - **v4.32 does not sustain a BLE link.** Reconnect attempts recur roughly every 8 s
   (~6 s session + reconnect overhead), matching the independently measured 6.6 s drop from
   a bleak/CoreBluetooth client. Reproduced on **two different taggers**, and across
@@ -171,3 +179,51 @@ against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
 - Factory restore path: Battle Company's official USB updater.
 - Recommended probe sequence: connect → `$PING,*` → await `$PONG` → read-only listen session (pull trigger, get tagged, watch `$BUT`/`$HIR`/`$HP` traffic) before sending any config.
+
+## 7c. Hardware findings (2026-08-23)
+
+- **The tagger's MCU is a Teensy** (PJRC). Its micro-USB port enumerates on macOS as
+  `USB Serial` / vendor `Teensyduino` → `/dev/cu.usbmodem*`.
+- That USB port is **not** the `$` protocol. It echoes input locally and answers any
+  CR-terminated line with `ERROR` — including bare CR, `$PING,*`, `help`, `?`, `AT`.
+  It is presumed to be Battle Company's updater/console interface; its command set is
+  unknown and was deliberately not brute-forced.
+- **Firmware cannot be backed up.** Teensy's HalfKay bootloader is write-only by design,
+  so no flash read-back is possible over USB. The SD card is the only backup, and rollback
+  depends entirely on Battle Company supplying the original image.
+- **The `$` protocol runs on a hardware UART at 115200**, not USB. LaserTagMods' JEDGE
+  drives it via `Serial1.println("$UP,100,5,0,*")` etc., and the Gen1 HC-05 mod bridges the
+  same UART over Bluetooth Classic. The built-in BLE module is likewise a UART bridge.
+  → A **wired UART tap on the accessory port** would bypass the v4.32 BLE stack entirely
+  and is the most promising route to a stable link (untested; needs pinout).
+
+## 7d. Commands seen in LaserTagMods sources but not yet documented above
+
+Observed in public LaserTagMods project sources (JEDGE/JBOX et al.), **not present in §3/§4
+above, and not verified by us on the wire**. Leads for probing, not confirmed protocol:
+
+| Command | Guess at purpose | Why it's interesting |
+|---|---|---|
+| `$KOTH` | King-of-the-hill game mode | A named game mode implies host-driven mode selection — directly relevant to the unsolved remote game start |
+| `$HLED` | Headset//hit LED control | Pairs with the documented `$GLED` (gun LED) |
+| `$HLOOP` | Looping sound/haptic on headset? | `H`-prefixed like `$HLED`/`$HS`/`$HKC` — likely the headset family |
+| `$RR` | Reload/respawn related | Adjacent to documented `$RP`/`$RV` |
+| `$BRXSERVER` | Server/host mode | — |
+| `$SSID` | WiFi network name | **These three together imply a WiFi/server mode we knew nothing about.** Worth investigating: if the tagger can join a network, that is a second transport entirely and would sidestep the v4.32 BLE fault |
+| `$PASS` | WiFi password | |
+| `$BRX` | Device/mode identifier | — |
+
+The remaining commands found in their sources (`$PERK` `$PBPERK` `$PBTEAM` `$TA` `$AS`
+`$UP` `$GLED` `$DD` `$PH` `$PKC` `$HKC` `$HS` `$PT` `$RV` `$RADSK` `$KK` `$TID`) are
+already covered in §3/§4.
+
+- `$UP,100,<n>,0,*` and `$UR,*` appear together in their host code.
+- `$PLAY` argument sets vary by client (`VA20,3,9` Android app; `VA20,3,6` iOS Callsign;
+  `VA20,4,6` JEDGE) — the numeric fields are parameters, not constants.
+- The `$PB*` family is of particular interest: `$PBWEAP,0,*` is the one command we have
+  seen produce a "game starting" reload sound.
+
+**Credit:** protocol discovery for the BRX platform is overwhelmingly the work of
+**LaserTagMods** (JEDGE / JBOX) — https://github.com/LaserTagMods. Their repositories carry
+no license (all rights reserved), so nothing here is copied from their sources; these are
+independently restated observations. Anyone building on this should credit them too.
