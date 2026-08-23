@@ -313,3 +313,59 @@ reportedly been the only platform Callsign works on for years. So the honest sum
 - Our own client's ~6.6 s drop remains unexplained and is the main open question. Note we
   never retried in a loop — every test was a small number of single attempts. Retrying
   connects repeatedly is the obvious untried experiment.
+
+## 7f. Combat, death and respawn (two-tagger iOS Callsign capture, 2026-08-23)
+
+Second PacketLogger capture, two taggers in a live game, tracing the **victim's** phone.
+Decoded transcript: `protocol/captures/2026-08-23-ios-callsign-two-tagger-combat.txt`
+(372 frames; 23 `$HIR`, 23 `$HP`, 3 `$SPAWN`). Fills the §7e gap.
+
+### `$HP,<hp>,<armor>,<shield>,*`
+
+Three pools, not one. **Damage drains armor before HP** (matching the §5 `$SIR` note).
+Shield stayed 0 throughout this capture — untested.
+
+```
+<< $HP,45,52,0,*     armor 70 -> 52, HP untouched
+<< $HP,45,16,0,*     armor still absorbing
+<< $HP,43,0,0,*      armor exhausted, overflow begins cutting HP
+<< $HP,7,0,0,*
+<< $HP,0,0,0,*       death
+<< $LCD,0,0,0,1,1,1,*
+```
+
+### `$HIR,<irProto>,<t2>,<t3>,<t4>,<t5>,<t6>,<t7>,*`
+
+Observed forms: `$HIR,0,0,1,1,9,0,3,*` and `$HIR,4,0,1,1,9,0,3,*`. Only the **first token
+varies** across this capture — the IR protocol id, matching `$SIR`'s first field.
+Protocol `0` hits drained **18** armor each; protocol `4` hits drained **9**.
+Token 5 was `9` in both, so it is **not** simply the damage value — the `$SIR` table's
+mapping of protocol → effect is what determines damage. Shooter-ID semantics from §4 are
+**not confirmed** here: tokens 3 and 4 were `1,1` for every hit in a two-player game, so
+they could be player/team or something else. Needs a capture with distinct player IDs.
+
+### Death and respawn — host-driven
+
+The **host drives respawn**, the gun does not self-revive:
+
+```
+345.58  << $HP,0,0,0,*                  death
+345.61  << $LCD,0,0,0,1,1,1,*
+347.27  >> $HLOOP,0,0,*                 host, ~1.7 s after death
+355.66  >> $SPAWN,,*                    host respawns, ~10 s after death
+355.75  << $LCD,45,70,0,0,36,216,*      HP, armor AND ammo restored
+```
+
+- **`$SPAWN,,*` serves double duty** — initial go-live (§7e) and respawn.
+- **Respawn restores ammo implicitly**: the `$LCD` echo shows `36,216` with no `$AMMO`
+  sent. `$AMMO` appears to be needed only at initial spawn.
+- Respawn timing is the host's choice (~10 s here), which is the hook a game engine needs.
+- `$HLOOP,0,0,*` is sent by the host shortly after each death — likely stopping/starting a
+  death audio loop. Purpose unconfirmed.
+
+### Newly observed commands
+
+| Command | Notes |
+|---|---|
+| `$SFLASH,*` | No arguments. Sent by the host periodically during play (4x here, ~30–60 s apart), never near a hit or death. Purpose unknown. |
+| `$HLOOP,<a>,<b>,*` | Seen only as `$HLOOP,0,0,*`, immediately after each death. Was a §7d lead from LaserTagMods sources; now confirmed live. |
