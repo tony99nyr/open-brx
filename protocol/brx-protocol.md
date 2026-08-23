@@ -36,12 +36,13 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$PING,*` | Connectivity check | Reply: `$PONG,*` |
 | `$CLEAR,*` | Clear current game state | Sent before configuring a new game |
 | `$START,*` | Begin configuration/start sequence | |
-| `$SPAWN,*` / `$SPAWN,,*` | Spawn the player into the game | |
+| `$SPAWN,,*` | **Takes the tagger live** | The empty token matters — `$SPAWN,,*`, not `$SPAWN,*`. See §7e |
+| `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | **Load magazines** (verified 2026-08-23) | Sent immediately after `$SPAWN,,*`. Without it the gun goes live with no ammunition. e.g. `$AMMO,0,36,108,1,*` |
 | `$CONNECT,*` | Connection handshake | |
 | `$INIT,*` | Initialize | |
 | `$PHONE,*` | Put tagger in app-controlled mode | Same mode the official app uses |
 | `$GSET,...` | Global game settings | e.g. `$GSET,0,0,1,0,1,0,50,1,*` — token 1: free-for-all off/on |
-| `$PSET,...` | Player settings (health pools, audio set, etc.) | e.g. `$PSET,63,2,<HP,Armor,Shield>,50,,H44,JAD,V33,...,*` — health passed as `HP,Armor,Shield` triplet (e.g. `500,250,150`) |
+| `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, 100=weapon-cycle |
@@ -280,6 +281,14 @@ $BMAP,0,0,,,,,*          <-- trigger re-mapped AFTER spawn
 - **Clean end-of-game:** `$VOL,69,0,*` → `$HLED,,6,,,,,*` → `$STOP,*` → `$CLEAR,*` →
   `$PLAY,VS6,4,6,,,,,*`.
 - `$GLED`/`$HLED` are used for gun/headset LEDs during the pre-game lobby.
+
+### Not covered by this capture
+
+Only one tagger was active, so **no hits were taken**: the capture contains no `$HIR`
+(incoming hit) or `$HP` (health update) traffic, and no death/respawn cycle. The in-game
+damage path is therefore still unverified on the wire. A two-tagger capture is the next
+one worth taking — it would confirm `$HIR` shooter/team attribution, the `$HP,0` death
+edge, and whatever the app sends to respawn a downed player.
 
 ### Note on how this capture became possible
 
