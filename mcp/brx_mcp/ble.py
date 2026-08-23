@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from bleak import BleakClient, BleakScanner
+from bleak.exc import BleakError
 
 from .protocol import (
     NUS_RX_CHAR_UUID,
@@ -125,15 +126,44 @@ class ConnectionManager:
 
     # -- lifecycle ---------------------------------------------------------
 
-    async def connect(self, address: str, alias: str,
-                      pair: bool = False) -> dict[str, Any]:
+    async def connect(self, address: str, alias: str, pair: bool = False,
+                      attempts: int = 5) -> dict[str, Any]:
+        """Connect, retrying — establishment is intermittent, holding is not.
+
+        Verified 2026-08-23: a session that comes up cleanly runs for 75 s+,
+        but roughly 1 connect in 3 succeeds (the official app shows the same
+        behaviour). A single failed attempt says nothing about the link, so
+        retry rather than surfacing the first error.
+        """
         if alias in self.sessions:
             raise ValueError(f"alias '{alias}' already connected to "
                              f"{self.sessions[alias].address}")
-        client = BleakClient(address, timeout=20.0)
-        await client.connect()
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            client = BleakClient(address, timeout=20.0)
+            try:
+                await client.connect()
+                break
+            except Exception as e:  # noqa: BLE001 — any failure is retryable
+                last_error = e
+                try:
+                    await client.disconnect()
+                except Exception:  # noqa: BLE001
+                    pass
+                if attempt < attempts:
+                    await asyncio.sleep(1.5)
+        else:
+            raise BleakError(
+                f"could not connect to {address} after {attempts} attempts; "
+                f"last error: {type(last_error).__name__}: {last_error}"
+            ) from last_error
         if pair:
-            await client.pair()
+            # CoreBluetooth has no explicit pairing API — it bonds implicitly
+            # when a characteristic demands encryption. Don't die on macOS.
+            try:
+                await client.pair()
+            except NotImplementedError:
+                pass
         session = Session(alias=alias, address=address, client=client)
 
         def on_notify(_char: Any, data: bytearray) -> None:
