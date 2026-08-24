@@ -353,9 +353,8 @@ Observed forms: `$HIR,0,0,1,1,9,0,3,*` and `$HIR,4,0,1,1,9,0,3,*`. Only the **fi
 varies** across this capture — the IR protocol id, matching `$SIR`'s first field.
 Protocol `0` hits drained **18** armor each; protocol `4` hits drained **9**.
 Token 5 was `9` in both, so it is **not** simply the damage value — the `$SIR` table's
-mapping of protocol → effect is what determines damage. Shooter-ID semantics from §4 are
-**not confirmed** here: tokens 3 and 4 were `1,1` for every hit in a two-player game, so
-they could be player/team or something else. Needs a capture with distinct player IDs.
+mapping of protocol → effect is what determines damage. Shooter-ID semantics could not be
+confirmed from this capture (both players sat on default ids) — **now resolved, see §7k.**
 
 ### Death and respawn — host-driven
 
@@ -546,3 +545,39 @@ $ALCD,<mag>,<100>,<slot>,<reserve>,<0>,*
 - `$ALCD` is therefore the **ammo/weapon** stream; `$LCD` (§7e/§7f) is the
   **health/armor** one. Both are echoes — the gun reports its own state; the host does
   not compute it.
+
+## 7k. SOLVED — `$HIR` token 4 is the shooter's team (verified 2026-08-23)
+
+Ran one game across **two taggers from a single host** (`arena` command), configs identical
+except for the team id: `$TID,1,*` on one, `$TID,2,*` on the other. 42 hits exchanged.
+
+```
+tagger on team 1 receives:  $HIR,4,0,0,2,9,0,3,*     <- token 4 = 2
+tagger on team 2 receives:  $HIR,4,0,0,1,9,0,3,*     <- token 4 = 1
+```
+
+**Token 4 is the shooter's team id** — each tagger reports the *other* team's number,
+consistently across every hit. This is what §7f could not determine, because with both
+players on default ids every frame read `1,1` and carried no distinguishing information.
+Giving the taggers distinct `$TID`s made it immediate.
+
+```
+$HIR,<irProto>,<t2>,<t3>,<shooterTeam>,<t5>,<t6>,<t7>,*
+```
+
+- **Token 1 = IR protocol**, matching `$SIR`'s first field (confirmed again here). One
+  frame arrived as `$HIR,1,...`, and §5 maps protocol `1` to "respawn + add HP" — so
+  pickups and hits share this message type; do not assume every `$HIR` is damage.
+- **Tokens 2 and 3 were `0,0`** throughout. The player-id hypothesis in §4 is **not**
+  supported — team id is what varies. A per-player id may live elsewhere (`QUERY` reports
+  a device-level `PlayerID`, which we never changed).
+- **Tokens 5-7:** normally `9,0,3`. Two other forms appeared, `45,0,0` and `70,0,0` —
+  suspicious because `45` and `70` are exactly the configured starting HP and armor, and
+  the tail differs (`0,0` not `0,3`). **Meaning unknown; not damage.** Do not guess.
+
+### Kill attribution is therefore possible, with a caveat
+
+`$HIR` names the shooter's **team**, not the shooter. In team modes that is enough to
+credit a team. For free-for-all — where every player needs a distinct identity — either
+each player must be given a unique `$TID`, or per-player identity has to come from
+somewhere we have not yet found.
