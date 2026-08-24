@@ -508,10 +508,16 @@ From a two-minute FFA run with three weapons loaded (`deathmatch` command).
 $ALCD,<mag>,<100>,<slot>,<reserve>,<0>,*
 ```
 
-- **Token 3 is the weapon slot.** Observed cycling `0 → 1 → 4 → 0 → 1 → 4 …` as alt-fire
-  (`$BMAP` function 100) was pressed, with ammo tracking each weapon independently:
-  slot 0 `36/108`, slot 1 `6/12`, slot 4 `1/0`. **Melee (slot 4) is part of the cycle** —
-  it is not a separately triggered action.
+- **Token 3 is the weapon slot.** Ammo is tracked per weapon: slot 0 `36/108`,
+  slot 1 `6/12`, slot 4 `1/0`.
+- **Alt-fire (`$BMAP` function 100) cycles between the gun slots 0 and 1** — each appears
+  as a long run of `$ALCD` frames while it is held and fired.
+- **Slot 4 (melee) is NOT in that cycle.** It is triggered by physically **swinging the
+  butt of the gun upward**, detected by the gyro — which is what `$BMAP,8,4,,,,,*` maps
+  (button 8 = Gyro → function 4). In the stream it shows as an **isolated single `$ALCD`
+  frame** that immediately reverts to the weapon in hand, not a run.
+  (Corrected after an initial misreading: seeing `4` appear between runs of `0` and `1`
+  looks like a cycle position until you know the operator was swinging the gun.)
 - Token 2 was `100` throughout and token 5 `0`; meanings unknown.
 - **Reload is round-by-round.** A slot-1 reload emitted one `$ALCD` per round as the
   magazine refilled and the reserve drained in step:
