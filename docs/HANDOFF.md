@@ -74,7 +74,7 @@ dead" complaint (the gun should announce its own respawn, as it already announce
 3. Diff the `$GSET` frames. The token that moved is respawn.
 4. Repeat for game time, lives, mode. `diff_captures` already exists.
 
-**This must be done on the MacBook** — see the machine-roles note above; Callsign is iOS-only and PacketLogger is macOS-only. Windows cannot run this experiment.
+**Step-by-step plan: `docs/mac-capture-plan.md` (Experiment 1).** **This must be done on the MacBook** — see the machine-roles note above; Callsign is iOS-only and PacketLogger is macOS-only. Windows cannot run this experiment.
 
 ## Second critical unknown: can results survive out-of-range play?
 
