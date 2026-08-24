@@ -103,6 +103,46 @@ cleanly on **IR**:
 
 **Rule of thumb:** *phone = brain + audio + UI; IR interactions = a cheap IR station or the grenade.*
 
+### Phones as *screen-equipped* objectives (what an IR box can't do)
+
+An old Android phone as an objective isn't just a cheaper JBOX — it has a **touchscreen, speaker,
+vibration, and camera**, which unlock objectives an ESP32+LED box can't. The screen turns the soft
+spot (no IR) into a strength: **interact-at-the-site** modes don't need to sense a laser hit — the
+player physically walks up and **touches the screen**, which *is* proof of presence.
+
+Three objective-node types, each with a different strength — a match can mix all three:
+
+| Node | Strength | Best for |
+|---|---|---|
+| **IR station** (`../hardware/brx-station-spec.md`) | cheap, rugged, native **shoot-to-capture**, salt many across a field | Domination/KotH/CTF capture-by-fire |
+| **Phone objective** (old Android) | **rich screen + touch + audio + camera**, free if you have phones | interact-at-the-site: plant/defuse, hack-terminal, hostage rescue, extraction summon, utility box with **visual state** |
+| **Grenade** (`reference/grenade.md`) | the only **portable** IR objective you already own | mobile hills/flags/bomb |
+
+**Flagship example — Counter-Strike with the phone as the bomb:**
+- The phone sits at bomb site A/B running a PWA page. **Plant:** an attacker reaches it and holds/enters
+  an **arm code** → a hold-to-plant bar (~3 s) → screen shows **ARMED** + a countdown (e.g. 40 s), and
+  the phone screams (own speaker) and pushes `$PLAY` "bomb planted" to guns it's linked to.
+- **Defuse:** a CT reaches it and **solves a small puzzle** — a wire-cut / Simon sequence / code entry /
+  with-kit-vs-without-kit hold bar. Solve before zero = **defused (CT win)**; timer hits zero =
+  **detonate (T win)** — the phone detonates loudly and can push damage/death (`$BUMP`/`$LIFE,0`) to the
+  guns still linked in blast range, or just call the round.
+- **Who's touching it?** The screen proves *presence* but not *team*. Options, cheapest first:
+  (a) **team-gated knowledge** — Ts know the arm code, CTs get the defuse puzzle (honor/knowledge, zero
+  build); (b) **camera scans the player's QR badge** to identify team on interaction; (c) **BLE-proximity
+  handshake** with the interacting player's node over the mesh. Start with (a).
+
+Other screen-objectives that fall out for free: a **hack/upload terminal** (hold-to-progress with
+interrupts), a **hostage/rescue terminal**, a **King-of-the-Hill / Domination point with a full-screen
+owner colour + live timer + scoreboard**, and a **utility box** whose current mode (medic/armor/ammo/
+mystery) is shown and chosen on screen.
+
+**Honest limits:** no IR (so *shoot-the-point* modes still want an IR station/grenade — the phone is
+for *touch/proximity/camera* interaction); an always-on screen **drains an old phone fast** (mount with
+power, or accept a couple hours — old phones are expendable); phones are **fragile outdoors** (case/
+enclosure). Android for the BLE-to-gun link; the screen-objective role itself is just a web page, so it
+runs on nearly any old phone. Prototype target: a **self-contained bomb PWA** (keypad + timer + defuse
+puzzle), the same way `extraction-sim` demos the extraction rules.
+
 ## Build order
 
 1. Web-Bluetooth connect + live console (validate the Android gate).

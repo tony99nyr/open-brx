@@ -83,7 +83,7 @@ No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team
 | **King of the Hill** | 1 | hill station **or the grenade as zone emitter** | hold the zone for time |
 | **VIP escort (A→B)** | 1 | 1 extraction station + **VIP player role** | VIP = special low-HP loadout (General-style role); escorts protect; VIP triggers the extraction station on arrival |
 | **Hostage rescue + extract** | 1 | extraction station + hostage role | hostage = neutral/downed player freed by a teammate via IR (revive-style), then escorted to the extraction station |
-| **Counter-Strike (plant/defuse)** | 1 | **several bomb-site stations** (or the grenade as the bomb) | attacker plants (dwell/IR at a site) → **station runs the plant timer locally**; defender defuses via IR; round ends on detonate / defuse / elimination |
+| **Counter-Strike (plant/defuse)** | 1 | bomb-site **stations**, **the grenade as the bomb**, or **a phone as the bomb** | attacker plants (dwell/IR, or **touch a phone's screen: enter arm code**) → the site runs the plant timer; defender defuses (via IR, or **solves an on-screen puzzle**) → round ends on detonate / defuse / elimination. The **phone-as-bomb** version (arm code + defuse puzzle on the touchscreen) needs no IR — see `phone-app-spec.md` §"Phones as screen-equipped objectives" |
 
 **Key insight:** almost all of these are the **same objective-station primitive** (IR receiver + LED +
 a local timer/owner state) with different rules — build that node once and CS bomb-sites, hills,
