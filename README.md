@@ -22,13 +22,17 @@ effects, and a mission-control home base — scaling from 4 taggers to 20+.
 
 | Path | What |
 |---|---|
-| `protocol/` | BRX serial command reference (`brx-protocol.md`), sound-bank + `$WEAP` maps (todo) |
-| `mcp/` | **brx-mcp** — MCP server giving Claude Code direct BLE control of taggers |
-| `firmware/` | PlatformIO monorepo: bridge, item-pack, objective-station, effect-node (todo) |
+| `protocol/` | Serial command reference + **`callsign-extract/`** (command/field maps, **$WEAP token map**, **2166-id sound bank**, game modes — decoded from the Callsign app) ✅ |
+| `mcp/` | **brx-mcp** — MCP server + CLI giving direct BLE control (scan/identify/listen/startgame/deathmatch/arena/…) ✅ |
+| `firmware/` | PlatformIO monorepo: bridge/Companion, item-pack, objective-station, effect-node (todo) |
 | `server/` | Game engine: MQTT, rules/modes, scoring, announcer, event log (todo) |
-| `webapp/` | Web Bluetooth scanner/config, ESP Web Tools flasher, scoreboard, replay (todo) |
-| `hardware/` | STLs, wiring diagrams, BOM (todo) |
-| `docs/` | Architecture spec, MCP spec, generation ID guide, findings |
+| `webapp/` | Web Bluetooth scanner/config, flasher, scoreboard, replay (todo) |
+| `hardware/` | **`brx-companion-spec.md`** (per-tagger accessory) ✅; STLs, wiring, BOM (todo) |
+| `docs/` | **[`docs/README.md`](docs/README.md)** index — architecture, specs (Mission Control, phone app), followups, reference (manual, LaserTagMods, community) |
+
+**Current status:** protocol largely decoded (remote game start, `$WEAP`/`$GSET` maps, full sound
+bank, game modes, grenade config). Working `brx-mcp` drives real matches. Next: the per-player
+node (Companion / phone app), Mission Control UI, and the MQTT engine. See `docs/FOLLOWUPS.md`.
 
 ## brx-mcp quickstart
 
@@ -69,9 +73,10 @@ claude mcp add brx -- python -m brx_mcp
 
 ## Roadmap
 
-M1 Identify → M2 Control (4 sessions) → M3 Protocol depth (`$WEAP` map, sound bank) →
-M4 Pilot game (bridges + engine + scoreboard) → M5 Arena (objectives, items, effects) →
-M6 Scale + community. Full detail: `docs/brx-architecture-v0.2.md`.
+M1 Identify ✅ → M2 Control (4 sessions) ✅ → M3 Protocol depth (`$WEAP` map, sound bank) ✅ →
+M4 Pilot game (per-player node + engine + scoreboard) ← *here* → M5 Arena (objectives, items,
+effects) → M6 Scale + community. Full detail: `docs/brx-architecture-v0.2.md`, current work:
+`docs/FOLLOWUPS.md`.
 
 ## License
 
