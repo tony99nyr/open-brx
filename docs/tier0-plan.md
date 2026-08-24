@@ -39,8 +39,16 @@ nodes** (`reference/grenade.md`).
 - **Phone limits:** no IR (can't be shot / emit IR); Web BT can't scan-by-address (native only); ~7
   simultaneous BLE links.
 
-**Laptop (Mac/Windows)** — runs `brx-mcp` (bleak), direct-drives ~4–7 taggers over BLE; hosts the CLI,
-the Mission Control server, and the MQTT broker.
+**Two host machines (different roles) — same cross-platform `brx-mcp` (bleak):**
+- **Windows tower (office, fixed):** BLE works here (Windows Python). This is the **dev + bench-test
+  rig** — write code, and **run the gating tests with taggers on the desk right here**. Also fine for an
+  office-room game, but it can't leave the office.
+- **MacBook (portable):** the **actual play / field host** — when the plan says "laptop in BLE range,"
+  for *real games* that's the Mac (CoreBluetooth via bleak). Same code as the tower.
+- **Readiness note:** M0/M1 core is proven on hardware, but largely on *Windows*. Since the Mac is the
+  play host, a quick **"confirm the Mac holds a BRX link"** belongs in M0/M1 readiness (a confirm, not an
+  unknown — prior Mac sessions worked). Direct-drives ~4–7 taggers; hosts the CLI, the MC server, and the
+  MQTT broker.
 
 ---
 
