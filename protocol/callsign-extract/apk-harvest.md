@@ -57,20 +57,22 @@ today.
 
 ## The grenade (answers "can we push the mode onto the grenade?")
 
-**Yes — grenade mode/type is set by the `$GREN` command sent to the GUN**, which programs the
-grenade (the grenade is not its own BLE device; no grenade-BLE or grenade-QR class exists — only
-`SetupGrenade` + the `$GREN` request in the gun's namespace).
+**⚠️ Hardware-tested — the answer is NO for objective modes (G8, exp-log #36).** This APK-derived
+section originally hypothesized that `$GREN` sets the grenade's mode; **that was disproven on hardware.**
+The grenade is not its own BLE device (correct — no grenade-BLE/QR class, only `SetupGrenade` + the
+`$GREN` request in the gun's namespace), BUT:
 
-- **`$GREN` fields:** `iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType,
-  MaxCount` (see protocol-classes.md).
-- **`GrenadeMode` enum:** **FlashBang, Gas, Confusion, Molotov** — the effect the grenade applies.
-- `channel` / `MaxCount` suggest multiple grenades and per-channel addressing.
+- **Objective modes (Frag/Assault/Hill/Respawn/CTF) are button-set and LOCKED on the grenade** — sweeping
+  `$GREN` `operationMode` (0–7 × iRType {0,15}) had **zero effect**. Anti-tamper by design.
+- **`$GREN` fields:** `iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount`
+  (see protocol-classes.md). **`GrenadeType` enum = FlashBang/Gas/Confusion/Molotov = the blast *effect*
+  of a paired THROWN grenade** — this is what `$GREN` actually configures (untested end-to-end; needs the
+  install-accessory pairing — followup G10), NOT the objective station modes.
+- `channel` / `MaxCount` suggest per-grenade addressing (for thrown-blast config).
 
-So a clean, scriptable `$GREN` frame **is** the "better way to configure it" — replacing the
-buggy on-gun menu. **One hardware test needed:** confirm whether `$GREN`→gun programs the grenade
-immediately, or only while the grenade is "loaded"/tapped to the gun's IR (likely the latter,
-given the grenade has an IR receiver). Once confirmed, the Companion/MCP can offer a proper
-grenade-config UI. (See the new followup in `experiment-log.md`.)
+So there is **no `$GREN` grenade-config UI** for objective modes. The Companion/MCP value is a live
+**grenade STATE DISPLAY** instead — read the grenade's `$HIR,0,15,0,<team>,<mode>` beacons (Hill/Respawn
+broadcast; see `../../docs/reference/grenade.md`). See exp-log #35/#36 and FOLLOWUPS G8/G10.
 
 ## Weapon fire modes (bonus — GunWeaponType enum)
 

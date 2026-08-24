@@ -22,10 +22,11 @@ configurable weapons (`$WEAP`), health/armor/shields (`$PSET`/`$LIFE`/`$BUMP`), 
 
 **Headsets** — IR hit sensors + ARGB (WS2812B) + audio; receive grenade/accessory IR.
 
-**Grenades (×2)** — IR-paired objective accessories: native modes **Respawn / KotH / Checkpoint-
-Domination / Assault**; blast types FlashBang/Gas/Confusion/Molotov; placeable or thrown; shoot-to-
-capture / hold / blast-instant-capture; config on-grenade or via `$GREN`. **The only Tier-0 IR objective
-nodes** (`reference/grenade.md`).
+**Grenades (×2)** — IR-paired objective accessories: 5 button-set modes **Frag / Assault / Hill(KotH) /
+Respawn / CTF** (blast types FlashBang/Gas/Confusion/Molotov apply to a *thrown* Frag); placeable or
+thrown; shoot-to-capture / hold. **Config is on-grenade button only** (not `$GREN` — G8). Hill/Respawn
+broadcast their state as `$HIR,0,15,0,<team>,<mode>` (readable via a BLE tagger relay); Assault/CTF/Frag
+don't. **The only Tier-0 IR objective nodes** (`reference/grenade.md`).
 
 **Phones** — by capability:
 - **Android (Pixel 10 Pro / OnePlus 7 Pro / Pixel 4):** Web-Bluetooth (drive a gun), WiFi, **GPS**,
@@ -65,11 +66,11 @@ gating test named).
 | **Generals / Commander / The Swarm** (respawn roles) | ✅ | role module + designated player | — |
 | **Supremacy** (3 factions) | ✅ | `$WEAP`/`$PSET` loadouts | — |
 | **FFA *per-player* scoring; Syphon (credit killer)** | 🧪 | needs a player id in the hit | **P2** — set `PlayerID` via `SETUP` (USB serial) |
-| **Halo shields / overshield / medic** | ✅ | `$LIFE`/`$BUMP` writes **confirmed** (exp-log #33) | host-write proven live; native regen path still open (P11) |
-| **Grenade objective: CTF / KotH / Checkpoint / Assault** | 🧪 | grenade native modes | **G1** — map each mode ↔ `$GREN` (or use on-grenade button, unaided) |
-| **Live grenade-objective state on a screen; auto-detect at site** | 🧪 | gun's BLE stream | **G6** — what `$`-events the gun emits during a grenade game |
-| **Counter-Strike (grenade bomb / phone touch-terminal)** | ✅ touch / 🧪 grenade | phone touch = software; grenade bomb = G1/G6 | phone path ✅; grenade path 🧪 |
-| **Extraction (grenade hold + phone display)** | ✅ engine / 🧪 grenade hold | rules engine built (`mcp/brx_mcp/modes/extraction.py`) | grenade-hold path 🧪 G1/G6; phone-summon ✅ |
+| **Halo shields / overshield / medic** | ✅ | `$LIFE`/`$BUMP` writes **confirmed** (exp-log #33) | host-write proven live (both additive-clamped); **regen not native** (ruled out) → host-driven; shield pool inactive until activated (P16) — refill armor/HP |
+| **Grenade objective: Assault / Hill / Respawn / CTF** | ✅ | grenade native button modes | hardware-confirmed (G1). Config is on-grenade button only (not `$GREN` — G8); Hill/Respawn state readable over BLE, Assault/CTF not; CTF team-assign open (G9) |
+| **Live grenade-objective state on a screen** | ✅ Hill/Respawn / ❌ Assault/CTF | gun's BLE stream relays `$HIR,0,15,0,<team>,<mode>` (bare/`$SIR`-passthrough) | Hill/Respawn beacon (readable); Assault/CTF/Frag don't (G6 resolved) |
+| **Counter-Strike (grenade bomb / phone touch-terminal)** | ✅ touch / ✅ grenade | phone touch = software; grenade bomb = confirmed IR objective | both paths work; frag detonation needs pairing |
+| **Extraction (grenade hold + phone display)** | ✅ engine + grenade | rules engine built (`mcp/brx_mcp/modes/extraction.py`); grenade Hill = the hold beacon | phone-summon ✅; grenade-hold readable (Hill) ✅ |
 | **Hack terminal / hostage rescue (touch)** | ✅ | phone touchscreen | — |
 | **Outdoor objectives (flag/hill/extraction/BR-zone/domination) via GPS** | ✅ | phone geolocation (unlimited points) | — (outdoor only) |
 | **Checkpoints / pickups via QR** | ✅ | phone camera | — |
@@ -94,17 +95,21 @@ the **Extraction rules engine + tests**. To finish:
   `extraction.py` (each with tests).
 - **M0.2 Live driver** — bind a mode engine's `Action`s to the BLE `ConnectionManager` (generalise
   `_deathmatch`), so **any** module runs live from the CLI. *(Highest-leverage single task.)*
-- **M0.3 Health/regen modules** — shields/overshield/medic (Syphon behind P2).
-- **M0.4 Grenade config push** — `$GREN` per mode (after **G1**).
+- **M0.3 Health/regen modules** — host-driven heal/regen/medic via additive `$LIFE`/`$BUMP` (armor+HP;
+  shields await P16; Syphon behind P2).
+- **M0.4 Grenade state relay** — read `$HIR,0,15,0,<team>,<mode>` (Hill/Respawn) via a bare/`$SIR`-
+  passthrough listen for a live objective display (config is on-grenade button, not `$GREN` — G8).
 - **Unlocks (no-gap parts):** TDM, FFA, Deathmatch+respawn, Survival/Infection, LMS, Generals/Commander/
   Swarm, Supremacy, Extraction (small), custom weapons — **Claude can run a real orchestrated game.**
-- **Gaps:** health modules (P11), grenade modes (G1/G6), FFA per-player (P2).
+- **Gaps:** shield activation (P16), FFA per-player (P2). *(Grenade objective family + health writes are
+  now confirmed, not gaps.)*
 
 ### M1 — Mission Control UI (laptop-served, still in BLE range) — *the pilot product*
 - **M1.1** brx-mcp → a local **service** (REST/WebSocket) wrapping the M0 engine.
 - **M1.2 Operator UI:** scan → roster → assign teams → weapons/loadouts → pick mode+params → **Start** →
   **live scoreboard + kill-feed** → End → results/export. Reliable, repeatable, **no Claude in the loop**.
-- **M1.3 Grenade config UI** (followup **B8**) folded in.
+- **M1.3 Grenade STATE display** (followup **B8** — a live Hill/Respawn objective screen from the beacon
+  relay; not a config UI — config is on-grenade, G8).
 - **Unlocks:** everything in M0, **human-operated + repeatable + team-assigned + live scoreboard** — the
   real 4-player pilot on the laptop.
 - **Gaps:** same as M0 (inherited); none *new*.
@@ -121,7 +126,8 @@ the **Extraction rules engine + tests**. To finish:
 - **M2c Accessory/objective app:** bomb-arm touch-terminal, **GPS geofence objectives**, QR scanner,
   status screens, phone-siren → CS plant/defuse, hack, hostage, **unlimited outdoor GPS objectives**, QR
   checkpoints, extraction display. Runs on iOS as web.
-- **Gaps:** Android BLE hold (2a); auto-detect-at-site (G6, optional).
+- **Gaps:** Android BLE hold (2a); grenade auto-detect-at-site (optional — Hill/Respawn beacon is
+  readable, so a node near the point can detect presence).
 
 *(M3+ = Companion hardware, IR stations, LoRa — the higher tiers; out of scope here but this plan feeds
 them.)*
@@ -135,14 +141,15 @@ branch.** Ordered by *how early / how much Tier-0 value it unblocks*:
 
 | # | Gating test | Unblocks | Effort / how |
 |---|---|---|---|
-| **G-1** | **Grenade-over-BLE session** (G1 + G6 + `$GREN` push) | the **entire Tier-0 objective family** (CTF/KotH/Checkpoint/Assault/CS/Extraction-hold) + live objective state + auto-detect — *the single biggest maximization of Tier 0* | **hardware session + BLE capture** with a grenade; drive `$GREN`, watch the gun's stream. Highest unknown, highest payoff. |
-| ~~**G-2**~~ ✅ | **Health-write live test — DONE** (exp-log #33) | **health/regen family unblocked** — `$LIFE`/`$BUMP` confirmed to change a live tagger's HP/armor/shield (two-gun damage→restore) | *Resolved.* Remaining polish: `$LIFE`-add vs `$BUMP`-set semantics; native-regen weapon field (P11). |
+| ~~**G-1**~~ ✅ | **Grenade-over-BLE session — DONE** (exp-log #33–40) | **grenade objective family characterized** — 5-mode map, `$HIR,0,15,0,<team>,<mode>` beacon decode (Hill/Respawn readable), IR-broadcast model | *Resolved.* Config is button-locked (G8 negative); USB-C power-only (G7 negative). Still open: CTF team-assign (G9), thrown-blast `$GREN` (G10). |
+| ~~**G-2**~~ ✅ | **Health-write live test — DONE** (exp-log #33) | **health family unblocked** — `$LIFE`/`$BUMP` change a live tagger's HP/armor (two-gun damage→restore) | *Resolved.* **Both `$LIFE`/`$BUMP` are additive-clamped** (neither is an absolute-set); **no native regen** (host-driven); shield pool inactive until activated (P16). |
 | **G-3** | **Per-player identity via `SETUP`** (P2) | **FFA per-player scoring + Syphon crediting** | USB serial console (PuTTY): set `PlayerID`, verify via `QUERY`, check `$HIR` carries it. |
 | **G-4** | **Android BLE hold test** | the **phone milestone (M2)** — field roaming, HUD, relay | ~30 min: `webapp/ble-test.html` (Chrome) vs nRF Connect (native), side-by-side. Cheap; also decides web-vs-hybrid. |
 
 **Non-blocking (build without; refine later):** P10 (damage-weighted scoring), P9 (native small teams —
-workaround exists), G7 (grenade audio), P15 (exact BLE connection counts). These don't gate any Tier-0
-mode's existence, only its polish.
+workaround exists), P15 (exact BLE connection counts), P16 (shield activation), G9 (CTF team-assign),
+G10 (thrown-blast `$GREN`). These don't gate any Tier-0 mode's existence, only its polish. *(G7 grenade
+USB audio-swap is closed — USB-C is power-only; grenade audio is reskinned on the gun/headset.)*
 
 ---
 

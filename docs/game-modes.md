@@ -160,23 +160,26 @@ do the IR "shoot the site to interact" part — that needs an IR station or the 
 ## Health / regen variants (all Tier 0 — no props)
 
 These are rule tweaks on TDM/FFA, not new infrastructure. The gun exposes the write primitives
-directly: **`$LIFE,addedHP,addedArmor,addedShields`** (grant) and **`$BUMP,hP,armor,shields`**
-(adjust current pools), and the APK confirms **shields + regeneration are native firmware concepts**
-(`maxShields`, `RepairRegenTick`, `RegenHit`, `ShieldOnHeal`, `ShieldOffExpire`, `MedicHeal`,
-`ActivateShield`, `energyShieldLoop`). So health mechanics need **only Mission Control + the
-per-player nodes** — no stations, no broadcast.
+directly: **`$LIFE,addedHP,addedArmor,addedShields`** and **`$BUMP,hP,armor,shields`** — **both are
+additive grants clamped at max** (hardware-confirmed, exp-log #33; neither is an absolute-set). The APK
+exposes shield/regen tokens (`maxShields`, `RepairRegenTick`, `ShieldOnHeal`, `MedicHeal`,
+`ActivateShield`, …), **but the live test found NO native armor regen** (armor held through 30 s idle),
+so any "regen" must be **host-driven** (node watches `$HP`, refills). Also: the **shield pool is inactive
+until activated** (stayed 0 despite `$PSET` shield=99 — followup P16); armor+HP are the working pools
+today. So health mechanics need **only Mission Control + the per-player nodes** — no stations, no
+broadcast — but refill armor/HP, not shields, for now.
 
 | Variant | Mechanic | How (Tier 0) | Caveat |
 |---|---|---|---|
 | **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | node watches the `$HIR`→`$HP,0` kill attribution, then sends `$LIFE`/`$BUMP` to the **killer's** gun | needs **per-player id (P2)** — you must heal the *specific* killer, and `$HIR` alone gives only the shooter **team**. Team play without P2 can't route the heal to the right teammate. |
 | **Halo shields (regen after no-damage)** | health/shield refills to full after T s without taking damage | **host-driven** — node watches its own gun's `$HP` stream and sends `$LIFE`/`$BUMP` (additive, clamped at max) to refill once no decrease for T s. **No P2 needed.** | ✅ writes confirmed (exp-log #33). **Not native:** regen was tested and armor does **not** self-recover — it must be host-driven. Shields-as-a-pool are inactive until activated (P16), so refill **armor+HP** today. |
-| **Overshield / powerup pickup** | grab an item → temporary extra shields | node grants `$LIFE,0,0,<shields>` on the pickup event (IR pickup or objective) | overshield decay = host timer or native `ShieldOffExpire` |
-| **Medic / Lifesteal support role** | a role heals teammates | `MedicHeal`/`ActivateShield` are native ability types; node grants `$LIFE` to the healed gun | role logic like General/VIP |
+| **Overshield / powerup pickup** | grab an item → temporary extra shields | node grants `$LIFE,0,0,<shields>` on the pickup event | ⚠️ **shields inactive until activated (P16)** — grants to the shield pool may not take today; use an **armor** overshield until shield-activation is worked out |
+| **Medic / Lifesteal support role** | a role heals teammates | node grants `$LIFE` (armor/HP) to the healed gun; `MedicHeal`/`ActivateShield` are APK ability types | role logic like General/VIP |
 
-**Bottom line:** syphon, Halo-style regenerating shields, overshield pickups, and medic roles are all
-**Tier 0** — they ride the `$LIFE`/`$BUMP` writes + native shield/regen support over the existing
-event stream. Syphon is the only one that wants **P2** (to credit the exact killer); the rest work
-per-node today.
+**Bottom line:** syphon, Halo-style regenerating health, (armor-based) overshields, and medic roles are
+all **Tier 0** — they ride the **additive `$LIFE`/`$BUMP` writes** (confirmed) over the existing event
+stream, with the node doing the regen timing (no native regen). Syphon is the only one that wants **P2**
+(to credit the exact killer); the rest work per-node today. Shield-pool effects wait on P16.
 
 > **Corroboration (FB group crawl):** native shields + medic behaviour are real on stock BRX today —
 > **energy weapons grant a temporary shield when you equip a new weapon**, and the Supremacy **Medic
@@ -190,44 +193,38 @@ per-node today.
 The Smart Grenade is a paired IR accessory (`$GREN`: iRType, operationMode, **channel**, GrenadeType
 = FlashBang/Gas/Confusion/Molotov, **MaxCount**) that emits an area IR "explosion" (~30 ft) and can
 be **placed** (not just thrown). Grenades are hardware you already buy, so any mode they cover is
-**props-free** (no custom station to build). Caveat: **mostly untested** — we've never driven a
-grenade (followups F/G); the CTF-base capability below is community-reported, the rest is inference
-from `$GREN` + the emitter behaviour.
+**props-free**. **Now hardware-characterized** (exp-log #33–40, full detail in `reference/grenade.md`).
 
-**The grenade reportedly does Assault, CTF, and King of the Hill (no station) — config is the problem.**
-See `reference/grenade.md` for the full grenade manual (modes, programming, mechanics). *(Community-reported; we've decoded the `GrenadeType` enum — FlashBang/Gas/Confusion/Molotov — but the
-Assault/CTF/KotH ↔ `operationMode` mapping is unverified by us; followups F/G.)*
-Per the owner community, the grenade firmware has **Assault, Capture the Flag, and King of the Hill**
-built in; the pain is the on-gun configuration ("super hard to configure"), and CTF-base is confirmed
-(the tagger plays CTF flag music). So these three objective modes need **zero custom hardware** — just
-grenades you already own.
-- **The free unlock → a grenade config + state app** (phone/web, owned gear only):
-  - **Config:** send the `$GREN` setup over BLE (mode = Assault/CTF/KotH, channel, options) from a
-    clean UI — replaces the buggy on-gun menu. Makes the existing modes usable. (Followup F: nail the
-    exact `$GREN` per mode.)
-  - **State display:** read objective events from the **gun's BLE stream** (the gun knows the state)
-    and render a live objective screen (flag held / point owner / KotH timer). If the grenade is
-    BLE-visible itself (followup G2), even more direct.
-  - `channel` + `MaxCount` hint **multiple grenades = multiple objectives** — your 2 grenades = 2
-    flags / 2 hills / 2 assault points.
-- **Counter-Strike plant/defuse** — the **grenade IS the bomb**: place + arm (its detonation timer),
-  defenders defuse in the window. 2 grenades = 2 bomb sites.
-- **Hazard / area-denial zones** — Gas / Molotov / Confusion modes make a placed grenade a damage/
-  effect zone. Native behaviour.
-- **Status:** the modes exist in firmware; what's **untested by us** is the exact `$GREN` config
-  sequence and what objective state the gun exposes over BLE (followups F/G) — both free to work out.
+**5 native modes, set by the on-grenade button (LED colour):** red=**Frag**, green=**Assault**,
+blue=**Hill (KotH)**, yellow=**Respawn**, white=**CTF** — all **$0, zero custom hardware.**
+- **Configuration is on-device only.** `$GREN` over BLE does **NOT** set the objective mode (tested —
+  G8; it's button-locked, anti-tamper). So there's **no config app** — pair the manual button setup with
+  a printed cheat-sheet.
+- **Free unlock → a grenade STATE DISPLAY** (phone/web, owned gear only): a BLE-connected tagger in
+  range **relays the grenade's IR beacon** (`$HIR,0,15,0,<team>,<mode>`) to a screen. Works for **Hill
+  (who holds it) and Respawn (owner/availability)** — those two beacon. **Assault, CTF, and Frag do NOT
+  beacon** (state lives on the grenade LED only), so their status must be inferred from your own gun's
+  capture shots, not read from the grenade. Multiple grenades = multiple objectives (your 2 = 2 hills /
+  2 respawn points / 2 bomb sites).
+- **Counter-Strike plant/defuse** — the **grenade IS the bomb** (place + arm; defenders defuse). 2
+  grenades = 2 bomb sites. (Frag detonation needs the thrown-grenade pairing.)
+- **Hazard / area-denial zones** — Gas / Molotov / Confusion **blast types** on a *thrown* grenade
+  (set via `$GREN` `GrenadeType` on a paired grenade — G10, untested).
+- **Confirmed mechanics:** shoot an objective to capture it to your team colour (Assault→team colour;
+  **CTF turned red, not team colour** — likely needs team/flag assignment, unresolved G9); holding the
+  Hill grants the holder a **rate-of-fire perk**; Respawn disables client self-respawn (respawn via the
+  grenade button or headset-front+trigger).
 
-**Still wants a purpose-built station:**
-- **Domination** with several points, **live per-team ownership + time-scoring + LED-ring feedback** —
-  the grenade has no ownership display or persistent scoreboard role.
-- **Respawn stations** — respawn authorization + data-mule sync + (optional) status screen. Not a
-  grenade job.
-- Anything needing **local status display** (grenade has no LED ring / screen).
+**Still wants a purpose-built station** (the grenade can't):
+- **Domination** with several points + **live per-team ownership + time-scoring + LED-ring feedback**.
+- **Respawn stations** with data-mule sync (and note: grenade-respawn vs our host `$SPAWN` are competing
+  authorities — B12).
+- Anything needing a **local status screen** (the grenade has no display), or reading Assault/CTF state
+  live (they don't beacon).
 
-**Bottom line:** grenades can plausibly cover **CTF, Counter-Strike (bomb), hazard zones, and maybe
-KotH/Assault with zero custom hardware** — pending a hardware test of the grenade's objective
-behaviour (F/G). **Domination-with-scoreboard and respawn/sync still want purpose-built stations.**
-So the cheapest path to the objective modes is: **test what the grenade already does before building
+**Bottom line:** grenades cover **Hill, Respawn, Assault, CTF, Counter-Strike (bomb)** at $0 — with a
+**live display only for Hill/Respawn**, no over-BLE config, and CTF's team-assignment still to work out
+(G9). **Domination-with-scoreboard, respawn/sync, and any live Assault/CTF display want purpose-built
 stations.**
 
 ## What each needs, in one line

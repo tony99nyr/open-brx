@@ -763,10 +763,10 @@ def _extraction_sim() -> None:
             elif isinstance(a, GameOver):
                 print(f"      🏆 GAME OVER — {a.winner} wins with {a.total}")
 
-    cfg = ExtractionConfig(channel_s=45.0, win_target=120,
+    cfg = ExtractionConfig(channel_s=45.0, win_target=100,
                            extract_removes_player=False, loot_per_kill=10)
     g = ExtractionGame(["red", "blue"], cfg)
-    print("\n=== Extraction sim: red vs blue, channel 45s, first to 120 banked ===\n")
+    print("\n=== Extraction sim: red vs blue, channel 45s, first to 100 banked ===\n")
 
     print("t=0   red loots a crate (+60), blue loots (+30)")
     render(g.loot_pickup("red", 60)); render(g.loot_pickup("blue", 30))
@@ -776,7 +776,7 @@ def _extraction_sim() -> None:
 
     print("t=25  blue hears the callout, hunts red down mid-channel")
     render(g.on_death("red", killer_id="blue", now=25.0))
-    print(f"      (blue now carries {g.carried('blue')}: 30 looted + 60 stolen + 10 kill)")
+    print(f"      (blue now carries {g.carried('blue')}: 30 looted + 10 kill; red's 60 drops as a token)")
 
     print("t=30  blue grabs red's dropped token and runs for extraction Bravo")
     # find the dropped token id

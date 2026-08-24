@@ -25,7 +25,7 @@ hold it"). Later we can make leaving *pause* instead of reset (config hook noted
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
@@ -244,7 +244,7 @@ class ExtractionGame:
     def leave_zone(self, pid: str, now: float) -> list[Action]:
         """Player left the extraction zone before completing → channel resets."""
         p = self.players.get(pid)
-        if p is None or p.channel_start is None:
+        if p is None or p.channel_start is None or self.over:
             return []
         zone = p.zone or "?"
         p.channel_start = None
@@ -274,21 +274,30 @@ class ExtractionGame:
 
     def _drop_loot(self, victim: _Player, killer_id: str | None) -> LootDropped:
         policy = self.config.drop_policy
+        # Resolve the ACTUAL destination — "killer" only holds if the killer is alive;
+        # otherwise it falls through to a pickable ground token. `by` must reflect where
+        # the loot really went, or a driver double-credits (killer + grabbable token).
+        if policy == "killer" and killer_id and self._live(killer_id) is not None:
+            actual_by = "killer"
+        elif policy == "pool":
+            actual_by = "pool"
+        else:
+            actual_by = "ground"
         drop = LootDropped(
             drop_id=self._next_drop_id,
             value=victim.carried,
             from_player=victim.player_id,
-            by=policy,
+            by=actual_by,
             killer=killer_id,
         )
         self._next_drop_id += 1
-        if policy == "killer" and killer_id and self._live(killer_id) is not None:
+        if actual_by == "killer":
             # loot goes straight to the killer's wallet
             self.players[killer_id].carried += victim.carried
-        elif policy == "pool":
+        elif actual_by == "pool":
             # returns to the shared pool: not pickable off the ground, host re-seeds
             pass
-        else:  # "ground" (default) — a token others can grab
+        else:  # "ground" — a token anyone can grab
             self.dropped[drop.drop_id] = drop
         victim.carried = 0
         return drop

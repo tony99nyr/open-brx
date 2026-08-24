@@ -16,8 +16,9 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 |---|---|
 | Gun-keeps-no-state proof | `../protocol/brx-protocol.md` §7n |
 | `$GSET`/`$WEAP`/`$PSET` + command field maps | `../protocol/callsign-extract/protocol-classes.md` |
-| Sound bank (2166 ids) + USB sound-swap | `sound-bank.md` / `reference/brx-extended-user-guide.md` |
-| Grenade capability + `$GREN` fields | `game-modes.md` (analysis) / `callsign-extract/apk-harvest.md` (fields) |
+| Sound bank (2166 ids) + USB sound-swap | `../protocol/callsign-extract/sound-bank.md` / `reference/brx-extended-user-guide.md` |
+| Grenade — full manual, mode map, beacon decode | `reference/grenade.md` (authoritative, hardware-confirmed) |
+| Health-write semantics (`$LIFE`/`$BUMP` additive-clamped; no native regen) | `game-modes.md` §Health / `experiment-log.md` #33 |
 | Edge/UBox parity + pricing | `reference/edge-brp.md` |
 | Transport / field-range / reconciliation | `field-architecture.md` |
 | Measured ESP-NOW/LoRa ranges + Jay's device family | `reference/jay-ecosystem.md` |

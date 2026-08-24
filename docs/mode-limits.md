@@ -66,8 +66,10 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   mechanic needs an **IR station (T3)** or **the grenade**.
 - 🧱 **IR is line-of-sight & directional** (~30 ft grenade; range scales with indoor/outdoor mode). Cover
   blocks it; aim matters.
-- 🧪 **Does the grenade/station's objective state surface over BLE?** (`FOLLOWUPS` G6) — **gates**
-  auto-proximity ("you're at the site") and any live objective HUD read from the gun stream. Unconfirmed.
+- ✅/❌ **Grenade objective state over BLE is mode-dependent** (G6 resolved): **Hill and Respawn beacon**
+  (`$HIR,0,15,0,<team>,<mode>`, readable via a bare/`$SIR`-passthrough gun); **Assault/CTF/Frag do NOT**.
+  So a live HUD / auto-proximity works for Hill/Respawn, not the others. A **spawned gun with a `$SIR`
+  table silently swallows** grenade IR — read it bare or with a passthrough `$SIR`.
 
 ### Identity & protocol (mostly 🧪 — pending, not ceilings)
 - 🧪 **Per-player identity (P2):** `$HIR` gives the shooter's **team**, not player. FFA per-player
@@ -76,11 +78,12 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
 - 🧪 **Max native team count (P9):** confirmed 2 (TDM) + 3 (Supremacy); N-team / duos native support
   untested. *Workaround today:* FFA + Mission-Control logical teams (any structure, no hardware FF
   protection).
-- 🧪 **IR damage value (P10)** — needed for damage-weighted scoring. 🧪 **Regen as a weapon field (P11)**
-  — decides if Halo-shields are free (native) or host-driven. 🧪 **`$PB*` enums are v4.30; ours is v4.32
-  (P12).**
-- ✅ **Health writes exist** (`$LIFE` grant / `$BUMP` adjust) — so heal/boost/overshield are available;
-  the *exact* mid-life behavior is the only 🧪 part.
+- 🧪 **IR damage value (P10)** — needed for damage-weighted scoring. ✅ **Regen is NOT native (P11
+  closed)** — armor held through 30 s idle, so Halo-shields are **host-driven** (node refills). 🧪
+  **`$PB*` enums are v4.30; ours is v4.32 (P12).**
+- ✅ **Health writes CONFIRMED** — `$LIFE` and `$BUMP` are **both additive grants clamped at max** (exp-log
+  #33); heal/boost/(armor-)overshield work today. ⚠️ **shield pool is inactive until activated (P16)** —
+  refill armor+HP, not shields, for now.
 
 ### Power / physical
 - 🧱 **A phone with its screen on drains fast** (~a couple hours on an old phone) — mount with power for a
@@ -124,33 +127,33 @@ Mechanics: `game-modes.md` (custom modes) + `phone-app-spec.md` §screen-objecti
 
 | Tier | CS status | Limit / why |
 |---|---|---|
-| **T0** ($0, grenade + 1 phone) | ⚠️ playable | **Grenade = bomb site**, a phone/host runs the plant timer + defuse puzzle. **Eligibility is hardware-gated: a dead gun can't fire → can't shoot-to-arm** (🧪 confirm through a death→respawn cycle, G6). Detonation "blast" can't damage players without IR — resolve the round abstractly or push `$BUMP` to *connected* guns only. |
-| **+T1/T2** (nodes) | ⚠️→✅ | 🧪 **Auto-enable Plant in range** = grenade IR beacon → gun → node (needs G6; **Android only**). Node greys out Plant while dead. iOS players can't auto-detect in a browser (wrapper needed). |
+| **T0** ($0, grenade + 1 phone) | ⚠️ playable | **Grenade = bomb site**, a phone/host runs the plant timer + defuse puzzle. **Eligibility is hardware-gated: a dead gun can't fire → can't shoot-to-arm** (🧪 confirm through a death→respawn cycle). Detonation "blast" can't damage players without IR — resolve the round abstractly or push `$BUMP` to *connected* guns only. |
+| **+T1/T2** (nodes) | ⚠️→✅ | **Auto-enable Plant in range** — if the site is a **Hill/Respawn-mode** grenade, its beacon (`$HIR,0,15,0,<team>,<mode>`) reaching a player's gun proves presence → node enables Plant (✅ G6 confirmed for those modes; **Android only** to read the gun stream; iOS needs a wrapper). Node greys out Plant while dead. |
 | **+T3** (stations) | ✅ multi-site, robust | Real IR bomb-site stations run the plant timer locally, defenders defuse via IR; blast can damage via station IR. Cleanest version. |
 | **+T4** | ✅ | Field-wide "bomb planted" callout + live round state. |
 
 **Hard limits:** phone-as-bomb can't sense *who* touches it (team) — use team-gated codes / QR-badge
 camera / BLE-proximity; and can't deliver an IR blast (needs station/grenade IR or an abstract round
-end). **Everything else is pending G6/P-items, not ceilings.**
+end). **Everything else is buildable software, not ceilings.**
 
 ### Health / regen variants (Syphon, Halo shields, overshield, medic)
 Mechanics: `game-modes.md` §Health/regen. All **T0** — no props.
 
 | Variant | Tier | Limit / why |
 |---|---|---|
-| **Halo regenerating shields** | ✅ T0 | Per-node, no P2. 🧪 P11: if regen delay/rate is a weapon field it's *free* (native); else host-driven via `$LIFE`. Either way T0. |
-| **Overshield / medic** | ✅ T0 | Native shield/medic precedent confirmed (FB). Host grants `$LIFE`. |
+| **Halo regenerating health** | ✅ T0 | Per-node, no P2. **Host-driven only** — regen tested, armor does NOT self-recover (P11 closed); node refills via additive `$LIFE`/`$BUMP` after a no-damage timer. Refill armor+HP (shields inactive — P16). |
+| **Overshield / medic** | ✅ T0 (armor) | Host grants additive `$LIFE`. ⚠️ **shield pool inactive until activated (P16)** — use an armor overshield today. |
 | **Syphon (health-on-kill)** | ⚠️ T0 **+ P2** | 🧪 **Hard-ish dependency: needs per-player identity** to heal the *exact* killer — `$HIR` alone gives only team. Until P2, Syphon can only credit "a teammate," not the killer. |
 
-**Bottom line:** shields/overshield/medic are the cleanest modes we have (T0, per-node). Syphon is the
-one health mode gated on P2.
+**Bottom line:** host-driven regen/heal/medic (armor+HP) are the cleanest modes we have (T0, per-node,
+additive writes confirmed). Syphon is gated on P2; shield-pool effects on P16.
 
 ### Objective family — Domination / King-of-the-Hill / CTF / Assault
 Mechanics: `game-modes.md` catalog. These are inherently **contested-place** modes.
 
 | Tier | Status | Limit / why |
 |---|---|---|
-| **T0/T1** (no props) | ❌ as *capture-by-fire* | 🧱 A *place* can't be authored by the guns (no state) and a **phone can't be shot** (no IR). Needs a physical IR point. *Exception:* the **grenade** gives you single-point KotH/CTF/checkpoint for $0 (⚠️ can't display a winner; Assault friendly-capture bug). |
+| **T0/T1** (no props) | ❌ as *capture-by-fire* | 🧱 A *place* can't be authored by the guns (no state) and a **phone can't be shot** (no IR). Needs a physical IR point. *Exception:* the **grenade** gives you a single-point **Hill/Respawn/Assault/CTF** for $0 (Hill/Respawn state is BLE-readable; ⚠️ CTF turned red-not-team — team-assign open G9; grenade has no winner display/scoreboard). |
 | **+T3** (IR stations) | ✅ the real thing | One station primitive → Domination (1 pt/s), KotH (hold 45 s, ~5 s recapture), CTF, Assault. 🧪 P10 for damage-weighted scoring. |
 | **multi-point** | ⚠️ needs linking | 🧱 Several points that share score need base↔base networking (ESP-NOW arena / **T4** LoRa field). Caps: 10-station LoRa domination, ~21-box KotH. |
 | **+T4** | ✅ live | Field-wide live ownership/scoreboard. Without it, multi-point still scores but syncs late. |
@@ -192,9 +195,11 @@ $0 shortcut and only for a *single* point, with its own quirks.
    store-and-forward.
 5. **SCREAMERS** → plan for reboots and topped batteries in long hosted games.
 
-**Pending confirmations (not ceilings — hardware tests that unlock things):** G6 (grenade/station state
-over BLE → auto-proximity + live HUD), P2 (per-player id → FFA scoring + Syphon), P10 (damage-weighted
-scoring), P11 (native regen), P9 (native small teams), G7 (grenade audio). All tracked in `FOLLOWUPS.md`.
+**Resolved this session (exp-log #33–40):** G-2 health writes (additive-clamped, no native regen), G-1
+grenade (mode map + Hill/Respawn beacon decode = G6), G8 (`$GREN` can't config objective modes), G7
+(grenade USB-C power-only). **Still pending (hardware tests that unlock things):** P2 (per-player id →
+FFA scoring + Syphon), P16 (shield activation), P10 (damage-weighted scoring), P9 (native small teams),
+G9 (CTF team-assign), G10 (thrown-blast `$GREN`). All tracked in `FOLLOWUPS.md`.
 
 **Net:** with **Tony's kit** (4 BRX + 2 grenades + Pixel 4/OnePlus + 2 iPhone X + iPad Air), the modes
 that run **today at T0/T1** are TDM/FFA, the health/shield variants, small-scale Extraction, single-point

@@ -29,20 +29,16 @@ Everything here needs **only a laptop in BLE range** (one radio reaches ~7–10 
   Man Standing, Generals / Commander / The Swarm** (respawn-character modes), plus a **live laptop
   scoreboard / kill-feed**.
 
-**Your 2 grenades already do objective modes — the problem is config, not capability:**
-- The grenade **reportedly supports Assault, Capture the Flag, and King of the Hill** (community-
-  reported; the objective-mode↔`$GREN` mapping is unverified by us — followups F/G) — and it's
-  **super hard to configure** from the on-gun menu.
-- **Highest-value free build → a grenade config + state app** (phone/web, uses owned gear only):
-  - **Config:** a clean UI that sends the `$GREN` setup over BLE (pick Assault/CTF/KotH, channel,
-    options) — replaces the painful on-gun menu, making the grenade's existing modes actually usable.
-  - **State display:** read objective events from the **gun's BLE stream** (the gun knows the state —
-    it plays CTF flag music) and show a live "who holds the flag / point / KotH timer" screen.
-  - With **2 grenades = 2 flags / 2 hills / 2 objectives**, this gets you Assault + CTF + KotH for
-    **$0**, no stations. (Untested — followups F/G; free to work out the exact `$GREN` per mode and
-    what state the gun reports.)
-- Also props-free: **Counter-Strike** with a grenade as the **bomb**, and **gas/Molotov/confusion
-  hazard zones**.
+**Your 2 grenades do objective modes at $0 (hardware-confirmed — `reference/grenade.md`):**
+- **5 native modes** set by the on-grenade button (LED colour): red=Frag, green=Assault, blue=Hill(KotH),
+  yellow=Respawn, white=CTF. Config is **on-device button only** — `$GREN` over BLE does NOT set the mode
+  (tested, G8; anti-tamper). So the config stays the (finicky) manual menu + a printed cheat-sheet.
+- **Highest-value free build → a grenade STATE DISPLAY** (phone/web, owned gear only): a BLE-connected
+  tagger in range relays the grenade's beacon (`$HIR,0,15,0,<team>,<mode>`) to a screen — live **Hill**
+  possession + **Respawn** owner. (**Assault/CTF/Frag don't beacon** — no live read for those.) 2
+  grenades = 2 objectives.
+- Also props-free: **Counter-Strike** with a grenade as the **bomb**, and (via a *paired thrown* grenade)
+  **gas/Molotov/confusion hazard zones** (G10). CTF's team-assignment is still to work out (G9).
 
 **The Tier-0 objective toolkit (no bought hardware — the grenades ARE your Tier-0 IR nodes; ESP32
 stations are Tier 3).** Players interact only by **shooting** (gun IR) or **touching a screen** — never
@@ -74,9 +70,10 @@ becomes their game engine + HUD → **breaks the BLE-range limit** (the link rid
 - Gated on a **free 10-min test**: does Android Chrome hold a BRX BLE link? (followup, no purchase).
 - iOS can't do the **web** path (no Safari Web Bluetooth) — use Android for zero-install, a wrapper
   browser (Bluefy/beacio), or a **native/hybrid iOS app** (full BLE via CoreBluetooth). The app is
-  **still Tier 0/1** — software on phones you own, no hardware spend. Distribution: free **APK** on
-  Android, free **AltStore/SideStore** sideload on iOS (or $99/yr TestFlight for smooth sharing — note
-  TestFlight is *not* free). See `phone-app-spec.md` §"Common core, platform shells" + §Distribution.
+  **still Tier 0/1** — software on phones you own, no hardware spend. Distribution: **installable PWA**
+  on Android (the primary path — update by redeploy, no reinstall; APK an optional fallback), free
+  **AltStore/SideStore** sideload on iOS (or $99/yr TestFlight for smooth sharing — note TestFlight is
+  *not* free). See `phone-app-spec.md` §"Common core, platform shells" + §Distribution.
 
 ## Tier 2 — ESP32 "Companion" per tagger (~$8–25 each)
 

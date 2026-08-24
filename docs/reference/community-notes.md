@@ -92,8 +92,10 @@ headset link dropped (which blocks firing).
 - A grenade can be **set as a CTF base**. The "scary music" a tagger plays is the **capture-the-
   flag music** (played when a tagger holds the flag). Running grenades in the wrong mode with
   CTF-capable firmware can trigger unexpected game responses — Battle Company left the grenade↔
-  game responses enabled. Grenade firmware is field-updatable via a `.bin` (community asks for the
-  flashing procedure — not well documented, matches our "grenade config is hard/buggy" note).
+  game responses enabled. Community says grenade firmware is field-updatable via a `.bin` (flashing
+  procedure not well documented). **Note the tension with G7:** we found the grenade's USB-C exposes
+  **no data interface** (power-only) on a confirmed-good path — so if `.bin` flashing is real, it uses a
+  method we haven't reproduced (a different tool/entry, or not over that USB-C port). Unresolved.
 
 ## Custom sounds ON the tagger — via the data port (community-confirmed)
 

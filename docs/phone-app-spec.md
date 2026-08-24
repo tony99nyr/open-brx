@@ -87,9 +87,10 @@ pick, one link, ~1 m away.
 - **Web-BT-friendly ways to get the same end:** (1) **grant-once, then auto-reconnect** — tap each of a
   *fixed owned fleet* once, ever; `getDevices()` + `watchAdvertisements()` reconnects hands-free
   thereafter. (2) **IR through your own gun** — objective proximity arrives over the *single link you
-  already have* (the gun reports the grenade/station IR beacon it receives; gated on **G6**), so no
-  scanning/address is needed. (3) **GPS geofence / QR** for location objectives. So auto-adopt-by-address
-  = native; everything else stays Tier-0 web.
+  already have* — confirmed for **Hill/Respawn** grenade modes (the gun surfaces their beacon as
+  `$HIR,0,15,0,<team>,<mode>` on a bare/`$SIR`-passthrough listen; G6). No scanning/address needed. (3)
+  **GPS geofence / QR** for location objectives. So auto-adopt-by-address = native; everything else stays
+  Tier-0 web.
 - **Offline-first:** log events to **IndexedDB**; sync to Mission Control over WiFi when available.
 - **Gate to test first (from `field-architecture.md`):** confirm Android Chrome actually holds a
   BRX NUS link (nRF Connect: connect `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign), subscribe TX `…0003`, write `$PING,*` to RX
@@ -143,10 +144,11 @@ justified.**
 - **⚠️ Correction to a common assumption:** **TestFlight requires the $99/yr paid account** — a free
   Apple ID cannot upload to App Store Connect / TestFlight. The truly-free iOS route is
   **AltStore/SideStore** (with the 7-day re-sign hassle).
-- **Recommendation:** start free — **APK for Android, AltStore/SideStore for the iPhones/iPad**. If we
+- **Recommendation:** start free — **installable PWA for Android** (the primary path; APK only if a
+  home-screen icon or Play listing is ever wanted), **AltStore/SideStore for the iPhones/iPad**. If we
   ever share with more than a couple of non-technical people, **pay the $99/yr for TestFlight** (still
   Tier 0, no hardware) — it's dramatically smoother than asking each person to run AltStore and reinstall
-  weekly. Document the AltStore setup + APK install steps in the release notes when the app ships.
+  weekly. Document the PWA install + AltStore setup steps in the release notes when the app ships.
 
 ## What the app does (per player)
 
@@ -260,10 +262,11 @@ nodes: so no player ever pairs to a flag/hill/bomb mid-game.
 **Grenade as the bomb site (proximity + alive-gating):** the grenade is a *better* physical site than a
 phone because it has **IR**. Model: grenade = the site (IR presence beacon + the physical bomb); a site
 phone/host = the plant/defuse timer + rules.
-- **Auto-enable Plant in range:** the grenade's IR beacon hits the player's gun → the gun surfaces it in
-  its **BLE stream** → the player's (Android) node sees "at site A" and enables Plant. Presence via IR,
-  UI on the phone. **Depends on followup G6** (does the grenade beacon/hit appear in the gun's BLE
-  stream?) — unconfirmed; fall back to a manual tap or the shoot-the-grenade path if not. Auto-detect is
+- **Auto-enable Plant in range:** if the site is a **Hill/Respawn-mode** grenade, its IR beacon reaches
+  the player's gun and the gun surfaces it as `$HIR,0,15,0,<team>,<mode>` → the (Android) node sees "at
+  site A" and enables Plant. **Confirmed (G6)** for Hill/Respawn — but note a **spawned gun with a `$SIR`
+  table swallows the beacon**, so read it on a bare/`$SIR`-passthrough listen. Assault/CTF/Frag modes
+  don't beacon, so for those fall back to a manual tap or the shoot-the-grenade path. Auto-detect is
   **Android-only** (reading the BLE stream in a browser).
 - **Preventing an eliminated player from arming — two gates, one free:** (1) **hardware** — a downed BRX
   disables its trigger ("disabled" chirp) until respawn, so if arming = *shoot the grenade*, a dead

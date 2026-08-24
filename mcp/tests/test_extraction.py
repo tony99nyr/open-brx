@@ -134,6 +134,38 @@ def test_respawn_returns_player_alive_but_empty():
     assert g.carried("red") == 0             # loot was dropped on death
 
 
+def test_killer_policy_with_dead_killer_falls_back_to_ground_labeled_correctly():
+    # mutual kill: blue dies too, so the "killer" can't receive loot → it must become
+    # a grabbable ground token, and LootDropped.by must say "ground" (not "killer"),
+    # or a driver would double-credit (dead killer + the pickable token).
+    g = ExtractionGame(["red", "blue"], ExtractionConfig(drop_policy="killer", loot_per_kill=0))
+    g.loot_pickup("red", 40)
+    g.on_death("blue", killer_id=None, now=1.0)      # blue is already down
+    drop = _one(g.on_death("red", killer_id="blue", now=2.0), LootDropped)
+    assert drop.by == "ground"                        # not "killer"
+    assert g.carried("blue") == 0                     # dead killer got nothing
+    assert drop.drop_id in g.dropped                  # token is on the ground, grabbable
+
+
+def test_two_extractions_same_tick_with_win_target_stops_after_winner():
+    # both channels elapse in the same tick(); with a win_target the first to complete
+    # wins and the loop must stop — the second player must NOT also bank/extract.
+    cfg = ExtractionConfig(channel_s=5.0, win_target=50, extract_removes_player=False)
+    g = ExtractionGame(["red", "blue"], cfg)
+    g.loot_pickup("red", 60)
+    g.loot_pickup("blue", 60)
+    g.enter_zone("red", "Alpha", now=0.0)
+    g.enter_zone("blue", "Bravo", now=0.0)
+    actions = g.tick(now=5.0)
+    overs = [a for a in actions if isinstance(a, GameOver)]
+    banks = [a for a in actions if isinstance(a, Bank)]
+    assert len(overs) == 1                            # exactly one winner declared
+    assert len(banks) == 1                            # only the winner banked this tick
+    assert g.over is True
+    # exactly one of them actually banked; the other kept its loot
+    assert (g.banked("red") == 60) != (g.banked("blue") == 60)
+
+
 def test_win_target_ends_the_game():
     cfg = ExtractionConfig(channel_s=5.0, win_target=100,
                            extract_removes_player=False)

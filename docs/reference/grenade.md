@@ -3,9 +3,11 @@
 The grenade has no real written manual; the best source is two 2019 videos by **"Extreme Laser Tag
 And More!"** — *BRX Accessory Grenade Basics* (`youtu.be/A9DTQMrdjxk`, 26 min) and *Tips & tricks on
 grenade settings/functionality* (`youtu.be/5xgKF2MBtWc`, 9.5 min). Facts distilled from their
-transcripts (credit the channel). This makes our reference the most complete grenade doc anywhere —
-directly feeds the grenade config app (FOLLOWUPS B8/G1). Complements the `$GREN` field facts in
-`../../protocol/callsign-extract/apk-harvest.md` and the pairing/IR facts in `brx-extended-user-guide.md`.
+transcripts (credit the channel), then **hardware-confirmed and extended** in exp-log #33–40. This makes
+our reference the most complete grenade doc anywhere — it feeds the grenade **state-display** app
+(FOLLOWUPS B8; note: over-BLE *config* was disproven — see §"Configuration is on-device only" below).
+Complements the `$GREN` field facts in `../../protocol/callsign-extract/apk-harvest.md` and the
+pairing/IR facts in `brx-extended-user-guide.md`.
 
 ## How the grenade communicates (hardware-confirmed, exp-log #38)
 
@@ -35,13 +37,15 @@ power-up it flashes green = ready. Default mode = plain "grenade."
 3. Release on the mode you want; **after it sits ~10 s in a mode it LOCKS in** that programming.
    To re-program, **power-cycle** it (once locked it stays).
 4. Guns receive the mode via their IR receiver — no app needed; headsets can receive too but aren't
-   required. This is why it's fiddly (timing the hold + lock), and why a clean **`$GREN`-over-BLE
-   config app (B8) is the fix** — same modes, no button-timing dance.
+   required. This is why it's fiddly (timing the hold + lock). **There is no over-BLE shortcut:**
+   configuring the objective mode via `$GREN` was tested and **does not work** — the mode is button-set
+   and locked on the device (see §"Configuration is on-device only", G8). The hardware-confirmed
+   procedure + exact colour→mode map is in the next section.
 
-**Modes it cycles through:** Respawn Station · King of the Hill · Checkpoint/Domination · Assault ·
-(plus default grenade; "more coming" per the video). *(The APK also decodes a `GrenadeType` enum —
-FlashBang/Gas/Confusion/Molotov — which is the blast *effect*; these game *modes* are the
-`operationMode`/objective behaviour. Reconciling the two exactly is followup G1.)*
+**Modes (hardware-confirmed, 5):** red=Frag · green=Assault · blue=Hill (KotH) · yellow=Respawn ·
+white=CTF (full table below). *(The APK's `GrenadeType` enum — FlashBang/Gas/Confusion/Molotov — is the
+blast *effect* of a **thrown** grenade, a different axis from these objective *modes*; `$GREN` sets that
+blast type for a paired thrown grenade, not the objective modes — G8/G10.)*
 
 ### Exact setup procedure + colour→mode map (HARDWARE-CONFIRMED, Tony, exp-log #35)
 
@@ -60,8 +64,9 @@ There are **5 modes**, indicated by **LED colour** (the video's 4-mode list was 
    | 4 | **yellow** | **Respawn** |
    | 5 | **white** | **CTF** (Capture the Flag) |
 
-   The four objective modes (green/blue/yellow/white) **beacon their state over IR** (→ `$HIR,0,15,…`
-   on a bare-connected gun); **Frag (red) does not beacon** — it's a thrown/triggered blast.
+   **Only Hill (blue) and Respawn (yellow) beacon their state over IR** (→ `$HIR,0,15,…`
+   on a bare-connected gun); **Assault (green), CTF (white), and Frag (red) do NOT beacon** — Assault/CTF
+   capture silently (state on the grenade LED only) and Frag is a thrown/triggered blast.
 4. **Release** on the colour you want → it **locks** that mode.
 5. **The mode persists across a power-cycle** (off/on keeps it) — only re-entering setup changes it.
 6. **LED goes white when a mode locks in** (the lock confirmation).
@@ -149,7 +154,7 @@ checkpoint/KotH objective family; confirm specifics on hardware (G1).
 ## Using it as a thrown grenade (pairing — ONLY for thrown use, NOT objective modes)
 
 **Important (Tony, exp-log #34):** you do **NOT** "install accessory" to use the grenade in its
-**objective modes** (Respawn/KotH/Checkpoint/Assault) — in those it's a **station** any gun interacts
+**objective modes** (Assault/Hill/Respawn/CTF) — in those it's a **station** any gun interacts
 with by IR, no pairing. The pairing below is **only** for using it as a *thrown* grenade tied to your
 own headset.
 
@@ -161,12 +166,14 @@ Matches the accessory-pairing procedure in `brx-extended-user-guide.md`:
    signals your headset → arms → detonates, affecting everyone in range (can wipe a group / instantly
    flip a respawn point or hill).
 
-## Two config paths (why the app matters)
+## Configuration is on-device only (hardware-confirmed — G8)
 
-- **On-grenade IR beacon** (these videos): hold-button-cycle-lock — works, but finicky and buggy.
-- **`$GREN` over BLE** (from the APK, `apk-harvest.md`): the app path — a clean UI (B8) that sets the
-  grenade/gun mode without the button-timing dance. **This is the single biggest usability win we can
-  build for the grenade**, since the grenade already provides Respawn/KotH/Checkpoint/Assault for $0.
+**There is exactly ONE way to set a grenade's objective mode: the on-grenade button** (hold-button-
+cycle-lock, finicky but the only path). We tested driving the mode over BLE with `$GREN` (swept every
+`operationMode` value × iRType {0,15}) and it had **zero effect** — the mode is **button-set and locked
+on the device** (anti-tamper). `$GREN`'s `GrenadeType` (FlashBang/Gas/Confusion/Molotov) configures a
+**paired *thrown* grenade's blast effect**, not objective modes (G10). So there is **no `$GREN` config
+app** — the app's real value is a live **STATE DISPLAY** (below), not configuration.
 
 ## Can we put new audio on the grenade?
 
@@ -184,15 +191,12 @@ ids and every grenade "sounds" different, with **zero grenade modification**. Th
 (Tier 2) goes further: a grenade IR event can trigger *any* custom sound on its own speaker — unlimited,
 dynamic grenade audio without touching the accessory at all.
 
-*Likely direct path (the grenade has a USB-C port — confirmed by Tony):* the same firmware/audio-swap
-mechanism the gun and headset use is a **USB mass-storage disk** you reach by a button-hold boot. The
-grenade having its **own USB-C port** strongly suggests it exposes that disk too — so if it carries a
-speaker, it very probably has a swappable **`AUDIO` folder of `<ID>.LTP` files** just like the tagger.
-The concrete test (followup G7): with the grenade **off, hold its button (or PROGRAM pin) while
-plugging in USB-C** → does a disk mount with a firmware `.BIN` and/or an `AUDIO` folder? If yes,
-grenade-local custom audio is a direct file swap — **no firmware modification, fully within our rules**
-(same as swapping gun sounds). Either way, the gun/headset/Companion reskin above already delivers new
-grenade audio today.
+*No grenade-local swap path (G7, RESOLVED negative):* the grenade **has a USB-C port**, but it exposes
+**no USB data interface** — tested off, on, and in the purple button-hold mode on a **confirmed-good data
+path** (a Pixel enumerated on it); the grenade never enumerated a drive, serial console, or DFU. There is
+**no pinhole/PROGRAM pin** either. So its USB-C is **power/charge only** — no on-grenade `AUDIO` folder to
+swap. **The gun/headset/Companion reskin above is the only way to change grenade audio**, and it already
+delivers it today.
 
 ## Can we add new modes to the grenade?
 
@@ -202,12 +206,12 @@ Two different questions:
   *never modify stock BRX firmware*, and the grenade is stock BRX. Writing custom grenade firmware is
   off-limits (and undocumented/risky). Note: Jay's "updated grenade firmware improving respawn" was
   applying **Battle Company's own official firmware update**, not custom code — that's a vendor update,
-  not a mod. What we *can* set over the wire is **parameters within the existing modes** via `$GREN`
-  (`operationMode`, `GrenadeType`, `channel`, `indoorMode`, `crit`, `modifier`) — tuning modes, not
-  inventing on-device ones.
+  not a mod. And **`$GREN` does NOT let us set the objective mode over BLE** (G8 — button-locked on the
+  device); `$GREN` only configures a **paired thrown grenade's blast type** (`GrenadeType`), not the
+  objective `operationMode`. So there is no over-the-wire mode tuning for the objective modes.
 - **New *effective* modes built around the grenade? Yes — this is the whole architecture.** The grenade,
   like the gun, **keeps no game state** — it's an IR objective/effect *emitter*. Its native modes
-  (Respawn / KotH / Checkpoint-Domination / Assault) and blast types (FlashBang/Gas/Confusion/Molotov)
+  (Frag / Assault / Hill / Respawn / CTF) and blast types (FlashBang/Gas/Confusion/Molotov)
   are raw **IR primitives**; what they *mean* is decided by our host + nodes. So we layer any new
   ruleset on top without touching the grenade:
   - grenade in **KotH mode** → our engine treats its zone beacon as the **Extraction point**
@@ -231,10 +235,15 @@ Two different questions:
 - Note also: community reports **Assault is "unusable"** and was removed from JEDGE hosting — treat
   grenade-Assault as low-confidence until we test it (`../game-modes.md`).
 
-## Open (followups F/G)
+## Resolved this session, and what's still open
 
-Confirm on hardware: exact `$GREN` ↔ each mode mapping (G1); whether `$GREN` reprograms an
-already-paired grenade live; the grenade's BLE visibility (G2); what objective state the gun
-exposes over BLE during a grenade game, for a live status display (G6); and **whether the grenade's
-USB-C port mounts a mass-storage disk with a firmware `.BIN` / swappable `AUDIO` folder** like the gun
-and headset (G7 — the direct grenade-audio-swap test).
+**Resolved (exp-log #33–40):** the 5-mode colour map; the on-device setup procedure; the `$HIR,0,15,0,
+<team>,<mode>` beacon decode incl. live ownership; the IR-broadcast comms model; **G8** (`$GREN` does
+NOT set objective modes — button-locked); **G7** (USB-C is power/charge only — no data interface);
+**G6** (mode-dependent — Hill/Respawn beacon over BLE, Assault/CTF/Frag don't).
+
+**Still open:** **G9** — CTF flag team-assignment (shooting a CTF grenade turned it *red*, not the
+shooter's team colour; likely needs a team/flag assignment first — pull Jay's CTF videos). **G10** —
+`$GREN` for a *paired thrown* grenade's blast type (untested — needs the install-accessory pairing).
+The **KotH charge/progress level** is not in the beacon (it's a per-gun local timer); decoding a charge
+value needs a `$SIR`-passthrough rig that lets the gun fire *and* surface grenade IR (exp-log #38).
