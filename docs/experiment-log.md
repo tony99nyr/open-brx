@@ -733,3 +733,14 @@ received by *every* headset in range. Guns in a game react (audio/timer); a BLE-
 it over BLE** (the state-display works by putting one connected tagger in grenade range). No pairing/
 addressing for objective modes. The grenade **also pushes perks over IR** — holding the Hill grants a
 **rate-of-fire boost** to the holder's gun. So: broadcasts state AND modifies the holder's gun, all via IR.
+
+### 40. G7 — grenade USB-C: no data interface (charge/mode only so far)
+Plugged the grenade into USB-C (Windows tower). **No USB device enumerated** in either normal or a
+button-hold entry — verified by a plugged/unplugged PnP diff (0 delta) and a scan for COM ports /
+removable drives / DFU/unknown devices (none; COM3=touchscreen `CT21INCH`, COM4=WSL virtual, both
+pre-existing). **Button-hold + USB put the grenade into a NEW purple-LED mode** (not one of the 5 game
+colours) — likely a firmware-update/bootloader or special state — but it exposes **no Windows-visible USB
+data interface**. Open: **confirm the cable is a DATA cable** (test with a phone in file-transfer) — if
+data-capable and still nothing, the grenade USB-C is **power-only / needs a proprietary tool**. So the
+reliable non-IR channel Tony hoped for is **not available via plain USB** on current evidence; IR-beacon-
+relay (a BLE tagger in range) remains the state-read path. Script: `scratchpad/gren_serial.py`.
