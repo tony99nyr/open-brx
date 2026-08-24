@@ -1,5 +1,15 @@
 # Callsign APK investigation — the highest-leverage desk work available
 
+**Status:** FIRST PASS DONE 2026-08-24 (Windows). Results:
+`protocol/callsign-extract/` (sound bank + config facts + README) and experiment-log #20–23.
+Key correction to the plan below: the app is **Unity/IL2CPP, not Java** — `jadx` gets the
+Android wrapper but the game logic is native ARM in `libil2cpp.so`. The sound-id list (goal
+#2) came straight from `assets/Configs/Sounds.json` (2166 ids). The **`$GSET`/`$WEAP`/`$PSET`
+builders (goals #1, #3, #4) remain** — they need **Il2CppDumper + Ghidra**, not jadx. That is
+the open highest-value teardown step. Original plan preserved below.
+
+---
+
 **Status:** proposed, not started (2026-08-23). **Windows-friendly** — no hardware, no
 taggers, no iOS captures. Can be done entirely offline.
 

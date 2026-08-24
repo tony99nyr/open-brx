@@ -18,10 +18,9 @@ never ship Battle Company's assets.** The APK itself is NOT committed.
   `Sounds.json`. This is the deliverable the architecture doc §5 asked for, and it kills the
   microphone-sweep dead end (experiment-log #7): any id not in the list is invalid, so no
   fallback-sound ambiguity. IDs are the app's own names — the protocol uses them directly.
-- **`weapon-categories-config.json`** — weapon category ids 0–12: Rifle/SMG/Sniper/Shotgun/
-  Heavy/Energy/Support/Power/Exotic/Launcher/Stun, plus Ability(11)/Melee(12).
-- **`game-medals-config.json`, `streak-rewards-config.json`** — medal/streak definitions
-  (post-game stats design reference).
+- **`config-facts.md`** — restated (not copied) facts from the app's config JSONs: weapon
+  category ids 0–12, the post-game medal set and the stats it implies, and killstreak
+  rewards. Per repo policy (`docs/apk-investigation.md`) we do not commit the raw assets.
 
 ## Architecture confirmations (from metadata strings)
 
