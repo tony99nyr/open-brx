@@ -3,8 +3,14 @@
 **Why this doc exists:** the MacBook is becoming the field machine and the Windows PC the
 primary dev box, but **capture work can only happen here.** Callsign is **iOS-only** (it
 has never worked on Android), iOS Bluetooth tracing needs **PacketLogger**, and
-PacketLogger is **macOS-only**. Every "watch what the real app does" experiment — including
-the project's current critical path — is therefore gated on this laptop.
+PacketLogger is **macOS-only**. Every "watch what the real app does" experiment is
+therefore gated on this laptop.
+
+**Status note (2026-08-23):** Experiments 1 and 2 are **done** — both returned definitive
+negatives that closed the project's biggest open questions (see §7n). The current critical
+path is now **the nRF radio**, which needs no captures and can be worked on Windows. What
+remains here is genuinely useful but no longer blocking: `$WEAP`, per-player identity, the
+`$PSET` audio tokens, and the other game modes.
 
 Batch these. An hour with the Mac, the iPhone and two taggers unblocks months of work on
 the Windows side.
