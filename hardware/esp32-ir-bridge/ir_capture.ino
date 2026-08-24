@@ -1,0 +1,122 @@
+/*
+ * BRX IR capture — ESP32-S3 + VS1838B receiver.
+ *
+ * Phase A of hardware/ir-prototype-plan.md: decode the 25-bit BRX IR frames a
+ * stock gun / grenade emits (followup B13 — the Utility Box's gating unknown).
+ *
+ * Approach: the VS1838B demodulates the 38 kHz carrier and drives its OUT pin
+ * LOW while a burst is present (active-low, idles HIGH). We interrupt on every
+ * edge, timestamp with micros(), and after an idle gap dump the pulse train +
+ * a decode attempt over USB serial. Raw edges (not a library) so we see the
+ * exact waveform and can match it to the known BRX timing.
+ *
+ * Known BRX encoding (LaserTagMods, docs/reference/lasertagmods.md):
+ *   25-bit, 38 kHz carrier; logic-1 ≈ 1000 us mark, logic-0 ≈ 500 us mark,
+ *   ~500 us inter-bit space; a start bit opens the frame.
+ *
+ * Wiring (ESP32-S3-DevKitC-1, N16R8 — avoids the octal-PSRAM pins 33–37 and
+ * the SPI-flash pins 26–32):
+ *   VS1838B  OUT -> GPIO 4      VCC -> 3V3      GND -> GND
+ *   (a 0.1 uF cap across VCC/GND is recommended — the Elegoo kit has them)
+ *
+ * Serial: 115200 baud. Output is line-based so the brx-mcp `ir_capture` tool can
+ * parse it. Send 's' to print stats, 'c' to clear.
+ */
+
+#include <Arduino.h>
+
+static const int IR_RX_PIN = 4;          // VS1838B OUT
+static const uint32_t IDLE_GAP_US = 8000; // frame ends after this much silence
+static const size_t MAX_EDGES = 256;      // plenty for a 25-bit frame (~51 edges)
+
+// ---- edge capture (ISR-filled ring) ---------------------------------------- //
+volatile uint32_t edges[MAX_EDGES];       // micros() timestamps of each edge
+volatile size_t edgeCount = 0;
+volatile uint32_t lastEdgeUs = 0;
+volatile bool overflow = false;
+
+void IRAM_ATTR onEdge() {
+  uint32_t now = micros();
+  lastEdgeUs = now;
+  if (edgeCount < MAX_EDGES) {
+    edges[edgeCount++] = now;
+  } else {
+    overflow = true;
+  }
+}
+
+// ---- decode: durations -> bits --------------------------------------------- //
+// A "mark" is the LOW burst (VS1838B active-low). We measure LOW-duration =
+// carrier-present. long(~1000us)=1, short(~500us)=0. Tunable thresholds.
+static const uint32_t MARK_THRESH_US = 750;   // > this = logic 1
+static const uint32_t MARK_MIN_US    = 200;   // ignore glitches below this
+static const uint32_t MARK_MAX_US    = 3000;  // and above this (start/gap)
+
+uint32_t frameCount = 0;
+
+void printFrame() {
+  size_t n;
+  uint32_t buf[MAX_EDGES];
+  noInterrupts();
+  n = edgeCount;
+  for (size_t i = 0; i < n; i++) buf[i] = edges[i];
+  bool ov = overflow;
+  edgeCount = 0;
+  overflow = false;
+  interrupts();
+
+  if (n < 4) return;  // noise, not a frame
+
+  frameCount++;
+  // durations between edges
+  Serial.print("RAW ");
+  Serial.print(frameCount);
+  Serial.print(" edges=");
+  Serial.print(n);
+  if (ov) Serial.print(" (OVERFLOW)");
+  Serial.print(" us=[");
+  // The pin idles HIGH; first edge is HIGH->LOW (mark begins). So durations
+  // alternate LOW(mark), HIGH(space), LOW(mark)... starting with a mark.
+  for (size_t i = 1; i < n; i++) {
+    uint32_t d = buf[i] - buf[i - 1];
+    if (i > 1) Serial.print(",");
+    Serial.print(d);
+  }
+  Serial.println("]");
+
+  // decode: take the LOW durations (marks) = every other gap starting at index 0->1
+  String bits = "";
+  int nbits = 0;
+  for (size_t i = 1; i < n; i += 2) {           // marks are the 1st,3rd,5th... gaps
+    uint32_t mark = buf[i] - buf[i - 1];
+    if (mark < MARK_MIN_US || mark > MARK_MAX_US) continue;  // skip start/glitch
+    bits += (mark > MARK_THRESH_US) ? '1' : '0';
+    nbits++;
+  }
+  Serial.print("DECODE bits=");
+  Serial.print(nbits);
+  Serial.print(" val=");
+  Serial.println(bits);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+  pinMode(IR_RX_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(IR_RX_PIN), onEdge, CHANGE);
+  Serial.println("# BRX IR capture ready (ESP32-S3, VS1838B on GPIO4).");
+  Serial.println("# Fire a gun / trigger a grenade at the receiver. Frames stream below.");
+}
+
+void loop() {
+  // frame complete when the line has been idle for IDLE_GAP_US with edges buffered
+  if (edgeCount > 0 && (micros() - lastEdgeUs) > IDLE_GAP_US) {
+    printFrame();
+  }
+  // simple serial commands
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == 's') { Serial.print("# frames="); Serial.println(frameCount); }
+    else if (c == 'c') { frameCount = 0; Serial.println("# cleared"); }
+  }
+}
