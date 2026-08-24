@@ -27,9 +27,11 @@
 #include <Arduino.h>
 
 static const int  IR_TX_PIN     = 5;
+static const int  STATUS_LED    = 6;     // visible LED — lights while a frame is emitted
 static const int  CARRIER_HZ    = 38000;
 static const int  CARRIER_RES   = 8;     // 8-bit duty
 static const int  CARRIER_DUTY  = 128;   // ~50%
+static const uint32_t LED_HOLD_MS = 40;  // keep the visible LED on this long (so it's obvious)
 
 // --- BRX timing (TUNE to your captured frames) ------------------------------ //
 static uint32_t MARK_ONE   = 1000;  // logic 1 mark (us)
@@ -45,13 +47,16 @@ void mark(uint32_t us)  { carrierOn();  delayMicroseconds(us); carrierOff(); }
 void space(uint32_t us) { delayMicroseconds(us); }
 
 void sendFrame(const String& bits) {
-  noInterrupts();                 // keep the µs timing tight
+  digitalWrite(STATUS_LED, HIGH);  // visible "transmitting" indicator
+  noInterrupts();                  // keep the µs timing tight
   if (START_MARK) { mark(START_MARK); if (START_SPACE) space(START_SPACE); }
   for (size_t i = 0; i < bits.length(); i++) {
     mark(bits[i] == '1' ? MARK_ONE : MARK_ZERO);
     space(BIT_SPACE);
   }
   interrupts();
+  delay(LED_HOLD_MS);              // hold the LED so a single frame is clearly visible
+  digitalWrite(STATUS_LED, LOW);
 }
 
 String buf;
@@ -81,6 +86,8 @@ void handleLine(String line) {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  pinMode(STATUS_LED, OUTPUT);
+  digitalWrite(STATUS_LED, LOW);
   ledcAttach(IR_TX_PIN, CARRIER_HZ, CARRIER_RES);  // v3.x API
   carrierOff();
   Serial.println("# BRX IR emit ready (ESP32-S3, IR LED on GPIO5).");

@@ -34,12 +34,16 @@ many DevKitC-1s come pre-soldered.
  │   3V3 ●─┼──────────────────────┤ VCC (3)  │
  │   GND ●─┼───────┬──────────────┤ GND (2)  │
  │ GPIO4 ●─┼───────┼──────────────┤ OUT (1)  │
- └─────────┘       │              └──────────┘
-                   │   0.1 µF cap
+ │         │       │              └──────────┘
+ │ GPIO6 ●─┼──[330Ω]──►│──┐   ← visible "RX" LED (blinks ~40 ms on each frame received)
+ │   GND ●─┼────────────────┘        (anode to resistor, cathode to GND)
+ └─────────┘       │   0.1 µF cap
                    └───┤├──── (other leg to VCC rail)   ← optional, reduces noise
 ```
-That's the whole capture rig: **3 jumpers** (3V3, GND, GPIO4→OUT) + an optional decoupling cap.
-Point the VS1838B's domed face at the gun/grenade.
+The whole capture rig: **3 jumpers** (3V3, GND, GPIO4→OUT) + a **visible RX-indicator LED** on GPIO6
+(GPIO6 → 330 Ω → LED anode, cathode → GND) + an optional decoupling cap. Point the VS1838B's domed
+face at the gun/grenade — **the GPIO6 LED blinks every time a frame is decoded**, so you get instant
+feedback even before reading the serial output.
 
 ## Flash it
 1. Arduino IDE → Boards Manager → install **esp32 by Espressif** (v3.x).
@@ -83,6 +87,9 @@ is **invisible** — to check it's firing, view it through a **phone camera** (y
 ```
 - **GPIO5 → 330 Ω → base**; **emitter → GND**; **collector → IR-LED cathode**;
   **IR-LED anode → 100 Ω → +3V3/+5V rail**.
+- **Visible "TX" LED (same as capture):** **GPIO6 → 330 Ω → visible-LED anode, cathode → GND.**
+  The firmware lights it solid for ~40 ms on every frame it emits — so you *see* each transmission
+  (and can still confirm the invisible IR LED itself via a phone camera).
 - 2N2222 pinout (TO-92, flat side facing you, legs down): **E–B–C** left→right (verify on your kit —
   some are E-B-C, the PN2222A in the ELEGOO kit is too).
 - Use the **breadboard power module** (from the kit) for the +5V rail if you want more LED range;

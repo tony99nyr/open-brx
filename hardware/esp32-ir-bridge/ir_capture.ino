@@ -26,6 +26,7 @@
 #include <Arduino.h>
 
 static const int IR_RX_PIN = 4;          // VS1838B OUT
+static const int STATUS_LED = 6;          // visible LED — blinks when a frame is RECEIVED
 static const uint32_t IDLE_GAP_US = 8000; // frame ends after this much silence
 static const size_t MAX_EDGES = 256;      // plenty for a 25-bit frame (~51 edges)
 
@@ -53,6 +54,8 @@ static const uint32_t MARK_MIN_US    = 200;   // ignore glitches below this
 static const uint32_t MARK_MAX_US    = 3000;  // and above this (start/gap)
 
 uint32_t frameCount = 0;
+uint32_t ledOffAtMs = 0;                 // non-blocking status-LED hold
+static const uint32_t LED_HOLD_MS = 40;  // visible blink length per received frame
 
 void printFrame() {
   size_t n;
@@ -67,6 +70,8 @@ void printFrame() {
 
   if (n < 4) return;  // noise, not a frame
 
+  digitalWrite(STATUS_LED, HIGH);  // visible "got a frame" blink
+  ledOffAtMs = millis() + LED_HOLD_MS;
   frameCount++;
   // durations between edges
   Serial.print("RAW ");
@@ -97,12 +102,15 @@ void printFrame() {
   Serial.print(nbits);
   Serial.print(" val=");
   Serial.println(bits);
+  // LED is turned off by the non-blocking timer in loop() (LED_HOLD_MS later)
 }
 
 void setup() {
   Serial.begin(115200);
   delay(300);
   pinMode(IR_RX_PIN, INPUT);
+  pinMode(STATUS_LED, OUTPUT);
+  digitalWrite(STATUS_LED, LOW);
   attachInterrupt(digitalPinToInterrupt(IR_RX_PIN), onEdge, CHANGE);
   Serial.println("# BRX IR capture ready (ESP32-S3, VS1838B on GPIO4).");
   Serial.println("# Fire a gun / trigger a grenade at the receiver. Frames stream below.");
@@ -112,6 +120,11 @@ void loop() {
   // frame complete when the line has been idle for IDLE_GAP_US with edges buffered
   if (edgeCount > 0 && (micros() - lastEdgeUs) > IDLE_GAP_US) {
     printFrame();
+  }
+  // non-blocking status-LED off
+  if (ledOffAtMs && millis() >= ledOffAtMs) {
+    digitalWrite(STATUS_LED, LOW);
+    ledOffAtMs = 0;
   }
   // simple serial commands
   if (Serial.available()) {
