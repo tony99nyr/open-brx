@@ -162,6 +162,15 @@ up cleanly runs 75 s+. `ble.py` now retries 5×, and that was the entire fix.
 The Windows machine is where the original wrong theory came from. With retry in place it
 may simply work there now.
 
+## Before ANY app-driven session: check the headset
+
+**With no headset paired, Callsign silently connects and immediately disconnects the
+tagger** (§7m). No error, no voice line. This masqueraded as "the app is flaky" for a long
+stretch and is the single most likely cause of a wasted capture session. Confirm the
+headset is on and linked — `QUERY` over USB reports `Headset Version` and `Head:` voltage.
+Callsign's top-right connection icon is the reliable in-app indicator; the tagger's voice
+lines are not.
+
 ## Working agreements with Tony
 
 - Hands-on and fast. One clear physical instruction at a time; say exactly what to report.

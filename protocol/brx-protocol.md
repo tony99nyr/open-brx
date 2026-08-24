@@ -712,6 +712,33 @@ see `docs/mac-capture-plan.md` Experiment 2. **Do not probe `$SP` on hardware to
 this**: it is documented as the end-of-game report, but `$SP,99,*` is half the panic
 sequence and may destroy the results it is meant to report.
 
+## 7m. THE HEADSET IS REQUIRED for the official app (2026-08-23)
+
+**With no headset paired, Callsign connects to the tagger and immediately disconnects it,
+silently — no error, no voice line.** With the headset present it connects and holds.
+
+This is an operational gotcha that wasted a large part of an evening. It also explains a
+run of "the app is flaky" failures: a capture taken during them
+(`disconnects.log`) shows the app completing its connect ritual, receiving **zero frames
+back**, and hanging up ~1.2 s later — while the very same tagger answered our own client's
+`$PING` with `$PONG` in 120 ms. The gun was never the problem.
+
+Corroboration: the two captures that *did* work (§7e game start, §7f combat) were taken
+while `QUERY` reported `Headset Version: hds.59` — i.e. a linked headset.
+
+Related but distinct, from the manual (§7h): a headset that drops **mid-game** locks the
+gun until it reconnects (anti-cheat), while a gun booted with **no** headset shoots fine
+locally. So the gun tolerates a missing headset; **the app does not.**
+
+**Before any capture or app-driven session: confirm the headset is on and paired.**
+Pairing can take up to 3 minutes with many BT devices around (§7h). `QUERY` over USB shows
+`Headset Version` and `Head: <voltage>` — use it to verify rather than guessing.
+
+Also useful, from the operator: **Callsign has a connection-status icon in the top right,
+and it is the source of truth.** The tagger's voice lines are not — "phone connected" only
+means a central attached, and "phone disconnected" indicates a *graceful* teardown (an
+abrupt link loss is silent until supervision timeout).
+
 ## 8. Safe testing notes
 
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
