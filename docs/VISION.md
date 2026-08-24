@@ -174,10 +174,32 @@ before committing):
 **Platform-flavored (if you want an "OS for laser tag" feel):**
 - **TagOS** · **Arena Kit / ArenaOS** · **OpenArena** (taken — avoid) · **Volley Stack**.
 
+**Experience / positioning candidate — "IRL" (In Real Life):** *"In Real Life — Video Game Inspired
+Tactical Laser Tag."* This nails **what the project actually is** — we're literally porting video-game
+modes into physical play (Extraction, Syphon health-on-kill, Halo shields, Counter-Strike plant/defuse,
+Battle Royale). It's gamer-native, current, and instantly understood by our target audience (the
+gaming/modding crowd).
+- *Honest caveats:* (1) **"real-life video game" is already the de-facto category tagline** — Classified/
+  iCOMBAT, Tactical Action Gaming ("Call of Duty in real life"), and NxGn all use it, so the *phrase*
+  resonates but **doesn't differentiate**; our edge is the *specific modes* + open/moddable/self-hosted,
+  not the generic "feels like a video game" claim. (2) **"IRL" is a terrible name to *own*** — an
+  extremely generic acronym (bad trademark/SEO), plus baggage from the defunct "IRL" social app (shut
+  down 2023). So use it as a **tagline/experience layer, not the ownable company mark.**
+- *Where it fits — a two-layer brand:* keep **Open BRX** as the open-source **platform/repo**; use an
+  original ownable mark (Salvo/TagForge/etc.) as the **company/brand**; and *"video-game-inspired
+  tactical laser tag"* (optionally the **IRL** shorthand) as the **player-facing positioning + the name
+  of the mode suite/events**. Engine vs. game: the platform is technical, the experience brand is what
+  players see.
+
+**Adopt as the project's one-line pitch:** **"Video game inspired tactical laser tag — open and
+self-hosted."** It crystallizes the whole vision (modes players already love, on hardware they own, with
+no subscription) in one line, whatever the final company name is.
+
 **Naming structure recommendation:** brand = an original name above (e.g. *Salvo* / *TagForge*); the
-open project stays **Open BRX**; a hosted service can be *"<Brand> Cloud."* Keep "BRX" only in the
-open-project/descriptive layer, not the company brand, so multi-brand expansion isn't boxed in.
-Trademark-screen the finalist (USPTO/TESS + EUIPO) and grab the domain + handles before any public use.
+open project stays **Open BRX**; the *positioning* is "video-game-inspired tactical laser tag" (IRL);
+a hosted service can be *"<Brand> Cloud."* Keep "BRX" only in the open-project/descriptive layer, not
+the company brand, so multi-brand expansion isn't boxed in. Trademark-screen the finalist (USPTO/TESS +
+EUIPO) and grab the domain + handles before any public use.
 
 ## Bottom line
 
