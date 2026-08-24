@@ -77,7 +77,33 @@ scoreboard**, station **status screens**, and **Battle Royale** (needs broadcast
 - The gun's built-in **nRF** (`NRFhost`/`NRFslave`) *might* provide this for free — unprobed
   (followup D1), highest upside.
 
-## Summary ladder
+## Environmental effects (smoke, music, lighting) — a subscriber layer
+
+This is the Battle Company **Edge**-style venue immersion (props, lighting, sound). It's an
+**"everything is a subscriber" layer** (architecture prime directive #4): the game engine emits
+events (spawn, kill, death, respawn, clock, capture), and effect nodes **react**. The **brain is free
+at Tier 0** — the engine already knows every event — so effects are gated by owning the *devices* +
+cheap controllers, **not** by the player-node tier. Effects live at the venue near power, so they fit
+an indoor/set-piece arena perfectly (Tier-0's "stay near the laptop" limit is a non-issue — the
+effects are near the laptop too).
+
+| Effect | Trigger | Controller | ~Cost |
+|---|---|---|---|
+| **Music during the game** | engine plays a playlist while the match runs | laptop audio → your speakers | ~free |
+| **Stingers on events** (kill streak, capture, last-10-sec, game over) | engine fires a clip on the event | same speakers (priority queue: game-state > kills > flavor) | ~free |
+| **Respawn → flash a light** | engine catches the respawn event | WiFi smart plug (Kasa/Tasmota) or ESP32+relay | ~$8–12 |
+| **Last 10 sec → lighting** (red pulse) | engine watches the clock | WLED strip or smart plug | ~$8–25 |
+| **Smoke every 10 min** | engine timer (fits the machine's warm-up/duty cycle) | ESP32 + relay on the machine's remote jack | ~$8 + machine |
+| **Proximity-tripped smoke** | PIR/IR at the machine, or a game event | + PIR (~$2) or a co-located objective station | +$2–15 |
+| **Team-color / chase lighting, blacklights** | WLED reacts to MQTT events (native WLED-MQTT) | WLED ESP32 + addressable strip | ~$15–25/zone |
+
+**Cheapest immersion (Tier 0–1):** laptop → speakers for **music + event stingers is ~free today**;
+add one ~$8 relay/smart-plug per device (smoke, blacklights) and the engine drives them live. As you
+grow, effects are just more MQTT subscribers (WLED zones, DMX stage lighting via a DMX interface,
+sirens, servos). **On a large field**, a remote effect (e.g. proximity smoke at an objective) is a
+**station+relay co-located there**, self-triggered on the local event over the field mesh — no
+central needed. This matches what Edge does; our engine emits the same events, so parity is a matter
+of adding subscriber nodes.
 
 | Tier | Spend | Unlocks |
 |---|---|---|
