@@ -113,6 +113,21 @@ Full prioritised list lives at the end of `docs/experiment-log.md`. Summary of u
 | Headset lockout | manual: headset lost mid-game locks the gun. **Never controlled for** |
 | Sound inventory | see below |
 
+## The APK — highest-leverage work available on Windows
+
+**See `docs/apk-investigation.md`.** Decompiling the Callsign Android APK is filed
+elsewhere as a sound-inventory route, which undersells it: **the app builds the protocol
+frames, so its code contains the meaning of every token in `$GSET`, `$PSET` and `$WEAP`** —
+the field maps we have been reverse-engineering two captures at a time. It also holds the
+sound id list, the full command vocabulary, and the end-of-game logic.
+
+Needs **no hardware and no iOS captures**, so it unblocks work that is otherwise stuck
+behind the MacBook. That Callsign never worked on Android is irrelevant — we are reading
+its code, not running it.
+
+Rules: document facts, never copy code; do not commit the APK or any decompiled tree.
+Same standard already applied to LaserTagMods' unlicensed sources.
+
 ## Sound inventory — do NOT use a microphone
 
 A mic-based sweep was built and **failed its negative control**: nonsense id `ZZ99`
