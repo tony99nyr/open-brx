@@ -39,6 +39,18 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   Bluetooth stack; fewer are reliable in practice). **Consequence:** one phone hosts a *handful* of guns,
   not a crowd — so "one phone as the hub for everyone" doesn't scale; past ~4–6 guns you need a node per
   player (T1/T2) or multiple host phones. ([Android stack](https://support.google.com/android/thread/43071437/maximum-connection-limit-reached-on-connecting-via-android-ble?hl=en))
+- ⚠️ **A laptop (MacBook running Mission Control) has no *officially documented* BLE limit** — it's
+  **controller-bound and undocumented** by Apple. Practically it holds more than a phone but still a
+  handful: the oft-cited **~7** (fewer with heavy per-link data; some report more), **degrading as links
+  are added** (all active links share the radio's connection events). watchOS/visionOS are capped at 2;
+  macOS is more generous but not unlimited. ([Apple forum](https://developer.apple.com/forums/thread/738861))
+  **Two reasons this is a non-issue by design:** (1) **range** — even with a high count, BLE is ~1–10 m,
+  so one laptop physically can't reach guns spread across a field; (2) **architecture** — **Mission
+  Control is a *server the nodes report to over WiFi/MQTT*, not a BLE hub** (`../CLAUDE.md`,
+  `field-architecture.md`). Each player's node holds its *own* gun's single link; MC's own BLE count is
+  ~0. **Small-scale exception that works today:** for ~4 guns a laptop *does* connect to all of them
+  directly — the `arena`/`fieldstart` CLI already does exactly this. So: **direct-drive a few guns from
+  one machine (fine for Tony's 4 BRX); go node-per-player for anything bigger or on a field.**
 - 🧱 **The gun keeps no game state** (`protocol/brx-protocol.md` §7n) + **BLE range ~1 m reliable** →
   anything needing a clock/score/respawn needs a listener *on the player* out on a field. This is the
   whole reason for per-player nodes (T1/T2).

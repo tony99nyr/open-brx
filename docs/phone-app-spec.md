@@ -15,6 +15,29 @@ From the teardown and the field:
 - We have the **full command/field maps, the 2166-id sound bank, and the game-mode/win-condition
   intel** — everything the app needs is decoded (`protocol/callsign-extract/`).
 
+## Target decision — Android-first, iOS-ready
+
+**Build for Android first** (Tony's personal kit: **Pixel 10 Pro** — the flagship, best host/BLE
+candidate; **OnePlus 7 Pro** (2019, BT 5.0); **Pixel 4** — older, still a fine player node). That's a **Web-Bluetooth PWA**
+(zero-install, `webapp/`), optionally packaged as an **APK** for a home-screen app. This gets real games
+running with no fee and no store.
+
+**But architect so iOS is a later drop-in, not a rewrite** (§"Common core, platform shells"). Concretely,
+five rules keep the iOS path cheap:
+1. **All BLE behind a `Transport` interface** — the mode engines + protocol never call
+   `navigator.bluetooth` directly. One Web-Bluetooth impl now; a CoreBluetooth impl (via a hybrid BLE
+   plugin) drops in later behind the same interface.
+2. **The core stays pure** (already true: `mcp/brx_mcp/modes/` + `protocol.py` are transport-free) — no
+   platform globals leak into rules/protocol.
+3. **UI in a portable web layer** (HTML/CSS/JS) so a Capacitor wrap reuses it verbatim on iOS. Avoid
+   Android-only native UI unless we deliberately choose RN/Flutter later.
+4. **Feature-detect capabilities at runtime** — if BLE is absent (iOS Safari today), degrade gracefully
+   to the **screen/objective/Mission-Control** role rather than assuming BLE exists.
+5. **Portable persistence** (IndexedDB) — works in a browser and in a WebView shell on both platforms.
+
+Result: the same codebase runs as an Android PWA/APK today and wraps to a first-class iOS app whenever
+the $99 TestFlight step is justified — with only the `Transport` shell swapped.
+
 ## Platform: Web-Bluetooth PWA on Android
 
 **Yes, a browser can do this.** The Web Bluetooth API (Chrome/Edge/Chromium) connects to the BRX's
