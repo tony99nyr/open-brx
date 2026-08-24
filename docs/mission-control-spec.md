@@ -40,14 +40,52 @@ Either way it's buildable as a web app.
 
 ## Core features
 
-### 1. Scan & roster
-- **Scan** for taggers (`scan` → Nordic-UART devices, flagged Gen2/3). Show name (`Tactix2-XXXX`),
-  RSSI, battery (`$VOLTS`), firmware (`$VERSION`), and last-seen.
-- **Persistent registry** (`~/.brx-mcp/known-devices.json`, already built) — address ↔ alias ↔
-  generation. macOS gives UUIDs, Windows/BlueZ MACs — never assume format.
-- **Roster:** bind a **player** (name, optional persistent id) to a tagger for the match. Show
-  headset link state (critical — an unpaired headset **blocks firing**, `community-notes.md`) and
-  flag any tagger that isn't game-ready.
+### 1. Detect taggers, read firmware, pull all diagnostics
+
+The operator's first screen: **find every tagger in the room, know exactly what each one is, and
+confirm it's game-ready** — before assigning anyone.
+
+**Detect (BLE scan, wireless):** `scan` lists Nordic-UART devices, flagged Gen2/3, with name
+(`Tactix2-XXXX`), address, RSSI (proximity), and last-seen. One click adds a device to the roster.
+Persistent registry (`~/.brx-mcp/known-devices.json`, built) maps address ↔ alias ↔ generation;
+macOS gives UUIDs, Windows/BlueZ MACs — never assume format.
+
+**Firmware + live diagnostics (BLE, per tagger, no cable):** connect briefly and pull:
+| Field | Source |
+|---|---|
+| **Firmware version** + host image (e.g. `v4.32` / `devhost.03`) | `$VERSION` → `$VERSION,v4.32,?,4,,devhost.03,*` |
+| **Battery** — pack mV, cell mV, charge % | `$VOLTS,<pack>,<cell>,<pct>,<pct>,*` (streams ~30 s in app mode) |
+| **Reachability + latency** | `$PING` → `$PONG` (ms) |
+| Generation, advertised name, RSSI | scan/advertisement |
+| **Headset linked?** (blocks firing if not — `community-notes.md`) | infer from game-ready probe; recovery = Gen-3 re-pair procedure |
+| Connection health — buffer depth, drops, last-seen | `list_connections` |
+| Live sensor test — trigger/buttons, IR hits | `$BUT` / `$HIR` event stream (fire the trigger, tap the headset, watch events) |
+
+**Full diagnostic dump (USB bench, richest):** when a tagger is cabled to the server, the Teensy
+`QUERY` console (hold nothing — just the USB "Programing Port") returns the deep record:
+**Serial Number / Head PIN** (e.g. `R0BQT`), all component **versions** + BT central version,
+**voltages** (gun + head), **radio flags** `NRFhost`/`NRFslave`/`devHost`, **PCB revision**
+(`PCB-5`), and factory `Tested by`. Mission Control parses this into the device record and saves it
+to `~/.brx-mcp/device-backups/`. (This is bench prep, not in-field — BLE covers the field.)
+
+**Fleet health dashboard** — the payoff of the above across the whole armory:
+- **Battery levels** for every tagger at a glance (sort by lowest; flag &lt; threshold) — logged over
+  time so you see drain trends and know which to charge before an event.
+- **Firmware matrix** — every tagger's version; **flag mismatches** (e.g. a `devhost` unit vs a
+  retail image) that could behave differently mid-game.
+- **Readiness** — headset linked, responds to `$PING`, battery OK → green/red per tagger.
+- **Identity** — serial/PIN/PCB-rev from the last USB `QUERY`, so a tagger is traceable across events.
+- Snapshots persist to the registry + event log; a "re-scan armory" button refreshes live status.
+
+New MCP surface this needs (transport-agnostic, on top of the existing tools): a `diagnostics(alias)`
+that runs the BLE sweep (`$VERSION`+`$VOLTS`+`$PING`+status) and returns one record, and a
+`fleet_status()` that scans, briefly connects to each, and returns the dashboard array. `QUERY`
+parsing already exists for the USB path.
+
+### 1b. Roster
+- Bind a **player** (name, optional persistent id) to a tagger for the match. Show each tagger's
+  readiness (from §1) and block start on any that isn't game-ready (dead battery, no headset, wrong
+  firmware).
 
 ### 2. Assign teams
 - Assign each player a **team** via `$TID,<n>,*`. Team drives the gun's LED colour automatically
@@ -139,6 +177,11 @@ JEDGE numbers from 1901).
 
 ## Build order
 
+0. **Diagnostics & fleet health first** (§1) — the smallest useful slice and a natural starting
+   point: add `diagnostics(alias)` + `fleet_status()` to `brx-mcp` (BLE sweep: `$VERSION`+`$VOLTS`+
+   `$PING`+status), wire the USB `QUERY` parse into a device record, and a simple armory dashboard.
+   The tool code is gun-off to write + unit-test (parse fixed `$VERSION`/`$VOLTS`/`QUERY` strings);
+   only the live run needs a tagger.
 1. SQLite event log + MQTT bus behind `brx-mcp` (make `arena` publish events).
 2. Scoreboard web view (read the bus).
 3. Admin: scan → roster → teams → mode → start/stop.
