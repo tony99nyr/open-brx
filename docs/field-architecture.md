@@ -140,6 +140,21 @@ respawns, my ammo/pickups. Merge on reconnect, dedup by seq/nonce.
 - **Lost buffers.** A node that dies (battery/crash) before syncing loses its unsynced events; the
   record is only as durable as each node's flash persistence.
 
+**It's about connectivity, not the node hardware.** These issues are NOT a property of which
+per-player device you use (phone vs. Companion vs. ESP32) — they're a property of whether the nodes
+have a **live link during play**:
+- **Node + field WiFi APs (or a SIM/cellular)** → nodes stay connected to the server in real time →
+  the **server is the live authority** → reconciliation issues largely disappear (contested state
+  resolved centrally, live scoreboard). This is what the official Callsign system does — it just
+  reaches its cloud over cellular; you'd use local WiFi. A **no-SIM mounted phone changes nothing by
+  itself**: with field WiFi it's live and clean; with no connectivity it's an offline node with the
+  exact same reconciliation issues as a Companion.
+- **Node with no live link** (offline engine, sync-later) → the issues above apply, phone or not.
+- Live connectivity also **enables kill attribution by timing correlation** (a connected server sees
+  every node's fire/hit events in real time and can credit the shooter) — something offline cannot
+  do without a per-tagger `PlayerID` in the IR. So: live network dodges most issues *and* helps
+  attribution; offline needs the P2 `PlayerID` groundwork.
+
 **Design rules that follow:**
 1. Model state as **per-player-authoritative events** wherever possible — those reconcile.
 2. Give **contested objectives a co-located authority** (the station decides and buffers).
