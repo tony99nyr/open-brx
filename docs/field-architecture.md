@@ -84,3 +84,58 @@ be the connection-interval / MTU sensitivity that makes NUS peripherals fussy on
 **Recommendation:** run the Android BLE test first — it is free and decides between the two
 leading options. Pursue the nRF thread in parallel, since it has the highest upside and is
 Windows-friendly work (no iOS captures needed).
+
+## Do we need a long-range radio (LoRa/nRF/ESPNOW)?
+
+**No — not for the core game.** The per-player node (Companion/phone) rides the player, holds the
+BLE link (~1 m, reliable), and runs the game engine **locally**: respawn, lives, clock, score, and
+powerups all work with zero field radio. Final results sync via store-and-forward when the player
+returns to WiFi. Basic per-player play needs no long-range transport at all.
+
+A field transport is only needed for **live, real-time coordination across a field with no WiFi**:
+a live scoreboard/spectator feed *during* the match, or cross-player/objective events that must
+propagate instantly mid-game (a flag captured, a domination point flipping, a team-wide powerup).
+Reach for options in this order:
+
+1. **WiFi APs covering the field** — simplest where the venue allows; full bandwidth, live everything.
+2. **The tagger's own nRF radio** — `QUERY` reports `NRFhost`/`NRFslave`; if usable, field range for
+   **free** with no added hardware. Unprobed (followup D1) — highest upside.
+3. **ESPNOW** — peer mesh, medium range, no infrastructure.
+4. **LoRa (RYLR896)** — longest range but **low bandwidth**: periodic score sync + critical events
+   only, never a live per-hit firehose (LaserTagMods note it's slow). The last resort for big
+   outdoor fields with nothing else.
+
+Build the node↔server link as a **pluggable transport interface** and ship **WiFi/MQTT first**
+(architecture doc §"prime directives"); LoRa/nRF/ESPNOW are optional backends for the
+big-field case. So: **LoRa is optional, not required.**
+
+## Limits of offline reconciliation (store-and-forward)
+
+Store-and-forward reconciles cleanly for **locally-authoritative** events and struggles with
+**shared/contested** state. The dividing line drives the data model:
+
+**Reconciles fine offline** — each node owns the truth about *itself*: my hits taken, my deaths, my
+respawns, my ammo/pickups. Merge on reconnect, dedup by seq/nonce.
+
+**Does NOT reconcile cleanly offline:**
+- **Kill *attribution* across players.** `$HIR` carries the shooter's **team, not the player** (the
+  P2 gap). Until each tagger has a unique `PlayerID` (set via the `SETUP` serial console — see
+  `../protocol/brx-protocol.md` §QUERY/SETUP), a kill can't be credited to an individual even after
+  sync. **P2 is a prerequisite for accurate offline scoring.**
+- **Clock skew.** Merging two nodes' timelines needs a common time base. Node clocks drift; the
+  `{seq, node_ts, server_ts}` scheme helps, but a **game-start time broadcast** (or NTP on WiFi) is
+  needed or the merged kill-feed order is fuzzy.
+- **Contested shared state.** Who owns a domination point contested out of coverage? A "last extra
+  life" grabbed by two players at once? Global "first to N" counters? These are races that **cannot
+  be resolved after the fact** — they need an authority in range at decision time. Fix: make the
+  **objective station the local referee** for its point (it's a node too; it decides, buffers, and
+  syncs its own authoritative events).
+- **Lost buffers.** A node that dies (battery/crash) before syncing loses its unsynced events; the
+  record is only as durable as each node's flash persistence.
+
+**Design rules that follow:**
+1. Model state as **per-player-authoritative events** wherever possible — those reconcile.
+2. Give **contested objectives a co-located authority** (the station decides and buffers).
+3. Reserve a **field transport** only for modes needing real-time global consensus out of WiFi range.
+4. Establish a **common clock at game start**; require **per-player identity (P2)** for kill credit.
+Live feed is best-effort; final results are always complete — exactly prime directive #2.
