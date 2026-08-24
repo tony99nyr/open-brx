@@ -528,7 +528,7 @@ unreachable by static teardown. New route added: **P8 = MITM the Callsign HTTPS 
 grab weapon/voice/game data directly. Structure (field names/order/enums) was already fully
 recovered; this closes the static-teardown thread.
 
-### 33. G-2 health-write live test — PARTIAL (config/live ✅, `$LIFE`/`$BUMP` unconfirmed) ⚠️
+### 33. G-2 health-write live test — RESOLVED ✅ (health-write CONFIRMED via two-gun damage→restore)
 Bench test on the **Windows tower** (office; the fixed dev/test rig), tagger **Tactix-3D4F**
 (`FE:AD:FD:10:3D:4F`, v4.32), volume **45** per Tony's request (warn before 100). Goal: confirm the
 `$LIFE` (grant) / `$BUMP` (adjust) health-write commands actually change health mid-life — the gate
@@ -549,3 +549,23 @@ for the shields/overshield/medic/Syphon mode family (followups G-2/P11, `docs/ti
   and Syphon/shields fall back to other mechanics. **Power-cycle the tagger before round 3** (Tony's
   hygiene note — avoids a stuck state after repeated config/spawn/END cycles).
 - Scripts: `scratchpad/g2_health_probe.py`, `g2v2.py`. Session paused (Tony in a meeting, ~30 min).
+
+**RESOLUTION (same session, two-gun test — `g2_twogun.py`):**
+- **Health-write CONFIRMED.** Second tagger **Tactix2-E20D** (`D8:AE:5F:60:E2:0D`) as shooter. Distinct
+  teams via **`$TID,1`=blue (victim), `$TID,2`=yellow (shooter)** made hits register (same-team fire had
+  done nothing). Victim took damage: `$HIR,...,2,...` (shooter team **2**) → `$HP,45,52,0` → `45,34,0` →
+  `45,16,0` (**armor absorbing: 70→52→34→16**, HP steady 45). Then `$LIFE,25,25,25` + `$BUMP,45,70,70`
+  → next hits reported `$HP,45,**70**,16` — **armor restored 16→70 and shield 0→16** (a positive shield
+  only a write can create). So `$LIFE`/`$BUMP` **do take effect on a live tagger** → unlocks the
+  health/regen mode family (shields/overshield/medic/Syphon).
+- **Key mechanic:** health writes **don't self-emit `$HP`** — the new value only appears on the *next
+  hit / HUD refresh*. (That's why the earlier full-health / no-damage probes saw nothing.)
+- **`$HP` = `<HP>,<armor>,<shield>`** confirmed; `$LCD` = health HUD (`45,70,...` at spawn); `$ALCD`
+  token2 (`100`) is a constant, token3 = weapon slot (not health). `$TID` colours: 1=blue, 2=yellow.
+- **No power cycle needed** ✅ — the reset preamble (`$STOP`/`$CLEAR`/`$PLAYX` + config's `$CLEAR`/
+  `$START`) cleanly reset between runs. Answers Tony's "proper clear" question — drop the power-cycle step.
+- **Still to nail (clean run):** separate `$LIFE` (add delta) vs `$BUMP` (absolute set) semantics — the
+  armor→70 exactly matched `$BUMP,45,70,70`, so `$BUMP` looks like an absolute set, but continuous firing
+  muddied attribution. Do a controlled run: damage → stop firing → send one write → one hit to read → repeat.
+- **New issue found:** sequential per-gun config makes starts **unsynced (~10 s apart)** — see FOLLOWUPS
+  B (synchronized multi-gun start).

@@ -65,7 +65,7 @@ gating test named).
 | **Generals / Commander / The Swarm** (respawn roles) | ✅ | role module + designated player | — |
 | **Supremacy** (3 factions) | ✅ | `$WEAP`/`$PSET` loadouts | — |
 | **FFA *per-player* scoring; Syphon (credit killer)** | 🧪 | needs a player id in the hit | **P2** — set `PlayerID` via `SETUP` (USB serial) |
-| **Halo shields / overshield / medic** | 🧪 | `$LIFE`/`$BUMP` writes exist | **P11** — confirm health-grant works **mid-life** over BLE |
+| **Halo shields / overshield / medic** | ✅ | `$LIFE`/`$BUMP` writes **confirmed** (exp-log #33) | host-write proven live; native regen path still open (P11) |
 | **Grenade objective: CTF / KotH / Checkpoint / Assault** | 🧪 | grenade native modes | **G1** — map each mode ↔ `$GREN` (or use on-grenade button, unaided) |
 | **Live grenade-objective state on a screen; auto-detect at site** | 🧪 | gun's BLE stream | **G6** — what `$`-events the gun emits during a grenade game |
 | **Counter-Strike (grenade bomb / phone touch-terminal)** | ✅ touch / 🧪 grenade | phone touch = software; grenade bomb = G1/G6 | phone path ✅; grenade path 🧪 |
@@ -136,7 +136,7 @@ branch.** Ordered by *how early / how much Tier-0 value it unblocks*:
 | # | Gating test | Unblocks | Effort / how |
 |---|---|---|---|
 | **G-1** | **Grenade-over-BLE session** (G1 + G6 + `$GREN` push) | the **entire Tier-0 objective family** (CTF/KotH/Checkpoint/Assault/CS/Extraction-hold) + live objective state + auto-detect — *the single biggest maximization of Tier 0* | **hardware session + BLE capture** with a grenade; drive `$GREN`, watch the gun's stream. Highest unknown, highest payoff. |
-| **G-2** | **Health-write live test** (P11) | the **health/regen family** (shields/overshield/medic; Syphon mechanic) | quick BLE probe: send `$LIFE`/`$BUMP` mid-game, confirm HP/shields change live. |
+| ~~**G-2**~~ ✅ | **Health-write live test — DONE** (exp-log #33) | **health/regen family unblocked** — `$LIFE`/`$BUMP` confirmed to change a live tagger's HP/armor/shield (two-gun damage→restore) | *Resolved.* Remaining polish: `$LIFE`-add vs `$BUMP`-set semantics; native-regen weapon field (P11). |
 | **G-3** | **Per-player identity via `SETUP`** (P2) | **FFA per-player scoring + Syphon crediting** | USB serial console (PuTTY): set `PlayerID`, verify via `QUERY`, check `$HIR` carries it. |
 | **G-4** | **Android BLE hold test** | the **phone milestone (M2)** — field roaming, HUD, relay | ~30 min: `webapp/ble-test.html` (Chrome) vs nRF Connect (native), side-by-side. Cheap; also decides web-vs-hybrid. |
 
