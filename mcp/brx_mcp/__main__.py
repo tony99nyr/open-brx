@@ -11,6 +11,7 @@
   python -m brx_mcp arena <addr1> <addr2> [...] [minutes] [respawn_s] [volume] [weapon]
   python -m brx_mcp fieldstart <addr...> [volume] [weapon]   # start, then disconnect
   python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
+  python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
 """
 
 from __future__ import annotations
@@ -730,6 +731,70 @@ def main() -> None:
         sys.exit(2)
 
 
+def _extraction_sim() -> None:
+    """Play a scripted Extraction match against the pure rules engine — no BLE.
+
+    Demonstrates the full genre loop (loot → loud channel → drop-on-death →
+    steal the loot → extract → win) so the mode can be seen working before any
+    hardware exists. See docs/game-modes.md §Extraction and brx_mcp/modes/.
+    """
+    from .modes import (Bank, Callout, ChannelReset, ChannelStarted, Extracted,
+                        ExtractionConfig, ExtractionGame, GameOver, LootDropped,
+                        SendFrame)
+
+    def render(actions: list) -> None:
+        for a in actions:
+            if isinstance(a, Callout):
+                who = "FIELD" if a.scope == "all" else a.scope
+                print(f"      📢 [{who}] {a.text}")
+            elif isinstance(a, ChannelStarted):
+                print(f"      ⏳ {a.player_id} begins extracting at {a.zone}")
+            elif isinstance(a, ChannelReset):
+                print(f"      ✖  {a.player_id}'s channel reset ({a.reason})")
+            elif isinstance(a, LootDropped):
+                print(f"      💰 {a.from_player} dropped {a.value} loot "
+                      f"(token #{a.drop_id}, policy={a.by})")
+            elif isinstance(a, Extracted):
+                print(f"      ✅ {a.player_id} EXTRACTED with {a.value} loot")
+            elif isinstance(a, Bank):
+                print(f"      🏦 {a.player_id} banked {a.value} (total {a.total})")
+            elif isinstance(a, SendFrame):
+                print(f"      →  boost to {a.player_id}: {a.frame}")
+            elif isinstance(a, GameOver):
+                print(f"      🏆 GAME OVER — {a.winner} wins with {a.total}")
+
+    cfg = ExtractionConfig(channel_s=45.0, win_target=120,
+                           extract_removes_player=False, loot_per_kill=10)
+    g = ExtractionGame(["red", "blue"], cfg)
+    print("\n=== Extraction sim: red vs blue, channel 45s, first to 120 banked ===\n")
+
+    print("t=0   red loots a crate (+60), blue loots (+30)")
+    render(g.loot_pickup("red", 60)); render(g.loot_pickup("blue", 30))
+
+    print("t=5   red reaches extraction point Alpha and summons it (LOUD)")
+    render(g.enter_zone("red", "Alpha", now=5.0))
+
+    print("t=25  blue hears the callout, hunts red down mid-channel")
+    render(g.on_death("red", killer_id="blue", now=25.0))
+    print(f"      (blue now carries {g.carried('blue')}: 30 looted + 60 stolen + 10 kill)")
+
+    print("t=30  blue grabs red's dropped token and runs for extraction Bravo")
+    # find the dropped token id
+    drop_id = next(iter(g.dropped))
+    render(g.pickup_dropped("blue", drop_id))
+    print(f"      (blue carries {g.carried('blue')})")
+    render(g.enter_zone("blue", "Bravo", now=30.0))
+
+    print("t=40  red respawns (empty-handed)")
+    render(g.respawn("red"))
+
+    print("t=75  blue holds Bravo for the full 45s → extracts")
+    render(g.tick(now=75.0))
+
+    print(f"\nFinal: red banked {g.banked('red')}, blue banked {g.banked('blue')}, "
+          f"game over={g.over}\n")
+
+
 def _dispatch(cmd: str, args: list[str]) -> None:
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
@@ -773,6 +838,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         asyncio.run(_diagnose(args[1]))
     elif cmd == "fleet":
         asyncio.run(_fleet(_split_addrs(args[1:])[0]))
+    elif cmd == "extraction-sim":
+        _extraction_sim()
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

@@ -136,6 +136,12 @@ hook, and the `$LIFE`/`$WEAP` boost writes all already exist for other modes. So
 genre-defining mode that Edge can't touch is mostly a rules module over primitives we're building
 anyway** — and a $0 grenade+phones version ships first.
 
+**Prototype (built):** a pure, transport-free rules engine lives at `mcp/brx_mcp/modes/extraction.py`
+— loot wallet, loud channel, drop-on-death, dropped-loot pickup, bank→`$LIFE` boost, win target — with
+tests (`mcp/tests/test_extraction.py`) and a narrated demo you can run with **no hardware**:
+`python -m brx_mcp extraction-sim`. It emits `Action`s (frames/callouts/score) that a BLE driver
+executes, matching the "host rules over the event stream" architecture.
+
 *Genre research sources:* [What is an extraction shooter? (Antihero Studios)](https://antiherostudios.com/blog/what-is-an-extraction-shooter),
 [Extraction shooter (Wikipedia)](https://en.wikipedia.org/wiki/Extraction_shooter),
 [Why DMZ gets the formula right (The Loadout)](https://www.theloadout.com/call-of-duty-warzone-2/dmz-extraction-shooter-formula-right),
