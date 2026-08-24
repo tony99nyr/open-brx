@@ -243,7 +243,10 @@ Cost ladder (all avoid blanketing the park in WiFi):
 **Net:** broadcast downlink for announcements/HUD, mule uplink for scoring — live callouts on a
 large field with no WiFi and, at best, a free ride on the gun's own nRF.
 
-### Status displays (players remaining, objectives, respawns) — node-served, no central WiFi
+### Status displays (players remaining, objectives, respawns) — OPTIONAL, node-served, no central WiFi
+
+**Optional feature** — the game plays fine without any screen (station LEDs/sounds + on-node HUD
+carry the essentials). This is a nice-to-have polish layer, not a dependency.
 
 A phone/tablet can be a live **status screen** on the field without any central network, because the
 data is already on every node and each node can serve its own page.

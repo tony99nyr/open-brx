@@ -88,6 +88,40 @@ role**, which is the same mechanism as the General/Commander/Hive-Queen respawn 
 role logic). So the whole custom-mode space reduces to: **objective-station node + player-role support
 + host rule modules.**
 
+## How much can the GRENADE do without a custom station?
+
+The Smart Grenade is a paired IR accessory (`$GREN`: iRType, operationMode, **channel**, GrenadeType
+= FlashBang/Gas/Confusion/Molotov, **MaxCount**) that emits an area IR "explosion" (~30 ft) and can
+be **placed** (not just thrown). Grenades are hardware you already buy, so any mode they cover is
+**props-free** (no custom station to build). Caveat: **mostly untested** — we've never driven a
+grenade (followups F/G); the CTF-base capability below is community-reported, the rest is inference
+from `$GREN` + the emitter behaviour.
+
+**Grenade can likely stand in for a station (no custom build):**
+- **Capture the Flag** — the community confirms a grenade can be **"set as a CTF base"** (the tagger
+  even plays CTF flag music). So grenade-as-flag/base gives basic CTF with no station. (Config is
+  "hard/buggy" today — followup F; a clean `$GREN` path is the fix.)
+- **Counter-Strike plant/defuse** — the **grenade IS the bomb**: place + arm it (its detonation
+  timer), defenders defuse within the window. The plantable/timed explosive is exactly a grenade.
+- **Hazard / area-denial zones** — Gas / Molotov / Confusion modes make a placed grenade a damage/
+  effect zone ("don't cross here", flush a room). Native grenade behaviour.
+- **King of the Hill / Assault point** — a grenade-marked objective *may* work if it has capture/hold
+  behaviour like the CTF base; the `channel` + `MaxCount` fields hint **multiple grenades = multiple
+  addressable objectives**. Plausible, unverified.
+
+**Still wants a purpose-built station:**
+- **Domination** with several points, **live per-team ownership + time-scoring + LED-ring feedback** —
+  the grenade has no ownership display or persistent scoreboard role.
+- **Respawn stations** — respawn authorization + data-mule sync + (optional) status screen. Not a
+  grenade job.
+- Anything needing **local status display** (grenade has no LED ring / screen).
+
+**Bottom line:** grenades can plausibly cover **CTF, Counter-Strike (bomb), hazard zones, and maybe
+KotH/Assault with zero custom hardware** — pending a hardware test of the grenade's objective
+behaviour (F/G). **Domination-with-scoreboard and respawn/sync still want purpose-built stations.**
+So the cheapest path to the objective modes is: **test what the grenade already does before building
+stations.**
+
 ## What each needs, in one line
 
 - **Mission Control alone:** FFA, TDM, Survival/Infection, Swarm, Generals, Commander, Supremacy,
