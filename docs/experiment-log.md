@@ -779,3 +779,15 @@ reading `$HIR,0,15,0,<team>,<mode>`) is the only way to read grenade state. Clos
 **Airtight confirm:** rapid-polled USB (~12 samples over ~36 s, covering the full ~5 s purple window and
 repeats) — device count held at 33 the entire time, zero new/anomaly devices. Grenade USB-C exposes no
 data in ANY state. G7 definitively closed: **power/charge only.**
+
+### Note (Tony, 2026-08): native multikill callouts → local kill tracking + shooter-side kill knowledge
+Correction to the "gun keeps no game state" framing: a BRX gun **natively announces "double kill"** when
+you tag two different enemies back-to-back in TDM. So the firmware tracks **local ephemeral kill state**
+(recent-kill count/timing) for its own audio, AND the **shooter's** gun *knows it scored a kill* — which
+means it receives a hit/kill confirmation from somewhere (likely the **nRF radio**, `NRFhost`/`NRFslave`;
+possibly a return IR ack). This does NOT contradict §7n (no host-*readable* persistent score) — it's
+ephemeral local state, not a queryable score. Implications + tests filed as **FOLLOWUPS D4** (and ties to
+D1 nRF): (a) do our BLE-configured games get multikill/streak callouts free? (b) is there a shooter-side
+kill event over BLE (cleaner attribution than victim `$HP,0`)? (c) nRF vs IR-ack mechanism. Also means
+some "announcer" sounds (multikill/streak/first-blood) are **native**, not host-`$PLAY` — we add custom
+ones on top, but the base multikills come from the firmware.
