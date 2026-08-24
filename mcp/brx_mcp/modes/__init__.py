@@ -25,7 +25,7 @@ from .survival import InfectionEngine
 from .lms import LastManStandingEngine
 from .cs import BombEngine
 from .objectives import DominationEngine, CtfEngine
-from .driver import GameDriver, build_engine, run_live
+from .driver import GameDriver, build_engine, run_live, assign_teams, clean_callsign
 # Extraction engine + its non-colliding data classes (config/game/results).
 from .extraction import ExtractionConfig, ExtractionGame
 from .extraction_adapter import ExtractionEngineAdapter
@@ -38,7 +38,7 @@ __all__ = [
     # engines + driver
     "DeathmatchEngine", "InfectionEngine", "LastManStandingEngine", "BombEngine",
     "DominationEngine", "CtfEngine",
-    "GameDriver", "build_engine", "run_live",
+    "GameDriver", "build_engine", "run_live", "assign_teams", "clean_callsign",
     # extraction (import its Actions from .extraction directly)
     "ExtractionConfig", "ExtractionGame", "ExtractionEngineAdapter",
 ]

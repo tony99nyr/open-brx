@@ -16,6 +16,7 @@
       modes: tdm ffa infection lms cs domination koth ctf extraction
   python -m brx_mcp play <mode> <addr...> [k=v]   # run a configured game LIVE (k=v: volume, outdoor, hp, ...)
       modes: tdm ffa infection lms cs domination koth ctf extraction
+      a gun may carry a gamertag: <addr>@<Gamertag> (pushed to the gun via $NAME)
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
@@ -995,9 +996,21 @@ def _game_sim(mode: str) -> None:
 
 async def _play(mode: str, addresses: list[str], kvs: list[str]) -> None:
     from .modes import run_live
+    # a gun token may carry a gamertag as ADDR@Gamertag → push it via $NAME
+    addrs: list[str] = []
+    callsigns: dict[str, str] = {}
+    for tok in addresses:
+        addr, sep, tag = tok.rpartition("@")
+        if sep and addr:
+            addrs.append(addr)
+            callsigns[addr] = tag
+        else:
+            addrs.append(tok)
     cfg = _build_config(mode, kvs)
     print(f"config: {cfg.summary()}", file=sys.stderr)
-    snap = await run_live(cfg, addresses)
+    if callsigns:
+        print(f"callsigns: {callsigns}", file=sys.stderr)
+    snap = await run_live(cfg, addrs, callsigns or None)
     _print(snap)
 
 
@@ -1050,7 +1063,7 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _game_sim(args[1] if len(args) > 1 else "tdm")
     elif cmd == "play" and len(args) > 2:
         mode = args[1]
-        addrs = [a for a in args[2:] if ":" in a or "-" in a and "=" not in a]
+        addrs = [a for a in args[2:] if "=" not in a]   # guns (optionally ADDR@Gamertag)
         kvs = [a for a in args[2:] if "=" in a]
         asyncio.run(_play(mode, addrs, kvs))
     elif cmd == "diag-game" and len(args) > 1:

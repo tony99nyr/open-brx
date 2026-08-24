@@ -86,6 +86,15 @@ parsing already exists for the USB path.
 - Bind a **player** (name, optional persistent id) to a tagger for the match. Show each tagger's
   readiness (from §1) and block start on any that isn't game-ready (dead battery, no headset, wrong
   firmware).
+- **Gamertag / callsign (built).** Each player picks a **gamertag** which binds to a tagger. It's pushed
+  to the gun at setup via **`$NAME,<gamertag>,*`** (so the gun shows the player's name) and echoed in the
+  live snapshot (`snapshot()["callsigns"]`) so the **scoreboard labels players by gamertag, not MAC**.
+  Data contract (backend done — `GameDriver(callsigns=…)` / `run_live(config, addrs, callsigns)`; CLI
+  `play … <addr>@<Gamertag>`): `callsigns: {address → gamertag}`. Gamertags are sanitized
+  (`clean_callsign`: drop `,`/`$`/`*`, cap 12 chars — the gun name field is short). The **UI picker**
+  (players choose/claim a tag, assign to a gun) is the design-tool surface; the binding + `$NAME` push +
+  snapshot echo are the contract it drives. A persistent gamertag registry (tag ↔ address, reused across
+  matches) is the natural next step; ties into **P2** if/when a true per-player PlayerID lands.
 
 ### 2. Assign teams
 - Assign each player a **team** via `$TID,<n>,*`. Team drives the gun's LED colour automatically

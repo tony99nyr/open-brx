@@ -28,6 +28,19 @@ from .base import (
 Sender = Callable[[str, str], Awaitable[None]]
 
 
+CALLSIGN_MAX = 12   # BRX gun name field is short (stock name e.g. "Tactix2")
+
+
+def clean_callsign(name: Optional[str]) -> str:
+    """Sanitize a gamertag for a `$NAME` frame: drop comma/`$`/`*`/control chars
+    (they'd break the framing) and cap the length. Returns "" for None/blank."""
+    if not name:
+        return ""
+    safe = "".join(c for c in str(name).strip()
+                   if c.isprintable() and c not in ",$*")
+    return safe[:CALLSIGN_MAX].strip()
+
+
 def assign_teams(mode: str, addresses: list[str],
                  explicit: Optional[dict[str, int]] = None) -> dict[str, int]:
     """Map each gun → team. Explicit wins; else FFA = unique team per gun;
@@ -81,13 +94,18 @@ def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
 class GameDriver:
     def __init__(self, config: GameConfig, players: dict[str, int],
                  sender: Sender, now: float = 0.0,
-                 announce: Optional[Callable[[str], None]] = None):
-        """`players` maps player_id → team. `sender(pid, frame)` does the write."""
+                 announce: Optional[Callable[[str], None]] = None,
+                 callsigns: Optional[dict[str, str]] = None):
+        """`players` maps player_id → team. `sender(pid, frame)` does the write.
+        `callsigns` maps player_id → gamertag; pushed to the gun via `$NAME` at
+        setup and echoed in `snapshot()` so a scoreboard can label by gamertag."""
         self.config = config
         self.players = players
         self.sender = sender
         self.engine = build_engine(config, now)
         self.announce = announce or (lambda s: print(s))
+        self.callsigns = {pid: clean_callsign(n) for pid, n in (callsigns or {}).items()
+                          if clean_callsign(n)}
         for pid, team in players.items():
             self.engine.add_player(pid, team)
 
@@ -136,11 +154,14 @@ class GameDriver:
         config all, THEN spawn all back-to-back — B10)."""
         setup_frames = self.config.setup_frames()
         spawn_frames = self.config.spawn_frames()   # loadout-correct $AMMO
-        # config every gun fully first (incl. team) ...
+        # config every gun fully first (incl. team + gamertag) ...
         for pid in self.players:
             for f in setup_frames:
                 await self._send(pid, f)
             await self._send(pid, f"$TID,{self.players[pid]},*")
+            tag = self.callsigns.get(pid)
+            if tag:
+                await self._send(pid, f"$NAME,{tag},*")
         # ... THEN spawn all guns back-to-back so they start ~together (B10 barrier)
         for f in spawn_frames:
             for pid in self.players:
@@ -164,16 +185,21 @@ class GameDriver:
         return getattr(self.engine, "over", False)
 
     def snapshot(self) -> dict:
-        return self.engine.snapshot()
+        snap = self.engine.snapshot()
+        if self.callsigns:
+            snap["callsigns"] = dict(self.callsigns)
+        return snap
 
 
 # --------------------------------------------------------------------------- #
 # Live wiring — the only Bluetooth-touching part                              #
 # --------------------------------------------------------------------------- #
-async def run_live(config: GameConfig, addresses: list[str]) -> dict:
+async def run_live(config: GameConfig, addresses: list[str],
+                   callsigns: Optional[dict[str, str]] = None) -> dict:
     """Connect the given taggers, run the configured mode to completion, return
     the final snapshot. `players` are keyed by address; team from config.teams or
-    round-robin (FFA gives each its own team)."""
+    round-robin (FFA gives each its own team). `callsigns` maps address → gamertag
+    (pushed to the gun via `$NAME`, echoed in the snapshot)."""
     from ..ble import ConnectionManager
     from ..protocol import parse_event
 
@@ -183,7 +209,8 @@ async def run_live(config: GameConfig, addresses: list[str]) -> dict:
     async def sender(pid: str, frame: str) -> None:
         await mgr.send(pid, frame, reply_window_ms=250)
 
-    driver = GameDriver(config, players, sender, now=time.monotonic())
+    driver = GameDriver(config, players, sender, now=time.monotonic(),
+                        callsigns=callsigns)
     try:
         for addr in addresses:                       # connect inside try → always torn down
             await mgr.connect(addr, addr)
