@@ -84,8 +84,61 @@ Matches the accessory-pairing procedure in `brx-extended-user-guide.md`:
   grenade/gun mode without the button-timing dance. **This is the single biggest usability win we can
   build for the grenade**, since the grenade already provides Respawn/KotH/Checkpoint/Assault for $0.
 
+## Can we put new audio on the grenade?
+
+**Practically yes — because most "grenade audio" actually plays on the GUN/HEADSET, not the grenade.**
+The grenade is an IR-paired accessory with a button, 3 IR emitters, an emitter+receiver, and status
+LEDs (flashes green). What you *hear* — the detonation, flashbang/gas effect, the CTF "scary music,"
+respawn chimes, KotH "control point captured" callouts — is played by the **gun and headset from
+their own sound banks** in response to the grenade's IR signal. The grenade itself only appears to
+chirp/flash for status.
+
+So the clean, rule-compliant path to "new grenade audio" is to **reskin the gun/headset sounds that
+grenade events trigger** — the tagger sound bank is swappable over USB (`brx-extended-user-guide.md`:
+hold SELECT at boot → `AUDIO` folder → replace `<ID>.LTP`). Change the explosion/flashbang/CTF-music
+ids and every grenade "sounds" different, with **zero grenade modification**. The **Companion node**
+(Tier 2) goes further: a grenade IR event can trigger *any* custom sound on its own speaker — unlimited,
+dynamic grenade audio without touching the accessory at all.
+
+*Likely direct path (the grenade has a USB-C port — confirmed by Tony):* the same firmware/audio-swap
+mechanism the gun and headset use is a **USB mass-storage disk** you reach by a button-hold boot. The
+grenade having its **own USB-C port** strongly suggests it exposes that disk too — so if it carries a
+speaker, it very probably has a swappable **`AUDIO` folder of `<ID>.LTP` files** just like the tagger.
+The concrete test (followup G7): with the grenade **off, hold its button (or PROGRAM pin) while
+plugging in USB-C** → does a disk mount with a firmware `.BIN` and/or an `AUDIO` folder? If yes,
+grenade-local custom audio is a direct file swap — **no firmware modification, fully within our rules**
+(same as swapping gun sounds). Either way, the gun/headset/Companion reskin above already delivers new
+grenade audio today.
+
+## Can we add new modes to the grenade?
+
+Two different questions:
+
+- **New mode *inside* the grenade's firmware?** **No — by policy and practicality.** Our hard rule is
+  *never modify stock BRX firmware*, and the grenade is stock BRX. Writing custom grenade firmware is
+  off-limits (and undocumented/risky). Note: Jay's "updated grenade firmware improving respawn" was
+  applying **Battle Company's own official firmware update**, not custom code — that's a vendor update,
+  not a mod. What we *can* set over the wire is **parameters within the existing modes** via `$GREN`
+  (`operationMode`, `GrenadeType`, `channel`, `indoorMode`, `crit`, `modifier`) — tuning modes, not
+  inventing on-device ones.
+- **New *effective* modes built around the grenade? Yes — this is the whole architecture.** The grenade,
+  like the gun, **keeps no game state** — it's an IR objective/effect *emitter*. Its native modes
+  (Respawn / KotH / Checkpoint-Domination / Assault) and blast types (FlashBang/Gas/Confusion/Molotov)
+  are raw **IR primitives**; what they *mean* is decided by our host + nodes. So we layer any new
+  ruleset on top without touching the grenade:
+  - grenade in **KotH mode** → our engine treats its zone beacon as the **Extraction point**
+    (`game-modes.md` §Extraction) or a **Counter-Strike bomb site**;
+  - grenade as a **placed objective** → nodes track capture/hold and score it however the mode wants;
+  - `channel` + `MaxCount` let multiple grenades be **multiple addressable objectives**.
+
+  So the grenade can anchor *many* new modes — the new-mode logic lives in Mission Control / the player
+  nodes, exactly like every other Open BRX mode. The grenade is dumb hardware; the engine off-device is
+  where modes are born.
+
 ## Open (followups F/G)
 
 Confirm on hardware: exact `$GREN` ↔ each mode mapping (G1); whether `$GREN` reprograms an
-already-paired grenade live; the grenade's BLE visibility (G2); and what objective state the gun
-exposes over BLE during a grenade game, for a live status display (G6).
+already-paired grenade live; the grenade's BLE visibility (G2); what objective state the gun
+exposes over BLE during a grenade game, for a live status display (G6); and **whether the grenade's
+USB-C port mounts a mass-storage disk with a firmware `.BIN` / swappable `AUDIO` folder** like the gun
+and headset (G7 — the direct grenade-audio-swap test).

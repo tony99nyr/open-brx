@@ -67,6 +67,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | G3 | Capture the app configuring a grenade | 🟡 | PacketLogger while Callsign sets a grenade → exact `$GREN` |
 | G4 | Grenade firmware `.bin` flashing | ✅ known | Same as headset: **hold the PROGRAM button (pin) while powering on → USB disk mode → replace the root firmware file** (`brx-extended-user-guide.md`). Grenade enables CTF/KotH/Assault — "scary music" = CTF flag music (`community-notes.md`). |
 | G5 | Build a clean grenade-config UI | 🟡 | in Mission Control / MCP — the "better way to configure it" the buggy on-gun menu lacks |
+| G7 | **Grenade USB-C → mass-storage / audio swap?** | 🟡 NEW | The grenade **has a USB-C port** (Tony confirmed). Test: grenade OFF → hold its button (or PROGRAM pin) → plug USB-C → does a disk mount with a firmware `.BIN` and/or an `AUDIO` folder of `<ID>.LTP` like the gun/headset (`brx-extended-user-guide.md`)? If yes, **grenade-local custom audio is a direct file swap** (no firmware mod). If no, grenade audio is reskinned via the gun/headset sound bank or the Companion (`reference/grenade.md` "Can we put new audio on the grenade?"). |
 
 ## Field-range / transport (followup D — the way to scale)
 
