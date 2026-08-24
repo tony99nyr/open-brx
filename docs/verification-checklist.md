@@ -40,6 +40,11 @@ The whole M0 engine is tested in software but never driven on real guns.
 - ⬜ **Bit-layout (B13)** — sweep every weapon / team / grenade mode; diff the 25-bit words → map type/team/mode/damage bits.
 - ⬜ **Emit** — flash `ir_emit.ino`; tune timings to captured frames; a stock gun registers a `$HIR`; the TX LED lights.
 - ⬜ **`$SIR` sweep** — catalog every IR type → effect + sound (the Utility Box API).
+- ⬜ **IR RANGE measurement** — measure how far a stock gun / grenade beacon actually reaches (tape-measure
+  a VS1838B receiver walking back). Confirm the grenade respawn beacon's **~18–20 ft forward** figure
+  (grenade.md) and how much **outdoor mode** extends it. Then characterize OUR emitter: bare 940nm LED at
+  ~50–100 mA (diagnostic) vs a driven high-power LED + lens — establish the achievable Utility-Box beacon
+  radius (omnidirectional zone vs directional beam). This sets the objective-node coverage spec.
 
 ## Session E½ — sound catalog by-ear (1 tagger, ~10 min)
 `mcp/brx_mcp/sounds.py` — CONFIRMED cues are grounded; the objective callouts are PROVISIONAL.
