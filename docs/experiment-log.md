@@ -720,3 +720,16 @@ blue (aim — few shots landed on the grenade; the emitter must face the headset
 effect"** so the gun fires AND surfaces grenade beacons in one config — then charge decode + live capture
 become straightforward. Also: a fixed mount aligning the grenade emitter to the headset removes the
 aim variance. Filed as refinement of B8/G6.
+
+### 39. Grenade communication mechanism + Hill holder-perk (hardware-confirmed)
+Tony started a **manual game on E20D**, shot the grenade Hill → "hill captured" + a **ticking possession
+timer**, and **gained a higher rate of fire** while holding it. Meanwhile 3D4F (BLE-connected, bare, idle)
+read the **same** captured-Hill beacon: `$HIR,0,15,0,**0**,8` (token4=0 = E20D's game team; was 2 neutral,
+1 when a team-1 gun claimed a point earlier — token4 = owner, confirmed a 3rd time). Beacon ~every 5 s;
+no charge field visible (token6/7 stayed 0), so the "ticking" is E20D's **local** hold-timer, not in the
+beacon.
+**Mechanism (the cornerstone):** the grenade is an **IR broadcaster** — one omnidirectional beacon,
+received by *every* headset in range. Guns in a game react (audio/timer); a BLE-connected tagger **relays
+it over BLE** (the state-display works by putting one connected tagger in grenade range). No pairing/
+addressing for objective modes. The grenade **also pushes perks over IR** — holding the Hill grants a
+**rate-of-fire boost** to the holder's gun. So: broadcasts state AND modifies the holder's gun, all via IR.

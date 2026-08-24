@@ -7,6 +7,19 @@ transcripts (credit the channel). This makes our reference the most complete gre
 directly feeds the grenade config app (FOLLOWUPS B8/G1). Complements the `$GREN` field facts in
 `../../protocol/callsign-extract/apk-harvest.md` and the pairing/IR facts in `brx-extended-user-guide.md`.
 
+## How the grenade communicates (hardware-confirmed, exp-log #38)
+
+**The grenade is an IR *broadcaster* — no pairing, no addressing.** Every few seconds it emits an
+omnidirectional-ish IR beacon carrying its state (`$HIR,0,15,0,<owner>,<mode>`), and **every headset in
+range receives the same broadcast**: guns in a game *react* (play "hill captured", ticking timer, etc.),
+and a **BLE-connected tagger relays it to a phone/laptop** — this is the entire basis of the state-display
+(one connected tagger in range = a live feed of every objective's owner+mode). Verified: E20D (a manual
+game) and 3D4F (BLE-connected, idle) both received the *same* captured-Hill beacon simultaneously.
+
+**The grenade also actively modifies the holder's gun over IR** — e.g. **holding the Hill grants a higher
+rate of fire** (the "rapid-refill advantage"). So the grenade both *broadcasts state* and *pushes perks/
+effects* to guns via IR.
+
 ## The big picture: the grenade is a portable objective/station device
 
 Beyond exploding, the grenade **programs nearby guns by IR beacon** and can *become* a **respawn
