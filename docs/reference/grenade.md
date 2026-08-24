@@ -90,14 +90,15 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
 
 ## Respawn Station mode
 
+*(All below **hardware-confirmed** by Tony, exp-log #37, matching the videos.)*
 - Starts **white/neutral**; **shoot it with a team's gun to claim it that team's colour** (blue gun →
-  blue → respawns only blue).
-- **Guns told to be a respawn-station client can no longer self-respawn** — trigger just makes the
-  dead/out-of-ammo noise. To respawn: come to the station and **press its button** → respawns everyone
-  of that team in proximity (up to their life limit).
-- **Hands-free / at range:** flip the accessory upside-down; a dead player in proximity does a **melee
-  (front-only) trigger pull** → the station respawns everyone of that team within ~18–20 ft. Range
-  scales with indoor/outdoor mode (forward IR projection).
+  blue → respawns only blue). Over BLE the claim flips the beacon's team field (`$HIR,0,15,0,<team>,6`).
+- **Once the guns know a respawn station is configured, their auto/self-respawn is DISABLED** — a dead
+  player's trigger just makes the dead/out-of-ammo noise. Two ways to respawn:
+  1. **Press the button on the grenade** → respawns everyone of that team **in the area**.
+  2. **Face the respawn station with the FRONT of your headset and pull the trigger** → signals the
+     grenade to emit a respawn signal (the hands-free / at-range method; ~18–20 ft, range scales with
+     indoor/outdoor mode's forward IR projection).
 - **The critical gotcha (root of the "grenade is confusing/buggy" reputation):** setting a gun to
   respawn-station mode via the beacon is **not enough** — you must **signal the respawn action to each
   gun AFTER the game starts** (press the grenade button on each player at the base pre-game). A gun
@@ -112,8 +113,10 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
 
 - **Checkpoint:** changes colour **once** when a team shoots it (red/blue/green; 3 colours in
   Supremacy). Seize-a-base feel; most checkpoints held = win. No central — relies on team comms.
-- **King of the Hill:** on capture, all guns announce **"control point captured"**; the grenade
-  **emits every ~3–4 s who holds it**, so nearby guns know possession. It **charges**: each shot adds
+- **King of the Hill:** **starts white/neutral until someone shoots it** (hardware-confirmed, same as
+  Respawn — exp-log #37); on capture, all guns announce **"control point captured"**; the grenade
+  **emits every ~3–4 s who holds it** (our BLE decode: `$HIR,0,15,0,<team>,8`), so nearby guns know
+  possession. It **charges**: each shot adds
   charge up to a max; to retake, the other team must fire **at least as many rounds back into it**
   (2–3 rounds to 2–3 magazines depending on weapon; ~4 on an MG, ~10–12 on a shotgun). The holder has
   a rapid-refill advantage while defending. Win = possession at time / fully charged.

@@ -699,3 +699,11 @@ point enabled" + echoing ping; claiming shot → "chime" + LED turns team colour
 **This fully specs the B8 state-display:** a node reads `$HIR,0,15,0,<team>,<mode>` to show who owns each
 Hill/Respawn objective live. (Beacon capture is aim-sensitive — the grenade's emitter must face the
 headset dome closely; a couple of runs saw nothing purely from positioning.)
+
+**Respawn/KotH mechanics (Tony, hardware-confirmed):** KotH also **starts white/neutral until shot**
+(same as Respawn). Respawn: once a gun knows a respawn station is configured, its **auto/self-respawn is
+disabled**; respawn via (1) the grenade **button** (respawns the team in-area) or (2) **face the station
+with the headset front + pull trigger** (signals the grenade to emit a respawn). **Engine implication
+(new followup B12):** the grenade's respawn-station and our **host-driven `$SPAWN` respawn are competing
+authorities** — an engine using grenade respawn stations must NOT also host-respawn those players (or
+must reconcile), else double/conflicting respawns. Pick one respawn authority per mode.
