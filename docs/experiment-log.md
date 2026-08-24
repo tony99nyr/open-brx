@@ -757,3 +757,11 @@ lines are flaky/degraded** (power still works → the grenade's purple flash). S
 no data device may be the **bad cable**, not a power-only port. **Retest G7 with a known-good USB-C DATA
 cable** before concluding anything. The grenade may yet expose a serial console / drive / DFU — this is
 still open, and would be the reliable non-IR channel if it exists.
+
+**⚠️ G7 fully INVALIDATED — dead data path.** Control test: plugged Tony's **phone** (USB debugging on)
+into the same tower USB-C port + a **new C-to-C cable** → **it did not enumerate either** (device count
+unchanged, no Pixel/MTP/ADB device). So the **tower USB-C port (or cable) carries no data** — every
+grenade USB test ran through a dead path and tells us **nothing** about the grenade. **G7 is untested, not
+negative.** Retest plan: establish a **known-good USB data path first** — use a **USB-A port that already
+works** (C-to-A cable) or a confirmed data-capable USB-C port, **verify with the phone (must enumerate)**,
+THEN test the grenade (normal plug, and OFF→hold-button→plug for a possible bootloader/disk mode).
