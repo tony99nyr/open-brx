@@ -751,6 +751,68 @@ the same underlying condition looked like random flakiness for hours.
 **Workflow rule: get the icon green before doing anything else.** If it will not go green,
 the problem is the headset, not the app, the gun, or the radio.
 
+## 7n. SETTLED — the gun holds no game state; out-of-range play cannot work over BLE
+
+Two deliberate captures (`cap5` respawn 15 s, `cap6` respawn 30 s, Team Arena, one setting
+changed) plus a complete game ending caught inside `cap5`.
+
+### Respawn and game time are NOT sent to the tagger
+
+```
+cap5 (respawn 15): $GSET,1,0,1,0,1,0,50,1,*
+cap6 (respawn 30): $GSET,1,0,1,0,1,0,50,1,*      <- byte-identical
+```
+
+Not one token moved. Game time behaved the same way — `cap5` used a 1-minute clock and its
+`$GSET` still matched the earlier default-clock captures (§7e/§7f) exactly.
+
+**The app keeps the clock and drives respawn itself.** This is consistent with §7f, where
+the *app* sent `$SPAWN,,*` about 10 s after death. The manual (§7h) lists respawn and time
+as on-gun menu settings, so the firmware can do it — **Callsign simply does not use that
+path**, and therefore no capture will ever reveal a command for it.
+
+### The app never asks the gun for results
+
+End of game, from `cap5`:
+
+```
+[38.202s] >> $SPAWN,,*                 game starts
+[44.882s] << $VOLTS,7395,3791,33,48,*  last frame the tagger ever sends
+[60.795s] >> $VOL,69,0,*
+[60.998s] >> $HLED,,6,,,,,*
+[61.198s] >> $STOP,*
+[61.397s] >> $CLEAR,*
+[61.595s] >> $PLAY,VS6,4,6,,,,,*
+```
+
+**No query. No score request. Nothing.** The app stops the game and plays a sound. This
+explains why `$UP,*` got no reply (§7l) and why reconnecting after a field game produced
+zero frames: **the gun keeps no score, so there is nothing to read.** The phone tallies
+`$HIR`/`$HP` events live — it is the only place the score has ever existed.
+
+### Consequence for the one-laptop field design
+
+**Out-of-range play cannot work over BLE.** This is a design property, not a missing
+command. A tagger with no host in range will not respawn anyone, will not end the round,
+and will not remember what happened. Confirmed empirically by the field test
+(`docs/experiment-log.md`): the guns kept *shooting* with no host, but nothing respawned,
+the round never ended, and nothing was recoverable afterwards.
+
+Anything that needs respawn, a clock, or scoring **requires a host in BLE range for the
+whole match**. The options are therefore:
+
+1. **A device per player** — what the official system does; the phone is ~1 m away.
+2. **A relay in range** — a cheap ESP32 per player bridging to WiFi/LoRa. This is what
+   LaserTagMods build.
+3. **The nRF radio.** `QUERY` reports `NRFhost 1` / `NRFslave 1`, and LaserTagMods ship
+   `NRFL-Bases` and `LoRa-Controlled-Taggers`. **If these guns already carry a long-range
+   radio, BLE is simply the wrong transport for field play.** Unprobed, and now clearly
+   **the most valuable unexplored thread in the project.**
+4. **On-gun menu configuration** — set respawn/time by hand on each gun before a match, and
+   accept no central scoring. Viable for casual play; does not scale to 20 taggers.
+
+**Stop looking for a `$GSET` respawn token.** It is not there.
+
 ## 8. Safe testing notes
 
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
