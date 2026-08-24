@@ -14,6 +14,11 @@ from .base import (
     is_death, is_hit, shooter_team,
 )
 
+# A kill is credited to the last enemy who hit the victim WITHIN this window.
+# Past it (suicide / environmental / expiry with no fresh $HIR), the death is
+# uncredited — prevents an old non-fatal hitter stealing a stale kill.
+ATTRIB_FUSE_S = 6.0
+
 
 class DeathmatchEngine(GameEngine):
     def __init__(self, config, now: float = 0.0):
@@ -23,7 +28,7 @@ class DeathmatchEngine(GameEngine):
         self.start = now
         self.over = False
         self.winner: Optional[str] = None
-        self._last_shooter_team: dict[str, int] = {}   # victim_id → shooter team
+        self._last_shot: dict[str, tuple[int, float]] = {}  # victim_id → (shooter team, when)
         self._ffa = (config.mode == "ffa")
 
     def add_player(self, player_id: str, team: int) -> None:
@@ -39,7 +44,7 @@ class DeathmatchEngine(GameEngine):
         if is_hit(ev):
             st = shooter_team(ev)
             if st is not None:
-                self._last_shooter_team[player_id] = st
+                self._last_shot[player_id] = (st, now)
             return []
         if is_death(ev) and p.alive:
             return self._handle_death(player_id, now)
@@ -52,7 +57,8 @@ class DeathmatchEngine(GameEngine):
         v.dead_since = now
         actions: list[Action] = []
 
-        killer_team = self._last_shooter_team.pop(victim_id, None)
+        entry = self._last_shot.pop(victim_id, None)
+        killer_team = entry[0] if (entry and now - entry[1] <= ATTRIB_FUSE_S) else None
         if killer_team is not None and killer_team != v.team:
             self.team_score[killer_team] = self.team_score.get(killer_team, 0) + 1
             # credit the specific killer where team→player is 1:1 (FFA)
@@ -104,7 +110,9 @@ class DeathmatchEngine(GameEngine):
         return f"team{t}"
 
     def _check_last_standing(self) -> list[Action]:
-        teams = self.roster.alive_teams()
+        # "still in" = alive OR has a life left to respawn — a dead-but-respawning
+        # teammate must NOT be counted out (else finite-lives games end early).
+        teams = self.roster.standing_teams()
         if len(teams) <= 1:
             return self._end(f"team{next(iter(teams))}" if teams else "draw")
         return []

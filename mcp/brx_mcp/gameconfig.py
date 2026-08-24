@@ -32,22 +32,36 @@ WEAPON_TAILS: dict[str, str] = {
 }
 WEAPONS = tuple(WEAPON_TAILS)
 
+# (mag, reserve) per weapon — mirrors __main__.py WEAPON_AMMO. Spawn $AMMO is built
+# from the SELECTED weapons, not hardcoded.
+WEAPON_AMMO: dict[str, tuple[int, int]] = {
+    "primary": (36, 108), "secondary": (6, 12), "melee": (1, 0),
+    "ar": (32, 9999999), "charge": (20, 9999999),
+}
+
 # $PSET template — the app's voice-pack tail; tokens 3–5 (HP,armor,shield) are ours.
 # tokenize: PSET,0,0,<HP>,<armor>,<shield>,50,,H44,...,A10
 _PSET_HEAD = ["PSET", "0", "0"]  # then HP, armor, shield, then the tail:
 _PSET_TAIL = ["50", "", "H44", "JAD", "V33", "V3I", "V3C", "V3G", "V3E", "V37",
               "H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]
 
-# $SIR incoming-IR effect table (kept in sync with __main__.py / diag).
+# $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG
+# (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
+# melee/railgun/rocket IR with no effect mapping.
 _SIR_TABLE = (
     "$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*",
     "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*",
+    "$SIR,10,0,X13,1,0,100,2,60,*", "$SIR,6,0,H02,1,0,90,1,40,*",
+    "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,0,H50,1,0,0,1,,*",
+    "$SIR,13,3,H49,1,0,100,0,60,*",
 )
 # $BMAP button map — mandatory or the trigger gives the "disabled" chirp.
 _BMAP = (
     "$BMAP,0,0,,,,,*", "$BMAP,1,100,0,1,99,99,*", "$BMAP,2,97,,,,,*",
     "$BMAP,3,98,,,,,*", "$BMAP,4,98,,,,,*", "$BMAP,5,98,,,,,*", "$BMAP,8,4,,,,,*",
 )
+# Default spawn (default primary/secondary ammo). Prefer GameConfig.spawn_frames(),
+# which recomputes $AMMO from the SELECTED weapons.
 SPAWN_SEQUENCE = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$AMMO,1,6,12,1,*", "$BMAP,0,0,,,,,*")
 RESPAWN_SEQUENCE = ("$HLOOP,0,0,*", "$SPAWN,,*")
 END_SEQUENCE = ("$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*", "$PLAY,VS6,4,6,,,,,*")
@@ -93,20 +107,24 @@ class GameConfig:
 
     # --------------------------------------------------------------------- #
     def apply_presets(self) -> "GameConfig":
-        """Return a copy with kid_mode / class / night-combo presets applied.
-        Presets are *defaults you can still override* — an explicit non-default
-        field set by the caller wins."""
+        """Return a copy with class then kid_mode presets applied.
+
+        Order matters: **class first**, then kid_mode's health *floors* (so a
+        low-HP class like scout can't drop below the kid-mode minimum). kid_mode is
+        deliberately protective — it forces friendly-fire OFF and caps crits — so
+        those override even an explicit setting (that's the point of kid mode)."""
         cfg = replace(self)
-        if cfg.kid_mode:
-            # gentler: more health, no friendly fire, softer crits, slower deaths
-            cfg = replace(cfg, hp=max(cfg.hp, 75), armor=max(cfg.armor, 100),
-                          friendly_fire=False, crit_modifier=min(cfg.crit_modifier, 25))
+        # class loadout first
         cls = (cfg.game_class or "").lower()
         if cls in _CLASSES:
             c = _CLASSES[cls]
             cfg = replace(cfg, primary=c.get("primary", cfg.primary),
                           secondary=c.get("secondary", cfg.secondary),
                           hp=c.get("hp", cfg.hp), armor=c.get("armor", cfg.armor))
+        # then kid-mode protective floors/overrides
+        if cfg.kid_mode:
+            cfg = replace(cfg, hp=max(cfg.hp, 75), armor=max(cfg.armor, 100),
+                          friendly_fire=False, crit_modifier=min(cfg.crit_modifier, 25))
         return cfg
 
     def is_night_mode(self) -> bool:
@@ -129,25 +147,35 @@ class GameConfig:
         return f"$WEAP,{slot}{tail}"
 
     def _led_frames(self) -> list[str]:
-        # LEDs are team-derived; turning them OFF is UNCONFIRMED. Best-effort:
-        # $GLED effect=StopIR/off. Tracked as a followup — verify on hardware.
+        # LEDs are team-derived ($TID); turning them OFF is UNCONFIRMED (followup P17).
+        # Best-effort: $GLED effect field = LedEffect enum (4=StopIR); all-zeros is an
+        # equally-plausible probe. Verify on hardware before relying on night mode.
         if self.leds:
             return []
-        return ["$GLED,0,4,0,0,0,,*"]  # ⚠ UNCONFIRMED "off" attempt (effect field)
+        return ["$GLED,0,4,0,0,0,,*"]  # ⚠ UNCONFIRMED "off" attempt — see FOLLOWUPS P17
 
     def setup_frames(self) -> list[str]:
         """Ordered per-GAME config frames (sent once, before per-player spawn)."""
         cfg = self.apply_presets()
         frames = [f"$VOL,{cfg.volume},0,*", "$CLEAR,*", "$START,*", cfg._gset(),
-                  cfg._pset(), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary)]
+                  cfg._pset(), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
+                  cfg._weap(4, "melee")]              # the app always loads a melee slot
         frames += list(_SIR_TABLE) + list(_BMAP)
         frames += cfg._led_frames()
         frames += ["$PLAYX,0,*", "$PLAY,VA81,4,6,,,,,*"]  # game-start sound
         return frames
 
+    def spawn_frames(self) -> list[str]:
+        """Spawn live with $AMMO computed from the SELECTED primary/secondary."""
+        cfg = self.apply_presets()
+        pmag, pres = WEAPON_AMMO.get(cfg.primary, WEAPON_AMMO["primary"])
+        smag, sres = WEAPON_AMMO.get(cfg.secondary, WEAPON_AMMO["secondary"])
+        return ["$SPAWN,,*", f"$AMMO,0,{pmag},{pres},1,*",
+                f"$AMMO,1,{smag},{sres},1,*", "$BMAP,0,0,,,,,*"]
+
     def player_frames(self, team: int) -> list[str]:
-        """Per-gun frames: set team, then spawn live."""
-        return [f"$TID,{team},*"] + list(SPAWN_SEQUENCE)
+        """Per-gun frames: set team, then spawn live (loadout-correct ammo)."""
+        return [f"$TID,{team},*"] + self.spawn_frames()
 
     def lives(self) -> Optional[int]:
         """Total lives = respawns + 1 (None = unlimited)."""
@@ -175,9 +203,11 @@ class GameConfig:
 
 
 # Class presets (from the APK class list; loadout-level — a starting point).
+# NOTE: `assault`/`heavy` use the `ar`/`charge` weapons, which are §6 doc examples our
+# hardware has NOT fired yet — treat those two as provisional until verified.
 _CLASSES: dict[str, dict] = {
-    "assault":   {"primary": "ar", "secondary": "secondary", "hp": 45, "armor": 70},
-    "heavy":     {"primary": "charge", "secondary": "secondary", "hp": 60, "armor": 100},
+    "assault":   {"primary": "ar", "secondary": "secondary", "hp": 45, "armor": 70},     # provisional weapon
+    "heavy":     {"primary": "charge", "secondary": "secondary", "hp": 60, "armor": 100}, # provisional weapon
     "scout":     {"primary": "primary", "secondary": "secondary", "hp": 35, "armor": 50},
     "guardian":  {"primary": "primary", "secondary": "secondary", "hp": 75, "armor": 125},
 }

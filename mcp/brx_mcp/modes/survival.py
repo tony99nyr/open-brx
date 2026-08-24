@@ -11,7 +11,7 @@ from typing import Optional
 
 from .base import (
     Action, Callout, GameEngine, GameOver, Respawn, Roster, SetTeam,
-    is_death, is_hit, shooter_team,
+    is_death,
 )
 
 HUMAN_TEAM = 1
@@ -28,7 +28,6 @@ class InfectionEngine(GameEngine):
         self.start = now
         self.over = False
         self.winner: Optional[str] = None
-        self._last_shooter_team: dict[str, int] = {}
 
     def add_player(self, player_id: str, team: int) -> None:
         # team as given (caller designates the starting infected — usually 1 player)
@@ -40,11 +39,7 @@ class InfectionEngine(GameEngine):
         p = self.roster.get(player_id)
         if p is None:
             return []
-        if is_hit(ev):
-            st = shooter_team(ev)
-            if st is not None:
-                self._last_shooter_team[player_id] = st
-            return []
+        # infection scores by conversion, not kill credit — only deaths matter
         if is_death(ev) and p.alive:
             return self._handle_death(player_id, now)
         return []
@@ -54,7 +49,6 @@ class InfectionEngine(GameEngine):
         v.alive = False
         v.deaths += 1
         v.dead_since = now
-        self._last_shooter_team.pop(victim_id, None)
         actions: list[Action] = []
         # a human who dies becomes infected
         if v.team == self.human_team:

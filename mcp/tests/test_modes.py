@@ -7,6 +7,7 @@ from brx_mcp.modes import (
     DeathmatchEngine, InfectionEngine, LastManStandingEngine, GameDriver,
     build_engine, GameOver, Respawn, Score, Eliminate, SetTeam, Callout,
 )
+from brx_mcp.modes.driver import assign_teams
 
 
 def hir(shooter_team):
@@ -164,6 +165,97 @@ def test_driver_executes_respawn_via_sender():
 
     asyncio.run(scenario())
     assert any("$SPAWN" in f for _, f in sent), f"no respawn frames sent: {sent}"
+
+
+def test_tdm_finite_lives_does_not_end_early_for_respawning_teammate():
+    # Regression (review Critical): a dead-but-respawning teammate must keep the
+    # team "in". team1={red, alice}, team2={blue}, 2 lives each.
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0, respawns=1))
+    e.add_player("red", 1)
+    e.add_player("alice", 1)
+    e.add_player("blue", 2)
+    # alice dies once (down, respawning, 1 life left)
+    e.on_event("alice", hir(2), now=1.0)
+    e.on_event("alice", death(), now=1.0)
+    # red loses both lives while alice is still down
+    e.on_event("red", hir(2), now=2.0)
+    e.on_event("red", death(), now=2.0)         # red 2→1
+    e.roster.get("red").alive = True            # (respawned)
+    e.on_event("red", hir(2), now=3.0)
+    acts = e.on_event("red", death(), now=3.0)  # red 1→0 → Eliminate → check standing
+    # team1 still has alice (down but respawnable) → game must NOT be over
+    assert not e.over, "ended early: alice (team1) still had a life left"
+    assert not [a for a in acts if isinstance(a, GameOver)]
+
+
+def test_tdm_stale_hit_does_not_credit_a_kill_on_late_death():
+    # Regression (review High): a non-fatal enemy hit long ago must not steal a
+    # kill on a later suicide/environmental death (no fresh $HIR).
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0))
+    e.add_player("red", 1)
+    e.add_player("blue", 2)
+    e.on_event("red", hir(2), now=1.0)          # red hit by blue, survives
+    acts = e.on_event("red", death(), now=30.0) # dies 29 s later, no new hit
+    assert not [a for a in acts if isinstance(a, Score)]
+    assert e.team_score.get(2, 0) == 0
+    # respawn red, then a FRESH hit within the fuse DOES credit
+    e.roster.get("red").alive = True
+    e.on_event("red", hir(2), now=40.0)
+    acts2 = e.on_event("red", death(), now=41.0)
+    assert [a for a in acts2 if isinstance(a, Score)]
+
+
+def test_driver_survives_a_failing_send_midgame():
+    # Regression (review High): one gun's send error must not abort the game.
+    calls = {"n": 0}
+
+    async def flaky(pid, frame):
+        calls["n"] += 1
+        if "$PLAY" in frame:
+            raise RuntimeError("gun disconnected")
+
+    drv = GameDriver(GameConfig(mode="tdm"), {"red": 1, "blue": 2}, flaky,
+                     announce=lambda s: None)
+
+    async def scenario():
+        from brx_mcp.modes.base import PlaySound, Respawn as R
+        await drv.execute([PlaySound("VA20", scope="all"), R("red")])
+
+    asyncio.run(scenario())      # must not raise
+    assert calls["n"] > 0
+
+
+def test_assign_teams_variants():
+    addrs = ["a", "b", "c"]
+    assert assign_teams("ffa", addrs) == {"a": 1, "b": 2, "c": 3}
+    assert assign_teams("tdm", addrs) == {"a": 1, "b": 2, "c": 1}
+    inf = assign_teams("infection", addrs)
+    assert inf == {"a": 2, "b": 1, "c": 1}       # exactly one seed infected
+    assert list(inf.values()).count(2) == 1
+    # explicit wins
+    assert assign_teams("tdm", addrs, {"a": 5})["a"] == 5
+
+
+def test_kid_mode_class_order_keeps_health_floor():
+    # Regression (review Medium): scout (hp 35) + kid_mode must not drop below the
+    # kid-mode floor (class applied first, then kid floors).
+    from brx_mcp.gameconfig import GameConfig as GC
+    s = GC(game_class="scout", kid_mode=True).apply_presets()
+    assert s.hp >= 75 and s.armor >= 100
+
+
+def test_ammo_matches_selected_weapon():
+    from brx_mcp.gameconfig import GameConfig as GC
+    sf = GC(primary="charge").spawn_frames()
+    ammo0 = [f for f in sf if f.startswith("$AMMO,0")][0]
+    assert ammo0.startswith("$AMMO,0,20,")       # charge mag = 20, not the default 36
+
+
+def test_setup_loads_melee_slot_and_full_sir():
+    from brx_mcp.gameconfig import GameConfig as GC
+    frames = GC().setup_frames()
+    assert [f for f in frames if f.startswith("$WEAP,4")]        # melee slot loaded
+    assert len([f for f in frames if f.startswith("$SIR,")]) == 10  # all 10 rows
 
 
 def test_driver_setup_configs_then_spawns_all_guns():

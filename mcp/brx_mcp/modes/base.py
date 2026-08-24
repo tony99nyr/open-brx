@@ -134,6 +134,15 @@ class Roster:
     def alive_teams(self) -> set[int]:
         return {p.team for p in self.players.values() if p.alive}
 
+    def still_in(self) -> list[Player]:
+        """Players not yet out — alive OR still holding a life to respawn on.
+        (A dead-but-respawning player is still IN the game.)"""
+        return [p for p in self.players.values()
+                if p.alive or (p.lives is None) or p.lives > 0]
+
+    def standing_teams(self) -> set[int]:
+        return {p.team for p in self.still_in()}
+
     def sole_member_of_team(self, team: int) -> Optional[Player]:
         m = self.team_members(team)
         return m[0] if len(m) == 1 else None

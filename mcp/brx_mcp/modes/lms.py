@@ -11,7 +11,7 @@ from typing import Optional
 
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Respawn, Roster,
-    is_death, is_hit, shooter_team,
+    is_death,
 )
 
 
@@ -22,7 +22,6 @@ class LastManStandingEngine(GameEngine):
         self.start = now
         self.over = False
         self.winner: Optional[str] = None
-        self._last_shooter_team: dict[str, int] = {}
         # default 3 lives if unlimited was left on (LMS needs finite lives)
         self._lives = config.lives() if config.lives() is not None else 3
 
@@ -35,11 +34,6 @@ class LastManStandingEngine(GameEngine):
         p = self.roster.get(player_id)
         if p is None:
             return []
-        if is_hit(ev):
-            st = shooter_team(ev)
-            if st is not None:
-                self._last_shooter_team[player_id] = st
-            return []
         if is_death(ev) and p.alive:
             return self._handle_death(player_id, now)
         return []
@@ -49,7 +43,6 @@ class LastManStandingEngine(GameEngine):
         v.alive = False
         v.deaths += 1
         v.dead_since = now
-        self._last_shooter_team.pop(victim_id, None)
         if v.lives is not None:
             v.lives -= 1
         actions: list[Action] = []
