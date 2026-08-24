@@ -637,6 +637,16 @@ is stable), one token varied at a time, and the operator naming the colour each 
 Motivation for solving it: free-for-all has no teams, so a neutral LED (white) is wanted,
 while team modes need red/green/blue — the engine needs both.
 
+**Community lead (FB group, Jay Burden — 2026-08 crawl) that likely reconciles this:** the
+colour is a **single index field** (not RGB), format `$GLED,x,x,x,1,2000,2000,*` (token 4 =
+effect, 5/6 = durations), with a **9-colour map: 0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
+5 cyan · 6 white · 7 pink · 8 orange** (4 playable teams: red/blue/yellow/green). Cross-checked
+against the probe above, **token 2 as the colour index fits 5 of our 6 observations**
+(`0,1,0,0`→blue=1 ✓; `0,0,1,0`→red, token2=0 ✓; `0,0,0,0`→red=0 ✓; `0,1,1,1`→blue=1 ✓;
+`1,1,1,0`→blue — token1=1?), the lone miss (`0,0,0,1`→blue) being the effect token or the
+mid-hold colour flip the operator saw. **Re-probe with `$GLED,<0-8>,0,0,1,2000,2000,*` varying
+only field 1 (and field 2), mid-game.** Source: https://www.facebook.com/groups/712027809192113/posts/1691669094561308/
+
 ### RESOLVED (same day): LED colour comes from `$TID`, not `$GLED`
 
 Two taggers were given identical configs differing **only** in team id — `$TID,1,*` vs
@@ -878,6 +888,42 @@ whole match**. The options are therefore:
    accept no central scoring. Viable for casual play; does not scale to 20 taggers.
 
 **Stop looking for a `$GSET` respawn token.** It is not there.
+
+## 7j. Community-captured `$PB*` remote-start sequence (FB group, v4.30)
+
+A full remote-start sequence captured on **firmware v4.30** via serial debug (Don Richardson,
+FB group — [post](https://www.facebook.com/groups/712027809192113/posts/1628528407542044/)). This
+is the **`$PB*` "playbook" family** — the pre-battle config path (complementary to the `$SPAWN`
+remote-start in §7e). Order as sent:
+
+```
+$#CONNECT,*
+$INDOOR,1,1,*
+$VERSION,*
+$RADSK,*
+$PBLOCK,*
+$PBGAME,0,*     game mode      0 = Free-for-all
+$PBTEAM,0,*     team
+$PBWEAP,0,*     weapon         0 = M4 AUTO
+$PBPERK,2,*     perk           2 = Body Armor
+$PBLIVES,2,*    lives          2 = 5 lives
+$PBTIME,5,*     time           5 = Infinite
+$PBSPAWN,0,*    spawn
+$PBINDOOR,1,*   indoor/outdoor
+$PBSTART,*      >>> start the game
+$DISCONNECT,*
+```
+
+Also seen alongside: `$HP,0,0,0,*`. **Version quirk:** on v4.30, prefixing the session with
+`$INIT,*` makes the gun *accept* commands but then **NOT start** after `$PBSTART` — omit `$INIT`
+for a clean start. These enum values (game/weapon/perk/lives/time indices) are a starting map to
+confirm against our own `$GSET`/`$PSET` findings — treat as **community-reported until we reproduce
+on our hardware/version** (ours is v4.32; behaviour may differ). See followup for mapping the full
+`$PB*` enum tables.
+
+**Respawn delay** is a game setting that **ramps per death, capping at 45 s / 90 s** (FB group —
+[post](https://www.facebook.com/groups/712027809192113/posts/2284364655291746/)) — consistent with
+§7f's observed ~10 s first-death gap.
 
 ## 8. Safe testing notes
 

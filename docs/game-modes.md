@@ -162,6 +162,13 @@ per-player nodes** — no stations, no broadcast.
 event stream. Syphon is the only one that wants **P2** (to credit the exact killer); the rest work
 per-node today.
 
+> **Corroboration (FB group crawl):** native shields + medic behaviour are real on stock BRX today —
+> **energy weapons grant a temporary shield when you equip a new weapon**, and the Supremacy **Medic
+> class takes 4 hits to kill and heals teammates by shooting them** (also Sniper, Viper classes). So
+> the overshield-on-pickup and medic variants above have a stock precedent, not just a protocol
+> inference. ([shield](https://www.facebook.com/groups/712027809192113/posts/1691552727906278/),
+> [medic](https://www.facebook.com/groups/712027809192113/posts/1695715454156672/))
+
 ## How much can the GRENADE do without a custom station?
 
 The Smart Grenade is a paired IR accessory (`$GREN`: iRType, operationMode, **channel**, GrenadeType

@@ -156,3 +156,82 @@ extract as text); browse the group's **Media** tab visually for painted examples
 - **SwapTX headset PCBs (V2/V3)** — full trace maps + Gerbers wanted; base code is ~80% done but
   stalled. The headset RGB-LED control pins are unidentified.
 - These are the same "map the board" gaps our hardware docs flag.
+
+## FB crawl — new facts (218-thread permalink crawl, 2026-08)
+
+Distilled from the BRX owners' FB group. Each cites its post; forum chatter, so single-source claims
+are flagged. (Post ids abbreviated; full URLs in the thread.)
+
+### ⚠️ "SCREAMERS" — the defining online-mode failure (widely confirmed, Jay et al.)
+With **any** hosting/online mode, after ~1 hr guns randomly fail with a **loud buzz** and need a
+reboot; separately, **BC firmware won't re-pair BLE once battery drops below a threshold**, cascading
+a game down to ½–¾ of players. This is *the* core reason community mods "barely work" — **a hard
+design constraint for us**: budget for periodic node reboots, keep batteries topped, and don't assume
+a BLE link survives a full session. ([post](https://www.facebook.com/groups/712027809192113/posts/2286999045028307/))
+
+### Hardware / power (matters for the Companion)
+- **Battery: 7.4 V ~2200 mAh Li-ion.** AliExpress replacements have a 2-pin (BRX uses) + a 3-pin
+  connector (3rd = thermistor, **BRX ignores it**). **⚠️ BC reverses battery polarity from standard —
+  verify before wiring.** Charge cells outside the gun by splicing a BRX AC adapter to the connector.
+  ([battery](https://www.facebook.com/groups/712027809192113/posts/1720203621707855/), [charging](https://www.facebook.com/groups/712027809192113/posts/1774927716235445/))
+- **Powering an ESP32 off the tagger: <300 mA draw is OK** — confirmed by Zach at Battle Company.
+  ([post](https://www.facebook.com/groups/712027809192113/posts/2215710005490545/))
+- **ESP32 → BRX serial is finicky (Jay, gen1+gen3):** insert **~5 ms delay between each character** or
+  the BRX garbles/drops them; the BRX is **extremely voltage-sensitive — feed 3.0–3.4 V (sweet spot
+  ~3.06 V)**, 5 V produces corrupt characters; a **diode is required between ESP32 pin 17 and the board
+  RX / BT-module top tab**; even 0.3 V off on the BT-module pins breaks reception. **Critical for our
+  Companion/Configurator wiring.** ([1](https://www.facebook.com/groups/712027809192113/posts/1338621223199432/), [2](https://www.facebook.com/groups/712027809192113/posts/1340648176330070/))
+- **Common failures (Jay):** D-pad button plastic cracks (hot-glue fill DIY, or buy from BC); random
+  power on/off = failing power switch (switch-cleaner helps temporarily); **IR emitters do die**;
+  **guns survive water after days of drying, headsets usually don't.** ([post](https://www.facebook.com/groups/712027809192113/posts/1639008486494036/))
+- **Headset ARGB = WS2812B 5050 SMD**, addressable **series** string on BRX (**parallel** on SwapTX).
+  ([1](https://www.facebook.com/groups/712027809192113/posts/1998533083874906/), [2](https://www.facebook.com/groups/712027809192113/posts/2035557106839170/))
+- **No full main-board schematic exists** (only "Duncan" partially mapped).
+  ([post](https://www.facebook.com/groups/712027809192113/posts/1753136985081185/))
+- **v2 headset is shared with Battle Rifle Pro** (only firmware differs); BC sells speakers, Sensor
+  Circuit Boards (front/left/right, HS 2.0), 19" 2-pin wire bundle.
+  ([post](https://www.facebook.com/groups/712027809192113/posts/1686905151704369/))
+- Sling-mount drill: **7/32" = perfect, 15/64" = too loose.** ([post](https://www.facebook.com/groups/712027809192113/posts/2069157906812423/))
+
+### Firmware / pairing
+- **⚠️ Firmware v4.30 is a full "makeover":** updating **wipes config**, breaks headset pairing +
+  Callsign until you re-enter setup, and **requires a completely new audio-file set** in `AUDIO`.
+  Gen1 needs an extra step (reboot, press select ×3). ([1](https://www.facebook.com/groups/712027809192113/posts/1713313979063486/), [2](https://www.facebook.com/groups/712027809192113/posts/1691494544578763/))
+- **Headset won't pair after update (BC-verified fix):** downgrade to `BCgunV2_02e.bin`, run PuTTY
+  `SETUP`, re-pair, then re-upgrade to `BCgunV2_08b.bin`. ([post](https://www.facebook.com/groups/712027809192113/posts/1719572138437670/))
+- **Re-pair headset:** boot BRX holding **right+select** ("install accessory"), power headset, press
+  its button once. ([post](https://www.facebook.com/groups/712027809192113/posts/1694316437629907/))
+- **Admin lock (what it blocks):** primary = hold **left+right 3 s** in root menu (blocks exit / soft
+  reset / mode change); secondary = **left+right+select 3 s** (also blocks indoor/outdoor, weapon,
+  team, perk); v4.30 also hold select to unlock. **Locked taggers cannot host.** ([1](https://www.facebook.com/groups/712027809192113/posts/1618013461926872/), [2](https://www.facebook.com/groups/712027809192113/posts/1693840074344210/))
+
+### Audio (extends the sound-swap section above)
+- **⚠️ Audio is on a (removable) SD card** — a **"pop" at boot = speaker power OK**; a loose/corrupt
+  SD = **no sound**; swap the SD to diagnose. This **partly tensions** the "SD is hot-glued, not
+  removed" note above — the card is physically an SD and can be accessed for diagnosis even if normally
+  glued. Reconcile on hardware (followup). ([post](https://www.facebook.com/groups/712027809192113/posts/1795195307542019/))
+- **Specific `.LTP` filenames:** `NA0.ltp` = death loud-beep, `VA3.ltp` = scream, `VA5.ltp` = yell
+  (copy/rename to swap the death cue). ([post](https://www.facebook.com/groups/712027809192113/posts/1640531343008417/))
+- **Callsign gun-sound filenames differ from the default BRX gun files** — replacing Callsign files
+  won't change main-weapon sounds. Default guns to target: **SR100, TAC 87, SMG x3, MG7.** Don
+  Richardson maintains a sound-filename list doc; a full **Star Wars overlay pack** exists (David Knox).
+  ([1](https://www.facebook.com/groups/712027809192113/posts/1633732317021653/), [2](https://www.facebook.com/groups/712027809192113/posts/1690390978022453/))
+
+### Ecosystem — where things live, who to know
+- **Callsign only works on Android ≤10** (BC hasn't fixed newer Android; **iOS reportedly OK**) —
+  widely confirmed. ([post](https://www.facebook.com/groups/712027809192113/posts/2254854938242718/))
+- **Canonical docs:** David Knox's **"JEDGE for all" Google Doc** pinned atop the FB group is the live
+  source; **lasertaginfo.org** forum + Jay's Google Drive hold **legacy** JEDGE. Related FB group:
+  **SWAPTX-EVOLVER**. Other coilgun/tag apps named: **IrFaction, Lasercoil, Freecoil.** ([1](https://www.facebook.com/groups/712027809192113/posts/1756680071393543/), [2](https://www.facebook.com/groups/712027809192113/posts/1772846496443567/))
+- **Key people beyond Jay Burden:** **Don Richardson** (co-holds the reverse-eng knowledge — sound-file
+  list, LED schematics, serial captures), **David Knox** (JEDGE docs; later moved to SwapTX), **Tommy
+  Honahan** (finishing JEDGE hardware), **Paul Hansen**, **Nathan Paden / Jon Nastasia** (testers).
+- **BC buried its own hosting feature** after co-developing it with Jay (Mar–May 2022, firmware v4.2);
+  Jay then published the BC-supplied hosting firmware + instructions himself. ([post](https://www.facebook.com/groups/712027809192113/posts/1944537249274490/))
+
+### JEDGE mesh internals (community mod — informs our field design)
+- Kill-confirmations carry a **random 5-digit ID**, de-duped against the **last 10** processed;
+  **score-sync takes 630 ms**; use **ESP32-U (external antenna)** for range; **ESP32 D1-mini boards are
+  failure-prone (undersized regulator) — power via USB or add a fat cap.** ([1](https://www.facebook.com/groups/712027809192113/posts/1763268480734702/), [2](https://www.facebook.com/groups/712027809192113/posts/1764948677233349/))
+- Binaries in the wild: `ESP32ForTransceiver-10-9-A.bin`, `ESP32ForWebServer-10-16-A.bin`,
+  `ESP32sForTaggers-10-16-A.bin`; LoRa variant uses **RYLR896** (bundle at ahlmann-kleve.de). ([1](https://www.facebook.com/groups/712027809192113/posts/2126627661065447/), [2](https://www.facebook.com/groups/712027809192113/posts/1885449521849930/))

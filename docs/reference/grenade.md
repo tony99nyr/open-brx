@@ -135,6 +135,18 @@ Two different questions:
   nodes, exactly like every other Open BRX mode. The grenade is dumb hardware; the engine off-device is
   where modes are born.
 
+## Known grenade quirks (FB group crawl)
+
+- **No winner display:** the grenade **can't show a winner** for its KotH/Domination modes — scoring/
+  win must be adjudicated off-device (our host), which is exactly the gap our engine fills.
+  ([post](https://www.facebook.com/groups/712027809192113/posts/1483712818690271/))
+- **Assault friendly-capture bug:** as an Assault objective the grenade **can be accidentally captured
+  by the defending (friendly) team** — a reliability quirk to design around.
+- **ALT-fired grenade plays a different/incorrect sound** than the normal grenade cue — possible
+  leftover/bug (single-source, unverified). ([post](https://www.facebook.com/groups/712027809192113/posts/2413135579081319/))
+- Note also: community reports **Assault is "unusable"** and was removed from JEDGE hosting — treat
+  grenade-Assault as low-confidence until we test it (`../game-modes.md`).
+
 ## Open (followups F/G)
 
 Confirm on hardware: exact `$GREN` ↔ each mode mapping (G1); whether `$GREN` reprograms an
