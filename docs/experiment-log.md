@@ -449,3 +449,47 @@ headset) need a one-field capture to finalize — now trivial since we know the 
 Bonus enums recovered: LedColorType (White/Pink/Orange), BlinkLoopType (Once/ThreeTimes/
 Infinite), ButtonCode (Trigger/AltFire/Analog), and premium GOTDLC modes Generals/Commanders/
 Swarm.
+
+### 30. APK harvest: game modes, QR stations, weapon spawns, grenade ✅
+Comprehensive gameplay-domain sweep of the metadata → `protocol/callsign-extract/apk-harvest.md`.
+- **Game modes** (full list incl. premium): FFA, TDM, Supremacy, Survival, Infection, CTF,
+  Domination, Assault, Territory, LastManStanding, BattleRoyale, Swarm, Generals, Commanders.
+  "Edge" game = the phone's OFFLINE local engine — the exact role our Companion accessory plays.
+- **Win conditions**: Score/Death/Slayer/CaptureTheFlag/SquadLeader — all host-side.
+- **"Boxes" = QR codes**: RespawnByQrCode, PickUpQrCodeWeapon, ControlPointGenerator,
+  SpawnSupplyDrops. Battle Company's answer to LaserTagMods' JBOX is printed QR codes.
+- **Weapon spawns**: WeaponPickUpType enum (AutoRifle/BurstRifle/SniperRifle/Shotgun/SmgSaw/
+  Sticky/RailGun/RocketLauncher/EnergyRifle/WarHammer/StrikeRifle) via QR pickup — mechanically a
+  `$WEAP` push into a slot.
+- **Grenade**: mode IS pushable — `$GREN` to the gun (which programs the grenade), GrenadeMode =
+  FlashBang/Gas/Confusion/Molotov. No separate grenade BLE/QR path.
+- Bonus enums: GunWeaponType (FullAutoFire/Bow/ChargeAndAutoRelease/ChargeAndRelease),
+  gunLaserRegion (USA/International = IR legal power).
+
+---
+
+# Followups — added 2026-08-24
+
+## F. Smart Grenade — never touched; build a better config path ⚠️ HIGH INTEREST
+The grenade enables objective modes (the user runs CTF, KotH, Assault with it) but its on-gun
+config is **hard and buggy**. We have NOT connected to or configured a grenade yet. What the APK
+tells us (see `callsign-extract/apk-harvest.md`):
+- Grenade mode/type is set by **`$GREN` sent to the GUN**, which programs the grenade — NOT a
+  separate BLE device, NOT a QR code. Fields: iRType,crit,modifier,indoorMode,operationMode,
+  channel,GrenadeType,MaxCount. GrenadeMode = FlashBang/Gas/Confusion/Molotov.
+- **The win:** a clean scriptable `$GREN` frame (via MCP / the Companion) replaces the buggy menu.
+- **Hardware tests needed:** (1) does `$GREN`→gun take effect immediately, or only while a grenade
+  is "loaded"/tapped to the gun's IR? (2) map each field's effect (channel, MaxCount, the mode
+  selector). (3) BLE-scan with a grenade powered on — is it visible at all? (protocol §7 still
+  lists this as unknown). (4) capture the official app configuring a grenade (PacketLogger) to see
+  the exact `$GREN` it sends.
+- **No public grenade manual found** — only the product page + a YouTube "Grenade Basics" demo
+  (arm by pulling clip + button, underhand throw, ~3 s after impact, 30 ft radius). If a manual
+  surfaces, add it to `docs/reference/`.
+- **Goal:** a proper grenade-config UI in the webapp + an MCP `configure_grenade` helper, so
+  objective modes (CTF/KotH/Assault) become reliable.
+
+## G. Accessory hardware — BRX Companion spec written
+`hardware/brx-companion-spec.md` — the per-tagger ESP32-S3 module (offline game engine + powerups
++ custom audio + Wi-Fi sync). Next: prototype Tier-0 "Brain" and validate the powerup command
+sequences ($LIFE/$WEAP re-push/$AMMO) on hardware.

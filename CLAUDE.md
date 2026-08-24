@@ -6,7 +6,7 @@ Open-source platform orchestrating Battle Company BRX laser taggers. Specs:
 
 **Before any hardware/protocol work, read:** `docs/experiment-log.md` (what's been tried,
 what happened — append your own results after each session), `docs/reference/brx-manual-notes.md`
-(distilled official manual: game-start flow, headset lockout, stock weapon/character stats),
+(distilled official manual). APK intelligence: `protocol/callsign-extract/` — `protocol-classes.md` (command/field maps, WEAP token positions), `apk-harvest.md` (game modes, QR stations, weapon spawns, grenade). Accessory: `hardware/brx-companion-spec.md`,
 `docs/HANDOFF.md` (current cross-machine state), `docs/field-architecture.md`
 (how a real out-of-range match works — read before designing game logic),
 `docs/apk-investigation.md` (highest-leverage desk work, no hardware needed), and

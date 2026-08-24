@@ -1,0 +1,111 @@
+# Callsign APK — full intelligence harvest (gameplay domains)
+
+Everything useful mined from the Callsign IL2CPP app beyond the wire protocol (which is in
+`protocol-classes.md`). Covers game modes, win conditions, the QR pickup/station system, the
+grenade, weapon spawns, enums, monetization, and backend. Source policy per
+`docs/apk-investigation.md`: facts restated, no code/assets copied.
+
+## Game modes (complete list)
+
+Base + premium modes implemented in the app (each a class family
+`…UI.<Mode>Game.*` / `Domain.WinningConditions`):
+
+FreeForAll · TeamDeathMatch · Supremacy (factions) · Survival · Infection · **CaptureTheFlag** ·
+**Domination** · **Assault** · Territory · LastManStanding · BattleRoyale · Swarm ·
+**Generals** · **Commanders** (last three are GOTDLC premium unlocks).
+
+- **"Edge" game** (`EdgeGame*`) = the **local/offline game engine** that runs on the phone when
+  not cloud-connected. This is the exact role our BRX Companion accessory plays.
+- Online variants (`…Online`) route scoring through the AWS backend; Edge/local variants keep it
+  on-device. **Both use the same gun primitives** — confirming a self-hosted engine is viable.
+
+### Win conditions (the rule types)
+
+`ScoreWinningCondition`, `DeathWinningCondition` (elimination), `SlayerWinningCondition` (most
+kills), `CaptureTheFlagWinningCondition`, `SquadLeaderWinningCondition`. A mode = {win condition}
++ {team layout} + {spawn rules} + {pickups}. All host-side — the gun enforces none of it.
+
+## QR-code stations = the "boxes" (answers the JBOX question)
+
+Battle Company implements field objectives — **respawn points, weapon pickups, capture/control
+points, supply drops** — as **printed QR codes**, not physical boxes. The relevant commands:
+
+| Command | Function |
+|---|---|
+| `RespawnByQrCodeCommand` | a QR code acts as a **respawn point** |
+| `PickUpQrCodeWeaponCommand` / `…OnlineWeaponCommand` | a QR code grants a **weapon pickup** |
+| `ControlPointGenerator`, `CapturePointer` | **domination/control points** |
+| `DetectCaptureTheFlagCommand`, `BlinkFlagCarriyngCommand` | **CTF** flag carry/capture |
+| `SpawnSupplyDropsCommand` | **supply drops** |
+| `DecodeQrCodeCommand`, `FireQrCodeDetected`, `GAMEQrCode` | the gun/app reads a QR to trigger it |
+
+**This is LaserTagMods' JBOX concept done with paper.** JBOX is a physical utility box
+(respawn / capture point / armor / weapon pickup); Callsign gets the same functions from QR
+codes the player scans or fires at. Implication for us: our platform can support **both** — cheap
+printed QR codes *and* the physical `objective-station` IR node from the architecture (a real box
+with an IR receiver + LED ring). QR = zero cost; station = better feel + works without a camera.
+
+## Weapon spawns (answers the weapon-spawn question)
+
+Weapons spawn as QR pickups. The **`WeaponPickUpType`** enum lists what can spawn:
+OtherPlayers, AutoRifle, BurstRifle, SniperRifle, Shotgun, SmgSaw, Sticky, RailGun,
+RocketLauncher, EnergyRifle, WarHammer, StrikeRifleUnscoped, StrikeRifleScoped. Supporting
+fields: `WeaponPickUpSound`, `WeaponPickUpTime`, `WeaponPickUpTypeByIndex`, and an
+**auto-pickup mode** (`ControlAutoPickupWeaponModeSelectionCommand`). Mechanically a pickup just
+pushes a new `$WEAP` into a slot on the player's gun (via the phone/Companion) — which we can do
+today.
+
+## The grenade (answers "can we push the mode onto the grenade?")
+
+**Yes — grenade mode/type is set by the `$GREN` command sent to the GUN**, which programs the
+grenade (the grenade is not its own BLE device; no grenade-BLE or grenade-QR class exists — only
+`SetupGrenade` + the `$GREN` request in the gun's namespace).
+
+- **`$GREN` fields:** `iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType,
+  MaxCount` (see protocol-classes.md).
+- **`GrenadeMode` enum:** **FlashBang, Gas, Confusion, Molotov** — the effect the grenade applies.
+- `channel` / `MaxCount` suggest multiple grenades and per-channel addressing.
+
+So a clean, scriptable `$GREN` frame **is** the "better way to configure it" — replacing the
+buggy on-gun menu. **One hardware test needed:** confirm whether `$GREN`→gun programs the grenade
+immediately, or only while the grenade is "loaded"/tapped to the gun's IR (likely the latter,
+given the grenade has an IR receiver). Once confirmed, the Companion/MCP can offer a proper
+grenade-config UI. (See the new followup in `experiment-log.md`.)
+
+## Weapon fire modes (bonus — GunWeaponType enum)
+
+`FullAutoFire, Bow, ChargeAndAutoRelease, ChargeAndRelease` — the firing behaviours a `$WEAP`
+can use (Bow = draw/release, Charge = the Charge Rifle pattern we saw in the `$WEAP` diff).
+
+## Region / legal power (GunLaserRegion enum)
+
+`gunLaserRegion` (GSET token 3) = **USA / International** — IR emitter power profiles for legal
+limits per region. Leave at the tagger's factory value unless you know the local rules.
+
+## Monetization (context only — not needed for a self-hosted build)
+
+`MagicLootBox` (loot boxes), `BattleCoins` (in-app currency), subscriptions, `UpsellPackDto`,
+`Gift`/`ArenaGift`. The DLC/GOTDLC premium modes (Generals/Commanders/Swarm) unlock through this.
+A self-hosted platform simply reimplements any wanted mode host-side and skips the economy.
+
+## Backend (context)
+
+REST: `ltp-prod-v4.us-east-1.elasticbeanstalk.com`. Multiplayer: **AWS SQS/SNS** (the ~1-min
+lobby delay is a cloud round-trip). Networking DTOs live under
+`LaserTag.Network.ArenaClient.Edge.Domain.CallSign.Games.*`. Replace the whole layer with the
+local MQTT bus.
+
+## What we have NOT harvested (and why)
+
+- **Actual stock-weapon `$WEAP` stat values** — not in the JSON assets; server-fetched or in
+  metadata field-default data (encrypted). We have the manual's stats + two live `$WEAP` frames
+  as anchors, which is enough to build from.
+- **Method bodies / exact serialization order** — compiled to native `libil2cpp.so`; needs Ghidra.
+  Field *declaration* order (what we used) matches serialization for these DTOs and is
+  cross-validated against live frames, so this is low-priority.
+- **Full 168-command list** — most are app-internal UI/networking commands, not tagger protocol.
+  The tagger-relevant subset is fully captured in `protocol-classes.md`.
+
+This is a complete sweep of the **gameplay-relevant** intelligence. The remaining unharvested
+material is either server-side, native-code-only, or app-plumbing irrelevant to building the
+platform.

@@ -59,7 +59,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$TID,` | Set team ID | |
 | `$SPAWN`, `$RP`, `$RV`, `$UR`, `$IT`, `$KK`, `$TA`, `$PT`, `$HS`, `$PH` | Respawn/revive/status family | Partially mapped — see §7 Unknowns |
 | **New commands from APK teardown (2026-08-24):** | | field maps in `callsign-extract/protocol-classes.md` |
-| `$GREN,...` | **Smart Grenade config** | iRType,crit,modifier,indoorMode,operationMode,channel,GrenadeType,MaxCount |
+| `$GREN,...` | **Smart Grenade config** (sent to the GUN, which programs the grenade) | iRType,crit,modifier,indoorMode,operationMode,channel,GrenadeType,MaxCount. GrenadeMode enum = FlashBang/Gas/Confusion/Molotov. See `callsign-extract/apk-harvest.md` |
 | `$HFIRE,...` | Heavy/burst IR fire | Range,CountIRPulses,RateOfFire,FlashLED |
 | `$IRTX,...` | Raw IR transmit | iRPower,soundOnHit,rangeOutdoor,rangeIndoor |
 | `$LIFE,...` | Grant health | addedHP,addedArmor,addedShields |
