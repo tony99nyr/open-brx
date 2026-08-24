@@ -34,9 +34,10 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 
 | # | Item | Status | Method |
 |---|---|---|---|
-| P1 | `$WEAP` ~6 always-empty token positions | 🟡 | one-field Callsign capture (change one, diff) — trivial now we have field names (`protocol-classes.md`) |
+| P1 | `$WEAP` ~6 secondary-fire token positions (7–13) | 🟡 | **Confirmed not static** (server-fetched, `apk-harvest.md`). Field names/order known; pin wire positions via a one-field Callsign BLE capture, or the server API response. |
 | P2 | Per-player identity (not just team) | 🟡 | `$HIR` gives shooter **team**; FFA scoring needs player id. `QUERY` shows a device `PlayerID` we've never set; JEDGE numbers players from **1901** (`lasertagmods.md`) — find the set command |
-| P3 | `$PSET` voice-pack token→line mapping | ⬜ | change one audio token, hear which line changes |
+| P3 | `$PSET` voice-pack token→sound mapping | ⬜ | **Server-side** — it's the Callsign `voice-profiles` endpoint (`apk-harvest.md`). Get it from the API capture, or change one voice profile and diff the `$PSET`. |
+| P8 | **Callsign server API capture** (gun-off) | 🟡 NEW | MITM the app's HTTPS (`/api/v1/callsign/settings`, `voice-profiles`, `arenas/games`) → yields weapon stats, voice-pack presets, game defs directly. Needs proxy + cert on the phone, not the gun. Distinct from BLE snooping. Answers P1/P3 + weapon stats at once. |
 | P4 | `$AS` / `$UP` semantics | ⬜ | `$AS` token 8 = applicator (99=all, 0=local) per LaserTagMods; `$UP,*` bare gets no reply |
 | P5 | `$HIR` `45,0,0` / `70,0,0` variants; per-weapon IR protocol | ⬜ | fire each slot deliberately, watch token 1; numbers equal starting HP/armor |
 | P6 | Results read-back after a game | ❎ | Gun keeps **no score** (§7n). There is nothing to read; the host/phone is the only score-keeper. **Do not probe `$SP`** (half the panic sequence). |
@@ -89,7 +90,13 @@ Surfaced by the 3-lens review, kept as Low (cleanup, not correctness):
 
 ## Snooping — do we need more?
 
-Mostly no. The APK teardown replaced most capture work (it gave the field maps directly). The few
-captures still worth doing are **targeted, one-setting**: P1 ($WEAP empty tokens), P3 (PSET voice
-pack), G3 (grenade). A full end-of-game capture would settle P4/P7. No broad "watch the app" sweep
-is needed anymore.
+The APK teardown gave us the command **structure** (field names, order, enums) but the deeper dive
+(UnityPy, 2026-08-24) proved the game **data** (weapon stats, voice-profiles, secondary-fire values)
+is **server-fetched, not bundled**. So two capture routes remain, both gun-off-friendly:
+- **P8 — Callsign HTTPS API capture** (MITM proxy) — the highest-yield: `settings`/`voice-profiles`/
+  `arenas/games` endpoints hand over weapon/voice/game data in one shot. Answers P1, P3, weapon stats.
+- **Targeted one-setting BLE captures** — P1 ($WEAP secondary), P3 (voice profile), G3 (grenade);
+  a full end-of-game capture settles P4/P7. These need the gun.
+
+No broad "watch the app over BLE" sweep is needed; the remaining data is either in the server API or
+in a couple of one-setting diffs.

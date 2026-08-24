@@ -505,3 +505,17 @@ LaserTagMods' nRF24 base link). Wrote three system specs: `mission-control-spec.
 console + deathmatch gap analysis), `phone-app-spec.md` (Callsign replacement), and refreshed
 `hardware/brx-companion-spec.md`. Consolidated all open work into `docs/FOLLOWUPS.md`; added
 `docs/README.md` index. No new hardware run this session — desk research + docs.
+
+### 32. Deeper APK teardown (UnityPy) → game data is server-side, not bundled ✅
+Gun-off static analysis. Installed UnityPy, parsed the base APK's 27,391 Unity objects. Result:
+the APK is UI + IL2CPP engine + the sound *inventory* (Sounds.json); it does NOT bundle the
+weapon/character stat tables or the `$PSET` voice-pack presets. Scanned all 8,003 MonoBehaviours
+for sound-id clusters and weapon names → 0 config objects (data isn't in local ScriptableObjects;
+IL2CPP strips typetrees, but a raw-byte sound-id scan would have found clusters if present — none).
+Metadata/native URL scan confirms the data is **fetched from the Callsign server**:
+`ltp-prod-v4.us-east-1.elasticbeanstalk.com` `/api/v1/callsign/{settings,voice-profiles,arenas/games}`
++ S3 `ltp-prd-v4`. `voice-profiles` = the `$PSET` voice-pack (P3). So the three deep-dive goals
+(secondary-fire tokens P1, PSET voice map P3, stock weapon stats) are **data, not structure** —
+unreachable by static teardown. New route added: **P8 = MITM the Callsign HTTPS API** (gun-off) to
+grab weapon/voice/game data directly. Structure (field names/order/enums) was already fully
+recovered; this closes the static-teardown thread.

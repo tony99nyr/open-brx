@@ -95,6 +95,32 @@ lobby delay is a cloud round-trip). Networking DTOs live under
 `LaserTag.Network.ArenaClient.Edge.Domain.CallSign.Games.*`. Replace the whole layer with the
 local MQTT bus.
 
+## Where the game DATA lives — server, not the APK (verified 2026-08-24, UnityPy)
+
+Deeper teardown (UnityPy over the 27,391 Unity objects + native/metadata scan) confirms the APK
+holds the **structure** but not the **content**:
+
+- The base APK is UI (RectTransform/Canvas/GameObject) + IL2CPP engine code + the sound *inventory*
+  (`Sounds.json`, id→duration). Scanning all 8,003 MonoBehaviours found **zero** sound-id clusters
+  and no weapon/character stat objects — the ScriptableObject *data* isn't bundled.
+- It's **fetched at runtime from the Callsign server** (`ltp-prod-v4.us-east-1.elasticbeanstalk.com`,
+  `/api/v1/callsign/...`) and an S3 bucket (`s3.amazonaws.com/ltp-prd-v4/...`). Relevant endpoints:
+  `/api/v1/callsign/settings/`, **`/api/v1/callsign/voice-profiles/selected/`** (= the `$PSET`
+  voice-pack presets — `$PSET`/`WeaponSettings` carries a `VoiceProfile` field), and
+  `/api/v1/callsign/arenas/games/` (game definitions). Auth via AWS Cognito; lobby via SNS/SQS.
+
+**Consequence for the three deep-dive goals:** the remaining unknowns are **data, not structure**,
+so static teardown can't reach them. To recover:
+- **Stock weapon stats** → capture the server API response, or capture more live `$WEAP` frames.
+- **`$PSET` voice-pack → sound map** → the server's `voice-profiles` endpoint, or a BLE capture
+  changing one voice profile.
+- **`$WEAP` tok 7–13 (secondary fire) positions** → a BLE capture of a weapon with secondary fire
+  configured (the field names/order are already known; only the wire positions are unpinned).
+
+A new **API-capture route** (gun-off): MITM the Callsign HTTPS traffic (proxy + cert) while it
+loads settings/voice-profiles/games — yields the weapon/voice/game data directly. Distinct from BLE
+snooping.
+
 ## What we have NOT harvested (and why)
 
 - **Actual stock-weapon `$WEAP` stat values** — not in the JSON assets; server-fetched or in
