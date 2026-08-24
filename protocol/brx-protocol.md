@@ -296,9 +296,13 @@ Whether later prompts do is unknown — we stopped rather than commit a pairing 
 
 - Teensy's **HalfKay bootloader is write-only by design** — PJRC deliberately prevents
   reading firmware back off the chip. No flash dump is possible over this port.
-- **There is no SD card** on the BRX (manual §7h) — SD sound updates are a commercial-line
-  feature (Battle Rifle Pro/XL/BRM). An earlier suggestion in this project to "pull the SD
-  card" was wrong.
+- **Firmware:** no flash dump over HalfKay (above). Note this port/bootloader is for *firmware*;
+  it is NOT how sounds are changed.
+- **Sound storage (corrected 2026-08-24):** there IS on-board sound storage, and the community
+  swaps sound files over the **micro-USB data port** — SD stays hot-glued to the board; **hold
+  SELECT while powering on** (USB connected) to expose it as mass storage (won't enumerate on a
+  normal boot). The earlier "no SD card" claim conflated firmware backup with sound storage. See
+  `callsign-extract/protocol-classes.md` → "New sounds ON THE TAGGER" and `community-notes.md`.
 - Therefore **rollback depends entirely on Battle Company supplying the original image.**
   Do not reflash without it, especially on `devhost` units that may not exist in their
   retail archive.

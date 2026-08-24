@@ -206,14 +206,21 @@ something new. Callsign's own modes (BattleRoyale, Supremacy…) are *app* class
 modes. The only hard primitives that bound gameplay: 6 weapon slots, ≤14 IR recognitions, and
 the fixed damage/power behaviour enums above.
 
-**New sounds ON THE TAGGER: NO.** The 2166-id bank is baked into firmware; there is **no SD
-card** (manual §7h) and **no upload/write/flash command anywhere** in the vocabulary — `$PLAY`/
-`$PLAYX`/`$VOL`/`$ASSIST` are playback-only, `AddSoundToQueue` just queues an existing id, and
-"DLC" = BattleCoins in-app purchases (unlock existing content), not audio upload. To change the
-tagger's own audio you'd need Battle Company's USB updater (off-limits — never modify firmware).
-**New sounds OFF the tagger: YES, unlimited** — that's the architecture's answer: a DFPlayer
-Mini + speaker on the ESP32 bridge (~$5) for custom audio at each player, plus effect/announcer
-nodes for arena sound. Design custom audio there; use the built-in bank for on-gun feedback.
+**New sounds ON THE TAGGER: YES — via the data port (corrected 2026-08-24).** Earlier we wrongly
+concluded "no" from the BLE vocabulary (no `$`-command uploads audio — `$PLAY`/`$PLAYX`/`$VOL`/
+`$ASSIST` are playback-only, and that part is still true). But the community confirms the tagger's
+**sound files are swappable over the micro-USB data port**: the SD card stays in place (hot-glued to
+the mainboard, not removed), and you enter a **mass-storage / file-transfer mode by holding SELECT
+while powering the gun on with the USB cable connected** to a computer (it does NOT enumerate as a
+drive on a normal boot). People install custom packs (e.g. a Star Wars sound pack) this way. See
+`docs/reference/community-notes.md`. This reconciles the earlier "no SD card" note, which was about
+*firmware* backup via HalfKay — the *sound storage* is separate and IS accessible.
+- Caveat vs prime directive: this changes stored **content**, not firmware; Battle Company's own
+  updater does the same, and it's reversible (swap files back / factory-restore). Acceptable, but
+  keep originals.
+**Also OFF the tagger: YES, unlimited** — a DFPlayer Mini + speaker on the ESP32 bridge (~$5) for
+dynamic/unlimited custom audio, plus effect/announcer nodes for arena sound. On-tagger swap is best
+for static per-gun packs; the bridge for anything dynamic or unlimited.
 
 ## Backend (for context — not tagger protocol)
 

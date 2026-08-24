@@ -95,6 +95,30 @@ headset link dropped (which blocks firing).
   game responses enabled. Grenade firmware is field-updatable via a `.bin` (community asks for the
   flashing procedure — not well documented, matches our "grenade config is hard/buggy" note).
 
+## Custom sounds ON the tagger — via the data port (community-confirmed)
+
+**You CAN swap the tagger's sound files** — corrects our earlier "no on-gun sound change" note.
+- Files are sent over the **micro-USB data port** (the "Programing Port"). The **SD card is NOT
+  removed** — it's hot-glued to the mainboard and stays put.
+- To expose the storage: **plug the gun into a computer, hold SELECT while turning the gun on.**
+  It does **not** show up as a drive on a normal power-on (Windows won't see it) — the
+  Select-hold-at-boot enters the mass-storage / file-transfer mode.
+- People use this to install custom packs (e.g. a **Star Wars sound pack**).
+- Source: FB group thread (David Knox: "Files are sent via the data port. SD card does not get
+  removed."; Don Richardson: "hold select while turning on the gun" while plugged in).
+- **Keep the originals** before swapping; Battle Company's USB updater is the factory restore.
+- This is changing stored *content*, not firmware — within the "never modify firmware" directive,
+  and reversible. (Reconciles the earlier "no SD card" finding, which was about *firmware* backup
+  via the HalfKay bootloader, a separate thing.)
+
+## Headset ARGB LEDs = WS2812B (5050 SMD)
+
+The headset's addressable RGB LEDs are **WS2812B 5050 SMD** — standard single-wire addressable
+(NeoPixel-compatible: one data line, chainable, per-LED colour). This answers the group's open ask
+("anyone identify the swaptx headset pins used to control the RGB LEDs?") — WS2812B needs just one
+data GPIO + 5 V + GND, driven with any NeoPixel library. Relevant for any headset LED mod or our
+own effect nodes.
+
 ## Cosmetics — painting & skins
 
 Painting the BRX shell is discussed only lightly in the group; the dominant cosmetic route is

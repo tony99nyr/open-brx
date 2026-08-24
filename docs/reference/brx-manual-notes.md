@@ -11,8 +11,10 @@ replace it with the link (it's Battle Company's copyright).
   (directional pad), Reload handle (screws in, right side).
 - **Ports: charging port AND a separate micro-USB "Programing Port"** — the latter is
   the official firmware/sound update path (and our factory-restore safety net).
-- **No user-accessible SD card.** (SD-card sound updates are a commercial-line feature —
-  Battle Rifle Pro/XL/BRM — not BRX.)
+- **SD card / sound storage (corrected):** the manual frames SD sound-updates as a commercial-line
+  feature, but the BRX community confirms the BRX's own **sound files ARE swappable over the data
+  port** (SD stays hot-glued to the board; hold SELECT while powering on, plugged into a computer,
+  to expose the storage). See `community-notes.md` → "Custom sounds ON the tagger."
 - LED indicator shows ammo & health; hit sensor on the rifle itself plus the wireless
   head sensor (headset).
 - Battery: ~8 h play from 2 h charge (charger LED red→green). Optional 6×AA. Never use
