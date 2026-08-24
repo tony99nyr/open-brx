@@ -7,6 +7,9 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 - **[experiment-log.md](experiment-log.md)** — the shared lab notebook. **Append after every session.**
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — consolidated, prioritised open work (build / protocol / grenade / range).
 
+## Vision & strategy
+- **[VISION.md](VISION.md)** — can we supersede Edge? BRX capability ceiling, BRP/Edge gaps, open-source + business analysis, naming guidance.
+
 ## Plans & architecture
 - **[brx-architecture-v0.2.md](brx-architecture-v0.2.md)** — the master plan (server, nodes, MQTT, roadmap).
 - **[field-architecture.md](field-architecture.md)** — why field play needs a device per player (the range constraint).
