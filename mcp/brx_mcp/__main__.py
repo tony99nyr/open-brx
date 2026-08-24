@@ -12,7 +12,8 @@
   python -m brx_mcp fieldstart <addr...> [volume] [weapon]   # start, then disconnect
   python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
   python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
-  python -m brx_mcp game-sim [mode]               # narrated M0 game demo (tdm|ffa|infection|lms; no BLE)
+  python -m brx_mcp game-sim [mode]               # narrated M0 demo, any mode, no BLE
+      modes: tdm ffa infection lms cs domination koth ctf extraction
   python -m brx_mcp play <mode> <addr...> [k=v]   # run a configured game LIVE (k=v: volume, outdoor, hp, ...)
       modes: tdm ffa infection lms cs domination koth ctf extraction
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
@@ -887,45 +888,85 @@ def _build_config(mode: str, kvs: list[str]):
     return cfg
 
 
+# -- game-sim event factories (parsed-frame shapes the engines consume) ------ #
+def _hir(team):
+    return {"command": "HIR", "tokens": ["HIR", "0", "0", "0", str(team), "9", "0", "3"]}
+
+
+def _death():
+    return {"command": "HP", "tokens": ["HP", "0", "0", "0"]}
+
+
+def _sim_plan(mode: str):
+    """Return (players, config-overrides, steps) for a mode. A step is
+    (pid_or_None, event_or_None, dt); pid=None → just advance the clock/tick."""
+    def ev(cmd, *toks):
+        return {"command": cmd, "tokens": [cmd, *[str(t) for t in toks]]}
+
+    # dt = seconds to advance BEFORE this step's event+tick.
+    if mode == "infection":
+        return ({"h1": 1, "h2": 1, "z": 2}, ["respawn_s=5"],
+                [("h1", _hir(2), 1), ("h1", _death(), 1),      # z infects h1
+                 ("h2", _hir(2), 1), ("h2", _death(), 1)])     # z infects h2 → last human
+    if mode in ("tdm", "ffa", "lms"):
+        ov = ["respawn_s=5", "frag_limit=2"] if mode != "lms" else ["respawn_s=5", "respawns=1"]
+        return ({"red": 1, "blue": 2}, ov,
+                [("red", _hir(2), 1), ("red", _death(), 1),    # @1-2 blue tags red (down)
+                 ("blue", _hir(1), 1), ("blue", _death(), 1),  # @3-4 red tags blue (down)
+                 (None, None, 6),                              # @10 both respawn
+                 ("red", _hir(2), 1), ("red", _death(), 1)])   # @11-12 blue tags red → limit
+    if mode in ("cs", "bomb"):
+        return ({"red": 1, "blue": 2}, ["detonation_s=8"],
+                [("A", ev("PLANT", "A"), 1),                   # @1 attackers plant site A
+                 (None, None, 5),                              # @6 countdown ticking…
+                 (None, None, 5)])                             # @11 detonates → attackers win
+    if mode in ("domination", "koth"):
+        return ({"red": 1, "blue": 2}, ["control_points=2", "score_target=8", "game_time_s=0"],
+                [("A", ev("CAPTURE", "A", 1), 1),              # @1 red takes A
+                 ("B", ev("CAPTURE", "B", 1), 1),              # @2 red takes B → 2 pt/s
+                 (None, None, 10)])                            # @12 holds both → hits target
+    if mode == "ctf":
+        return ({"red": 1, "blue": 2}, ["cap_target=2"],
+                [("st", ev("GRAB", "flag2", 1), 1), ("st", ev("CAP", 1), 1),
+                 ("st", ev("GRAB", "flag2", 1), 1), ("st", ev("CAP", 1), 1)])  # 2 caps → win
+    if mode == "extraction":
+        return ({"red": 1, "blue": 2}, ["channel_s=10", "win_target=15"],
+                [("red", ev("LOOT", 15), 1),                   # @1 red grabs loot
+                 ("red", ev("ZONE", "Alpha"), 1),              # @2 summons extraction (LOUD)
+                 (None, None, 12)])                            # @14 holds 10s → extracts → win
+    raise ValueError(f"unknown sim mode {mode!r}")
+
+
 def _game_sim(mode: str) -> None:
-    """Narrated M0 game against a fake sender + scripted events — no BLE."""
+    """Narrated M0 game against a fake sender + scripted events — no BLE.
+    Covers every mode: tdm ffa infection lms cs domination koth ctf extraction."""
     import asyncio
-    from .gameconfig import GameConfig
     from .modes import GameDriver
 
-    sent = []
-
     async def sender(pid, frame):
-        sent.append((pid, frame))
+        pass
 
-    def hir(team):
-        return {"command": "HIR", "tokens": ["HIR", "0", "0", "0", str(team), "9", "0", "3"]}
-
-    def death():
-        return {"command": "HP", "tokens": ["HP", "0", "0", "0"]}
-
-    cfg = _build_config(mode, ["game_time_s=0", "respawn_s=5", "frag_limit=2"])
-    players = {"red": 1, "blue": 2} if mode != "infection" else {"h1": 1, "h2": 1, "z": 2}
+    players, overrides, steps = _sim_plan(mode)
+    cfg = _build_config(mode, overrides)
+    # engine-fed players only (station node ids like "A"/"st" aren't guns)
     drv = GameDriver(cfg, players, sender)
 
     async def run():
-        print(f"\n=== game-sim: {mode} ===")
+        print(f"\n=== game-sim: {mode} ===  players={players}  ({cfg.summary()})")
         await drv.setup()
-        script = ([("h1", hir(2)), ("h1", death()), ("h2", hir(2)), ("h2", death())]
-                  if mode == "infection" else
-                  [("red", hir(2)), ("red", death()),      # blue kills red
-                   ("blue", hir(1)), ("blue", death()),    # red kills blue
-                   ("red", hir(2)), ("red", death())])     # blue kills red again → frag limit
-        t = 1.0
-        for pid, ev in script:
-            await drv.execute(drv.feed(pid, ev, now=t))
+        t = 0.0
+        for pid, event, dt in steps:
+            t += dt                                   # advance the clock, THEN act+tick
+            if event is not None:
+                await drv.execute(drv.feed(pid, event, now=t))
             await drv.execute(drv.tick(now=t))
-            t += 6.0
             if drv.over:
                 break
-        print(f"\nsnapshot: {drv.snapshot()}")
+        snap = drv.snapshot()
+        print(f"\nsnapshot: {snap}")
+        return snap
 
-    asyncio.run(run())
+    return asyncio.run(run())
 
 
 async def _play(mode: str, addresses: list[str], kvs: list[str]) -> None:

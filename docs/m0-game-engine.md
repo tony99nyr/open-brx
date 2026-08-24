@@ -73,7 +73,8 @@ gun's BLE error can't abort the game. The `sender` is injected → the driver is
 ## Run it
 
 ```
-python -m brx_mcp game-sim [tdm|ffa|infection|lms]        # narrated demo, NO hardware
+python -m brx_mcp game-sim <mode>     # narrated demo of ANY mode to game-over, NO hardware
+   # tdm ffa infection lms cs domination koth ctf extraction
 python -m brx_mcp play <mode> <addr...> [k=v ...]          # LIVE on taggers
    e.g. play tdm FE:AD:.. D8:AE:.. game_time_s=180 respawn_s=10 volume=85 outdoor=1
         play ffa <a> <b> <c> primary=charge frag_limit=15
@@ -82,7 +83,7 @@ python -m brx_mcp play <mode> <addr...> [k=v ...]          # LIVE on taggers
 ```
 
 ## Status
-Built + polish-looped; **110 unit tests** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
+Built + polish-looped; **112 unit tests** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
 diagnostics). **Not yet run on hardware** — that's the next step (needs 1–2 taggers; the live path is
 `run_live`/`play`). Native multikill/streak sounds come from the firmware (D4); custom announcers layer
 on via `PlaySound`/`Callout`. What each mode needs + its limits: `mode-limits.md`; the sequencing:
