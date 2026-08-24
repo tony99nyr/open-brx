@@ -105,6 +105,13 @@ Reach for options in this order:
    only, never a live per-hit firehose (LaserTagMods note it's slow). The last resort for big
    outdoor fields with nothing else.
 
+**Native vs. added radios** (matters for what's free): the **stock gun** has BLE, IR, and **nRF**
+(`NRFhost`/`NRFslave`) — nRF is the only field-range radio you might leverage *without adding
+hardware* (option 2, unprobed). **WiFi, ESPNOW, and LoRa all come from the ESP32 rider** — ESPNOW
+and WiFi are native to the ESP32 chip (so our Companion gets them free, exactly as Jay Burden's
+JEDGE / "BRX Host transceiver" add-on does — `../docs/reference/lasertagmods.md`); LoRa needs a
+bolt-on RYLR896 module. ESPNOW is not a stock-tagger feature.
+
 Build the node↔server link as a **pluggable transport interface** and ship **WiFi/MQTT first**
 (architecture doc §"prime directives"); LoRa/nRF/ESPNOW are optional backends for the
 big-field case. So: **LoRa is optional, not required.**
