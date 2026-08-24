@@ -584,3 +584,39 @@ for the shields/overshield/medic/Syphon mode family (followups G-2/P11, `docs/ti
 - **B10 sync fix validated:** configuring both guns fully, THEN spawning both back-to-back, starts them
   ~together (vs the ~10 s sequential gap) — adopt this config-all-then-spawn barrier in the engine.
 - **Volume:** on-gun 1–5 ≈ `$VOL` **60/70/80/90/100** (Tony's field estimate); defaults ~75 in / ~85 out.
+
+### 34. G-1 grenade over BLE — first contact, INCONCLUSIVE ⚠️
+First-ever grenade hardware run. Method: put sensor gun **Tactix-3D4F** in a live game and watch its
+BLE stream (`grenade_watch.py`) across three phases while Tony operated the grenade near the headset:
+(1) program-beacon (hold top button ~10 s), (2) shoot the grenade with the gun, (3) press the grenade
+button near the gun.
+- **Result: no grenade-specific BLE events.** The gun emitted only `$BUT` (Tony's own trigger/button
+  presses — `$BUT,0`=trigger, `$BUT,2`=SELECT) and `$ALCD` (ammo HUD). **No `$HIR`, no `$HP`, no
+  `$GREN` echo, nothing new** in any phase — including when the grenade button was pressed (a detonate
+  should hit the headset → `$HIR`/`$HP` if paired/in-range; none seen).
+- **Two explanations, not yet separable:** (a) the gun genuinely doesn't surface grenade IR over BLE
+  (a real G6 "no"), or (b) **the grenade never interacted** — likely **unpaired** to this gun (manual:
+  accessories must be IR-paired: hold RIGHT while powering the gun → "install accessory" → shoot the
+  grenade), and the program-beacon needs the **headset** to catch it (aim/range). Shooting *outward* at
+  the grenade wouldn't hit our own headset.
+- USB-C left unplugged (that's G7, separate). Scripts: `scratchpad/grenade_watch.py`.
+
+**FOLLOW-UPS (same session — `grenade_isolate.py`; two corrections from Tony):**
+- **Correction 1:** you do **NOT** "install accessory" for the grenade in its objective modes — that
+  pairing is only for a *thrown* grenade tied to your headset. As Respawn/KotH/Checkpoint/Assault it's a
+  **station** any gun interacts with by IR, no pairing. (Fix `reference/grenade.md` accordingly.)
+- **Correction 2:** the grenade announces its mode **through the tagger speaker only when the gun is in
+  SETUP mode**, not mid-game — so the earlier live-game program-beacon phase was the wrong state.
+- **✅ Gun→grenade IR CONFIRMED:** shooting the grenade (blue/team-1 gun) made it **flash WHITE**. So the
+  grenade is alive and receives gun IR. **But white = neutral/unclaimed** — a blue gun should have
+  claimed it **blue** if capturing; the white flash reads as a **hit-acknowledge, not a capture.**
+- **❓ Grenade→gun: still no BLE frames.** Hands-off isolation watch (button/ammo noise filtered): grenade
+  beaconing at the headset produced **0** non-noise frames; shooting it produced only trigger noise, no
+  return hit. Two unresolved explanations: (a) it wasn't capturing → not emitting, or (b) it emits and
+  our host **`$SIR` table swallows it silently** (gun only emits `$HIR`/`$HP` on health change).
+- **Assessment:** G-1/G6 need a **dedicated methodical session**, not more ad-hoc probing. Concrete plan
+  for next time: (i) get a **known capture** first — figure out why blue-gun→white-not-blue (weapon IR
+  team encoding? mode? capture condition), watching the grenade LED as ground truth; (ii) once it
+  captures, re-watch BLE for an emitted beacon; (iii) **behavioral test** — set Respawn mode, beacon the
+  gun to make it a respawn-client, and check if its self-respawn is disabled (proves grenade→gun IR
+  reprograms the gun *without* needing a BLE frame). Scripts: `grenade_listen.py`, `grenade_isolate.py`.

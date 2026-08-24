@@ -67,7 +67,17 @@ FlashBang/Gas/Confusion/Molotov — which is the blast *effect*; these game *mod
 Cycled alongside the above (attack/hold an objective). Details thin in the videos — behaves like the
 checkpoint/KotH objective family; confirm specifics on hardware (G1).
 
-## Using it as a thrown grenade (pairing)
+> **Hardware-confirmed (exp-log #34):** the grenade **flashes white when shot** — it receives gun IR and
+> reacts (so the gun→grenade path works), but white = **neutral/unclaimed**, so a bare shot reads as a
+> hit-acknowledge, not a team capture (a blue gun did not claim it blue). And the **mode announcement
+> through the tagger speaker only happens when the gun is in SETUP mode, not mid-game.**
+
+## Using it as a thrown grenade (pairing — ONLY for thrown use, NOT objective modes)
+
+**Important (Tony, exp-log #34):** you do **NOT** "install accessory" to use the grenade in its
+**objective modes** (Respawn/KotH/Checkpoint/Assault) — in those it's a **station** any gun interacts
+with by IR, no pairing. The pairing below is **only** for using it as a *thrown* grenade tied to your
+own headset.
 
 Matches the accessory-pairing procedure in `brx-extended-user-guide.md`:
 1. Power the gun holding the **RIGHT** button → "install accessory".
