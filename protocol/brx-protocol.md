@@ -180,12 +180,6 @@ against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
 - Build string `devhost.03` may indicate a developer/host image rather than a retail one —
   worth confirming with Battle Company before reflashing.
 
-## 8. Safe testing notes
-
-- The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
-- Factory restore path: Battle Company's official USB updater.
-- Recommended probe sequence: connect → `$PING,*` → await `$PONG` → read-only listen session (pull trigger, get tagged, watch `$BUT`/`$HIR`/`$HP` traffic) before sending any config.
-
 ## 7c. The micro-USB "Programing Port" — full exploration record (2026-08-23)
 
 The BRX has **two** ports (manual §7h): a charging port and a separate micro-USB
@@ -668,3 +662,9 @@ $HIR,<irProto>,<t2>,<t3>,<shooterTeam>,<t5>,<t6>,<t7>,*
 credit a team. For free-for-all — where every player needs a distinct identity — either
 each player must be given a unique `$TID`, or per-player identity has to come from
 somewhere we have not yet found.
+
+## 8. Safe testing notes
+
+- The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
+- Factory restore path: Battle Company's official USB updater.
+- Recommended probe sequence: connect → `$PING,*` → await `$PONG` → read-only listen session (pull trigger, get tagged, watch `$BUT`/`$HIR`/`$HP` traffic) before sending any config.
