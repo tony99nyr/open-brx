@@ -214,3 +214,31 @@ voluntary-dock prompt, or a staleness timeout); objective ownership that must be
 instant* relies on the objective station's own LoRa link, not muling (fine — few fixed nodes).
 **Optional upgrade:** put LoRa on each player node (full JEDGE model) for instant field-wide
 callouts (~$10/player) — only if live global announcements matter more than the cost.
+
+### Live announcements ("flag taken!") — the broadcast downlink
+
+The one thing muling can't do is an instant field-wide callout to roaming players. But that's the
+*easy* direction, because it's asymmetric from player scoring:
+
+| Direction | Traffic | Transport |
+|---|---|---|
+| **Downlink** — announcements / HUD state ("flag taken", "2 min left", game over) | tiny, infrequent, **one sender → all** | **live broadcast** (LoRa/nRF), contention-free |
+| **Uplink** — player kills/pickups (a firehose from 20 mobile sources) | frequent, many senders | **store-and-forward via respawn mules** |
+
+So design the field network **asymmetric**: players mostly **listen**. A flag/objective station,
+on capture, broadcasts one short frame; every player node receives it and **announces it** (Companion
+speaker / phone audio + HUD flash). Because only bases transmit, there is **no 20-transmitter
+contention**, and the payload is a few bytes — ideal for LoRa/nRF.
+
+Cost ladder (all avoid blanketing the park in WiFi):
+1. **No per-player radio:** the station itself sirens + lights on capture (local players hear it);
+   roaming players get *"while you were out, blue took the flag"* on their next respawn-dock. No
+   information lost, just not instant.
+2. **Receive-only broadcast (recommended):** each node listens for base broadcasts → instant
+   field-wide callouts, cheap, no contention. The gun's built-in **nRF** may do this **for free**
+   (nRF24 is natively one-to-many; unprobed, D1), else a few-dollar LoRa/ESPNOW RX per node.
+3. **Full per-player LoRa (JEDGE model):** live callouts *and* live uplink (~$10/player) — only if
+   you want a fully live mid-field scoreboard.
+
+**Net:** broadcast downlink for announcements/HUD, mule uplink for scoring — live callouts on a
+large field with no WiFi and, at best, a free ride on the gun's own nRF.
