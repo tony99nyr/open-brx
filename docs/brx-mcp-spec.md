@@ -1,5 +1,10 @@
 # BRX MCP Server — Specification (Draft v0.1)
 
+> **Note (2026-08-24):** original draft spec. The `mcp/` package is now implemented and ahead of this
+> doc (actual CLI/tools: scan/identify/listen/probe/startgame/deathmatch/arena/fieldstart/diagnose/
+> fleet…). The §6 repo-layout block (`brx-tools/`) is superseded by the root `README.md` tree
+> (`open-brx` with `mcp/`). Kept for the original tool-design rationale.
+
 **Purpose:** An MCP server that gives Claude Code (and any MCP client) direct control of BRX taggers over Bluetooth — scan, identify, connect, send `$` commands, and observe live tagger traffic. Primary use cases: (1) interactive protocol reverse-engineering, (2) tagger configuration/diagnostics, (3) later, game-master control via the game server API.
 
 **Companion doc:** `brx-protocol.md` (serial command reference). Ship it as an MCP *resource* so the model always has the protocol in context.

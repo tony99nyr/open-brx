@@ -3,9 +3,25 @@
 Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 
 ## Status & process
+- **[FOLLOWUPS.md](FOLLOWUPS.md)** — **the single source of truth for open work** (build / protocol /
+  grenade / range). The experiment-log A–G list and per-doc "open items" are historical snapshots;
+  when they disagree, FOLLOWUPS wins.
 - **[HANDOFF.md](HANDOFF.md)** — current cross-machine state; read before a hardware session.
 - **[experiment-log.md](experiment-log.md)** — the shared lab notebook. **Append after every session.**
-- **[FOLLOWUPS.md](FOLLOWUPS.md)** — consolidated, prioritised open work (build / protocol / grenade / range).
+
+## Canonical sources (avoid restating — link to these)
+To keep facts from drifting, each fact has one home; other docs should link, not re-argue:
+
+| Fact | Canonical home |
+|---|---|
+| Gun-keeps-no-state proof | `../protocol/brx-protocol.md` §7n |
+| `$GSET`/`$WEAP`/`$PSET` + command field maps | `../protocol/callsign-extract/protocol-classes.md` |
+| Sound bank (2166 ids) + USB sound-swap | `sound-bank.md` / `reference/brx-extended-user-guide.md` |
+| Grenade capability + `$GREN` fields | `game-modes.md` (analysis) / `callsign-extract/apk-harvest.md` (fields) |
+| Edge/UBox parity + pricing | `reference/edge-brp.md` |
+| Transport / field-range / reconciliation | `field-architecture.md` |
+| Open work (all items) | `FOLLOWUPS.md` |
+| QUERY/SETUP serial console + PlayerID | `../protocol/brx-protocol.md` §7c |
 
 ## Vision & strategy
 - **[VISION.md](VISION.md)** — can we supersede Edge? BRX capability ceiling, BRP/Edge gaps, open-source + business analysis, naming guidance.
@@ -20,7 +36,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 - **[../hardware/brx-companion-spec.md](../hardware/brx-companion-spec.md)** — the per-tagger ESP32-S3 accessory (offline engine + powerups + audio + WiFi).
 - **[../hardware/print-files.md](../hardware/print-files.md)** — 3D print files: what exists (community-shared) vs the gap our `hardware/` can fill; asks tracked in FOLLOWUPS §Hardware.
 - **[brx-mcp-spec.md](brx-mcp-spec.md)** — the MCP server spec.
-- **[apk-investigation.md](apk-investigation.md)** — APK teardown plan (done; see results below).
+- **[apk-investigation.md](apk-investigation.md)** — APK teardown *plan/method* (done; results in `../protocol/callsign-extract/`).
 - **[mac-capture-plan.md](mac-capture-plan.md)** — Mac-only PacketLogger capture plan (mostly superseded by the APK teardown).
 
 ## Protocol & reference (ground truth)
@@ -35,6 +51,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 - **[reference/edge-brp.md](reference/edge-brp.md)** — competitive study of Battle Company EDGE software + Battle Rifle Pro: features, UBox/Animatronics environmental effects, hardware, pricing, and parity targets for our platform.
 - **[reference/lasertagmods.md](reference/lasertagmods.md)** — JEDGE/JBOX facts: protocol, IR encoding, stations, radios, hardware.
 - **[reference/community-notes.md](reference/community-notes.md)** — repairs, headset re-pair, battery, game-mode ideas, cautions.
+- **[../protocol/captures/](../protocol/captures/)** — decoded BLE/HCI capture transcripts behind the findings (see its README).
 
 ## The system in one paragraph
 The BRX tagger is **dumb** — it fires a weapon we define (`$WEAP`), reads IR hits, tracks health,

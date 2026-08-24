@@ -107,7 +107,9 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ~ (identical in both frames — not discriminable by the diff) |
 | 41 | 75 | 75 | gunRange % | ~ |
 
-The always-empty positions (7–13 and 42–43, ~9 tokens) are secondary-fire / extra-headset fields,
+The always-empty positions (secondary-fire ~7–13 and extra-headset ~42–43) are the **~6 named fields
+left unpinned** by the two samples (44 wire tokens − 38 named members ≈ 6; they occupy a few adjacent
+empty slots) — secondary-fire / extra-headset fields,
 default in both samples — pin them with a one-field Callsign capture (now trivial: change exactly
 that field). Note the **primaryDamageType vs primaryPowerType order (tok 3/4) is unresolved**: the
 field-declaration list orders damageType-before-powerType, the table has the reverse, and both read

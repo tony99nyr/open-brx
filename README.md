@@ -74,7 +74,7 @@ claude mcp add brx -- python -m brx_mcp
 
 - Nothing here can brick a tagger — stock firmware is untouched; power-cycle restores.
 - The MCP refuses malformed frames and requires `confirm=true` for commands outside the
-  known-safe list in `protocol/brx-protocol.md` §3.
+  known-safe list enforced in `mcp/brx_mcp/protocol.py` (documented in `brx-protocol.md` §3).
 - A `panic` tool (`$CLEAR,*` + `$SP,99,*`) returns any tagger to a sane state.
 
 ## Roadmap

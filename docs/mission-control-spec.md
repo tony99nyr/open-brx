@@ -46,7 +46,7 @@ The operator's first screen: **find every tagger in the room, know exactly what 
 confirm it's game-ready** — before assigning anyone.
 
 **Detect (BLE scan, wireless):** `scan` lists Nordic-UART devices, flagged Gen2/3, with name
-(`Tactix2-XXXX`), address, RSSI (proximity), and last-seen. One click adds a device to the roster.
+(`Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign)), address, RSSI (proximity), and last-seen. One click adds a device to the roster.
 Persistent registry (`~/.brx-mcp/known-devices.json`, built) maps address ↔ alias ↔ generation;
 macOS gives UUIDs, Windows/BlueZ MACs — never assume format.
 

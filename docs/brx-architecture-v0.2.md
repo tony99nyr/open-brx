@@ -1,6 +1,11 @@
 # BRX Open Battle System — Architecture & Handoff Spec (v0.2)
 
-**Working name:** BRX Open Battle System (rename freely)
+**Working name:** ~~BRX Open Battle System~~ → **Open BRX** (repo `open-brx`).
+
+> **Note (2026-08-24):** this is the original v0.2 planning/vision doc. Some specifics have moved on —
+> the **repo layout** here (§9 `brx-open-battle/`) is superseded by the actual tree in the root
+> `README.md`; the **sound-bank mapping** (§5/§10) is **done** (`callsign-extract/sound-bank.md`);
+> and **open work** is tracked in `FOLLOWUPS.md`. Kept for the architecture rationale + roadmap.
 **Goal:** An open-source (MIT), community-friendly platform that turns Battle Company BRX taggers into a fully orchestrated laser tag system: forced game modes, live scoring, objectives, items/power-ups, effects, and a "mission control" home base — scaling from 4 taggers to 20+.
 **Companion docs (same handoff package):**
 - `brx-protocol.md` — BRX serial command reference (transport, framing, command tables)

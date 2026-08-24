@@ -1,6 +1,8 @@
-# BRX Open Battle System
+# Open BRX
 
-Open-source platform orchestrating Battle Company BRX laser taggers. Specs:
+Open-source platform orchestrating Battle Company BRX laser taggers.
+**Strategy/vision:** `docs/VISION.md`; what-to-build-by-budget: `docs/build-tiers.md`; mode catalog:
+`docs/game-modes.md`. Specs:
 `docs/brx-architecture-v0.2.md` (master plan), `docs/brx-mcp-spec.md`,
 `protocol/brx-protocol.md` (serial command reference — the ground truth for all tagger I/O).
 

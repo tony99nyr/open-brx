@@ -63,7 +63,7 @@ The entire proposal rests on it.
 **Ten-minute test, no code, no purchase:**
 
 1. Install **nRF Connect** (free) on any Android phone.
-2. Scan → connect to `Tactix2-XXXX`.
+2. Scan → connect to `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign).
 3. Subscribe to notifications on NUS TX `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`.
 4. Write `$PING,*` to NUS RX `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`.
 5. Expect `$PONG,*` back.
@@ -76,7 +76,7 @@ be the connection-interval / MTU sensitivity that makes NUS peripherals fussy on
 
 | Option | Verdict |
 |---|---|
-| **ESP32 per player** | Cheaper, better battery, purpose-built — but **no HUD**. Best if the player-facing screen does not matter. LaserTagMods build exactly this. |
+| **ESP32 per player** | Cheaper, better battery, purpose-built. A bare ESP32 has no HUD, but the **Companion** adds an optional OLED/TFT HUD tier (`../hardware/brx-companion-spec.md`; build-tiers T2). LaserTagMods build the bare version. |
 | **nRF radio** | `QUERY` reports `NRFhost 1` / `NRFslave 1`, and LaserTagMods ship `NRFL-Bases` / `LoRa-Controlled-Taggers`. **If the guns already carry a long-range radio, the range problem may not need solving at all** — no per-player device. Highest upside, entirely unprobed, needs reverse engineering. |
 | **One laptop, in range** | Works today (`arena` does it) but only across a small area. Fine for a garage, useless on a field. |
 | **On-gun menu config, no central scoring** | Set respawn/time by hand per gun, play, no results. Fine casually; does not scale to 20 taggers. |
@@ -109,7 +109,7 @@ Reach for options in this order:
 (`NRFhost`/`NRFslave`) — nRF is the only field-range radio you might leverage *without adding
 hardware* (option 2, unprobed). **WiFi, ESPNOW, and LoRa all come from the ESP32 rider** — ESPNOW
 and WiFi are native to the ESP32 chip (so our Companion gets them free, exactly as Jay Burden's
-JEDGE / "BRX Host transceiver" add-on does — `../docs/reference/lasertagmods.md`); LoRa needs a
+JEDGE / "BRX Host transceiver" add-on does — `reference/lasertagmods.md`); LoRa needs a
 bolt-on RYLR896 module. ESPNOW is not a stock-tagger feature.
 
 Build the node↔server link as a **pluggable transport interface** and ship **WiFi/MQTT first**
@@ -127,7 +127,7 @@ respawns, my ammo/pickups. Merge on reconnect, dedup by seq/nonce.
 **Does NOT reconcile cleanly offline:**
 - **Kill *attribution* across players.** `$HIR` carries the shooter's **team, not the player** (the
   P2 gap). Until each tagger has a unique `PlayerID` (set via the `SETUP` serial console — see
-  `../protocol/brx-protocol.md` §QUERY/SETUP), a kill can't be credited to an individual even after
+  `../protocol/brx-protocol.md` §7c (QUERY/SETUP)), a kill can't be credited to an individual even after
   sync. **P2 is a prerequisite for accurate offline scoring.**
 - **Clock skew.** Merging two nodes' timelines needs a common time base. Node clocks drift; the
   `{seq, node_ts, server_ts}` scheme helps, but a **game-start time broadcast** (or NTP on WiFi) is

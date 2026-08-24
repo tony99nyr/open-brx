@@ -44,7 +44,8 @@ is **very high** — the real limits are ergonomic/physical, not protocol:
 
 On-gun **LCD live scoring**; **built-in WiFi to Edge** + dual Bluetooth; **swappable/hot-swap
 batteries** for all-day ops; **removable flip magazine** (XL) / **battery recoil + metal** (Metal);
-larger sound library + SD custom sounds; powered-scope port; sunlight-visible head-sensor LEDs; a gun
+larger built-in sound library + **removable-SD** custom sounds (note the BRX also takes custom sounds,
+just over USB — §sound-swap); powered-scope port; sunlight-visible head-sensor LEDs; a gun
 sensor for fast turnover. **These are ergonomics/durability/convenience — not different game logic.**
 Our **Companion rider** closes the *functional* gap (WiFi, HUD, powerups, custom audio) in software +
 cheap hardware; the *physical* niceties (LCD, hot-swap, flip mag, metal, recoil) are molded into BRP

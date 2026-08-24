@@ -191,6 +191,9 @@ Consequences, all unresolved — see the followups section at the end of this fi
 
 # Followups — open research, prioritised
 
+> **HISTORICAL — superseded by [`docs/FOLLOWUPS.md`](FOLLOWUPS.md)**, the single source for open
+> work. This A–G list is kept as a notebook snapshot; do not treat its statuses as current.
+
 ## A. The range problem — **ANSWERED 2026-08-23, see entries 17-19 and protocol §7n**
 
 > **Closed as answered, not solved.** Respawn and game time are not in the protocol
@@ -428,8 +431,12 @@ recovered: DamageType(~15), PowerType/IRSource(~12), ReloadType(6), LedEffect(5)
   DamageType/PowerType/ReloadType enums + numeric ranges + the 2166 sound bank.
 - **New game types: yes, ~unbounded** — the gun holds no game state; modes are host-side rules
   over {hits, teams via $TID, health, spawn, ≤14 IR recognitions}.
-- **New sounds on the tagger: no** — bank baked into firmware, no SD, no upload/write command
-  (playback-only). Custom audio goes on the ESP32 bridge (DFPlayer) / effect nodes per the plan.
+- **New sounds on the tagger: ~~no~~ → RETRACTED 2026-08-24: YES.** (Original claim: bank baked in,
+  no SD, playback-only over BLE.) Corrected — on-tagger sound files **are** swappable over the USB
+  data port (hold SELECT at boot → mass-storage `AUDIO` folder of `.LTP` files). No `$`-command
+  uploads audio (that part holds), but the USB path does. See `reference/brx-extended-user-guide.md`
+  + `callsign-extract/protocol-classes.md`. Off-gun DFPlayer/effect-node audio is still the route for
+  *dynamic/unlimited* audio.
 
 ### 28. Backend mapped ✅ (context)
 REST API `ltp-prod-v4.us-east-1.elasticbeanstalk.com`; multiplayer lobby = AWS SQS/SNS (the

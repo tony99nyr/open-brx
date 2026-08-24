@@ -9,6 +9,10 @@ Sources: `reference/brx-manual-notes.md`, `reference/brx-extended-user-guide.md`
 `callsign-extract/apk-harvest.md`. Win conditions (APK): Score, Death (elimination), Slayer (most
 kills), CaptureTheFlag, SquadLeader.
 
+> **Tier note:** these are **infrastructure tiers** (what gear a mode needs). They are a *different
+> axis* from `build-tiers.md`'s **spend tiers** ($0 → phones → Companions → stations → radio). A mode's
+> infrastructure tier here maps to whatever spend tier supplies that gear.
+
 ## The three infrastructure tiers
 
 - **Tier 0 — Mission Control alone.** Taggers + a host/per-player nodes. Scoring comes from the
@@ -97,7 +101,9 @@ be **placed** (not just thrown). Grenades are hardware you already buy, so any m
 grenade (followups F/G); the CTF-base capability below is community-reported, the rest is inference
 from `$GREN` + the emitter behaviour.
 
-**The grenade natively does Assault, CTF, and King of the Hill (no station) — config is the problem.**
+**The grenade reportedly does Assault, CTF, and King of the Hill (no station) — config is the problem.**
+*(Community-reported; we've decoded the `GrenadeType` enum — FlashBang/Gas/Confusion/Molotov — but the
+Assault/CTF/KotH ↔ `operationMode` mapping is unverified by us; followups F/G.)*
 Per the owner community, the grenade firmware has **Assault, Capture the Flag, and King of the Hill**
 built in; the pain is the on-gun configuration ("super hard to configure"), and CTF-base is confirmed
 (the tagger plays CTF flag music). So these three objective modes need **zero custom hardware** — just

@@ -1,4 +1,4 @@
-# Handoff — BRX Open Battle System
+# Handoff — Open BRX
 
 **Updated:** 2026-08-23, end of the MacBook session. Read `CLAUDE.md` first, then this,
 then `docs/experiment-log.md` (shared lab notebook — **append after every session**).
@@ -97,7 +97,8 @@ central scoring (fine casually, does not scale to 20 taggers).
 
 ## Followups and unknown fields
 
-Full prioritised list lives at the end of `docs/experiment-log.md`. Summary:
+Open work is tracked in **[`docs/FOLLOWUPS.md`](FOLLOWUPS.md)** (the single source; refer to items by
+id — P2, F, D1…). Summary below is a snapshot only:
 
 | Item | Status |
 |---|---|
@@ -137,8 +138,10 @@ binary + decompiled tree NOT committed.
 
 The complete 2166-id bank is in `protocol/callsign-extract/sound-bank.md` (from the APK). A
 mic-based sweep was tried first and **failed its negative control** (nonsense id `ZZ99` produced
-audio — the tagger plays a fallback for unknown ids), and there is **no SD card** on the BRX
-(§7h) — so the APK was the only reliable route, and it worked. Confirmed by ear: `VA20` =
+audio — the tagger plays a fallback for unknown ids) — so the APK was the only reliable route for the
+*inventory*, and it worked. (Note: on-tagger sounds **are** swappable via the USB `AUDIO` folder —
+`reference/brx-extended-user-guide.md`; the "no SD" claim was about *firmware* backup, not sound
+storage.) Confirmed by ear: `VA20` =
 "connection established", `VA81` = 3-2-1 countdown. Still open: the `$PSET` positional voice-pack
 token→line mapping (change one token, hear which line changes) — now targeted since we know the
 field names.
@@ -163,8 +166,9 @@ Check what the Windows venv has — if it is still `mcp` 1.x and works there, pi
   `USB Serial` / `Teensyduino`. Console commands are **`QUERY`** (read-only, dumps
   versions/serial/voltages/flags) and **`SETUP`** (factory provisioning — asks for the
   headset SN; entering and power-cycling out changed nothing). Everything else → `ERROR`.
-- **Firmware cannot be backed up** — HalfKay is write-only, no SD card. Rollback depends
-  entirely on Battle Company. **The email asking what `devhost.03` is was never sent.**
+- **Firmware cannot be backed up** — HalfKay is write-only (this is about *firmware*, not the sound
+  storage, which IS writable over USB). Rollback depends entirely on Battle Company. **The email
+  asking what `devhost.03` is was never sent.**
 - Settings backup: `~/.brx-mcp/device-backups/` (on the Mac).
 
 ## BLE: connecting is flaky, holding is not

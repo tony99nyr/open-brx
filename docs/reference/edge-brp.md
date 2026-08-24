@@ -62,7 +62,8 @@ Target** (live-scoring target) · hands-free "Ping/Damage" activation.
 - **BRM (Metal Hybrid):** metal receiver, **battery-powered recoil** (hot-swap battery), multi-stage
   charging-handle reload, strongest audio.
 - **What BRP+EDGE does that stock BRX can't:** commercial EDGE suite, on-gun LCD scoring, swappable/
-  hot-swap batteries for all-day ops, SD custom sounds + bigger library, deep UBox/Animatronics prop
+  hot-swap batteries for all-day ops, **removable-SD** custom sounds + bigger built-in library (the BRX also takes custom sounds, over
+USB — `community-notes.md`), deep UBox/Animatronics prop
   & effects integration. **Important:** EDGE explicitly says **BRX can be used commercially too** —
   the **software tier is the gate, not just the gun.**
 

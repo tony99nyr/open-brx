@@ -5,6 +5,10 @@ own.** No mods, no builds, no purchases. Then each rung up the ladder adds capab
 works in `brx-mcp` today; "to build" = software we write (no purchase); "untested" = needs a
 hardware check first.
 
+> **Tier note:** these are **spend tiers** (what each budget adds). Distinct from `game-modes.md`'s
+> **infrastructure tiers** (MC-alone / +props / +broadcast) — that doc classifies *modes*, this one
+> classifies *spend*.
+
 ## Tier 0 — $0: exactly what you own (4 BRX + 2 grenades + laptop)
 
 Everything here needs **only a laptop in BLE range** (one radio reaches ~7–10 taggers, so 4 is easy)
@@ -26,8 +30,9 @@ Everything here needs **only a laptop in BLE range** (one radio reaches ~7–10 
   scoreboard / kill-feed**.
 
 **Your 2 grenades already do objective modes — the problem is config, not capability:**
-- The grenade **natively supports Assault, Capture the Flag, and King of the Hill** (built into its
-  firmware) — it's just **super hard to configure** from the on-gun menu.
+- The grenade **reportedly supports Assault, Capture the Flag, and King of the Hill** (community-
+  reported; the objective-mode↔`$GREN` mapping is unverified by us — followups F/G) — and it's
+  **super hard to configure** from the on-gun menu.
 - **Highest-value free build → a grenade config + state app** (phone/web, uses owned gear only):
   - **Config:** a clean UI that sends the `$GREN` setup over BLE (pick Assault/CTF/KotH, channel,
     options) — replaces the painful on-gun menu, making the grenade's existing modes actually usable.

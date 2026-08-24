@@ -32,7 +32,7 @@ pick, one link, ~1 m away.
   (`navigator.bluetooth.getDevices()`) so reconnection doesn't re-prompt — good for match rejoins.
 - **Offline-first:** log events to **IndexedDB**; sync to Mission Control over WiFi when available.
 - **Gate to test first (from `field-architecture.md`):** confirm Android Chrome actually holds a
-  BRX NUS link (nRF Connect: connect `Tactix2-XXXX`, subscribe TX `…0003`, write `$PING,*` to RX
+  BRX NUS link (nRF Connect: connect `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign), subscribe TX `…0003`, write `$PING,*` to RX
   `…0002`, expect `$PONG`). The whole plan rests on this 10-minute check.
 
 ## What the app does (per player)
