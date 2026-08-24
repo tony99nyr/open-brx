@@ -127,11 +127,13 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
 - Respawn stations **can be overtaken** by another team (shoot/grenade it) — "not always consistent"
   (a real reliability quirk the community also reports).
 
-## King of the Hill / Checkpoint / Domination mode
+## King of the Hill (blue) — incl. checkpoint/domination-style play
 
-- **Checkpoint:** changes colour **once** when a team shoots it (red/blue/green; 3 colours in
-  Supremacy). Seize-a-base feel; most checkpoints held = win. No central — relies on team comms.
-- **King of the Hill:** **starts white/neutral until someone shoots it** (hardware-confirmed, same as
+*(There is no separate "Checkpoint" button mode — the confirmed 5 are Frag/Assault/Hill/Respawn/CTF. The
+video's "checkpoint/domination" behaviour is how the **blue Hill** mode is *used*: a seize-a-base point
+you shoot to own. Described here for completeness.)*
+
+- **King of the Hill (blue):** **starts white/neutral until someone shoots it** (hardware-confirmed, same as
   Respawn — exp-log #37); on capture, all guns announce **"control point captured"**; the grenade
   **emits every ~3–4 s who holds it** (our BLE decode: `$HIR,0,15,0,<team>,8`), so nearby guns know
   possession. It **charges**: each shot adds
@@ -141,10 +143,13 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
 - **A thrown grenade blast on the point instantly captures it 100%** for the thrower's team (full
   charge in one hit) — a deliberate quick-takeover mechanic.
 
-## Assault mode
+## Assault mode (green)
 
-Cycled alongside the above (attack/hold an objective). Details thin in the videos — behaves like the
-checkpoint/KotH objective family; confirm specifics on hardware (G1).
+Attack/hold an objective. **Hardware-confirmed (exp-log #35):** shooting it with a team's gun **captures
+it to that team's colour** (blue gun → blue), but — unlike Hill/Respawn — it **does NOT beacon** its
+state over BLE (the capture state lives on the grenade LED only). So a live Assault display isn't
+possible from the grenade; infer capture from your own gun's shots. (Community also reports Assault is
+finicky / was removed from JEDGE hosting — treat its *reliability* as low, though the mode works.)
 
 > **Hardware-confirmed (exp-log #34):** the grenade **flashes white when shot** — it receives gun IR and
 > reacts (so the gun→grenade path works), but white = **neutral/unclaimed**, so a bare shot reads as a
@@ -232,8 +237,8 @@ Two different questions:
   by the defending (friendly) team** — a reliability quirk to design around.
 - **ALT-fired grenade plays a different/incorrect sound** than the normal grenade cue — possible
   leftover/bug (single-source, unverified). ([post](https://www.facebook.com/groups/712027809192113/posts/2413135579081319/))
-- Note also: community reports **Assault is "unusable"** and was removed from JEDGE hosting — treat
-  grenade-Assault as low-confidence until we test it (`../game-modes.md`).
+- Note also: community reports **Assault was "unusable" / removed from JEDGE hosting** — the mode itself
+  works (we confirmed capture-to-team-colour), but treat its *reliability* as low.
 
 ## Resolved this session, and what's still open
 

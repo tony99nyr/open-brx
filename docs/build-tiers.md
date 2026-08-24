@@ -143,15 +143,16 @@ of adding subscriber nodes.
 
 | Tier | Spend | Unlocks |
 |---|---|---|
-| **0** | **$0 (own gear + laptop)** | TDM/FFA/Infection/LMS/Generals-Commander-Swarm in BLE range; custom weapons + sounds; laptop scoreboard; diagnostics; grenade CTF/CS/hazard (untested) |
+| **0** | **$0 (own gear + laptop)** | TDM/FFA/Infection/LMS/Generals-Commander-Swarm in BLE range; custom weapons + sounds; host-driven heal/regen (armor+HP); laptop scoreboard; diagnostics; grenade Hill/Respawn/Assault/CTF + CS-bomb (hardware-confirmed; thrown-hazard blast G10 & CTF team-assign G9 still open) |
 | **1** | old Android phones | breaks range → full-field roaming + per-player HUD |
 | **2** | ESP32 Companion ($8–25/tagger) | powerups, custom audio, rugged node, WiFi/ESPNOW |
 | **3** | stations ($10–15 each) / QR (paper) | Domination, KotH, CTF variants, Assault, respawn stations |
 | **4** | LoRa ($10/node) / nRF (maybe free) | large-park live play, broadcasts, status screens, Battle Royale |
 
 **Cheapest high-value path:** build the **Tier-0 software** (engine + Mission Control) on your
-laptop, test **grenade CTF/CS** for free, and check the **Android-BLE gate** — that alone gets you
-orchestrated, custom, multi-mode games for your 4 taggers + 2 grenades with **no hardware spend**.
+laptop — the grenade objective modes are already characterized (just the CTF team-assign G9 left to
+work out) — and check the **Android-BLE gate**; that alone gets you orchestrated, custom, multi-mode
+games for your 4 taggers + 2 grenades with **no hardware spend**.
 Every rung after is optional and additive.
 
 **What each rung actually unlocks per mode — and the hard limits vs. pending tests at each tier — is
