@@ -64,6 +64,35 @@ def parse_frames(lines: list[str]) -> list[IRFrame]:
     return frames
 
 
+def range_stats(frames: list["IRFrame"], expected: Optional[int] = None) -> dict:
+    """Summarize a capture window into a RANGE reading (pure — testable).
+
+    For a walk-back test you stand at a tape distance, fire N shots, and read:
+      detected     — IR bursts the receiver picked up (any edges)
+      decoded      — clean full-length 25-bit frames (signal-quality metric)
+      decode_rate  — decoded / detected  (how CLEAN the signal is at this range)
+      overflow     — captures that overran the buffer (too close / noise)
+      unique_patterns — distinct decoded bit-strings (should be 1 for one weapon)
+    Give `expected` (= shots fired) to also get detect_rate = detected/expected
+    (COVERAGE — did the shot reach at all). Both hit 0 past effective range.
+    """
+    n = len(frames)
+    decoded = [f for f in frames if len(f.bits) == 25]
+    overflow = sum(1 for f in frames if f.overflow)
+    uniq = {f.bits for f in decoded if f.bits}
+    out = {
+        "detected": n,
+        "decoded": len(decoded),
+        "overflow": overflow,
+        "decode_rate": round(len(decoded) / n, 3) if n else 0.0,
+        "unique_patterns": len(uniq),
+    }
+    if expected:
+        out["expected"] = expected
+        out["detect_rate"] = round(min(1.0, n / expected), 3)
+    return out
+
+
 def diff_bits(a: str, b: str) -> str:
     """Return a marker string ('.'=same, 'X'=differ) aligning two bit strings —
     handy for spotting which bits carry team/mode/type when sweeping."""

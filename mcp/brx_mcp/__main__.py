@@ -19,6 +19,7 @@
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
+  python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
 """
 
 from __future__ import annotations
@@ -853,6 +854,29 @@ def _ir_capture(port: str | None, seconds: float) -> None:
         print(f"\n# diff {uniq[0]} vs {uniq[1]}:\n  {diff_bits(uniq[0], uniq[1])}")
 
 
+def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
+    """One walk-back station: capture a window, report the range reading. Stand at
+    a tape distance, fire `expected` shots during the window, read the hit-rates."""
+    from .irbridge import IRBridge, range_stats
+    br = IRBridge(port)
+    hint = f", fire ~{expected} shots" if expected else ""
+    print(f"# range sample on {br.port} for {seconds:.0f}s{hint} at this distance ...",
+          file=sys.stderr)
+    frames = br.capture(seconds)
+    br.close()
+    s = range_stats(frames, expected)
+    dr = f"{s['decode_rate']*100:.0f}%"
+    line = (f"detected {s['detected']}  decoded {s['decoded']} ({dr} clean)  "
+            f"overflow {s['overflow']}  patterns {s['unique_patterns']}")
+    if expected:
+        line += f"  |  {s['detected']}/{expected} shots reached ({s['detect_rate']*100:.0f}%)"
+    print(line)
+    if s["detected"] == 0:
+        print("→ nothing received — past effective range, mis-aimed, or wiring/aim off.")
+    elif s["decode_rate"] < 0.5:
+        print("→ marginal: bursts arrive but rarely decode clean — near the edge of range.")
+
+
 def _ir_emit(bits: str, port: str | None, repeat: int) -> None:
     from .irbridge import IRBridge
     br = IRBridge(port)
@@ -1040,6 +1064,12 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         port = args[2] if len(args) > 2 and not args[2].isdigit() else None
         repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
         _ir_emit(bits, port, repeat)
+    elif cmd == "ir-range":
+        port = args[1] if len(args) > 1 and not args[1].isdigit() else None
+        nums = [float(a) for a in args[1:] if a.replace(".", "").isdigit()]
+        secs = nums[0] if nums else 8.0
+        expected = int(nums[1]) if len(nums) > 1 else None
+        _ir_range(port, secs, expected)
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

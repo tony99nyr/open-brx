@@ -76,6 +76,13 @@ ESP32 + IR LED. Replay a captured frame and confirm a stock gun reacts.
 4. Then emit **objective** tags: a respawn tag, an add-armor tag, a capture/beacon — confirm each does
    what the `$SIR` mapping says.
 
+## Phase A½ — RANGE (measure the numbers)
+
+Full walk-back protocol + data tables: **`hardware/range-experiment.md`**. Uses the Phase-A receiver rig;
+`python -m brx_mcp ir-range <port> <secs> <shots>` turns each tape distance into a detect%/decode% reading.
+Measures the stock gun/grenade range (confirm the grenade's ~18–20 ft), the indoor/outdoor + weapon +
+angle effects, and — with the Phase-B emitter — our own box's reach. Feeds the objective-node coverage spec.
+
 ## Phase C — full sound + function sweep (the "every sound and function" test)
 
 Systematically catalog what the box can make a gun do from IR:

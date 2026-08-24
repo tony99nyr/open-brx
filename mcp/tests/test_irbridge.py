@@ -65,3 +65,46 @@ def test_diff_bits_marks_differences():
     assert diff_bits("11110", "11010") == "..X.."
     # different lengths note the mismatch
     assert "len" in diff_bits("111", "11")
+
+
+# ---- range_stats (walk-back range reading) --------------------------------- #
+from brx_mcp.irbridge import range_stats
+
+
+def _f(idx, bits="", overflow=False):
+    return IRFrame(index=idx, durations_us=[1000, 500], bits=bits, overflow=overflow)
+
+
+def test_range_stats_clean_full_range():
+    B = "0" * 25
+    frames = [_f(i, bits=B) for i in range(5)]
+    s = range_stats(frames, expected=5)
+    assert s["detected"] == 5 and s["decoded"] == 5
+    assert s["decode_rate"] == 1.0 and s["detect_rate"] == 1.0
+    assert s["unique_patterns"] == 1 and s["overflow"] == 0
+
+
+def test_range_stats_marginal_partial_decodes():
+    # bursts arrive but only some decode to a clean 25-bit word → edge of range
+    frames = [_f(0, bits="0" * 25), _f(1, bits="011"), _f(2, bits="")]
+    s = range_stats(frames, expected=4)
+    assert s["detected"] == 3 and s["decoded"] == 1
+    assert s["decode_rate"] == round(1 / 3, 3)
+    assert s["detect_rate"] == round(3 / 4, 3)     # 3 of 4 shots reached
+
+
+def test_range_stats_out_of_range_and_no_expected():
+    assert range_stats([])["detected"] == 0
+    assert range_stats([])["decode_rate"] == 0.0
+    assert "detect_rate" not in range_stats([_f(0, bits="0" * 25)])  # expected omitted
+
+
+def test_range_stats_detect_rate_caps_at_one():
+    # more detections than expected (reflections/repeat frames) → capped at 1.0
+    frames = [_f(i, bits="0" * 25) for i in range(9)]
+    assert range_stats(frames, expected=5)["detect_rate"] == 1.0
+
+
+def test_range_stats_counts_overflow():
+    frames = [_f(0, bits="0" * 25), _f(1, overflow=True)]
+    assert range_stats(frames)["overflow"] == 1
