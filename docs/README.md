@@ -8,6 +8,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
   when they disagree, FOLLOWUPS wins.
 - **[HANDOFF.md](HANDOFF.md)** — current cross-machine state; read before a hardware session.
 - **[experiment-log.md](experiment-log.md)** — the shared lab notebook. **Append after every session.**
+- **[verification-checklist.md](verification-checklist.md)** — **what needs YOU + a tagger to confirm**: the running hardware-verification to-do list (M0 live run, health variants, night mode, native multikills, the IR bench, Android BLE), grouped by session.
 
 ## Canonical sources (avoid restating — link to these)
 To keep facts from drifting, each fact has one home; other docs should link, not re-argue:
