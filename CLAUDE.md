@@ -18,6 +18,9 @@ token positions, 2166-id sound bank, game modes, grenade). System specs: `missio
 - Credit **LaserTagMods** (JEDGE/JBOX) for protocol discovery in anything public-facing.
 - MCP/server enforce the known-safe command list (`protocol.py`); unknown commands need
   explicit confirm. Panic sequence: `$CLEAR,*` then `$SP,99,*`.
+- **Volume:** the diagnostic default is `$VOL,30` (kind to ears indoors), but **30 is measurably
+  inaudible for weapon/game audio** — use **69** (the app's value) for real games. CLI game commands
+  take volume as an argument; keep the low default for probing, pass 69 for play.
 
 ## Environment (important)
 

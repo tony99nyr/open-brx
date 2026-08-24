@@ -46,7 +46,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, **100=weapon-cycle (verified on hardware 2026-08-23)**. Note: with only one `$WEAP` slot loaded, function 100 has nothing to cycle to and **falls back to reloading** — which looks like a wrong mapping but is not. Load a secondary to see it switch. |
-| `$GLED,<team?>,<t2>,<t3>,<t4>,<t5>,,*` | Set gun LED — **token meanings UNKNOWN** | The old `<r>,<g>,<b>` reading is **disproven**, see §7i. e.g. `$GLED,1,1,1,0,10,,*` |
+| `$GLED,...` | Set gun LED — fields `mid, effect, optionA, optionB` (from APK, `callsign-extract/protocol-classes.md`); `effect` = LedEffect enum (Solid/Glow/ChaseBack/ChaseForward/StopIR) | The old `<r>,<g>,<b>` reading is **disproven** (§7i); LED **colour** is team-derived from `$TID`, not `$GLED`. e.g. `$GLED,1,1,1,0,10,,*` |
 | `$PLAY,<soundID>,<volume?>,<priority?>,,,,,*` | Play a sound/voice line by ID | **Complete 2166-id bank in `callsign-extract/sound-bank.md`.** e.g. `VA20`="connection established". Any id not in that list is invalid (no fallback ambiguity) |
 | `$AS,...` | Applicator/game-control settings | e.g. `$AS,1,0,4,0,10,0,95,*` |
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
@@ -326,7 +326,7 @@ above, and not verified by us on the wire**. Leads for probing, not confirmed pr
 | `$HLOOP` | Looping sound/haptic on headset? | `H`-prefixed like `$HLED`/`$HS`/`$HKC` — likely the headset family |
 | `$RR` | Reload/respawn related | Adjacent to documented `$RP`/`$RV` |
 | `$BRXSERVER` | Server/host mode | — |
-| `$SSID` | WiFi network name | **These three together imply a WiFi/server mode we knew nothing about.** Worth investigating: if the tagger can join a network, that is a second transport entirely and would sidestep the v4.32 BLE fault |
+| `$SSID` | WiFi network name | **These three together imply a WiFi/server mode we knew nothing about.** Worth investigating: if the tagger can join a network, that is a second transport entirely |
 | `$PASS` | WiFi password | |
 | `$BRX` | Device/mode identifier | — |
 
@@ -522,8 +522,12 @@ selection, weapon respawn, voice.
   by design.
 - **Weapon selection** maps to the three `$WEAP` frames: slot 0 primary, slot 1
   secondary, slot 4 melee (always sent, never user-selected).
-- **Time / score-to-win / indoor-outdoor** are most likely `$GSET` tokens —
-  `$GSET,1,0,1,0,1,0,50,1,*` carries a `50` that may be score-to-win.
+- **Time / score-to-win / respawn / lives are NOT in `$GSET`** — three captures at different
+  respawn values produced byte-identical `$GSET` (§7n), and the confirmed 8-token map (§3, from the
+  APK) contains none of them: token 7's `50` is `criticalShotModifier` (%), not score-to-win. These
+  settings live in the host/app, not on the gun. `$GSET` sets on-gun things: friendlyFire, region,
+  ambient light, gyro, crit modifier.
+- **Indoor/outdoor** does map to `$GSET` (token 2, `outdoorMode`).
 - **HUD** is fed by `$LCD`/`$ALCD` echoes; the app does not track health/ammo
   independently, the gun reports it.
 
@@ -539,12 +543,14 @@ selection, weapon respawn, voice.
   `$BRXSERVER` / `$SSID` / `$PASS` commands in §7d. **Unverified — worth capturing the
   phone's network traffic (not BLE) to find out.**
 
-### Suggested experiment: decode `$GSET` by differential capture
+### `$GSET` decoding — DONE (this experiment is retired)
 
-Capture the same game type twice, changing exactly one setting (e.g. score to win
-50 → 25), and diff the `$GSET` frames. The `diff_captures` tool already exists for this.
-Repeat per setting to build the field map — the same method proposed for `$WEAP`'s
-44 tokens.
+The `$GSET` 8-token map is decoded and hardware-confirmed (see §3 and
+`callsign-extract/protocol-classes.md`). The differential-capture approach was also proven a
+**dead end for respawn/time/score** — three captures at different respawn values gave
+byte-identical `$GSET` (§7n), because those settings aren't sent to the gun at all. The one place
+differential capture still helps is pinning `$WEAP`'s ~6 always-empty tokens (`diff_captures`/
+`gsetdiff` tools exist for it).
 
 ## 7h. Facts from the official BRX manual (V7)
 

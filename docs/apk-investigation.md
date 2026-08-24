@@ -4,9 +4,12 @@
 `protocol/callsign-extract/` (sound bank + config facts + README) and experiment-log #20–23.
 Key correction to the plan below: the app is **Unity/IL2CPP, not Java** — `jadx` gets the
 Android wrapper but the game logic is native ARM in `libil2cpp.so`. The sound-id list (goal
-#2) came straight from `assets/Configs/Sounds.json` (2166 ids). The **`$GSET`/`$WEAP`/`$PSET`
-builders (goals #1, #3, #4) remain** — they need **Il2CppDumper + Ghidra**, not jadx. That is
-the open highest-value teardown step. Original plan preserved below.
+#2) came straight from `assets/Configs/Sounds.json` (2166 ids). And goals **#1/#3/#4 are also
+DONE** — the `$GSET`/`$WEAP`/`$PSET` field maps were recovered from the plaintext identifier blob
+(field names in declaration order = token order); GSET is hardware-confirmed and WEAP is
+cross-validated against two live frames. See `protocol/callsign-extract/protocol-classes.md`.
+Il2CppDumper/Inspector fail on the obfuscated metadata; a Ghidra method-body decompile is only
+needed to pin ~6 always-empty `$WEAP` tokens (low priority). Original plan preserved below.
 
 ---
 

@@ -96,7 +96,7 @@ Either way it's buildable as a web app.
 settings + event log). Everything is an event on the MQTT bus; the engine is the single source of
 truth for rules; nodes stay dumb (architecture prime directives).
 
-## Can we build a full-featured Mission Control? — YES
+## Can we build a full-featured Mission Control? — YES for team modes; one gap for FFA
 
 Every capability above maps to something already decoded or built:
 - discover/identify/connect/send/events → **`brx-mcp` exists**
@@ -104,7 +104,12 @@ Every capability above maps to something already decoded or built:
 - scoreboard inputs → `$HIR`/`$HP` parsing ✓ · powerups → decoded command sequences ✓
 - sounds → full bank ✓ · modes/win-conditions/medals → APK harvest ✓
 
-**Nothing is blocked on unknown protocol.** What's left is engineering: the web UI, the MQTT bus,
+**One protocol gap remains, and it only bites free-for-all:** `$HIR` names the shooter's **team**,
+not the individual player, so **per-player FFA scoring needs the still-unfound player-id set
+command** (followup P2 — `QUERY` shows a device `PlayerID` we've never set; JEDGE numbers players
+from 1901). Team-based modes (TDM, CTF, Domination, Supremacy) are fully unblocked today; FFA
+per-player scoring waits on that short probe. Otherwise, what's left is engineering: the web UI,
+the MQTT bus,
 the SQLite event log, the per-player node (Companion/phone) for out-of-range, and objective
 stations. See the gap analysis below.
 

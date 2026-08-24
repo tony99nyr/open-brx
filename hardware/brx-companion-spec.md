@@ -67,9 +67,13 @@ and play a sound" works today** — no firmware mod, no waiting on Battle Compan
 
 The concern is real: the tagger's built-in speaker is deliberately loud. To match it:
 
-- **Amp: MAX98357A** — I2S Class-D, 3.2 W into 4 Ω, ~10×15 mm, digital in (no separate DAC), ~$1.50.
+- **Amp: MAX98357A** — I2S Class-D, ~10×15 mm, digital in (no separate DAC), ~$1.50. **Power it from
+  the 5 V/VBAT rail, not the 3.3 V logic rail** — its 3.2 W-into-4 Ω rating needs ~5 V; at 3.3 V it
+  delivers roughly half the power (~3 dB quieter). So the boost/battery rail feeds the amp, the
+  regulator feeds the ESP32.
 - **Driver: a high-sensitivity 4 Ω 3–4 W** full-range (pick ≥90 dB/1 W/1 m). In a small **3D-printed
-  ported enclosure** this reaches ~95–100 dB at arm's length — comparable to the tagger.
+  ported enclosure**, driven from the 5 V rail, this reaches ~95–100 dB at arm's length — comparable
+  to the tagger. (At 3.3 V, expect ~3 dB less.)
 - **The cheat code for outdoors:** add a **piezo horn tweeter** (tiny, extremely loud, pennies) for
   piercing alert SFX (spawn, powerup, low-health) that cut through open air; use the full-range for
   voice/flavor.
@@ -80,7 +84,9 @@ The concern is real: the tagger's built-in speaker is deliberately loud. To matc
 
 ## Power
 
-- **1000–2000 mAh LiPo + TP4056 charger + 3.3 V regulator**, ~$4. Many hours of play.
+- **1000–2000 mAh LiPo + TP4056 charger + 3.3 V regulator** (ESP32) **+ a small boost to 5 V** for
+  the audio amp rail, ~$4–5. Many hours of play. (A USB power bank, as the community's JEDGE mount
+  uses, already provides regulated 5 V — feed the amp from it directly and regulate 3.3 V for logic.)
 - Companion carries its **own** battery — no wires into the tagger (keeps stock hardware untouched,
   the prime directive). USB-C for charge + flashing.
 

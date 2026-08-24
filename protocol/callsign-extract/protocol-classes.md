@@ -21,6 +21,11 @@ HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB
 New vs our prior doc: **FSET, GREN, HFIRE, IRTX, LIFE, MELEE, STUN, VIB, ZOOM, BHIT, BUMP,
 ASSIST, ASKDLC, DLC/GOTDLC**, headset **BLINK/CHASE/HLED/HLOOP/LED**, notifications **TIME/SFLASH**.
 
+This list is the app's `Requests` namespace only. A few commands we use come from other sources and
+are **not** in it — notably `$PING`/`$PONG` (keepalive), `$TID` (team id, hardware-verified — drives
+LED colour), `$SP`/`$SPAWN` lifecycle, and the `$RV`/`$RP`/`$UR`/`$KK`/`$DD` host-side family
+(LaserTagMods). See `protocol/brx-protocol.md` §3/§4 for the full union. Absence here ≠ undecoded.
+
 ## GSET — game settings ✅ CONFIRMED
 
 `$GSET,friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier,gameMods,*`
@@ -41,7 +46,11 @@ Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
 **Key consequence:** there is **no respawn / game-time / lives field** — proving (again) those
 are app-side, not on the gun. Settles experiment-log #17 from the source side.
 
-## WEAP — weapon definition (source-derived; ~40 named fields)
+## WEAP — weapon definition (source-derived)
+
+The metadata gives ~38 named members; the wire frame is 44 comma-separated tokens (the extra ~6
+are the always-empty secondary/extra-headset positions noted below). Counts differ because empties
+occupy token slots without a distinct populated field in these two samples.
 
 Ordered fields (the `$WEAP,<slot>,…` ~44-token frame). Leading slot + IR-signature tokens,
 then:
@@ -78,7 +87,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 14 | 100 | 1250 | chargeUp time (CR charges) | ~ |
 | 15 | 850 | 850 | rateOfFire / fire delay (ms) | ~ |
 | 16 | **32** | **100** | **maxClip** | ✓ (mag) |
-| 17 | 32768 | 32768 | maxAmmo / unlimited flag | ✓ |
+| 17 | 32768 | 32768 | maxAmmo / unlimited flag | ~ (identical in both frames — a 2-frame diff can't validate a position that doesn't change) |
 | 18 | 1400 | 2500 | reloadSpeed (ms) | ~ |
 | 19 | 0 | 0 | reloadType (Magazine/Quiver/Shells…) | ~ |
 | 20 | 0 | 14 | (secondary/overheat) | ~ |
@@ -95,13 +104,15 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 34 | D18 | A73 | noAmmo_SoundName | ~ |
 | 35–36 | — | C19,C04 | weaponFeatureA/B sounds | ~ |
 | 39 | 32 | 100 | clipStartingAmmo (= maxClip here) | ~ |
-| 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ✓ |
+| 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ~ (identical in both frames — not discriminable by the diff) |
 | 41 | 75 | 75 | gunRange % | ~ |
 
-The ~6 always-empty positions (7–13, 42–43) are secondary-fire / extra-headset fields, default
-in both samples — pin them with a one-field Callsign capture (now trivial: change exactly that
-field). The charge-sound validation (28/29 present only on the charging weapon) makes the sound
-block certain.
+The always-empty positions (7–13 and 42–43, ~9 tokens) are secondary-fire / extra-headset fields,
+default in both samples — pin them with a one-field Callsign capture (now trivial: change exactly
+that field). Note the **primaryDamageType vs primaryPowerType order (tok 3/4) is unresolved**: the
+field-declaration list orders damageType-before-powerType, the table has the reverse, and both read
+`0` on the AR so the diff can't decide — another one-field capture settles it. The charge-sound
+validation (28/29 present only on the charging weapon) makes the sound block certain.
 
 ## PSET — player settings (source-derived)
 
@@ -119,7 +130,7 @@ positional sound set — each slot is a named game-event sound. Note fields are 
 | Command | Fields (in order) | Notes |
 |---|---|---|
 | **BMAP** | buttonNumber, function, swapSlot0..3 | button remap + 4 weapon-swap slots |
-| **AMMO** | (slot,) clip, functionToApply | load magazines after spawn |
+| **AMMO** | metadata fields = `clip, functionToApply` (partial parse) | **Wire form is `$AMMO,<slot>,<clip>,<reserve>,<flag>,*` — hardware-verified** from the §7e iOS capture that ran a live game (e.g. `$AMMO,0,36,108,1,*`). The metadata field list is incomplete (missing the leading slot and the reserve); trust the captured wire form. |
 | **GLED** | mid, effect, optionA, optionB | gun LED — **not** r,g,b (see LedEffect enum); colour is team-derived |
 | **GREN** | iRType, crit, modifier, indoorMode, operationMode, channel, (GrenadeType, MaxCount) | **Smart Grenade config** — a whole command we hadn't mapped |
 | **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | "hyper/heavy fire" IR burst |

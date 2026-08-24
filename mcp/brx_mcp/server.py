@@ -6,6 +6,7 @@ Spec: docs/brx-mcp-spec.md. Protocol reference: protocol/brx-protocol.md
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,11 +18,17 @@ from .ble import ConnectionManager
 mcp = FastMCP("brx")
 manager = ConnectionManager()
 
-# protocol/brx-protocol.md, resolved relative to the repo when running from a
-# checkout, else from the packaged copy next to this file.
+# protocol/brx-protocol.md. The server is installed editable from the repo
+# checkout (see CLAUDE.md), so the first path resolves. The package does NOT
+# vendor its own copy (the doc lives outside mcp/), so a non-editable wheel
+# install won't serve brx://protocol — the resource says so rather than 404ing
+# silently. A BRX_PROTOCOL_MD env var overrides for other layouts.
 _PROTOCOL_CANDIDATES = [
-    Path(__file__).resolve().parents[2] / "protocol" / "brx-protocol.md",
-    Path(__file__).resolve().parent / "brx-protocol.md",
+    p for p in (
+        os.environ.get("BRX_PROTOCOL_MD"),
+        Path(__file__).resolve().parents[2] / "protocol" / "brx-protocol.md",
+        Path(__file__).resolve().parent / "brx-protocol.md",
+    ) if p
 ]
 
 
@@ -175,8 +182,9 @@ async def panic(alias: str) -> dict[str, Any]:
 def protocol_doc() -> str:
     """The BRX serial protocol reference (brx-protocol.md)."""
     for candidate in _PROTOCOL_CANDIDATES:
-        if candidate.exists():
-            return candidate.read_text(encoding="utf-8")
+        path = Path(candidate)
+        if path.exists():
+            return path.read_text(encoding="utf-8")
     return "brx-protocol.md not found alongside the package"
 
 

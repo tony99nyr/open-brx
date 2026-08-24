@@ -399,10 +399,6 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
     stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
              for a, _, _ in players}
 
-    for alias, addr, tid in players:
-        print(f"connecting {alias} (team {tid}) -> {addr}", file=sys.stderr)
-        await mgr.connect(addr, alias)
-
     async def push(alias: str, cmds: list[str]) -> None:
         for cmd in cmds:
             await mgr.send(alias, cmd, reply_window_ms=350)
@@ -425,6 +421,12 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         return cfg
 
     try:
+        # Connect inside the try so a failure on tagger N still tears down the
+        # taggers already connected (the finally disconnects every alias).
+        for alias, addr, tid in players:
+            print(f"connecting {alias} (team {tid}) -> {addr}", file=sys.stderr)
+            await mgr.connect(addr, alias)
+
         # Configure every tagger CONCURRENTLY. Doing this serially made each
         # tagger count down as its own config finished, so players went live
         # seconds apart — one shooting while another was still counting.
@@ -534,10 +536,6 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
         for c in cmds:
             await mgr.send(alias, c, reply_window_ms=350)
 
-    for alias, addr, tid in players:
-        print(f"connecting {alias} (team {tid})", file=sys.stderr)
-        await mgr.connect(addr, alias)
-
     def cfg(tid):
         out = [volume_cmd(volume)]
         for f in GAME_CONFIG:
@@ -550,21 +548,34 @@ async def _fieldstart(addresses: list[str], volume: int = 69,
         out.append(f"$TID,{tid},*")
         return out
 
-    await asyncio.gather(*(push(a, cfg(t)) for a, _, t in players))
-    print("--- 3... 2... 1...", file=sys.stderr)
-    await asyncio.gather(*(push(a, ["$PLAY,VA81,4,6,,,,,*"])
-                           for a, _, _ in players))
-    await asyncio.sleep(2.8)
-    await asyncio.gather(*(push(a, ["$SPAWN,,*",
-                                    f"$AMMO,0,{pri_mag},{pri_res},1,*",
-                                    f"$AMMO,1,{sec_mag},{sec_res},1,*",
-                                    "$BMAP,0,0,,,,,*"]) for a, _, _ in players))
-    print("--- ALL LIVE", file=sys.stderr)
-    for alias, _a, _t in players:
-        await mgr.disconnect(alias)
-    print("\n*** HOST DISCONNECTED — taggers are on their own ***\n"
-          "Go play out of range, then run:  python -m brx_mcp fieldresults <addrs...>",
-          file=sys.stderr)
+    try:
+        # Connect inside the try so a partial failure still disconnects the
+        # taggers already connected (fieldstart ends by disconnecting anyway).
+        for alias, addr, tid in players:
+            print(f"connecting {alias} (team {tid})", file=sys.stderr)
+            await mgr.connect(addr, alias)
+
+        await asyncio.gather(*(push(a, cfg(t)) for a, _, t in players))
+        print("--- 3... 2... 1...", file=sys.stderr)
+        await asyncio.gather(*(push(a, ["$PLAY,VA81,4,6,,,,,*"])
+                               for a, _, _ in players))
+        await asyncio.sleep(2.8)
+        await asyncio.gather(*(push(a, ["$SPAWN,,*",
+                                        f"$AMMO,0,{pri_mag},{pri_res},1,*",
+                                        f"$AMMO,1,{sec_mag},{sec_res},1,*",
+                                        "$BMAP,0,0,,,,,*"]) for a, _, _ in players))
+        print("--- ALL LIVE", file=sys.stderr)
+        print("\n*** HOST DISCONNECTED — taggers are on their own ***\n"
+              "Go play out of range, then run:  python -m brx_mcp fieldresults <addrs...>",
+              file=sys.stderr)
+    finally:
+        # Always release every open link — the whole point is to leave the
+        # taggers running standalone, and on failure we must not leak sessions.
+        for alias in list(mgr.sessions):
+            try:
+                await mgr.disconnect(alias)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 async def _fieldresults(addresses: list[str], listen_s: int = 12) -> None:
@@ -683,6 +694,15 @@ def main() -> None:
         run_server()
         return
     cmd = args[0]
+    try:
+        _dispatch(cmd, args)
+    except ValueError as e:
+        print(f"bad numeric argument: {e}\n", file=sys.stderr)
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+
+
+def _dispatch(cmd: str, args: list[str]) -> None:
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
     elif cmd == "identify" and len(args) > 1:
