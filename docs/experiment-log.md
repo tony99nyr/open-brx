@@ -527,3 +527,25 @@ Metadata/native URL scan confirms the data is **fetched from the Callsign server
 unreachable by static teardown. New route added: **P8 = MITM the Callsign HTTPS API** (gun-off) to
 grab weapon/voice/game data directly. Structure (field names/order/enums) was already fully
 recovered; this closes the static-teardown thread.
+
+### 33. G-2 health-write live test — PARTIAL (config/live ✅, `$LIFE`/`$BUMP` unconfirmed) ⚠️
+Bench test on the **Windows tower** (office; the fixed dev/test rig), tagger **Tactix-3D4F**
+(`FE:AD:FD:10:3D:4F`, v4.32), volume **45** per Tony's request (warn before 100). Goal: confirm the
+`$LIFE` (grant) / `$BUMP` (adjust) health-write commands actually change health mid-life — the gate
+for the shields/overshield/medic/Syphon mode family (followups G-2/P11, `docs/tier0-plan.md`).
+- **Confirmed:** config + spawn take the gun **live** — pulling the trigger decremented the mag in the
+  `$ALCD` HUD echo (`$ALCD,<mag>,100,0,<reserve>,0`: `35→34→33…`, reserve `108` = our `$AMMO` load).
+  Tagger reported "phone connected" + went **red** (red team). So the whole config/spawn/live path
+  works on the tower over BLE. `$ALCD` = the **ammo** HUD; `$LCD` (health HUD) was **never** emitted.
+- **Not confirmed:** `$BUMP,20,25,25`, `$LIFE,10,10,10`, `$BUMP,-20,-30,-30`, `$LIFE,20,30,30`,
+  `$BUMP,10,10,10` — **every one produced zero rx response** (no `$HP`, no `$LCD`). Adds to a
+  full-health player clamp (expected → no event), but **negative `$BUMP` did not reduce health either**,
+  so we couldn't create a damaged state to heal from. Health-write remains **unproven on v4.32**.
+- **Observation (open):** trigger fires **haptic vibration but no fire sound** at vol 45 — separate
+  issue, likely a `$WEAP` sound-token or audio-path thing; doesn't block G-2 (health read is over BLE).
+- **Next — round 3 (definitive):** need a **real damaged baseline** — Tony **shoots the tagger / tags
+  the headset** to take actual damage (emits `$HP`/`$LCD`, also proves the read path), *then* send
+  `$LIFE` and watch for a heal. If it heals → G-2 passes; if not, health-grant isn't available on v4.32
+  and Syphon/shields fall back to other mechanics. **Power-cycle the tagger before round 3** (Tony's
+  hygiene note — avoids a stuck state after repeated config/spawn/END cycles).
+- Scripts: `scratchpad/g2_health_probe.py`, `g2v2.py`. Session paused (Tony in a meeting, ~30 min).
