@@ -186,28 +186,115 @@ against two different Tactix2 taggers. Decoded with `python -m brx_mcp.btsnoop`.
 - Factory restore path: Battle Company's official USB updater.
 - Recommended probe sequence: connect → `$PING,*` → await `$PONG` → read-only listen session (pull trigger, get tagged, watch `$BUT`/`$HIR`/`$HP` traffic) before sending any config.
 
-## 7c. Hardware findings (2026-08-23)
+## 7c. The micro-USB "Programing Port" — full exploration record (2026-08-23)
 
-- **The tagger's MCU is a Teensy** (PJRC). Its micro-USB port enumerates on macOS as
-  `USB Serial` / vendor `Teensyduino` → `/dev/cu.usbmodem*`.
-- That USB port is **not** the `$` protocol. It echoes input locally and answers any
-  CR-terminated line with `ERROR` — including bare CR, `$PING,*`, `help`, `?`, `AT`.
-  It is presumed to be Battle Company's updater/console interface; its command set is
-  unknown and was deliberately not brute-forced.
-- **Firmware cannot be backed up.** Teensy's HalfKay bootloader is write-only by design,
-  so no flash read-back is possible over USB. **There is no SD-card fallback either** — the
-  manual (§7h) confirms the BRX has no user-accessible SD card; SD sound updates are a
-  commercial-line feature (Battle Rifle Pro/XL/BRM). Rollback therefore depends *entirely*
-  on Battle Company supplying the original image. The only local backup we have is the
-  `QUERY` settings dump in `~/.brx-mcp/device-backups/`.
-- The micro-USB is the manual's **"Programing Port"** (distinct from the charging port) —
-  i.e. the console we found is the official update path, which is why `SETUP` is factory
-  provisioning.
-- **The `$` protocol runs on a hardware UART at 115200**, not USB. LaserTagMods' JEDGE
-  drives it via `Serial1.println("$UP,100,5,0,*")` etc., and the Gen1 HC-05 mod bridges the
-  same UART over Bluetooth Classic. The built-in BLE module is likewise a UART bridge.
-  → A **wired UART tap on the accessory port** would bypass the v4.32 BLE stack entirely
-  and is the most promising route to a stable link (untested; needs pinout).
+The BRX has **two** ports (manual §7h): a charging port and a separate micro-USB
+**"Programing Port"**. This documents everything tried on the latter, including what
+failed, so nobody repeats it.
+
+### Enumeration
+
+Plugged into macOS it appears as:
+
+```
+USB Product Name = "USB Serial"
+USB Vendor Name  = "Teensyduino"     -> /dev/cu.usbmodem*
+```
+
+**So the tagger's MCU is a Teensy** (PJRC ARM). On Windows/Linux expect a COM port /
+`/dev/ttyACM*` instead. It is USB CDC, so **baud rate is ignored** — 115200 and 57600
+behaved identically. The port disappears on unplug and returns on replug.
+
+### What did NOT work (all tried, all dead ends)
+
+| Sent | Result |
+|---|---|
+| `$PING,*` (no terminator) | echoed back verbatim — the port has **local echo on**, which is easy to mistake for a reply |
+| `$PING,*\n` | echo only |
+| `$VERSION,*` | echo only |
+| `ZZZGARBAGE` | echoed — this is what proved it was local echo, not a response |
+| `$PING,*\r\n` | `ERROR` |
+| bare `\r` | `ERROR` |
+| `?` `help` `HELP` `h` `menu` `MENU` `version` `VERSION` `AT` `info` `INFO` `status` `list` `commands` | all `ERROR` |
+| 3 s passive listen | silence — it volunteers nothing |
+
+**The `$` protocol does not work over USB.** Every `$` frame is rejected. This port is a
+different interface entirely.
+
+### What DOES work: `QUERY` and `SETUP`
+
+The command set came from LaserTagMods' "Pairing Headset and Tagger" note, not from
+guessing. Both are case-insensitive; a CR terminator is required.
+
+**`QUERY`** — read-only, dumps the whole device record:
+
+```
+Gun Info
+Gun Version: v4.32
+Serial Number/Head PIN: <SERIAL>      <- matches the sticker on the paired headset
+Gun Name: Tactix2
+Headset Version: hds.59               <- reads '?' briefly after a power-cycle until
+Gun: 7.671 VOLTS                         the headset re-handshakes; not a fault
+PlayerID 0
+FieldID1
+NRFhost 1
+NRFslave 1
+devHost 1                             <- developer/host image, not retail
+Head: 3.837 VOLTS
+Head Tested:
+Head BURN in test: 0
+Gun BURN in test: 3hours28minutes
+Grenade Pin: 0
+Laser: 16.9 mW
+Tested by: JB
+PCB-5
+BTchip- 4
+BT central V: devhost.03
+```
+
+This is the **only local backup available** (see below). Ours is saved to
+`~/.brx-mcp/device-backups/` — kept out of the repo because it contains the headset PIN.
+
+**`SETUP`** — factory provisioning. Prompts bilingually (EN/中文):
+
+```
+SETUP
+Factory Defaults 默认
+Enter unique SN 进入耳机的序列号,  example 例: 00A9F
+```
+
+It asks for the **headset's** serial number — this is the gun↔headset pairing mechanism
+(matching LaserTagMods' note: run `QUERY` on both, `SETUP` on whichever you want to
+re-pair, enter the PIN). **We did not answer the prompt.** We abandoned it by
+power-cycling, then re-ran `QUERY` and diffed field-by-field: **nothing changed** except
+live sensor values (battery voltages drifting by millivolts). So the "Factory Defaults"
+banner is a mode header, **not an action** — entering `SETUP` is safe, and it does not
+reset anything on entry.
+
+`SETUP` does **not** appear to expose `devHost` or the BT role; it only asked for the SN.
+Whether later prompts do is unknown — we stopped rather than commit a pairing change.
+
+### Firmware backup: impossible
+
+- Teensy's **HalfKay bootloader is write-only by design** — PJRC deliberately prevents
+  reading firmware back off the chip. No flash dump is possible over this port.
+- **There is no SD card** on the BRX (manual §7h) — SD sound updates are a commercial-line
+  feature (Battle Rifle Pro/XL/BRM). An earlier suggestion in this project to "pull the SD
+  card" was wrong.
+- Therefore **rollback depends entirely on Battle Company supplying the original image.**
+  Do not reflash without it, especially on `devhost` units that may not exist in their
+  retail archive.
+
+### Where the `$` protocol actually lives
+
+**A hardware UART at 115200**, not USB. LaserTagMods' JEDGE drives it with
+`Serial1.println("$UP,100,5,0,*")`, and the Gen1 HC-05 mod bridges that same UART over
+Bluetooth Classic. The built-in BLE module is likewise a UART bridge — which is why BLE
+and the wire speak identical frames.
+
+There is **no external accessory port** on these taggers (operator confirmed: micro-USB
+only), so a wired UART tap means opening the gun. Untested, and not attempted — it would
+need a pinout and is invasive on developer units.
 
 ## 7d. Commands seen in LaserTagMods sources but not yet documented above
 
