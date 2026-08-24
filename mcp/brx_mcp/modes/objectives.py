@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from .. import sounds as snd
 from .base import (
     Action, Callout, GameEngine, GameOver, PlaySound, Roster, Score, hp_values,
 )
@@ -73,7 +74,7 @@ class DominationEngine(GameEngine):
         self._acc.setdefault(team, 0.0)
         held = sum(1 for o in self.owner.values() if o == team)
         return [Callout(f"Point {site} → team{team}  (holds {held}/{len(self.sites)})"),
-                PlaySound("VA20", scope="all")]
+                PlaySound(snd.POINT_CAPTURED, scope="all")]
 
     def on_event(self, player_id: str, ev: dict, now: float) -> list[Action]:
         if self.over:
@@ -158,7 +159,7 @@ class CtfEngine(GameEngine):
         if self.over:
             return []
         self.held.add(team)
-        return [Callout(f"team{team} grabbed the flag!"), PlaySound("VA81", scope="all")]
+        return [Callout(f"team{team} grabbed the flag!"), PlaySound(snd.OBJECTIVE_TAKEN, scope="all")]
 
     def drop(self, team: int, now: float) -> list[Action]:
         """`team`'s carried flag returned home (carrier tagged / manual return)."""
@@ -176,7 +177,7 @@ class CtfEngine(GameEngine):
         self.caps[team] = self.caps.get(team, 0) + 1
         actions: list[Action] = [Score(f"team{team}", +1, self.caps[team]),
                                  Callout(f"team{team} captured the flag! ({self.caps[team]})"),
-                                 PlaySound("VA20", scope="all")]
+                                 PlaySound(snd.POINT_CAPTURED, scope="all")]
         if self.caps[team] >= self.target:
             return actions + self._end(f"team{team}")
         return actions

@@ -64,5 +64,9 @@ firmware-native**, NOT host-computed. Implications (followup **D4**, tied to the
   the base multikills are already native.
 - **Grenade/Utility-Box sounds:** the gun/headset plays them from *its* bank on the box's IR — reskin via
   the tagger sound swap or drive any bank id through `$SIR` (`reference/grenade.md`, `brx-station-spec.md`).
-- **Sound-id catalog (one-time work):** map which of the 2166 ids are which announcer lines
-  (`callsign-extract/sound-bank.md`) so the engine knows what to play. Reused across all modes.
+- **Sound-id catalog:** `mcp/brx_mcp/sounds.py` — semantic names → verified bank ids, with a
+  confidence per cue (CONFIRMED from captures/`$SIR`/DK map; PROVISIONAL = right documented range,
+  exact clip TBD by ear). Every id is asserted to exist in the real 2166-id bank (`test_sounds.py`),
+  so no cue plays the invalid-id fallback. Engines emit `snd.GAME_OVER` / `snd.POINT_CAPTURED` etc.
+  instead of raw literals; the driver plays `snd.GAME_OVER` on every game end. **Open by-ear task:**
+  pin the exact CTF/KotH objective callouts in the `V100–V144` range (verification-checklist).

@@ -18,6 +18,7 @@ import asyncio
 import time
 from typing import Awaitable, Callable, Optional
 
+from .. import sounds as snd
 from ..gameconfig import GameConfig, RESPAWN_SEQUENCE, END_SEQUENCE
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, PlaySound, Respawn,
@@ -123,6 +124,8 @@ class GameDriver:
                 self.announce(f"☠ {a.player_id} eliminated")
             elif isinstance(a, GameOver):
                 self.announce(f"🏆 GAME OVER — {a.winner}  {a.detail}")
+                for pid in self.players:            # grounded game-over announcer (all guns)
+                    await self._send(pid, f"$PLAY,{snd.GAME_OVER},4,6,,,,,*")
 
     # -- lifecycle ----------------------------------------------------------- #
     async def setup(self) -> None:

@@ -41,6 +41,13 @@ The whole M0 engine is tested in software but never driven on real guns.
 - ⬜ **Emit** — flash `ir_emit.ino`; tune timings to captured frames; a stock gun registers a `$HIR`; the TX LED lights.
 - ⬜ **`$SIR` sweep** — catalog every IR type → effect + sound (the Utility Box API).
 
+## Session E½ — sound catalog by-ear (1 tagger, ~10 min)
+`mcp/brx_mcp/sounds.py` — CONFIRMED cues are grounded; the objective callouts are PROVISIONAL.
+- ⬜ **Objective callouts** — `$PLAY` through the `V100–V144` range (the app's CTF/Slayer/KotH voice
+  lines) and note which id says what. Pin `OBJECTIVE_TAKEN` (grab), `OBJECTIVE_SCORED` (capture),
+  `POINT_CAPTURED` (hill/point) to the right clips (currently V100/V108/V109, best-guess-in-range).
+- ⬜ **Game-over cue** — confirm `VA33` (game over + music) is the one we want on match end (vs `VA85` quiet).
+
 ## Session F — grenade / objectives (grenade + tagger)
 - ⬜ **Grenade beacon relay** — `diag-game`'s `gren.beacon`: a Hill/Respawn grenade's `$HIR,0,15,0,<team>,<mode>` surfaces on a bare-connected gun (confirmed once; make it repeatable for the state display).
 - ⬜ **Domination / KotH** — station CAPTURE events → the engine scores point-time; owner LED = truth.
