@@ -1,0 +1,179 @@
+# Mode limits & feasibility — by tier
+
+The honest companion to `game-modes.md` (what each mode *is*) and `build-tiers.md` (what each budget
+*adds*). This doc is the **constraints ledger**: for the modes we've designed — Extraction, Counter-
+Strike (plant/defuse), the health/regen variants, the objective family (Domination/KotH/CTF), respawn
+stations, and phone-as-objective — *what actually limits them, at each tier, and whether the limit is a
+**hard ceiling** or just **pending a hardware test**.*
+
+**Two kinds of limit — keep them separate:**
+- 🧱 **Hard** — a physical/platform ceiling we can't code around (no IR on a phone, iOS Web-BT gap, the
+  Android 7-connection cap, LoRa bandwidth). Design around it.
+- 🧪 **Pending** — plausibly fine, but unconfirmed on hardware; tracked as a `FOLLOWUPS` item. Not a
+  ceiling, a to-do.
+
+**Tiers** (the `build-tiers.md` spend ladder): **T0** $0 (guns + a laptop/phone you own) · **T1** old
+phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective stations · **T4** field radio.
+
+---
+
+## 1. Cross-cutting constraints (they shape every mode)
+
+### Platform / BLE
+- 🧱 **iOS has no native Web Bluetooth** — not in any Safari version (through iOS 18), and every iOS
+  browser is forced onto WebKit, so Chrome/Edge on iOS inherit the gap. **Consequence:** an iPhone/iPad
+  can't drive a gun over BLE from a normal web page. *Mitigation (not a full fix):* wrapper browsers —
+  **Bluefy** or **beacio** (~92/93 % W3C Web-Bluetooth conformance) — or a native app. So iOS = "needs a
+  wrapper," and any BLE role is second-class there. ([status](https://github.com/WebBluetoothCG/web-bluetooth/blob/main/implementation-status.md),
+  [beacio](https://ioswebble.com/)) → **Android (Pixel/OnePlus) is the first-class BLE node; iOS is best
+  as screens/scoreboards/Mission Control** (plain HTTP, no BLE).
+- 🧱 **Android central caps at 7 concurrent GATT connections** (`BTA_GATTC_CONN_MAX=7` in the Android
+  Bluetooth stack; fewer are reliable in practice). **Consequence:** one phone hosts a *handful* of guns,
+  not a crowd — so "one phone as the hub for everyone" doesn't scale; past ~4–6 guns you need a node per
+  player (T1/T2) or multiple host phones. ([Android stack](https://support.google.com/android/thread/43071437/maximum-connection-limit-reached-on-connecting-via-android-ble?hl=en))
+- 🧱 **The gun keeps no game state** (`protocol/brx-protocol.md` §7n) + **BLE range ~1 m reliable** →
+  anything needing a clock/score/respawn needs a listener *on the player* out on a field. This is the
+  whole reason for per-player nodes (T1/T2).
+- 🧪 **"SCREAMERS" reliability** (`reference/community-notes.md`): in hosting/online modes, guns can
+  buzz-fail after ~1 hr and **BLE won't re-pair once the battery drops below a threshold**. **Design
+  rule:** budget for reboots, keep batteries topped, never assume a session-long link. Affects *every*
+  BLE-hosted mode; worst for long games.
+- 🧪 **BLE establishment is ~1-in-3 flaky** (holding is fine once up); MTU-20 chunking required.
+
+### IR
+- 🧱 **Phones have no IR** — can't shoot-to-capture, can't emit an IR respawn/"safe" tag, can't be shot.
+  Phone objectives work by **touch / proximity / camera**, never by laser hit. Any *shoot-the-point*
+  mechanic needs an **IR station (T3)** or **the grenade**.
+- 🧱 **IR is line-of-sight & directional** (~30 ft grenade; range scales with indoor/outdoor mode). Cover
+  blocks it; aim matters.
+- 🧪 **Does the grenade/station's objective state surface over BLE?** (`FOLLOWUPS` G6) — **gates**
+  auto-proximity ("you're at the site") and any live objective HUD read from the gun stream. Unconfirmed.
+
+### Identity & protocol (mostly 🧪 — pending, not ceilings)
+- 🧪 **Per-player identity (P2):** `$HIR` gives the shooter's **team**, not player. FFA per-player
+  scoring and "credit the exact killer" (Syphon) need a player id — settable via `SETUP` (`PlayerID`),
+  untested. **Team modes don't need it.**
+- 🧪 **Max native team count (P9):** confirmed 2 (TDM) + 3 (Supremacy); N-team / duos native support
+  untested. *Workaround today:* FFA + Mission-Control logical teams (any structure, no hardware FF
+  protection).
+- 🧪 **IR damage value (P10)** — needed for damage-weighted scoring. 🧪 **Regen as a weapon field (P11)**
+  — decides if Halo-shields are free (native) or host-driven. 🧪 **`$PB*` enums are v4.30; ours is v4.32
+  (P12).**
+- ✅ **Health writes exist** (`$LIFE` grant / `$BUMP` adjust) — so heal/boost/overshield are available;
+  the *exact* mid-life behavior is the only 🧪 part.
+
+### Power / physical
+- 🧱 **A phone with its screen on drains fast** (~a couple hours on an old phone) — mount with power for a
+  fixed objective. 🧱 **Phones are fragile/weak outdoors** (glare, weather) — case/enclosure or keep them
+  indoors.
+- 🧪 **Station IR range is a power tradeoff** (`hardware/brx-station-spec.md`): 3.3 V GPIO drive = weaker
+  beam; a separate 5 V emitter port = stronger. ✅ **<300 mA off the tagger is OK** (BC-confirmed) for an
+  in-gun Companion.
+
+### Networking / scale
+- 🧱 **No venue WiFi on a field** → live *global* consensus (a live field-wide scoreboard, instant "flag
+  taken" everywhere) needs a **broadcast downlink (T4)**; without it, modes still *run* but sync is
+  store-and-forward, not live. 🧱 **LoRa is low-bandwidth** (multi-second round trips) → time-sequence
+  low-rate control, keep scoring local; never a live per-hit firehose.
+- 🧪 **Multi-node caps** (field-reported): LoRa domination **1 master + 9 slaves (10)**; hosted KotH
+  **~21 boxes**; ESP-NOW ~250 ft (~581 ft with an antenna); LoRa-standard ~1,373 ft. (`jay-ecosystem.md` §5)
+
+---
+
+## 2. Per-mode limits, by tier
+
+Legend: ✅ works · ⚠️ works with a caveat · ❌ blocked (reason). "Pending" caveats link a `FOLLOWUPS`
+item; everything else is a hard limit.
+
+### Extraction (raid-and-extract)
+Mechanics: `game-modes.md` §Extraction. Engine built: `mcp/brx_mcp/modes/extraction.py`.
+
+| Tier | Extraction status | Limit / why |
+|---|---|---|
+| **T0** ($0, guns + 1 phone) | ⚠️ playable at small scale | Loot wallet + channel + drop-on-death all run in the engine on one phone. **Hard limit: the 7-GATT / iOS-wrapper caps** → one phone ≈ ≤4–6 guns. "Loud extraction on every gun" only reaches connected guns. Loot is virtual (kills/timer), no physical loot pickup. |
+| **+T1** (phones per player) | ✅ full small-field | Each player's node runs its own engine + plays its own alarm → the summon is a mesh event, **every** gun screams. ⚠️ iOS players need a wrapper; 🧪 per-player loot-from-kills wants P2 for exact credit. |
+| **+T2** (Companion) | ✅ rugged/loud | Companion node = louder alarm, custom audio, no phone dependence, survives SCREAMERS reboots better. |
+| **+T3** (stations) | ✅ real extraction *point* | A physical IR extraction site you defend (shoot/dwell), dropped-loot **beacons** you hunt. Without T3 the "site" is a phone (touch/proximity only, 🧪 G6 for auto-detect). |
+| **+T4** (radio) | ✅ field-wide | Hidden multi-extracts + field-wide "extraction inbound" broadcast. 🧱 Without T4, "everyone hears it across a big field" is store-and-forward, not instant. |
+
+**Bottom line:** Extraction runs at **T0** for ~4 guns on one phone; needs **T1** to scale the alarm to
+everyone, **T3** for a real defendable site, **T4** for field-wide drama.
+
+### Counter-Strike (plant / defuse)
+Mechanics: `game-modes.md` (custom modes) + `phone-app-spec.md` §screen-objectives.
+
+| Tier | CS status | Limit / why |
+|---|---|---|
+| **T0** ($0, grenade + 1 phone) | ⚠️ playable | **Grenade = bomb site**, a phone/host runs the plant timer + defuse puzzle. **Eligibility is hardware-gated: a dead gun can't fire → can't shoot-to-arm** (🧪 confirm through a death→respawn cycle, G6). Detonation "blast" can't damage players without IR — resolve the round abstractly or push `$BUMP` to *connected* guns only. |
+| **+T1/T2** (nodes) | ⚠️→✅ | 🧪 **Auto-enable Plant in range** = grenade IR beacon → gun → node (needs G6; **Android only**). Node greys out Plant while dead. iOS players can't auto-detect in a browser (wrapper needed). |
+| **+T3** (stations) | ✅ multi-site, robust | Real IR bomb-site stations run the plant timer locally, defenders defuse via IR; blast can damage via station IR. Cleanest version. |
+| **+T4** | ✅ | Field-wide "bomb planted" callout + live round state. |
+
+**Hard limits:** phone-as-bomb can't sense *who* touches it (team) — use team-gated codes / QR-badge
+camera / BLE-proximity; and can't deliver an IR blast (needs station/grenade IR or an abstract round
+end). **Everything else is pending G6/P-items, not ceilings.**
+
+### Health / regen variants (Syphon, Halo shields, overshield, medic)
+Mechanics: `game-modes.md` §Health/regen. All **T0** — no props.
+
+| Variant | Tier | Limit / why |
+|---|---|---|
+| **Halo regenerating shields** | ✅ T0 | Per-node, no P2. 🧪 P11: if regen delay/rate is a weapon field it's *free* (native); else host-driven via `$LIFE`. Either way T0. |
+| **Overshield / medic** | ✅ T0 | Native shield/medic precedent confirmed (FB). Host grants `$LIFE`. |
+| **Syphon (health-on-kill)** | ⚠️ T0 **+ P2** | 🧪 **Hard-ish dependency: needs per-player identity** to heal the *exact* killer — `$HIR` alone gives only team. Until P2, Syphon can only credit "a teammate," not the killer. |
+
+**Bottom line:** shields/overshield/medic are the cleanest modes we have (T0, per-node). Syphon is the
+one health mode gated on P2.
+
+### Objective family — Domination / King-of-the-Hill / CTF / Assault
+Mechanics: `game-modes.md` catalog. These are inherently **contested-place** modes.
+
+| Tier | Status | Limit / why |
+|---|---|---|
+| **T0/T1** (no props) | ❌ as *capture-by-fire* | 🧱 A *place* can't be authored by the guns (no state) and a **phone can't be shot** (no IR). Needs a physical IR point. *Exception:* the **grenade** gives you single-point KotH/CTF/checkpoint for $0 (⚠️ can't display a winner; Assault friendly-capture bug). |
+| **+T3** (IR stations) | ✅ the real thing | One station primitive → Domination (1 pt/s), KotH (hold 45 s, ~5 s recapture), CTF, Assault. 🧪 P10 for damage-weighted scoring. |
+| **multi-point** | ⚠️ needs linking | 🧱 Several points that share score need base↔base networking (ESP-NOW arena / **T4** LoRa field). Caps: 10-station LoRa domination, ~21-box KotH. |
+| **+T4** | ✅ live | Field-wide live ownership/scoreboard. Without it, multi-point still scores but syncs late. |
+
+**Bottom line:** the objective family is fundamentally **T3** (needs IR points); the grenade is the only
+$0 shortcut and only for a *single* point, with its own quirks.
+
+### Respawn stations
+| Tier | Status | Limit / why |
+|---|---|---|
+| **T0** (host phone) | ⚠️ authority-only | A phone can respawn guns it's connected to (`$LIFE`/`$SPAWN`) — but 🧱 7-connection cap + 🧱 no IR "melee/proximity respawn." Fine for a small base; doesn't scale. |
+| **grenade** | ✅ $0 physical | The grenade natively does Respawn Station (shoot to claim team, button/melee IR to respawn) — but ⚠️ the "must signal each gun post-start" gotcha (`reference/grenade.md`). |
+| **+T3** (station) | ✅ + data mule | Purpose-built respawn point that doubles as a store-and-forward sync node on a field. |
+
+### Phone-as-objective (screen objectives: bomb, hack terminal, hostage, utility box)
+`phone-app-spec.md` §screen-objectives. The phone's superpower is the **touchscreen**; its ceiling is IR.
+
+| Capability | Status | Limit / why |
+|---|---|---|
+| Touch/keypad/puzzle interaction, visual state, audio, camera-ID | ✅ any tier | It's a web page — runs on **any** phone incl. iOS (no BLE needed for the screen role). |
+| Make connected guns react (`$PLAY`/`$LIFE`) | ⚠️ | 🧱 Android (or iOS wrapper) + 🧱 7-connection cap; at scale, drive via the mesh + per-node, not one phone. |
+| Be *shot* / IR-captured / emit IR | ❌ | 🧱 No IR hardware — use the grenade/IR-station for the shoot-the-point half. |
+| Run all day outdoors | ⚠️ | 🧱 Screen battery drain + fragility — mount with power, shelter it. |
+
+---
+
+## 3. The short version (what's a true ceiling vs a to-do)
+
+**Hard ceilings to design around:**
+1. **iOS has no native Web-BT** → iOS = screens/MC; Android = the BLE nodes (wrappers help but are
+   second-class).
+2. **7 concurrent BLE connections per phone** → one phone hosts ~4–6 guns; scale with per-player nodes.
+3. **Phones have no IR** → shoot-the-point needs an IR station or the grenade; phones do touch/proximity.
+4. **LoRa is low-bandwidth + no field WiFi** → live field-wide state needs T4 broadcast; else
+   store-and-forward.
+5. **SCREAMERS** → plan for reboots and topped batteries in long hosted games.
+
+**Pending confirmations (not ceilings — hardware tests that unlock things):** G6 (grenade/station state
+over BLE → auto-proximity + live HUD), P2 (per-player id → FFA scoring + Syphon), P10 (damage-weighted
+scoring), P11 (native regen), P9 (native small teams), G7 (grenade audio). All tracked in `FOLLOWUPS.md`.
+
+**Net:** with **Tony's kit** (4 BRX + 2 grenades + Pixel 4/OnePlus + 2 iPhone X + iPad Air), the modes
+that run **today at T0/T1** are TDM/FFA, the health/shield variants, small-scale Extraction, single-point
+grenade KotH/CTF, and grenade-site Counter-Strike — with the iPhones/iPad as screens and the two Android
+phones as the BLE nodes. The multi-point objective modes and field-wide live play are the ones that
+genuinely need **T3 stations** and **T4 radio**.

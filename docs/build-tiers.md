@@ -134,3 +134,6 @@ of adding subscriber nodes.
 laptop, test **grenade CTF/CS** for free, and check the **Android-BLE gate** — that alone gets you
 orchestrated, custom, multi-mode games for your 4 taggers + 2 grenades with **no hardware spend**.
 Every rung after is optional and additive.
+
+**What each rung actually unlocks per mode — and the hard limits vs. pending tests at each tier — is
+in [mode-limits.md](mode-limits.md).**

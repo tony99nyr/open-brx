@@ -12,6 +12,9 @@ kills), CaptureTheFlag, SquadLeader.
 > **Tier note:** these are **infrastructure tiers** (what gear a mode needs). They are a *different
 > axis* from `build-tiers.md`'s **spend tiers** ($0 → phones → Companions → stations → radio). A mode's
 > infrastructure tier here maps to whatever spend tier supplies that gear.
+>
+> **For the honest constraints** — what limits each mode *at each tier*, and which limits are hard
+> ceilings vs. pending hardware tests — see **[mode-limits.md](mode-limits.md)**.
 
 ## The three infrastructure tiers
 
