@@ -1,89 +1,170 @@
-# Handoff — BRX work, state as of 2026-08-23 (evening)
+# Handoff — BRX Open Battle System
 
-**You are:** Claude picking this up on Tony's MacBook. Read `CLAUDE.md` first, then this.
-Protocol ground truth: `protocol/brx-protocol.md` — §7e (game start) and §7f (combat) are
-the important new sections. Also read `docs/reference/brx-manual-notes.md` (official
-manual, distilled) and `docs/experiment-log.md` (shared lab notebook — append your results).
+**Updated:** 2026-08-23, end of the MacBook session. Read `CLAUDE.md` first, then this,
+then `docs/experiment-log.md` (shared lab notebook — **append after every session**).
+Protocol ground truth: `protocol/brx-protocol.md`.
 
-## The headline: remote game start is SOLVED
+## Machine roles (NEW — this changed today)
 
-The project's central blocker is gone. `python -m brx_mcp startgame <uuid>` configures a
-tagger and takes it live — verified on hardware, gun fires, ammo decrements. The sequence
-is in §7e, transcribed from a PacketLogger capture of the official iOS Callsign app.
+| Machine | Role | Notes |
+|---|---|---|
+| **Windows PC (WSL2 + Windows Python)** | **primary development** | Do protocol work, captures, code here. |
+| **MacBook** | **field / match day** | Goes to the field with the taggers. Keep `mcp/` working here. |
 
-Three things had been missing, which is why every earlier attempt configured the gun but
-never made it live:
-1. `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` after spawn — undocumented until today.
-2. All seven `$BMAP` entries, plus `$BMAP,0,0,,,,,*` **again after** `$SPAWN`.
-3. `$SPAWN,,*` with the empty token, not `$SPAWN,*`.
+`CLAUDE.md`'s cross-platform rule matters more than ever: **code must run on both.**
+macOS gives BLE **UUIDs**, Windows/BlueZ give **MACs** — never pattern-match address
+format. (A bug exactly like that shipped today and was caught only by asking "will this
+run on Windows?" — `_split_addrs()` in `__main__.py` now handles both.)
 
-Combat, death and host-driven respawn are captured too (§7f).
+## Where the project stands
 
-## Environment (macOS, already set up)
+**Remote game start is solved and implemented.** Our own software configures taggers,
+takes them live, runs a timed match, tracks hits and deaths, and drives respawns. Verified
+on hardware across several matches, including two taggers driven simultaneously from one
+laptop with a synchronised start.
 
-- venv: `.venv` built with `/opt/homebrew/bin/python3.13` (system python3 is 3.9 — too old).
-  `pip install -e ./mcp`. Extras installed for tooling: `pyserial`, `numpy`.
-- The `mcp` PyPI package resolved to **2.0.0**, which moved `mcp.server.fastmcp` →
-  `mcp.server.mcpserver`. **`server.py` (MCP-server mode) is therefore broken.** The CLI
-  is unaffected. Fix by pinning `mcp>=1.2,<2` or porting the ~15 decorators.
-- `cat` is aliased to `bat` in this shell — use `sed -n`/`python` for file reads in scripts.
+Working CLI:
 
-## Hardware truths learned today
+```
+scan [s] · identify <addr> · listen <addr> [s] [pair] · probe <addr> [s]
+startgame  <addr> [seconds] [respawn_s] [volume]
+deathmatch <addr> [minutes] [respawn_s] [volume] [weapon]
+arena      <addr...> [minutes] [respawn_s] [volume] [weapon]
+fieldstart <addr...> [volume] [weapon]      # configure + spawn, then disconnect
+fieldresults <addr...> [listen_s]           # reconnect afterwards
+```
 
-- **Two taggers, both `v4.32` / `devhost.03`, `devHost 1`** — these are developer/host
-  images, not retail. Callsign warns "supported version is until v2.01e" (an UPPER bound —
-  the guns are ahead of the app's range) but the warning is **soft**: games still run.
-- **The MCU is a Teensy.** Micro-USB enumerates as `USB Serial` / `Teensyduino`.
-- **USB console commands are `QUERY` and `SETUP`** (from LaserTagMods' notes). `QUERY` is
-  read-only and dumps everything: versions, serial/head PIN, voltages, NRF + devHost flags.
-  A backup lives in `~/.brx-mcp/device-backups/`. `SETUP` is factory provisioning
-  (asks for the headset serial); entering it and power-cycling out changed **nothing**.
-- **Firmware cannot be backed up** — Teensy's HalfKay bootloader is write-only. Do not
-  reflash without Battle Company supplying a rollback image. The email to them was never
-  sent; that's still the open question about what `devhost.03` is.
-- The `$` protocol is a **115200 UART**; BLE and the Gen1 HC-05 are both bridges onto it.
-  There is no external accessory port, so a wired tap means opening the gun.
+Weapons: `primary` / `secondary` / `melee` (verified on hardware) · `ar` / `charge`
+(from the §6 doc, **never fired — unverified**).
 
-## BLE: it works, connecting is just flaky
+## THE critical path: `$GSET`
 
-**Do not repeat today's wrong turn.** We spent hours concluding the link "dies after 6 s"
-and even that the firmware's BLE stack was broken. Both were wrong. Reality:
+**Read this before planning anything else.**
 
-- **Establishment is intermittent (~1 in 3), holding is fine.** A clean session runs 75 s+
-  (ours) and 80 s+ (the app, §7e). `ble.py` now retries 5×; that was the whole fix.
-- The lesson: never conclude anything about the link from two or three attempts.
+A field test today proved **the taggers keep playing with no host connected** — the game
+survives the laptop disconnecting and walking away. So the one-laptop topology is viable.
+But nothing respawned and the round never ended, because **we never configured an on-gun
+respawn time or game duration**. `arena` fakes respawn from the host, which is precisely
+what cannot work out of BLE range.
 
-## What's worth doing next
+The manual (§7h) lists both as on-gun settings — respawn off/15/30/60/ramp45/ramp90,
+time off/5/10/15/20/30 min — so the values live in config we already send.
+**`$GSET,1,0,1,0,1,0,50,1,*` has eight tokens and we understand none of them.**
 
-1. **Differential captures to decode `$GSET`** — capture the same game type twice with one
-   setting changed (e.g. score-to-win 50 → 25) and diff. `diff_captures` already exists.
-   Same method cracks `$WEAP`'s 44 tokens. Highest value for the game engine.
-2. **Two-tagger capture with distinct player IDs** — §7f could not confirm `$HIR` shooter
-   attribution because every hit read `1,1` in a 2-player game.
-3. **Fix `server.py`** for the mcp 2.0 API if MCP-server mode is wanted.
-4. **The lobby question** (§7g): game discovery between phones takes ~1 minute and is not
-   BLE — it looks like a cloud round-trip. An open system needs its own answer. Capturing
-   the phone's *network* traffic (not Bluetooth) would settle it.
+Decoding it unlocks autonomous play *and* fixes the "players don't know how long they're
+dead" complaint (the gun should announce its own respawn, as it already announces
+"GET SOME"). Method is mechanical:
 
-## Dead ends — don't redo these
+1. Callsign: create a game, respawn 15 → PacketLogger capture.
+2. Change **only** respawn to 30 → capture.
+3. Diff the `$GSET` frames. The token that moved is respawn.
+4. Repeat for game time, lives, mode. `diff_captures` already exists.
 
-- **Sound-bank sweep by microphone.** Built it, and the negative control failed: a nonsense
-  id (`ZZ99`) still produced audio, so the tagger appears to play a fallback sound for
-  unknown ids. "Audio detected" never proved "id exists". **And there is no SD card to read
-  instead** — the official manual confirms the BRX has none (that's a commercial-line
-  feature). If the sound bank is ever wanted, the realistic routes are the official
-  updater's sound package or asking Battle Company; do not repeat the microphone sweep.
-- **`listen ... pair` on macOS** — CoreBluetooth has no pairing API. Now a no-op, not a crash.
-- **Chasing the version gate.** It is soft. Games run on v4.32 regardless.
+Do this on the Windows machine with the iPhone, or on the Mac — either works.
+
+## Second critical unknown: can results survive out-of-range play?
+
+On reconnect after a field game the taggers volunteered **zero frames** — no state, no
+score. `$UP,*` got no reply. **Do not probe `$SP`**: it is documented as the end-of-game
+report, but `$SP,99,*` is half the panic sequence and may destroy what it reports.
+
+There is a real possibility there is **nothing to read**: §7g established the phone is the
+game engine and the tagger enforces nothing. If the gun keeps no score, then events that
+happen out of range are simply unobserved and unrecoverable. That is inference, not proof.
+
+Options if it holds:
+1. Something in range with each player (ESP32 relay over WiFi/LoRa — LaserTagMods do this).
+2. **The nRF radio.** `QUERY` reports `NRFhost 1` / `NRFslave 1`, and LaserTagMods ship
+   `NRFL-Bases` / `LoRa-Controlled-Taggers`. **If these guns already have a long-range
+   radio, BLE is the wrong transport for field play.** Unprobed, and arguably the single
+   most valuable unexplored thread in the project.
+3. Accept partial results (final HP/lives, no attribution).
+
+## Followups and unknown fields
+
+Full prioritised list lives at the end of `docs/experiment-log.md`. Summary of unknowns:
+
+| Item | Why it matters |
+|---|---|
+| `$GSET` 8 tokens | respawn, game time, lives, mode — the critical path |
+| `$WEAP` 44 tokens | custom weapons; manual's stock stats (§7h) are anchors, M-4 damage 24 already matches |
+| Per-player identity | `$HIR` names the shooter's **team**, not player (§7k). FFA scoring needs per-player. `QUERY` shows a device-level `PlayerID` we have never set |
+| Results read-back | see above — may not exist |
+| `$TID,0,*` | candidate neutral LED for FFA (team drives colour, §7i) |
+| `$HIR` `45,0,0` / `70,0,0` | recur across matches; the numbers equal starting HP/armor |
+| `$HIR` protocol per weapon | two frames came as `$HIR,0,...` not `4` |
+| `$SFLASH,*` | app sends it periodically, no args, never near a hit |
+| `$GLED` tokens | colour is team-derived, so what do these do? |
+| Headset lockout | manual: headset lost mid-game locks the gun. **Never controlled for** |
+| Sound inventory | see below |
+
+## Sound inventory — do NOT use a microphone
+
+A mic-based sweep was built and **failed its negative control**: nonsense id `ZZ99`
+produced audio, so the tagger appears to play a fallback for unknown ids and
+"audio detected" never proved "id exists". There is also **no SD card** on the BRX (§7h).
+
+Better routes, in order:
+1. **Decompile the Callsign Android APK.** It must contain every sound id it sends, very
+   likely with names. Highest value, needs no hardware. Would probably also reveal the
+   end-of-game sequence and whether a results query exists.
+2. **`$PSET`'s trailing audio tokens** (`H44,JAD,V33,…,A10`) look like a positional voice
+   pack — the "GET SOME" respawn line came from there, not from any `$PLAY` we sent.
+   Change one token, hear which line changes.
+
+Confirmed by ear so far: `VA20` = "connection established", `VA81` = 3-2-1 countdown.
+
+## Environment
+
+**MacBook (field):** `.venv` built with `/opt/homebrew/bin/python3.13` (system python3 is
+3.9 — too old), `pip install -e ./mcp`. `cat` is aliased to `bat` — use `sed -n`/python in
+scripts. Extras used by scratch tooling only: `pyserial`, `numpy`, `sox`.
+
+**Both:** `pip` resolves `mcp` to **2.0.0**, which moved `mcp.server.fastmcp` →
+`mcp.server.mcpserver`, breaking `server.py` (MCP-server mode). The CLI is unaffected.
+Check what the Windows venv has — if it is still `mcp` 1.x and works there, pin
+`mcp>=1.2,<2` rather than porting the ~15 decorators.
+
+## Hardware facts
+
+- Two taggers, both fw **`v4.32` / `devhost.03`**, `devHost 1` — **developer images**, not
+  retail. Callsign warns "supported version is until v2.01e" (an *upper* bound) but the
+  warning is **soft**: games run fine.
+- **MCU is a Teensy.** Micro-USB is the manual's "Programing Port" and enumerates as
+  `USB Serial` / `Teensyduino`. Console commands are **`QUERY`** (read-only, dumps
+  versions/serial/voltages/flags) and **`SETUP`** (factory provisioning — asks for the
+  headset SN; entering and power-cycling out changed nothing). Everything else → `ERROR`.
+- **Firmware cannot be backed up** — HalfKay is write-only, no SD card. Rollback depends
+  entirely on Battle Company. **The email asking what `devhost.03` is was never sent.**
+- Settings backup: `~/.brx-mcp/device-backups/` (on the Mac).
+
+## BLE: connecting is flaky, holding is not
+
+**Do not re-derive today's wrong conclusion.** Hours went into "the link dies after 6 s"
+and even "v4.32's BLE stack is broken" — both **retracted**. Reality: establishment
+succeeds roughly 1 attempt in 3 (the official app behaves the same); a session that comes
+up cleanly runs 75 s+. `ble.py` now retries 5×, and that was the entire fix.
+
+The Windows machine is where the original wrong theory came from. With retry in place it
+may simply work there now.
 
 ## Working agreements with Tony
 
-- Hands-on and fast: give one clear physical instruction at a time and say exactly what to
-  report. Power-cycle between experiments.
-- **His observations are data.** "No disconnect voice" and "it works maybe 1 in 3" each
-  overturned a confident wrong conclusion today. Ask for what he hears, and believe it.
-- Volume: `CLAUDE.md` says 30, but **30 is measurably inaudible** for weapon audio — the
-  app uses 69. `startgame` takes volume as a CLI arg; the default is still 30 per the rule.
-- Never modify tagger firmware; credit LaserTagMods (JEDGE/JBOX) publicly.
-- **LaserTagMods' repos carry no license** (all rights reserved). Their protocol *findings*
-  are restated independently in our docs — do not copy their code into this MIT project.
+- Hands-on and fast. One clear physical instruction at a time; say exactly what to report.
+  Power-cycle between experiments.
+- **His observations are primary evidence.** Three confident conclusions were overturned
+  today by what he noticed physically, not by any log: "the tagger never said phone
+  disconnected", "it works maybe 1 in 3 times", and "alt fire doesn't switch weapons".
+  When his report contradicts your reading of the data, assume your inference is wrong first.
+- **Weigh cost against value before proposing long investigations.** He will follow a plan
+  without second-guessing it, so a badly-prioritised one burns his evening. He stopped a
+  multi-hour sound sweep with "what are we solving for here again?" — and was right.
+- Distinguish signals: the tagger saying "phone connected" (a central attached) is **not**
+  the same as the app saying "connection established" (its ritual succeeded — the real
+  health check).
+- Volume: `CLAUDE.md` says 30, but **30 is measurably inaudible** for weapon audio; the app
+  uses 69. Commands take volume as an argument; the default stays 30 per the rule.
+- Never modify tagger firmware. Credit LaserTagMods (JEDGE/JBOX) publicly.
+- **LaserTagMods' repos carry no license** (all rights reserved). Their findings are
+  restated independently in our docs — **do not copy their code** into this MIT project.
+  Worth asking them to add a license; it would unlock a lot.
