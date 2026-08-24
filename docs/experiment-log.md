@@ -564,8 +564,23 @@ for the shields/overshield/medic/Syphon mode family (followups G-2/P11, `docs/ti
   token2 (`100`) is a constant, token3 = weapon slot (not health). `$TID` colours: 1=blue, 2=yellow.
 - **No power cycle needed** ✅ — the reset preamble (`$STOP`/`$CLEAR`/`$PLAYX` + config's `$CLEAR`/
   `$START`) cleanly reset between runs. Answers Tony's "proper clear" question — drop the power-cycle step.
-- **Still to nail (clean run):** separate `$LIFE` (add delta) vs `$BUMP` (absolute set) semantics — the
-  armor→70 exactly matched `$BUMP,45,70,70`, so `$BUMP` looks like an absolute set, but continuous firing
-  muddied attribution. Do a controlled run: damage → stop firing → send one write → one hit to read → repeat.
 - **New issue found:** sequential per-gun config makes starts **unsynced (~10 s apart)** — see FOLLOWUPS
-  B (synchronized multi-gun start).
+  B10.
+
+**SEMANTICS + REGEN nailed (`g2_semantics.py`, `g2_regen.py`):**
+- **Both `$LIFE` and `$BUMP` are ADDITIVE grants, clamped at max.** `$LIFE,0,30,20` on a damaged victim:
+  armor 43→70 (43+30 clamp), **shield 0→20** (clean additive proof); HP +0 unchanged. `$BUMP,30,40,50`:
+  armor 43→70 (43+40 clamp). So to heal, send `$LIFE`/`$BUMP` with the **delta to add**; neither is an
+  absolute-set. (Earlier "$BUMP looks like a set" was wrong — it was additive-with-clamp.)
+- **NO native regen — ruled out.** Beefed the victim (`$PSET` HP99/armor99) and damaged armor 99→18,
+  then **idled 18 s + 12 s with zero firing**: armor stayed **18** (next burst read 18→9→0). Armor does
+  **not** self-recover. ⇒ **Halo-style regenerating shields must be HOST-DRIVEN** (node watches `$HP`,
+  refills after a no-damage timer), not a free native mechanic. This corrects an earlier hopeful lead.
+- **Shield pool inactive:** the `$HP` shield field stayed **0** all test despite `$PSET` shield=70/99 —
+  shields likely need explicit **activation** (APK `ActivateShield` ability), not just a pool value. New
+  followup (P16).
+- **`$HP` overflow confirmed:** armor absorbs first (HP steady), then when armor=0, hits cut HP
+  (`99,0,0`→`90,0,0`→…), matching §7f.
+- **B10 sync fix validated:** configuring both guns fully, THEN spawning both back-to-back, starts them
+  ~together (vs the ~10 s sequential gap) — adopt this config-all-then-spawn barrier in the engine.
+- **Volume:** on-gun 1–5 ≈ `$VOL` **60/70/80/90/100** (Tony's field estimate); defaults ~75 in / ~85 out.

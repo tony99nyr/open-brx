@@ -52,7 +52,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
 | `$STOP,*` | Stop (captured from official app, 2026-08-23) | First command the app sends on connect |
 | `$PLAYX,0,*` | Stop/clear sound playback (captured) | Sent right after `$STOP,*` on connect |
-| `$VOL,<volume>,<n2>,*` | Set volume (captured) | Android app sends `$VOL,100,0,*`; iOS Callsign sends `$VOL,69,0,*` |
+| `$VOL,<volume>,<n2>,*` | Set volume (captured) | 0–100 (`MaxMusicVolume`=100). Android app sends `$VOL,100,0,*`; iOS Callsign `$VOL,69,0,*`. **On-gun menu 1–5 → `$VOL` (Tony's field-tested estimate, evenly spaced): L1=60, L2=70, L3=80, L4=90, L5=100.** Field defaults: **~75 inside (level 2.5), ~85 outside (3.5)**; L3–4 typical outdoors. `$VOL,45` = barely audible; use ≥65 to hear it. |
 | `$NAME,<name>,*` | Set tagger name (captured) | App sent `$NAME,Tactix2,*` |
 | `$VERSION,*` | Query firmware version (captured) | Reply: `$VERSION,v4.32,?,4,,devhost.03,*` |
 | `$PBWEAP,<n>,*` / `$PBTEAM,` / `$PBPERK,` | Pre-battle weapon / team / perk selection | Mirrors the on-gun menu choices |
