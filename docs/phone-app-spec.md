@@ -23,7 +23,16 @@ optional cloud-sync path; **OnePlus 7 Pro** (2019, BT 5.0) + **Pixel 4** (WiFi/B
 player nodes** (BLE to their gun; join the Pixel's/laptop's WiFi for coordination — SIM-less phones
 usually can't host a useful hotspot, so they join one). **SIM affects only internet backhaul, never BLE**
 — all three are full BLE nodes. It's all local mesh + store-and-forward; no internet needed mid-game.
-Delivery: an **installable Web-Bluetooth PWA** (`webapp/`) — the **primary and preferred** path. **Decided: PWA
+Delivery: an **installable Web-Bluetooth PWA** (`webapp/`) — the **primary and preferred** path.
+
+**Web or native? — resolved:** the **player-node role** (one phone ↔ its own gun, HUD + engine) is the
+core, and Web Bluetooth handles it perfectly; everything layered on top (objectives via IR/touch/GPS/QR,
+distributed MC over WiFi/cellular) needs **no** phone-side BLE scanning. So the **PWA is the foundation.**
+Native/hybrid is an **additive** layer for the few things Web BT can't do (scan-by-address / auto-adopt /
+background / MTU control) — added later behind the same transport-free core, never a rewrite. And note the
+**gate test settles it**: native BLE and Web BT ride the *same* Android stack, so `webapp/ble-test.html`
+(Chrome) vs nRF Connect (native) side-by-side shows whether Web BT is good enough (→ PWA) or specifically
+flaky here (→ go hybrid). **Decided: PWA
 over a packaged APK**, because *updates ship by redeploying a static site — everyone gets the new version
 on next load, no reinstall churn.* (An APK/TWA wrap stays an optional fallback if a store listing is ever
 wanted; not the plan.)
