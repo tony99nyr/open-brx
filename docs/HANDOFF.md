@@ -168,8 +168,10 @@ may simply work there now.
 tagger** (§7m). No error, no voice line. This masqueraded as "the app is flaky" for a long
 stretch and is the single most likely cause of a wasted capture session. Confirm the
 headset is on and linked — `QUERY` over USB reports `Headset Version` and `Head:` voltage.
-Callsign's top-right connection icon is the reliable in-app indicator; the tagger's voice
-lines are not.
+**You cannot create a game in Callsign unless its top-right icon is green and reads
+"connected"** — that icon is both the gate and the source of truth; the tagger's voice
+lines are not. This is the entire explanation for the "app is flaky then suddenly works"
+pattern: nothing was intermittent, the headset was simply linked sometimes and not others.
 
 ## Working agreements with Tony
 

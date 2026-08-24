@@ -734,10 +734,22 @@ locally. So the gun tolerates a missing headset; **the app does not.**
 Pairing can take up to 3 minutes with many BT devices around (§7h). `QUERY` over USB shows
 `Headset Version` and `Head: <voltage>` — use it to verify rather than guessing.
 
-Also useful, from the operator: **Callsign has a connection-status icon in the top right,
-and it is the source of truth.** The tagger's voice lines are not — "phone connected" only
-means a central attached, and "phone disconnected" indicates a *graceful* teardown (an
-abrupt link loss is silent until supervision timeout).
+### The green icon is a precondition, not just an indicator
+
+Callsign has a **connection-status icon in the top right**, and **you cannot create a game
+at all unless it is green and reads "connected"**. That is the gate. It is also the source
+of truth — the tagger's voice lines are not: "phone connected" only means a central
+attached, and "phone disconnected" indicates a *graceful* teardown (abrupt link loss is
+silent until supervision timeout).
+
+**This is the whole explanation for the "app is flaky, then suddenly works" pattern.**
+Nothing intermittent was happening. When the headset was linked, the app went green and
+games could be created; when it was not, the app silently dropped the tagger and game
+creation was simply unavailable. Neither operator nor agent was tracking headset state, so
+the same underlying condition looked like random flakiness for hours.
+
+**Workflow rule: get the icon green before doing anything else.** If it will not go green,
+the problem is the headset, not the app, the gun, or the radio.
 
 ## 8. Safe testing notes
 
