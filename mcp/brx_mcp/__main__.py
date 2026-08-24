@@ -405,26 +405,40 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         for cmd in cmds:
             await mgr.send(alias, cmd, reply_window_ms=350)
 
-    try:
-        for alias, _addr, tid in players:
-            config = [volume_cmd(volume)]
-            for frame in GAME_CONFIG:
-                if frame.startswith("$WEAP,0,"):
-                    config.extend(guns)
-                elif frame.startswith("$WEAP,"):
-                    continue
-                else:
-                    config.append(frame)
-            config.append(f"$TID,{tid},*")     # distinct team per tagger
-            print(f"--- configuring {alias} (team {tid})", file=sys.stderr)
-            await push(alias, config)
+    spawn_cmds = ["$SPAWN,,*",
+                  f"$AMMO,0,{pri_mag},{pri_res},1,*",
+                  f"$AMMO,1,{sec_mag},{sec_res},1,*",
+                  "$BMAP,0,0,,,,,*"]
 
-        for alias, _addr, _tid in players:
-            await push(alias, ["$SPAWN,,*",
-                               f"$AMMO,0,{pri_mag},{pri_res},1,*",
-                               f"$AMMO,1,{sec_mag},{sec_res},1,*",
-                               "$BMAP,0,0,,,,,*"])
-            print(f"--- {alias} LIVE", file=sys.stderr)
+    def config_for(tid: int) -> list[str]:
+        cfg = [volume_cmd(volume)]
+        for frame in GAME_CONFIG:
+            if frame.startswith("$WEAP,0,"):
+                cfg.extend(guns)
+            elif frame.startswith("$WEAP,") or frame.startswith("$PLAY,VA81"):
+                continue          # countdown is fired separately, in unison
+            else:
+                cfg.append(frame)
+        cfg.append(f"$TID,{tid},*")           # distinct team per tagger
+        return cfg
+
+    try:
+        # Configure every tagger CONCURRENTLY. Doing this serially made each
+        # tagger count down as its own config finished, so players went live
+        # seconds apart — one shooting while another was still counting.
+        print(f"--- configuring {len(players)} taggers in parallel",
+              file=sys.stderr)
+        await asyncio.gather(*(push(alias, config_for(tid))
+                               for alias, _addr, tid in players))
+
+        # Countdown together, then spawn when it ends. VA81 measured ~2.7 s.
+        print("--- 3... 2... 1...", file=sys.stderr)
+        await asyncio.gather(*(push(alias, ["$PLAY,VA81,4,6,,,,,*"])
+                               for alias, _addr, _tid in players))
+        await asyncio.sleep(2.8)
+        await asyncio.gather(*(push(alias, spawn_cmds)
+                               for alias, _addr, _tid in players))
+        print("--- ALL LIVE", file=sys.stderr)
 
         ends_at = time.monotonic() + minutes * 60
         print(f"\n*** ARENA LIVE — {len(players)} taggers, {minutes} min ***\n",
