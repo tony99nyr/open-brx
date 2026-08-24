@@ -97,6 +97,12 @@ class GameConfig:
     armor: int = 70
     shield: int = 70                  # ⚠ shield pool inactive until activated (P16)
 
+    # -- CS / bomb mode ------------------------------------------------------ #
+    attackers_team: int = 2
+    defenders_team: int = 1
+    detonation_s: float = 40.0
+    rounds_to_win: int = 0            # 0 → single round
+
     # -- health variants (host-driven, confirmed via $LIFE — exp-log #33) ----- #
     syphon: bool = False              # heal the killer on each kill (Fortnite/CoD)
     syphon_armor: int = 30            # armor granted to the killer per kill

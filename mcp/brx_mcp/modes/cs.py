@@ -1,0 +1,142 @@
+"""Counter-Strike plant/defuse engine (M0 — flagship objective mode).
+
+Attackers plant a bomb at a site (a Utility Box / grenade / phone-terminal); a
+detonation countdown runs; defenders defuse to win the round, or it detonates.
+The engine owns the ROUND logic + the detonation timer; the site device only
+reports plant/defuse events (fed as `PLANT`/`DEFUSE` events, or via plant()/defuse()).
+
+Round ends (standard CS):
+  * bomb defused                → defenders
+  * bomb detonates (timer)      → attackers
+  * all defenders eliminated    → attackers (uncontested)
+  * all attackers eliminated AND not planted → defenders
+  * round time expires, not planted → defenders (survived)
+First side to `rounds_to_win` wins the match.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from .base import (
+    Action, Callout, GameEngine, GameOver, PlaySound, Roster, Score,
+    hp_values, is_death,
+)
+
+DETONATION_SOUND = "X13"   # rocket/explosion-ish placeholder (catalog later)
+PLANT_SOUND = "VA81"
+DEFUSE_SOUND = "VA20"
+
+
+class BombEngine(GameEngine):
+    def __init__(self, config, now: float = 0.0):
+        self.config = config
+        self.roster = Roster()
+        self.attackers = getattr(config, "attackers_team", 2)
+        self.defenders = getattr(config, "defenders_team", 1)
+        self.detonation_s = getattr(config, "detonation_s", 40.0)
+        self.round_time_s = config.game_time_s or 120
+        self.rounds_to_win = getattr(config, "rounds_to_win", 0) or 1
+        self.score = {"attackers": 0, "defenders": 0}
+        self.round = 1
+        self.round_start = now
+        self.over = False
+        self.winner: Optional[str] = None
+        self.planted_at: Optional[float] = None
+        self.planted_site: Optional[str] = None
+        self._round_done = False
+
+    def add_player(self, player_id: str, team: int) -> None:
+        self.roster.add(player_id, team)
+
+    # -- objective events (from the site device) ----------------------------- #
+    def plant(self, site: str, now: float) -> list[Action]:
+        if self.over or self._round_done or self.planted_at is not None:
+            return []
+        self.planted_at = now
+        self.planted_site = site
+        return [Callout(f"Bomb planted at {site}! {int(self.detonation_s)}s"),
+                PlaySound(PLANT_SOUND, scope="all")]
+
+    def defuse(self, now: float) -> list[Action]:
+        if self.over or self._round_done or self.planted_at is None:
+            return []
+        return [Callout("Bomb defused!"), PlaySound(DEFUSE_SOUND, scope="all")] + \
+            self._end_round("defenders", now)
+
+    # -- uniform interface --------------------------------------------------- #
+    def on_event(self, player_id: str, ev: dict, now: float) -> list[Action]:
+        if self.over or self._round_done:
+            return []
+        cmd = ev.get("command")
+        if cmd == "PLANT":
+            t = ev.get("tokens", ["PLANT", "A"])
+            return self.plant(t[1] if len(t) > 1 else "A", now)
+        if cmd == "DEFUSE":
+            return self.defuse(now)
+        hv = hp_values(ev)
+        if hv is not None and hv[0] == 0:
+            p = self.roster.get(player_id)
+            if p and p.alive:
+                p.alive = False
+                return self._check_elimination(now)
+        return []
+
+    def tick(self, now: float) -> list[Action]:
+        if self.over or self._round_done:
+            return []
+        # detonation
+        if self.planted_at is not None and now - self.planted_at >= self.detonation_s:
+            return ([Callout("Bomb detonated!"), PlaySound(DETONATION_SOUND, scope="all")]
+                    + self._end_round("attackers", now))
+        # round time (only matters pre-plant; once planted the timer rules)
+        if self.planted_at is None and now - self.round_start >= self.round_time_s:
+            return self._end_round("defenders", now)
+        return []
+
+    # -- round / match resolution -------------------------------------------- #
+    def _check_elimination(self, now: float) -> list[Action]:
+        def alive(team):
+            return [p for p in self.roster.team_members(team) if p.alive]
+        if not alive(self.defenders):
+            return self._end_round("attackers", now)
+        if not alive(self.attackers) and self.planted_at is None:
+            return self._end_round("defenders", now)
+        return []
+
+    def _end_round(self, winner_side: str, now: float) -> list[Action]:
+        if self._round_done:
+            return []
+        self._round_done = True
+        self.score[winner_side] += 1
+        actions: list[Action] = [
+            Score(winner_side, +1, self.score[winner_side]),
+            Callout(f"Round {self.round} → {winner_side} "
+                    f"(A {self.score['attackers']} – {self.score['defenders']} D)"),
+        ]
+        if self.score[winner_side] >= self.rounds_to_win:
+            self.over = True
+            self.winner = winner_side
+            actions.append(GameOver(winner_side, detail=f"score={self.score}"))
+        return actions
+
+    def next_round(self, now: float) -> None:
+        """Reset for the next round (driver calls between rounds). No-op if over."""
+        if self.over:
+            return
+        self.round += 1
+        self.round_start = now
+        self.planted_at = None
+        self.planted_site = None
+        self._round_done = False
+        for p in self.roster.players.values():
+            p.alive = True
+
+    def snapshot(self) -> dict:
+        return {
+            "mode": "cs", "over": self.over, "winner": self.winner,
+            "round": self.round, "score": dict(self.score),
+            "planted": self.planted_site, "rounds_to_win": self.rounds_to_win,
+            "players": {pid: {"team": p.team, "alive": p.alive}
+                        for pid, p in self.roster.players.items()},
+        }

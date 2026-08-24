@@ -51,6 +51,7 @@ def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
     from .deathmatch import DeathmatchEngine
     from .survival import InfectionEngine
     from .lms import LastManStandingEngine
+    from .cs import BombEngine
     m = config.mode
     if m in ("tdm", "ffa"):
         return DeathmatchEngine(config, now)
@@ -58,7 +59,9 @@ def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
         return InfectionEngine(config, now)
     if m == "lms":
         return LastManStandingEngine(config, now)
-    raise ValueError(f"unknown mode {m!r} (tdm|ffa|infection|lms)")
+    if m in ("cs", "bomb"):
+        return BombEngine(config, now)
+    raise ValueError(f"unknown mode {m!r} (tdm|ffa|infection|lms|cs)")
 
 
 class GameDriver:
