@@ -493,3 +493,15 @@ tells us (see `callsign-extract/apk-harvest.md`):
 `hardware/brx-companion-spec.md` — the per-tagger ESP32-S3 module (offline game engine + powerups
 + custom audio + Wi-Fi sync). Next: prototype Tier-0 "Brain" and validate the powerup command
 sequences ($LIFE/$WEAP re-push/$AMMO) on hardware.
+
+### 31. Community + LaserTagMods research; system specs written ✅
+Mined LaserTagMods' 13 GitHub repos and the BRX Elite Owners FB group (~196 members) for BRX
+know-how. Results: `docs/reference/lasertagmods.md` (JEDGE/JBOX facts — protocol $DD/$AS, 25-bit
+38kHz IR encoding, station behaviours, radios, firmware lineup) and `docs/reference/community-notes.md`
+(gun-won't-fire diagnostics, **Gen-3 headset re-pair procedure** — the fix for the lockout that
+blocks firing, battery polarity warning, scoring gap, game-mode/ammo-restock ideas, grenade/CTF).
+Both corroborate our findings (headset blocks firing; MTU-20 chunking; the nRF radio is likely
+LaserTagMods' nRF24 base link). Wrote three system specs: `mission-control-spec.md` (operator
+console + deathmatch gap analysis), `phone-app-spec.md` (Callsign replacement), and refreshed
+`hardware/brx-companion-spec.md`. Consolidated all open work into `docs/FOLLOWUPS.md`; added
+`docs/README.md` index. No new hardware run this session — desk research + docs.
