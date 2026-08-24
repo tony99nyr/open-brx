@@ -8,7 +8,9 @@ Open-source platform orchestrating Battle Company BRX laser taggers. Specs:
 what happened — append your own results after each session), `docs/reference/brx-manual-notes.md`
 (distilled official manual: game-start flow, headset lockout, stock weapon/character stats),
 `docs/HANDOFF.md` (current cross-machine state), `docs/field-architecture.md`
-(how a real out-of-range match works — read before designing game logic), and `docs/mac-capture-plan.md`
+(how a real out-of-range match works — read before designing game logic),
+`docs/apk-investigation.md` (highest-leverage desk work, no hardware needed), and
+`docs/mac-capture-plan.md`
 (experiments only the MacBook can run — Callsign is iOS-only, PacketLogger is
 macOS-only). Full manual PDF: `docs/reference/`.
 
