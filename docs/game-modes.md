@@ -58,6 +58,36 @@ kills), CaptureTheFlag, SquadLeader.
 data-mule sync points on a large field, and they double as the physical respawn point for modes that
 don't use a player-role respawn.
 
+## Team structure — is it only all-red vs all-blue?
+
+No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team layout is flexible:
+- **Native hardware teams:** confirmed 2 (TDM) + 3 factions (Supremacy); **max native team count is
+  UNTESTED** (followup — see below). If the firmware allows N teams, you get N small teams (e.g.
+  duos) with hardware friendly-fire protection.
+- **FFA + Mission-Control logical teams (works today, any structure):** every gun on one team,
+  **friendly fire ON**, players wear armbands/flags for their real squad, **MC tracks the true teams
+  and scores accordingly** (David Knox's proven "flag" technique). Supports duos/trios/free-form
+  instantly; the only cost is no hardware friendly-fire protection (MC penalizes team-kills).
+
+## Custom / advanced modes (all buildable — host rules over the same primitives)
+
+| Mode | Tier | Needs | How |
+|---|---|---|---|
+| **Standard CTF** | 1 | 2 flag bases | grab enemy flag → return to own base |
+| **Assault CTF** (one-sided) | 1 | 1 flag base | attackers steal/hold, defenders protect; asymmetric spawns/roles |
+| **Center-flag CTF** | 1 | 1 neutral flag + 2 bases | both teams fight for a mid flag, return to own base |
+| **King of the Hill** | 1 | hill station **or the grenade as zone emitter** | hold the zone for time |
+| **VIP escort (A→B)** | 1 | 1 extraction station + **VIP player role** | VIP = special low-HP loadout (General-style role); escorts protect; VIP triggers the extraction station on arrival |
+| **Hostage rescue + extract** | 1 | extraction station + hostage role | hostage = neutral/downed player freed by a teammate via IR (revive-style), then escorted to the extraction station |
+| **Counter-Strike (plant/defuse)** | 1 | **several bomb-site stations** (or the grenade as the bomb) | attacker plants (dwell/IR at a site) → **station runs the plant timer locally**; defender defuses via IR; round ends on detonate / defuse / elimination |
+
+**Key insight:** almost all of these are the **same objective-station primitive** (IR receiver + LED +
+a local timer/owner state) with different rules — build that node once and CS bomb-sites, hills,
+flags, extraction points, and control points all fall out of it. VIP/hostage add a **special player
+role**, which is the same mechanism as the General/Commander/Hive-Queen respawn characters (Tier 0
+role logic). So the whole custom-mode space reduces to: **objective-station node + player-role support
++ host rule modules.**
+
 ## What each needs, in one line
 
 - **Mission Control alone:** FFA, TDM, Survival/Infection, Swarm, Generals, Commander, Supremacy,

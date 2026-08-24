@@ -51,6 +51,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | P5 | `$HIR` `45,0,0` / `70,0,0` variants; per-weapon IR protocol | ⬜ | fire each slot deliberately, watch token 1; numbers equal starting HP/armor |
 | P6 | Results read-back after a game | ❎ | Gun keeps **no score** (§7n). There is nothing to read; the host/phone is the only score-keeper. **Do not probe `$SP`** (half the panic sequence). |
 | P7 | `$SFLASH,*` | ⬜ | app sends periodically, no args — try in isolation |
+| P9 | **Max native team count** (`$TID` range) | ⬜ | Confirmed 2 (TDM) + 3 (Supremacy). Test how many distinct `$TID` values the gun honours for friendly-fire resolution — decides whether small teams (duos) work *natively* vs. via the FFA+MC-logical-teams workaround. Quick BLE test: set two guns to `$TID,4`/`$TID,5`+, check same-team = no damage, cross-team = damage. |
 
 ## Grenade (followup F — HIGH INTEREST, never touched on hardware)
 
