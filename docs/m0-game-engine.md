@@ -11,7 +11,7 @@ Every operator-settable knob, mapped to the BRX frame(s) that apply it:
 
 | Setting | Field | Applied via |
 |---|---|---|
-| Mode | `mode` (tdm/ffa/infection/lms) | host engine |
+| Mode | `mode` (tdm/ffa/infection/lms/cs/domination/koth/ctf/extraction) | host engine |
 | Game time | `game_time_s` (0=unlimited) | host |
 | Respawn time | `respawn_s`, `respawn_ramp` (15→30→45→90) | host |
 | Number of respawns / lives | `respawns` (→ lives = respawns+1) | host |
