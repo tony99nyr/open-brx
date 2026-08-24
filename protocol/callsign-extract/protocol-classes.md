@@ -1,0 +1,167 @@
+# BRX protocol — command classes & field maps (from Callsign IL2CPP metadata)
+
+Recovered 2026-08-24 from the Callsign app's `global-metadata.dat` by reading the plaintext
+identifier blob (the metadata's structural tables are obfuscated — version bumped to 39 and
+index tables encrypted — but the **field names survive in declaration order**, which is the
+token map). Each command is a C# class in `LaserTag.CallSign.Hardware.Guns.Domain.Messages.*`
+whose fields serialize to the `$…,*` frame in order.
+
+> **Confidence:** field *names and sets* are certain (read straight from the binary). Exact
+> wire *position* is declaration order, which normally equals serialization order — **GSET is
+> numerically confirmed against a live capture** (below). Others marked (source-derived);
+> confirm a specific token by differential capture (now trivial — we know what each field is).
+
+## Complete command vocabulary
+
+**Requests (host→gun):** AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET
+HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM
+**Headset requests:** BLINK CHASE HLED HLOOP LED
+**Notifications (gun→host):** ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS
+
+New vs our prior doc: **FSET, GREN, HFIRE, IRTX, LIFE, MELEE, STUN, VIB, ZOOM, BHIT, BUMP,
+ASSIST, ASKDLC, DLC/GOTDLC**, headset **BLINK/CHASE/HLED/HLOOP/LED**, notifications **TIME/SFLASH**.
+
+## GSET — game settings ✅ CONFIRMED
+
+`$GSET,friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier,gameMods,*`
+
+Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
+
+| # | field | example | meaning |
+|---|---|---|---|
+| 1 | friendlyFire | 0 | friendly fire off/on |
+| 2 | outdoorMode | 0 | indoor(0)/outdoor(1) IR range profile |
+| 3 | gunLaserRegion | 1 | gun-laser region/zone |
+| 4 | autoAmbientLight | 0 | auto ambient-light compensation |
+| 5 | gyroscope | 1 | gyro enable |
+| 6 | secondaryBluetoothWeapons | 0 | allow BT secondary weapons |
+| 7 | criticalShotModifier | 50 | crit modifier (%) |
+| 8 | gameMods | 1 | game-mods flags |
+
+**Key consequence:** there is **no respawn / game-time / lives field** — proving (again) those
+are app-side, not on the gun. Settles experiment-log #17 from the source side.
+
+## WEAP — weapon definition (source-derived; ~40 named fields)
+
+Ordered fields (the `$WEAP,<slot>,…` ~44-token frame). Leading slot + IR-signature tokens,
+then:
+
+`slotType, iRSource, gunRangeOutdoor, primaryDamageType, primaryPowerType, primaryDamage,
+primaryCriticalChance, secondaryFireChance, secondaryDamageType, secondaryPowerType,
+secondaryDamage, secondaryCriticalChance, extraHeadsetDamage, extraHeadsetRangeOutdoor,
+rateOfFire, weaponSwapDelay, maxClip, maxAmmo, reloadSpeed, reloadType, maxAccuracy,
+singleShotAccuracy, burstWeaponTime, overheat, muzzleFlash, primaryFire_SoundName,
+chargeUp_SoundName, chargeDown_SoundName, secondary_Mix_SoundName, reloadPart1_SoundName,
+reloadPart2_SoundName, reloadPart3_SoundName, noAmmo_SoundName, weaponFeatureA, weaponFeatureB,
+headsetDirection, headsetRepeat, clipStartingAmmo, ammoReserv, gunRangeIndoor,
+extraHeadsetRangeIndoor`
+
+Anchor check: manual's M-4 damage 24 ↔ `primaryDamage`; rate-of-fire, clip, reload all present.
+This is the field map that was the "highest reverse-engineering priority" — recovered without
+per-token capture diffing.
+
+## PSET — player settings (source-derived)
+
+`maxHP, maxShields, criticalDamageBonus,` then a **positional voice pack**: `deathAlarm,
+stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt, shortPain,
+longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit, emptyUnboundButtonSound,
+ammoOrGearPickUp, energyShieldLoop`.
+
+Confirms the Mac session's hypothesis that PSET's trailing tokens (`H44,JAD,V33,…`) are a
+positional sound set — each slot is a named game-event sound. Note fields are HP/**shields**
+(+criticalDamageBonus); reconcile the armor token against §7e's live `$LCD` echo when testing.
+
+## Other command field maps (source-derived)
+
+| Command | Fields (in order) | Notes |
+|---|---|---|
+| **BMAP** | buttonNumber, function, swapSlot0..3 | button remap + 4 weapon-swap slots |
+| **AMMO** | (slot,) clip, functionToApply | load magazines after spawn |
+| **GLED** | mid, effect, optionA, optionB | gun LED — **not** r,g,b (see LedEffect enum); colour is team-derived |
+| **GREN** | iRType, crit, modifier, indoorMode, operationMode, channel, (GrenadeType, MaxCount) | **Smart Grenade config** — a whole command we hadn't mapped |
+| **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | "hyper/heavy fire" IR burst |
+| **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | raw IR transmit |
+| **LIFE** | addedHP, addedArmor, addedShields | grant health/armor/shields |
+| **BHIT** | damage, isCriticalShot, powerLevel | apply a hit to the gun (host-inflicted damage!) |
+| **BUMP** | hP, armor, shields | adjust current pools |
+| **MELEE** | intensity | melee event |
+| **VIB** | isEnableVibration | haptics toggle |
+| **PLAY** | (soundName,) addToQue1, addToQue2, loopingTime, stun, isNeedQueue | richer than we used |
+| **ASSIST** | soundName | + SetVolume |
+| **DLC / ASKDLC / GOTDLC** | hiddenFeatures | premium-content unlock handshake |
+| **FSET** | (sound-event slot table — see below) | assigns a sound to every game event |
+
+### FSET — per-event sound slots
+
+Assigns sounds to game events: `ActionKey, CameraKey, SquadReviveKey, PingKey, DeathAlarm,
+TickTock, RepairRegenTick, AlertNotify, HitHp, HitArmor, HitShield, HitCrit, HitHealing,
+RegenHit, PingedHit, ArrowHit, ArrowMiss, MissBullet, MeleeStabHit, MeleeBash, MeleeCritHit,
+HitStandardExplosive, HitSmallExplosive, ShieldOnHeal, ShieldOffExpire, ShieldLoop, EmpStart,
+EmpLoop, EmpEnd, IncendiaryStart, IncendiaryLoop, IncendiaryStop, ColdHit, PoisonHit, APHit,
+FlashHit, TearGasHit, TypeFourteenHit`. This is the audio-design surface for the whole game.
+
+## Enums (give the above their values)
+
+- **DamageType / AbilityType:** Standard, MedicHeal, ActivateShield, RallyPulse, Radiation,
+  Cryogenic, ArmorPiercing, EMP, Shrapnel, StickyBomb, StandardLethalExplosive,
+  NonLethalExplosive, ShottyPellets, MeleeDamage, Plasma
+- **PowerType / IRSource:** DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead,
+  DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib
+- **ReloadType:** Magazine, Quiver, Shells, SingleBolt, BoltWithMagazine, AutoReload
+- **LedEffect (GLED `effect`):** Solid, Glow, ChaseBack, ChaseForward, StopIR
+- **WeaponCategory (id):** 0 Rifle,1 SMG,2 Sniper,3 Shotgun,4 Heavy,5 Energy,6 Support,
+  7 Power,8 Exotic,9 Launcher,10 Stun,11 Ability,12 Melee (from weapon-categories-config.json)
+
+## What's moddable — new guns, new game types, new sounds?
+
+**New guns: YES — a weapon is data, not firmware.** The gun has no weapons baked in; the host
+*sends* a full `$WEAP` definition into one of **6 slots (0–5)**. We already ran our own game
+with a weapon we defined. You freely set damage, rate of fire, clip/reserve, reload speed,
+accuracy, burst, overheat, per-fire sounds, and IR behaviour. The **bounds** are the firmware's
+behaviour vocabulary, not a preset list:
+- damage/ability behaviours = the **DamageType** enum (~15: Standard, Plasma, Cryogenic, EMP,
+  ArmorPiercing, Radiation, Shrapnel, MedicHeal, ActivateShield, RallyPulse, StickyBomb,
+  explosives, ShottyPellets, MeleeDamage)
+- emission model = **PowerType/IRSource** enum (GunLaser, HeadSetOnly, GunAndHead, DoubleGun…)
+- reload model = **ReloadType** enum (Magazine, Quiver, Shells, SingleBolt, BoltWithMagazine,
+  AutoReload)
+- sounds = any of the 2166 bank ids.
+So you can invent any weapon that is a *combination* of these primitives with arbitrary numbers
+— an enormous space — but you cannot add a brand-new damage *behaviour* the firmware doesn't
+implement. The manual's stock guns are just presets over this same parameter set.
+
+**New game types: YES — essentially unbounded.** The tagger keeps **no game state** (no mode,
+clock, score, respawn — proven three ways, experiment-log #13/17/18). "Game mode" lives
+entirely in the host. The gun only: fires the loaded weapon, interprets incoming IR per the
+**`$SIR` table** (≤14 distinguishable IR recognitions), tracks HP/armor/shields, assigns team
+via `$TID`, and reports `$HIR`/`$HP`. Any rules expressible over {hits, teams, health, spawn,
+IR signatures} is a game mode you can build — TDM, CTF, Domination, Infection, Juggernaut, or
+something new. Callsign's own modes (BattleRoyale, Supremacy…) are *app* classes, not firmware
+modes. The only hard primitives that bound gameplay: 6 weapon slots, ≤14 IR recognitions, and
+the fixed damage/power behaviour enums above.
+
+**New sounds ON THE TAGGER: NO.** The 2166-id bank is baked into firmware; there is **no SD
+card** (manual §7h) and **no upload/write/flash command anywhere** in the vocabulary — `$PLAY`/
+`$PLAYX`/`$VOL`/`$ASSIST` are playback-only, `AddSoundToQueue` just queues an existing id, and
+"DLC" = BattleCoins in-app purchases (unlock existing content), not audio upload. To change the
+tagger's own audio you'd need Battle Company's USB updater (off-limits — never modify firmware).
+**New sounds OFF the tagger: YES, unlimited** — that's the architecture's answer: a DFPlayer
+Mini + speaker on the ESP32 bridge (~$5) for custom audio at each player, plus effect/announcer
+nodes for arena sound. Design custom audio there; use the built-in bank for on-gun feedback.
+
+## Backend (for context — not tagger protocol)
+
+- REST API: `ltp-prod-v4.us-east-1.elasticbeanstalk.com` (AWS Elastic Beanstalk).
+- Multiplayer coordination: **AWS SQS/SNS** (the phone-to-phone lobby; ~1-min lobby delay is a
+  cloud round-trip). ECS creds endpoint `169.254.170.2`. IP geo via `ip-api.com`.
+- A self-hosted platform replaces this entire cloud layer with the local MQTT bus.
+
+## Method (reproduce / extend)
+
+`global-metadata.dat` version is 39 (anti-dump bump) with encrypted index tables, so
+Il2CppDumper fails ("duplicate key 0x09090909"). But identifier strings are plaintext and
+stored per-type in declaration order, so field maps come from reading the blob directly:
+`strings`/regex around each command name. To recover exact WEAP/PSET token positions, do a
+differential Callsign capture (change one field, diff the frame) — now targeted, since we know
+every field. Deeper (method bodies, constants): Il2CppInspector with a custom deobfuscator, or
+Ghidra on `libil2cpp.so`.

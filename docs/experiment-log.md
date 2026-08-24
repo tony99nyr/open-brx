@@ -394,3 +394,46 @@ Next step for the token maps: **Il2CppDumper** on `libil2cpp.so` + `global-metad
 then Ghidra on the builder methods. Highest-value teardown follow-up — would yield the field
 maps directly, bypassing differential BLE captures. The APK is on this PC but NOT committed
 (Battle Company's binary); reproduce via the README.
+
+---
+
+## 2026-08-24 — Windows PC — IL2CPP metadata mining → command field maps
+
+Deeper teardown of `global-metadata.dat`. The metadata is obfuscated (version bumped to **39**;
+index tables encrypted — Il2CppDumper fails with "duplicate key 0x09090909" even after patching
+the version to 29/31/27/24). **But the identifier string blob is plaintext and stored per-type
+in declaration order**, so field maps read straight out of it. Full writeup:
+`protocol/callsign-extract/protocol-classes.md`.
+
+### 24. Every command is a C# class; fields = token map ✅✅✅
+Namespace `LaserTag.CallSign.Hardware.Guns.Domain.Messages.*`. Recovered the complete command
+vocabulary (30 requests + 5 headset + notifications — ~20 commands we never knew: FSET, GREN,
+HFIRE, IRTX, LIFE, MELEE, STUN, VIB, ZOOM, BHIT, BUMP, ASSIST, DLC family, headset BLINK/CHASE/
+HLED/HLOOP/LED) and per-command field lists.
+
+### 25. GSET fully mapped and CONFIRMED ✅
+`friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,
+criticalShotModifier,gameMods` — validated numerically against `$GSET,0,0,1,0,1,0,50,1,*`
+(criticalShotModifier=50%). **No respawn/time/lives field** — confirms from source that those
+are app-side (settles #17 definitively).
+
+### 26. WEAP / PSET / all command field maps recovered (source-derived) ✅
+WEAP: ~40 named fields (primaryDamage, rateOfFire, maxClip, reloadType, per-fire sound names,
+IR damage/power types…) — the 44-token map that was the top priority, without capture diffing.
+PSET: maxHP/maxShields + a positional voice pack (confirms the Mac's §7e hypothesis). Enums
+recovered: DamageType(~15), PowerType/IRSource(~12), ReloadType(6), LedEffect(5), WeaponCategory.
+
+### 27. Moddability answered ✅ (for the build)
+- **New guns: yes** — a weapon is a `$WEAP` param set into 1 of 6 slots; bounded by the
+  DamageType/PowerType/ReloadType enums + numeric ranges + the 2166 sound bank.
+- **New game types: yes, ~unbounded** — the gun holds no game state; modes are host-side rules
+  over {hits, teams via $TID, health, spawn, ≤14 IR recognitions}.
+- **New sounds on the tagger: no** — bank baked into firmware, no SD, no upload/write command
+  (playback-only). Custom audio goes on the ESP32 bridge (DFPlayer) / effect nodes per the plan.
+
+### 28. Backend mapped ✅ (context)
+REST API `ltp-prod-v4.us-east-1.elasticbeanstalk.com`; multiplayer lobby = AWS SQS/SNS (the
+~1-min lobby delay is a cloud round-trip). A self-hosted platform replaces this whole layer.
+
+Tooling installed on this PC: .NET 8/7 runtime (~/.dotnet), Il2CppDumper (net7) — both under
+scratch, not committed. APK still not committed; only derived docs + the config JSONs.

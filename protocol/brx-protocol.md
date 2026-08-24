@@ -41,7 +41,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$CONNECT,*` | Connection handshake | |
 | `$INIT,*` | Initialize | |
 | `$PHONE,*` | Put tagger in app-controlled mode | Same mode the official app uses |
-| `$GSET,...` | Global game settings | e.g. `$GSET,0,0,1,0,1,0,50,1,*` — token 1: free-for-all off/on |
+| `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
 | `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
@@ -58,6 +58,17 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$PBWEAP,<n>,*` / `$PBTEAM,` / `$PBPERK,` | Pre-battle weapon / team / perk selection | Mirrors the on-gun menu choices |
 | `$TID,` | Set team ID | |
 | `$SPAWN`, `$RP`, `$RV`, `$UR`, `$IT`, `$KK`, `$TA`, `$PT`, `$HS`, `$PH` | Respawn/revive/status family | Partially mapped — see §7 Unknowns |
+| **New commands from APK teardown (2026-08-24):** | | field maps in `callsign-extract/protocol-classes.md` |
+| `$GREN,...` | **Smart Grenade config** | iRType,crit,modifier,indoorMode,operationMode,channel,GrenadeType,MaxCount |
+| `$HFIRE,...` | Heavy/burst IR fire | Range,CountIRPulses,RateOfFire,FlashLED |
+| `$IRTX,...` | Raw IR transmit | iRPower,soundOnHit,rangeOutdoor,rangeIndoor |
+| `$LIFE,...` | Grant health | addedHP,addedArmor,addedShields |
+| `$BHIT,...` | **Host-inflicted hit** | damage,isCriticalShot,powerLevel |
+| `$BUMP,...` | Adjust current pools | hP,armor,shields |
+| `$MELEE,<intensity>` / `$STUN` / `$VIB,<on>` / `$ZOOM` | Melee / stun / haptics / scope | |
+| `$FSET,...` | Per-event sound-slot table | ~38 game-event→sound assignments |
+| `$DLC` / `$ASKDLC` / `$GOTDLC` | Premium unlock handshake (BattleCoins) | hiddenFeatures |
+| Headset: `$HLED` `$BLINK` `$CHASE` `$HLOOP` `$LED` | Headset LED effects | |
 
 ## 4. Messages FROM the tagger (BRX → host)
 
