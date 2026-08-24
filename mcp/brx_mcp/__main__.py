@@ -497,6 +497,23 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
                 pass
 
 
+def _split_addrs(args: list[str]) -> tuple[list[str], list[str]]:
+    """Split leading BLE addresses from trailing options.
+
+    Address formats differ by platform — macOS/CoreBluetooth gives a 36-char
+    UUID, Windows/WinRT and BlueZ give a 17-char MAC. Never pattern-match on
+    one of them (an earlier version required a '-' and >20 chars, which found
+    zero addresses on Windows). Instead: consume leading args until one looks
+    like an option, i.e. an integer or a known weapon name.
+    """
+    addrs: list[str] = []
+    for i, a in enumerate(args):
+        if a.isdigit() or a in WEAPON_TAILS:
+            return addrs, list(args[i:])
+        addrs.append(a)
+    return addrs, []
+
+
 async def _fieldstart(addresses: list[str], volume: int = 69,
                       weapon: str = "primary") -> None:
     """Configure + spawn taggers, then DISCONNECT and leave them running.
@@ -687,16 +704,14 @@ def main() -> None:
                                 int(args[4]) if len(args) > 4 else 69,
                                 args[5] if len(args) > 5 else "primary"))
     elif cmd == "arena" and len(args) > 2:
-        addrs = [a for a in args[1:] if "-" in a and len(a) > 20]
-        rest = [a for a in args[1 + len(addrs):]]
+        addrs, rest = _split_addrs(args[1:])
         asyncio.run(_arena(addrs,
                            int(rest[0]) if len(rest) > 0 else 3,
                            int(rest[1]) if len(rest) > 1 else 15,
                            int(rest[2]) if len(rest) > 2 else 69,
                            rest[3] if len(rest) > 3 else "primary"))
     elif cmd in ("fieldstart", "fieldresults") and len(args) > 1:
-        addrs = [a for a in args[1:] if "-" in a and len(a) > 20]
-        rest = args[1 + len(addrs):]
+        addrs, rest = _split_addrs(args[1:])
         if cmd == "fieldstart":
             asyncio.run(_fieldstart(addrs,
                                     int(rest[0]) if rest else 69,
