@@ -74,6 +74,11 @@ CTF, Assault**, and **respawn stations** (which also double as **data-mule sync 
   **multi-point + live ownership/scoring + respawn**, which grenades can't do.
 - **QR codes (paper, ~$0)** are the zero-cost prop for weapon pickups + capturable flags, if the
   gun's QR path works.
+- **Proven reference designs (`reference/jay-ecosystem.md`):** Jay's **JBOX Mini** *is* this node —
+  ESP32 + IR receiver + IR emitter + 1 RGB LED + resistors, USB-powered, configured entirely from a
+  phone browser (its own WiFi AP at `192.168.4.1`). His **JHALO** turns **a spare headset + ESP32**
+  into a respawn station — reuse gear you already own. Both run Domination (1 pt/s), KotH (hold 45 s),
+  CTF, and utility/perk effects on real BRX hardware today.
 
 ## Tier 4 — field radio (LoRa RYLR ~$10/node, or FREE via the gun's nRF if usable)
 

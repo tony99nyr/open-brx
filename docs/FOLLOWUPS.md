@@ -54,6 +54,8 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | P6 | Results read-back after a game | ❎ | Gun keeps **no score** (§7n). There is nothing to read; the host/phone is the only score-keeper. **Do not probe `$SP`** (half the panic sequence). |
 | P7 | `$SFLASH,*` | ⬜ | app sends periodically, no args — try in isolation |
 | P9 | **Max native team count** (`$TID` range) | ⬜ | Confirmed 2 (TDM) + 3 (Supremacy). Test how many distinct `$TID` values the gun honours for friendly-fire resolution — decides whether small teams (duos) work *natively* vs. via the FFA+MC-logical-teams workaround. Quick BLE test: set two guns to `$TID,4`/`$TID,5`+, check same-team = no damage, cross-team = damage. |
+| P10 | **IR damage value in the hit payload** | 🟡 NEW | Jay reports each BRX IR hit carries a **~7–8-bit damage value (≤256)** and explosive/grenade tag types score higher per hit (`reference/jay-ecosystem.md`). Confirm on capture — enables **damage-weighted scoring** and heavy-weapon balance. Watch the `$HIR`/`$SIR` payload per weapon slot. |
+| P11 | **Shield-regen a settable weapon field?** | 🟡 NEW | The firmware has native shield/regen concepts (`maxShields`, `RepairRegenTick`, `ShieldOnHeal`, `ShieldOffExpire` — `protocol-classes.md`). Is the **regen delay/rate** a `$WEAP`/`$PSET` field we can set? If yes, **Halo-style regenerating shields is a zero-host-logic weapon config** (see `game-modes.md` "Health/regen variants"); if no, it's the host-driven `$LIFE`/`$BUMP` fallback. Diff a `$WEAP` with regen on/off. |
 
 ## Grenade (followup F — HIGH INTEREST, never touched on hardware)
 
@@ -71,7 +73,8 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | # | Item | Status | Notes |
 |---|---|---|---|
 | D1 | **Probe the nRF radio** | 🔴 | `QUERY` reports `NRFhost 1`/`NRFslave 1`; LaserTagMods ship NRFL-Bases on nRF24L01. **The BRX may already carry a long-range radio** — if so the range problem has a native answer. Highest-upside unknown. |
-| D2 | Transport layer pluggable | 🟡 | design for BLE now, LoRa (RYLR896) / ESPNOW later (`lasertagmods.md`). The Companion's WiFi/MQTT covers most fields. |
+| D2 | Transport layer pluggable | 🟡 | design for BLE now, LoRa (RYLR896) / ESPNOW later (`lasertagmods.md`). The Companion's WiFi/MQTT covers most fields. **Radio baseline decided from Jay's measured tests** (`jay-ecosystem.md` §5): **ESP-NOW + external antenna (~581 ft)** for arena chatter; **LoRa in *standard/fast* mode (~1,373 ft, zero loss)** — NOT max-range (~1-in-7 loss) — for the field backbone; LoRa too slow for live score sync → time-sequence control + local scoring. |
+| D3 | **Reproduce JEDGE 45-gun host** | 🟡 NEW | Jay ran **45 BRX rifles on one LoRa channel, no server** (`jay-ecosystem.md`). Validates our scale target. Confirm the broadcast-to-all-on-channel model and how per-gun addressing/scoring is time-sequenced. |
 
 **Range problem itself is ❎ answered:** BLE can't support out-of-range play because the gun holds
 no state (§7n). The fix is a device *on* each player (the Companion / a phone) — not a better

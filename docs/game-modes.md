@@ -92,6 +92,27 @@ role**, which is the same mechanism as the General/Commander/Hive-Queen respawn 
 role logic). So the whole custom-mode space reduces to: **objective-station node + player-role support
 + host rule modules.**
 
+## Health / regen variants (all Tier 0 — no props)
+
+These are rule tweaks on TDM/FFA, not new infrastructure. The gun exposes the write primitives
+directly: **`$LIFE,addedHP,addedArmor,addedShields`** (grant) and **`$BUMP,hP,armor,shields`**
+(adjust current pools), and the APK confirms **shields + regeneration are native firmware concepts**
+(`maxShields`, `RepairRegenTick`, `RegenHit`, `ShieldOnHeal`, `ShieldOffExpire`, `MedicHeal`,
+`ActivateShield`, `energyShieldLoop`). So health mechanics need **only Mission Control + the
+per-player nodes** — no stations, no broadcast.
+
+| Variant | Mechanic | How (Tier 0) | Caveat |
+|---|---|---|---|
+| **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | node watches the `$HIR`→`$HP,0` kill attribution, then sends `$LIFE`/`$BUMP` to the **killer's** gun | needs **per-player id (P2)** — you must heal the *specific* killer, and `$HIR` alone gives only the shooter **team**. Team play without P2 can't route the heal to the right teammate. |
+| **Halo shields (regen after no-damage)** | shield refills to full after T s without taking damage | **two paths:** (a) *native* — set a shield regen delay/rate in the weapon profile (`$WEAP`/`$PSET`), zero host logic, since the firmware has `RepairRegenTick`/`ShieldOnHeal`; (b) *host-driven* — node watches its own gun's `$HP` stream and sends `$LIFE`/`$BUMP` to refill once no decrease for T s | no P2 needed — each node manages its own gun. Confirm whether regen delay/rate is a settable weapon field (followup) — if so, path (a) is free. |
+| **Overshield / powerup pickup** | grab an item → temporary extra shields | node grants `$LIFE,0,0,<shields>` on the pickup event (IR pickup or objective) | overshield decay = host timer or native `ShieldOffExpire` |
+| **Medic / Lifesteal support role** | a role heals teammates | `MedicHeal`/`ActivateShield` are native ability types; node grants `$LIFE` to the healed gun | role logic like General/VIP |
+
+**Bottom line:** syphon, Halo-style regenerating shields, overshield pickups, and medic roles are all
+**Tier 0** — they ride the `$LIFE`/`$BUMP` writes + native shield/regen support over the existing
+event stream. Syphon is the only one that wants **P2** (to credit the exact killer); the rest work
+per-node today.
+
 ## How much can the GRENADE do without a custom station?
 
 The Smart Grenade is a paired IR accessory (`$GREN`: iRType, operationMode, **channel**, GrenadeType

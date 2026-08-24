@@ -20,6 +20,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 | Grenade capability + `$GREN` fields | `game-modes.md` (analysis) / `callsign-extract/apk-harvest.md` (fields) |
 | Edge/UBox parity + pricing | `reference/edge-brp.md` |
 | Transport / field-range / reconciliation | `field-architecture.md` |
+| Measured ESP-NOW/LoRa ranges + Jay's device family | `reference/jay-ecosystem.md` |
 | Open work (all items) | `FOLLOWUPS.md` |
 | QUERY/SETUP serial console + PlayerID | `../protocol/brx-protocol.md` §7c |
 
@@ -52,6 +53,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[reference/lasertagmods.md](reference/lasertagmods.md)** — JEDGE/JBOX facts: protocol, IR encoding, stations, radios, hardware.
 - **[reference/community-notes.md](reference/community-notes.md)** — repairs, headset re-pair, battery, game-mode ideas, cautions.
 - **[reference/grenade.md](reference/grenade.md)** — the de-facto Smart Grenade manual (modes, on-grenade programming, respawn/KotH mechanics, pairing) — from the 2019 grenade videos.
+- **[reference/jay-ecosystem.md](reference/jay-ecosystem.md)** — **Jay's DIY BRX ecosystem** (Extreme Laser Tag And More!): JBOX/JCUBE/JBOX Mini/JTOWER/JHALO/JEDGE devices, measured ESP-NOW/LoRa ranges, the game-mode mechanics he actually runs, and the **feasibility map to our tiers + the "what can an old phone do" answer**. Synthesized from ~30 of his videos.
 - **[../protocol/captures/](../protocol/captures/)** — decoded BLE/HCI capture transcripts behind the findings (see its README).
 
 ## The system in one paragraph

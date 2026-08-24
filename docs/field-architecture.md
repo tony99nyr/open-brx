@@ -116,6 +116,23 @@ Build the node↔server link as a **pluggable transport interface** and ship **W
 (architecture doc §"prime directives"); LoRa/nRF/ESPNOW are optional backends for the
 big-field case. So: **LoRa is optional, not required.**
 
+### Measured range numbers (Jay's field tests — `reference/jay-ecosystem.md` §5)
+
+Real obstructed-field data (RYLR896 LoRa; ESP32 + optional Molex antenna; stop at first two-way loss):
+
+| Link | Range (obstructed) | Round-trip | Use for |
+|---|---|---|---|
+| ESP-NOW standard | ~243–251 ft | ~3 ms | fast arena-scale device chatter |
+| ESP-NOW LR + external antenna | **~581 ft** | ~6 ms | antenna ~2× the range — "covers most of a play area" |
+| **LoRa standard/fast mode** | **~1,373 ft, zero loss** | ~3.5 s | **the field host↔node baseline** |
+| LoRa max-range mode | ~3,321 ft (0.61 mi) | ~12.7 s | avoid — **~1-in-7 packets lost** |
+
+**Adopt:** ESP-NOW (with an antenna) at arena scale; **LoRa in *standard* mode** (not max-range) for
+the field backbone. LoRa's multi-second round trip confirms it's **too slow for live score sync** —
+time-sequence low-rate control over it and keep scoring local (store-and-forward). Design to the
+**measured ~1,400 ft**, not the RYLR896 datasheet's 4–15 km. And **JEDGE ran 45 BRX rifles on one
+LoRa channel with no server** — the scale target is proven, not hypothetical.
+
 ## Limits of offline reconciliation (store-and-forward)
 
 Store-and-forward reconciles cleanly for **locally-authoritative** events and struggles with
