@@ -41,8 +41,7 @@ pick, one link, ~1 m away.
 The iOS "limit" is a **browser** limit, not an iOS limit — **native iOS apps have full BLE via
 CoreBluetooth**. So iOS is only second-class on the *zero-install web path*; a native/hybrid app makes
 it first-class. And crucially, **an app is still Tier 0** — it's software running on phones you already
-own; the only optional cost is a **$99/yr Apple Developer account** for App Store distribution (avoidable
-via sideload / TestFlight / a free 7-day dev cert for club-only use). **No hardware spend.**
+own, **no hardware spend** (distribution options + costs in the next section).
 
 This works because the design is **transport-free at the core** (already true of the mode engines in
 `../mcp/brx_mcp/modes/` and the protocol layer in `../mcp/brx_mcp/protocol.py`):
@@ -64,6 +63,27 @@ Three ways to ship the wrap, most code-reuse first:
 **Roadmap stays:** ship the Android PWA first (zero-install, validates the core), then wrap the *same
 core* for iOS when you want the iPhones to be full player nodes instead of just screens. The tradeoff is
 only **zero-install vs. app-distribution overhead**, never a capability gap.
+
+### Distribution — how players actually get the app
+
+**Decision (initial): Android APK + free iOS sideload; skip the Apple fee until it's justified.**
+
+- **Android — APK sideload (free, easy):** host the signed `.apk`; players enable "install unknown
+  apps" and tap it. No store, no fee. (Google Play is a one-time **$25** *if* we ever want store
+  distribution — not needed to share an APK.) This is the primary path.
+- **iOS — the honest options** (a native/hybrid build; the *browser* PWA can't do BLE on iOS):
+  | Path | Cost | Sharing | Catch |
+  |---|---|---|---|
+  | **AltStore / SideStore** | **free** (free Apple ID) | each person self-installs the sideloader | app **re-signs every ~7 days**; free-ID limits (≤3 apps); needs a helper/pairing setup |
+  | free-provisioning (Xcode) | free | plug into a Mac | **7-day expiry**, per-device — doesn't scale to "folks" |
+  | **TestFlight** | **$99/yr (required)** | public link, up to 10k testers, 90-day builds | needs the **paid** Apple Developer Program — **TestFlight is *not* free** |
+- **⚠️ Correction to a common assumption:** **TestFlight requires the $99/yr paid account** — a free
+  Apple ID cannot upload to App Store Connect / TestFlight. The truly-free iOS route is
+  **AltStore/SideStore** (with the 7-day re-sign hassle).
+- **Recommendation:** start free — **APK for Android, AltStore/SideStore for the iPhones/iPad**. If we
+  ever share with more than a couple of non-technical people, **pay the $99/yr for TestFlight** (still
+  Tier 0, no hardware) — it's dramatically smoother than asking each person to run AltStore and reinstall
+  weekly. Document the AltStore setup + APK install steps in the release notes when the app ships.
 
 ## What the app does (per player)
 

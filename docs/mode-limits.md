@@ -171,7 +171,9 @@ $0 shortcut and only for a *single* point, with its own quirks.
 1. **iOS has no *browser* Web-BT** → for the zero-install web path, iOS = screens/MC and Android = the
    BLE nodes. **Not a true ceiling:** a native/hybrid iOS app (CoreBluetooth) makes iOS fully
    first-class — and that's **still Tier 0** (software on phones you already own; only optional cost is a
-   $99/yr Apple account for App Store distribution, avoidable via sideload/TestFlight for club use).
+   $99/yr Apple account **only if** you want smooth TestFlight sharing — the truly-free iOS route is
+   AltStore/SideStore sideload with a ~7-day re-sign; Android is a free APK sideload. See
+   `phone-app-spec.md` §Distribution).
 2. **7 concurrent BLE connections per phone** → one phone hosts ~4–6 guns; scale with per-player nodes.
 3. **Phones have no IR** → shoot-the-point needs an IR station or the grenade; phones do touch/proximity.
 4. **LoRa is low-bandwidth + no field WiFi** → live field-wide state needs T4 broadcast; else

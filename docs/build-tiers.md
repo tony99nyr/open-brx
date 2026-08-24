@@ -56,8 +56,9 @@ becomes their game engine + HUD → **breaks the BLE-range limit** (the link rid
 - Gated on a **free 10-min test**: does Android Chrome hold a BRX BLE link? (followup, no purchase).
 - iOS can't do the **web** path (no Safari Web Bluetooth) — use Android for zero-install, a wrapper
   browser (Bluefy/beacio), or a **native/hybrid iOS app** (full BLE via CoreBluetooth). The app is
-  **still Tier 0/1** — software on phones you own, no hardware spend (only an optional $99/yr Apple
-  account for App Store distribution). See `phone-app-spec.md` §"Common core, platform shells".
+  **still Tier 0/1** — software on phones you own, no hardware spend. Distribution: free **APK** on
+  Android, free **AltStore/SideStore** sideload on iOS (or $99/yr TestFlight for smooth sharing — note
+  TestFlight is *not* free). See `phone-app-spec.md` §"Common core, platform shells" + §Distribution.
 
 ## Tier 2 — ESP32 "Companion" per tagger (~$8–25 each)
 
