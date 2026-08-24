@@ -670,3 +670,20 @@ active-drive filed as **G8**.
 **Frag (red) detonation: no BLE frame** on button-press near the headset — consistent with Frag needing
 the **thrown-grenade pairing** ("install accessory" → shoot grenade → headset-armed detonate). This is
 the one mode where pairing matters (objective modes don't). Untested until we pair; filed under G-followups.
+
+### 36. G8 — active `$GREN` drive: NEGATIVE ✅ (objective modes are NOT BLE-configurable)
+Tested driving the grenade from software. Sent `$GREN,<iRType>,0,0,1,<operationMode>,0,0,1,*` sweeping
+**operationMode 0–7** with **iRType 0 and 15**, gun in `minfire` config aimed at the grenade, watching
+for any beacon (a Hill/Respawn program would start beaconing). **Every send produced nothing** — no
+beacon, no LED/mode change (LED is white-when-locked regardless, so beacon is the only detector).
+**Conclusion: `$GREN` does not reprogram the grenade's objective modes over BLE.** Two supporting
+reasons: (1) **objective modes are set on-grenade only, in the boot/setup window** — likely deliberate
+**anti-tampering** (Tony's hypothesis); a settled grenade ignores programming. (2) **`$GREN`'s
+`GrenadeType` enum = FlashBang/Gas/Confusion/Molotov = blast *effects***, i.e. `$GREN` configures a
+**paired *thrown* grenade's blast type**, not the Respawn/Hill/Assault/CTF station modes.
+**Implication for B8 (grenade app):** it **cannot** replace the finicky on-grenade objective-mode setup —
+those are hardware-locked to the button/boot flow. The app's real value is instead **(a) a live STATE
+DISPLAY** reading the Hill/Respawn beacons over BLE (`$HIR` token2=15), and **(b) possibly thrown-blast
+config via `$GREN`** — but only with a *paired* grenade (untested; needs the install-accessory pairing).
+Also untested: whether `$GREN` needs the grenade "tapped/loaded" to the gun first (APK hypothesis).
+Scripts: `scratchpad/gsend.py`, `gsweep.py`.
