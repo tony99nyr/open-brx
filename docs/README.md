@@ -10,6 +10,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 ## Plans & architecture
 - **[brx-architecture-v0.2.md](brx-architecture-v0.2.md)** — the master plan (server, nodes, MQTT, roadmap).
 - **[field-architecture.md](field-architecture.md)** — why field play needs a device per player (the range constraint).
+- **[game-modes.md](game-modes.md)** — catalog of every known game mode, classified by infrastructure tier (Mission Control alone / +props / +broadcast).
 - **[mission-control-spec.md](mission-control-spec.md)** — operator console: scan → roster → teams → weapons → scoreboard. Includes the deathmatch gap analysis.
 - **[phone-app-spec.md](phone-app-spec.md)** — Callsign replacement (Web-Bluetooth PWA, per-player engine + HUD).
 - **[../hardware/brx-companion-spec.md](../hardware/brx-companion-spec.md)** — the per-tagger ESP32-S3 accessory (offline engine + powerups + audio + WiFi).
