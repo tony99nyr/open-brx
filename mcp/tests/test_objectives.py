@@ -72,15 +72,63 @@ def test_koth_builds_single_point():
 
 
 # ---- CTF -------------------------------------------------------------------- #
+# Objective events come from a STATION (not a gun) → team is the explicit token.
+def grab(team, flag="flag"):
+    return {"command": "GRAB", "tokens": ["GRAB", flag, str(team)]}
+
+
+def capflag(team):
+    return {"command": "CAP", "tokens": ["CAP", str(team)]}
+
+
+def drop(team):
+    return {"command": "DROP", "tokens": ["DROP", str(team)]}
+
+
 def test_ctf_capture_scores_and_wins_at_target():
     e = CtfEngine(GameConfig(mode="ctf", cap_target=2, game_time_s=0))
     e.add_player("red", 1); e.add_player("blue", 2)
-    e.on_event("red", {"command": "GRAB", "tokens": ["GRAB", "flag2"]}, now=1.0)
-    a1 = e.on_event("red", {"command": "CAP", "tokens": ["CAP"]}, now=5.0)
+    e.on_event("station", grab(1), now=1.0)
+    a1 = e.on_event("station", capflag(1), now=5.0)
     assert _types(a1, Score) and e.caps[1] == 1 and not e.over
-    e.on_event("red", {"command": "GRAB", "tokens": ["GRAB", "flag2"]}, now=6.0)
-    a2 = e.on_event("red", {"command": "CAP", "tokens": ["CAP"]}, now=9.0)
+    e.on_event("station", grab(1), now=6.0)
+    a2 = e.on_event("station", capflag(1), now=9.0)
     assert _types(a2, GameOver) and e.caps[1] == 2
+
+
+def test_ctf_cap_without_grab_does_not_score():
+    e = CtfEngine(GameConfig(mode="ctf", cap_target=2))
+    e.add_player("red", 1)
+    acts = e.on_event("station", capflag(1), now=1.0)
+    assert not _types(acts, Score) and e.caps.get(1, 0) == 0
+
+
+def test_ctf_drop_clears_possession():
+    e = CtfEngine(GameConfig(mode="ctf", cap_target=2))
+    e.add_player("red", 1)
+    e.on_event("station", grab(1), now=1.0)
+    e.on_event("station", drop(1), now=2.0)
+    assert 1 not in e.held
+    acts = e.on_event("station", capflag(1), now=3.0)   # dropped → can't cap
+    assert not _types(acts, Score)
+
+
+def test_ctf_malformed_team_token_does_not_crash():
+    e = CtfEngine(GameConfig(mode="ctf"))
+    e.add_player("red", 1)
+    # station sends a non-integer team → ignored, no exception, no phantom score
+    assert e.on_event("station", {"command": "GRAB", "tokens": ["GRAB", "f", "red"]}, now=1.0) == []
+    assert e.on_event("station", {"command": "CAP", "tokens": ["CAP", "x"]}, now=2.0) == []
+    assert e.held == set() and e.caps.get(0) is None
+
+
+def test_ctf_zero_team_token_not_scored():
+    e = CtfEngine(GameConfig(mode="ctf"))
+    e.add_player("red", 1)
+    # bare CAP/GRAB with no team → _ev default 0 → rejected, no team0 fabricated
+    assert e.on_event("station", {"command": "GRAB", "tokens": ["GRAB", "f"]}, now=1.0) == []
+    assert e.on_event("station", {"command": "CAP", "tokens": ["CAP"]}, now=2.0) == []
+    assert 0 not in e.held and "team0" not in (e.snapshot()["caps"])
 
 
 def test_ctf_carrier_death_callout():
@@ -93,7 +141,8 @@ def test_ctf_carrier_death_callout():
 def test_ctf_time_limit_leader_wins():
     e = CtfEngine(GameConfig(mode="ctf", cap_target=99, game_time_s=60))
     e.add_player("red", 1); e.add_player("blue", 2)
-    e.on_event("red", {"command": "CAP", "tokens": ["CAP"]}, now=5.0)
+    e.on_event("station", grab(1), now=1.0)
+    e.on_event("station", capflag(1), now=5.0)
     acts = e.tick(now=60.0)
     over = _types(acts, GameOver)
     assert over and over[0].winner == "team1"

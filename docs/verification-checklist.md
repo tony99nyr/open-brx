@@ -44,7 +44,8 @@ The whole M0 engine is tested in software but never driven on real guns.
 ## Session F — grenade / objectives (grenade + tagger)
 - ⬜ **Grenade beacon relay** — `diag-game`'s `gren.beacon`: a Hill/Respawn grenade's `$HIR,0,15,0,<team>,<mode>` surfaces on a bare-connected gun (confirmed once; make it repeatable for the state display).
 - ⬜ **Domination / KotH** — station CAPTURE events → the engine scores point-time; owner LED = truth.
-- ⬜ **CTF** — GRAB/CAP events → captures; carrier-death flag reset. (Needs G9 flag team-assign resolved.)
+- ⬜ **CTF** — GRAB/CAP/DROP events (team is the explicit station token) → captures; a CAP only scores if that
+  team is carrying (per-team `held`); DROP returns the flag. (Needs G9 flag team-assign resolved on the grenade.)
 - ⬜ **CS/objective events** — the CS engine + Domination/KotH/CTF need a station/grenade to emit plant/capture/hold. Wire the objective device to feed the engines (needs the Utility Box or the grenade's IR decoded).
 - ⬜ **Grenade G9/G10** — CTF flag team-assign (turned red not team colour); `$GREN` thrown-blast on a paired grenade.
 
@@ -53,6 +54,13 @@ The whole M0 engine is tested in software but never driven on real guns.
 
 ## Cross-machine
 - ⬜ **MacBook holds a BRX link** — the play host is the Mac; confirm bleak/CoreBluetooth holds (prior Mac sessions worked — a re-confirm, not an unknown).
+
+## Design / UX review (Tony — no hardware, just eyes)
+- ⬜ **Mission Control console** — the operator-console artifact (`webapp/mission-control.html`, published at
+  https://claude.ai/code/artifact/f44bf1ee-ded5-49e8-963b-aa8c51bcf40a). Review the direction: dark-first
+  tactical palette (laser-orange accent, team blue/gold), Rajdhani/IBM Plex type, 3-column ops layout +
+  sticky deploy bar, live `play` command generation, Demo-game animation. **Does the design direction land?**
+  Keep / redirect / redesign. (It's a prototype — scoreboard is demo-animated, not yet wired to real guns.)
 
 ---
 

@@ -46,8 +46,9 @@ Pure rules engines — consume the parsed event stream + clock ticks, emit `Acti
 - **`cs.py`** — **Bomb / plant-defuse**: attackers plant a site, detonation countdown, defenders defuse;
   best-of-N rounds. Site device feeds `PLANT`/`DEFUSE`.
 - **`objectives.py`** — **Domination** (N points, 1 pt/s per held point), **King of the Hill**
-  (single-point domination), **Capture the Flag** (grab→return, carrier-death drops the flag). Station
-  device feeds `CAPTURE`/`GRAB`/`CAP`.
+  (single-point domination), **Capture the Flag** (grab→return; per-team possession, a CAP only scores
+  if that team is carrying; DROP returns the flag). Station device feeds `CAPTURE`/`GRAB`/`CAP`/`DROP`
+  with the team as an explicit token (garbage/zero team ignored — never fabricates a phantom team).
 - **`extraction.py`** — the flagship raid-and-extract engine (own richer action set + narrated sim).
 
 **Combat modes** (TDM/FFA/infection/LMS) score off the gun `$HIR`/`$HP` stream — playable today.

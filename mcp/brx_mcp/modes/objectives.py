@@ -5,7 +5,10 @@ grenade / phone). Events (fed via on_event, or the convenience methods):
   CAPTURE <site> <team>   a point/hill was shot & claimed by <team>
   GRAB <flag> <team>      <team> grabbed the enemy flag (CTF)
   CAP <team>              <team> returned the enemy flag to base → a capture (CTF)
-Plus `$HP,0` deaths (CTF drops a carried flag).
+  DROP <team>             <team>'s carried flag returned home (carrier tagged)
+Plus `$HP,0` deaths (a callout; the station reports the actual flag DROP).
+Objective events come from a station, so their team is the explicit token, not a
+roster player — a missing/garbage/zero team token is ignored, not scored.
 
 Domination/KotH score over TIME held (the station shows local truth; the host tallies).
 CTF scores by flag captures. All fit the uniform GameEngine interface.
@@ -25,9 +28,26 @@ def _ev(ev, i, default=None):
     return t[i] if i < len(t) else default
 
 
+def _team(ev, idx, roster, player_id):
+    """Resolve a team for an objective event: the roster player if it came from a
+    gun, else the event's team token. Returns None for a missing/garbage/zero team
+    (station events are trusted but must be well-formed → don't fabricate team 0)."""
+    p = roster.get(player_id)
+    if p is not None:
+        return p.team
+    try:
+        t = int(_ev(ev, idx))
+        return t if t > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 class DominationEngine(GameEngine):
     """N control points; each point owned by a team scores 1 pt/s for it. Win at
-    score_target (or most points-time when the clock runs out). KotH = 1 point."""
+    score_target (or most points-time when the clock runs out). KotH = 1 point.
+
+    With score_target=0 AND game_time_s=0 the game is intentionally unlimited —
+    it never self-ends; the operator stops it manually (teardown / GameOver)."""
 
     def __init__(self, config, now: float = 0.0):
         self.config = config
@@ -71,6 +91,9 @@ class DominationEngine(GameEngine):
         dt = now - self._last_tick
         self._last_tick = now
         if dt > 0:
+            # A mid-interval steal credits the whole dt to the CURRENT owner.
+            # Bounded by the ~0.5s tick cadence (run_live) → ≤0.5s misattributed
+            # per steal; acceptable for scoring at this granularity.
             for owner in self.owner.values():
                 if owner is not None:
                     self._acc[owner] = self._acc.get(owner, 0.0) + dt
@@ -106,8 +129,15 @@ class DominationEngine(GameEngine):
 
 
 class CtfEngine(GameEngine):
-    """Capture the Flag: grab the enemy flag, return it to your base to score. A
-    carried flag drops (returns home) if the carrier dies. First to cap_target wins."""
+    """Capture the Flag: grab the enemy flag, return it to your base to score.
+    Possession is tracked per team (`held`) — a CAP only scores if that team is
+    actually carrying a flag. The station is the source of truth for grab/cap and
+    for a DROP (the flag returned home, e.g. the carrier was tagged). First to
+    cap_target wins.
+
+    Station events carry the team explicitly (GRAB <flag> <team>, CAP <team>,
+    DROP <team>) — they come from a station, not a player gun, so the team is
+    resolved from the token, not the roster. A malformed/zero team is ignored."""
 
     def __init__(self, config, now: float = 0.0):
         self.config = config
@@ -115,7 +145,7 @@ class CtfEngine(GameEngine):
         self.target = getattr(config, "cap_target", 3)
         self.start = now
         self.caps: dict[int, int] = {}
-        self.carrier: dict[int, Optional[str]] = {}   # team → the enemy player carrying THEIR flag
+        self.held: set[int] = set()   # teams currently carrying the enemy flag
         self.over = False
         self.winner: Optional[str] = None
 
@@ -123,15 +153,26 @@ class CtfEngine(GameEngine):
         self.roster.add(player_id, team)
         self.caps.setdefault(team, 0)
 
-    def grab(self, team: int, player_id: str, now: float) -> list[Action]:
-        """`team` grabbed the ENEMY flag; player_id carries it."""
+    def grab(self, team: int, now: float) -> list[Action]:
+        """`team` grabbed the ENEMY flag."""
         if self.over:
             return []
+        self.held.add(team)
         return [Callout(f"team{team} grabbed the flag!"), PlaySound("VA81", scope="all")]
+
+    def drop(self, team: int, now: float) -> list[Action]:
+        """`team`'s carried flag returned home (carrier tagged / manual return)."""
+        if self.over or team not in self.held:
+            return []
+        self.held.discard(team)
+        return [Callout(f"team{team} dropped the flag — it returns home")]
 
     def cap(self, team: int, now: float) -> list[Action]:
         if self.over:
             return []
+        if team not in self.held:                       # can't capture without carrying
+            return [Callout(f"team{team} has no flag to capture")]
+        self.held.discard(team)
         self.caps[team] = self.caps.get(team, 0) + 1
         actions: list[Action] = [Score(f"team{team}", +1, self.caps[team]),
                                  Callout(f"team{team} captured the flag! ({self.caps[team]})"),
@@ -145,17 +186,20 @@ class CtfEngine(GameEngine):
             return []
         cmd = ev.get("command")
         if cmd == "GRAB":
-            p = self.roster.get(player_id)
-            return self.grab(p.team if p else int(_ev(ev, 2, 0)), player_id, now)
+            team = _team(ev, 2, self.roster, player_id)
+            return self.grab(team, now) if team is not None else []
         if cmd == "CAP":
-            p = self.roster.get(player_id)
-            return self.cap(p.team if p else int(_ev(ev, 1, 0)), now)
+            team = _team(ev, 1, self.roster, player_id)
+            return self.cap(team, now) if team is not None else []
+        if cmd == "DROP":
+            team = _team(ev, 1, self.roster, player_id)
+            return self.drop(team, now) if team is not None else []
         hv = hp_values(ev)
         if hv is not None and hv[0] == 0:
             p = self.roster.get(player_id)
             if p:
                 p.alive = False
-                return [Callout(f"{player_id} down — flag returns")]
+                return [Callout(f"{player_id} down")]
         return []
 
     def tick(self, now: float) -> list[Action]:
@@ -177,5 +221,6 @@ class CtfEngine(GameEngine):
     def snapshot(self) -> dict:
         return {"mode": "ctf", "over": self.over, "winner": self.winner,
                 "target": self.target, "caps": dict(self.caps),
+                "held": sorted(self.held),
                 "players": {pid: {"team": p.team, "alive": p.alive}
                             for pid, p in self.roster.players.items()}}
