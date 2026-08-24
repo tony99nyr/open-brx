@@ -13,6 +13,8 @@
   python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
   python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
+  python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
+  python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
 """
 
 from __future__ import annotations
@@ -823,6 +825,38 @@ async def _diag_game(address: str, extra_caps: list[str]) -> None:
         print(f"(report not saved: {e})", file=sys.stderr)
 
 
+def _ir_capture(port: str | None, seconds: float) -> None:
+    """Capture BRX IR frames from the ESP32 bridge and print + diff them."""
+    from .irbridge import IRBridge, diff_bits
+    br = IRBridge(port)
+    print(f"# capturing on {br.port} for {seconds:.0f}s — fire a gun / grenade at the "
+          f"receiver ...", file=sys.stderr)
+    frames = br.capture(seconds)
+    br.close()
+    if not frames:
+        print("no frames — check wiring (VS1838B OUT→GPIO4), aim, and that a gun fired.")
+        return
+    for f in frames:
+        print(f"frame {f.index}: {f.to_dict()['nbits']} bits  {f.bits}"
+              f"{'  [OVERFLOW]' if f.overflow else ''}")
+    # diff consecutive distinct bit strings — surfaces type/team/mode fields
+    seen = [f.bits for f in frames if f.bits]
+    uniq = sorted(set(seen))
+    if len(uniq) > 1:
+        print("\n# distinct words:")
+        for b in uniq:
+            print(f"  {b}")
+        print(f"\n# diff {uniq[0]} vs {uniq[1]}:\n  {diff_bits(uniq[0], uniq[1])}")
+
+
+def _ir_emit(bits: str, port: str | None, repeat: int) -> None:
+    from .irbridge import IRBridge
+    br = IRBridge(port)
+    print(f"# emitting {bits!r} ×{repeat} on {br.port}", file=sys.stderr)
+    print(br.emit(bits, repeat))
+    br.close()
+
+
 def _dispatch(cmd: str, args: list[str]) -> None:
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
@@ -870,6 +904,15 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _extraction_sim()
     elif cmd == "diag-game" and len(args) > 1:
         asyncio.run(_diag_game(args[1], args[2:]))
+    elif cmd == "ir-capture":
+        port = args[1] if len(args) > 1 and not args[1].isdigit() else None
+        secs = next((float(a) for a in args[1:] if a.replace(".", "").isdigit()), 15.0)
+        _ir_capture(port, secs)
+    elif cmd == "ir-emit" and len(args) > 1:
+        bits = args[1]
+        port = args[2] if len(args) > 2 and not args[2].isdigit() else None
+        repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
+        _ir_emit(bits, port, repeat)
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

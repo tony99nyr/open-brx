@@ -9,13 +9,37 @@ The hardware half of `../ir-prototype-plan.md` and the eventual Claude↔hardwar
 - **940 nm IR LED** + an NPN transistor (2N2222, from the ELEGOO kit) — emit (Phase B).
 - Breadboard + jumpers + a 0.1 µF cap (ELEGOO kit).
 
-## Wiring — `ir_capture.ino` (Phase A, capture)
+## No soldering
+Everything is **breadboard + jumpers** — the VS1838B (3 pins), IR LED (2 pins), and transistor
+(3 pins) push straight into the breadboard. *Only* exception: if your ESP32-S3 2-pack shipped with
+**loose pin headers** (some budget packs do), solder those to the board first (~16 joints, 15 min);
+many DevKitC-1s come pre-soldered.
+
+## VS1838B pinout (look at the FLAT/domed face, legs down)
 ```
-VS1838B  OUT ── GPIO 4        (S3 safe pin; avoids octal-PSRAM 33–37 & flash 26–32)
-         VCC ── 3V3
-         GND ── GND
-         0.1 µF cap across VCC/GND (noise)
+   ___
+  /   \      Pin 1 = OUT (signal)
+ | () |      Pin 2 = GND
+ |____|      Pin 3 = VCC (3V3)
+ | | |
+ 1 2 3       (left→right, bulge facing you. If unsure, check your kit's datasheet —
+             some VS1838B are OUT-GND-VCC, others differ.)
 ```
+
+## Breadboard — `ir_capture.ino` (Phase A, CAPTURE)  ← wire this first
+
+```
+  ESP32-S3                         VS1838B (IR receiver)
+ ┌─────────┐                      ┌──────────┐
+ │   3V3 ●─┼──────────────────────┤ VCC (3)  │
+ │   GND ●─┼───────┬──────────────┤ GND (2)  │
+ │ GPIO4 ●─┼───────┼──────────────┤ OUT (1)  │
+ └─────────┘       │              └──────────┘
+                   │   0.1 µF cap
+                   └───┤├──── (other leg to VCC rail)   ← optional, reduces noise
+```
+That's the whole capture rig: **3 jumpers** (3V3, GND, GPIO4→OUT) + an optional decoupling cap.
+Point the VS1838B's domed face at the gun/grenade.
 
 ## Flash it
 1. Arduino IDE → Boards Manager → install **esp32 by Espressif** (v3.x).
@@ -42,7 +66,42 @@ type / team / mode / damage. That table **is followup B13** and unblocks the Uti
 - `micros()` edge timing is framework-light and transparent — ideal for RE. A later revision can move
   to the RMT peripheral for tighter timing + TX.
 
-## Next (when capture works)
-- `ir_emit.ino` — RMT-drive the 940 nm LED to replay a captured frame; confirm a stock gun reacts.
-- Then a small **serial command protocol** (`CAP`, `TX <bits>`, `ADC <pin>`) so the `brx-mcp`
-  `ir_capture` / `ir_emit` tools drive the board over USB (pyserial) — the `diag-game ir` cases.
+## Breadboard — `ir_emit.ino` (Phase B, EMIT)  ← add this after capture works
+
+Drive the 940 nm IR LED through the transistor (from the ELEGOO kit) for real range. The IR LED
+is **invisible** — to check it's firing, view it through a **phone camera** (you'll see it flash).
+
+```
+  ESP32-S3                2N2222 (NPN, flat face toward you: E B C)
+ ┌─────────┐                 │ │ │
+ │ GPIO5 ●─┼──[330Ω]─────────┘ │ └────────────┐   collector
+ │   GND ●─┼───────────────────┘              │
+ └─────────┘                 emitter          │
+                                              │
+        +3V3 (or +5V breadboard rail) ──[100Ω]┴──►│─── IR LED ───┘
+                                                (anode)   (cathode → collector)
+```
+- **GPIO5 → 330 Ω → base**; **emitter → GND**; **collector → IR-LED cathode**;
+  **IR-LED anode → 100 Ω → +3V3/+5V rail**.
+- 2N2222 pinout (TO-92, flat side facing you, legs down): **E–B–C** left→right (verify on your kit —
+  some are E-B-C, the PN2222A in the ELEGOO kit is too).
+- Use the **breadboard power module** (from the kit) for the +5V rail if you want more LED range;
+  the ESP32's 3V3 works at shorter range.
+
+## Serial command protocol (what the MCP tools speak)
+- **capture firmware** streams: `RAW <n> edges=<k> us=[d1,d2,…]` then `DECODE bits=<b> val=<bits>`.
+- **emit firmware** accepts: `TX <bits>`, `TXN <n> <bits>`, `PING`→`PONG`.
+
+Drive it from the repo (Windows Python, where pyserial + the COM port live):
+```
+python -m brx_mcp ir-capture [port] [seconds]      # auto-detects the ESP32 port
+python -m brx_mcp ir-emit <bits> [port] [repeat]
+```
+`ir-capture` prints each decoded frame and **diffs distinct words** (surfaces the type/team/mode
+bits). These are the same calls the `diag-game ir` cases use once the bridge is present.
+
+## Next
+- Tune `ir_emit.ino`'s `MARK_ONE/MARK_ZERO/BIT_SPACE/START_*` to the timings `ir-capture` recorded,
+  then emit a captured "hit" and confirm a stock gun reports `$HIR` (Phase B).
+- Wire the two `ir.*` diagnostic cases (`diag/cases.py`) to call `IRBridge` so `diag-game <addr> ir`
+  runs capture+emit as scored tests.
