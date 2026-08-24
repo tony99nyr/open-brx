@@ -750,3 +750,10 @@ cycle** (purple ≈ a "USB power detected" flash, then it rolled into the mode c
 **yellow = Respawn** and it locked). So USB did **not** unlock a special mode; button-hold = normal setup
 regardless of USB. **G7 = clean negative: USB-C is power/charge only, no data interface.** State-read
 stays the IR-beacon relay.
+
+**⚠️ CORRECTION — G7 is INCONCLUSIVE, not negative.** Tony: the USB-C cable/port used is **the same one
+that did USB debugging on his Pixel 10 and then LATER STOPPED WORKING for debugging** — i.e. its **data
+lines are flaky/degraded** (power still works → the grenade's purple flash). So the grenade enumerating
+no data device may be the **bad cable**, not a power-only port. **Retest G7 with a known-good USB-C DATA
+cable** before concluding anything. The grenade may yet expose a serial console / drive / DFU — this is
+still open, and would be the reliable non-IR channel if it exists.
