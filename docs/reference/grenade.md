@@ -30,6 +30,53 @@ power-up it flashes green = ready. Default mode = plain "grenade."
 FlashBang/Gas/Confusion/Molotov — which is the blast *effect*; these game *modes* are the
 `operationMode`/objective behaviour. Reconciling the two exactly is followup G1.)*
 
+### Exact setup procedure + colour→mode map (HARDWARE-CONFIRMED, Tony, exp-log #35)
+
+There are **5 modes**, indicated by **LED colour** (the video's 4-mode list was incomplete):
+
+1. **Turn the grenade OFF, then ON**; wait for the **green LED** (ready).
+2. **Hold the top button ~4 s** → a **loud long beep** = entering setup.
+3. In setup it **beeps rapidly** and **cycles colour** as you hold. **A second tagger in setup mode
+   announces each mode's name** as you cycle. Confirmed colour → mode map (Tony, exp-log #35):
+
+   | Mode | Colour | Function |
+   |---|---|---|
+   | 1 | **red** | **Frag** — a blast grenade (event-driven; detonate by button/throw, no passive beacon) |
+   | 2 | **green** | **Assault** |
+   | 3 | **blue** | **Hill** (King of the Hill) |
+   | 4 | **yellow** | **Respawn** |
+   | 5 | **white** | **CTF** (Capture the Flag) |
+
+   The four objective modes (green/blue/yellow/white) **beacon their state over IR** (→ `$HIR,0,15,…`
+   on a bare-connected gun); **Frag (red) does not beacon** — it's a thrown/triggered blast.
+4. **Release** on the colour you want → it **locks** that mode.
+5. **The mode persists across a power-cycle** (off/on keeps it) — only re-entering setup changes it.
+6. **LED goes white when a mode locks in** (the lock confirmation).
+7. **On boot, the grenade flashes its current mode's colour for ~1 s** — so you can verify the active
+   mode by power-cycling and watching the boot colour (it's not always green).
+
+**Over BLE, some grenade modes beacon their state as `$HIR` frames** — but **only when the gun is NOT in
+a host game whose `$SIR` table swallows the IR** (use a bare connect, or a `$SIR` config that passes
+grenade IR through). Hardware-confirmed decode (exp-log #35):
+
+- **`$HIR,0,<srcType>,0,<d>,<e>,<f>,<g>`** — **token 2 (`srcType`) = 15 means the hit is from a GRENADE**
+  (a gun shot has `0` there). A node filters grenade IR by `token2 == 15`.
+- **Only Hill and Respawn beacon** their state passively (~2.5–5 s); **Assault, CTF, Frag do not.** Token
+  5 (`e`) encodes the beaconing mode: **Hill `e=8`, Respawn `e=6`** (both token4=2).
+
+| Mode (colour) | Beacons? | Signature / behaviour |
+|---|---|---|
+| Frag (red) | ❌ | blast weapon — thrown/triggered, no beacon |
+| Assault (green) | ❌ | **captures silently** — shot by a team's gun → grenade LED turns that team's colour; no beacon |
+| **Hill (blue)** | ✅ ~5 s | `$HIR,0,15,0,2,8,0,0` |
+| **Respawn (yellow)** | ✅ ~2.5 s | `$HIR,0,15,0,2,6,0,0` |
+| CTF (white) | ❌ passive | flag grab mechanic (shoot to grab); no passive beacon |
+
+**G6 answer (mode-dependent):** a phone/node **can read Hill & Respawn state live over BLE**; **Assault/
+CTF/Frag expose nothing** — their state lives on the grenade LED only, so those must be inferred from
+*our own gun's* capture shots. **Capture needs a real weapon firing** (bare-connect trigger is disabled;
+use a `minfire` config = weapon loaded, `$SIR` stripped).
+
 ## Respawn Station mode
 
 - Starts **white/neutral**; **shoot it with a team's gun to claim it that team's colour** (blue gun →

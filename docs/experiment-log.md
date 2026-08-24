@@ -620,3 +620,49 @@ button near the gun.
   captures, re-watch BLE for an emitted beacon; (iii) **behavioral test** — set Respawn mode, beacon the
   gun to make it a respawn-client, and check if its self-respawn is disabled (proves grenade→gun IR
   reprograms the gun *without* needing a BLE frame). Scripts: `grenade_listen.py`, `grenade_isolate.py`.
+
+### 35. G-1 grenade over BLE — CRACKED ✅ (full mode map + $HIR beacon decode)
+Long, productive grenade session. **The unlock: stop configuring a host game.** Our custom `$SIR` table
+was *swallowing* the grenade IR silently (confound (b) from #34). With a **bare BLE connect** (no
+`$SIR`), the grenade's IR **surfaces as `$HIR` notifications**. Tool: `scratchpad/gprobe.py <gun>
+<label> <secs> [bare|game|minfire]` (minfire = weapon loaded, `$SIR` stripped so the trigger fires AND
+grenade IR still passes).
+
+**Grenade setup procedure (Tony, hardware) — now in `reference/grenade.md`:** off→on (green ready) →
+hold top button ~4 s (loud long beep = setup) → beeps fast + cycles colour → release to lock (LED goes
+**white** to confirm) → mode persists across power-cycle → **boot flashes the current mode's colour ~1 s**.
+**A 2nd tagger in setup mode announces each mode's name** as you cycle.
+
+**Colour → mode map (5 modes; our video list of 4 was wrong):**
+| Mode | Colour | Function | Beacons over BLE? | `$HIR` signature |
+|---|---|---|---|---|
+| 1 | red | **Frag** (blast grenade) | ❌ (thrown/triggered blast) | — |
+| 2 | green | **Assault** | ❌ — **captures silently**: shot by team-1(blue) gun → grenade LED turns **blue**, but no beacon | — |
+| 3 | blue | **Hill** (KotH) | ✅ ~every 5 s | `$HIR,0,15,0,2,8,0,0` |
+| 4 | yellow | **Respawn** | ✅ ~every 2.5 s | `$HIR,0,15,0,2,6,0,0` |
+| 5 | white | **CTF** | ❌ passive | — |
+
+**`$HIR` decode — grenade vs gun:** `$HIR,0,<srcType>,0,<d>,<e>,<f>,<g>`. **Token 2 (`srcType`) = 15 for
+a GRENADE**, `0` for a gun shot (a gun hit was `$HIR,0,0,0,2,9,0,3`). So a node can **filter grenade IR
+by token 2 == 15**. For beacons, **token 5 (`e`) encodes the mode**: Hill=8, Respawn=6 (both token4=2).
+(Transient cycling/setup beacons showed d=0 e=54–58 rolling and d=1 e=6 — programming/heartbeat states,
+not decoded further.)
+
+**G6 answer (mode-dependent!):** **Hill and Respawn broadcast their state over BLE** (a phone/node can
+read possession/availability live); **Assault, CTF, Frag do NOT beacon** — Assault capture lives only on
+the grenade LED, invisible to the gun stream. So "read grenade objective state over BLE" works for
+KotH/Respawn, not for Assault/CTF.
+
+**Capture mechanic confirmed:** shooting an **Assault** grenade with a team-1 (blue) gun turns its LED
+**blue** = captured by that team. (Needs a real weapon firing — bare-connect trigger is disabled; use
+`minfire`.)
+
+**Integration takeaways:** (1) the engine reads grenade events as `$HIR` with token2==15 — but only if
+the gun's `$SIR` config doesn't eat them; craft `$SIR` to pass protocol-15 through, or run a
+grenade-aware listen. (2) For non-beaconing modes (Assault/CTF), objective state must be inferred from
+*our own gun's* capture shots, not from the grenade. (3) `$GREN` active-send (drive the grenade from
+software) still untested — next session.
+
+**CTF (white) shot → turned RED** (not blue/team-1 like Assault did) — CTF uses different colour logic
+(red may = flag grabbed/contested, not team colour); still no BLE beacon. Decode later. `$GREN`
+active-drive filed as **G8**.
