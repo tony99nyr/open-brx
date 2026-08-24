@@ -1,4 +1,6 @@
-# BRX Objective Station — fixed contested-point node (hardware spec)
+# BRX Utility Box — the open, MC-programmable objective node (hardware spec)
+
+*(aka the Objective Station — a fixed/placeable contested-point node.)*
 
 **Status:** proposal, 2026-08-24. Sibling to `brx-companion-spec.md`. Where the Companion **rides the
 player** and is the game engine, the **Station is fixed on the field** and is the *contested point* —
@@ -7,10 +9,14 @@ Jay's **JBOX Mini** (the minimal viable base identified in `docs/reference/jay-e
 credit to **Jay / Extreme Laser Tag** and **LaserTagMods** (JBOX/JEDGE) for the concept — this is a
 fresh, MIT design that never touches stock BRX firmware.
 
-Design goal: **one cheap reconfigurable box that becomes any objective.** The whole custom-mode space
-in `docs/game-modes.md` reduces to *IR receiver + LED + a local timer/owner-state + rules* — build
-that once and Domination, KotH, CTF, Assault, respawn, utility/perk emitters, and the flagship
-**Extraction** point all fall out of it.
+Design goal: **an open-source, Mission-Control-programmable utility box for BRX — a platform, not a
+fixed appliance.** One cheap reconfigurable node that becomes any objective on command, and an **open
+base for future modes** we haven't designed yet. The whole custom-mode space in `docs/game-modes.md`
+reduces to *IR receiver + IR emitter + LED + a local timer/owner-state + rules* — build that once and
+Domination, KotH, CTF, Assault, respawn, extraction, bomb/plant-defuse, and utility/perk emitters all
+fall out of it, with room for whatever comes next. This is the **open answer to the stock grenade**
+(sealed, button-locked, a few fixed modes, no remote config — G7/G8): same objective role, but open,
+reliable, any-mode, and driven live by Mission Control.
 
 ## Why it has to exist (what the teardown + crawl proved)
 
@@ -110,20 +116,76 @@ winning team), **`1433`** = "closing in on victory" warning broadcast. Master/sl
 to **1 master + 9 slaves** (10 stations); hosted KotH to **~21 boxes**. Adopting LoRa-*standard* is
 tracked as followup **D2**.
 
-## Modes served (one primitive, many modes — cite `docs/game-modes.md`)
+## Modes served — ONE box, every objective, Mission-Control-programmable
 
-| Mode | Station behaviour | Networking |
+**This is the design target (Tony, 2026-08-24):** a single reconfigurable **utility box** that Mission
+Control assigns a mode + params to **over the radio** (WiFi/ESP-NOW/LoRa) — no on-device menu, no
+button-timing. It is the **open answer to the stock grenade's limits**: the grenade is button-locked,
+does only a few modes, and can't be driven remotely (G8); this box does **all** the modes below and MC
+programs it live. (No throwable/grenade form factor — a placeable box drops all the throw/pairing
+complexity.) Every mode is the **same primitive** — IR receiver + IR emitter + LED + a local timer/owner
+state — with different firmware rules:
+
+| Mode | Box behaviour | Adds |
 |---|---|---|
-| **Domination** | shoot to capture → owner scores **1 pt/s**; steal by shooting; score by Time/Shots/**Damage** | standalone (single) / ESP-NOW (multi-point) |
-| **King of the Hill** | capture the white hill → **hold 45 s** for a point; **~5 s recapture window**; roles/locations can randomise each round | ESP-NOW/host |
-| **Capture the Flag** | flag base: grab enemy flag, bank at your base | standalone / ESP-NOW |
-| **Assault** | attack/hold objective in sequence *(quirk: friendly-capture bug — `grenade.md`)* | ESP-NOW |
-| **Respawn station** | claim to a team; dead players trigger it (button or hands-free melee IR) to respawn | standalone; doubles as a **data-mule** sync point |
-| **Utility / perk emitter** | emit medic/armor/shield/ammo/star-power/proximity-mine/loot tags; team-aligned or shooter-gets-it; emit freq 1–30 s, cooldown to ~30 min, capture 1–1000 shots, team life-pool cap | standalone |
-| **Extraction point** ⭐ | initiate → **loud audio+LED alarm** ("extraction inbound") → **channel timer** (30–60 s) the player must defend; complete = the player's node banks its loot; the flagship mode Edge can't do | standalone (local) / broadcast (field-wide alarm) |
+| **Domination / control point** | shoot to capture → owner scores **1 pt/s**; steal by shooting; score by Time/Shots/**Damage** | — |
+| **King of the Hill** | capture the neutral hill → **hold 45 s** for a point; **~5 s recapture**; charge mechanic; beacons possession | — |
+| **Assault** | attack/hold an objective in sequence (our code — no stock-grenade friendly-capture quirk) | — |
+| **Capture the Flag** | a team's home base (**2 boxes** = 2 bases); grab enemy flag → return to yours. We own the logic, so no stock-grenade team-assign issue (G9) | 2 boxes |
+| **Respawn station** | claim to a team; respawns nearby dead teammates (on IR/command); doubles as a **data-mule** sync point | — |
+| **Extraction point** ⭐ | initiate → **loud LED/buzzer alarm** + MC "extraction inbound" callout → **channel timer (30–60 s)** the player must defend → complete = the player's node banks its loot | **a defended countdown** (box runs it locally) |
+| **Bomb / plant-defuse (CS)** ⭐ | attacker arms it (shoot/dwell) → **detonation countdown** (LED + beacon) → defender defuses (interact) → resolve round. 2 boxes = 2 sites | **a defended countdown** |
+| **Utility / perk emitter** | emit medic/armor/shield/ammo/star-power/proximity-mine/loot tags; team-aligned or shooter-gets-it; emit freq 1–30 s, cooldown to ~30 min, capture N shots, team life-pool cap | — |
 
-The Station is the **KotH/hold primitive**; Extraction is that primitive + a channel-and-alarm behaviour
-+ the loot rules that live in the player node (`brx-companion-spec.md`) and the host engine.
+The box is the **capture/hold primitive** (IR RX = who shot me + which team; IR TX = beacon owner + push
+perks; LED = owner). **Extraction and Bomb** are that primitive **+ a defended countdown timer** (run on
+the box, reported to MC) + the loot/round rules that live in the host engine (`extraction.py`) and the
+player node (`brx-companion-spec.md`). **Team identity** comes free from the IR hit; *per-player*
+identity (which player planted) needs P2.
+
+## The BRX IR the box must emit (the one reverse-engineering task)
+
+The box has to **emit BRX-compatible IR** so stock guns register its captures/respawns/perks, and
+**receive** gun IR to read hits. What we know vs. what's left:
+
+- **Optical (✅ known — `reference/brx-extended-user-guide.md`):** **980 nm** wavelength (NOT 940 nm —
+  use 980 nm-capable emitters/receivers), **38 kHz** carrier, ~6.5 µs pulses. A TSOP-class 38 kHz
+  demodulator on the RX side.
+- **Bit encoding (✅ known — LaserTagMods, `reference/lasertagmods.md`):** **25-bit protocol, 38 kHz
+  carrier**; **logic-1 ≈ 1000 µs mark, logic-0 ≈ 500 µs**, ~500 µs inter-bit spacing, ~13 µs carrier
+  half-period, start bit opens the frame. This is the on-air waveform.
+- **Payload semantics (✅ decoded meaning):** the IR carries a **protocol/type id** (the first field of
+  `$SIR`/token 1 of `$HIR`) that routes the effect — e.g. type→{standard hit, respawn+HP, add shields,
+  add armor, …} per the `$SIR` table (`protocol/brx-protocol.md` §5); a grenade beacon reads as type 15
+  carrying team + mode.
+- **❓ The one gap — the exact bit-layout** of each objective tag (which of the 25 bits carry type vs.
+  team vs. mode/effect). The gun hands us the *decoded* `$HIR`, not the raw bits. **Close it two ways:**
+  (1) **LaserTagMods/JBOX source** — they already emit CTF/KotH/respawn IR, so their code is the
+  bit-map reference; (2) **a bench capture** — a ~$2 TSOP38 + a logic analyzer (or an ESP32 timing the
+  pulses) recording real gun/grenade shots yields the raw 25-bit words directly. One session → full map.
+
+**Everything else is standard ESP32 work.** Once the emit format is confirmed, the box can produce any
+capture/respawn/perk/heal tag on command — which is exactly what makes it programmable where the stock
+grenade is locked.
+
+### The box does NOT need to clone the grenade — sounds are OURS to assign
+
+A common misread: "we must capture the grenade's exact IR blast so the gun plays the right sounds." **No.**
+The gun decides its **reaction (sound + effect) from its `$SIR` table** — which our node sets over BLE:
+`$SIR,<type>,<subtype>,<soundID>,<function>,…` maps an incoming IR type → a sound (any of the 2166-id
+bank) + an effect (damage / add-HP / add-armor / respawn / …; see `protocol/brx-protocol.md` §5). So we
+control **both halves**: the **IR type the box emits** and the **`$SIR` mapping** of that type. The IR
+type is just a *key*; the sound/effect is a *lookup we own*.
+
+Consequences:
+- We only need the IR **encoding format** (above) so the box emits a *valid typed frame* the gun reads —
+  **not** a byte-for-byte copy of the grenade's beacon.
+- To reproduce a stock reaction (e.g. "control point captured", the respawn chime), set `$SIR` to the
+  same type→sound the app uses; to invent our own (a custom capture jingle, mode callouts), map any bank
+  id. The platform can trigger sounds the grenade never used.
+- Caveat: these sounds only play while the gun is **running our config** (our `$SIR` loaded at game
+  start). A bare/unconfigured gun just emits a raw `$HIR` with no sound — fine, since the box is always
+  used inside a hosted game.
 
 ## Relationship to the Companion & the rest of the system
 
@@ -149,6 +211,10 @@ the zero-cost alternative for weapon-pickup / flag props where a powered box is 
 
 ## Open hardware questions (before a build)
 
+- **#1 — capture the BRX IR bit-layout (the one gating task).** Confirm the exact 25-bit payload of each
+  objective/effect tag (which bits = type / team / mode / damage) so the box can *emit* valid BRX IR.
+  Do it via **LaserTagMods/JBOX source** (they already emit it) or a **~$2 TSOP38 + logic-analyzer bench
+  capture** of real gun/grenade shots. Blocks the emit side; RX-only prototyping can start before it.
 - **P10** — confirm the BRX IR **damage-value** decode (~7–8 bits) so damage-weighted scoring is exact
   (`docs/FOLLOWUPS.md`).
 - **D2** — adopt **LoRa-standard** + **ESP-NOW-with-antenna** as the field/arena baseline (measured).
