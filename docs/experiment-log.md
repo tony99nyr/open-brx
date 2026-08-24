@@ -191,7 +191,13 @@ Consequences, all unresolved — see the followups section at the end of this fi
 
 # Followups — open research, prioritised
 
-## A. The range problem (blocks the whole one-laptop design)
+## A. The range problem — **ANSWERED 2026-08-23, see entries 17-19 and protocol §7n**
+
+> **Closed as answered, not solved.** Respawn and game time are not in the protocol
+> stream, and the gun keeps no score. BLE cannot support out-of-range play; it is a
+> design property. The reasoning below is kept for context. **The live thread is now
+> the nRF radio** (D).
+
 
 Our `arena` command drives everything from the host: it detects `$HP,0,` and sends
 `$SPAWN,,*` itself. **That only works while the laptop is in BLE range.** On a real field
@@ -239,7 +245,7 @@ we may get the countdown for free.
 | `$SP` / `$UP` | central to A3. **`$UP,*` probed — no reply (§7l)**; LaserTagMods' arg form looks like a write. `$SP` must NOT be probed on hardware ($SP,99 is half the panic sequence) | learn both from a full end-of-game capture instead |
 | Headset lockout | manual says a headset lost mid-game locks the gun (§7h). **Never controlled for in any experiment** | run one match headset-paired, one headset-off-from-boot |
 
-## D. The nRF radio — possibly the real answer to A
+## D. The nRF radio — **NOW THE CRITICAL PATH** (A is closed; this is the way out)
 
 `QUERY` reports `NRFhost 1` and `NRFslave 1`, and LaserTagMods build LoRa/nRF base
 stations (`NRFL-Bases`, `LoRa-Controlled-Taggers`). **The taggers may already have a
@@ -294,3 +300,63 @@ Decoding it makes autonomous play work. Method, now well-defined:
 create a game in Callsign with respawn 15 → PacketLogger capture; change **only** respawn
 to 30 → capture; diff the `$GSET` frames; the token that moved is respawn. Repeat per
 setting. Two captures each for: respawn time, game time, lives, mode.
+
+---
+
+## 2026-08-23 (night) — Experiment 1: decode `$GSET` → **definitive negative**
+
+Ran the capture plan's Experiment 1 on the MacBook with PacketLogger + iOS Callsign.
+
+### 16. The headset gates the entire app ✅ (explains hours of "flakiness")
+**With no headset paired, Callsign connects to the tagger and immediately disconnects it —
+silently.** And **you cannot create a game at all unless the app's top-right icon is green
+and reads "connected".**
+
+This is the whole explanation for the "app is flaky, then suddenly works" pattern that
+plagued the evening. Nothing was intermittent: when the headset happened to be linked the
+app went green and everything worked; when it wasn't, game creation was simply unavailable.
+Neither operator nor agent was tracking headset state as a variable.
+
+Diagnostic while chasing it: a capture during the failures (`disconnects.log`) shows the
+app completing its ritual, receiving **zero frames back**, and hanging up ~1.2 s later —
+while the same tagger answered our own client's `$PING` with `$PONG` in **120 ms**. The gun
+was never the problem. **Check the headset before any app-driven session** (§7m).
+
+### 17. Respawn time is NOT in the protocol stream ❌ (three captures)
+`cap5` respawn 15 s · `cap6` respawn 30 s · `cap7` respawn 5 s, Team Arena.
+
+```
+all three: $GSET,1,0,1,0,1,0,50,1,*     byte-identical
+$PSET:     identical
+only frame unique to any capture: a $VOLTS battery reading (drifts on its own)
+```
+
+Game time likewise: `cap5` ran a 1-minute clock and still produced the same `$GSET` as the
+default-clock captures. **The app keeps the clock and drives respawn itself.** The manual
+lists both as on-gun menu settings, so the firmware can do it — Callsign just never uses
+that path, so no capture will ever reveal a command for it. **Stop looking.**
+
+(`cap6`'s secondary weapon changed unintentionally, contaminating the cap5/cap6 pair.
+`cap7` was taken to re-test with a third value; the conclusion does not rest on that pair.)
+
+### 18. The app never asks the gun for results ❌ (Experiment 2, answered early)
+`cap5`'s 1-minute clock expired inside the trace, capturing a complete game ending:
+
+```
+[38.202s] >> $SPAWN,,*                 game starts
+[44.882s] << $VOLTS,...                LAST frame the tagger ever sends
+[60.795s] >> $VOL,69,0 / $HLED,,6 / $STOP / $CLEAR / $PLAY,VS6
+```
+
+No query, no score request. **The gun keeps no score, so there is nothing to read** — which
+explains `$UP,*`'s silence (§7l) and the empty reconnect after the field test. The phone
+tallies `$HIR`/`$HP` events live and is the only place the score has ever existed.
+
+### 19. Consequence: BLE cannot support out-of-range play
+This is a **design property, not a missing command**. A tagger with no host in range will
+not respawn anyone, will not end the round, and will not remember what happened — exactly
+what the field test showed. Followup A is therefore **closed as answered**, not solved.
+
+Remaining options are in protocol §7n. The most promising is **the nRF radio** (`QUERY`
+reports `NRFhost 1` / `NRFslave 1`, and LaserTagMods ship `NRFL-Bases` and
+`LoRa-Controlled-Taggers` — they hit this same wall and solved it with a different radio).

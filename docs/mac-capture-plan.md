@@ -15,6 +15,14 @@ the Windows side.
 - **iPhone X** has Apple's Bluetooth logging profile installed and has been rebooted.
 - The Mac has **no USB-A**, so the iPhone connects through a hub. It enumerates fine there.
 
+### PRECONDITION: the headset must be paired
+
+**With no headset, Callsign silently connects and drops the tagger, and you cannot
+create a game at all** — game creation is gated on the app's top-right icon being
+green and reading "connected" (§7m). This cost a large part of an evening,
+presenting as random app flakiness. Verify with `QUERY` over USB (`Headset Version`,
+`Head:` voltage) rather than guessing. Pairing can take up to 3 minutes.
+
 ### The capture loop
 
 1. Plug the iPhone in. **File → New iOS Trace**, pick the phone.
@@ -41,7 +49,14 @@ Compare the `$GSET` / `$WEAP` / `$PSET` lines specifically — timestamps will a
 
 ---
 
-## Experiment 1 — decode `$GSET` ★ CRITICAL PATH
+## ~~Experiment 1 — decode `$GSET`~~ ✅ DONE 2026-08-23 — **definitive negative**
+
+> **Do not re-run.** Three captures (respawn 15 / 30 / 5) produced byte-identical
+> `$GSET` *and* `$PSET`; a 1-minute clock produced the same `$GSET` as a default one.
+> **Respawn and game time are not sent to the tagger at all** — the app keeps the
+> clock and drives respawn itself (§7n). The original reasoning is kept below for
+> context, but the answer is no.
+
 
 **Why:** the field test proved taggers keep playing with no host connected, but nothing
 respawned and no round ended because we never configured an on-gun respawn time or game
@@ -67,7 +82,13 @@ You only need the game to *start* — no need to play it out. Config lands in th
 **Success:** we can send a `$GSET` that makes a tagger respawn and end its own round.
 Then `arena`'s host-driven respawn should be **deleted**, not kept.
 
-## Experiment 2 — end-of-game and results read-back ★ HIGH VALUE
+## ~~Experiment 2 — end-of-game and results read-back~~ ✅ DONE 2026-08-23 — **answered**
+
+> **Do not re-run.** `cap5`'s 1-minute clock expired inside the trace, capturing a
+> full game ending: the app sends `$VOL` → `$HLED` → `$STOP` → `$CLEAR` → `$PLAY,VS6`
+> and **never queries the gun for anything**. The tagger keeps no score, so there is
+> nothing to read back (§7n).
+
 
 **Why:** after a field game, reconnecting produced **zero frames** — the tagger volunteers
 nothing, and `$UP,*` got no reply. It may keep no score at all (§7g: the phone is the game

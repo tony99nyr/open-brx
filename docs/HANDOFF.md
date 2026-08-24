@@ -14,7 +14,7 @@ Protocol ground truth: `protocol/brx-protocol.md`.
 **Only the MacBook can capture the official app.** Callsign works on **iOS only** (it has
 never worked on Android), iOS Bluetooth traces need **PacketLogger**, and PacketLogger is
 **macOS-only**. So every "capture what the real app does" task — including the `$GSET`
-decode below, which is the critical path — **must happen on the Mac**. Windows cannot do
+capture work — **must happen on the Mac**. Windows cannot do
 it. Plan accordingly: batch up capture work for when the Mac is available.
 
 PacketLogger is already installed at `/Applications/PacketLogger.app` and the iPhone X
@@ -51,48 +51,49 @@ fieldresults <addr...> [listen_s]           # reconnect afterwards
 Weapons: `primary` / `secondary` / `melee` (verified on hardware) · `ar` / `charge`
 (from the §6 doc, **never fired — unverified**).
 
-## THE critical path: `$GSET`
+## ANSWERED (2026-08-23 night): BLE cannot support out-of-range play
 
-**Read this before planning anything else.**
+**Read this before planning anything else. It closes what were the top two open questions
+and it invalidates part of what is built.**
 
-A field test today proved **the taggers keep playing with no host connected** — the game
-survives the laptop disconnecting and walking away. So the one-laptop topology is viable.
-But nothing respawned and the round never ended, because **we never configured an on-gun
-respawn time or game duration**. `arena` fakes respawn from the host, which is precisely
-what cannot work out of BLE range.
+A field test proved taggers **keep playing with no host connected** — but nothing respawned
+and the round never ended. The plan was to decode `$GSET` and configure those on the gun.
+**That plan is dead:**
 
-The manual (§7h) lists both as on-gun settings — respawn off/15/30/60/ramp45/ramp90,
-time off/5/10/15/20/30 min — so the values live in config we already send.
-**`$GSET,1,0,1,0,1,0,50,1,*` has eight tokens and we understand none of them.**
+- **Respawn and game time are not in the protocol stream at all.** Three captures with
+  respawn 15 / 30 / 5 produced **byte-identical** `$GSET` *and* `$PSET` (§7n). A 1-minute
+  clock produced the same `$GSET` as a default one. Callsign keeps the clock and drives
+  respawn itself — the manual lists both as *on-gun menu* settings, and the app simply
+  never uses that path. **No capture will ever reveal a command for it. Stop looking.**
+- **The gun keeps no score.** A complete game ending was captured: the app sends
+  `$VOL` → `$HLED` → `$STOP` → `$CLEAR` → `$PLAY,VS6` and **never queries the tagger for
+  anything**. That explains `$UP,*`'s silence (§7l) and why reconnecting after a field game
+  produced zero frames. The phone tallies `$HIR`/`$HP` live and is the only place a score
+  has ever existed.
 
-Decoding it unlocks autonomous play *and* fixes the "players don't know how long they're
-dead" complaint (the gun should announce its own respawn, as it already announces
-"GET SOME"). Method is mechanical:
+**So this is a design property, not a missing command.** Anything needing respawn, a clock,
+or scoring requires a host in BLE range **for the whole match**. That is why the official
+system gives every player their own phone.
 
-1. Callsign: create a game, respawn 15 → PacketLogger capture.
-2. Change **only** respawn to 30 → capture.
-3. Diff the `$GSET` frames. The token that moved is respawn.
-4. Repeat for game time, lives, mode. `diff_captures` already exists.
+### What this means for the code
 
-**Step-by-step plan: `docs/mac-capture-plan.md` (Experiment 1).** **This must be done on the MacBook** — see the machine-roles note above; Callsign is iOS-only and PacketLogger is macOS-only. Windows cannot run this experiment.
+`arena`'s host-driven respawn works only in range. It is a correct demonstration of the
+protocol and a **wrong design for field play** — do not build further game logic on it
+without deciding the transport question first.
 
-## Second critical unknown: can results survive out-of-range play?
+### The new critical path: the nRF radio
 
-On reconnect after a field game the taggers volunteered **zero frames** — no state, no
-score. `$UP,*` got no reply. **Do not probe `$SP`**: it is documented as the end-of-game
-report, but `$SP,99,*` is half the panic sequence and may destroy what it reports.
+`QUERY` reports **`NRFhost 1`** and **`NRFslave 1`**, and LaserTagMods ship `NRFL-Bases`
+and `LoRa-Controlled-Taggers` — **they hit this same wall and solved it with a different
+radio.** If these guns already carry a long-range radio, BLE was never the right transport
+for field play and this reframes the problem instead of working around it.
 
-There is a real possibility there is **nothing to read**: §7g established the phone is the
-game engine and the tagger enforces nothing. If the gun keeps no score, then events that
-happen out of range are simply unobserved and unrecoverable. That is inference, not proof.
+**This is Windows-friendly work** — reading their sources and probing hardware, no iOS
+captures needed. Good fit for the machine development is moving back to.
 
-Options if it holds:
-1. Something in range with each player (ESP32 relay over WiFi/LoRa — LaserTagMods do this).
-2. **The nRF radio.** `QUERY` reports `NRFhost 1` / `NRFslave 1`, and LaserTagMods ship
-   `NRFL-Bases` / `LoRa-Controlled-Taggers`. **If these guns already have a long-range
-   radio, BLE is the wrong transport for field play.** Unprobed, and arguably the single
-   most valuable unexplored thread in the project.
-3. Accept partial results (final HP/lives, no attribution).
+Other options if nRF does not pan out (full list in §7n): a device per player (what the
+official system does), a cheap ESP32 relay per player, or on-gun menu configuration with no
+central scoring (fine casually, does not scale to 20 taggers).
 
 ## Followups and unknown fields
 
@@ -100,7 +101,7 @@ Full prioritised list lives at the end of `docs/experiment-log.md`. Summary of u
 
 | Item | Why it matters |
 |---|---|
-| `$GSET` 8 tokens | respawn, game time, lives, mode — the critical path |
+| `$GSET` 8 tokens | still undecoded, but **respawn and game time are NOT among them** (§7n) — lower value than it looked |
 | `$WEAP` 44 tokens | custom weapons; manual's stock stats (§7h) are anchors, M-4 damage 24 already matches |
 | Per-player identity | `$HIR` names the shooter's **team**, not player (§7k). FFA scoring needs per-player. `QUERY` shows a device-level `PlayerID` we have never set |
 | Results read-back | see above — may not exist |
