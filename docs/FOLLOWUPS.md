@@ -13,6 +13,7 @@ high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 | B3 | **Mission Control** (scan → assign games/teams/weapons → live scoreboard) | 🟡 spec'd | `docs/mission-control-spec.md`. The operator console. |
 | B4 | **Objective stations** (respawn / capture / pickup) | ⬜ designed | Two options: printed **QR codes** (Callsign's way, `apk-harvest.md`) and **IR boxes** (JBOX's way — emit the 25-bit/38 kHz BRX IR, `lasertagmods.md`). |
 | B5 | Fix `server.py` for **mcp 2.0** | 🟡 open | `mcp` 2.0 moved `mcp.server.fastmcp`; MCP-server mode broken, CLI unaffected. Pin `mcp<2` or port the decorators. |
+| B8 | **Grenade config + state app** (phone/web, $0) | 🔴 high value | The grenade natively does **Assault / CTF / KotH** but is "super hard to configure." Build a clean UI that (a) sends `$GREN` over BLE to set the mode (replaces the on-gun menu) and (b) shows live objective state read from the gun's BLE stream. Unlocks 3 objective modes with **zero hardware**. Depends on F/G (exact `$GREN` per mode + what state the gun exposes). |
 | B7 | **Serial-console backend** (pyserial) for `brx-mcp` | 🟡 | Open the tagger's USB COM port to run `QUERY` (read the device record incl. `PlayerID`) and `SETUP` (set tagger ID / re-pair). Feeds Mission Control diagnostics (§1 USB dump) **and** P2 (set per-player identity at bench prep). It's a serial terminal, not SSH. |
 
 ## Hardware / 3D printing (no public BRX print library exists — `hardware/print-files.md`)
@@ -57,7 +58,8 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| G1 | Confirm `$GREN` config path | 🔴 | Mode is pushable via `$GREN` to the **gun** (FlashBang/Gas/Confusion/Molotov, `apk-harvest.md`). The grenade is an **IR-paired accessory** (not its own BLE device) — pairing is gun→device over IR (`brx-extended-user-guide.md`). Test: does `$GREN` reprogram an already-paired grenade live? |
+| G1 | Map `$GREN` per objective mode | 🔴 | The grenade natively does **Assault / CTF / KotH** (owner community) — this is the config we must capture: what `$GREN` (+ mode/channel/`GrenadeType` FlashBang/Gas/Confusion/Molotov, `apk-harvest.md`) selects each mode. Grenade is an **IR-paired accessory** (`brx-extended-user-guide.md`). Feeds the config app (B8). Best via a PacketLogger capture of the app configuring each grenade mode. |
+| G6 | What objective state does the gun expose over BLE? | 🔴 | For the state display (B8): during a grenade CTF/KotH/Assault game, what `$`-messages does the gun emit (flag held, point owner, timer)? Capture a grenade game and watch the BLE stream. |
 | G2 | Grenade pairing procedure | ✅ known | **Hold RIGHT while powering on the gun → "install accessory" → power on grenade (30 s window) → pull trigger aimed at it → it chirps/flashes.** Pair all accessories in one session, tap SELECT to finish (`brx-extended-user-guide.md`). |
 | G3 | Capture the app configuring a grenade | 🟡 | PacketLogger while Callsign sets a grenade → exact `$GREN` |
 | G4 | Grenade firmware `.bin` flashing | ✅ known | Same as headset: **hold the PROGRAM button (pin) while powering on → USB disk mode → replace the root firmware file** (`brx-extended-user-guide.md`). Grenade enables CTF/KotH/Assault — "scary music" = CTF flag music (`community-notes.md`). |

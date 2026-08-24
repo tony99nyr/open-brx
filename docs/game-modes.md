@@ -97,17 +97,26 @@ be **placed** (not just thrown). Grenades are hardware you already buy, so any m
 grenade (followups F/G); the CTF-base capability below is community-reported, the rest is inference
 from `$GREN` + the emitter behaviour.
 
-**Grenade can likely stand in for a station (no custom build):**
-- **Capture the Flag** — the community confirms a grenade can be **"set as a CTF base"** (the tagger
-  even plays CTF flag music). So grenade-as-flag/base gives basic CTF with no station. (Config is
-  "hard/buggy" today — followup F; a clean `$GREN` path is the fix.)
-- **Counter-Strike plant/defuse** — the **grenade IS the bomb**: place + arm it (its detonation
-  timer), defenders defuse within the window. The plantable/timed explosive is exactly a grenade.
+**The grenade natively does Assault, CTF, and King of the Hill (no station) — config is the problem.**
+Per the owner community, the grenade firmware has **Assault, Capture the Flag, and King of the Hill**
+built in; the pain is the on-gun configuration ("super hard to configure"), and CTF-base is confirmed
+(the tagger plays CTF flag music). So these three objective modes need **zero custom hardware** — just
+grenades you already own.
+- **The free unlock → a grenade config + state app** (phone/web, owned gear only):
+  - **Config:** send the `$GREN` setup over BLE (mode = Assault/CTF/KotH, channel, options) from a
+    clean UI — replaces the buggy on-gun menu. Makes the existing modes usable. (Followup F: nail the
+    exact `$GREN` per mode.)
+  - **State display:** read objective events from the **gun's BLE stream** (the gun knows the state)
+    and render a live objective screen (flag held / point owner / KotH timer). If the grenade is
+    BLE-visible itself (followup G2), even more direct.
+  - `channel` + `MaxCount` hint **multiple grenades = multiple objectives** — your 2 grenades = 2
+    flags / 2 hills / 2 assault points.
+- **Counter-Strike plant/defuse** — the **grenade IS the bomb**: place + arm (its detonation timer),
+  defenders defuse in the window. 2 grenades = 2 bomb sites.
 - **Hazard / area-denial zones** — Gas / Molotov / Confusion modes make a placed grenade a damage/
-  effect zone ("don't cross here", flush a room). Native grenade behaviour.
-- **King of the Hill / Assault point** — a grenade-marked objective *may* work if it has capture/hold
-  behaviour like the CTF base; the `channel` + `MaxCount` fields hint **multiple grenades = multiple
-  addressable objectives**. Plausible, unverified.
+  effect zone. Native behaviour.
+- **Status:** the modes exist in firmware; what's **untested by us** is the exact `$GREN` config
+  sequence and what objective state the gun exposes over BLE (followups F/G) — both free to work out.
 
 **Still wants a purpose-built station:**
 - **Domination** with several points, **live per-team ownership + time-scoring + LED-ring feedback** —

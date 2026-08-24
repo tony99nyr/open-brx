@@ -1,0 +1,93 @@
+# What can we build — by investment
+
+Starting inventory: **4 BRX taggers (+ headsets), 2 Smart Grenades, a laptop/phone you already
+own.** No mods, no builds, no purchases. Then each rung up the ladder adds capability. "Built" =
+works in `brx-mcp` today; "to build" = software we write (no purchase); "untested" = needs a
+hardware check first.
+
+## Tier 0 — $0: exactly what you own (4 BRX + 2 grenades + laptop)
+
+Everything here needs **only a laptop in BLE range** (one radio reaches ~7–10 taggers, so 4 is easy)
+— i.e. a room, yard, or small field where players stay near the laptop. This is the **pilot**.
+
+**Works today** (`brx-mcp` CLI, proven on hardware):
+- Configure + start a game, spawn, live **hit/death tracking**, **host-driven respawn**, 2-tagger
+  **arena with teams + synchronized start** (`arena`/`deathmatch`).
+- **Custom weapons** — push `$WEAP` loadouts (damage, rate of fire, mag, reload type, per-fire
+  sounds); the token map is decoded.
+- **Diagnostics** — `diagnose`/`fleet`: firmware, battery, per-tagger health.
+- **Custom on-tagger sound packs** — swap the `AUDIO` folder over USB (hold SELECT at boot); e.g. a
+  Star Wars pack. Free (just a USB cable).
+
+**We build (software only, runs on your laptop) → the real pilot:**
+- The **game engine + a Mission Control UI + mode rule modules**, turning the CLI into a polished
+  4-player system. Unlocks, in BLE range: **Team Deathmatch, Free For All, Survival/Infection, Last
+  Man Standing, Generals / Commander / The Swarm** (respawn-character modes), plus a **live laptop
+  scoreboard / kill-feed**.
+
+**Your 2 grenades already do objective modes — the problem is config, not capability:**
+- The grenade **natively supports Assault, Capture the Flag, and King of the Hill** (built into its
+  firmware) — it's just **super hard to configure** from the on-gun menu.
+- **Highest-value free build → a grenade config + state app** (phone/web, uses owned gear only):
+  - **Config:** a clean UI that sends the `$GREN` setup over BLE (pick Assault/CTF/KotH, channel,
+    options) — replaces the painful on-gun menu, making the grenade's existing modes actually usable.
+  - **State display:** read objective events from the **gun's BLE stream** (the gun knows the state —
+    it plays CTF flag music) and show a live "who holds the flag / point / KotH timer" screen.
+  - With **2 grenades = 2 flags / 2 hills / 2 objectives**, this gets you Assault + CTF + KotH for
+    **$0**, no stations. (Untested — followups F/G; free to work out the exact `$GREN` per mode and
+    what state the gun reports.)
+- Also props-free: **Counter-Strike** with a grenade as the **bomb**, and **gas/Molotov/confusion
+  hazard zones**.
+
+**Tier-0 limit:** players must stay in the laptop's BLE range. No field roaming, no live scoreboard
+away from the laptop, per-player FFA scoring is approximate until per-player id (P2) is set.
+
+## Tier 1 — old Android phones as player nodes (~$0 if you have them, else ~$30–50 used each)
+
+The **biggest capability jump for the least money.** A Web-Bluetooth PWA on each player's phone
+becomes their game engine + HUD → **breaks the BLE-range limit** (the link rides the player).
+- Unlocks: **full-field roaming** for every Tier-0 mode, a **per-player HUD** ("your score/ammo/
+  lives" — the #1 thing players ask for), offline play with results syncing at HQ WiFi.
+- Gated on a **free 10-min test**: does Android Chrome hold a BRX BLE link? (followup, no purchase).
+- iOS can't (no Web Bluetooth) — use Android, or the Companion below.
+
+## Tier 2 — ESP32 "Companion" per tagger (~$8–25 each)
+
+Purpose-built player node (rugged, no phone, louder): `hardware/brx-companion-spec.md`.
+- **$8 "Brain":** offline engine + Wi-Fi sync + **powerups** (extra life, faster fire, damage boost,
+  shields — all via decoded `$LIFE`/`$WEAP`/`$AMMO`).
+- **+$5 audio:** unlimited custom sounds (DFPlayer + speaker).
+- **+$8–12 HUD:** on-gun health/ammo/lives screen + team LEDs.
+- Also brings **WiFi/ESPNOW natively** (transport for the field).
+
+## Tier 3 — objective stations (~$10–15 each: ESP32 + IR receiver + LED ring)
+
+Unlocks the **objective modes that need fixed contested points** — one primitive, many modes:
+**Domination (multi-point + live scoreboard), King of the Hill, standard / assault / center-flag
+CTF, Assault**, and **respawn stations** (which also double as **data-mule sync points**).
+- Note: grenades already cover *single-objective* CTF/CS/hazard for $0 — stations are for
+  **multi-point + live ownership/scoring + respawn**, which grenades can't do.
+- **QR codes (paper, ~$0)** are the zero-cost prop for weapon pickups + capturable flags, if the
+  gun's QR path works.
+
+## Tier 4 — field radio (LoRa RYLR ~$10/node, or FREE via the gun's nRF if usable)
+
+Unlocks **live coordination on a large no-WiFi park**: the **"flag taken!" broadcast**, a **live HQ
+scoreboard**, station **status screens**, and **Battle Royale** (needs broadcast + per-node location).
+- The gun's built-in **nRF** (`NRFhost`/`NRFslave`) *might* provide this for free — unprobed
+  (followup D1), highest upside.
+
+## Summary ladder
+
+| Tier | Spend | Unlocks |
+|---|---|---|
+| **0** | **$0 (own gear + laptop)** | TDM/FFA/Infection/LMS/Generals-Commander-Swarm in BLE range; custom weapons + sounds; laptop scoreboard; diagnostics; grenade CTF/CS/hazard (untested) |
+| **1** | old Android phones | breaks range → full-field roaming + per-player HUD |
+| **2** | ESP32 Companion ($8–25/tagger) | powerups, custom audio, rugged node, WiFi/ESPNOW |
+| **3** | stations ($10–15 each) / QR (paper) | Domination, KotH, CTF variants, Assault, respawn stations |
+| **4** | LoRa ($10/node) / nRF (maybe free) | large-park live play, broadcasts, status screens, Battle Royale |
+
+**Cheapest high-value path:** build the **Tier-0 software** (engine + Mission Control) on your
+laptop, test **grenade CTF/CS** for free, and check the **Android-BLE gate** — that alone gets you
+orchestrated, custom, multi-mode games for your 4 taggers + 2 grenades with **no hardware spend**.
+Every rung after is optional and additive.
