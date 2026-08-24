@@ -9,6 +9,44 @@ any id NOT in this list is invalid.
 
 `MaxMusicVolume` = 100.
 
+## Sound-bank meaning map (community, David Knox)
+
+Prefix legend + key IDs from **David Knox's "DK BRX Audio File Names.pdf"** (shared by the owner
+community; [Drive folder](https://drive.google.com/drive/folders/1lJRgVUubTHQnF9T7RGfTKv54nX2-li5m)).
+Restated as factual reference (credit DK). On-tagger files are named **`<ID>.LTP`** (e.g. `R02.LTP`)
+— this is the format you swap over the data port (see `docs/reference/community-notes.md`).
+
+**SFX prefixes** (rough): A/E/C cool sci-fi SFX · B bow/arrow · CC Contra · D cocking · F fire/funny ·
+**G/P/R/S/T gun shots** · H hit SFX · J music/SFX/guns · K fly-bys/air strikes · L electrical ·
+M Mortal Kombat · N misc/junk-drawer · O big guns/ordnance · Q silencers · SH swipes/swishes ·
+ST sci-fi mortars/rockets · **SW Star Wars** · U beeps/boops · **V voice** · **W reloads** ·
+**X grenades/explosions** · Y odd sci-fi · Z creature splat.
+
+**Voice (V) prefixes** map to characters/factions: VA male · VB scout/female-clean · VC Sentinel ·
+VD female sniper · VE clean male · VF creature · VG female creature · VH Valkyrie · VJ Viper ·
+VK Wraith/Russian · VL Russian clean · VM female clean · VN mercenary · VP clean male ·
+VQ Nexus commander · VR Vanguard commander · VS clean commander · V0 Fury · V1 Grenadier ·
+V2 Guardian · V3 Heavy · V4 Hive Queen · V6 Infiltrator · V7 Marauder · V8 Medic · V9 Raider ·
+V101–V144 gameplay callouts (CTF, Slayer, KotH).
+
+**Weapon fire sounds:** `R02`=M4 · `T14`=TAC-87 shotgun · `S16`=SR-100 · `J07`=MG7 · `G10`=SMG-x3
+(Tar-33 = silenced AR). **Weapon callouts:** VA4B=M4 · VA6A=TAC-87 · VA5Y=SR-100 · VA4F=MG7 ·
+VA5R=SMG-x3 · VA6B=Tar-33 · VA90=silenced AR.
+
+**Game cues:** `JA9`=startup music · `JAD`=death music · `N41`=revive-countdown ping · `VSB`=countdown
+to game-over+music · `VA85`=countdown no music · `VA33`=game over+music · `VA46`=lives depleted/multi-
+kill · `N03`=kerchung · `N04`=swish · `NA0`=death beep.
+
+**Voice-pack structure = the `$PSET` voice profile (answers followup P3's shape).** Each voice profile
+provides a consistent slot set: a "move" line, ~4 gasps (E/F/G/H), ~3 death screams, and a kill line.
+Examples — Heavy (V3): `V3I` "Get Some" (the respawn line the Mac heard), `V3G/V3H/V3E/V3F` gasps,
+`V35/V34/V33` death screams, `V3A` kill. Medic (V8): `V8W` "one shot one kill", `V85/83/84` death,
+`V8S` kill. Male (VA): `VAQ` "let's move out", `VA3/4/5` death, `VAA` kill. Scout (VB): `VBI` "let's
+move", `VB3/4/5` death, `VBA` kill. Valkyrie (VH): `VHT` "weapons hot", `VHR` kill. Clean male (VE):
+`VEI` "locked and loaded", `VEA` kill. So a `$PSET` audio-set token that names a `V3*`/`V8*`/… family
+selects that character's voice pack — which is exactly what the server `voice-profiles` endpoint
+configures.
+
 ## Confirmed meanings (from captures + $SIR table)
 
 | ID | Meaning |
