@@ -753,18 +753,27 @@ the problem is the headset, not the app, the gun, or the radio.
 
 ## 7n. SETTLED — the gun holds no game state; out-of-range play cannot work over BLE
 
-Two deliberate captures (`cap5` respawn 15 s, `cap6` respawn 30 s, Team Arena, one setting
-changed) plus a complete game ending caught inside `cap5`.
+Three deliberate captures (`cap5` respawn **15 s**, `cap6` respawn **30 s**, `cap7`
+respawn **5 s**, Team Arena) plus a complete game ending caught inside `cap5`.
 
 ### Respawn and game time are NOT sent to the tagger
 
 ```
 cap5 (respawn 15): $GSET,1,0,1,0,1,0,50,1,*
-cap6 (respawn 30): $GSET,1,0,1,0,1,0,50,1,*      <- byte-identical
+cap6 (respawn 30): $GSET,1,0,1,0,1,0,50,1,*
+cap7 (respawn  5): $GSET,1,0,1,0,1,0,50,1,*      <- all byte-identical
 ```
 
-Not one token moved. Game time behaved the same way — `cap5` used a 1-minute clock and its
-`$GSET` still matched the earlier default-clock captures (§7e/§7f) exactly.
+Not one token moved, across three well-separated values. `$PSET` is identical too, and the
+**only** frame unique to any one capture is a `$VOLTS` battery reading, which drifts by
+itself. So **nothing anywhere in the host→tagger stream encodes respawn time.**
+
+Game time behaved the same way — `cap5` used a 1-minute clock and its `$GSET` still matched
+the earlier default-clock captures (§7e/§7f) exactly.
+
+(Method note: `cap6`'s secondary weapon changed unintentionally, so the cap5/cap6 pair was
+contaminated. `cap7` was taken specifically to re-test with a third value, and the
+conclusion no longer rests on that pair.)
 
 **The app keeps the clock and drives respawn itself.** This is consistent with §7f, where
 the *app* sent `$SPAWN,,*` about 10 s after death. The manual (§7h) lists respawn and time
