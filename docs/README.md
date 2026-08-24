@@ -26,6 +26,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 
 ## Vision & strategy
 - **[VISION.md](VISION.md)** — can we supersede Edge? BRX capability ceiling, BRP/Edge gaps, open-source + business analysis, naming guidance.
+- **[tier0-plan.md](tier0-plan.md)** — **the maximized Tier-0 plan & milestone roadmap** (device functions → modes → CLI→MC-UI→phone-apps milestones → the **gating tests that set dev priority**). Start here for *what to build in what order*.
 
 ## Plans & architecture
 - **[brx-architecture-v0.2.md](brx-architecture-v0.2.md)** — the master plan (server, nodes, MQTT, roadmap).
