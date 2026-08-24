@@ -16,7 +16,10 @@ abilities, killstreaks, live scoring, leaderboards, medals, accounts/progression
 event stingers + announcements, prop game logic (domination/CTF/bomb/respawn), themes, and
 environmental effects (our effect nodes = Edge's UBox + Animatronics). Plus things Edge can't:
 **MIT/self-hosted (no $600–1,600/yr, no location lock), native open DMX/scripting, moddable, and
-large-field play with no venue WiFi** (the station-mesh + data-mule model).
+large-field play with no venue WiFi** (the station-mesh + data-mule model) — and **novel game modes
+Edge doesn't have**, headlined by a full **Extraction (raid-and-extract) mode** (the Tarkov/Hunt/DMZ
+genre: loot, a loud channelled extraction, drop-everything-on-death, persistent stash) that reuses the
+KotH primitive and even runs a $0 grenade+phones version (`game-modes.md` §Extraction).
 
 **We can't quickly match Edge's moat:** product **maturity** (Edge 7.0, years of polish, ~6M
 players, daily commercial use, support), a **global cloud/accounts/matchmaking network**, **marketing/

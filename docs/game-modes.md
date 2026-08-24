@@ -92,6 +92,55 @@ role**, which is the same mechanism as the General/Commander/Hive-Queen respawn 
 role logic). So the whole custom-mode space reduces to: **objective-station node + player-role support
 + host rule modules.**
 
+## Extraction (raid-and-extract) — a flagship mode Edge can't do
+
+The extraction-shooter genre (Escape from Tarkov, Hunt: Showdown, CoD DMZ, The Cycle, Marathon) is the
+hottest shape in shooters right now, and **it maps beautifully onto laser tag** — the signature tension
+is *"channel a loud extraction while exposed and everyone converges on you,"* which is exactly what this
+hardware is good at. **Battle Company's Edge has nothing like it**, so this is a marquee differentiator.
+
+**Genre core loop:** insert with your gear → **loot** valuables (risk/reward: push deeper for better
+loot vs. leave now) → reach an **extraction point** and **summon/channel** it (a timer; it's **loud and
+alerts everyone**) → **survive the channel** → if you extract you **keep/bank** the loot (points +
+persistent boosts); **if you die you drop it all** (others can grab it). Loss-on-death is the whole
+point — it's what gives every decision real stakes. (Sources below.)
+
+### The BRX mechanic (what maps to what)
+
+| Genre element | BRX / Open BRX implementation |
+|---|---|
+| **Your carried loot** | The gun keeps no state, so the player's **node (Companion/phone) is the loot wallet.** Loot value accrues from kills, IR **loot boxes** (Jay's prototype — `reference/jay-ecosystem.md`), and objective pickups. Optional **physical loot** = a printed QR/RFID/IR "briefcase" token you actually carry — makes the drop-on-death moment tangible. |
+| **Extraction point + "summon it, takes a while"** | The **KotH/hold primitive** with a channel: reach the extraction station (or **the grenade as the beacon**), **initiate** (shoot/press/dwell) → a **30–60 s channel timer** starts. Same charge-and-hold mechanic as King of the Hill, re-skinned as "extraction inbound." |
+| **"It's loud" (alerts everyone)** | On channel start, the station + nearby nodes fire an **audio + LED alarm** ("Extraction inbound at Alpha!"). *Local* loudness works at **any tier** (station/gun audio); **field-wide** "everyone hears it" needs the broadcast downlink (Tier 4). This is the genre's defining risk — and it also **counters extract-camping**, since attackers get the same callout. |
+| **Survive the channel** | If the extracting player is killed or leaves the zone, the channel **pauses/resets** (host rule on `$HP,0` + presence). Channel completes → loot is **banked**. |
+| **"If kicked you drop your loot"** | On `$HP,0`, the victim's node **transfers its wallet out** — either to a **dropped token** at the death spot (physical/beacon) or back to the **pool / to the killer** (virtual). Pure host-side rule on the death event — Tier 0 logic. |
+| **Extracted loot → points or boosts** | Banked value converts to **score** (win condition) and/or **`$WEAP`/`$LIFE` boosts** on your next life/raid — a persistent **"stash"** across rounds (the genre's meta-progression). Uses the same `$LIFE`/`$WEAP` writes as the health variants below. |
+
+### Tiers — it scales from gear-you-own up to full field
+
+- **Minimum ($0, gear you already own):** the **grenade is the extraction beacon** (its KotH charge already does summon + the ~3–4 s "who holds it" callout + it's loud), loot tracked by **phone nodes**, drop/bank/boost as host rules. A playable Extraction mode with **no custom hardware** — a killer free story.
+- **Tier 1 (one station):** a purpose-built **extraction station** (the objective-station primitive) — cleaner channel, proper LED/alarm, multiple loot pickups. This is the sweet spot.
+- **Tier 3–4 (full experience):** **multiple, optionally *hidden* extraction points** (Hunt's "Devil's Trail" hidden-extract idea), a **field-wide "extraction inbound" broadcast**, **dropped-loot beacons** you can hunt for, and a live **stash/scoreboard** — needs stations + the broadcast downlink.
+
+### Variants
+
+- **PvPvE (solo/small squad):** add "AI" pressure with **utility-box hostile emitters** (proximity mines / turret tags — `reference/jay-ecosystem.md`) so even a few players face environmental threat between fights.
+- **Boss / bounty (Hunt-style):** a high-value **boss role** (a tanky player, General-style) or a heavily-defended station drops a **bounty token** that makes its carrier **loud/marked** — their node pulses a detectable IR/LED beacon — until they extract. Classic "kill the holder, take the prize."
+- **Storm timer (BR crossover):** a closing zone (reuse the Battle Royale storm) forces the push-vs-extract decision on a clock.
+
+### What we actually have to build
+
+Very little that's new: Extraction is **the King-of-the-Hill station + a loot wallet in the node + three
+host rules** (channel-under-fire, drop-on-death, bank→boost). The station primitive, the `$HP,0` kill
+hook, and the `$LIFE`/`$WEAP` boost writes all already exist for other modes. So a **flagship,
+genre-defining mode that Edge can't touch is mostly a rules module over primitives we're building
+anyway** — and a $0 grenade+phones version ships first.
+
+*Genre research sources:* [What is an extraction shooter? (Antihero Studios)](https://antiherostudios.com/blog/what-is-an-extraction-shooter),
+[Extraction shooter (Wikipedia)](https://en.wikipedia.org/wiki/Extraction_shooter),
+[Why DMZ gets the formula right (The Loadout)](https://www.theloadout.com/call-of-duty-warzone-2/dmz-extraction-shooter-formula-right),
+[Hunt: Showdown "Devil's Trail" (ixbt.games)](https://ixbt.games/en/news/2026/03/18/hunt-showdown-1896-prevratilas-v-escape-from-tarkov-nacalos-xardkornoe-sobytie-tropa-diavola.html).
+
 ## Health / regen variants (all Tier 0 — no props)
 
 These are rule tweaks on TDM/FFA, not new infrastructure. The gun exposes the write primitives
