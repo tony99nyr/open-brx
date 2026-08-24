@@ -105,6 +105,50 @@ Viable models, compatible with open-source:
   service; project = the open codebase). If you later go multi-brand, an original name ages better than
   "Open BRX."
 
+## The definitive BRX manual — a high-polish public website
+
+Beyond the platform, ship **the definitive BRX reference as a beautifully-designed public website** —
+the single best, most complete manual for the BRX **tagger and headset** anywhere. No such thing
+exists today: Battle Company's V7 quick manual and the 2018 Extended Guide are partial and scattered,
+and the real knowledge is spread across PDFs, a Facebook group, and LaserTagMods' repos. **We've
+already aggregated more than any single source** (`docs/reference/*`, `protocol/*`,
+`callsign-extract/*`) — this turns that into a polished, authoritative product.
+
+**Why it matters (strategically):**
+- **Authority + community magnet** — becomes *the* place BRX owners land (SEO: "BRX manual", "BRX
+  reload mod", "BRX sound files", "BRX headset pairing", "BRX won't fire").
+- **Funnel** — the free definitive manual draws the audience; the platform, hardware (Companion,
+  stations, kits), and hosted service are the offer. Classic open-content → product funnel.
+- **Credibility** — a high-polish reference signals the project is serious and trustworthy.
+
+**Scope — everything we have on tagger + headset:**
+- Hardware anatomy (tagger + headset, ports, buttons, LEDs, battery, IR/laser specs 980nm/38kHz).
+- Quick start, sighting/zeroing, indoor/outdoor mode, target mode.
+- Pairing: headset (incl. the Gen-3 re-pair procedure), grenade/accessories (IR pairing), phone.
+- Firmware + **sound-pack updates over USB** (SELECT-hold-boot → AUDIO folder).
+- Game modes, weapons, classes/factions, perks, killstreaks.
+- The **searchable 2166-id sound bank** with the meaning map (weapon sounds, cues, voice packs).
+- The **serial console** (QUERY/SETUP) and settable PlayerID — a developer/power-user section.
+- Repairs & troubleshooting (won't-fire ladder, battery polarity, reload-handle fix, D-pad, power switch).
+- Mods & accessories (reload-button mod, JEDGE/Companion riders, scope, phone bracket, grenade).
+- A **developer section**: the full BLE protocol reference (`brx-protocol.md`) + the decoded command/
+  field maps — the interoperability spec.
+
+**Presentation bar (extremely high polish):**
+- Fast, responsive, dark-mode, searchable; clean typographic design; **interactive** where it earns
+  it — a **searchable/filterable sound-bank table**, copy-to-clipboard command snippets, annotated
+  hardware diagrams, expandable protocol tables. Feels like first-class product documentation, not a
+  wiki dump.
+
+**Build path:** author as a static site (the repo's `webapp/`, or a docs-site generator) so it
+deploys free/cheap and updates by redeploy; a polished **Artifact** is a good way to prototype the
+design and key interactive pieces (e.g. the sound-bank explorer) before committing to the full site.
+
+**Sourcing/policy (important for a public site):** aggregate and **restate facts with credit**
+(Battle Company manuals, LaserTagMods/JEDGE-JBOX, the owner community incl. David Knox's audio map) —
+**link** official PDFs rather than rehosting copyrighted assets, and keep the restate-don't-copy
+discipline (matters more now that it's public and possibly commercial).
+
 ## Brand name candidates (business side)
 
 The OSS project is **Open BRX** (repo: `open-brx`). For the *business/brand* above it, pick an
