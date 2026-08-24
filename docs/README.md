@@ -51,6 +51,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[reference/edge-brp.md](reference/edge-brp.md)** — competitive study of Battle Company EDGE software + Battle Rifle Pro: features, UBox/Animatronics environmental effects, hardware, pricing, and parity targets for our platform.
 - **[reference/lasertagmods.md](reference/lasertagmods.md)** — JEDGE/JBOX facts: protocol, IR encoding, stations, radios, hardware.
 - **[reference/community-notes.md](reference/community-notes.md)** — repairs, headset re-pair, battery, game-mode ideas, cautions.
+- **[reference/grenade.md](reference/grenade.md)** — the de-facto Smart Grenade manual (modes, on-grenade programming, respawn/KotH mechanics, pairing) — from the 2019 grenade videos.
 - **[../protocol/captures/](../protocol/captures/)** — decoded BLE/HCI capture transcripts behind the findings (see its README).
 
 ## The system in one paragraph

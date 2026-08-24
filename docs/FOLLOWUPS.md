@@ -59,7 +59,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| G1 | Map `$GREN` per objective mode | 🔴 | The grenade natively does **Assault / CTF / KotH** (owner community) — this is the config we must capture: what `$GREN` (+ mode/channel/`GrenadeType` FlashBang/Gas/Confusion/Molotov, `apk-harvest.md`) selects each mode. Grenade is an **IR-paired accessory** (`brx-extended-user-guide.md`). Feeds the config app (B8). Best via a PacketLogger capture of the app configuring each grenade mode. |
+| G1 | Map `$GREN` per objective mode | 🔴 | **On-grenade operation now documented** (`reference/grenade.md`, from the 2019 videos): modes = Respawn Station / King of the Hill / Checkpoint-Domination / Assault, programmed by holding the top button ~10 s (IR beacon → locks in). Remaining: map each mode to the **`$GREN`-over-BLE** frame (+ `GrenadeType` FlashBang/Gas/Confusion/Molotov) so the app (B8) replaces the finicky button-hold. Best via a PacketLogger capture of the app setting each mode. |
 | G6 | What objective state does the gun expose over BLE? | 🔴 | For the state display (B8): during a grenade CTF/KotH/Assault game, what `$`-messages does the gun emit (flag held, point owner, timer)? Capture a grenade game and watch the BLE stream. |
 | G2 | Grenade pairing procedure | ✅ known | **Hold RIGHT while powering on the gun → "install accessory" → power on grenade (30 s window) → pull trigger aimed at it → it chirps/flashes.** Pair all accessories in one session, tap SELECT to finish (`brx-extended-user-guide.md`). |
 | G3 | Capture the app configuring a grenade | 🟡 | PacketLogger while Callsign sets a grenade → exact `$GREN` |

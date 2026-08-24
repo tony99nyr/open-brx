@@ -102,7 +102,7 @@ grenade (followups F/G); the CTF-base capability below is community-reported, th
 from `$GREN` + the emitter behaviour.
 
 **The grenade reportedly does Assault, CTF, and King of the Hill (no station) — config is the problem.**
-*(Community-reported; we've decoded the `GrenadeType` enum — FlashBang/Gas/Confusion/Molotov — but the
+See `reference/grenade.md` for the full grenade manual (modes, programming, mechanics). *(Community-reported; we've decoded the `GrenadeType` enum — FlashBang/Gas/Confusion/Molotov — but the
 Assault/CTF/KotH ↔ `operationMode` mapping is unverified by us; followups F/G.)*
 Per the owner community, the grenade firmware has **Assault, Capture the Flag, and King of the Hill**
 built in; the pain is the on-gun configuration ("super hard to configure"), and CTF-base is confirmed
