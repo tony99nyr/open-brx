@@ -18,14 +18,17 @@ from __future__ import annotations
 
 from typing import Optional
 
+from .. import sounds as snd
 from .base import (
     Action, Callout, GameEngine, GameOver, PlaySound, Roster, Score,
     hp_values,
 )
 
-DETONATION_SOUND = "X13"   # rocket/explosion-ish placeholder (catalog later)
-PLANT_SOUND = "VA81"
-DEFUSE_SOUND = "VA20"
+# Grounded cues (brx_mcp/sounds.py). A plant starts the detonation countdown, so
+# the plant cue IS the countdown clip.
+PLANT_SOUND = snd.COUNTDOWN          # VA81 — detonation countdown begins
+DEFUSE_SOUND = snd.BOMB_DEFUSED      # V110 (provisional success voice)
+DETONATION_SOUND = snd.BOMB_DETONATED  # X13 — explosion
 
 
 class BombEngine(GameEngine):

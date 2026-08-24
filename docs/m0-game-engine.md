@@ -82,7 +82,7 @@ python -m brx_mcp play <mode> <addr...> [k=v ...]          # LIVE on taggers
 ```
 
 ## Status
-Built + polish-looped; **108 unit tests** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
+Built + polish-looped; **110 unit tests** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
 diagnostics). **Not yet run on hardware** — that's the next step (needs 1–2 taggers; the live path is
 `run_live`/`play`). Native multikill/streak sounds come from the firmware (D4); custom announcers layer
 on via `PlaySound`/`Callout`. What each mode needs + its limits: `mode-limits.md`; the sequencing:

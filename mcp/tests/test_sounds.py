@@ -41,9 +41,12 @@ def test_provisional_flagged_for_verification():
     assert "GAME_OVER" not in prov
 
 
-def test_objectives_use_catalog_not_raw_ids():
-    """Regression: engines emit semantic catalog ids, not stray literals."""
+def test_engines_use_catalog_not_raw_ids():
+    """Regression: no engine emits a raw-literal PlaySound (single or double
+    quoted) — every cue goes through the grounded catalog (snd.*)."""
     import inspect
-    from brx_mcp.modes import objectives
-    src = inspect.getsource(objectives)
-    assert 'PlaySound("' not in src   # every PlaySound goes through snd.*
+    from brx_mcp.modes import objectives, cs, deathmatch, survival, lms
+    for mod in (objectives, cs, deathmatch, survival, lms):
+        src = inspect.getsource(mod)
+        assert 'PlaySound("' not in src and "PlaySound('" not in src, \
+            f"{mod.__name__} has a raw-literal PlaySound id"

@@ -177,7 +177,7 @@ class CtfEngine(GameEngine):
         self.caps[team] = self.caps.get(team, 0) + 1
         actions: list[Action] = [Score(f"team{team}", +1, self.caps[team]),
                                  Callout(f"team{team} captured the flag! ({self.caps[team]})"),
-                                 PlaySound(snd.POINT_CAPTURED, scope="all")]
+                                 PlaySound(snd.OBJECTIVE_SCORED, scope="all")]
         if self.caps[team] >= self.target:
             return actions + self._end(f"team{team}")
         return actions

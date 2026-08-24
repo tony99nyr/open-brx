@@ -73,6 +73,23 @@ def test_host_respawn_after_delay():
     assert e._ensure().status("blue") is ex.Status.ALIVE
 
 
+def test_repeat_death_frame_does_not_reset_respawn_clock():
+    e = ExtractionEngineAdapter(_cfg(respawn_s=5))
+    e.add_player("red", 1); e.add_player("blue", 2)
+    e.on_event("blue", hir(1), now=0.0)
+    e.on_event("blue", death(), now=0.5)                # blue DOWN at 0.5
+    e.on_event("blue", death(), now=3.0)                # stray repeat frame — must NOT reset
+    acts = e.tick(now=5.6)                               # 0.5 + 5 = 5.5 → respawn is due
+    assert _types(acts, base.Respawn)
+
+
+def test_death_from_unregistered_id_is_safe():
+    e = ExtractionEngineAdapter(_cfg())
+    e.add_player("red", 1)
+    assert e.on_event("ghost", death(), now=1.0) == []  # no KeyError
+    assert e.tick(now=2.0) == []
+
+
 def test_leave_zone_resets_channel():
     e = ExtractionEngineAdapter(_cfg(channel_s=10.0))
     e.add_player("red", 1)

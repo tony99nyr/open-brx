@@ -126,9 +126,16 @@ class ExtractionEngineAdapter(GameEngine):
             return []
         hv = hp_values(ev)
         if hv is not None and hv[0] == 0:
+            # only a real ALIVE→DOWN transition; a repeat $HP,0 while already DOWN
+            # must NOT reset the respawn clock (and must not KeyError on an
+            # unregistered id → membership check via .get).
+            p = game.players.get(player_id)
+            if p is None or p.status is not ex.Status.ALIVE:
+                return []
             killer = self._resolve_killer(player_id, now)
+            acts = _translate(game.on_death(player_id, killer, now))
             self._down_since[player_id] = now
-            return _translate(game.on_death(player_id, killer, now))
+            return acts
         return []
 
     def _resolve_killer(self, victim_id: str, now: float) -> Optional[str]:

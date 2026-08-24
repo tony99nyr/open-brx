@@ -45,6 +45,11 @@ OBJECTIVE_TAKEN = "V100"    # enemy flag grabbed / objective taken
 OBJECTIVE_SCORED = "V108"   # flag captured / objective scored
 POINT_CAPTURED = "V109"     # control point / hill captured
 
+# --- CS / bomb ------------------------------------------------------------- #
+# A plant kicks off the detonation countdown → reuse COUNTDOWN (VA81) for it.
+BOMB_DETONATED = "X13"      # explosion (CONFIRMED: rocket/explosion in the $SIR table)
+BOMB_DEFUSED = "V110"       # PROVISIONAL success voice (objective-callout range)
+
 
 @dataclass(frozen=True)
 class Cue:
@@ -68,6 +73,8 @@ CATALOG: tuple[Cue, ...] = (
     Cue("OBJECTIVE_TAKEN", OBJECTIVE_TAKEN, "enemy flag grabbed / objective taken", PROVISIONAL),
     Cue("OBJECTIVE_SCORED", OBJECTIVE_SCORED, "flag captured / objective scored", PROVISIONAL),
     Cue("POINT_CAPTURED", POINT_CAPTURED, "control point / hill captured", PROVISIONAL),
+    Cue("BOMB_DETONATED", BOMB_DETONATED, "explosion / bomb detonated", CONFIRMED),
+    Cue("BOMB_DEFUSED", BOMB_DEFUSED, "bomb defused (success voice)", PROVISIONAL),
 )
 
 BY_NAME: dict[str, Cue] = {c.name: c for c in CATALOG}
