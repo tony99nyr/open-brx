@@ -29,6 +29,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
   - `config-facts.md` / `README.md` / `RAW_ASSETS_NOTE.md`.
 - **[reference/brx-manual-notes.md](reference/brx-manual-notes.md)** — distilled official V7 quick manual (+ `BRX_Manual_V7.pdf`).
 - **[reference/brx-extended-user-guide.md](reference/brx-extended-user-guide.md)** — the authoritative 2018 Extended User Guide: USB sound/firmware update process, IR specs (980nm/38kHz), accessory/grenade IR pairing, on-gun game variables, classes/perks/weapons.
+- **[reference/edge-brp.md](reference/edge-brp.md)** — competitive study of Battle Company EDGE software + Battle Rifle Pro: features, UBox/Animatronics environmental effects, hardware, pricing, and parity targets for our platform.
 - **[reference/lasertagmods.md](reference/lasertagmods.md)** — JEDGE/JBOX facts: protocol, IR encoding, stations, radios, hardware.
 - **[reference/community-notes.md](reference/community-notes.md)** — repairs, headset re-pair, battery, game-mode ideas, cautions.
 

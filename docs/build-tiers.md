@@ -97,6 +97,13 @@ effects are near the laptop too).
 | **Proximity-tripped smoke** | PIR/IR at the machine, or a game event | + PIR (~$2) or a co-located objective station | +$2–15 |
 | **Team-color / chase lighting, blacklights** | WLED reacts to MQTT events (native WLED-MQTT) | WLED ESP32 + addressable strip | ~$15–25/zone |
 
+**This is exactly Battle Company EDGE's model** (`reference/edge-brp.md`): EDGE drives smoke/lights/
+DMX/speakers/props through its **Utility Box + "Animatronics"** feature, tied to game events. Their
+UBox is *one hardware unit reconfigured in software into 20+ roles* — which validates our
+single-effect-node/station-primitive design. We match it by shipping effect nodes with relay + DMX
+out; we can differentiate with **native open DMX/scripting** (theirs is closed) and **no
+per-location subscription** (theirs is $600–1,600/yr).
+
 **Cheapest immersion (Tier 0–1):** laptop → speakers for **music + event stingers is ~free today**;
 add one ~$8 relay/smart-plug per device (smoke, blacklights) and the engine drives them live. As you
 grow, effects are just more MQTT subscribers (WLED zones, DMX stage lighting via a DMX interface,
