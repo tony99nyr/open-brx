@@ -1,8 +1,14 @@
-# BRX Open Battle System
+# Open BRX
 
 An open-source (MIT) platform that turns **Battle Company BRX** laser taggers into a fully
 orchestrated laser tag system: forced game modes, live scoring, objectives, items/power-ups,
-effects, and a mission-control home base — scaling from 4 taggers to 20+.
+effects, and a mission-control home base — scaling from 4 taggers to 20+. An open, moddable,
+self-hosted alternative to Battle Company's Edge software (no subscription, no location lock, and
+it works on large fields without venue WiFi).
+
+**Start here:** [`docs/README.md`](docs/README.md) (index) · [`docs/VISION.md`](docs/VISION.md)
+(what we're building & why) · [`docs/build-tiers.md`](docs/build-tiers.md) (what you can build at
+each budget) · [`docs/game-modes.md`](docs/game-modes.md) (mode catalog).
 
 > **Credit:** Protocol discovery and the tagger-rider ESP32 concept originate with
 > **[LaserTagMods](https://github.com/LaserTagMods)** (JEDGE / JBOX projects). This project is
