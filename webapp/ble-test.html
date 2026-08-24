@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BRX Web-Bluetooth gate test</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.4 system-ui, sans-serif; margin: 0; padding: 12px;
+         max-width: 720px; margin-inline: auto; }
+  h1 { font-size: 1.15rem; }
+  button { font-size: 1rem; padding: 10px 14px; margin: 4px 0; border-radius: 8px;
+           border: 1px solid #888; background: #0a7; color: #fff; }
+  button.sec { background: #345; }
+  button:disabled { opacity: .5; }
+  input { font-size: 1rem; padding: 8px; width: 60%; }
+  #log { white-space: pre-wrap; font: 13px/1.35 ui-monospace, monospace;
+         background: #0001; border: 1px solid #8884; border-radius: 8px;
+         padding: 8px; height: 46vh; overflow: auto; margin-top: 8px; }
+  .rx { color: #0a7; } .tx { color: #48f; } .err { color: #e33; } .sys { opacity: .7; }
+  #status { font-weight: 600; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<h1>BRX Web-Bluetooth gate test</h1>
+<p id="status">idle</p>
+<div class="row">
+  <button id="connect">Connect a tagger</button>
+  <button id="disconnect" class="sec" disabled>Disconnect</button>
+</div>
+<div class="row">
+  <input id="frame" value="$PING,*" autocapitalize="off" autocomplete="off" spellcheck="false">
+  <button id="send" class="sec" disabled>Send</button>
+</div>
+<div class="row sys">
+  <button id="ping" class="sec" disabled>$PING,*</button>
+  <button id="ver" class="sec" disabled>$VERSION,*</button>
+  <button id="clear" class="sec">clear log</button>
+</div>
+<div id="log"></div>
+
+<script>
+// BRX Nordic UART Service (see protocol/brx-protocol.md)
+const NUS = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const RX  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write to tagger
+const TX  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify from tagger
+const MTU_CHUNK = 20;
+
+let device, server, rxChar, txChar, connectedAt = 0, holdTimer;
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+function log(msg, cls = "sys") {
+  const el = $("log");
+  const t = ((performance.now()) / 1000).toFixed(2).padStart(7);
+  el.innerHTML += `<span class="${cls}">${t}  ${msg}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(s) { $("status").textContent = s; }
+function setConnected(on) {
+  $("connect").disabled = on;
+  ["disconnect", "send", "ping", "ver"].forEach(id => $(id).disabled = !on);
+}
+
+if (!navigator.bluetooth) {
+  setStatus("❌ navigator.bluetooth missing — not a Web-Bluetooth browser (iOS Safari, or needs HTTPS)");
+  log("This page must be served over HTTPS (or localhost) on Chrome/Edge for Android.", "err");
+}
+
+async function connect() {
+  try {
+    setStatus("requesting device…");
+    log("requestDevice() — pick your Tactix from the chooser", "sys");
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "Tactix" }, { services: [NUS] }],
+      optionalServices: [NUS],
+    });
+    log(`chosen: ${device.name || "(no name)"} id=${device.id}`, "sys");
+    device.addEventListener("gattserverdisconnected", onDisconnect);
+
+    setStatus("connecting GATT…");
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(NUS);
+    rxChar = await svc.getCharacteristic(RX);
+    txChar = await svc.getCharacteristic(TX);
+    await txChar.startNotifications();
+    txChar.addEventListener("characteristicvaluechanged", onNotify);
+
+    connectedAt = performance.now();
+    holdTimer = setInterval(() => {
+      setStatus(`✅ connected — held ${((performance.now() - connectedAt) / 1000).toFixed(0)}s`);
+    }, 1000);
+    setConnected(true);
+    setStatus("✅ connected");
+    log("connected + notifications on. Try $PING,* — expect $PONG.", "sys");
+  } catch (e) {
+    log("connect error: " + e, "err");
+    setStatus("❌ " + e.message);
+  }
+}
+
+function onNotify(ev) {
+  const s = dec.decode(ev.target.value);
+  log("<< " + s.replace(/\r?\n/g, "\\n"), "rx");
+}
+
+async function send(frame) {
+  if (!rxChar) return;
+  try {
+    const bytes = enc.encode(frame);
+    for (let i = 0; i < bytes.length; i += MTU_CHUNK) {
+      const chunk = bytes.slice(i, i + MTU_CHUNK);
+      if (rxChar.writeValueWithoutResponse) await rxChar.writeValueWithoutResponse(chunk);
+      else await rxChar.writeValue(chunk);
+    }
+    log(">> " + frame, "tx");
+  } catch (e) { log("write error: " + e, "err"); }
+}
+
+function onDisconnect() {
+  clearInterval(holdTimer);
+  const held = connectedAt ? ((performance.now() - connectedAt) / 1000).toFixed(1) : "?";
+  log(`*** disconnected after ${held}s ***`, "err");
+  setStatus(`⚠️ disconnected (held ${held}s)`);
+  setConnected(false);
+}
+
+async function disconnect() {
+  if (device?.gatt.connected) device.gatt.disconnect();
+}
+
+$("connect").onclick = connect;
+$("disconnect").onclick = disconnect;
+$("send").onclick = () => send($("frame").value.trim());
+$("ping").onclick = () => send("$PING,*");
+$("ver").onclick = () => send("$VERSION,*");
+$("clear").onclick = () => { $("log").innerHTML = ""; };
+$("frame").addEventListener("keydown", e => { if (e.key === "Enter") send($("frame").value.trim()); });
+</script>
+</body>
+</html>

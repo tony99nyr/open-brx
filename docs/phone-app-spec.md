@@ -17,9 +17,13 @@ From the teardown and the field:
 
 ## Target decision — Android-first, iOS-ready
 
-**Build for Android first** (Tony's personal kit: **Pixel 10 Pro** — the flagship, best host/BLE
-candidate; **OnePlus 7 Pro** (2019, BT 5.0); **Pixel 4** — older, still a fine player node), as an
-**installable Web-Bluetooth PWA** (`webapp/`) — the **primary and preferred** delivery. **Decided: PWA
+**Build for Android first** (Tony's kit, by role): **Pixel 10 Pro** (SIM) = **host / hotspot /
+backhaul + Mission Control** — its cellular hotspot is the local network on a no-WiFi field, and the
+optional cloud-sync path; **OnePlus 7 Pro** (2019, BT 5.0) + **Pixel 4** (WiFi/BT-only, no SIM) = **local
+player nodes** (BLE to their gun; join the Pixel's/laptop's WiFi for coordination — SIM-less phones
+usually can't host a useful hotspot, so they join one). **SIM affects only internet backhaul, never BLE**
+— all three are full BLE nodes. It's all local mesh + store-and-forward; no internet needed mid-game.
+Delivery: an **installable Web-Bluetooth PWA** (`webapp/`) — the **primary and preferred** path. **Decided: PWA
 over a packaged APK**, because *updates ship by redeploying a static site — everyone gets the new version
 on next load, no reinstall churn.* (An APK/TWA wrap stays an optional fallback if a store listing is ever
 wanted; not the plan.)
@@ -64,6 +68,19 @@ pick, one link, ~1 m away.
 - **Requirements:** served over **HTTPS** (or localhost), and a **user gesture** launches the device
   chooser (can't scan silently). Newer Chrome remembers granted devices
   (`navigator.bluetooth.getDevices()`) so reconnection doesn't re-prompt — good for match rejoins.
+- **⚠️ Web Bluetooth can't "MC-pushes-addresses → auto-connect" (spec-level):** it **never exposes the
+  BLE/MAC address** to the page (opaque, origin-scoped ids — a privacy measure) and has **no
+  connect-by-address**; the first connect to any device *must* go through the user-gesture chooser
+  (`requestDevice`). The experimental `requestLEScan` is flag-gated, off by default, and still hides
+  addresses. **This is a browser limit, not a phone limit — native/hybrid BLE can scan, read addresses,
+  and connect by address**, so MC-hands-out-addresses auto-adopt is a **native feature** (the
+  transport-free core lets us add a native scanning shell later, no rewrite).
+- **Web-BT-friendly ways to get the same end:** (1) **grant-once, then auto-reconnect** — tap each of a
+  *fixed owned fleet* once, ever; `getDevices()` + `watchAdvertisements()` reconnects hands-free
+  thereafter. (2) **IR through your own gun** — objective proximity arrives over the *single link you
+  already have* (the gun reports the grenade/station IR beacon it receives; gated on **G6**), so no
+  scanning/address is needed. (3) **GPS geofence / QR** for location objectives. So auto-adopt-by-address
+  = native; everything else stays Tier-0 web.
 - **Offline-first:** log events to **IndexedDB**; sync to Mission Control over WiFi when available.
 - **Gate to test first (from `field-architecture.md`):** confirm Android Chrome actually holds a
   BRX NUS link (nRF Connect: connect `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign), subscribe TX `…0003`, write `$PING,*` to RX
@@ -205,7 +222,20 @@ Three objective-node types, each with a different strength — a match can mix a
 | **Phone objective** (old Android) | **rich screen + touch + audio + camera**, free if you have phones | interact-at-the-site: plant/defuse, hack-terminal, hostage rescue, extraction summon, utility box with **visual state** |
 | **Grenade** (`reference/grenade.md`) | the only **portable** IR objective you already own | mobile hills/flags/bomb |
 
-**Flagship example — Counter-Strike with the phone as the bomb:**
+**Interaction principle — players NEVER pair to an objective.** A player interacts with any objective
+exactly two ways: **shoot it (gun IR)** or **touch its screen** — never by connecting their phone to it.
+So the *device must match the interaction*:
+- **Shoot-it / hold-the-area objectives (flag, hill, extraction *hold*, domination)** → an **IR node**
+  (grenade or station). A phone is the *wrong* device here — it can't be shot (no IR) and can't cheaply
+  sense who's holding an area. You already own **two grenades** that do this.
+- **Touch-a-terminal objectives (bomb plant/defuse, hack, hostage rescue)** → a **phone** touchscreen.
+- A phone can sit *beside* an IR node as its **display**, but it can't *be* a shoot/hold objective.
+
+The objective device has its **own one-time setup connection** to the game backend (placed/configured
+once before the round), **never a per-player pairing**. This is the whole reason objectives are separate
+nodes: so no player ever pairs to a flag/hill/bomb mid-game.
+
+**Flagship example — Counter-Strike with the phone as the bomb (a touch-terminal, so it fits):**
 - The phone sits at bomb site A/B running a PWA page. **Plant:** an attacker reaches it and holds/enters
   an **arm code** → a hold-to-plant bar (~3 s) → screen shows **ARMED** + a countdown (e.g. 40 s), and
   the phone screams (own speaker) and pushes `$PLAY` "bomb planted" to guns it's linked to.

@@ -44,6 +44,24 @@ Everything here needs **only a laptop in BLE range** (one radio reaches ~7–10 
 - Also props-free: **Counter-Strike** with a grenade as the **bomb**, and **gas/Molotov/confusion
   hazard zones**.
 
+**The Tier-0 objective toolkit (no bought hardware — the grenades ARE your Tier-0 IR nodes; ESP32
+stations are Tier 3).** Players interact only by **shooting** (gun IR) or **touching a screen** — never
+by pairing to an objective (`../docs/phone-app-spec.md`). Mechanisms, all $0:
+
+| Mechanism | Interaction | Good for | Limit |
+|---|---|---|---|
+| **Grenade ×2** | shoot it (IR) | flag, hill, extraction *hold*, bomb site, respawn — the real shoot/hold objectives | only **2**; finicky config; works indoor + out |
+| **Phone GPS geofence** | automatic | **outdoor** flag/hill/extraction/BR-zone — *unlimited* points, auto presence **and** hold | **outdoor only** (~5–10 m); useless indoors |
+| **Printed QR + phone camera** | scan it | reach-a-spot: checkpoints, plant sites, pickups | needs active scan; not "hold over time" |
+| **Phone touch-terminal** | touch screen | bomb plant/defuse, hack, hostage | needs a screen at the site; identity via code/QR |
+| **Spare BRX gun as a point** | shoot it (IR) | an extra capture point (feels hits via its node) | uses up a gun |
+
+**The split that matters:** **outdoor** → phone **GPS** makes any coordinate a free objective (the
+underrated Tier-0 unlock); **indoor** → the **2 grenades** (shoot/hold) + **QR** (reach) + **phone
+touch-terminals** (bomb/hack). What Tier 0 buys: 2-flag CTF, CS with 2 sites, KotH, Extraction
+(grenade + phone display), checkpoints (QR), and *unlimited outdoor* points (GPS). **Ceiling:** >2
+simultaneous shoot/hold points **indoors** is where Tier-3 stations start to pay off.
+
 **Tier-0 limit:** players must stay in the laptop's BLE range. No field roaming, no live scoreboard
 away from the laptop, per-player FFA scoring is approximate until per-player id (P2) is set.
 
