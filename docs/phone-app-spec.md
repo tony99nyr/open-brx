@@ -131,6 +131,27 @@ Three objective-node types, each with a different strength — a match can mix a
   build); (b) **camera scans the player's QR badge** to identify team on interaction; (c) **BLE-proximity
   handshake** with the interacting player's node over the mesh. Start with (a).
 
+**Grenade as the bomb site (proximity + alive-gating):** the grenade is a *better* physical site than a
+phone because it has **IR**. Model: grenade = the site (IR presence beacon + the physical bomb); a site
+phone/host = the plant/defuse timer + rules.
+- **Auto-enable Plant in range:** the grenade's IR beacon hits the player's gun → the gun surfaces it in
+  its **BLE stream** → the player's (Android) node sees "at site A" and enables Plant. Presence via IR,
+  UI on the phone. **Depends on followup G6** (does the grenade beacon/hit appear in the gun's BLE
+  stream?) — unconfirmed; fall back to a manual tap or the shoot-the-grenade path if not. Auto-detect is
+  **Android-only** (reading the BLE stream in a browser).
+- **Preventing an eliminated player from arming — two gates, one free:** (1) **hardware** — a downed BRX
+  disables its trigger ("disabled" chirp) until respawn, so if arming = *shoot the grenade*, a dead
+  player physically can't interact (needs no per-player node — good for a small Android-phone count);
+  (2) **software** — the node greys out Plant while its own `$HP`=0, and the host cross-checks the
+  planter's last-known-alive state before accepting the plant. The shoot-the-grenade path makes
+  eligibility a **hardware fact**.
+- **"Are nearby players alive?"** the arming player: trivial/local (above). *Other* players near the
+  site: a node only knows its own gun, so the host must aggregate each node's alive+proximity over the
+  mesh — doable at small scale but more than CS needs; ship the planter-alive version first.
+- **Device fit (Tony's kit):** grenades = sites A/B; **Pixel 4 + OnePlus** = the Android nodes that
+  drive guns / authorize plant; **iPhone X ×2 + iPad Air** = site screens / scoreboards / Mission
+  Control (iOS = web pages only, no BLE-to-gun without a wrapper/native app).
+
 Other screen-objectives that fall out for free: a **hack/upload terminal** (hold-to-progress with
 interrupts), a **hostage/rescue terminal**, a **King-of-the-Hill / Domination point with a full-screen
 owner colour + live timer + scoreboard**, and a **utility box** whose current mode (medic/armor/ammo/
