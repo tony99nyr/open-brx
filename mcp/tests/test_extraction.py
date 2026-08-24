@@ -5,7 +5,9 @@ loot accrual, the loud channel start, drop-on-death, pickup of dropped loot,
 a successful extraction (bank + boost), and the win condition.
 """
 
-from brx_mcp.modes import (
+# Extraction's own action set lives in the submodule (its Callout/SendFrame/GameOver
+# differ from the M0 base actions of the same name).
+from brx_mcp.modes.extraction import (
     Bank,
     Callout,
     ChannelReset,
@@ -16,8 +18,8 @@ from brx_mcp.modes import (
     GameOver,
     LootDropped,
     SendFrame,
+    Status,
 )
-from brx_mcp.modes.extraction import Status
 
 
 def _one(actions, typ):

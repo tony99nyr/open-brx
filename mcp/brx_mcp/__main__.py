@@ -12,6 +12,8 @@
   python -m brx_mcp fieldstart <addr...> [volume] [weapon]   # start, then disconnect
   python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
   python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
+  python -m brx_mcp game-sim [mode]               # narrated M0 game demo (tdm|ffa|infection|lms; no BLE)
+  python -m brx_mcp play <mode> <addr...> [k=v]   # run a configured game LIVE (k=v: volume, outdoor, hp, ...)
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
@@ -741,9 +743,9 @@ def _extraction_sim() -> None:
     steal the loot → extract → win) so the mode can be seen working before any
     hardware exists. See docs/game-modes.md §Extraction and brx_mcp/modes/.
     """
-    from .modes import (Bank, Callout, ChannelReset, ChannelStarted, Extracted,
-                        ExtractionConfig, ExtractionGame, GameOver, LootDropped,
-                        SendFrame)
+    from .modes.extraction import (Bank, Callout, ChannelReset, ChannelStarted,
+                                   Extracted, ExtractionConfig, ExtractionGame,
+                                   GameOver, LootDropped, SendFrame)
 
     def render(actions: list) -> None:
         for a in actions:
@@ -857,6 +859,80 @@ def _ir_emit(bits: str, port: str | None, repeat: int) -> None:
     br.close()
 
 
+def _build_config(mode: str, kvs: list[str]):
+    """Build a GameConfig from `mode` + key=value overrides (volume=90 outdoor=1 hp=99
+    primary=charge respawns=3 game_time_s=180 kid_mode=1 leds=0 ...)."""
+    from .gameconfig import GameConfig
+    import dataclasses
+    cfg = GameConfig(mode=mode)
+    fields = {f.name: f.type for f in dataclasses.fields(GameConfig)}
+    for kv in kvs:
+        if "=" not in kv:
+            continue
+        k, v = kv.split("=", 1)
+        if k not in fields:
+            print(f"(ignoring unknown setting {k!r})", file=sys.stderr)
+            continue
+        cur = getattr(cfg, k)
+        if isinstance(cur, bool):
+            val = v not in ("0", "false", "False", "no", "off")
+        elif isinstance(cur, int) or (cur is None and k in ("respawns", "game_time_s")):
+            val = int(v)
+        else:
+            val = v
+        setattr(cfg, k, val)
+    return cfg
+
+
+def _game_sim(mode: str) -> None:
+    """Narrated M0 game against a fake sender + scripted events — no BLE."""
+    import asyncio
+    from .gameconfig import GameConfig
+    from .modes import GameDriver
+
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    def hir(team):
+        return {"command": "HIR", "tokens": ["HIR", "0", "0", "0", str(team), "9", "0", "3"]}
+
+    def death():
+        return {"command": "HP", "tokens": ["HP", "0", "0", "0"]}
+
+    cfg = _build_config(mode, ["game_time_s=0", "respawn_s=5", "frag_limit=2"])
+    players = {"red": 1, "blue": 2} if mode != "infection" else {"h1": 1, "h2": 1, "z": 2}
+    drv = GameDriver(cfg, players, sender)
+
+    async def run():
+        print(f"\n=== game-sim: {mode} ===")
+        await drv.setup()
+        script = ([("h1", hir(2)), ("h1", death()), ("h2", hir(2)), ("h2", death())]
+                  if mode == "infection" else
+                  [("red", hir(2)), ("red", death()),      # blue kills red
+                   ("blue", hir(1)), ("blue", death()),    # red kills blue
+                   ("red", hir(2)), ("red", death())])     # blue kills red again → frag limit
+        t = 1.0
+        for pid, ev in script:
+            await drv.execute(drv.feed(pid, ev, now=t))
+            await drv.execute(drv.tick(now=t))
+            t += 6.0
+            if drv.over:
+                break
+        print(f"\nsnapshot: {drv.snapshot()}")
+
+    asyncio.run(run())
+
+
+async def _play(mode: str, addresses: list[str], kvs: list[str]) -> None:
+    from .modes import run_live
+    cfg = _build_config(mode, kvs)
+    print(f"config: {cfg.summary()}", file=sys.stderr)
+    snap = await run_live(cfg, addresses)
+    _print(snap)
+
+
 def _dispatch(cmd: str, args: list[str]) -> None:
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
@@ -902,6 +978,13 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         asyncio.run(_fleet(_split_addrs(args[1:])[0]))
     elif cmd == "extraction-sim":
         _extraction_sim()
+    elif cmd == "game-sim":
+        _game_sim(args[1] if len(args) > 1 else "tdm")
+    elif cmd == "play" and len(args) > 2:
+        mode = args[1]
+        addrs = [a for a in args[2:] if ":" in a or "-" in a and "=" not in a]
+        kvs = [a for a in args[2:] if "=" in a]
+        asyncio.run(_play(mode, addrs, kvs))
     elif cmd == "diag-game" and len(args) > 1:
         asyncio.run(_diag_game(args[1], args[2:]))
     elif cmd == "ir-capture":
