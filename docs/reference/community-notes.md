@@ -95,6 +95,36 @@ headset link dropped (which blocks firing).
   game responses enabled. Grenade firmware is field-updatable via a `.bin` (community asks for the
   flashing procedure — not well documented, matches our "grenade config is hard/buggy" note).
 
+## Cosmetics — painting & skins
+
+Painting the BRX shell is discussed only lightly in the group; the dominant cosmetic route is
+**3D-printed skins** rather than paint. What exists:
+- **Paint prep:** a **base coat of black Krylon primer** (community tip) — prime the ABS/plastic
+  first for adhesion, then top-coat. (Standard practice for painting a textured plastic tagger:
+  clean/degrease → light scuff-sand → plastic-adhesion primer like Krylon Fusion → thin colour
+  coats → matte/satin clear. The group specifically cites the black Krylon primer base.)
+- **Labeling / team matching:** paint or **stickers** to match a gun to its headset and label
+  pairs so they don't get mixed up at events (also applied to the ESP32/power-bank rider cover).
+- **3D-printed skins** are the popular cosmetic + functional mod (e.g. SwapTX's swappable skins;
+  members run modded taggers with printed skins, and want bigger printed skins like a sniper
+  body). If we publish STLs (`hardware/`), printable skins/covers are a high-interest community item.
+- **Decals** come up as an interest but no established process documented.
+
+If you want painting depth, the group's painting threads are mostly **photo posts** (hard to
+extract as text); browse the group's **Media** tab visually for painted examples.
+
+## More repairs (from the group)
+
+- **Reload handle stiff/binding:** a thin **nylon washer** (cut a disk from a soft clear plastic
+  lid) between the handle and the assembly removes the friction; a light **silicone lube** (e.g.
+  Specialist WD-40 Silicone) on the inner track makes it move smoothly. (Reload-button mods are
+  the other route.)
+- **D-pad button failures:** the button plastic **cracks from wear** — a known recurring failure.
+  Parts can be pulled from a "parts gun" or potentially 3D-printed (no STL published yet — an open
+  opportunity). Battle Company may sell the part.
+- **Random power on/off:** usually the **power switch failing** (mechanical). See also the
+  trigger-switch continuity test above for the fire-path.
+
 ## Reverse-engineering wanted by the community (open opportunities)
 
 - **SwapTX headset PCBs (V2/V3)** — full trace maps + Gerbers wanted; base code is ~80% done but
