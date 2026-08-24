@@ -103,6 +103,11 @@ class GameConfig:
     detonation_s: float = 40.0
     rounds_to_win: int = 0            # 0 → single round
 
+    # -- objective modes (domination / koth / ctf) --------------------------- #
+    control_points: int = 3          # domination points (koth forces 1)
+    score_target: int = 0            # domination: point-seconds to win (0 = time only)
+    cap_target: int = 3              # ctf: flag captures to win
+
     # -- health variants (host-driven, confirmed via $LIFE — exp-log #33) ----- #
     syphon: bool = False              # heal the killer on each kill (Fortnite/CoD)
     syphon_armor: int = 30            # armor granted to the killer per kill

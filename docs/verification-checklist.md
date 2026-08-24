@@ -43,6 +43,8 @@ The whole M0 engine is tested in software but never driven on real guns.
 
 ## Session F — grenade / objectives (grenade + tagger)
 - ⬜ **Grenade beacon relay** — `diag-game`'s `gren.beacon`: a Hill/Respawn grenade's `$HIR,0,15,0,<team>,<mode>` surfaces on a bare-connected gun (confirmed once; make it repeatable for the state display).
+- ⬜ **Domination / KotH** — station CAPTURE events → the engine scores point-time; owner LED = truth.
+- ⬜ **CTF** — GRAB/CAP events → captures; carrier-death flag reset. (Needs G9 flag team-assign resolved.)
 - ⬜ **CS/objective events** — the CS engine + Domination/KotH/CTF need a station/grenade to emit plant/capture/hold. Wire the objective device to feed the engines (needs the Utility Box or the grenade's IR decoded).
 - ⬜ **Grenade G9/G10** — CTF flag team-assign (turned red not team colour); `$GREN` thrown-blast on a paired grenade.
 

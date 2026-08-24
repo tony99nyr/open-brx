@@ -52,6 +52,8 @@ def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
     from .survival import InfectionEngine
     from .lms import LastManStandingEngine
     from .cs import BombEngine
+    from .objectives import DominationEngine, CtfEngine
+    import dataclasses
     m = config.mode
     if m in ("tdm", "ffa"):
         return DeathmatchEngine(config, now)
@@ -61,7 +63,15 @@ def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
         return LastManStandingEngine(config, now)
     if m in ("cs", "bomb"):
         return BombEngine(config, now)
-    raise ValueError(f"unknown mode {m!r} (tdm|ffa|infection|lms|cs)")
+    if m == "domination":
+        return DominationEngine(config, now)
+    if m == "koth":
+        # KotH = domination on a single point (hold the hill for time)
+        return DominationEngine(dataclasses.replace(config, control_points=1), now)
+    if m == "ctf":
+        return CtfEngine(config, now)
+    raise ValueError(f"unknown mode {m!r} "
+                     "(tdm|ffa|infection|lms|cs|domination|koth|ctf)")
 
 
 class GameDriver:
