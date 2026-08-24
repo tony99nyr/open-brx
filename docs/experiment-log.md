@@ -260,3 +260,36 @@ Better routes, in order:
    a positional voice pack (the "GET SOME" respawn line came from it, not from any `$PLAY`
    we sent). Change one token, hear which line changes — maps meaning, not just existence.
 3. **Battle Company's updater sound package**, if it ships sounds as files.
+
+---
+
+## 2026-08-23 (late) — field test: do taggers play with no host? ✅ YES
+
+`fieldstart` configured and spawned two taggers, then **disconnected the laptop**;
+operator took them out of range and played; `fieldresults` reconnected afterwards.
+
+### 13. The game survives host disconnection ✅ (key architectural result)
+The guns kept working with no laptop present — firing, hits, damage all continued.
+**The tagger runs the game itself.** The one-laptop topology is therefore viable, and
+followup A is not a capability problem, it is a *configuration* problem.
+
+### 14. What did NOT happen, and why
+- **No respawn.** Expected: we never configured an on-gun respawn time. `arena` faked it
+  from the host, which is exactly the thing that cannot work out of range.
+- **The round never ended.** Same cause: no game duration was configured.
+- **No results on reconnect.** 12 s of listening after reconnect produced **zero frames** —
+  no `$LCD`, no `$ALCD`, no summary. `$PING` → `$PONG` worked, so the link was fine.
+  **The tagger volunteers no game state.** Reading scores back needs a query command we
+  have not identified. `$UP` is the best candidate (documented as a status/update report,
+  never sent). **Do not probe `$SP`** — it is documented as the end-of-game report, but
+  `$SP,99,*` is half the panic sequence, so it may destroy the very results it reports.
+
+### 15. Consequence: `$GSET` is now the critical path
+The manual (§7h) lists respawn (off/15/30/60/ramp45/ramp90) and game time
+(off/5/10/15/20/30 min) as on-gun settings, so those values must live in the config we
+already send. `$GSET,1,0,1,0,1,0,50,1,*` has eight tokens and **we understand none of them**.
+
+Decoding it makes autonomous play work. Method, now well-defined:
+create a game in Callsign with respawn 15 → PacketLogger capture; change **only** respawn
+to 30 → capture; diff the `$GSET` frames; the token that moved is respawn. Repeat per
+setting. Two captures each for: respawn time, game time, lives, mode.
