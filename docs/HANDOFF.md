@@ -97,52 +97,51 @@ central scoring (fine casually, does not scale to 20 taggers).
 
 ## Followups and unknown fields
 
-Full prioritised list lives at the end of `docs/experiment-log.md`. Summary of unknowns:
+Full prioritised list lives at the end of `docs/experiment-log.md`. Summary:
 
-| Item | Why it matters |
+| Item | Status |
 |---|---|
-| `$GSET` 8 tokens | still undecoded, but **respawn and game time are NOT among them** (§7n) — lower value than it looked |
-| `$WEAP` 44 tokens | custom weapons; manual's stock stats (§7h) are anchors, M-4 damage 24 already matches |
-| Per-player identity | `$HIR` names the shooter's **team**, not player (§7k). FFA scoring needs per-player. `QUERY` shows a device-level `PlayerID` we have never set |
-| Results read-back | see above — may not exist |
-| `$TID,0,*` | candidate neutral LED for FFA (team drives colour, §7i) |
-| `$HIR` `45,0,0` / `70,0,0` | recur across matches; the numbers equal starting HP/armor |
-| `$HIR` protocol per weapon | two frames came as `$HIR,0,...` not `4` |
-| `$SFLASH,*` | app sends it periodically, no args, never near a hit |
-| `$GLED` tokens | colour is team-derived, so what do these do? |
-| Headset lockout | manual: headset lost mid-game locks the gun. **Never controlled for** |
-| Sound inventory | see below |
+| `$GSET` 8 tokens | ✅ **mapped + hardware-confirmed** (friendlyFire…gameMods). No respawn/time/lives token — those are host-side |
+| `$WEAP` 44 tokens | ✅ **mapped + validated** vs two live frames (`protocol-classes.md`); ~6 empty positions want a one-field capture |
+| `$GLED` tokens | ✅ colour is team-derived (`$TID`); `$GLED` = mid/effect/optionA/optionB with a LedEffect enum |
+| Sound inventory | ✅ **2166-id bank** (`sound-bank.md`) |
+| Smart Grenade | ✅ config = `$GREN` to gun (FlashBang/Gas/Confusion/Molotov). ⬜ hardware test pending (followup F) |
+| Per-player identity | ⬜ `$HIR` names shooter's **team**, not player. FFA scoring needs per-player; `QUERY` shows a device `PlayerID` we've never set |
+| Results read-back | ⬜ likely doesn't exist — gun keeps no score (§7n) |
+| `$HIR` `45,0,0`/`70,0,0` variants | ⬜ recur; equal starting HP/armor |
+| `$SFLASH,*` | ⬜ app sends periodically, no args |
+| `$AS` / `$UP` semantics | ⬜ open |
+| Headset lockout | ⬜ manual says headset lost mid-game locks the gun; **never controlled for** |
 
-## The APK — highest-leverage work available on Windows
+## The APK — ✅ DONE (2026-08-24, Windows)
 
-**See `docs/apk-investigation.md`.** Decompiling the Callsign Android APK is filed
-elsewhere as a sound-inventory route, which undersells it: **the app builds the protocol
-frames, so its code contains the meaning of every token in `$GSET`, `$PSET` and `$WEAP`** —
-the field maps we have been reverse-engineering two captures at a time. It also holds the
-sound id list, the full command vocabulary, and the end-of-game logic.
+The Callsign APK teardown is **complete**. Results live in `protocol/callsign-extract/`:
+- `protocol-classes.md` — the full command vocabulary (~20 commands we never knew), per-command
+  **field maps**, `$GSET` fully mapped + hardware-confirmed, the `$WEAP` **token positions**
+  (cross-validated vs two live frames), and all the enums (DamageType, PowerType, ReloadType,
+  LedEffect…).
+- `sound-bank.md` — the complete **2166-id sound bank** (kills the mic-sweep dead end).
+- `apk-harvest.md` — game modes, win conditions, the **QR-code station system** (= LaserTagMods'
+  JBOX, done with paper: respawn/pickup/capture/supply-drop), **weapon-spawn types**, and the
+  **grenade** (`$GREN` → gun; GrenadeMode = FlashBang/Gas/Confusion/Molotov).
 
-Needs **no hardware and no iOS captures**, so it unblocks work that is otherwise stuck
-behind the MacBook. That Callsign never worked on Android is irrelevant — we are reading
-its code, not running it.
+Method note: the app is **Unity/IL2CPP** (not Java — `jadx` doesn't reach the game logic). The
+metadata is obfuscated (v39 + encrypted index tables) so Il2CppDumper/Inspector fail, but the
+identifier strings are plaintext in declaration order — field maps read straight out of them.
+Deeper work (method bodies, exact serialization, server-fetched weapon stats) would need Ghidra;
+low priority since field order is validated against live frames. Policy honoured: facts only,
+raw config JSON kept for build use under a deferred-licensing note (`RAW_ASSETS_NOTE.md`), APK
+binary + decompiled tree NOT committed.
 
-Rules: document facts, never copy code; do not commit the APK or any decompiled tree.
-Same standard already applied to LaserTagMods' unlicensed sources.
+## Sound inventory — ✅ DONE (do NOT use a microphone)
 
-## Sound inventory — do NOT use a microphone
-
-A mic-based sweep was built and **failed its negative control**: nonsense id `ZZ99`
-produced audio, so the tagger appears to play a fallback for unknown ids and
-"audio detected" never proved "id exists". There is also **no SD card** on the BRX (§7h).
-
-Better routes, in order:
-1. **Decompile the Callsign Android APK.** It must contain every sound id it sends, very
-   likely with names. Highest value, needs no hardware. Would probably also reveal the
-   end-of-game sequence and whether a results query exists.
-2. **`$PSET`'s trailing audio tokens** (`H44,JAD,V33,…,A10`) look like a positional voice
-   pack — the "GET SOME" respawn line came from there, not from any `$PLAY` we sent.
-   Change one token, hear which line changes.
-
-Confirmed by ear so far: `VA20` = "connection established", `VA81` = 3-2-1 countdown.
+The complete 2166-id bank is in `protocol/callsign-extract/sound-bank.md` (from the APK). A
+mic-based sweep was tried first and **failed its negative control** (nonsense id `ZZ99` produced
+audio — the tagger plays a fallback for unknown ids), and there is **no SD card** on the BRX
+(§7h) — so the APK was the only reliable route, and it worked. Confirmed by ear: `VA20` =
+"connection established", `VA81` = 3-2-1 countdown. Still open: the `$PSET` positional voice-pack
+token→line mapping (change one token, hear which line changes) — now targeted since we know the
+field names.
 
 ## Environment
 

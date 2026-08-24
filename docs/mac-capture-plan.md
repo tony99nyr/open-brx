@@ -6,11 +6,14 @@ has never worked on Android), iOS Bluetooth tracing needs **PacketLogger**, and
 PacketLogger is **macOS-only**. Every "watch what the real app does" experiment is
 therefore gated on this laptop.
 
-**Status note (2026-08-23):** Experiments 1 and 2 are **done** — both returned definitive
-negatives that closed the project's biggest open questions (see §7n). The current critical
-path is now **the nRF radio**, which needs no captures and can be worked on Windows. What
-remains here is genuinely useful but no longer blocking: `$WEAP`, per-player identity, the
-`$PSET` audio tokens, and the other game modes.
+**Status note (2026-08-24):** Experiments 1 and 2 are **done** (definitive negatives, §7n).
+Most of "what remains" below was then **solved by the Callsign APK teardown** (Windows, no
+captures needed) — `$WEAP` token map, `$GSET`, `$PSET` audio tokens, the sound bank, and the
+game-mode/grenade intel all now live in `protocol/callsign-extract/`. **The only capture work
+still worth doing here:** pinning `$WEAP`'s ~6 always-empty token positions (change one field in
+Callsign, diff), the `$PSET` voice-pack token→line mapping, per-player identity, and a
+grenade-config capture (followup F). Everything else is answered. Critical path for field play
+remains the nRF radio / the BRX Companion accessory (`hardware/brx-companion-spec.md`).
 
 Batch these. An hour with the Mac, the iPhone and two taggers unblocks months of work on
 the Windows side.

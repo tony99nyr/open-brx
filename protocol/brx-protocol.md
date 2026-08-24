@@ -47,7 +47,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, **100=weapon-cycle (verified on hardware 2026-08-23)**. Note: with only one `$WEAP` slot loaded, function 100 has nothing to cycle to and **falls back to reloading** — which looks like a wrong mapping but is not. Load a secondary to see it switch. |
 | `$GLED,<team?>,<t2>,<t3>,<t4>,<t5>,,*` | Set gun LED — **token meanings UNKNOWN** | The old `<r>,<g>,<b>` reading is **disproven**, see §7i. e.g. `$GLED,1,1,1,0,10,,*` |
-| `$PLAY,<soundID>,<volume?>,<priority?>,,,,,*` | Play a sound/voice line by ID | Sound IDs like `VA9E`, `V3M`, `VNM`, `VA1L`, `H29`… Large audio bank; IDs not fully mapped yet |
+| `$PLAY,<soundID>,<volume?>,<priority?>,,,,,*` | Play a sound/voice line by ID | **Complete 2166-id bank in `callsign-extract/sound-bank.md`.** e.g. `VA20`="connection established". Any id not in that list is invalid (no fallback ambiguity) |
 | `$AS,...` | Applicator/game-control settings | e.g. `$AS,1,0,4,0,10,0,95,*` |
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
 | `$STOP,*` | Stop (captured from official app, 2026-08-23) | First command the app sends on connect |
@@ -122,17 +122,30 @@ Melee         : $WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,32768,0,10,13,100,100,,
 (Slot 5)      : $WEAP,5,1,90,10,0,115,0,,,,,,115,80,1000,850,2,32768,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,9999999,30,20,*
 ```
 
-Recognizable fields (positions to be confirmed by testing): damage value, fire delay (ms), mag capacity, ammo reserve (32768 ≈ unlimited flag?), reload time (ms), IR signature/type, sound IDs (letter+number codes: `R01`, `D04`, `E03`, `C15`…), range/power (%), and per-slot ammo counts. **Full token map is the top reverse-engineering priority** — best method: diff the official app's output while changing one setting at a time.
+**✅ The full token map is now recovered** — see `callsign-extract/protocol-classes.md` for the
+field names in order and a validated token table (e.g. tok5=`primaryDamage`, tok16=`maxClip`,
+tok27=`primaryFire_SoundName`, charge sounds tok28/29). It was cracked from the Callsign IL2CPP
+metadata + cross-validated against the two frames above, not by per-setting capture diffing.
+Recognizable fields: damage, fire delay (ms), mag capacity, ammo reserve (32768/9999999 = unlimited
+flags), reload time (ms), IR signature/power type, sound IDs (`R01`,`D04`,`E03`,`C15`…), range/
+accuracy (%), per-slot ammo.
 
 ## 7. Unknowns / TODO
 
-- Full `$WEAP` 44-token field map (highest value)
-- Complete sound ID catalog (`$PLAY` bank)
-- Exact semantics of `$AS`, `$UP`, `$GSET`, `$PSET` token positions
-- `$RADSK`, `$RV`, `$RP`, `$UR`, `$IT`, `$KK`, `$PT`, `$TA`, `$PH`, `$HKC`/`$PKC` (host/player kill-confirm family)
-- Smart Grenade: BLE-visible? Same protocol? IR-configurable?
-- Gen1 vs Gen2/3 command differences (JEDGE notes firmware 4.26 added `$AS`, `$SP`, `$UP`)
-- Headset link protocol
+**Much of this was SOLVED by the Callsign APK teardown (2026-08-24)** — see
+`callsign-extract/protocol-classes.md` (command/field maps, WEAP token positions) and
+`apk-harvest.md` (modes, stations, grenade). Status:
+
+- ✅ **Full `$WEAP` 44-token field map** — recovered + cross-validated against two live frames
+  (`protocol-classes.md`). ~6 always-empty positions still want a one-field capture to finalize.
+- ✅ **Complete sound ID catalog** — 2166 ids in `callsign-extract/sound-bank.md`.
+- ✅ **`$GSET` / `$PSET` token positions** — GSET fully mapped + hardware-confirmed; PSET field
+  set known (maxHP/maxShields + positional voice pack).
+- ✅ **Smart Grenade config** — `$GREN` sent to the gun; GrenadeMode = FlashBang/Gas/Confusion/
+  Molotov. Still to test on hardware: transport (IR-on-load vs immediate) + BLE visibility (followup F).
+- ⬜ **`$AS`, `$UP` semantics**; `$RV`,`$RP`,`$UR`,`$IT`,`$KK`,`$PT`,`$TA`,`$PH`, kill-confirm family — still open.
+- ⬜ Gen1 vs Gen2/3 command differences (JEDGE notes fw 4.26 added `$AS`,`$SP`,`$UP`).
+- ⬜ Headset link protocol (though headset LED commands HLED/BLINK/CHASE/HLOOP/LED are now known).
 
 ## 7a. Session findings (Tactix Gen2/3, verified 2026-08-23)
 
