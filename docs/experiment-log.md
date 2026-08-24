@@ -360,3 +360,37 @@ what the field test showed. Followup A is therefore **closed as answered**, not 
 Remaining options are in protocol §7n. The most promising is **the nRF radio** (`QUERY`
 reports `NRFhost 1` / `NRFslave 1`, and LaserTagMods ship `NRFL-Bases` and
 `LoRa-Controlled-Taggers` — they hit this same wall and solved it with a different radio).
+
+---
+
+## 2026-08-24 — Windows PC — Callsign APK teardown (static analysis, no hardware)
+
+Pulled the official Callsign app from Tony's Android phone (USB data lines were dead —
+paired over **wireless adb** instead: `adb pair <ip:port> <code>` then mdns auto-connect).
+Package `com.lasertagpro.callsign`, a **Unity/IL2CPP** app. Full writeup:
+`protocol/callsign-extract/README.md`.
+
+### 20. Complete sound bank recovered ✅✅ (kills the mic-sweep dead end, entry 7)
+`assets/Configs/Sounds.json` holds a **2166-entry id→duration map** — the authoritative list
+of valid `$PLAY` ids. Since any id not in the list is invalid, the fallback-sound ambiguity
+that killed the microphone sweep no longer matters. Published as
+`protocol/callsign-extract/sound-bank.md` (the architecture doc §5 deliverable). This is the
+route entry 7/followup-E predicted ("decompile the APK") — done, no hardware, no guessing.
+
+### 21. Config schemas extracted ✅
+weapon-categories (ids 0–12: Rifle/SMG/Sniper/Shotgun/Heavy/Energy/Support/Power/Exotic/
+Launcher/Stun + Ability/Melee), game-medals, streak-rewards — saved under callsign-extract/.
+
+### 22. Architecture confirmations ✅ (from metadata strings)
+- **Phone-to-phone lobby = AWS SQS/SNS** (many SendMessageAsync/GetQueueUrl strings). The
+  ~1-min lobby delay in the field tests is a cloud round-trip, not BLE. A self-hosted
+  platform replaces this whole layer with the local MQTT bus.
+- `AUTO RESPAWN IN {0}` string → app drives respawn (corroborates entries 15/17).
+- App can play offline; version gate is a soft upper bound (matches entry 3).
+
+### 23. Command builders NOT recovered — deeper teardown needed
+`$GSET`/`$PSET`/`$WEAP` are built at runtime in IL2CPP native code (no grep-able template).
+Next step for the token maps: **Il2CppDumper** on `libil2cpp.so` + `global-metadata.dat`,
+then Ghidra on the builder methods. Highest-value teardown follow-up — would yield the field
+maps directly, bypassing differential BLE captures. The APK is on this PC but NOT committed
+(Battle Company's binary); reproduce via the README.
