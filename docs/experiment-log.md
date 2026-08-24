@@ -144,3 +144,45 @@ fixed and it *still* failed the control. No SD card exists to read instead (§7h
 - The phone-to-phone lobby (~1 min to appear) is not BLE; looks like a cloud round-trip.
 - `server.py` is broken against the `mcp` 2.0 API (`fastmcp` moved).
 - **Headset lockout (§7h) has never been controlled for** in any of our experiments.
+
+---
+
+## 2026-08-23 (late) — MacBook — two taggers, one host
+
+Taggers: **Tactix2-E20D** (p0) and **Tactix2-3D4F** (p1), driven simultaneously from one
+laptop via the new `arena` command. Two 3-minute free-for-all matches, ~93 hits total.
+
+### 8. `$HIR` shooter attribution SOLVED ✅ (was §7f's open question)
+Configs identical except `$TID,1,*` vs `$TID,2,*`. Every hit frame named the *other*
+team: team-1's tagger received `$HIR,4,0,0,2,...`, team-2's received `$HIR,4,0,0,1,...`.
+**Token 4 = shooter's team id.** No counterexample in ~93 hits across two matches.
+This was unanswerable in §7f only because both players sat on default ids.
+Tokens 2 and 3 stayed `0,0` — the §4 player-id guess is not supported.
+
+### 9. LED colour is team-derived, not `$GLED` ✅ (resolved §7i)
+Same two configs, differing only in `$TID`, **no `$GLED` sent at all** — and the guns lit
+different colours: **team 1 blue, team 2 yellow**. That is why walking `$GLED`'s supposed
+`<r>,<g>,<b>` tokens produced nonsense earlier the same evening; those tokens do not
+control colour. Untested: `$TID,0,*` for a neutral/no-team colour.
+
+### 10. Simultaneous start ✅ (bug found and fixed)
+First arena run configured taggers serially, so each counted down as its own config block
+finished — players went live ~5 s apart, one shooting while the other was still counting.
+Fixed: configure all taggers concurrently (`asyncio.gather`), pull `$PLAY,VA81` out of the
+per-tagger config, fire the countdown in unison, spawn 2.8 s later when it ends.
+Verified in sync on two taggers.
+
+### 11. Match results
+Run 2: p0 34 hits / 2 deaths, p1 17 hits / 3 deaths, **5 of 5 respawns fired**.
+Independent per-player state held throughout. Two frames arrived as `$HIR,0,...` rather
+than `4` — different weapons appear to emit different IR protocols (§5 maps `0` to
+standard weapons). Only two samples; which slot produced them is unknown.
+The `45,0,0` and `70,0,0` `$HIR` variants recurred, still unexplained — `45` and `70` are
+exactly the configured starting HP and armor, and the tail differs (`0,0` not `0,3`).
+
+### 12. ARCHITECTURAL PROBLEM FOUND — BLE range ⚠️
+Everything above assumes the host stays in BLE range for the whole match. **It will not.**
+Players run around a field; the laptop sits still. The official system does not have this
+problem because **every player carries their own phone** — the BLE link is always ~1 m away.
+One-laptop-many-taggers is a different topology and needs a different design.
+Consequences, all unresolved — see the followups section at the end of this file.
