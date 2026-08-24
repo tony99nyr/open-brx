@@ -499,3 +499,24 @@ is stable), one token varied at a time, and the operator naming the colour each 
 
 Motivation for solving it: free-for-all has no teams, so a neutral LED (white) is wanted,
 while team modes need red/green/blue — the engine needs both.
+
+## 7j. `$ALCD` decoded — ammo/weapon HUD stream (verified 2026-08-23)
+
+From a two-minute FFA run with three weapons loaded (`deathmatch` command).
+
+```
+$ALCD,<mag>,<100>,<slot>,<reserve>,<0>,*
+```
+
+- **Token 3 is the weapon slot.** Observed cycling `0 → 1 → 4 → 0 → 1 → 4 …` as alt-fire
+  (`$BMAP` function 100) was pressed, with ammo tracking each weapon independently:
+  slot 0 `36/108`, slot 1 `6/12`, slot 4 `1/0`. **Melee (slot 4) is part of the cycle** —
+  it is not a separately triggered action.
+- Token 2 was `100` throughout and token 5 `0`; meanings unknown.
+- **Reload is round-by-round.** A slot-1 reload emitted one `$ALCD` per round as the
+  magazine refilled and the reserve drained in step:
+  `mag 0→1→2→3→4→5` while `reserve 12→11→10→9→8→7`. A HUD should expect a burst of
+  `$ALCD` frames during reload, not a single updated total.
+- `$ALCD` is therefore the **ammo/weapon** stream; `$LCD` (§7e/§7f) is the
+  **health/armor** one. Both are echoes — the gun reports its own state; the host does
+  not compute it.
