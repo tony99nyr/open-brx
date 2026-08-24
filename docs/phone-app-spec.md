@@ -18,9 +18,19 @@ From the teardown and the field:
 ## Target decision — Android-first, iOS-ready
 
 **Build for Android first** (Tony's personal kit: **Pixel 10 Pro** — the flagship, best host/BLE
-candidate; **OnePlus 7 Pro** (2019, BT 5.0); **Pixel 4** — older, still a fine player node). That's a **Web-Bluetooth PWA**
-(zero-install, `webapp/`), optionally packaged as an **APK** for a home-screen app. This gets real games
-running with no fee and no store.
+candidate; **OnePlus 7 Pro** (2019, BT 5.0); **Pixel 4** — older, still a fine player node), as an
+**installable Web-Bluetooth PWA** (`webapp/`) — the **primary and preferred** delivery. **Decided: PWA
+over a packaged APK**, because *updates ship by redeploying a static site — everyone gets the new version
+on next load, no reinstall churn.* (An APK/TWA wrap stays an optional fallback if a store listing is ever
+wanted; not the plan.)
+
+**Field-play practicality (important):** Web Bluetooth needs a **secure context (HTTPS or localhost)** and
+a **user gesture** to open the device chooser — both fine. An **installed PWA on Android Chrome supports
+Web Bluetooth**, and its **service worker caches the app shell**, so: *install it once at home over HTTPS
+(a free static host — GitHub Pages/Netlify/Vercel — or a laptop's local HTTPS), then it launches and
+plays fully offline in the field* (BLE is local; no internet needed mid-game). Updates land the next time
+a phone is online. This offline-install-then-play-anywhere property is exactly why the PWA wins for field
+use.
 
 **But architect so iOS is a later drop-in, not a rewrite** (§"Common core, platform shells"). Concretely,
 five rules keep the iOS path cheap:
@@ -89,11 +99,15 @@ only **zero-install vs. app-distribution overhead**, never a capability gap.
 
 ### Distribution — how players actually get the app
 
-**Decision (initial): Android APK + free iOS sideload; skip the Apple fee until it's justified.**
+**Decision (initial): installable Android PWA; free iOS sideload later; skip the Apple fee until it's
+justified.**
 
-- **Android — APK sideload (free, easy):** host the signed `.apk`; players enable "install unknown
-  apps" and tap it. No store, no fee. (Google Play is a one-time **$25** *if* we ever want store
-  distribution — not needed to share an APK.) This is the primary path.
+- **Android — installable PWA (primary, preferred):** serve `webapp/` over HTTPS (free static host);
+  players open the link once and "Add to Home screen." **Updates = redeploy the site → everyone gets it
+  on next load, no reinstall.** Works offline after install (service worker). This is the path — chosen
+  specifically to avoid APK reinstall churn.
+- **Android — APK/TWA (optional fallback):** wrap the PWA as an `.apk` only if a home-screen app icon
+  without "Add to Home screen," or a future Play listing (one-time **$25**), is ever wanted. Not the plan.
 - **iOS — the honest options** (a native/hybrid build; the *browser* PWA can't do BLE on iOS):
   | Path | Cost | Sharing | Catch |
   |---|---|---|---|
