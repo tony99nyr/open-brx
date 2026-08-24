@@ -775,3 +775,7 @@ removable drive, no unknown/DFU device. **Conclusion (now valid): the grenade's 
 only — no serial console, no mass storage, no USB DFU.** No pinhole/PROGRAM pin exists either. So there is
 **no non-IR data channel** to the grenade; the **IR-beacon relay** (a BLE-connected tagger in range,
 reading `$HIR,0,15,0,<team>,<mode>`) is the only way to read grenade state. Closes G7.
+
+**Airtight confirm:** rapid-polled USB (~12 samples over ~36 s, covering the full ~5 s purple window and
+repeats) — device count held at 33 the entire time, zero new/anomaly devices. Grenade USB-C exposes no
+data in ANY state. G7 definitively closed: **power/charge only.**
