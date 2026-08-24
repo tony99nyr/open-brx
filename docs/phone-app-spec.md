@@ -73,6 +73,36 @@ pick, one link, ~1 m away.
 The phone app and Companion are interchangeable per-player nodes; a match can mix them. All three
 share the decoded protocol, the command layer, and the MQTT bus.
 
+## A phone as an objective / respawn / extraction node
+
+A phone can **be** an objective authority — not just a player node. What it can and can't do splits
+cleanly on **IR**:
+
+- **What it CAN do (over BLE):** hold the objective state (owner, extraction channel, respawn queue),
+  and drive taggers directly — **play the alarm on a gun** via `$PLAY,<soundID>` (grenade/explosion
+  ids from `../protocol/callsign-extract/sound-bank.md`), **respawn** a player via `$LIFE`/`$SPAWN`,
+  push weapons/boosts. So "**summon extraction from the phone → nearby guns scream**" is real, and the
+  Extraction rules engine (`../mcp/brx_mcp/modes/extraction.py`) runs unmodified on a phone node.
+- **What it CANNOT do:** **IR.** A phone has no 980 nm emitter/receiver, so it can't do the native
+  "shoot the station to capture it" interaction, can't emit an IR respawn/"safe-zone" tag, and can't be
+  shot. Those need a real **IR station** (`../hardware/brx-station-spec.md`) or the **grenade** (which
+  has IR). Physical "you're at the point" detection on a phone is approximate (BLE **RSSI** proximity,
+  or "come to base"), not a crisp IR hit.
+- **The scale limit — "broadcast to all taggers":** a phone is a BLE **central** and holds only a
+  **handful of simultaneous connections (~3–7, hardware-dependent)**, so one phone makes scream the
+  guns it's connected to — not an arbitrary crowd.
+  - **Small kit (≈4 taggers): one Android phone connected to all of them *is* the extraction/respawn
+    site**, and a summon makes them all scream — **$0, no extra hardware.**
+  - **At scale (20+):** the summon is an **event on the mesh** (MQTT/ESP-NOW/LoRa) and **each player's
+    own node plays the alarm on its own gun** — every gun screams, not just those near one phone. This
+    is what the engine's `Callout(scope="all")` models.
+- **Platform:** the BLE-driving role needs **Android Chrome** (Web Bluetooth) or a wrapped/native iOS
+  app; the pure *authority-over-WiFi* role (phone decides, each node does its own BLE) runs on any
+  phone. A **SIM/cellular** phone adds cloud backhaul (remote objective → cloud scoreboard); it doesn't
+  change how it reaches taggers (always local BLE).
+
+**Rule of thumb:** *phone = brain + audio + UI; IR interactions = a cheap IR station or the grenade.*
+
 ## Build order
 
 1. Web-Bluetooth connect + live console (validate the Android gate).

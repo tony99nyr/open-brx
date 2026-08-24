@@ -142,6 +142,13 @@ tests (`mcp/tests/test_extraction.py`) and a narrated demo you can run with **no
 `python -m brx_mcp extraction-sim`. It emits `Action`s (frames/callouts/score) that a BLE driver
 executes, matching the "host rules over the event stream" architecture.
 
+**A phone can be the extraction site itself** (no IR station needed): it holds the channel state and,
+on summon, plays the alarm on taggers via `$PLAY` (the guns scream) and respawns/boosts via
+`$LIFE`/`$SPAWN`. At small scale (~4 guns) **one Android phone connected to all of them is the whole
+site, $0**; at scale the summon is a mesh event each player-node renders on its own gun. A phone can't
+do the IR "shoot the site to interact" part — that needs an IR station or the grenade. Full breakdown:
+`phone-app-spec.md` §"A phone as an objective / respawn / extraction node".
+
 *Genre research sources:* [What is an extraction shooter? (Antihero Studios)](https://antiherostudios.com/blog/what-is-an-extraction-shooter),
 [Extraction shooter (Wikipedia)](https://en.wikipedia.org/wiki/Extraction_shooter),
 [Why DMZ gets the formula right (The Loadout)](https://www.theloadout.com/call-of-duty-warzone-2/dmz-extraction-shooter-formula-right),
