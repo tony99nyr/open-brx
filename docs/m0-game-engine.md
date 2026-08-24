@@ -36,13 +36,23 @@ activated (P16) — set `armor`/`hp`, not `shield`, for now.
 
 ## Modes (`modes/`)
 
-Pure rules engines — consume the parsed event stream + clock ticks, emit `Action`s:
-- **`deathmatch.py`** — TDM (score by team) + FFA (credits the specific killer). Kill attribution from
-  `$HIR` shooter-team + `$HP,0`, with a **6 s fuse** so a stale non-fatal hit can't steal a late kill.
-  Host respawn, frag/time limits.
-- **`survival.py`** — Infection: a dead human respawns onto the infected team; last human wins.
-- **`lms.py`** — Last Man Standing: finite lives; last player/team in wins.
+Pure rules engines — consume the parsed event stream + clock ticks, emit `Action`s. **Full catalog:**
+- **`deathmatch.py`** — **TDM** (score by team) + **FFA** (credits the specific killer). Kill attribution
+  from `$HIR` shooter-team + `$HP,0`, with a **6 s fuse** so a stale non-fatal hit can't steal a late
+  kill. Host respawn, frag/time limits. **+ health variants:** Syphon (heal on kill) and Halo-style
+  regen (refill after no damage) via additive `$LIFE`.
+- **`survival.py`** — **Infection**: a dead human respawns onto the infected team; last human wins.
+- **`lms.py`** — **Last Man Standing**: finite lives; last player/team in wins.
+- **`cs.py`** — **Bomb / plant-defuse**: attackers plant a site, detonation countdown, defenders defuse;
+  best-of-N rounds. Site device feeds `PLANT`/`DEFUSE`.
+- **`objectives.py`** — **Domination** (N points, 1 pt/s per held point), **King of the Hill**
+  (single-point domination), **Capture the Flag** (grab→return, carrier-death drops the flag). Station
+  device feeds `CAPTURE`/`GRAB`/`CAP`.
 - **`extraction.py`** — the flagship raid-and-extract engine (own richer action set + narrated sim).
+
+**Combat modes** (TDM/FFA/infection/LMS) score off the gun `$HIR`/`$HP` stream — playable today.
+**Objective modes** (CS/Domination/KotH/CTF) additionally need a station device (Utility Box / grenade)
+to emit the objective events — the engines are done; the event source is the hardware piece.
 
 Engine interface: `add_player(id, team)`, `on_event(id, ev, now)`, `tick(now)`, `snapshot()`. Actions
 (`base.py`): `SendFrame, Respawn, Heal, SetTeam, PlaySound, Callout, Score, Eliminate, GameOver`.
