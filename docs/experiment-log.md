@@ -707,3 +707,16 @@ with the headset front + pull trigger** (signals the grenade to emit a respawn).
 (new followup B12):** the grenade's respawn-station and our **host-driven `$SPAWN` respawn are competing
 authorities** — an engine using grenade respawn stations must NOT also host-respawn those players (or
 must reconcile), else double/conflicting respawns. Pick one respawn authority per mode.
+
+### 38. KotH charge decode — BLOCKED by a fire-vs-read catch-22 (key finding)
+Tried to decode the KotH charge/progress field (shoot the Hill, watch a beacon counter climb). **Blocked**
+by a config conflict now clearly identified: **all clean grenade-beacon captures were in BARE mode; every
+`minfire`/in-game run showed zero grenade frames.** Inference: **a spawned gun drops incoming IR that has
+no `$SIR` table entry** (silently), while a **bare/idle gun reports any IR as raw `$HIR`.** So firing
+(needs a spawned weapon) and reading the grenade beacon (needs bare) can't happen in the same config.
+Shooting the neutral Hill in minfire made it **flash white** (charge hit-ack) but it didn't capture to
+blue (aim — few shots landed on the grenade; the emitter must face the headset dome).
+**Fix for next time:** craft a **`$SIR` entry mapping grenade IR (protocol type 15) to "report, no
+effect"** so the gun fires AND surfaces grenade beacons in one config — then charge decode + live capture
+become straightforward. Also: a fixed mount aligning the grenade emitter to the headset removes the
+aim variance. Filed as refinement of B8/G6.
