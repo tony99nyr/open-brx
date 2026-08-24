@@ -13,6 +13,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 - **[mission-control-spec.md](mission-control-spec.md)** — operator console: scan → roster → teams → weapons → scoreboard. Includes the deathmatch gap analysis.
 - **[phone-app-spec.md](phone-app-spec.md)** — Callsign replacement (Web-Bluetooth PWA, per-player engine + HUD).
 - **[../hardware/brx-companion-spec.md](../hardware/brx-companion-spec.md)** — the per-tagger ESP32-S3 accessory (offline engine + powerups + audio + WiFi).
+- **[../hardware/print-files.md](../hardware/print-files.md)** — 3D print files: what exists (community-shared) vs the gap our `hardware/` can fill; asks tracked in FOLLOWUPS §Hardware.
 - **[brx-mcp-spec.md](brx-mcp-spec.md)** — the MCP server spec.
 - **[apk-investigation.md](apk-investigation.md)** — APK teardown plan (done; see results below).
 - **[mac-capture-plan.md](mac-capture-plan.md)** — Mac-only PacketLogger capture plan (mostly superseded by the APK teardown).

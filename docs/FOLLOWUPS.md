@@ -14,6 +14,22 @@ high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 | B4 | **Objective stations** (respawn / capture / pickup) | ⬜ designed | Two options: printed **QR codes** (Callsign's way, `apk-harvest.md`) and **IR boxes** (JBOX's way — emit the 25-bit/38 kHz BRX IR, `lasertagmods.md`). |
 | B5 | Fix `server.py` for **mcp 2.0** | 🟡 open | `mcp` 2.0 moved `mcp.server.fastmcp`; MCP-server mode broken, CLI unaffected. Pin `mcp<2` or port the decorators. |
 
+## Hardware / 3D printing (no public BRX print library exists — `hardware/print-files.md`)
+
+Major repos (Printables/Thingiverse/STLFinder/Cults) have **zero** BRX-specific models; community
+files are shared privately. Our MIT `hardware/` can become the canonical open library. Concrete asks:
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| H1 | **Reload-handle → push-button mod** STL | 🟡 highest demand | Clean-room design; **version-tag it** (older vs newer BRX handles differ — a known wrong-print trap). Community pays ~$35–50 for a 5-pack. Tutorial: youtube JUP5ixjEZHw. |
+| H2 | **D-pad replacement buttons** STL | 🟡 requested, unpublished | Button plastic cracks from wear; nobody has published one — good first contribution. |
+| H3 | **BRX Companion mount + ported audio enclosure** | ⬜ with B1 | Clips to rail/phone bracket, no gun mod; ported box for the speaker (`brx-companion-spec.md`). |
+| H4 | **Objective-station / effect-node enclosures** | ⬜ with B4 | Houses TSSP38 IR receiver + LED ring. |
+| H5 | Decorative **skins / covers** | ⬜ nice-to-have | Community interest (e.g. sniper body); currently only private SwapTX work. |
+
+**Blocker for all:** needs **caliper measurements** from Tony (reload-handle socket, D-pad button,
+rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/STEP), MIT.
+
 ## Protocol — still unknown (worth a capture or probe)
 
 | # | Item | Status | Method |
