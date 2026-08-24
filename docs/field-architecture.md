@@ -161,3 +161,56 @@ have a **live link during play**:
 3. Reserve a **field transport** only for modes needing real-time global consensus out of WiFi range.
 4. Establish a **common clock at game start**; require **per-player identity (P2)** for kill credit.
 Live feed is best-effort; final results are always complete — exactly prime directive #2.
+
+## Playing without WiFi on a large field — the station mesh + data mules
+
+Blanketing a big park in WiFi is unreasonable. You don't have to: **network the objectives, not the
+players.** Contested/shared state lives on a few *fixed* objects (2–3 control points, 2 flag bases,
+respawn points), not on the 20 roaming players — and few + fixed is cheap to network.
+
+### Smart, self-authoritative stations
+Each objective is an ESP32 IR station (the JBOX model, `reference/lasertagmods.md`) that is its own
+authority:
+- Players interact **locally over IR** (shoot the receiver / be in range) — instant, no network.
+- It shows state with an **LED ring in the owner's team colour** + a capture sound → players get
+  reliable truth on the spot with no server.
+- It tallies ownership/captures **locally** in flash.
+
+That alone makes Domination/CTF *playable* with zero field network (walk up, see who owns it;
+collect station logs at game end for the score).
+
+### A sparse long-range backbone among the stations (not WiFi)
+For a live HQ scoreboard + cross-objective coordination, give the *stations* a low-bandwidth
+long-range link. The contested state is tiny ("point A → red", "flag taken by blue") — **exactly
+LoRa's niche**. ~3 points + 2 bases + 1 HQ ≈ **6 LoRa nodes cover a large park** (LoRa ~1–2 km LOS),
+versus APs everywhere. The tagger's built-in **nRF** could be this link for free if usable (D1);
+LaserTagMods' NRFL-Bases do referee-free domination over nRF24 exactly this way.
+
+### Respawn stations as data-mule sync points (delay-tolerant networking)
+The elegant coverage trick: make **respawn stations double as data-capture/sync points.** Respawn
+points are chokepoints every player visits regularly (death is frequent), and the game mechanic
+(respawn *at* a point — as Generals/Commander/Swarm and QR-respawn already do) becomes the network:
+- A respawn station **authorizes respawn locally** (fixes "downed player never respawns out of
+  range"), has a **short-range link to the docking player node** (BLE/ESPNOW/IR), and a **long-range
+  link to HQ** (LoRa/nRF).
+- **Docking = a sync transaction:** the station pulls the player's buffered events (kills/deaths/
+  pickups), relays them to HQ, and pushes back current state (score, objective ownership, respawn
+  grant, orders). Players are **data mules** — their movement carries data across the park.
+- **Sync latency ≈ the respawn interval** (seconds–minutes): near-live for a scoreboard, and clean
+  for reconciliation (locally-authoritative events reach HQ within a cycle).
+- It also **fixes two reconciliation problems**: docking re-syncs the node **clock** to HQ time
+  (kills clock-skew), and HQ seeing everyone's events within a cycle makes **kill-attribution-by-
+  timing-correlation** feasible even before per-tagger `PlayerID` is set.
+
+### The layered result (large park, no WiFi, no per-player long-range radio)
+1. Stations self-authoritative + local IR/LED/sound — **always works**.
+2. Few fixed stations (objective + respawn) on a **LoRa/nRF backbone** — live HQ scoreboard, ~6–10
+   radios total.
+3. Players **mule** their own event logs between stations as they respawn/restock — near-live,
+   reconcilable coverage of the whole field.
+
+**Caveats:** a player who never dies never syncs (mitigate: sync at ammo/pickup stations too, a
+voluntary-dock prompt, or a staleness timeout); objective ownership that must be *live at HQ this
+instant* relies on the objective station's own LoRa link, not muling (fine — few fixed nodes).
+**Optional upgrade:** put LoRa on each player node (full JEDGE model) for instant field-wide
+callouts (~$10/player) — only if live global announcements matter more than the cost.
