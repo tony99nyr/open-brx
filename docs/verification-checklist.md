@@ -54,6 +54,9 @@ The whole M0 engine is tested in software but never driven on real guns.
 - ⬜ **CTF** — GRAB/CAP/DROP events (team is the explicit station token) → captures; a CAP only scores if that
   team is carrying (per-team `held`); DROP returns the flag. (Needs G9 flag team-assign resolved on the grenade.)
 - ⬜ **CS/objective events** — the CS engine + Domination/KotH/CTF need a station/grenade to emit plant/capture/hold. Wire the objective device to feed the engines (needs the Utility Box or the grenade's IR decoded).
+- ⬜ **Extraction live** — `play extraction <A> <B> <C>` runs the flagship engine on the driver (FFA teams,
+  host respawn, loud channel alarm). Needs the station to feed `ZONE`/`LEAVE`/`LOOT`/`PICKUP`; the combat
+  half (kill drops loot, killer gains kill-loot) runs off the gun stream today.
 - ⬜ **Grenade G9/G10** — CTF flag team-assign (turned red not team colour); `$GREN` thrown-blast on a paired grenade.
 
 ## Session G — phones (Android phone + tagger, ~30 min) — G4, gates M2

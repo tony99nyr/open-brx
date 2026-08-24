@@ -28,6 +28,7 @@ from .objectives import DominationEngine, CtfEngine
 from .driver import GameDriver, build_engine, run_live
 # Extraction engine + its non-colliding data classes (config/game/results).
 from .extraction import ExtractionConfig, ExtractionGame
+from .extraction_adapter import ExtractionEngineAdapter
 
 __all__ = [
     # M0 base actions + interface
@@ -39,5 +40,5 @@ __all__ = [
     "DominationEngine", "CtfEngine",
     "GameDriver", "build_engine", "run_live",
     # extraction (import its Actions from .extraction directly)
-    "ExtractionConfig", "ExtractionGame",
+    "ExtractionConfig", "ExtractionGame", "ExtractionEngineAdapter",
 ]

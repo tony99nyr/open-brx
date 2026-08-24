@@ -108,6 +108,13 @@ class GameConfig:
     score_target: int = 0            # domination: point-seconds to win (0 = time only)
     cap_target: int = 3              # ctf: flag captures to win
 
+    # -- extraction mode ----------------------------------------------------- #
+    channel_s: float = 45.0          # time to hold the extraction point
+    win_target: int = 0              # banked value to win (0 = host ends; else score_target)
+    loot_per_kill: int = 10          # loot a killer gains per kill
+    drop_policy: str = "ground"      # dropped-loot policy: ground | killer | pool
+    extract_removes_player: bool = True   # extracting leaves the raid (else respawn clean)
+
     # -- health variants (host-driven, confirmed via $LIFE — exp-log #33) ----- #
     syphon: bool = False              # heal the killer on each kill (Fortnite/CoD)
     syphon_armor: int = 30            # armor granted to the killer per kill

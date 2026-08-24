@@ -14,6 +14,7 @@
   python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
   python -m brx_mcp game-sim [mode]               # narrated M0 game demo (tdm|ffa|infection|lms; no BLE)
   python -m brx_mcp play <mode> <addr...> [k=v]   # run a configured game LIVE (k=v: volume, outdoor, hp, ...)
+      modes: tdm ffa infection lms cs domination koth ctf extraction
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
@@ -876,6 +877,8 @@ def _build_config(mode: str, kvs: list[str]):
         cur = getattr(cfg, k)
         if isinstance(cur, bool):
             val = v not in ("0", "false", "False", "no", "off")
+        elif isinstance(cur, float):
+            val = float(v)
         elif isinstance(cur, int) or (cur is None and k in ("respawns", "game_time_s")):
             val = int(v)
         else:

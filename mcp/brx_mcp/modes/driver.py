@@ -38,8 +38,8 @@ def assign_teams(mode: str, addresses: list[str],
     for i, addr in enumerate(addresses):
         if addr in explicit:
             out[addr] = explicit[addr]
-        elif mode == "ffa":
-            out[addr] = i + 1
+        elif mode in ("ffa", "extraction"):
+            out[addr] = i + 1                  # unique team → 1:1 kill attribution
         elif mode in ("infection", "survival"):
             out[addr] = 2 if i == 0 else 1     # first gun = the single seed infected
         else:
@@ -71,8 +71,11 @@ def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
         return DominationEngine(dataclasses.replace(config, control_points=1), now)
     if m == "ctf":
         return CtfEngine(config, now)
+    if m == "extraction":
+        from .extraction_adapter import ExtractionEngineAdapter
+        return ExtractionEngineAdapter(config, now)
     raise ValueError(f"unknown mode {m!r} "
-                     "(tdm|ffa|infection|lms|cs|domination|koth|ctf)")
+                     "(tdm|ffa|infection|lms|cs|domination|koth|ctf|extraction)")
 
 
 class GameDriver:

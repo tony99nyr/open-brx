@@ -50,10 +50,14 @@ Pure rules engines — consume the parsed event stream + clock ticks, emit `Acti
   if that team is carrying; DROP returns the flag). Station device feeds `CAPTURE`/`GRAB`/`CAP`/`DROP`
   with the team as an explicit token (garbage/zero team ignored — never fabricates a phantom team).
 - **`extraction.py`** — the flagship raid-and-extract engine (own richer action set + narrated sim).
+  **`extraction_adapter.py`** wraps it behind the uniform interface so `play extraction <guns…>` runs it
+  on the same live driver as every other mode (FFA teams → 1:1 kill attribution; station feeds
+  `ZONE`/`LEAVE`/`LOOT`/`PICKUP`; its actions translate to base Score/PlaySound/GameOver).
 
 **Combat modes** (TDM/FFA/infection/LMS) score off the gun `$HIR`/`$HP` stream — playable today.
-**Objective modes** (CS/Domination/KotH/CTF) additionally need a station device (Utility Box / grenade)
-to emit the objective events — the engines are done; the event source is the hardware piece.
+**Objective modes** (CS/Domination/KotH/CTF/Extraction) additionally need a station device (Utility Box /
+grenade / phone) to emit the objective events (zones/loot/capture) — the engines are done; the event
+source is the hardware piece.
 
 Engine interface: `add_player(id, team)`, `on_event(id, ev, now)`, `tick(now)`, `snapshot()`. Actions
 (`base.py`): `SendFrame, Respawn, Heal, SetTeam, PlaySound, Callout, Score, Eliminate, GameOver`.
@@ -74,10 +78,11 @@ python -m brx_mcp play <mode> <addr...> [k=v ...]          # LIVE on taggers
    e.g. play tdm FE:AD:.. D8:AE:.. game_time_s=180 respawn_s=10 volume=85 outdoor=1
         play ffa <a> <b> <c> primary=charge frag_limit=15
         play infection <a> <b> <c> kid_mode=1
+        play extraction <a> <b> <c> channel_s=30 win_target=100 drop_policy=ground
 ```
 
 ## Status
-Built + polish-looped; **68 unit tests** green (config, modes, driver, extraction, diag, irbridge,
+Built + polish-looped; **108 unit tests** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
 diagnostics). **Not yet run on hardware** — that's the next step (needs 1–2 taggers; the live path is
 `run_live`/`play`). Native multikill/streak sounds come from the firmware (D4); custom announcers layer
 on via `PlaySound`/`Callout`. What each mode needs + its limits: `mode-limits.md`; the sequencing:
