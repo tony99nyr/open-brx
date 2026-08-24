@@ -500,6 +500,26 @@ is stable), one token varied at a time, and the operator naming the colour each 
 Motivation for solving it: free-for-all has no teams, so a neutral LED (white) is wanted,
 while team modes need red/green/blue — the engine needs both.
 
+### RESOLVED (same day): LED colour comes from `$TID`, not `$GLED`
+
+Two taggers were given identical configs differing **only** in team id — `$TID,1,*` vs
+`$TID,2,*`, with no `$GLED` sent at all — and they lit **different colours**:
+
+| `$TID` | Observed LED |
+|---|---|
+| 1 | blue |
+| 2 | yellow |
+
+**Hypothesis 2 above is confirmed: the LED is team-derived.** That is why walking
+`$GLED`'s supposed `<r>,<g>,<b>` tokens produced nonsense — those knobs do not control
+colour. Corroborated by the earlier §7i probe, which ran on a tagger whose default team
+was already blue and reported blue almost throughout.
+
+**Still unknown:** the full team→colour table, what `$GLED`'s tokens actually do, and
+whether a neutral/no-team colour exists. **Next test: `$TID,0,*`** — free-for-all has no
+teams, so if a null team yields white that is the semantically correct way to set an FFA
+LED rather than forcing a colour.
+
 ## 7j. `$ALCD` decoded — ammo/weapon HUD stream (verified 2026-08-23)
 
 From a two-minute FFA run with three weapons loaded (`deathmatch` command).

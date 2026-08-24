@@ -6,6 +6,7 @@
   python -m brx_mcp listen <address> [seconds]   # read-only live console
   python -m brx_mcp startgame <address> [seconds] [respawn_s] [volume]
   python -m brx_mcp deathmatch <address> [minutes] [respawn_s] [volume] [weapon]
+  python -m brx_mcp arena <addr1> <addr2> [...] [minutes] [respawn_s] [volume] [weapon]
 """
 
 from __future__ import annotations
@@ -371,6 +372,115 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
           file=sys.stderr)
 
 
+async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
+                 volume: int = 69, weapon: str = "primary") -> None:
+    """Run one game across several taggers from a single host.
+
+    Each tagger gets the same config but a distinct `$TID` (team id), which is
+    also the experiment §7f could not run: with two players on default ids every
+    `$HIR` read `1,1`, so shooter attribution stayed unconfirmed. Distinct ids
+    should make the difference visible in the hit frames.
+    """
+    from .ble import ConnectionManager
+    if weapon not in WEAPON_TAILS:
+        print(f"unknown weapon {weapon!r}; choose from: {', '.join(WEAPONS)}",
+              file=sys.stderr)
+        sys.exit(2)
+
+    mgr = ConnectionManager()
+    guns = loadout(weapon)
+    pri_mag, pri_res = WEAPON_AMMO[weapon]
+    sec_name = next(n for n in WEAPON_TAILS if weap(1, n) == guns[1])
+    sec_mag, sec_res = WEAPON_AMMO[sec_name]
+
+    players = [(f"p{i}", addr, i + 1) for i, addr in enumerate(addresses)]
+    stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
+             for a, _, _ in players}
+
+    for alias, addr, tid in players:
+        print(f"connecting {alias} (team {tid}) -> {addr}", file=sys.stderr)
+        await mgr.connect(addr, alias)
+
+    async def push(alias: str, cmds: list[str]) -> None:
+        for cmd in cmds:
+            await mgr.send(alias, cmd, reply_window_ms=350)
+
+    try:
+        for alias, _addr, tid in players:
+            config = [volume_cmd(volume)]
+            for frame in GAME_CONFIG:
+                if frame.startswith("$WEAP,0,"):
+                    config.extend(guns)
+                elif frame.startswith("$WEAP,"):
+                    continue
+                else:
+                    config.append(frame)
+            config.append(f"$TID,{tid},*")     # distinct team per tagger
+            print(f"--- configuring {alias} (team {tid})", file=sys.stderr)
+            await push(alias, config)
+
+        for alias, _addr, _tid in players:
+            await push(alias, ["$SPAWN,,*",
+                               f"$AMMO,0,{pri_mag},{pri_res},1,*",
+                               f"$AMMO,1,{sec_mag},{sec_res},1,*",
+                               "$BMAP,0,0,,,,,*"])
+            print(f"--- {alias} LIVE", file=sys.stderr)
+
+        ends_at = time.monotonic() + minutes * 60
+        print(f"\n*** ARENA LIVE — {len(players)} taggers, {minutes} min ***\n",
+              file=sys.stderr)
+        seqs = {a: mgr.sessions[a].seq for a, _, _ in players}
+        dead_at: dict[str, float | None] = {a: None for a, _, _ in players}
+
+        while time.monotonic() < ends_at:
+            await asyncio.sleep(1)
+            for alias, _addr, _tid in players:
+                for ev in mgr.get_events(alias, since_seq=seqs[alias])["events"]:
+                    seqs[alias] = ev["seq"]
+                    if ev["direction"] != "rx":
+                        continue
+                    raw = ev["raw"]
+                    if raw.startswith("$HIR,"):
+                        stats[alias]["hits"] += 1
+                        stats[alias]["hir"].append(raw)
+                        print(f"[{alias}] HIT  {raw}", flush=True)
+                    elif raw.startswith("$HP,0,") and dead_at[alias] is None:
+                        stats[alias]["deaths"] += 1
+                        dead_at[alias] = time.monotonic()
+                        print(f"[{alias}] ** DOWN — respawn in {respawn_s}s",
+                              file=sys.stderr)
+                    elif raw.startswith("$HP,"):
+                        print(f"[{alias}] {raw}", flush=True)
+
+                if (dead_at[alias] is not None
+                        and time.monotonic() - dead_at[alias] >= respawn_s):
+                    if ends_at - time.monotonic() > 5:
+                        await push(alias, RESPAWN_SEQUENCE)
+                        stats[alias]["respawns"] += 1
+                        seqs[alias] = mgr.sessions[alias].seq
+                    dead_at[alias] = None
+
+        print("\n*** TIME ***", file=sys.stderr)
+        for alias, _addr, tid in players:
+            s = stats[alias]
+            print(f"  {alias} (team {tid}): hits {s['hits']}  deaths "
+                  f"{s['deaths']}  respawns {s['respawns']}", file=sys.stderr)
+            uniq = sorted(set(s["hir"]))
+            for u in uniq[:6]:
+                print(f"      distinct $HIR: {u}", file=sys.stderr)
+    finally:
+        for alias, _addr, _tid in players:
+            try:
+                await push(alias, END_SEQUENCE)
+            except Exception as e:  # noqa: BLE001 — link may already be gone
+                print(f"({alias} teardown skipped: {type(e).__name__})",
+                      file=sys.stderr)
+            try:
+                await mgr.disconnect(alias)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 async def _diag(address: str) -> None:
     """Output-command diagnostics using the official app's connect ritual
     (captured via HCI snoop): STOP → PLAYX → VOL → PLAY VA20. No $PHONE.
@@ -475,6 +585,14 @@ def main() -> None:
                                 int(args[3]) if len(args) > 3 else 15,
                                 int(args[4]) if len(args) > 4 else 69,
                                 args[5] if len(args) > 5 else "primary"))
+    elif cmd == "arena" and len(args) > 2:
+        addrs = [a for a in args[1:] if "-" in a and len(a) > 20]
+        rest = [a for a in args[1 + len(addrs):]]
+        asyncio.run(_arena(addrs,
+                           int(rest[0]) if len(rest) > 0 else 3,
+                           int(rest[1]) if len(rest) > 1 else 15,
+                           int(rest[2]) if len(rest) > 2 else 69,
+                           rest[3] if len(rest) > 3 else "primary"))
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
     else:
