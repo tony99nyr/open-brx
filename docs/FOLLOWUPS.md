@@ -13,6 +13,7 @@ high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 | B3 | **Mission Control** (scan → assign games/teams/weapons → live scoreboard) | 🟡 spec'd | `docs/mission-control-spec.md`. The operator console. |
 | B4 | **Objective stations** (respawn / capture / pickup) | ⬜ designed | Two options: printed **QR codes** (Callsign's way, `apk-harvest.md`) and **IR boxes** (JBOX's way — emit the 25-bit/38 kHz BRX IR, `lasertagmods.md`). |
 | B5 | Fix `server.py` for **mcp 2.0** | 🟡 open | `mcp` 2.0 moved `mcp.server.fastmcp`; MCP-server mode broken, CLI unaffected. Pin `mcp<2` or port the decorators. |
+| B7 | **Serial-console backend** (pyserial) for `brx-mcp` | 🟡 | Open the tagger's USB COM port to run `QUERY` (read the device record incl. `PlayerID`) and `SETUP` (set tagger ID / re-pair). Feeds Mission Control diagnostics (§1 USB dump) **and** P2 (set per-player identity at bench prep). It's a serial terminal, not SSH. |
 
 ## Hardware / 3D printing (no public BRX print library exists — `hardware/print-files.md`)
 
@@ -43,7 +44,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | # | Item | Status | Method |
 |---|---|---|---|
 | P1 | `$WEAP` ~6 secondary-fire token positions (7–13) | 🟡 | **Confirmed not static** (server-fetched, `apk-harvest.md`). Field names/order known; pin wire positions via a one-field Callsign BLE capture, or the server API response. |
-| P2 | Per-player identity (not just team) | 🟡 | `$HIR` gives shooter **team**; FFA scoring needs player id. `QUERY` shows a device `PlayerID` we've never set; JEDGE numbers players from **1901** (`lasertagmods.md`) — find the set command |
+| P2 | Per-player identity (not just team) | 🟡 lead found | `$HIR` gives shooter **team** only; FFA scoring needs a player id. The **`QUERY` record has a `PlayerID` field (reads 0 — never set)**, and the **`SETUP` serial-console command (PuTTY over USB) is how you set the tagger ID** (community/Jay Burden: "run serial comms and change tagger ID"). Next: walk the `SETUP` prompts to set `PlayerID`, verify via `QUERY`, then check `$HIR`/`$DD` carry it. See `brx-protocol.md` §QUERY/SETUP. |
 | P3 | `$PSET` voice-pack token→sound mapping | ⬜ | **Server-side** — it's the Callsign `voice-profiles` endpoint (`apk-harvest.md`). Get it from the API capture, or change one voice profile and diff the `$PSET`. |
 | P8 | **Callsign server API capture** (gun-off) | 🟡 NEW | MITM the app's HTTPS (`/api/v1/callsign/settings`, `voice-profiles`, `arenas/games`) → yields weapon stats, voice-pack presets, game defs directly. Needs proxy + cert on the phone, not the gun. Distinct from BLE snooping. Answers P1/P3 + weapon stats at once. |
 | P4 | `$AS` / `$UP` semantics | ⬜ | `$AS` token 8 = applicator (99=all, 0=local) per LaserTagMods; `$UP,*` bare gets no reply |

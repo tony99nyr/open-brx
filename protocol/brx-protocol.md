@@ -239,10 +239,18 @@ behaved identically. The port disappears on unplug and returns on replug.
 **The `$` protocol does not work over USB.** Every `$` frame is rejected. This port is a
 different interface entirely.
 
-### What DOES work: `QUERY` and `SETUP`
+### What DOES work: `QUERY` and `SETUP` (the "PuTTY" serial console)
 
-The command set came from LaserTagMods' "Pairing Headset and Tagger" note, not from
-guessing. Both are case-insensitive; a CR terminator is required.
+**This is a USB serial console, NOT SSH.** The tagger has no network stack. The micro-USB
+"Programming Port" is the **Teensy's USB CDC serial port**, so it enumerates as a COM port
+(Windows: `COMx`; macOS: `/dev/tty.usbmodem*`; Linux: `/dev/ttyACM*`). You open it with **PuTTY in
+*Serial* mode** (or `screen`/`minicom`, or our `brx-mcp` via pyserial) — this is what the community
+means by "PuTTY into the tagger." It's a plain serial terminal, not a login/shell/SSH; baud is
+arbitrary (USB CDC ignores it). Commands are **case-insensitive** and need a **CR** terminator.
+This is a *different* USB mode from the mass-storage disk (SELECT-hold-at-boot) used for firmware/
+sound files — a normal connection gives the serial console.
+
+The command set came from LaserTagMods' "Pairing Headset and Tagger" note, not from guessing.
 
 **`QUERY`** — read-only, dumps the whole device record:
 
@@ -291,6 +299,21 @@ reset anything on entry.
 
 `SETUP` does **not** appear to expose `devHost` or the BT role; it only asked for the SN.
 Whether later prompts do is unknown — we stopped rather than commit a pairing change.
+
+**"Reset everything" / "change tagger ID" (community, Jay Burden):** this is the `SETUP` path —
+"plug the tagger USB into a PC, run serial comms, and change the tagger ID." `SETUP` is the
+factory-provisioning/reset flow; it re-enters IDs and the headset-pairing PIN. The `QUERY` dump
+exposes the writable identity fields: **`PlayerID`** (ours reads `0` — never set), **`FieldID`**,
+**`Serial Number/Head PIN`**, and **`Grenade Pin`**. So the serial console is how you set a tagger's
+identity and re-pair its headset/grenade — a full re-provision, not a networked reset.
+
+**This is the lead on per-player identity (followup P2).** FFA per-player scoring needs a unique
+player id per tagger; `$HIR` only carries the *team*. The `PlayerID` in the `QUERY` record is
+almost certainly what identifies a shooter, and **`SETUP` is how you set it** — walk the full
+`SETUP` prompt sequence (carefully; it commits pairing/ID changes) to confirm it writes `PlayerID`,
+then `QUERY` to verify. Next step for P2, and a good candidate for a `brx-mcp` **serial-console
+backend** (pyserial: open the COM port, run `QUERY`/`SETUP` programmatically) so Mission Control can
+read *and set* tagger identity over USB at bench-prep time.
 
 ### Firmware backup: impossible
 
