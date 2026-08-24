@@ -4,15 +4,13 @@ Open-source platform orchestrating Battle Company BRX laser taggers. Specs:
 `docs/brx-architecture-v0.2.md` (master plan), `docs/brx-mcp-spec.md`,
 `protocol/brx-protocol.md` (serial command reference — the ground truth for all tagger I/O).
 
-**Before any hardware/protocol work, read:** `docs/experiment-log.md` (what's been tried,
-what happened — append your own results after each session), `docs/reference/brx-manual-notes.md`
-(distilled official manual). APK intelligence: `protocol/callsign-extract/` — `protocol-classes.md` (command/field maps, WEAP token positions), `apk-harvest.md` (game modes, QR stations, weapon spawns, grenade). Accessory: `hardware/brx-companion-spec.md`,
-`docs/HANDOFF.md` (current cross-machine state), `docs/field-architecture.md`
-(how a real out-of-range match works — read before designing game logic),
-`docs/apk-investigation.md` (highest-leverage desk work, no hardware needed), and
-`docs/mac-capture-plan.md`
-(experiments only the MacBook can run — Callsign is iOS-only, PacketLogger is
-macOS-only). Full manual PDF: `docs/reference/`.
+**Start with [`docs/README.md`](docs/README.md)** — the docs index. Before any hardware/protocol
+work also read `docs/HANDOFF.md` (current state), `docs/experiment-log.md` (lab notebook — **append
+after every session**), and `docs/FOLLOWUPS.md` (consolidated open work). Ground truth:
+`protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
+token positions, 2166-id sound bank, game modes, grenade). System specs: `mission-control-spec.md`,
+`phone-app-spec.md`, `hardware/brx-companion-spec.md`. Community/JEDGE facts:
+`docs/reference/lasertagmods.md` + `community-notes.md`.
 
 ## Hard rules
 

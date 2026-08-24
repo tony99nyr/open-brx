@@ -126,6 +126,27 @@ toggled by what's populated.
   protocol. The Companion firmware lives in `firmware/bridge/` (this spec supersedes the bare
   "bridge" sketch in the architecture doc).
 
+## How it fits the system (the three pieces)
+
+The Companion is one of three complementary pieces — see `docs/mission-control-spec.md` and
+`docs/phone-app-spec.md`:
+
+| Piece | Role | For |
+|---|---|---|
+| **BRX Companion** (this) | per-player engine + powerups + audio, **hardware** | owned fleets, no phones, rugged/loud, out-of-range play |
+| **Phone app** | per-player engine + HUD, **software** (Web-Bluetooth PWA) | BYOD / casual players |
+| **Mission Control** | operator console: scan → roster → teams → weapons → scoreboard | the game master |
+
+The Companion and the phone app are **interchangeable per-player nodes** — a match can mix them.
+All three share the decoded protocol (`protocol/callsign-extract/`), the `brx-mcp` command layer,
+and the MQTT bus. Mission Control assigns loadout/team/mode; the Companion executes and reports.
+
+**Community validation:** LaserTagMods' proven mount is exactly this shape — a USB power bank +
+ESP32 riding the phone bracket, no permanent gun modification, ~15 h on a 5000 mAh pack
+(`docs/reference/lasertagmods.md`, `community-notes.md`). The Companion adds audio, HUD, and the
+decoded-powerup layer on top of that validated base. It also fills the community's #1 complaint —
+no on-device scoring / "how do I see my score?" — by being the score-keeper and HUD per player.
+
 ## Open hardware questions (before a build)
 
 - Wi-Fi + BLE coexistence throughput under real load — measure; may want BLE-priority.

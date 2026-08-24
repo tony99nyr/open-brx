@@ -1,0 +1,65 @@
+# Followups — consolidated & prioritised
+
+Single source of truth for open work. Supersedes the scattered A–G lists in
+`experiment-log.md` (kept there for history). Updated 2026-08-24. Status: ✅ done · 🔴 blocking /
+high value · 🟡 useful · ⬜ open · ❎ closed as answered.
+
+## Build (hardware/software the platform needs)
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| B1 | **BRX Companion accessory** (ESP32-S3 rider: offline engine + powerups + audio + WiFi) | 🔴 spec'd, not built | `hardware/brx-companion-spec.md`. Prototype Tier-0 "Brain" first; validate powerup command sequences ($LIFE/$WEAP re-push/$AMMO) on hardware. Community-proven mount pattern (power-bank + ESP32 on phone bracket, no gun mod). |
+| B2 | **Phone app** to replace Callsign | 🟡 spec'd | `docs/phone-app-spec.md`. Web-Bluetooth PWA on Android; the per-player game engine + HUD. |
+| B3 | **Mission Control** (scan → assign games/teams/weapons → live scoreboard) | 🟡 spec'd | `docs/mission-control-spec.md`. The operator console. |
+| B4 | **Objective stations** (respawn / capture / pickup) | ⬜ designed | Two options: printed **QR codes** (Callsign's way, `apk-harvest.md`) and **IR boxes** (JBOX's way — emit the 25-bit/38 kHz BRX IR, `lasertagmods.md`). |
+| B5 | Fix `server.py` for **mcp 2.0** | 🟡 open | `mcp` 2.0 moved `mcp.server.fastmcp`; MCP-server mode broken, CLI unaffected. Pin `mcp<2` or port the decorators. |
+
+## Protocol — still unknown (worth a capture or probe)
+
+| # | Item | Status | Method |
+|---|---|---|---|
+| P1 | `$WEAP` ~6 always-empty token positions | 🟡 | one-field Callsign capture (change one, diff) — trivial now we have field names (`protocol-classes.md`) |
+| P2 | Per-player identity (not just team) | 🟡 | `$HIR` gives shooter **team**; FFA scoring needs player id. `QUERY` shows a device `PlayerID` we've never set; JEDGE numbers players from **1901** (`lasertagmods.md`) — find the set command |
+| P3 | `$PSET` voice-pack token→line mapping | ⬜ | change one audio token, hear which line changes |
+| P4 | `$AS` / `$UP` semantics | ⬜ | `$AS` token 8 = applicator (99=all, 0=local) per LaserTagMods; `$UP,*` bare gets no reply |
+| P5 | `$HIR` `45,0,0` / `70,0,0` variants; per-weapon IR protocol | ⬜ | fire each slot deliberately, watch token 1; numbers equal starting HP/armor |
+| P6 | Results read-back after a game | ❎ | Gun keeps **no score** (§7n). There is nothing to read; the host/phone is the only score-keeper. **Do not probe `$SP`** (half the panic sequence). |
+| P7 | `$SFLASH,*` | ⬜ | app sends periodically, no args — try in isolation |
+
+## Grenade (followup F — HIGH INTEREST, never touched on hardware)
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| G1 | Confirm `$GREN` config path | 🔴 | Mode is pushable via `$GREN` to the **gun** (FlashBang/Gas/Confusion/Molotov, `apk-harvest.md`). Test: does it take effect immediately or only while a grenade is "loaded"/tapped to the gun's IR? |
+| G2 | Is the grenade BLE-visible? | ⬜ | scan with a grenade powered on (protocol §7 still lists unknown) |
+| G3 | Capture the app configuring a grenade | 🟡 | PacketLogger while Callsign sets a grenade → exact `$GREN` |
+| G4 | Grenade firmware `.bin` flashing procedure | ⬜ | community wants it too; undocumented. Grenade enables CTF/KotH/Assault — "scary music" = CTF flag music (`community-notes.md`) |
+| G5 | Build a clean grenade-config UI | 🟡 | in Mission Control / MCP — the "better way to configure it" the buggy on-gun menu lacks |
+
+## Field-range / transport (followup D — the way to scale)
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| D1 | **Probe the nRF radio** | 🔴 | `QUERY` reports `NRFhost 1`/`NRFslave 1`; LaserTagMods ship NRFL-Bases on nRF24L01. **The BRX may already carry a long-range radio** — if so the range problem has a native answer. Highest-upside unknown. |
+| D2 | Transport layer pluggable | 🟡 | design for BLE now, LoRa (RYLR896) / ESPNOW later (`lasertagmods.md`). The Companion's WiFi/MQTT covers most fields. |
+
+**Range problem itself is ❎ answered:** BLE can't support out-of-range play because the gun holds
+no state (§7n). The fix is a device *on* each player (the Companion / a phone) — not a better
+courtside radio. That reframes D1 as "is there a bonus native radio" rather than "how do we reach
+the field."
+
+## Done (for reference)
+
+- ✅ Remote game start (`$SPAWN,,*` + `$AMMO` + `$BMAP`), two-tagger arena, `$HIR` team attribution
+- ✅ `$GSET` map (hardware-confirmed), `$WEAP` token positions, `$PSET`/all command field maps
+- ✅ Complete 2166-id sound bank (retired the mic-sweep dead end)
+- ✅ Game modes, QR-station system, weapon-spawn types, grenade modes (APK harvest)
+- ✅ Headset re-pair procedure recovered (`community-notes.md`) — the fix for the lockout that blocks firing
+- ✅ Link stability (retry 5×; connecting is 1-in-3 flaky, holding is fine)
+
+## Snooping — do we need more?
+
+Mostly no. The APK teardown replaced most capture work (it gave the field maps directly). The few
+captures still worth doing are **targeted, one-setting**: P1 ($WEAP empty tokens), P3 (PSET voice
+pack), G3 (grenade). A full end-of-game capture would settle P4/P7. No broad "watch the app" sweep
+is needed anymore.
