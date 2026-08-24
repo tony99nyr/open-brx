@@ -7,6 +7,8 @@
   python -m brx_mcp startgame <address> [seconds] [respawn_s] [volume]
   python -m brx_mcp deathmatch <address> [minutes] [respawn_s] [volume] [weapon]
   python -m brx_mcp arena <addr1> <addr2> [...] [minutes] [respawn_s] [volume] [weapon]
+  python -m brx_mcp fieldstart <addr...> [volume] [weapon]   # start, then disconnect
+  python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
 """
 
 from __future__ import annotations
@@ -495,6 +497,91 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
                 pass
 
 
+async def _fieldstart(addresses: list[str], volume: int = 69,
+                      weapon: str = "primary") -> None:
+    """Configure + spawn taggers, then DISCONNECT and leave them running.
+
+    The experiment behind the range problem (followups A): does a tagger keep
+    playing once the host goes away? Everything we have built so far assumes the
+    laptop stays in BLE range, which it will not on a real field.
+    """
+    from .ble import ConnectionManager
+    mgr = ConnectionManager()
+    guns = loadout(weapon)
+    pri_mag, pri_res = WEAPON_AMMO[weapon]
+    sec_name = next(n for n in WEAPON_TAILS if weap(1, n) == guns[1])
+    sec_mag, sec_res = WEAPON_AMMO[sec_name]
+    players = [(f"p{i}", a, i + 1) for i, a in enumerate(addresses)]
+
+    async def push(alias, cmds):
+        for c in cmds:
+            await mgr.send(alias, c, reply_window_ms=350)
+
+    for alias, addr, tid in players:
+        print(f"connecting {alias} (team {tid})", file=sys.stderr)
+        await mgr.connect(addr, alias)
+
+    def cfg(tid):
+        out = [volume_cmd(volume)]
+        for f in GAME_CONFIG:
+            if f.startswith("$WEAP,0,"):
+                out.extend(guns)
+            elif f.startswith("$WEAP,") or f.startswith("$PLAY,VA81"):
+                continue
+            else:
+                out.append(f)
+        out.append(f"$TID,{tid},*")
+        return out
+
+    await asyncio.gather(*(push(a, cfg(t)) for a, _, t in players))
+    print("--- 3... 2... 1...", file=sys.stderr)
+    await asyncio.gather(*(push(a, ["$PLAY,VA81,4,6,,,,,*"])
+                           for a, _, _ in players))
+    await asyncio.sleep(2.8)
+    await asyncio.gather(*(push(a, ["$SPAWN,,*",
+                                    f"$AMMO,0,{pri_mag},{pri_res},1,*",
+                                    f"$AMMO,1,{sec_mag},{sec_res},1,*",
+                                    "$BMAP,0,0,,,,,*"]) for a, _, _ in players))
+    print("--- ALL LIVE", file=sys.stderr)
+    for alias, _a, _t in players:
+        await mgr.disconnect(alias)
+    print("\n*** HOST DISCONNECTED — taggers are on their own ***\n"
+          "Go play out of range, then run:  python -m brx_mcp fieldresults <addrs...>",
+          file=sys.stderr)
+
+
+async def _fieldresults(addresses: list[str], listen_s: int = 12) -> None:
+    """Reconnect after a field game and report whatever the taggers still know.
+
+    Read-mostly on purpose: `$SP` is NOT sent, because $SP,99,* is half the panic
+    sequence and would end a game rather than report on one. This connects,
+    listens for anything unsolicited, then asks only for state we know is safe.
+    """
+    from .ble import ConnectionManager
+    mgr = ConnectionManager()
+    for i, addr in enumerate(addresses):
+        alias = f"p{i}"
+        print(f"\n=== {alias}  {addr} ===", file=sys.stderr)
+        try:
+            await mgr.connect(addr, alias)
+        except Exception as e:  # noqa: BLE001
+            print(f"  UNREACHABLE: {type(e).__name__}: {e}", file=sys.stderr)
+            continue
+        print(f"  connected — listening {listen_s}s (press buttons / pull the "
+              f"trigger to show whether it is still in a game)", file=sys.stderr)
+        seq = mgr.sessions[alias].seq
+        for _ in range(listen_s):
+            await asyncio.sleep(1)
+            for ev in mgr.get_events(alias, since_seq=seq)["events"]:
+                seq = ev["seq"]
+                if ev["direction"] == "rx":
+                    print(f"  << {ev['raw']}", flush=True)
+        r = await mgr.send(alias, "$PING,*", reply_window_ms=1200)
+        print(f"  ping: {[x['raw'] for x in r['replies_within_window']]}",
+              file=sys.stderr)
+        await mgr.disconnect(alias)
+
+
 async def _diag(address: str) -> None:
     """Output-command diagnostics using the official app's connect ritual
     (captured via HCI snoop): STOP → PLAYX → VOL → PLAY VA20. No $PHONE.
@@ -607,6 +694,16 @@ def main() -> None:
                            int(rest[1]) if len(rest) > 1 else 15,
                            int(rest[2]) if len(rest) > 2 else 69,
                            rest[3] if len(rest) > 3 else "primary"))
+    elif cmd in ("fieldstart", "fieldresults") and len(args) > 1:
+        addrs = [a for a in args[1:] if "-" in a and len(a) > 20]
+        rest = args[1 + len(addrs):]
+        if cmd == "fieldstart":
+            asyncio.run(_fieldstart(addrs,
+                                    int(rest[0]) if rest else 69,
+                                    rest[1] if len(rest) > 1 else "primary"))
+        else:
+            asyncio.run(_fieldresults(addrs,
+                                      int(rest[0]) if rest else 12))
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
     else:
