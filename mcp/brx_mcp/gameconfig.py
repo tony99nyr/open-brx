@@ -97,6 +97,13 @@ class GameConfig:
     armor: int = 70
     shield: int = 70                  # ⚠ shield pool inactive until activated (P16)
 
+    # -- health variants (host-driven, confirmed via $LIFE — exp-log #33) ----- #
+    syphon: bool = False              # heal the killer on each kill (Fortnite/CoD)
+    syphon_armor: int = 30            # armor granted to the killer per kill
+    syphon_hp: int = 0
+    regen: bool = False               # Halo-style: refill after no damage for a delay
+    regen_delay_s: float = 6.0        # no-damage window before regen kicks in
+
     # -- loadout ------------------------------------------------------------- #
     primary: str = "primary"          # a WEAPON_TAILS key
     secondary: str = "secondary"

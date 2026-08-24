@@ -191,3 +191,15 @@ def is_death(ev: dict) -> bool:
         return len(t) > 1 and int(t[1]) == 0
     except (ValueError, TypeError):
         return False
+
+
+def hp_values(ev: dict) -> Optional[tuple[int, int, int]]:
+    """($HP,<hp>,<armor>,<shield>) → (hp, armor, shield), or None if not an $HP.
+    An $HP is only emitted when the gun is HIT — so it's the 'took damage' signal."""
+    if ev.get("command") != "HP":
+        return None
+    t = ev.get("tokens", [])
+    try:
+        return int(t[1]), int(t[2]), int(t[3])
+    except (IndexError, ValueError, TypeError):
+        return None

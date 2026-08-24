@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import Optional
 
 from .base import (
-    Action, Callout, Eliminate, GameEngine, GameOver, Respawn, Roster, Score,
-    is_death, is_hit, shooter_team,
+    Action, Callout, Eliminate, GameEngine, GameOver, Heal, Respawn, Roster, Score,
+    hp_values, is_death, is_hit, shooter_team,
 )
 
 # A kill is credited to the last enemy who hit the victim WITHIN this window.
@@ -30,6 +30,8 @@ class DeathmatchEngine(GameEngine):
         self.winner: Optional[str] = None
         self._last_shot: dict[str, tuple[int, float]] = {}  # victim_id → (shooter team, when)
         self._ffa = (config.mode == "ffa")
+        self._last_damage: dict[str, float] = {}   # player_id → time last hit (for regen)
+        self._regenerated: set[str] = set()        # players already refilled this idle
 
     def add_player(self, player_id: str, team: int) -> None:
         self.roster.add(player_id, team, lives=self.config.lives())
@@ -46,8 +48,13 @@ class DeathmatchEngine(GameEngine):
             if st is not None:
                 self._last_shot[player_id] = (st, now)
             return []
-        if is_death(ev) and p.alive:
-            return self._handle_death(player_id, now)
+        hv = hp_values(ev)
+        if hv is not None:
+            if hv[0] == 0 and p.alive:                 # $HP,0 = died
+                return self._handle_death(player_id, now)
+            # a non-fatal $HP = took damage → (re)start the regen idle timer
+            self._last_damage[player_id] = now
+            self._regenerated.discard(player_id)
         return []
 
     def _handle_death(self, victim_id: str, now: float) -> list[Action]:
@@ -68,6 +75,12 @@ class DeathmatchEngine(GameEngine):
             who = (killer.player_id if (self._ffa and killer) else f"team{killer_team}")
             actions.append(Score(who, +1, self.team_score[killer_team]))
             actions.append(Callout(f"{who} scored (→ {self.team_score[killer_team]})"))
+            # Syphon: heal the killer on the kill. Needs the SPECIFIC killer — works in
+            # FFA (team→player 1:1); in TDM it wants per-player id (P2), so skip there.
+            if self.config.syphon and killer and killer.alive:
+                actions.append(Heal(killer.player_id, hp=self.config.syphon_hp,
+                                    armor=self.config.syphon_armor))
+                self._regenerated.discard(killer.player_id)  # healed → allow regen again
             if self.config.frag_limit and self.team_score[killer_team] >= self.config.frag_limit:
                 return actions + self._end(who)
 
@@ -91,6 +104,15 @@ class DeathmatchEngine(GameEngine):
                     p.alive = True
                     p.dead_since = None
                     actions.append(Respawn(p.player_id))
+        # host-driven regen (Halo shields): after no damage for the delay, refill to
+        # full ($LIFE is additive+clamped, so a big grant tops them off). Once per idle.
+        if self.config.regen:
+            for pid, t in list(self._last_damage.items()):
+                p = self.roster.get(pid)
+                if (p and p.alive and pid not in self._regenerated
+                        and now - t >= self.config.regen_delay_s):
+                    actions.append(Heal(pid, hp=self.config.hp, armor=self.config.armor))
+                    self._regenerated.add(pid)
         # time limit
         if self.config.game_time_s and (now - self.start) >= self.config.game_time_s:
             actions += self._end(self._leader())

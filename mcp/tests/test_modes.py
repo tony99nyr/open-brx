@@ -5,9 +5,13 @@ import asyncio
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes import (
     DeathmatchEngine, InfectionEngine, LastManStandingEngine, GameDriver,
-    build_engine, GameOver, Respawn, Score, Eliminate, SetTeam, Callout,
+    build_engine, GameOver, Respawn, Score, Eliminate, SetTeam, Callout, Heal,
 )
 from brx_mcp.modes.driver import assign_teams
+
+
+def hp(hp_, armor, shield=0):
+    return {"command": "HP", "tokens": ["HP", str(hp_), str(armor), str(shield)]}
 
 
 def hir(shooter_team):
@@ -165,6 +169,49 @@ def test_driver_executes_respawn_via_sender():
 
     asyncio.run(scenario())
     assert any("$SPAWN" in f for _, f in sent), f"no respawn frames sent: {sent}"
+
+
+def test_syphon_heals_the_killer_in_ffa():
+    e = DeathmatchEngine(GameConfig(mode="ffa", game_time_s=0, syphon=True,
+                                    syphon_armor=30))
+    e.add_player("alice", 1)
+    e.add_player("bob", 2)
+    e.on_event("alice", hir(2), now=1.0)         # bob kills alice
+    acts = e.on_event("alice", death(), now=1.1)
+    heals = _types(acts, Heal)
+    assert heals and heals[0].player_id == "bob" and heals[0].armor == 30
+
+
+def test_syphon_off_by_default():
+    e = DeathmatchEngine(GameConfig(mode="ffa", game_time_s=0))
+    e.add_player("alice", 1); e.add_player("bob", 2)
+    e.on_event("alice", hir(2), now=1.0)
+    acts = e.on_event("alice", death(), now=1.1)
+    assert not _types(acts, Heal)
+
+
+def test_regen_refills_after_no_damage_delay():
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0, regen=True,
+                                    regen_delay_s=6.0, hp=45, armor=70))
+    e.add_player("red", 1); e.add_player("blue", 2)
+    e.on_event("red", hp(45, 40), now=1.0)       # red took damage (armor 70→40)
+    assert e.tick(now=5.0) == []                 # too soon
+    acts = e.tick(now=7.0)                        # 6s since damage → regen
+    heals = _types(acts, Heal)
+    assert heals and heals[0].player_id == "red" and heals[0].armor == 70
+    # only once per idle — a second tick doesn't re-heal
+    assert not _types(e.tick(now=9.0), Heal)
+    # fresh damage re-arms regen
+    e.on_event("red", hp(45, 30), now=10.0)
+    assert not _types(e.tick(now=14.0), Heal)    # too soon again
+    assert _types(e.tick(now=16.0), Heal)        # re-armed → heals again
+
+
+def test_regen_off_by_default():
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0))
+    e.add_player("red", 1)
+    e.on_event("red", hp(45, 40), now=1.0)
+    assert not _types(e.tick(now=100.0), Heal)
 
 
 def test_tdm_finite_lives_does_not_end_early_for_respawning_teammate():
