@@ -29,6 +29,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[VISION.md](VISION.md)** — can we supersede Edge? BRX capability ceiling, BRP/Edge gaps, open-source + business analysis, naming guidance.
 - **[tier0-plan.md](tier0-plan.md)** — **the maximized Tier-0 plan & milestone roadmap** (device functions → modes → CLI→MC-UI→phone-apps milestones → the **gating tests that set dev priority**). Start here for *what to build in what order*.
 - **[m0-game-engine.md](m0-game-engine.md)** — **M0 (built)**: the customizable `GameConfig` (every knob → BRX frame), the mode engines (TDM/FFA/infection/LMS + extraction), and the live driver. `python -m brx_mcp game-sim` / `play <mode> <addr...> [k=v]`.
+- **[sound-architecture.md](sound-architecture.md)** — how BRX audio works: auto-mapped reactive sounds (`$SIR`/`$PSET`/`$WEAP`) vs host-`$PLAY` announcements; what's forced/re-skinnable/ours; the **native multikill** finding (D4).
 
 ## Plans & architecture
 - **[brx-architecture-v0.2.md](brx-architecture-v0.2.md)** — the master plan (server, nodes, MQTT, roadmap).
