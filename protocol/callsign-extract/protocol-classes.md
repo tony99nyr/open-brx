@@ -60,6 +60,49 @@ Anchor check: manual's M-4 damage 24 ↔ `primaryDamage`; rate-of-fire, clip, re
 This is the field map that was the "highest reverse-engineering priority" — recovered without
 per-token capture diffing.
 
+### WEAP exact token positions (metadata field names × 2 live frames)
+
+Cross-validated: the 38-member metadata field list aligned against the two known-good frames
+(Assault Rifle slot 0, Charge Rifle slot 1) by diffing them token-by-token. `$WEAP,<t0..t43>,*`
+(44 tokens). ✓ = validated by value semantics; ~ = inferred from field order.
+
+| tok | AR | ChargeRifle | field | conf |
+|---|---|---|---|---|
+| 0 | 0 | 1 | **slot** | ✓ |
+| 2 | 100 | 100 | (scale/enable const) | ~ |
+| 3 | 0 | 8 | primaryPowerType (IRSource enum) | ~ |
+| 4 | 0 | 0 | primaryDamageType (DamageType enum) | ~ |
+| 5 | **24** | **150** | **primaryDamage** | ✓ (M-4=24) |
+| 6 | 0 | 0 | primaryCriticalChance | ~ |
+| 7–13 | — | — | secondary* fields (fireChance,damageType,powerType,damage,critChance) | ~ |
+| 14 | 100 | 1250 | chargeUp time (CR charges) | ~ |
+| 15 | 850 | 850 | rateOfFire / fire delay (ms) | ~ |
+| 16 | **32** | **100** | **maxClip** | ✓ (mag) |
+| 17 | 32768 | 32768 | maxAmmo / unlimited flag | ✓ |
+| 18 | 1400 | 2500 | reloadSpeed (ms) | ~ |
+| 19 | 0 | 0 | reloadType (Magazine/Quiver/Shells…) | ~ |
+| 20 | 0 | 14 | (secondary/overheat) | ~ |
+| 21 | 100 | 100 | maxAccuracy | ~ |
+| 22 | 100 | 100 | singleShotAccuracy | ~ |
+| 24 | 0 | 14 | overheat | ~ |
+| 27 | **R01** | **E03** | **primaryFire_SoundName** | ✓ |
+| 28 | — | **C15** | **chargeUp_SoundName** | ✓ (empty on AR!) |
+| 29 | — | **C17** | **chargeDown_SoundName** | ✓ (empty on AR!) |
+| 30 | — | — | secondary_Mix_SoundName | ~ |
+| 31 | D04 | D30 | reloadPart1_SoundName | ✓ |
+| 32 | D03 | D29 | reloadPart2_SoundName | ✓ |
+| 33 | D02 | D37 | reloadPart3_SoundName | ✓ |
+| 34 | D18 | A73 | noAmmo_SoundName | ~ |
+| 35–36 | — | C19,C04 | weaponFeatureA/B sounds | ~ |
+| 39 | 32 | 100 | clipStartingAmmo (= maxClip here) | ~ |
+| 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ✓ |
+| 41 | 75 | 75 | gunRange % | ~ |
+
+The ~6 always-empty positions (7–13, 42–43) are secondary-fire / extra-headset fields, default
+in both samples — pin them with a one-field Callsign capture (now trivial: change exactly that
+field). The charge-sound validation (28/29 present only on the charging weapon) makes the sound
+block certain.
+
 ## PSET — player settings (source-derived)
 
 `maxHP, maxShields, criticalDamageBonus,` then a **positional voice pack**: `deathAlarm,
@@ -111,6 +154,18 @@ FlashHit, TearGasHit, TypeFourteenHit`. This is the audio-design surface for the
 - **LedEffect (GLED `effect`):** Solid, Glow, ChaseBack, ChaseForward, StopIR
 - **WeaponCategory (id):** 0 Rifle,1 SMG,2 Sniper,3 Shotgun,4 Heavy,5 Energy,6 Support,
   7 Power,8 Exotic,9 Launcher,10 Stun,11 Ability,12 Melee (from weapon-categories-config.json)
+- **Headset LED (HLED/BLINK/etc.):** LedColorType = White, Pink, Orange (+ green via
+  `isUsedGreenLed`); BlinkLoopType = Once, ThreeTimes, Infinite; LedEffectType includes Heartbeat.
+- **ButtonCode (`$BUT` notification):** Trigger, AltFire, Analog (plus the numeric ids 0–5 we
+  verified on hardware).
+
+## Premium / DLC game modes (GOTDLC)
+
+The `$GOTDLC` notification and DLC handshake reference three **premium game modes** not in the
+base manual: **Generals** (`generalsGameMode`), **Commanders** (`commandersGameMode`), and
+**Swarm** (`swarmGameMode`). These are BattleCoins/subscription unlocks. Relevant because a
+self-hosted platform can implement equivalents host-side for free — the gun primitives are the
+same.
 
 ## What's moddable — new guns, new game types, new sounds?
 

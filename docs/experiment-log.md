@@ -437,3 +437,15 @@ REST API `ltp-prod-v4.us-east-1.elasticbeanstalk.com`; multiplayer lobby = AWS S
 
 Tooling installed on this PC: .NET 8/7 runtime (~/.dotnet), Il2CppDumper (net7) — both under
 scratch, not committed. APK still not committed; only derived docs + the config JSONs.
+
+### 29. WEAP exact token positions — cross-validated ✅
+Il2CppInspector (2021.1) is Windows-only + too old for this metadata + same obfuscation wall,
+so instead aligned the metadata field list against the TWO known-good frames (AR slot 0 vs
+Charge Rifle slot 1) by token diff. Validated anchors: primaryDamage=tok5 (24/150, matches
+manual M-4=24), maxClip=tok16 (32/100), primaryFire_SoundName=tok27 (R01/E03), and decisively
+chargeUp/Down_SoundName=tok28/29 (EMPTY on the non-charging AR, C15/C17 on the Charge Rifle).
+Full token table in protocol-classes.md. ~6 always-empty positions (secondary-fire / extra-
+headset) need a one-field capture to finalize — now trivial since we know the field names.
+Bonus enums recovered: LedColorType (White/Pink/Orange), BlinkLoopType (Once/ThreeTimes/
+Infinite), ButtonCode (Trigger/AltFire/Analog), and premium GOTDLC modes Generals/Commanders/
+Swarm.
