@@ -274,6 +274,78 @@ class ConnectionManager:
             except asyncio.TimeoutError:
                 pass
 
+    # -- diagnostics -------------------------------------------------------
+
+    async def diagnose(self, address: str, volts_wait_s: int = 6) -> dict[str, Any]:
+        """One-shot BLE health sweep of a single tagger: connect, read firmware
+        (`$VERSION`), ping latency (`$PING`→`$PONG`), and battery (`$VOLTS`,
+        which streams ~30 s in app mode), then disconnect. Returns one record.
+        Never raises for an unreachable tagger — reports it in the record.
+        """
+        rec: dict[str, Any] = {"address": address, "reachable": False,
+                               "firmware": None, "battery": None,
+                               "pong_latency_ms": None}
+        alias = f"__diag_{address}"
+        if alias in self.sessions:  # stale from a prior aborted sweep
+            try:
+                await self.disconnect(alias)
+            except Exception:  # noqa: BLE001
+                self.sessions.pop(alias, None)
+        try:
+            await self.connect(address, alias)
+            rec["reachable"] = True
+
+            # firmware
+            await self.send(alias, "$VERSION,*", reply_window_ms=100)
+            vr = await self.wait_for(alias, "$VERSION", timeout_s=3)
+            if vr.get("matched"):
+                p = vr["event"]["parsed"]
+                rec["firmware"] = p.get("firmware")
+                rec["host_image"] = p.get("host_image")
+                rec["is_devhost"] = p.get("is_devhost")
+
+            # ping latency
+            t0 = time.monotonic()
+            await self.send(alias, "$PING,*", reply_window_ms=100)
+            pr = await self.wait_for(alias, "$PONG", timeout_s=3)
+            if pr.get("matched"):
+                rec["pong_latency_ms"] = int((time.monotonic() - t0) * 1000)
+
+            # battery — VOLTS streams periodically; wait a little for one
+            br = await self.wait_for(alias, "$VOLTS", timeout_s=volts_wait_s)
+            if br.get("matched"):
+                p = br["event"]["parsed"]
+                rec["battery"] = {"pack_v": p.get("pack_v"),
+                                  "cell_v": p.get("cell_v"),
+                                  "charge_pct": p.get("charge_pct")}
+        except Exception as e:  # noqa: BLE001 — report, don't crash a fleet sweep
+            rec["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            try:
+                await self.disconnect(alias)
+            except Exception:  # noqa: BLE001
+                self.sessions.pop(alias, None)
+        return rec
+
+    async def fleet_status(self, addresses: list[str] | None = None,
+                           scan_s: int = 8) -> dict[str, Any]:
+        """Armory dashboard: if addresses is None, scan for BRX (Nordic-UART)
+        devices first, then diagnose each **serially** (one radio → one BLE
+        link at a time). Returns the scan list + a per-tagger diagnostic record.
+        """
+        scanned = await self.scan(scan_s)
+        if addresses is None:
+            addresses = [d["address"] for d in scanned if d["has_uart_service"]]
+        rssi = {d["address"]: d["rssi"] for d in scanned}
+        names = {d["address"]: d["name"] for d in scanned}
+        fleet = []
+        for addr in addresses:
+            rec = await self.diagnose(addr)
+            rec["name"] = names.get(addr, "")
+            rec["rssi"] = rssi.get(addr)
+            fleet.append(rec)
+        return {"scanned": len(scanned), "taggers": fleet}
+
     # -- helpers -----------------------------------------------------------
 
     def _get(self, alias: str) -> Session:

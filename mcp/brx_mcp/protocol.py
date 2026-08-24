@@ -101,8 +101,82 @@ def parse_event(message: str) -> dict[str, Any]:
         parsed["button"] = tok(1)
     elif name == "PONG":
         parsed["pong"] = True
+    elif name == "VOLTS":
+        parsed.update(parse_volts(message))
+    elif name == "VERSION":
+        parsed.update(parse_version(message))
 
     return parsed
+
+
+def _to_int(s: str | None) -> int | None:
+    try:
+        return int(s) if s not in (None, "") else None
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_volts(frame: str) -> dict[str, Any]:
+    """`$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` battery telemetry.
+
+    e.g. `$VOLTS,7662,3921,55,70,*` → 7.662 V pack, 3.921 V cell; the last two
+    tokens read as charge %/levels (exact meaning TBC). Returns {} if not VOLTS.
+    """
+    t = tokenize(frame)
+    if not t or t[0] != "VOLTS":
+        return {}
+    pack_mv, cell_mv = _to_int(t[1] if len(t) > 1 else None), _to_int(t[2] if len(t) > 2 else None)
+    return {
+        "pack_mv": pack_mv,
+        "cell_mv": cell_mv,
+        "pack_v": round(pack_mv / 1000, 3) if pack_mv is not None else None,
+        "cell_v": round(cell_mv / 1000, 3) if cell_mv is not None else None,
+        "charge_pct": _to_int(t[3] if len(t) > 3 else None),
+        "level_pct": _to_int(t[4] if len(t) > 4 else None),
+    }
+
+
+def parse_version(frame: str) -> dict[str, Any]:
+    """`$VERSION,<ver>,?,<n>,,<host>,*` firmware version reply.
+
+    e.g. `$VERSION,v4.32,?,4,,devhost.03,*` → firmware v4.32, host image
+    devhost.03. `devhost*` host images are developer builds, not retail.
+    """
+    t = tokenize(frame)
+    if not t or t[0] != "VERSION":
+        return {}
+    host = t[5] if len(t) > 5 else None
+    return {
+        "firmware": t[1] if len(t) > 1 else None,
+        "host_image": host,
+        "is_devhost": bool(host and host.lower().startswith("devhost")),
+    }
+
+
+def parse_query(text: str) -> dict[str, Any]:
+    """Parse the Teensy USB `QUERY` console dump into a device record.
+
+    The dump is free-form `Label: value` / `Label value` lines. We pull the
+    fields we know (serial/head PIN, versions, voltages, radio flags, PCB rev,
+    tested-by) by label, and keep the raw text. Robust to line-order changes.
+    """
+    rec: dict[str, Any] = {"raw": text}
+    patterns = {
+        "serial_head_pin": r"Serial Number\s*/?\s*Head PIN\s*[:=]?\s*([A-Za-z0-9]+)",
+        "bt_central_version": r"BT central V(?:ersion)?\s*[:=]?\s*([A-Za-z0-9.]+)",
+        "pcb_rev": r"\b(PCB-?\d+)\b",
+        "tested_by": r"Tested by\s*[:=]?\s*([A-Za-z0-9 ]+?)\s*(?:\r?\n|$)",
+        "nrf_host": r"NRFhost\s*[:=]?\s*(\d+)",
+        "nrf_slave": r"NRFslave\s*[:=]?\s*(\d+)",
+        "dev_host": r"devHost\s*[:=]?\s*(\d+)",
+        "headset_version": r"Headset Version\s*[:=]?\s*([A-Za-z0-9.]+)",
+    }
+    for key, pat in patterns.items():
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            v = m.group(1).strip()
+            rec[key] = int(v) if v.isdigit() else v
+    return rec
 
 
 @dataclass

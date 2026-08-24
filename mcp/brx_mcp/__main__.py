@@ -3,6 +3,8 @@
   python -m brx_mcp            # run the MCP server (stdio)
   python -m brx_mcp scan [s]   # one-shot BLE scan (first-contact CLI)
   python -m brx_mcp identify <address>
+  python -m brx_mcp diagnose <address>           # firmware + battery + latency sweep
+  python -m brx_mcp fleet [addr...]              # armory dashboard (scan + diagnose each)
   python -m brx_mcp listen <address> [seconds]   # read-only live console
   python -m brx_mcp startgame <address> [seconds] [respawn_s] [volume]
   python -m brx_mcp deathmatch <address> [minutes] [respawn_s] [volume] [weapon]
@@ -610,6 +612,32 @@ async def _fieldresults(addresses: list[str], listen_s: int = 12) -> None:
         await mgr.disconnect(alias)
 
 
+async def _diagnose(address: str) -> None:
+    """Print a one-shot BLE diagnostic record for one tagger."""
+    from .ble import ConnectionManager
+    rec = await ConnectionManager().diagnose(address)
+    _print(rec)
+
+
+async def _fleet(addresses: list[str]) -> None:
+    """Scan (or use given addresses) and print the armory dashboard."""
+    from .ble import ConnectionManager
+    result = await ConnectionManager().fleet_status(addresses or None)
+    print(f"scanned {result['scanned']} devices; "
+          f"{len(result['taggers'])} tagger(s):", file=sys.stderr)
+    for t in result["taggers"]:
+        batt = t.get("battery") or {}
+        line = (f"  {t.get('name') or t['address'][:16]:20} "
+                f"fw={t.get('firmware') or '?':8} "
+                f"batt={batt.get('pack_v') or '?':>5}V "
+                f"{('('+str(batt.get('charge_pct'))+'%)') if batt.get('charge_pct') is not None else '':6} "
+                f"ping={t.get('pong_latency_ms') or '?':>4}ms "
+                f"rssi={t.get('rssi') or '?'}"
+                + ("" if t.get("reachable") else "  UNREACHABLE"))
+        print(line, file=sys.stderr)
+    _print(result)
+
+
 async def _diag(address: str) -> None:
     """Output-command diagnostics using the official app's connect ritual
     (captured via HCI snoop): STOP → PLAYX → VOL → PLAY VA20. No $PHONE.
@@ -741,6 +769,10 @@ def _dispatch(cmd: str, args: list[str]) -> None:
                                       int(rest[0]) if rest else 12))
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
+    elif cmd == "diagnose" and len(args) > 1:
+        asyncio.run(_diagnose(args[1]))
+    elif cmd == "fleet":
+        asyncio.run(_fleet(_split_addrs(args[1:])[0]))
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

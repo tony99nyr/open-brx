@@ -51,6 +51,35 @@ async def identify(address: str) -> dict[str, Any]:
     return info
 
 
+# -- diagnostics (Mission Control) ----------------------------------------
+
+@mcp.tool()
+async def diagnostics(address: str) -> dict[str, Any]:
+    """One-shot BLE health sweep of one tagger: firmware version ($VERSION),
+    ping latency, and battery ($VOLTS). Connects, reads, disconnects. Never
+    raises for an unreachable tagger — reports it in the record."""
+    rec = await manager.diagnose(address)
+    if rec.get("firmware"):
+        storage.save_device(address, generation=rec.get("host_image"))
+    return rec
+
+
+@mcp.tool()
+async def fleet_status(addresses: list[str] | None = None) -> dict[str, Any]:
+    """Armory dashboard: scan for BRX taggers (or use the given addresses),
+    then run the diagnostics sweep on each (serially — one radio). Returns the
+    scan count plus a per-tagger record (firmware, battery, latency, RSSI)."""
+    return await manager.fleet_status(addresses)
+
+
+@mcp.tool()
+def parse_query_dump(text: str) -> dict[str, Any]:
+    """Parse a Teensy USB `QUERY` console dump (paste the text) into a device
+    record: serial/head PIN, versions, voltages, NRF radio flags, PCB rev,
+    tested-by. The richest per-tagger diagnostic (bench, USB not BLE)."""
+    return protocol.parse_query(text)
+
+
 # -- connection lifecycle --------------------------------------------------
 
 @mcp.tool()
