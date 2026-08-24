@@ -207,6 +207,22 @@ def test_regen_refills_after_no_damage_delay():
     assert _types(e.tick(now=16.0), Heal)        # re-armed → heals again
 
 
+def test_regen_does_not_fire_on_respawn():
+    # Regression (review High): stale _last_damage must not trigger a full-heal the
+    # tick a player respawns (respawn already refilled them).
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0, regen=True,
+                                    regen_delay_s=6.0, respawn_s=15))
+    e.add_player("red", 1); e.add_player("blue", 2)
+    e.on_event("red", hp(45, 40), now=1.0)       # damaged
+    e.on_event("red", hir(2), now=2.0)
+    e.on_event("red", death(), now=2.0)          # died
+    acts = e.tick(now=17.0)                        # respawns (15s) at this tick
+    assert _types(acts, Respawn)
+    assert not _types(acts, Heal), "stale regen fired on respawn"
+    # and no lingering heal on the next tick either
+    assert not _types(e.tick(now=18.0), Heal)
+
+
 def test_regen_off_by_default():
     e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0))
     e.add_player("red", 1)

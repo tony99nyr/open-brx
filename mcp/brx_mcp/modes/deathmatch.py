@@ -11,7 +11,7 @@ from typing import Optional
 
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, Respawn, Roster, Score,
-    hp_values, is_death, is_hit, shooter_team,
+    hp_values, is_hit, shooter_team,
 )
 
 # A kill is credited to the last enemy who hit the victim WITHIN this window.
@@ -62,6 +62,10 @@ class DeathmatchEngine(GameEngine):
         v.alive = False
         v.deaths += 1
         v.dead_since = now
+        # clear regen state so a respawn (which already refills) doesn't trigger a
+        # stale full-heal on the next idle tick.
+        self._last_damage.pop(victim_id, None)
+        self._regenerated.discard(victim_id)
         actions: list[Action] = []
 
         entry = self._last_shot.pop(victim_id, None)

@@ -20,7 +20,7 @@ from typing import Optional
 
 from .base import (
     Action, Callout, GameEngine, GameOver, PlaySound, Roster, Score,
-    hp_values, is_death,
+    hp_values,
 )
 
 DETONATION_SOUND = "X13"   # rocket/explosion-ish placeholder (catalog later)
@@ -53,6 +53,10 @@ class BombEngine(GameEngine):
     def plant(self, site: str, now: float) -> list[Action]:
         if self.over or self._round_done or self.planted_at is not None:
             return []
+        # too late — the round clock already expired (defenders survived); a plant
+        # arriving before the expiry tick must not flip the round to attackers.
+        if now - self.round_start >= self.round_time_s:
+            return self._end_round("defenders", now)
         self.planted_at = now
         self.planted_site = site
         return [Callout(f"Bomb planted at {site}! {int(self.detonation_s)}s"),

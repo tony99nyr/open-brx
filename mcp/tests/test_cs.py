@@ -67,6 +67,15 @@ def test_planted_bomb_ignores_round_time_until_detonation():
     assert e.score["attackers"] == 1
 
 
+def test_plant_after_time_expired_gives_round_to_defenders():
+    # Regression (review Medium): a PLANT arriving after the round clock expired
+    # (before the expiry tick) must not flip the round to attackers.
+    e = _bomb()                                  # round_time = game_time_s = 120
+    acts = e.plant("A", now=121.0)               # too late
+    assert e.score["defenders"] == 1 and e.planted_at is None
+    assert _types(acts, GameOver)
+
+
 def test_defuse_before_plant_is_noop():
     e = _bomb()
     assert e.defuse(now=5.0) == []
