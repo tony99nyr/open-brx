@@ -765,3 +765,13 @@ grenade USB test ran through a dead path and tells us **nothing** about the gren
 negative.** Retest plan: establish a **known-good USB data path first** — use a **USB-A port that already
 works** (C-to-A cable) or a confirmed data-capable USB-C port, **verify with the phone (must enumerate)**,
 THEN test the grenade (normal plug, and OFF→hold-button→plug for a possible bootloader/disk mode).
+
+### G7 RESOLVED — grenade USB-C is power/charge only (VALID test) ❎
+Redone with a **confirmed-good data path**: Tony's **Pixel 10 Pro enumerated** on the same port+cable
+(WPD "Pixel 10 Pro" + "ADB Interface", VID_18D1) → the path does data. With the grenade on that path,
+**nothing enumerated in ANY state**: powered off, powered on (normal), or the **purple button-hold mode**
+(purple is a transient boot/setup flash → rolls to yellow=normal setup; NOT a DFU). No COM port, no
+removable drive, no unknown/DFU device. **Conclusion (now valid): the grenade's USB-C is power/charging
+only — no serial console, no mass storage, no USB DFU.** No pinhole/PROGRAM pin exists either. So there is
+**no non-IR data channel** to the grenade; the **IR-beacon relay** (a BLE-connected tagger in range,
+reading `$HIR,0,15,0,<team>,<mode>`) is the only way to read grenade state. Closes G7.
