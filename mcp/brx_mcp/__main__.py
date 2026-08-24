@@ -12,6 +12,7 @@
   python -m brx_mcp fieldstart <addr...> [volume] [weapon]   # start, then disconnect
   python -m brx_mcp fieldresults <addr...> [listen_s]        # reconnect and report
   python -m brx_mcp extraction-sim                # narrated Extraction-mode demo (no BLE)
+  python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
 """
 
 from __future__ import annotations
@@ -795,6 +796,33 @@ def _extraction_sim() -> None:
           f"game over={g.over}\n")
 
 
+async def _diag_game(address: str, extra_caps: list[str]) -> None:
+    """Run the structured diagnostic game and print + save the scorecard."""
+    import json
+    from .diag import CATALOG, Capability
+    from .diag.runner import run_game
+    from .storage import BASE_DIR  # ~/.brx-mcp
+
+    caps = {Capability.BLE, Capability.HUMAN}  # a person drives it by default
+    if "2guns" in extra_caps:
+        caps.add(Capability.TWO_GUNS)
+    if "ir" in extra_caps:
+        caps.add(Capability.IR)
+    print(f"capabilities: {sorted(c.value for c in caps)}", file=sys.stderr)
+
+    report = await run_game(address, CATALOG, caps)
+    print(report.scorecard())
+    try:
+        d = BASE_DIR / "diag-reports"
+        d.mkdir(parents=True, exist_ok=True)
+        # no timestamp helper here (Date.now-free); name by target + seq count
+        path = d / f"diag-{address.replace(':', '')}.json"
+        path.write_text(json.dumps(report.to_dict(), indent=2))
+        print(f"\nsaved: {path}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001
+        print(f"(report not saved: {e})", file=sys.stderr)
+
+
 def _dispatch(cmd: str, args: list[str]) -> None:
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
@@ -840,6 +868,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         asyncio.run(_fleet(_split_addrs(args[1:])[0]))
     elif cmd == "extraction-sim":
         _extraction_sim()
+    elif cmd == "diag-game" and len(args) > 1:
+        asyncio.run(_diag_game(args[1], args[2:]))
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

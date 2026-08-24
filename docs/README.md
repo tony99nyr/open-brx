@@ -34,6 +34,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[field-architecture.md](field-architecture.md)** — why field play needs a device per player (the range constraint).
 - **[build-tiers.md](build-tiers.md)** — what you can build at each investment level (starting from 4 BRX + 2 grenades + a laptop).
 - **[game-modes.md](game-modes.md)** — catalog of every known game mode, classified by infrastructure tier (Mission Control alone / +props / +broadcast).
+- **[diagnostic-game.md](diagnostic-game.md)** — the **end-to-end diagnostic test suite** (`python -m brx_mcp diag-game <addr>`): structured pass/fail scorecard over every BRX capability; SKIPs what needs a 2nd gun / the IR bridge.
 - **[mode-limits.md](mode-limits.md)** — the **constraints ledger**: for each designed mode (Extraction, CS, health variants, objective family, respawn, phone-objectives), what limits it **at each tier**, and whether each limit is a **hard ceiling** or a **pending hardware test**.
 - **[mission-control-spec.md](mission-control-spec.md)** — operator console: scan → roster → teams → weapons → scoreboard. Includes the deathmatch gap analysis.
 - **[phone-app-spec.md](phone-app-spec.md)** — Callsign replacement (Web-Bluetooth PWA, per-player engine + HUD).
