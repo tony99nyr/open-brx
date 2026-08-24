@@ -236,7 +236,7 @@ we may get the countdown for free.
 | `$HIR` `45,0,0` / `70,0,0` | recur across matches, unexplained; the numbers equal starting HP/armor | correlate against what the operator was doing |
 | `$HIR` IR protocol per weapon | two frames came as `$HIR,0,...` not `4` | fire each slot deliberately, watch token 1 |
 | `$SFLASH,*` | sent periodically by the app, no args, never near a hit | try it in isolation and watch the gun |
-| `$SP` / `$UP` | candidate end-of-game and status reports — central to A3 | probe directly |
+| `$SP` / `$UP` | central to A3. **`$UP,*` probed — no reply (§7l)**; LaserTagMods' arg form looks like a write. `$SP` must NOT be probed on hardware ($SP,99 is half the panic sequence) | learn both from a full end-of-game capture instead |
 | Headset lockout | manual says a headset lost mid-game locks the gun (§7h). **Never controlled for in any experiment** | run one match headset-paired, one headset-off-from-boot |
 
 ## D. The nRF radio — possibly the real answer to A
@@ -280,8 +280,9 @@ followup A is not a capability problem, it is a *configuration* problem.
 - **No results on reconnect.** 12 s of listening after reconnect produced **zero frames** —
   no `$LCD`, no `$ALCD`, no summary. `$PING` → `$PONG` worked, so the link was fine.
   **The tagger volunteers no game state.** Reading scores back needs a query command we
-  have not identified. `$UP` is the best candidate (documented as a status/update report,
-  never sent). **Do not probe `$SP`** — it is documented as the end-of-game report, but
+  have not identified. `$UP` was the candidate — **since probed, and `$UP,*` gets no reply
+  at all** (§7l). LaserTagMods send it with arguments (`$UP,100,<n>,0,*` + `$UR,*`), which
+  looks like a write rather than a query. Read-back remains unsolved. **Do not probe `$SP`** — it is documented as the end-of-game report, but
   `$SP,99,*` is half the panic sequence, so it may destroy the very results it reports.
 
 ### 15. Consequence: `$GSET` is now the critical path

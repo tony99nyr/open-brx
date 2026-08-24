@@ -71,7 +71,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$HIR,...` | **Hit! Tagger was tagged** | token 3 = shooter player ID, token 4 = shooter team ID |
 | `$HP,<hp>,...` | Health update | `$HP,0,...` = player died (or turned zombie in Survival) |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
-| `$UP,...` | Status/update report (0–6 tokens) | |
+| `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
 | `$AS,...` | Game/control echo (0–11 tokens; token 8 = applicator) | |
 | `$SP,...` | End-of-game report (0–5 tokens) | |
 | `$WEAP`, `$PERK`, `$HS` | Selection echoes from on-gun menus | |
@@ -662,6 +662,55 @@ $HIR,<irProto>,<t2>,<t3>,<shooterTeam>,<t5>,<t6>,<t7>,*
 credit a team. For free-for-all — where every player needs a distinct identity — either
 each player must be given a unique `$TID`, or per-player identity has to come from
 somewhere we have not yet found.
+
+## 7l. `$UP` probed — bare form does nothing (2026-08-23)
+
+Probed while hunting for a way to read results back off a tagger after out-of-range play
+(the gun volunteers nothing on reconnect — see the field test in `docs/experiment-log.md`).
+`$UP` was the leading candidate because §4 lists it as a "status/update report".
+
+**Result: `$UP,*` produced no reply at all.**
+
+```
+baseline 3 s listen : 0 frames (silent, despite the tagger still being mid-game)
+>> $UP,*            : no reply within 2.5 s
++4 s later          : nothing
+```
+
+So the bare form is **not** a query, and `$UP` is not the results read-back command — at
+least not like this.
+
+### But LaserTagMods send `$UP` *with arguments*
+
+Their host code (JEDGE) does:
+
+```
+Serial1.println("$UP,100,5,0,*")
+Serial1.println("$UP,100,6,0,*")
+Serial1.println("$UP,100,7,0,*")
+Serial1.println("$UP,100,8,0,*")
+Serial1.println("$UR,*")
+```
+
+Four `$UP,100,<n>,0,*` calls with `<n>` walking 5→8, followed by `$UR,*`. So `$UP` **is**
+a host→tagger command in real use, and the incrementing middle token looks like an index
+(slot? player? display line?) rather than a query parameter. `$UR` plausibly commits or
+refreshes whatever `$UP` staged.
+
+**Untested, and treat as a WRITE not a read.** A command taking a value (`100`) and an
+index is far more likely to set something than to report it. Do not send it mid-game
+expecting a harmless answer. If it is probed, do it on a tagger in a known throwaway state
+and `QUERY` over USB before and after to see what moved.
+
+### Consequence
+
+Reading results back after out-of-range play remains **unsolved**, and may be impossible:
+§7g established the phone is the game engine and the tagger enforces nothing, so there may
+be no score stored to read. The way to settle it is a capture of a complete Callsign game
+through its end-of-round summary, to see whether the app ever asks the gun for anything —
+see `docs/mac-capture-plan.md` Experiment 2. **Do not probe `$SP` on hardware to shortcut
+this**: it is documented as the end-of-game report, but `$SP,99,*` is half the panic
+sequence and may destroy the results it is meant to report.
 
 ## 8. Safe testing notes
 
