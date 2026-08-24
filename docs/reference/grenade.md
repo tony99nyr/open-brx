@@ -69,6 +69,11 @@ grenade IR through). Hardware-confirmed decode (exp-log #35):
 - **Only Hill and Respawn beacon** their state passively (~2.5–5 s); **Assault, CTF, Frag do not.**
 - **A node reads `$HIR,0,15,0,<team>,<mode>` to show who owns each Hill/Respawn point, live** — this is
   the buildable core of the grenade **state-display** app (B8).
+- **Operational trick:** a **tagger left in setup mode is a free audible grenade-state monitor** — it
+  announces the grenade's state aloud ("respawn point enabled," a claim chime, mode names as you cycle).
+  Handy for setup + as a no-app complement to the BLE display.
+- **Capture caveat:** the beacon is **aim-sensitive** — the grenade's IR emitter must face the headset
+  dome closely, or the gun sees nothing (several runs caught zero purely from positioning).
 
 | Mode (colour) | Beacons? | Signature / behaviour |
 |---|---|---|
