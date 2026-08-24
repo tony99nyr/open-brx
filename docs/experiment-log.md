@@ -666,3 +666,7 @@ software) still untested — next session.
 **CTF (white) shot → turned RED** (not blue/team-1 like Assault did) — CTF uses different colour logic
 (red may = flag grabbed/contested, not team colour); still no BLE beacon. Decode later. `$GREN`
 active-drive filed as **G8**.
+
+**Frag (red) detonation: no BLE frame** on button-press near the headset — consistent with Frag needing
+the **thrown-grenade pairing** ("install accessory" → shoot grenade → headset-armed detonate). This is
+the one mode where pairing matters (objective modes don't). Untested until we pair; filed under G-followups.
