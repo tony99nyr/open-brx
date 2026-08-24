@@ -105,6 +105,32 @@ Viable models, compatible with open-source:
   service; project = the open codebase). If you later go multi-brand, an original name ages better than
   "Open BRX."
 
+## Brand name candidates (business side)
+
+The OSS project is **Open BRX** (repo: `open-brx`). For the *business/brand* above it, pick an
+original, trademarkable name — **not** derived from a competitor's product, not an existing laser-tag
+brand (avoid Photon / Laser Tag Pro / Battle Company faction names), and ideally **not locked to
+"BRX"** so it survives going multi-brand. Candidates (verify trademark + `.com` + social handles
+before committing):
+
+**Top picks (platform + tactical, ownable):**
+- **Salvo** — a coordinated volley of fire; short, punchy, tech-brandable. (`salvo.gg`/`playsalvo`.)
+- **TagForge** — "tag" + "forge" (build/mod); captures the open/maker platform ethos directly.
+- **Sortie** — a combat mission/op; distinctive, one word, aviation-military flavor.
+- **Skirmish** — light battle; strong laser-tag fit (check availability — somewhat common).
+
+**Also strong:**
+- **Volley** · **Muster** (rally troops) · **Redoubt** (a fortification — objectives vibe) ·
+  **Ironsight** · **Killhouse** (CQB training) · **Fireteam** (squad) · **Vantage**.
+
+**Platform-flavored (if you want an "OS for laser tag" feel):**
+- **TagOS** · **Arena Kit / ArenaOS** · **OpenArena** (taken — avoid) · **Volley Stack**.
+
+**Naming structure recommendation:** brand = an original name above (e.g. *Salvo* / *TagForge*); the
+open project stays **Open BRX**; a hosted service can be *"<Brand> Cloud."* Keep "BRX" only in the
+open-project/descriptive layer, not the company brand, so multi-brand expansion isn't boxed in.
+Trademark-screen the finalist (USPTO/TESS + EUIPO) and grab the domain + handles before any public use.
+
 ## Bottom line
 
 **Supersede Edge for BRX owners: realistic and worth doing.** Replace Edge across commercial arenas:
