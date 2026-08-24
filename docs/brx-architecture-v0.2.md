@@ -1,4 +1,4 @@
-# BRX Open Battle System — Architecture & Handoff Spec (v0.2)
+# Open BRX — Architecture & Handoff Spec (v0.2)
 
 **Working name:** ~~BRX Open Battle System~~ → **Open BRX** (repo `open-brx`).
 

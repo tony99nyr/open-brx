@@ -135,7 +135,8 @@ control failed**: nonsense id `ZZ99` produced audio at 150× noise floor, so the
 appears to play a fallback sound for unknown ids. "Audio detected" never proved "id
 exists", making every negative result meaningless. Two earlier detector bugs (noise floor
 sampled over the first sound; recording started before the BLE connect finished) were
-fixed and it *still* failed the control. No SD card exists to read instead (§7h).
+fixed and it *still* failed the control. (At the time we believed there was no readable SD; later
+corrected — sounds ARE on USB-accessible storage, but the *inventory* came from the APK anyway.)
 
 ### Still open
 - `$HIR` shooter attribution — every hit read `1,1` with two default player IDs.
