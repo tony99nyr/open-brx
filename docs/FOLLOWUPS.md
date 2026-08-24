@@ -57,6 +57,20 @@ the field."
 - ✅ Headset re-pair procedure recovered (`community-notes.md`) — the fix for the lockout that blocks firing
 - ✅ Link stability (retry 5×; connecting is 1-in-3 flaky, holding is fine)
 
+## Polish-loop Low items (deferred 2026-08-24, not blocking)
+
+Surfaced by the 3-lens review, kept as Low (cleanup, not correctness):
+- **Code nits:** `gsetdiff.py` rstrip strips all trailing commas (hides a last-field change);
+  `btsnoop.py` assumes non-fragmented ACL (fine for MTU-23 NUS); `command_name` strips a run of `$`;
+  `send` vs `send_batch` reply-seq filter differ (both correct); `_fieldstart` prints "HOST
+  DISCONNECTED" just before the `finally` disconnects (cosmetic).
+- **Doc/spec nits:** `field-architecture.md` "ESP32 has no HUD" is superseded by the Companion T2
+  HUD tier; `$VIB` is a toggle so "custom hit effects" via VIB overstates; `getDevices()` reconnect
+  isn't "silent auto-rejoin"; M-4 damage cited as "token 6" (1-indexed) vs "tok 5" (0-indexed) —
+  standardise on 0-indexed; Companion BOM total ($25 vs $28) and pilot BLE cap (~7 / 7–10 / ≤8)
+  wander within a doc; session dates stamped 2026-08-24 vs the environment's 2026-08-23;
+  `mac-capture-plan.md` names modes ("Battle Lines/Faction Wars") not in the harvested list.
+
 ## Snooping — do we need more?
 
 Mostly no. The APK teardown replaced most capture work (it gave the field maps directly). The few
