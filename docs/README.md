@@ -39,6 +39,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[phone-app-spec.md](phone-app-spec.md)** — Callsign replacement (Web-Bluetooth PWA, per-player engine + HUD).
 - **[../hardware/brx-companion-spec.md](../hardware/brx-companion-spec.md)** — the per-tagger ESP32-S3 accessory (offline engine + powerups + audio + WiFi).
 - **[../hardware/brx-station-spec.md](../hardware/brx-station-spec.md)** — the **BRX Utility Box**: one open, Mission-Control-programmable ESP32+IR node that becomes any objective (Hill/Assault/CTF/Respawn/Domination/**Extraction**/**Bomb**/perk emitter) — the open answer to the sealed stock grenade. Includes the "IR you must emit" spec.
+- **[../hardware/ir-prototype-plan.md](../hardware/ir-prototype-plan.md)** — the **~$15 ESP32 IR prototype**: capture the BRX 25-bit IR frames, emit them, and characterize **every sound + function** triggerable via IR (the `$SIR` effect space). Phased plan + BOM; unblocks B13 and the Utility Box.
 - **[../hardware/print-files.md](../hardware/print-files.md)** — 3D print files: what exists (community-shared) vs the gap our `hardware/` can fill; asks tracked in FOLLOWUPS §Hardware.
 - **[brx-mcp-spec.md](brx-mcp-spec.md)** — the MCP server spec.
 - **[apk-investigation.md](apk-investigation.md)** — APK teardown *plan/method* (done; results in `../protocol/callsign-extract/`).
