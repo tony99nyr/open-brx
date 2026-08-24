@@ -8,8 +8,22 @@ Protocol ground truth: `protocol/brx-protocol.md`.
 
 | Machine | Role | Notes |
 |---|---|---|
-| **Windows PC (WSL2 + Windows Python)** | **primary development** | Do protocol work, captures, code here. |
-| **MacBook** | **field / match day** | Goes to the field with the taggers. Keep `mcp/` working here. |
+| **Windows PC (WSL2 + Windows Python)** | **primary development** | Code, protocol work, Android-side captures. |
+| **MacBook** | **field / match day — AND the only capture rig** | Goes to the field with the taggers. Keep `mcp/` working here. |
+
+**Only the MacBook can capture the official app.** Callsign works on **iOS only** (it has
+never worked on Android), iOS Bluetooth traces need **PacketLogger**, and PacketLogger is
+**macOS-only**. So every "capture what the real app does" task — including the `$GSET`
+decode below, which is the critical path — **must happen on the Mac**. Windows cannot do
+it. Plan accordingly: batch up capture work for when the Mac is available.
+
+PacketLogger is already installed at `/Applications/PacketLogger.app` and the iPhone X
+already has Apple's Bluetooth logging profile. Flow: plug the iPhone in via USB (it needs
+a hub — the Mac has no USB-A), **File → New iOS Trace**, confirm lines are scrolling
+*before* playing, then **File → Export → btsnoop**. Decode with
+`python -m brx_mcp.btsnoop <file>`. Two traps that cost us a capture each: export acts on
+the **frontmost** window (easy to re-export an old trace), and a trace that is not actually
+recording produces a silently useless file.
 
 `CLAUDE.md`'s cross-platform rule matters more than ever: **code must run on both.**
 macOS gives BLE **UUIDs**, Windows/BlueZ give **MACs** — never pattern-match address
@@ -60,7 +74,7 @@ dead" complaint (the gun should announce its own respawn, as it already announce
 3. Diff the `$GSET` frames. The token that moved is respawn.
 4. Repeat for game time, lives, mode. `diff_captures` already exists.
 
-Do this on the Windows machine with the iPhone, or on the Mac — either works.
+**This must be done on the MacBook** — see the machine-roles note above; Callsign is iOS-only and PacketLogger is macOS-only. Windows cannot run this experiment.
 
 ## Second critical unknown: can results survive out-of-range play?
 
