@@ -179,6 +179,36 @@ have a **live link during play**:
 4. Establish a **common clock at game start**; require **per-player identity (P2)** for kill credit.
 Live feed is best-effort; final results are always complete — exactly prime directive #2.
 
+### Distributed Mission Control — a SIM aggregator + opt-in relay mesh
+
+A phone-only way to get field-wide status **without stations or a fixed HQ**: make Mission Control a
+**gossip-replicated event log** carried by the players' own phones.
+
+- **Each player node is authoritative for its own gun's events** (hits/deaths come from the gun
+  hardware over BLE). It emits **uniquely-ID'd, sequence-numbered** events.
+- **Events gossip to an aggregator** through *any* available relay: a **SIM phone** (e.g. a Pixel with
+  cellular) as the primary field aggregator, plus **opt-in player phones as extra relays / data-mules**.
+  More relays = more delivery paths, **purely additive** (events are idempotent + dedup'd).
+- **The aggregator folds the log into authoritative state**, applying each event **once** (dedupe by
+  event-ID — the JEDGE trick: a random ID checked against the last N processed).
+- **The SIM phone backhauls** the aggregate over **cellular** to a **cloud Mission Control** for a live
+  remote scoreboard, spectators, and persistence — no venue WiFi needed.
+
+**Resolving ties (the subtle part):** phone clocks drift, so wall-time can't order sub-second events.
+Stamp each event with a **logical (Lamport) timestamp + node-ID** so every relay and the aggregator
+tie-break *identically*. For **truly concurrent** events (inside the network's latency window, no
+authority present at that instant) the aggregator yields a **consistent, fair convention** (e.g. lowest
+node-ID wins) — deterministic and fair, but a *rule*, not physical ground truth (per the reconciliation
+limits above).
+
+**Honest limits:** (1) **eventually consistent** — the live view lags by propagation delay; ideal for
+reconciling final ties/status at game-end, "recent" not instant live. (2) **Trust:** relays should
+**sign events (per-node HMAC) + dedupe by ID** so a relay can't tamper/replay — low priority for
+friendly play, but design the seam. (3) **Redundancy ≠ honesty:** extra relays improve *delivery*, not
+truth; a node is authoritative for its own gun (can't fake damage), but if *its own* node never emits an
+event, no relay can recover it. **Net:** an idempotent, dedup'd, gossip-replicated event log with a
+deterministic tie-break — the correct model, and phone-only (Tier 0–1) up to the cloud backhaul.
+
 ## Playing without WiFi on a large field — the station mesh + data mules
 
 Blanketing a big park in WiFi is unreasonable. You don't have to: **network the objectives, not the
