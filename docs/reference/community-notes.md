@@ -100,9 +100,11 @@ headset link dropped (which blocks firing).
 **You CAN swap the tagger's sound files** — corrects our earlier "no on-gun sound change" note.
 - Files are sent over the **micro-USB data port** (the "Programing Port"). The **SD card is NOT
   removed** — it's hot-glued to the mainboard and stays put.
-- To expose the storage: **plug the gun into a computer, hold SELECT while turning the gun on.**
-  It does **not** show up as a drive on a normal power-on (Windows won't see it) — the
-  Select-hold-at-boot enters the mass-storage / file-transfer mode.
+- To expose the storage: **plug the gun into a computer, hold SELECT while turning the gun on**
+  (gun makes no startup sound). It does **not** show up as a drive on a normal power-on. A disk
+  drive then appears with a firmware `.BIN` at the root and an **`AUDIO` folder** — drop new
+  `<ID>.LTP` files into `AUDIO` (overwrite = YES; slow, ~1 hr per 250 MB). Authoritative process +
+  details in `brx-extended-user-guide.md`.
 - People use this to install custom packs (e.g. a **Star Wars sound pack**).
 - Source: FB group thread (David Knox: "Files are sent via the data port. SD card does not get
   removed."; Don Richardson: "hold select while turning on the gun" while plugged in).

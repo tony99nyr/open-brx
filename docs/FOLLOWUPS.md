@@ -55,10 +55,10 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| G1 | Confirm `$GREN` config path | 🔴 | Mode is pushable via `$GREN` to the **gun** (FlashBang/Gas/Confusion/Molotov, `apk-harvest.md`). Test: does it take effect immediately or only while a grenade is "loaded"/tapped to the gun's IR? |
-| G2 | Is the grenade BLE-visible? | ⬜ | scan with a grenade powered on (protocol §7 still lists unknown) |
+| G1 | Confirm `$GREN` config path | 🔴 | Mode is pushable via `$GREN` to the **gun** (FlashBang/Gas/Confusion/Molotov, `apk-harvest.md`). The grenade is an **IR-paired accessory** (not its own BLE device) — pairing is gun→device over IR (`brx-extended-user-guide.md`). Test: does `$GREN` reprogram an already-paired grenade live? |
+| G2 | Grenade pairing procedure | ✅ known | **Hold RIGHT while powering on the gun → "install accessory" → power on grenade (30 s window) → pull trigger aimed at it → it chirps/flashes.** Pair all accessories in one session, tap SELECT to finish (`brx-extended-user-guide.md`). |
 | G3 | Capture the app configuring a grenade | 🟡 | PacketLogger while Callsign sets a grenade → exact `$GREN` |
-| G4 | Grenade firmware `.bin` flashing procedure | ⬜ | community wants it too; undocumented. Grenade enables CTF/KotH/Assault — "scary music" = CTF flag music (`community-notes.md`) |
+| G4 | Grenade firmware `.bin` flashing | ✅ known | Same as headset: **hold the PROGRAM button (pin) while powering on → USB disk mode → replace the root firmware file** (`brx-extended-user-guide.md`). Grenade enables CTF/KotH/Assault — "scary music" = CTF flag music (`community-notes.md`). |
 | G5 | Build a clean grenade-config UI | 🟡 | in Mission Control / MCP — the "better way to configure it" the buggy on-gun menu lacks |
 
 ## Field-range / transport (followup D — the way to scale)
