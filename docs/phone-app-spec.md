@@ -17,11 +17,19 @@ From the teardown and the field:
 
 ## Platform: Web-Bluetooth PWA on Android
 
+**Yes, a browser can do this.** The Web Bluetooth API (Chrome/Edge/Chromium) connects to the BRX's
+Nordic UART GATT: connect → subscribe TX notify → write RX. This is an **ideal** Web Bluetooth use
+case because each player's app connects to exactly **one** tagger (their own) — one device-chooser
+pick, one link, ~1 m away.
+
 - **Chrome/Edge on Android support Web Bluetooth** → the app can *be* the repo's `webapp/` served
   as an installable PWA. No app store, no provisioning, no Apple developer account, no build
   toolchain per player. Update everyone by redeploying a static site.
-- **iOS is out** (Safari has no Web Bluetooth) — matches Callsign's own limitation but from the
-  other side. iOS users would need Bluefy or the Companion hardware instead.
+- **iOS is out** (Safari has no Web Bluetooth; Firefox too) — matches Callsign's own limitation but
+  from the other side. iOS users would need Bluefy or the Companion hardware instead.
+- **Requirements:** served over **HTTPS** (or localhost), and a **user gesture** launches the device
+  chooser (can't scan silently). Newer Chrome remembers granted devices
+  (`navigator.bluetooth.getDevices()`) so reconnection doesn't re-prompt — good for match rejoins.
 - **Offline-first:** log events to **IndexedDB**; sync to Mission Control over WiFi when available.
 - **Gate to test first (from `field-architecture.md`):** confirm Android Chrome actually holds a
   BRX NUS link (nRF Connect: connect `Tactix2-XXXX`, subscribe TX `…0003`, write `$PING,*` to RX

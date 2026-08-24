@@ -21,6 +21,23 @@ admin from the architecture doc. Two control paths, chosen by scale:
 The **MCP tool layer is transport-agnostic from day one** (spec §M4): the same `send`/`get_events`
 tools work whether the backend is local BLE or the MQTT proxy.
 
+## Is Mission Control a web app? Yes — talking to the server, not Bluetooth
+
+Browsers **can** do BLE (Web Bluetooth: Chrome/Edge/Chromium on Android/Windows/macOS/Linux; **not
+iOS Safari, not Firefox**). But Mission Control should **not** drive BLE directly at scale — Web
+Bluetooth requires a **user-gesture device-picker per tagger** (no silent bulk scan) and one radio
+still tops out at ~7–10 links. So:
+
+- **Scalable design:** Mission Control is a **standard web app** (served by the server) talking to
+  the server over **WebSocket/MQTT**. The server and the per-player **nodes** (Companion / phone)
+  own the Bluetooth. No Web Bluetooth in Mission Control at all — just normal web tech + the event
+  bus. This is the recommended path.
+- **Pilot shortcut (≤~8 taggers):** a Web-Bluetooth Mission Control can drive taggers directly from
+  the operator's Chrome, at the cost of a click-to-pair step per tagger. Fine for a first demo;
+  doesn't scale.
+
+Either way it's buildable as a web app.
+
 ## Core features
 
 ### 1. Scan & roster
