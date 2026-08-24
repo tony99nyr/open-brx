@@ -687,3 +687,15 @@ DISPLAY** reading the Hill/Respawn beacons over BLE (`$HIR` token2=15), and **(b
 config via `$GREN`** — but only with a *paired* grenade (untested; needs the install-accessory pairing).
 Also untested: whether `$GREN` needs the grenade "tapped/loaded" to the gun first (APK hypothesis).
 Scripts: `scratchpad/gsend.py`, `gsweep.py`.
+
+### 37. Grenade beacon OWNERSHIP decoded ✅ (token4 = owning team)
+Claimed a Respawn (yellow) grenade for team-1 (blue) by shooting it and compared beacons before/after
+(`gclaim.py`, `gprobe.py`). **Token 4 = owning team:** neutral/team-2 Respawn beaconed
+`$HIR,0,15,0,**2**,6`; the instant the blue (team-1) gun claimed it (chime + LED→blue), the beacon
+flipped to `$HIR,0,15,0,**1**,6`. Same team encoding as a gun hit's shooter-team field (1=blue, 2=team2).
+**Full grenade beacon decode:** `$HIR,0,15,0,<owningTeam>,<mode>,0,0` — token2=15 (grenade), token4=team,
+token5=mode (Respawn=6, Hill=8). Behaviour: setting Respawn → nearby setup-mode tagger says "respawn
+point enabled" + echoing ping; claiming shot → "chime" + LED turns team colour.
+**This fully specs the B8 state-display:** a node reads `$HIR,0,15,0,<team>,<mode>` to show who owns each
+Hill/Respawn objective live. (Beacon capture is aim-sensitive — the grenade's emitter must face the
+headset dome closely; a couple of runs saw nothing purely from positioning.)

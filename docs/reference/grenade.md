@@ -59,10 +59,16 @@ There are **5 modes**, indicated by **LED colour** (the video's 4-mode list was 
 a host game whose `$SIR` table swallows the IR** (use a bare connect, or a `$SIR` config that passes
 grenade IR through). Hardware-confirmed decode (exp-log #35):
 
-- **`$HIR,0,<srcType>,0,<d>,<e>,<f>,<g>`** — **token 2 (`srcType`) = 15 means the hit is from a GRENADE**
-  (a gun shot has `0` there). A node filters grenade IR by `token2 == 15`.
-- **Only Hill and Respawn beacon** their state passively (~2.5–5 s); **Assault, CTF, Frag do not.** Token
-  5 (`e`) encodes the beaconing mode: **Hill `e=8`, Respawn `e=6`** (both token4=2).
+- **`$HIR,0,15,0,<owningTeam>,<mode>,0,0,*`** — full decode (hardware-confirmed, exp-log #35):
+  - **token 2 = 15** means the hit is from a **GRENADE** (a gun shot has `0` there). Filter grenade IR by
+    `token2 == 15`.
+  - **token 4 = the OWNING TEAM** — verified: a neutral/team-2 Respawn beaconed `…,2,6`; the instant a
+    **team-1 (blue)** gun claimed it, the beacon flipped to `…,1,6`. So **1 = blue/team-1, 2 = team-2**
+    (same team encoding as a gun hit's shooter-team field).
+  - **token 5 = the mode** — **Respawn = 6, Hill = 8**.
+- **Only Hill and Respawn beacon** their state passively (~2.5–5 s); **Assault, CTF, Frag do not.**
+- **A node reads `$HIR,0,15,0,<team>,<mode>` to show who owns each Hill/Respawn point, live** — this is
+  the buildable core of the grenade **state-display** app (B8).
 
 | Mode (colour) | Beacons? | Signature / behaviour |
 |---|---|---|
