@@ -186,3 +186,77 @@ Players run around a field; the laptop sits still. The official system does not 
 problem because **every player carries their own phone** — the BLE link is always ~1 m away.
 One-laptop-many-taggers is a different topology and needs a different design.
 Consequences, all unresolved — see the followups section at the end of this file.
+
+---
+
+# Followups — open research, prioritised
+
+## A. The range problem (blocks the whole one-laptop design)
+
+Our `arena` command drives everything from the host: it detects `$HP,0,` and sends
+`$SPAWN,,*` itself. **That only works while the laptop is in BLE range.** On a real field
+players leave range within seconds, and a downed player would simply never respawn.
+
+The official system sidesteps this — **each player carries their own phone**, so the BLE
+link is always about a metre away and the phone can be the game engine. One-laptop-many-
+taggers is a fundamentally different topology.
+
+What has to be true for it to work:
+
+1. **The tagger must respawn itself.** The manual (§7h) lists respawn as an *on-gun*
+   setting (off / 15 / 30 / 60 / ramp45 / ramp90 s), so the firmware can already do this —
+   we just have not found the command. **Almost certainly a `$GSET` token.** Highest
+   priority: decode it, then stop driving respawn from the host.
+2. **Game time and lives likewise** — same `$GSET` frame, same experiment.
+3. **The tagger must accumulate results while disconnected.** Unknown whether it does.
+   `$SP` is documented as an end-of-game report and `$UP` as a status report; neither has
+   been probed. If the gun keeps score, players return to the laptop and we read it. If it
+   does not, one-laptop scoring is impossible for out-of-range play and the design must
+   change (a relay/repeater, per-player phones, or the nRF radio — see D).
+4. **Reconnect-and-read flow.** Scan → connect → pull results → display. Needs 1–3 first.
+
+**Do not build more host-driven game logic until A1 and A3 are answered.** The current
+respawn loop is a demo of the protocol, not a design for a real match.
+
+## B. Death/respawn UX
+
+Players need to know how long they are waiting. If A1 lands, the gun owns the timer and
+most likely announces it (the official app shows a HUD countdown because the phone is on
+the player). Check what the gun does on its own before building anything host-side —
+we may get the countdown for free.
+
+## C. Values and states still unknown
+
+| Item | Why it matters | Method |
+|---|---|---|
+| `$GSET` token map | respawn, game time, lives, mode — see A | differential capture: change ONE app setting, re-capture, diff |
+| `$WEAP` 44 tokens | custom weapons | same; the manual's stock stats (§7h) are anchors — M-4 damage 24 already matches |
+| Per-player identity | `$HIR` gives shooter *team*, not player (§7k). FFA scoring needs per-player | `QUERY` reports a device-level `PlayerID` we have never changed — find the command that sets it |
+| `$TID,0,*` | neutral LED for FFA (§7i) | one-line test |
+| `$HIR` `45,0,0` / `70,0,0` | recur across matches, unexplained; the numbers equal starting HP/armor | correlate against what the operator was doing |
+| `$HIR` IR protocol per weapon | two frames came as `$HIR,0,...` not `4` | fire each slot deliberately, watch token 1 |
+| `$SFLASH,*` | sent periodically by the app, no args, never near a hit | try it in isolation and watch the gun |
+| `$SP` / `$UP` | candidate end-of-game and status reports — central to A3 | probe directly |
+| Headset lockout | manual says a headset lost mid-game locks the gun (§7h). **Never controlled for in any experiment** | run one match headset-paired, one headset-off-from-boot |
+
+## D. The nRF radio — possibly the real answer to A
+
+`QUERY` reports `NRFhost 1` and `NRFslave 1`, and LaserTagMods build LoRa/nRF base
+stations (`NRFL-Bases`, `LoRa-Controlled-Taggers`). **The taggers may already have a
+long-range radio that is not Bluetooth.** If so, the range problem may have a native
+solution and BLE is simply the wrong transport for field play. Unprobed, and potentially
+more important than anything in C.
+
+## E. Sound inventory
+
+Wanted: the complete sound bank, so audio can be designed rather than guessed.
+**The microphone sweep is a dead end** (see entry 7 — the negative control failed).
+Better routes, in order:
+
+1. **Decompile the Callsign Android APK.** The app has to know every sound id it sends, so
+   the list is in there — very likely with names. This is the highest-value route by far
+   and needs no hardware.
+2. **`$PSET`'s audio-set tokens.** The trailing `H44,JAD,V33,V3I,…,A10` list appears to be
+   a positional voice pack (the "GET SOME" respawn line came from it, not from any `$PLAY`
+   we sent). Change one token, hear which line changes — maps meaning, not just existence.
+3. **Battle Company's updater sound package**, if it ships sounds as files.
