@@ -744,3 +744,9 @@ data interface**. Open: **confirm the cable is a DATA cable** (test with a phone
 data-capable and still nothing, the grenade USB-C is **power-only / needs a proprietary tool**. So the
 reliable non-IR channel Tony hoped for is **not available via plain USB** on current evidence; IR-beacon-
 relay (a BLE tagger in range) remains the state-read path. Script: `scratchpad/gren_serial.py`.
+
+**Refinement:** the purple LED was **transient** — holding the button just entered the **normal setup
+cycle** (purple ≈ a "USB power detected" flash, then it rolled into the mode colours; Tony released on
+**yellow = Respawn** and it locked). So USB did **not** unlock a special mode; button-hold = normal setup
+regardless of USB. **G7 = clean negative: USB-C is power/charge only, no data interface.** State-read
+stays the IR-beacon relay.
