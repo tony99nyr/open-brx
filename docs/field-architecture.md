@@ -242,3 +242,31 @@ Cost ladder (all avoid blanketing the park in WiFi):
 
 **Net:** broadcast downlink for announcements/HUD, mule uplink for scoring — live callouts on a
 large field with no WiFi and, at best, a free ride on the gun's own nRF.
+
+### Status displays (players remaining, objectives, respawns) — node-served, no central WiFi
+
+A phone/tablet can be a live **status screen** on the field without any central network, because the
+data is already on every node and each node can serve its own page.
+
+**Game-state summary broadcast.** HQ periodically broadcasts a *tiny* packet on the same downlink as
+"flag taken": per-team **alive counts**, **objective ownership**, **clock/time-left**, **score**. A
+few bytes, infrequent — fits LoRa/nRF. **Every node caches the latest summary** as it receives it, so
+global state is present on every station/flag/Companion for free.
+
+**Displays = a node-served web page.** Any ESP32 node runs a **SoftAP + tiny web server** (JEDGE
+already does this for setup). A phone/tablet **joins that node's WiFi and opens the page** — no app,
+no pairing, no central network. The page shows:
+- **Global** (from the cached broadcast summary): players remaining per team, objective status, time,
+  score.
+- **Per-player** (from the local link to *that* node): your lives / respawns available — e.g. at a
+  respawn station, shown for whoever just docked.
+
+**Best placements:**
+- **Respawn station** — the natural chokepoint: players are standing there while they respawn, so the
+  screen is seen regularly by everyone, and the station already has each docking player's lives.
+- **HQ base node** — the full live scoreboard / TV mode (`mission-control-spec.md`).
+- **Roaming ref/commander tablet** — joins whichever station AP is nearby to check the field.
+
+So "how many players remain / objective status / respawns available" is answered on the field by:
+**broadcast the small summary → every node caches it → a tablet reads the nearby node's local page.**
+Per-player detail rides the local dock; global summary rides the broadcast. No field-wide WiFi needed.
