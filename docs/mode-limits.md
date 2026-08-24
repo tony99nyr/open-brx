@@ -20,13 +20,21 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
 ## 1. Cross-cutting constraints (they shape every mode)
 
 ### Platform / BLE
-- 🧱 **iOS has no native Web Bluetooth** — not in any Safari version (through iOS 18), and every iOS
-  browser is forced onto WebKit, so Chrome/Edge on iOS inherit the gap. **Consequence:** an iPhone/iPad
-  can't drive a gun over BLE from a normal web page. *Mitigation (not a full fix):* wrapper browsers —
-  **Bluefy** or **beacio** (~92/93 % W3C Web-Bluetooth conformance) — or a native app. So iOS = "needs a
-  wrapper," and any BLE role is second-class there. ([status](https://github.com/WebBluetoothCG/web-bluetooth/blob/main/implementation-status.md),
-  [beacio](https://ioswebble.com/)) → **Android (Pixel/OnePlus) is the first-class BLE node; iOS is best
-  as screens/scoreboards/Mission Control** (plain HTTP, no BLE).
+- ⚠️ **iOS has no Web Bluetooth in the *browser*** — not in any Safari version (through iOS 18), and
+  every iOS browser is forced onto WebKit, so Chrome/Edge on iOS inherit the gap
+  ([status](https://github.com/WebBluetoothCG/web-bluetooth/blob/main/implementation-status.md)).
+  **This is a browser limit, not an iOS limit.** Three ways to give an iPhone/iPad full BLE:
+  1. **Web path (zero-install):** works on **Android Chrome**; on iOS use a wrapper browser (**Bluefy**,
+     **beacio** ~92/93 % W3C conformance — [ref](https://ioswebble.com/)). Second-class on iOS.
+  2. **Hybrid app:** the same PWA wrapped in Capacitor/Cordova with a BLE plugin (or a
+     `navigator.bluetooth` polyfill → CoreBluetooth). Same web core, first-class BLE.
+  3. **Native / RN / Flutter app:** full BLE via **CoreBluetooth** — iOS is then **completely
+     first-class** (see `phone-app-spec.md` §"Common core, platform shells").
+
+  So the *only* real ceiling is **web-zero-install vs. app-distribution overhead**, not capability. **For
+  the zero-install first cut, Android (Pixel/OnePlus) is the BLE node and iOS is screens/MC; a native/
+  hybrid iOS app removes that split entirely.** (The 7-connection cap below is **Android-specific**; iOS
+  has its own, generally fine for a handful of guns.)
 - 🧱 **Android central caps at 7 concurrent GATT connections** (`BTA_GATTC_CONN_MAX=7` in the Android
   Bluetooth stack; fewer are reliable in practice). **Consequence:** one phone hosts a *handful* of guns,
   not a crowd — so "one phone as the hub for everyone" doesn't scale; past ~4–6 guns you need a node per
@@ -160,8 +168,10 @@ $0 shortcut and only for a *single* point, with its own quirks.
 ## 3. The short version (what's a true ceiling vs a to-do)
 
 **Hard ceilings to design around:**
-1. **iOS has no native Web-BT** → iOS = screens/MC; Android = the BLE nodes (wrappers help but are
-   second-class).
+1. **iOS has no *browser* Web-BT** → for the zero-install web path, iOS = screens/MC and Android = the
+   BLE nodes. **Not a true ceiling:** a native/hybrid iOS app (CoreBluetooth) makes iOS fully
+   first-class — and that's **still Tier 0** (software on phones you already own; only optional cost is a
+   $99/yr Apple account for App Store distribution, avoidable via sideload/TestFlight for club use).
 2. **7 concurrent BLE connections per phone** → one phone hosts ~4–6 guns; scale with per-player nodes.
 3. **Phones have no IR** → shoot-the-point needs an IR station or the grenade; phones do touch/proximity.
 4. **LoRa is low-bandwidth + no field WiFi** → live field-wide state needs T4 broadcast; else

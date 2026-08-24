@@ -54,7 +54,10 @@ becomes their game engine + HUD → **breaks the BLE-range limit** (the link rid
 - Unlocks: **full-field roaming** for every Tier-0 mode, a **per-player HUD** ("your score/ammo/
   lives" — the #1 thing players ask for), offline play with results syncing at HQ WiFi.
 - Gated on a **free 10-min test**: does Android Chrome hold a BRX BLE link? (followup, no purchase).
-- iOS can't (no Web Bluetooth) — use Android, or the Companion below.
+- iOS can't do the **web** path (no Safari Web Bluetooth) — use Android for zero-install, a wrapper
+  browser (Bluefy/beacio), or a **native/hybrid iOS app** (full BLE via CoreBluetooth). The app is
+  **still Tier 0/1** — software on phones you own, no hardware spend (only an optional $99/yr Apple
+  account for App Store distribution). See `phone-app-spec.md` §"Common core, platform shells".
 
 ## Tier 2 — ESP32 "Companion" per tagger (~$8–25 each)
 

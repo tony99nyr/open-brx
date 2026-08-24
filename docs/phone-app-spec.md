@@ -25,8 +25,9 @@ pick, one link, ~1 m away.
 - **Chrome/Edge on Android support Web Bluetooth** → the app can *be* the repo's `webapp/` served
   as an installable PWA. No app store, no provisioning, no Apple developer account, no build
   toolchain per player. Update everyone by redeploying a static site.
-- **iOS is out** (Safari has no Web Bluetooth; Firefox too) — matches Callsign's own limitation but
-  from the other side. iOS users would need Bluefy or the Companion hardware instead.
+- **iOS is out *for the browser path*** (Safari has no Web Bluetooth; Firefox too) — matches Callsign's
+  own limitation but from the other side. iOS users would use Bluefy/beacio (wrapper browsers), the
+  Companion hardware, **or a native/hybrid app** (next section) which makes iOS fully first-class.
 - **Requirements:** served over **HTTPS** (or localhost), and a **user gesture** launches the device
   chooser (can't scan silently). Newer Chrome remembers granted devices
   (`navigator.bluetooth.getDevices()`) so reconnection doesn't re-prompt — good for match rejoins.
@@ -34,6 +35,35 @@ pick, one link, ~1 m away.
 - **Gate to test first (from `field-architecture.md`):** confirm Android Chrome actually holds a
   BRX NUS link (nRF Connect: connect `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign), subscribe TX `…0003`, write `$PING,*` to RX
   `…0002`, expect `$PONG`). The whole plan rests on this 10-minute check.
+
+## Common core, platform shells (and first-class iOS)
+
+The iOS "limit" is a **browser** limit, not an iOS limit — **native iOS apps have full BLE via
+CoreBluetooth**. So iOS is only second-class on the *zero-install web path*; a native/hybrid app makes
+it first-class. And crucially, **an app is still Tier 0** — it's software running on phones you already
+own; the only optional cost is a **$99/yr Apple Developer account** for App Store distribution (avoidable
+via sideload / TestFlight / a free 7-day dev cert for club-only use). **No hardware spend.**
+
+This works because the design is **transport-free at the core** (already true of the mode engines in
+`../mcp/brx_mcp/modes/` and the protocol layer in `../mcp/brx_mcp/protocol.py`):
+
+- **Common core (write once):** the rules engines (Extraction, health/regen, objective logic) + the BRX
+  protocol build/parse. Pure logic, no I/O — the same code the desktop tools and the Companion use.
+- **Thin platform shells (per platform):** BLE transport + UI. **Web Bluetooth** on Android/Chrome,
+  **CoreBluetooth** on iOS native, **bleak** on desktop Python.
+
+Three ways to ship the wrap, most code-reuse first:
+1. **Hybrid (highest reuse):** the same PWA wrapped in **Capacitor/Cordova** with a BLE plugin, or a
+   `navigator.bluetooth` **polyfill → CoreBluetooth** (i.e. "build our own Bluefy"). The web app *is* the
+   common core; only the transport shim is native.
+2. **React Native / Flutter:** one app codebase for both platforms, native BLE via a plugin
+   (`react-native-ble-plx` / `flutter_blue_plus`). One codebase, native feel.
+3. **Fully native UIs over a shared logic core** (TS/Rust/C++ core, Swift/Kotlin shells): most work, most
+   polish — overkill until there's demand.
+
+**Roadmap stays:** ship the Android PWA first (zero-install, validates the core), then wrap the *same
+core* for iOS when you want the iPhones to be full player nodes instead of just screens. The tradeoff is
+only **zero-install vs. app-distribution overhead**, never a capability gap.
 
 ## What the app does (per player)
 
