@@ -85,7 +85,7 @@ $SPAWN,,*                  # <-- GO LIVE (empty token matters; §7e)
 $AMMO,0,<mag>,<reserve>,1,*   # load magazines (per loadout slot)
 $AMMO,1,<mag>,<reserve>,1,*
 $BMAP,0,0,,,,,*            # re-map trigger AFTER spawn (mandatory; §7e)
-$SFLASH,*                  # green-sight flash — "you are live"
+$SFLASH,*                  # green-sight flash — "you are live" (PROVISIONAL: $SFLASH is confirmed only as the kill-confirm flash §7o; repurposing it at spawn is low-risk/no-arg but unverified)
 ```
 
 - The gun echoes `$LCD`/`$ALCD` (HP/armor/mag) confirming live; the node's engine begins its own-gun loop.
@@ -115,7 +115,9 @@ $SFLASH,*                  # green-sight flash — "you are live"
   *while still in range*, right before the player walks out of range.
 - **Drift budget.** Phone RTC drift is ≪1 s over a typical match (contracts §7). Budget: a node armed with a
   <10 s-old sync should fire within **±250 ms** of the field consensus — imperceptible for a countdown.
-  "Close enough" = **±0.5 s**; beyond that the start feels ragged. We re-sync at lobby only; no mid-disperse
+  "Close enough" = **±0.5 s**; beyond that the start feels ragged. The lobby re-sync is the **guarantee**; a
+  node that happens to be in range mid-disperse also re-syncs opportunistically (net.md §7's periodic
+  `time_req` fires only when connected). No mid-disperse
   sync is needed within a normal 5–20 min match.
 - **A node that never synced** (no samples, or stale beyond `SYNC_FRESH_MS`): it is **blocked from ready-up**
   and shown red on MC's board (§6). If it somehow receives `start` unsynced (edge: synced then went stale

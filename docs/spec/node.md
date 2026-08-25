@@ -152,7 +152,7 @@ until MC pushes them; the node never computes them.
 
 This is the headline requirement (README §2/§7). Concretely, with **no Transport connected**:
 
-- arming still works if the node already holds a `config` (from a prior `assign`, persisted §6) — and
+- arming still works if the node already holds a `config` (from a prior `config` push, persisted §6) — and
   the node can arm from a **locally cached last config** so a power-cycled phone rejoins the same game
   without MC in range;
 - damage/death/respawn/battery all run off BLE frames alone;
@@ -168,7 +168,7 @@ so even T-0 needs no signal.
 ### 3.8 Lifecycle (contracts §6) → engine states
 
 ```
-IDLE ──setGun──► CONNECTED ──assign──► KITTED ──ready──► LOBBY ──start(go_live_t)──► ARMED(countdown)
+IDLE ──setGun──► CONNECTED ──assign──► KITTED ──[ready-up; all-ready → config]──► LOBBY ──start(go_live_t)──► ARMED(countdown)
    ▲                                                                                     │
    └────────── recall / end / time-expiry ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T ───────────────┘
 ```
@@ -187,7 +187,10 @@ a game-stop — it cancels a *pending* countdown (by `seq`) → back to LOBBY (�
 
 Just as the dispersed **start** fires off a pre-shared `go_live_t` with no T-0 signal (§3.7, M-START),
 the dispersed **end** must fire off a pre-shared duration with no `end`/`recall` from MC — otherwise a
-node out of LAN range would keep running past time. **M-NODE owns this.** While LIVE, the engine holds
+node out of LAN range would keep running past time. **M-NODE owns this.** ⚠ **Bench-untested:** the end
+frames (`endFrames()`/END_SEQUENCE) are hardware-confirmed, but the *composed* time-expiry-end flow has
+not been run on hardware (exp-log 2026-08-25: "time-limit end not yet exercised") — treat as a pending
+bench test, not a proven path. While LIVE, the engine holds
 `go_live_t` and `config.time_limit_s`; when
 
 ```

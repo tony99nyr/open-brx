@@ -115,7 +115,7 @@ documented amendment, not silent edits.
 - **M-MC** — composes armory + modes + net + scoreboard + recap into the host app.
 
 **Interface freeze:** `contracts.md` covers the **wire** (data + messages). Cross-module **code**
-interfaces (`Transport`/`NetServer` in `net.md`, `WeaponCatalog`/`armFrames`/`spawnFrames`/
+interfaces (`Transport`/`NetServer` in `net.md`, `WeaponCatalog`/`armFrames`/`spawnFrames`/`reviveFrames`/
 `tutorialFrames`/`feedbackSound` in `modes.md`, `readiness()` in `armory.md`, `startAt()` in
 `start-sequence.md`) live in each module's **Interface** section and are **frozen when that module's Wave
 is ratified**. After freeze they change only by the same amendment discipline as `contracts.md`.

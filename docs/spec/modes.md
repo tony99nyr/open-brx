@@ -35,7 +35,7 @@ side-channel, nothing the JSON doesn't capture. Author → JSON → frames must 
 Two GameConfig representations, one meaning:
 
 - **Wire form** — the `contracts.md` §3 JSONC object (`mode`, `environment`, `night`, `respawn`,
-  `scoring`, `health`, `teams`, `led?`, …). This is what crosses the LAN in `assign`/`welcome`.
+  `scoring`, `health`, `teams`, `led?`, …). This is what crosses the LAN in the **`config`** message (and in `welcome` on reconnect) — not `assign`, which carries only the `Player`/`Team` (contracts §5).
 - **Compiler form** — the `gameconfig.py` `GameConfig` dataclass (every knob mapped to its frame).
   M-MODES provides `fromWire(json) → GameConfig` and `toWire(GameConfig) → json` so the two stay
   in lockstep. The dataclass is a superset (it carries objective/extraction knobs the base wire
@@ -76,7 +76,8 @@ combat-surface knobs (weapon, team, HP, FF, crit, indoor/outdoor, LED) become fr
 Notes that shape the schema:
 
 - **Teams → `$TID`.** `Team.tid` (contracts §2) is the numeric id written as `$TID,<tid>`. Native
-  hardware teams confirmed at 2 (TDM) + 3 (factions); max-N is UNTESTED. FFA + MC-logical teams
+  hardware fired `$TID,1`/`$TID,2` in 2-team play; `$TID,0`=RED was seen in teardown, so **3 distinct `$TID`
+  colours are observed but 3+-team play is UNTESTED** and max-N is unknown. FFA + MC-logical teams
   (all one `$TID`, FF on, MC scores true squads) is the always-works fallback (game-modes §Team).
 - **Respawn** (`respawn.type`): `auto` = host timer (`respawn_s`, optional ramp 15/30/45/90),
   `scanner` = respawn at a station/grenade (host defers to the objective device), `none` = LMS.
@@ -240,7 +241,7 @@ stay out until then.
 | kind | sound id | source |
 |---|---|---|
 | `kill` | `VAA` | VA-family kill line (§5 / sound-bank); id swaps with the player's voice set |
-| `multi` | *native* | the gun's firmware announces "double/triple kill" itself (exp-log 2026-08) — no host `$PLAY` needed; any id we add is **provisional** |
+| `multi` | **host `$PLAY`** | announced by MC/node over BLE, exactly like `kill`. Native multikill audio is **nRF-peer, invisible to BLE, and silent under our BLE-driven config** (ADR-0001 #4; exp-log 2026-08-24/25 — retested, sight stayed red, no "double kill"). So it is **NOT free** and **LAN-gated** like all feedback (absent while dispersed). The `$PLAY` id is **provisional**. |
 | `medal` | **provisional** | no confirmed medal SFX id in the sound bank yet — mark unverified until captured |
 
 ## 6. LED / environment — the `led` object
@@ -334,7 +335,7 @@ feedbackSound(kind)       -> string             // §5b  kind ∈ kill|multi|med
   capture-diff each family? Endpoint is faster if reachable offline-cached.
 - **Night LED-off (P17)** — `$GLED` "off" is a guess; `$TID` may always drive some LED. Verify on
   hardware before promising a dark gun; HUD blackout is independent and reliable.
-- **Max native team count** — 2+3 confirmed; N-team (duos/trios with hardware FF) UNTESTED. Affects
+- **Max native team count** — 2-team play confirmed; 3 distinct `$TID` colours observed but 3+-team UNTESTED; N-team unknown. Affects
   how many `Team.tid` values the mode schema may legally emit.
 - ~~**Tutorial `$TID`** — omit entirely or send `$TID,0`?~~ **RESOLVED (exp-log):** there is no
   "no team" colour — a spawned gun always shows one (`0`=RED default). Send no scoring `$TID`; the

@@ -158,7 +158,8 @@ M-MC bind to; language-idiomatic equivalents are fine (async/await, callbacks, o
 interface Transport {
   connect(discovery: { mdns?: boolean; url?: string }): Promise<void>; // resolve+open+hello+welcome
   bind(b: { node_id: string; player_id?: string; gun_tail: string }): void;
-  send(ev: Event): void;          // enqueue to outbox; NEVER blocks, NEVER throws on offline
+  send(ev: Event): void;          // enqueue an Event to outbox; NEVER blocks, NEVER throws on offline
+  report(msg: NodeMessage): void; // non-Event uplink — ready|ack_config|log_offer|log_data (also store-and-forward queued)
   syncedNow(): number;            // §7 — local_now() + smoothed offset
   onMessage(cb: (msg: MCMessage) => void): void; // assign|config|tutorial|start|feedback|control|time_res|pull_log (ack consumed internally, §4)
   onState(cb: (s: LinkState) => void): void;     // 'connecting'|'open'|'bound'|'offline'
@@ -171,12 +172,18 @@ ring up to the durably-ingested `seq_hi` and does **not** surface `ack` to the c
 the remaining MC→node envelopes already validated (§8) and version-gated; bodies are passed through
 untouched for M-NODE/M-START to interpret.
 
+`NodeMessage` = the **non-Event** Node→MC envelopes — `ready`, `ack_config`, `log_offer`, `log_data`
+(contracts §5). Events go via `send()`/`onEvent`; everything else goes via `report()`/`onNodeMessage`.
+This is the surface M-NODE uses to ack a config, toggle lobby-ready, and hand up its log — and M-MC uses
+to gate start on `ack_config`, set `Player.ready`, and ingest logs at recap.
+
 **Server (consumed by MC — M-MC):**
 ```ts
 interface NetServer {
   start(bind: { host: string; port: number; wsPath: string }): void;     // binds LAN IP + advertises mDNS
-  onNode(cb: (n: { node_id: string; node_type: string; player_id?: string }) => void): void; // hello+bind
+  onNode(cb: (n: { node_id: string; node_type: string; player_id?: string; gun_tail?: string }) => void): void; // hello+bind (gun_tail from bind, contracts §5 — MC maps node↔gun & reconciles vs armory)
   onEvent(cb: (node_id: string, ev: Event) => void): void;   // post-dedup, monotonic per node
+  onNodeMessage(cb: (node_id: string, msg: NodeMessage) => void): void; // non-Event uplink: ready|ack_config|log_offer|log_data
   onStale(cb: (node_id: string, ageMs: number) => void): void;
   onReturn(cb: (node_id: string) => void): void;             // stale → live again
   push(node_id: string, msg: MCMessage): void;               // assign|config|tutorial|start|feedback|control|time_res|pull_log|ack
