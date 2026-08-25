@@ -141,15 +141,16 @@ a targeted Callsign capture (change one field, diff the frame — protocol-class
 
 When the host changes a player's weapon at kit-out, M-MC sends the node a `tutorial{weapon}` message
 (contracts §5). The node arms **that one weapon, privately, as silently as possible**, so the player
-can pull the trigger and reload to *feel* it — **no game starts, no team, minimal audio.**
+can pull the trigger and reload to *feel* it — **no game starts, no scoring team, audio limited to
+the weapon's own fire/reload.**
 
 `tutorialFrames(weapon) → string[]` — a deliberately reduced arm, differing from `armFrames` by:
 
 | | Real arm (`armFrames`) | Tutorial arm (`tutorialFrames`) |
 |---|---|---|
-| Volume | `$VOL,69` | `$VOL,30` (bench-quiet) |
-| Game start | `$START` + `$PLAY,VA81` game-start voice | **no `$START`, no start voice** |
-| Team | `$TID,<team>` | **omitted** (or `$TID,0`) — no friend/enemy |
+| Volume | `$VOL,69` | `$VOL,69` (audible — the try-out exists to *hear* fire+reload; MC §6b) |
+| Game start | `$START` + `$PLAY,VA81` game-start voice | **no `$START`, no start voice** (the `$SPAWN` chirp is silenced by `$PLAYX,0`) |
+| Team | `$TID,<team>` | **no scoring `$TID`** — but the gun still lights a colour (a spawned gun always shows one; `0`=RED default, exp-log) — no friend/enemy is wired |
 | `$GSET` | full game settings | minimal (indoor, FF off) so a stray shot is inert |
 | Weapon slots | primary+secondary+melee | **the single tried weapon in slot 0 only** |
 | `$SIR` / scoring | full incoming-IR table | omitted — incoming hits do nothing |
@@ -158,23 +159,27 @@ can pull the trigger and reload to *feel* it — **no game starts, no team, mini
 Sequence (silent single-weapon try-out):
 
 ```
-$VOL,30,0,*                     ; quiet
+$VOL,69,0,*                     ; audible — the try-out is to be heard (MC §6b)
 $CLEAR,*                        ; wipe any prior arm
 $GSET,0,<outdoor>,1,0,1,0,50,1,* ; FF off, env from config; NO $START
 $WEAP,0,<catalog tail for weapon> ; the one weapon, slot 0
-$SPAWN,,*                       ; make it live so the trigger works
+$SPAWN,,*                       ; make it live so the trigger works (self-plays the "GET SOME" spawn voice)
+$PLAYX,0,*                      ; silence that spawn chirp (exp-log: confirmed no voice) — as in END_SEQUENCE
 $AMMO,0,<mag>,<reserve>,1,*     ; loadout-correct ammo to feel reloads
 $BMAP,0,0,,,,,*                 ; trigger + reload handle armed
 ```
 
 - **Enter:** node is in `KITTED` (contracts §6). Tutorial is a transient overlay — the node records
   it was tutoring and does **not** report events (§4) upstream (a try-out shot is not a game shot).
-- **Exit (clean):** on the next `tutorial{weapon}` (re-arm the new weapon), or on `assign`/`start`
-  (which sends a full `armFrames`/lobby config that overwrites slots), or on a `control{cmd:"end"}`.
+- **Exit (clean):** on the next `tutorial{weapon}` (re-arm the new weapon), or on `config`/`start`
+  (the lobby `config{GameConfig}` push — separate from `assign` per contracts A2 — or the arm that
+  overwrites slots), or on a `control{cmd:"end"}`.
   A bare exit with no follow-up sends `$CLEAR,*` then `$PLAYX,0,*` to silence and disarm.
 - **Panic still applies:** `$CLEAR,*` then `$SP,99,*` at any time.
-- No `$PLAY,VA81` and no `$TID` is the whole trick — those two are what make a real arm *feel* like
-  a game starting; dropping them makes the try-out feel like a dry-fire range.
+- Dropping `$PLAY,VA81` (the game-start voice) and the scoring `$TID` is the whole trick — those are
+  what make a real arm *feel* like a game starting; without them the try-out feels like a dry-fire
+  range. The `$SPAWN` chirp is muted by `$PLAYX,0`; the gun still pulses a colour (a spawned gun
+  always shows one — exp-log), but no friend/enemy scoring is wired.
 
 ## 5. Voice sets → sound-bank / $PSET
 
@@ -202,6 +207,41 @@ Families come from `sound-bank.md` §Voice prefixes — each provides a consiste
   family into the tail. The exact per-slot id map per family is **partially known** (the examples
   above); families beyond VA are pinned by the server `voice-profiles` endpoint or a one-profile BLE
   capture (apk-harvest §voice). Ship VA fully, others as best-effort with the known kill/death lines.
+
+## 5b. Medal catalog & feedback sounds
+
+`ScoreRow.medals[]` (contracts §4) is filled from M-MODES' **medal catalog**; M-MC's recap consumes it.
+M-MODES owns the award *rules* — MC hands it the final `ScoreRow[]` + `Kill[]`, and gets back the medal
+ids each player earned. Names track the stock BRX set (`callsign-extract/game-medals-config.json`) so a
+recap reads familiar; the predicates are ours. One winner per medal per game unless the row says per-player.
+
+```jsonc
+Medal { medal_id: string, name: string, predicate: string }   // ScoreRow.medals[] carries medal_id
+```
+
+| medal | award predicate (per game) |
+|---|---|
+| **MVP** | top score (`kills − deaths`; tie → higher K/D) across all players |
+| **Top Gun** | most `kills` |
+| **Highest K/D** | highest `kd` (floor: min deaths/shots so a 1–0 isn't crowned) |
+| **Sharp Shooter** | highest `accuracy`, above a min-shots threshold |
+| **Survivalist** | fewest `deaths` |
+| **First Blood** | first `Kill` by `t` in the match (one-shot) |
+| **Double / Triple Kill** | any player with a `Kill` where `multi ≥ 2` / `≥ 3` (within `MULTI_KILL_MS`, contracts §9) — **per-player, repeatable** |
+
+Stock BRX carries ~21 medals (Trigger Happy, Grave Lover, Assistant, Ninja, streak tiers…); the full
+key→name map is in `game-medals-config.json`. The table above is the launch subset M-MODES scores from
+**node-observable events** — objective/headshot/melee medals need a P2 source (station/IR-decode) and
+stay out until then.
+
+**Feedback sounds** — `feedbackSound(kind)` is the lookup M-NODE's `feedback()` uses to turn a
+`feedback{kind}` (contracts §5) into `$SFLASH` (green sight) + a token-4 `$PLAY,<id>`:
+
+| kind | sound id | source |
+|---|---|---|
+| `kill` | `VAA` | VA-family kill line (§5 / sound-bank); id swaps with the player's voice set |
+| `multi` | *native* | the gun's firmware announces "double/triple kill" itself (exp-log 2026-08) — no host `$PLAY` needed; any id we add is **provisional** |
+| `medal` | **provisional** | no confirmed medal SFX id in the sound bank yet — mark unverified until captured |
 
 ## 6. LED / environment — the `led` object
 
@@ -243,7 +283,8 @@ GameConfig.validate()     -> {ok, errors[]}    // e.g. dup team tid, mode needs 
 // Frames (pure; no clock, no BLE)
 armFrames(config, player) -> string[]          // setup_frames ++ player_frames(player.team.tid), vol 69
 setupFrames(config)       -> string[]          // per-game (team-invariant)
-spawnFrames(config,player)-> string[]          // respawn re-arm (loadout-correct $AMMO)
+spawnFrames(config, player) -> string[]        // initial arm: player_frames ($SPAWN + loadout $AMMO + $BMAP)
+reviveFrames(config, player) -> string[]       // respawn re-arm (loadout-correct $AMMO); node.md binds this on respawn
 tutorialFrames(weapon)    -> string[]          // §4 silent single-weapon try-out
 endFrames()               -> string[]          // game-over teardown (END_SEQUENCE)
 panicFrames()             -> ["$CLEAR,*","$SP,99,*"]
@@ -253,11 +294,13 @@ WeaponCatalog.all()       -> Weapon[]          // §3 roster (for M-MC visual se
 WeaponCatalog.resolve(id, slot) -> string      // "$WEAP,<slot>,<tail>"
 WeaponCatalog.spawnAmmo(id) -> [mag, reserve]
 voiceOptions()            -> VoiceSet[]         // §5, {id,label,family,sample_id}
+medalCatalog()            -> Medal[]            // §5b award rules (for M-MC recap)
+feedbackSound(kind)       -> string             // §5b  kind ∈ kill|multi|medal → $PLAY sound id
 ```
 
 - **Every frame emitter is on the known-safe list** (`protocol.py`); unknown commands need explicit
-  confirm (house rule). M-MODES never emits a frame outside `armFrames`/`setup`/`spawn`/`tutorial`/
-  `end`/`panic`.
+  confirm (house rule). M-MODES never emits a frame outside `armFrames`/`setup`/`spawn`/`revive`/
+  `tutorial`/`end`/`panic`.
 - Frames are **strings, verbatim** — M-NODE chunks at 20 bytes (contracts §8) and writes; it never
   parses or edits them. This keeps the frame authority in one place.
 
@@ -293,9 +336,9 @@ voiceOptions()            -> VoiceSet[]         // §5, {id,label,family,sample_
   hardware before promising a dark gun; HUD blackout is independent and reliable.
 - **Max native team count** — 2+3 confirmed; N-team (duos/trios with hardware FF) UNTESTED. Affects
   how many `Team.tid` values the mode schema may legally emit.
-- **Tutorial `$TID`** — omit entirely or send `$TID,0`? Need to confirm a gun with no team still
-  fires inertly (no phantom friend/enemy) in the try-out arm.
+- ~~**Tutorial `$TID`** — omit entirely or send `$TID,0`?~~ **RESOLVED (exp-log):** there is no
+  "no team" colour — a spawned gun always shows one (`0`=RED default). Send no scoring `$TID`; the
+  try-out still fires inertly (no `$SIR`/no FF) and the leftover colour is cosmetic (§4).
 - **Shield pool (P16)** — inactive until activated; `$PSET` shield token stays best-effort. Health
   overrides use armor+HP only for now.
-</content>
-</invoke>
+

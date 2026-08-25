@@ -57,8 +57,9 @@ Two layers, one process:
 
 ### 3.1 Arming from a pushed GameConfig
 
-The seed hard-codes a TDM `SETUP` array and `spawnFrames(team)`. **Replace that with M-MODES.** On an
-`assign` (contracts §5, `{player, team, config}`) the node:
+The seed hard-codes a TDM `SETUP` array and `spawnFrames(team)`. **Replace that with M-MODES.** Kit-out
+(`assign{player, team}`, contracts §5) sets player + team → KITTED; the **lobby `config{GameConfig}`
+push** → LOBBY is what carries the arming config. On that `config` message the node:
 
 1. stores `player`, `team`, `config` (and `config.health.max_hp`/`max_armor` → the HUD's bar caps,
    replacing the hard-coded `MAX_HP=45`/`MAX_AR=70`);
@@ -84,7 +85,7 @@ Keep the seed's frame handlers (`handleFrame`), which already work on hardware:
 | `$LCD,...` | hp, armor, ammo (tok 5) | set `hp`, `armor`, `ammo` — the periodic full-state line |
 | `$ALCD,<ammo>,*` | ammo | set `ammo` |
 | `$HIR,...` | shooter team (tok 4), guard tok 2≠`15` | latch `lastShooterTeam` + `lastShooterAt` (§3.5) |
-| `$VOLTS,...` | tok 3 = pack % (verified, protocol §… `$VOLTS`) | set `battery` (§4 batt, §5) |
+| `$VOLTS,...` | tok 3 = pack % (**provisional** — protocol marks the last tokens "likely charge %, TBC"; *which* token is the display % is unresolved, §10-Q4) | set `battery` (§4 batt, §5) |
 
 Ammo is **observed**, never asserted — the gun is the source of truth for its own magazine. The node
 does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
@@ -94,8 +95,11 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
 The engine emits **only node-observable facts**, handed to Transport (queued if the LAN is down —
 §3.7). Mapping from local state to the frozen `Event` union:
 
-- **`status`** — every `STATUS_HEARTBEAT_MS` (2000): `{hp, armor, ammo, alive, deadline_s?, battery}`.
-  `deadline_s` = seconds left on the respawn timer when DOWN (§3.4).
+- **`status`** — every `STATUS_HEARTBEAT_MS` (2000): `{hp, armor, ammo, alive, deadline_s?, battery,
+  arm_state, t_minus_ms?, synced}` (contracts §4, A1/A2). `arm_state ∈ idle|kitted|lobby|armed|live`
+  (the §3.8 game phase — **orthogonal** to link state, which is connected/disconnected); `t_minus_ms`
+  is sent **only while ARMED** (countdown remaining, from synced time); `synced` = clock-sync is fresh
+  (else degraded, §7). `deadline_s` = seconds left on the respawn timer when DOWN (§3.4).
 - **`hit_taken`** — on a `$HIR` that also drops `$HP`: `{shooter_team, dmg}` (dmg = the hp+armor
   delta). `shooter_id` omitted (phone can't IR-decode — Companion P2 only).
 - **`death`** — on `$HP→0` (§3.4): `{shooter_team}` from the latched `$HIR`.
@@ -114,7 +118,8 @@ Keep the seed's model exactly — it is already correct:
   who (from `lastShooterTeam`), emit `death`, HUD flips to DOWN (§4.4). **No frame is written to the
   gun on death** — the firmware handles its own down-state; the node only *observes* it.
 - **respawn:** the 500 ms tick. When `respawn.type=="auto"` and `now - deadAt ≥ delay_s`, write
-  `reviveFrames()` (M-MODES: `$SPAWN` + `$AMMO` refills), set `alive=true`, refill HUD caps, emit
+  `reviveFrames(config, player)` (M-MODES: `$SPAWN` + loadout-correct `$AMMO` refills — the published
+  respawn re-arm, modes.md §7), set `alive=true`, refill HUD caps, emit
   `respawn`. For `type:"scanner"`/`"none"` the node does **not** auto-revive — it waits for the
   gun's own respawn signal / stays down (surface a "find a respawn point" HUD hint). Respawn math
   uses **synced time** so a mid-match reconnect doesn't warp the countdown.
@@ -152,6 +157,9 @@ This is the headline requirement (README §2/§7). Concretely, with **no Transpo
   without MC in range;
 - damage/death/respawn/battery all run off BLE frames alone;
 - Events **queue** in a bounded persisted ring (contracts §5) and flush as `event_batch` on reconnect;
+  the node consumes MC's **`ack{seq_hi}`** (contracts A1) to **prune** the ring — dropping events MC has
+  durably ingested so they aren't held forever (or, if M-NET owns the ring, this prune happens inside
+  Transport and the engine just sees a bounded queue);
 - only two things degrade: MC `feedback` (no sight flash) and cross-player HUD stats (stay "— MC").
 
 The node **never blocks** on the LAN. Start uses the pre-shared `go_live_t` (contracts §7 / M-START),
@@ -162,13 +170,37 @@ so even T-0 needs no signal.
 ```
 IDLE ──setGun──► CONNECTED ──assign──► KITTED ──ready──► LOBBY ──start(go_live_t)──► ARMED(countdown)
    ▲                                                                                     │
-   └──────────────── end / disconnect ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T ──────────────────┘
+   └────────── recall / end / time-expiry ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T ───────────────┘
 ```
 
 The seed collapses this to IDLE/READY/ALIVE/DOWN; **promote it** to the full set so the HUD and MC
-agree on one vocabulary. `DISCONNECTED` is orthogonal (auto-reconnect, §7) and returns to the prior
-state. `control{cmd:"panic"}` (contracts §5) → the **panic sequence** `$CLEAR,*` then `$SP,99,*`
-(house rule) and drop to IDLE. `control{cmd:"end"|"recall"}` → the seed's end frames + LIVE→IDLE.
+agree on one vocabulary. `DISCONNECTED` is orthogonal (auto-reconnect, §7) — a node can be
+disconnected in any phase and keep running; it returns to the prior state, it is **not** a game
+transition. `control{cmd:"panic"}` (contracts §5) → the **panic sequence** `$CLEAR,*` then `$SP,99,*`
+(house rule) and drop to IDLE. Three distinct control meanings (contracts §5, A2):
+`control{cmd:"recall"}` **stops a LIVE (or ARMED) game** → the seed's end frames + →IDLE;
+`control{cmd:"end"}` is the normal match end (same teardown); `control{cmd:"abort_start"}` is **not**
+a game-stop — it cancels a *pending* countdown (by `seq`) → back to LOBBY (§3.9). LIVE also ends with
+**no MC command at all** on local time-expiry (§3.9).
+
+### 3.9 Local time-expiry match end (the timed end, symmetric to the timed start)
+
+Just as the dispersed **start** fires off a pre-shared `go_live_t` with no T-0 signal (§3.7, M-START),
+the dispersed **end** must fire off a pre-shared duration with no `end`/`recall` from MC — otherwise a
+node out of LAN range would keep running past time. **M-NODE owns this.** While LIVE, the engine holds
+`go_live_t` and `config.time_limit_s`; when
+
+```
+synced_now() ≥ go_live_t + time_limit_s * 1000   (contracts §7 synced time)
+```
+
+the node ends **its own** match locally: write M-MODES `endFrames()` (the game-over teardown), stop the
+loop, LIVE→IDLE — exactly the teardown a `recall`/`end` would have driven, just self-triggered. This is
+best-effort-independent of the LAN: an `end`/`recall` that *does* arrive earlier still ends the game;
+whichever comes first wins (idempotent teardown). When `time_limit_s == null` (untimed) there is no
+local expiry — the game ends only on `recall`/`end`. Expiry math uses **synced time** so a mid-match
+reconnect/clock-resync can't warp the deadline; a never-synced node falls back to the degraded
+`received-start + duration` count (§7).
 
 ---
 
@@ -258,6 +290,12 @@ Blackout means **truly dark**, not "dark theme":
 until MC pushes them, because a phone node cannot observe them (host-blind about own kills; hits-landed
 known only from victims). **Deaths and ammo are locally real.** Never show a fabricated kill count —
 the "— MC" is a deliberate honesty affordance, not a placeholder to be filled with a guess.
+
+These MC-owned numbers **reconcile only at sync points** — a return to base, a respawn/scanner station,
+or recap — **not continuously** while the player is dispersed (MC is not BLE-connected mid-match; a
+node's stats catch up when its `event_batch` reaches MC and MC pushes back). Until the next sync the
+row keeps showing **"— MC"**, ideally beside a small **"last synced Nm ago"** indicator so the player
+knows the K/A/ACC they last saw is a snapshot, not live.
 
 ---
 
@@ -357,7 +395,8 @@ its native ESP32 stack.
 1. **Extract the engine** from `app.js` into a DOM-free state machine over contracts §6 (states,
    `handleFrame`, death/respawn, event emission). Unit-testable with a fake BRX frame source.
 2. **Extract `BrxLink`** (§7) behind a thin interface; engine ↔ link seam = the Companion port point.
-3. **Wire M-MODES** `armFrames(config, player)` / `reviveFrames` in place of the hard-coded arrays;
+3. **Wire M-MODES** `armFrames(config, player)` (arm) / `reviveFrames(config, player)` (respawn re-arm)
+   in place of the hard-coded arrays;
    caps + respawn + weapon come from `GameConfig`.
 4. **Wire Transport** (M-NET): `hello`/`bind`/`assign`/`event`/`event_batch`/`ack_config`/`feedback`/
    `control`/`tutorial`/`start`; the bounded persisted event ring + reconnect flush.
@@ -370,6 +409,9 @@ its native ESP32 stack.
    weapon before committing (M-MODES supplies the frames).
 10. **Clock sync** (contracts §7): `time_req`/`time_res`, smoothed offset, `synced_now()` used by all
     event `t`, respawn, and countdown math.
+11. **Local time-expiry end** (§3.9): while LIVE, watch `synced_now() ≥ go_live_t + time_limit_s`; on
+    expiry self-trigger `endFrames()` + LIVE→IDLE with no MC command, symmetric to the timed start and
+    idempotent with a `recall`/`end` that arrives first. Skip when `time_limit_s == null`.
 
 Ships with its own fakes (a scripted BRX frame emitter + a mock Transport) so it builds and demos with
 neither a gun nor MC present — matching the seed's "runs with the LAN dead" property.

@@ -65,21 +65,26 @@ MC **must not assume it is the AP** (ADR-0002). Two paths, host picks at session
 
 ## 4. Phase 1 — Readiness board (muster)
 
-Renders **M-ARMORY `readiness()`** (a snapshot array; MC does not scan the fleet itself — it asks
-M-ARMORY). Per gun, a **red/green** card:
+Renders **M-ARMORY `readiness()`** (a `ReadinessSnapshot`; MC does not scan the fleet itself — it asks
+M-ARMORY). Per gun, a **red/amber/green** card built straight from the `ReadinessRow` fields (M-ARMORY
+§3.4):
 
-| Signal | Green when | Source (M-ARMORY) |
+| Signal | Green when | Source (M-ARMORY `ReadinessRow`) |
 |---|---|---|
-| Powered / advertising | seen in BLE scan | scan |
-| Headset linked | connection holds + streams frames | BLE-inferred (`mission-control-spec.md` §1) |
-| Battery % | above threshold | `$VOLTS` state-of-charge |
-| Link / reachable | responds | `$PING`/`$PONG` |
-| Companion batt/fw (later) | present + charged | node `hello` / M-ARMORY |
+| Present / advertising | seen in the BLE `scan()` | `present` (scan) |
+| Identity | advert basename == sticker, not a `Tactix2` revert | `identity` (`correlate`, §2.2) |
+| Headset linked | answers the `$VERSION`/`$VOLTS` ritual ⇒ live headset at link | `headset` (§3.3) |
+| Battery % | fresh `$VOLTS` reading above threshold | `battery_pct` + `battery_age_ms` |
+| Firmware | `$VERSION` after the `$STOP→$PHONE→$VERSION` ritual | `fw` |
+| Reachable | link holds + the notification stream heartbeats | `rssi` + persistent-connection stream |
+| Companion batt/fw (later) | present + charged | `companion` (node `hello`/`status`) |
 
 - Sort by lowest battery; flag any gun below threshold to charge before play.
 - Each card shows the **sticker id** (`Tactix-XXXX` form in all committed examples — never real labels).
-- **"Re-scan armory"** re-pulls `readiness()`. **Start is blocked until all rostered guns are green**
-  (a hard gate — the board owns the go/no-go).
+- **"Re-scan armory"** re-pulls `readiness()`. **Start gates on `ReadinessSnapshot.go` (no reds)** — the
+  board owns the go/no-go, but **amber does not block** (a missed `$VOLTS`, a field-only headset ambiguity,
+  `name_confirmed=false` are shown, not gating; M-ARMORY §3.4, contracts A1 amber-not-red). Amber rows are
+  surfaced for the host to address, red rows must clear before START.
 - Bench BLE actions (enroll, `$NAME` write, panic) delegate to M-ARMORY; MC never issues frames directly.
 
 ## 5. Phase 2 — Build the game (mode author)
@@ -121,6 +126,10 @@ sit-down form. One **player card** per person (a `Player`, `contracts.md` §2):
 - **Gun binding** — pick which rostered gun (`gun_id`) this player carries; the readiness board must show
   it green.
 
+Committing a player card pushes **`assign { player, team }`** to that player's node (`contracts.md` §5) —
+**player + team only, no config** — moving the node to **KITTED**. This is what makes the phase-3a tutorial
+legal (KITTED precondition); the full `GameConfig` is the *separate* lobby `config` push (§7).
+
 ### 6a. Weapon select — a **cool, visible** UI
 
 The headline surface. A rich **weapon gallery** (not a dropdown): **weapon art + the three exact printed
@@ -128,6 +137,10 @@ numbers** (clip / reserve mags / reload s) and the relative **Damage / RPM / Ran
 **M-MODES `WeaponCatalog`** (`contracts.md` §3; seed values in `callsign-ui.md`'s ~18-weapon table). Class
 badges, filter/sort by class or stat. Selecting a weapon sets a `WeaponSel` in the player's `Loadout`
 (ordered → gun slots). Primary + optional secondary (removable), matching Callsign but visually far ahead.
+
+**Weapon art (`Weapon.icon?`, contracts §3) is optional in the catalog.** MC **ships a bundled placeholder
+icon set** (class-based silhouettes) as the owner/fallback and renders it wherever `icon` is absent; real
+per-weapon art is TBD and drops in without a schema change (additive `icon` on the `WeaponCatalog`).
 
 ### 6b. Phase 3a — Weapon try-out (silent tutorial arming)
 
@@ -140,8 +153,9 @@ full game, no scoring, no announcement.
   scored and no `start` is implied. State stays in `KITTED` (node lifecycle, `contracts.md` §6).
 - **UX:** on the player card, weapon selection is **live** — tap a new weapon, a subtle "trying out on
   <name>'s gun" indicator appears; the player squeezes the trigger a few times, feels the fire rate + mag +
-  reload, and either the host keeps it or taps another. Volume for these arming pushes rides the node's game
-  audio path (**69**, not the diagnostic 30) so the try-out is audible.
+  reload, and either the host keeps it or taps another. Volume for these arming pushes **must be `VOL 69`**
+  (the audible game value, `modes.md`) — **not** the diagnostic `30`, which is inaudible for weapon/game
+  audio — so the try-out is actually heard; it rides the node's game audio path, never the probe default.
 - This flows **MC → M-NET → node → M-MODES frames → gun**; MC never touches the gun (players may already be
   out of bench BLE range — this is why it goes over the LAN via the node).
 
@@ -149,21 +163,28 @@ full game, no scoring, no announcement.
 
 - **Team assignment finalized:** drag-and-drop team builder, auto-balance, lock teams before start
   (`mission-control-spec.md` §2). Board shows each team's roster + colors.
-- **Per-player READY-UP:** each player readies on **their node** (`Player.ready` flips via a node signal
-  over M-NET); the lobby shows a live ready/not-ready column. The host can also override-ready a player.
-- **Push config on all-ready:** when every rostered player is ready (and every gun green), MC pushes the
-  **full `GameConfig` + `Player`/`Team`** to each node via **`assign`** (`contracts.md` §5). Nodes apply it
-  and return **`ack_config`**; MC shows per-node applied/failed and **blocks start on any un-acked node**.
-  This is the "push full config at lobby ready-up, in range" timing decision (README §6). After this only
-  the lightweight go-live time is sent at start.
+- **Per-player READY-UP:** each player readies on **their node**, which sends **`ready { player_id, ready }`**
+  over M-NET (`contracts.md` §5, A1) to flip `Player.ready` — a LOBBY-state toggle. The lobby shows a live
+  ready/not-ready column; the host can also override-ready a player.
+- **Push config on all-ready:** when every rostered player is ready (and readiness is `go`), MC pushes the
+  **full `GameConfig`** to each node via the **`config { config: GameConfig }`** message (`contracts.md` §5,
+  A2) — the **separate** lobby push, distinct from the phase-3 `assign` (which carried player+team only, no
+  config). Nodes store it, enter **LOBBY**, and return **`ack_config`**; MC shows per-node applied/failed and
+  **blocks start on any un-acked node**. This is the "push full config at lobby ready-up, in range" timing
+  decision (README §6). After this only the lightweight go-live schedule is sent at start.
 
 ## 8. Phase 5 — Dispersed timed start
 
 MC **delegates the start choreography to M-START** — it does not implement the countdown. MC's job:
 
 - Host taps **START**; MC picks a **go-live wall-clock time** `go_live_t` (synced clock, `contracts.md` §7)
-  a configurable lead ahead (enough to walk to bases), and issues **`start { go_live_t, config_id }`** to
-  every node (`contracts.md` §5).
+  a configurable lead ahead (enough to walk to bases), and issues **`start { go_live_t, config_id, seq,
+  countdown_s }`** to every node (`contracts.md` §5).
+- **MC MUST stamp a monotonic `seq`** (per session) on **every** `start` it issues. The `seq` is what a
+  reschedule or an **`abort_start`** targets — a higher `seq` supersedes a prior schedule — so a specific
+  pending start can be cancelled or replaced unambiguously (contracts §9 "three `seq` namespaces": this is
+  `start.seq`, MC-owned, distinct from the per-node event counter). Re-issuing `start` to a straggler carries
+  a fresh higher `seq`.
 - **Per-node "armed, T-minus" board:** each node counts down on its **own synced clock** and arms its gun +
   plays the countdown/klaxon **through the gun speaker** at T — no signal needed at the instant (README §5,
   M-START). MC shows each node's state: got-start → armed → T-minus HH:MM:SS → LIVE. A node that never
@@ -190,8 +211,11 @@ real-time assumption.
   reconcile silently.
 - **Feedback loop:** when MC scores a kill/multi/medal it MAY send **`feedback`** to the scoring node so it
   greens the sight + plays audio (`contracts.md` §5) — best-effort, the node never depends on it.
-- **Host controls:** `control { cmd: end|pause|panic|recall }`. **Panic** relays the safe sequence to nodes,
-  which apply `$CLEAR,*` then `$SP,99,*` to their gun (MC issues the *command*, the node issues the frames).
+- **Host controls:** `control { cmd: end|pause|panic|abort_start|recall }` (`contracts.md` §5). One meaning
+  each: **`abort_start`** cancels a *pending* scheduled start (by `seq`, back to LOBBY — issued from the Start
+  screen before go-live); **`recall`** stops a *live/armed* game; `end` is a normal match end; `pause` holds.
+  **Panic** relays the safe sequence to nodes, which apply `$CLEAR,*` then `$SP,99,*` to their gun (MC issues
+  the *command*, the node issues the frames).
 - **TV mode:** a full-screen board for a spectator display.
 
 ## 10. Phase 7 — Recap
@@ -215,8 +239,8 @@ a reach-in.
 |---|---|---|
 | **M-ARMORY** | `readiness()` snapshot; armory CRUD (enroll/`$NAME`/bind); bench panic | phases 0-1 |
 | **M-MODES** | mode catalog + `GameConfig` builder/defaults/validation; `WeaponCatalog`; `armFrames()`/tutorial frames | phases 2, 3, 3a |
-| **M-NET** | Transport **server**: mDNS advertise, node WS, heartbeat, store-and-forward intake, clock-sync; `hello`/`bind`/`event`/`event_batch`/`ack_config`/`log_offer` in; `welcome`/`assign`/`tutorial`/`start`/`feedback`/`control`/`pull_log` out | phases 3a-7 |
-| **M-START** | `startAt(T, config)` control + per-node armed/T-minus state | phase 5 |
+| **M-NET** | Transport **server**: mDNS advertise, node WS, heartbeat, store-and-forward intake, clock-sync; `hello`/`bind`/`event`/`event_batch`/`ack_config`/`log_offer` in; `welcome`/`assign`/`config`/`tutorial`/`start`/`feedback`/`control`/`pull_log` out | phases 3a-7 |
+| **M-START** | `startAt(go_live_t, config_id, seq, countdown_s)` control (MC-stamped `seq`) + per-node armed/T-minus state; `abort_start(seq)` | phase 5 |
 | **M-CONTRACTS** | every data shape: `ArmoryRecord`, `Player`, `Team`, `Loadout`, `GameConfig`, `Weapon`, `Event`, `Kill`/`Assist`/`ScoreRow`, envelope, constants | all |
 
 MC **produces**: the roster/match state, the derived scoreboard (`ScoreRow`), the recap + export, and the
@@ -245,7 +269,7 @@ operator UI itself. It **owns** none of the schemas or frames.
 4. **Build-game UI** — mode grid + global settings bound to `GameConfig` (M-MODES catalog/defaults).
 5. **Kit-players UI** — player cards; **weapon gallery** from `WeaponCatalog`; team/voice/overrides.
 6. **Tutorial try-out** — live weapon change → `tutorial` push → node arms; the "trying out" UX.
-7. **Lobby** — team builder + ready column; `assign` push + `ack_config` gate.
+7. **Lobby** — team builder + ready column; `config` push + `ack_config` gate.
 8. **Start** — delegate to M-START; per-node armed/T-minus board.
 9. **Scoring engine** — ingest `Event`s → `Kill`/`Assist`/`ScoreRow` per `contracts.md` §4 + constants;
    staleness; `approx` flag; `feedback` emit.
@@ -258,8 +282,6 @@ M-NET are live.
 
 ## 14. Open questions
 
-- **Ready-up signal shape.** `Player.ready` flips from a node — is that a dedicated `kind` or a `bind`/
-  `status` field? Likely a `contracts.md` §5 amendment (currently no explicit ready message Node→MC).
 - **`feedback` fan-out cost.** How aggressively should MC push `feedback` (every kill? only medals?) given
   best-effort delivery and node audio load. Default: kills + medals, coalesced.
 - **`approx` attribution algorithm.** The timing/proximity heuristic for individual attribution without

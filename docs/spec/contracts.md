@@ -96,10 +96,12 @@ Event =
  | { type:"hit_taken",   t, node_id, player_id, shooter_team, shooter_id?, dmg } // from $HIR (+ $HP delta)
  | { type:"death",       t, node_id, player_id, shooter_team, shooter_id? }      // $HP→0; shooter_id only if IR-decoded (P2)
  | { type:"respawn",     t, node_id, player_id }
- | { type:"status",      t, node_id, player_id, hp, armor, ammo, alive, deadline_s?, battery?, arm_state? } // heartbeat; arm_state: idle|kitted|lobby|armed|live
+ | { type:"status",      t, node_id, player_id, hp, armor, ammo, alive, deadline_s?, battery?, arm_state?, t_minus_ms?, synced? } // heartbeat; arm_state: idle|kitted|lobby|armed|live; t_minus_ms only when ARMED; synced=clock-sync is fresh (else degraded)
 ```
-- `shooter_team` is **always available** (from `$HIR` token 4). `shooter_id` (individual) is **optional**
-  and present only when a Companion IR-decodes the shot's player-id (P2). MC must handle its absence.
+- `shooter_team` is **always available** (from `$HIR` token 4). `shooter_id` (individual) is **optional**:
+  present when a Companion **IR-decodes** the shot's player-id (P2, the robust path), or *potentially* via
+  a **native per-player `$TID`** (protocol §7k — bounded: `$TID` also drives the 4-colour LED, and max-N is
+  untested). MC must handle its absence and fall back to team-level attribution.
 - Events are **idempotent** by `(node_id, seq)` (§5 envelope) so store-and-forward replays are safe.
 
 **MC-derived facts** (computed, never sent by nodes):
@@ -142,11 +144,12 @@ Envelope { v:1, kind:string, id:string, seq?:number, t:number, body:object }
 | kind | body | when |
 |---|---|---|
 | `welcome` | `{ session_id, server_t, config?: GameConfig }` | reply to hello |
-| `assign` | `{ player: Player, team: Team, config: GameConfig }` | kit-out / lobby push |
-| `tutorial` | `{ weapon: Weapon }` | silent try-out arming (phase 3a) |
-| `start` | `{ go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START); a higher `seq` supersedes a prior schedule |
+| `assign` | `{ player: Player, team: Team }` | kit-out: set player+team → **KITTED**. Carries **no config** (that's the lobby `config` push) so a node can reach KITTED to enable the phase-3a tutorial. |
+| `tutorial` | `{ weapon: Weapon }` | silent try-out arming (phase 3a; requires KITTED) |
+| `config` | `{ config: GameConfig }` | **lobby** push of the full game → node stores it + replies `ack_config`; enters **LOBBY**. Separate from `assign` so kit-out (phase 3) and the config push (phase 4) don't collide. |
+| `start` | `{ go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START). MC stamps a **monotonic `seq` per session**; a higher `seq` supersedes a prior schedule. |
 | `feedback` | `{ player_id, kind:"kill"|"multi"|"medal", sound?:string }` | MC scored you a kill → node greens sight + audio |
-| `control` | `{ cmd:"end"|"pause"|"panic"|"recall"|"abort_start", seq?, ... }` | host controls (`abort_start` cancels a pending start by `seq`) |
+| `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`pause`\|`panic`\|`abort_start`\|`recall` | host controls — **one meaning each**: `abort_start`=cancel a *pending* scheduled start (by `seq`) → back to LOBBY; `recall`=stop a *live/armed* game → IDLE (node sends its end frames); `end`=normal match end; `pause`=hold; `panic`=`$CLEAR,*`→`$SP,99,*`. |
 | `time_res` | `{ t_node, server_t }` | clock-sync reply |
 | `pull_log` | `{}` | request the offered log |
 | `ack` | `{ seq_hi }` | MC has durably ingested this node's events up to `seq_hi` (store-and-forward ring-prune signal) |
@@ -161,10 +164,13 @@ Envelope { v:1, kind:string, id:string, seq?:number, t:number, body:object }
 ## 6. Node lifecycle (state the HUD + MC both reason about)
 
 ```
-IDLE ──setGun──► CONNECTED ──assign──► KITTED ──ready──► LOBBY ──start(go_live_t)──► ARMED(countdown)
-   ▲                                                                                     │
-   └──────────────────────────── end / disconnect ◄──── LIVE ◄──T──────────────────────┘
-LIVE: {ALIVE ⇄ DOWN(respawn timer)}.   Any state → DISCONNECTED(auto-reconnect) → prior state.
+IDLE ─setGun─► CONNECTED ─assign(player+team)─► KITTED ─config(GameConfig)─► LOBBY ─start(seq,go_live_t)─► ARMED(countdown)
+   ▲                                                        (ready:bool toggles within LOBBY)                    │
+   └──────────────── recall / end ◄──────── LIVE ◄───────────────────── T = go_live_t ──────────────────────────┘
+LIVE: {ALIVE ⇄ DOWN(respawn timer)}; LIVE ends on `recall`/`end` OR **local time-expiry** (deadline reached
+      while dispersed — the node ends its own match, symmetric to the timed start; see M-NODE).
+ARMED ends early on `abort_start` → LOBBY.  Link state (CONNECTED/DISCONNECTED, auto-reconnect → resume prior
+      state) is **orthogonal** to the game phases above — a node can be DISCONNECTED in any phase and keep running.
 ```
 
 ## 7. Clock sync (drives the dispersed start)
@@ -187,6 +193,13 @@ Volume **69** for real games (30 is inaudible). BLE writes chunk at 20 bytes (§
 ## 9. Versioning & amendments
 
 - `Envelope.v` gates protocol compatibility; `app_ver`/`server_ver` are informational.
+- **Three distinct `seq` namespaces** (do not conflate): `Envelope.seq` = per-node event counter (dedup);
+  `start.seq` = MC's per-session schedule counter; `control.seq` = a reference *to* a `start.seq` (which
+  schedule an `abort_start` targets). Different counters, different owners.
+- **Config staleness:** `config_id` is the identity + integrity token for a pushed `GameConfig`; a node
+  keys "is my stored config current" on `config_id` (no separate hash). A node with a stale/absent
+  `config_id` at `start` re-requests via `hello`→`welcome{config}`. Optional `CONFIG_TTL_MS` bounds how
+  long a stored config is trusted without a refresh.
 - Post-freeze changes: add an **Amendment** entry here (date, what, why, migration) and bump `v` only for
   wire-breaking changes. Additive fields are non-breaking; consumers ignore unknown fields.
 - **Constants** (single source): `ASSIST_WINDOW_MS = 4000`, `MULTI_KILL_MS = 4000`, `ATTRIB_FUSE_MS =
@@ -204,3 +217,13 @@ Volume **69** for real games (30 is inaudible). BLE writes chunk at 20 bytes (§
     per-node lifecycle (contracts §6) without inferring it. *(M-START/M-MC)*
   - Policy: readiness battery is **amber, not red**, on a missed `$VOLTS` — a missing reading is not a
     flat pack. *(M-ARMORY)*
+- **A2 (2026-08-25, review polish-loop, additive/clarifying):**
+  - **Split `assign` (kit-out, no config → KITTED) from a new `config` message (lobby push → LOBBY)** so
+    phase-3 kit-out and phase-4 config-push don't collide and the phase-3a tutorial has a legal KITTED
+    precondition. *(consistency review, Critical)*
+  - **`recall` vs `abort_start` disambiguated** (control table): `abort_start`=cancel a pending schedule,
+    `recall`=stop a live game. *(consistency/completeness)*
+  - `status` gains **`t_minus_ms`**/**`synced`**; `start.seq` clarified **MC-stamped**; link state declared
+    **orthogonal** to game phase; three `seq` namespaces named; `config_id` = staleness key. *(all reviews)*
+  - Attribution note: individual `shooter_id` may also come from a **native per-player `$TID`** (§7k),
+    not IR-decode alone. *(feasibility)*

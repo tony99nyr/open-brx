@@ -160,14 +160,16 @@ interface Transport {
   bind(b: { node_id: string; player_id?: string; gun_tail: string }): void;
   send(ev: Event): void;          // enqueue to outbox; NEVER blocks, NEVER throws on offline
   syncedNow(): number;            // §7 — local_now() + smoothed offset
-  onMessage(cb: (msg: MCMessage) => void): void; // assign|tutorial|start|feedback|control|time_res
+  onMessage(cb: (msg: MCMessage) => void): void; // assign|config|tutorial|start|feedback|control|time_res|pull_log (ack consumed internally, §4)
   onState(cb: (s: LinkState) => void): void;     // 'connecting'|'open'|'bound'|'offline'
   close(): void;
 }
 ```
 `send()` is fire-and-forget into the persisted ring; delivery is the Transport's problem, not the
-caller's. `onMessage` delivers MC→node envelopes already validated (§8) and version-gated; bodies are
-passed through untouched for M-NODE/M-START to interpret.
+caller's. The Transport **consumes `ack {seq_hi}`** itself (contracts A1) — it prunes the store-and-forward
+ring up to the durably-ingested `seq_hi` and does **not** surface `ack` to the caller. `onMessage` delivers
+the remaining MC→node envelopes already validated (§8) and version-gated; bodies are passed through
+untouched for M-NODE/M-START to interpret.
 
 **Server (consumed by MC — M-MC):**
 ```ts
@@ -177,7 +179,7 @@ interface NetServer {
   onEvent(cb: (node_id: string, ev: Event) => void): void;   // post-dedup, monotonic per node
   onStale(cb: (node_id: string, ageMs: number) => void): void;
   onReturn(cb: (node_id: string) => void): void;             // stale → live again
-  push(node_id: string, msg: MCMessage): void;               // assign|tutorial|start|feedback|control
+  push(node_id: string, msg: MCMessage): void;               // assign|config|tutorial|start|feedback|control|time_res|pull_log|ack
   broadcast(msg: MCMessage): void;                           // e.g. start to all bound nodes
   timeService(): void;                                       // answers time_req with time_res (§7)
 }
@@ -239,7 +241,7 @@ message layer:
 
 | When | LAN event | What happens | Recovery |
 |---|---|---|---|
-| **Lobby** | LAN down before ready-up | No config push; host can't see nodes ready. Game **cannot start synced** yet — nodes have no `go_live_t`. | Stand up the LAN (router primary, hotspot fallback §2); nodes auto-connect (§5), `assign` pushes config, ready-up proceeds. Bench-local single-gun play still works with no LAN at all. |
+| **Lobby** | LAN down before ready-up | No config push; host can't see nodes ready. Game **cannot start synced** yet — nodes have no `go_live_t`. | Stand up the LAN (router primary, hotspot fallback §2); nodes auto-connect (§5), the `config` message pushes the game, ready-up proceeds. Bench-local single-gun play still works with no LAN at all. |
 | **Lobby** | One node can't discover MC | That player is un-kitted; rest proceed. | Manual IP entry (§3.2); or host reads MC address to the player. |
 | **Mid-game** | LAN blips / node walks out of range | Node keeps playing (§4); events queue in the persisted ring; MC marks it **stale** after `STALE_AFTER_MS`, scoreboard shows last-known + age. | On return, socket reconnects (backoff §5), `event_batch` flushes, MC dedups + reconciles. No lost facts unless the ring overflowed (counted). |
 | **Mid-game** | Whole LAN dies (router off) | **Every** node goes local-only; the match runs to completion on nodes alone (ADR-0002 §3). Live scoreboard freezes. | Restore any LAN; all nodes flush backlog; MC reconciles to correct end-state. Start already fired locally (`go_live_t` was pre-shared, §7), so the match itself is unaffected. |
@@ -272,10 +274,10 @@ message layer:
   force manual-IP as the *default* on some OEMs. (Prototype in M2, feeds §3.)
 - **Outbox sizing** — is 2000 events / 20 min right for a worst-case long-outage 12-gun game? Tune once
   real event rates are measured (M-NODE).
-- **`ack`/high-water shape** — contracts §5 lists `event`/`event_batch` up but no explicit MC→node ack of
-  applied `seq`. Propose an **amendment** adding `ack {node_id, seq_hi}` (MC→node) so the node can prune
-  its ring precisely, rather than pruning on flush-sent (which risks dropping un-applied events). Flagged
-  for contracts §9.
+- ~~**`ack`/high-water shape**~~ — **RESOLVED (contracts A1):** the amendment landed as MC→node
+  `ack {seq_hi}`, so the node prunes its ring precisely on durable ingest rather than on flush-sent (which
+  risked dropping un-applied events). Consumed by the Transport (§4, §6); the ready-up message this raised
+  alongside also ratified as Node→MC `ready` in the same amendment.
 - **Multi-network safety** — if a phone is on the field Wi-Fi *and* cellular, ensure the WS binds to the
   LAN route (nodes must not try to reach MC's private IP over cell). Platform routing hint needed.
 - **TLS on the field** — deferred. Is a self-signed `wss://` + pinned cert worth it later, or is a

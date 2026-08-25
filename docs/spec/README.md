@@ -73,6 +73,14 @@ One host runs these phases in order. Each phase names its owning module.
 | 6 | **Live play** | Nodes run the match; phones show the HUD; nodes stream status/events to MC as the LAN allows; MC shows a **live scoreboard**; store-and-forward covers dropouts. | M-NODE, M-NET, M-MC |
 | 7 | **Recap** | Players return in range; MC reconciles final events and computes **end state**: winner, most kills, best K/D, accuracy, medals. Exportable. | M-MC, M-CONTRACTS |
 
+> **Live-feel honesty (phases 6):** each node's *own* loop (damage/death/respawn/local audio) is instant
+> and offline. But **cross-player effects that need to know you scored — the green-sight kill-confirm
+> (`$SFLASH`) and the live individual scoreboard — are only as live as the LAN.** On the **phone path**
+> nodes reach each other *only through MC*, over a field LAN that is intermittent/out-of-range mid-match by
+> design; so instant kill-confirm and up-to-the-second individual K/D are a **near-MC / respawn-station**
+> feature that becomes fully live only with the **Companion mesh (M6)**. Dispersed, kills/assists/accuracy
+> reconcile at sync points (returns to base, recap), not continuously — the HUD shows "— MC" until then.
+
 ## 4. Module map (the parallel workstreams)
 
 Each module is an independent workstream with a **frozen interface**. "Depends on" = compile/design-time
@@ -106,9 +114,17 @@ documented amendment, not silent edits.
 **Wave 3 — assembly:**
 - **M-MC** — composes armory + modes + net + scoreboard + recap into the host app.
 
+**Interface freeze:** `contracts.md` covers the **wire** (data + messages). Cross-module **code**
+interfaces (`Transport`/`NetServer` in `net.md`, `WeaponCatalog`/`armFrames`/`spawnFrames`/
+`tutorialFrames`/`feedbackSound` in `modes.md`, `readiness()` in `armory.md`, `startAt()` in
+`start-sequence.md`) live in each module's **Interface** section and are **frozen when that module's Wave
+is ratified**. After freeze they change only by the same amendment discipline as `contracts.md`.
+
 **Coordination rules for parallel sessions:**
-1. Bind to **interfaces in `contracts.md`**, never another module's internals.
-2. Any interface gap → propose an amendment to `contracts.md` (PR-style), don't fork the shape.
+1. Bind to the **wire in `contracts.md`** *and* the **Interface section of any module you depend on** —
+   never another module's internals.
+2. Any gap in either → propose an amendment (to `contracts.md` for wire, to the owning module's Interface
+   section for code) — don't fork the shape.
 3. Each module ships with its own mocks/fakes so it builds without its dependencies live.
 4. One module = one session's lane; cross-lane changes are handoffs, not reach-ins.
 

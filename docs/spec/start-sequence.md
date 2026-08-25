@@ -17,14 +17,15 @@ offline — counts itself down on its **own synced clock**, arms its gun, and pl
 
 ## 1. Core mechanism
 
-1. **Lobby (in range).** Config is already on the tagger — `assign` pushed the full `GameConfig` +
-   loadout at ready-up (`README.md` §6 decision) and the node applied it (`ack_config`). The gun is
+1. **Lobby (in range).** Config is already on the tagger — the lobby `config` message pushed the full
+   `GameConfig` + loadout at ready-up (`README.md` §6 decision) and the node applied it (`ack_config`). The gun is
    configured but **not spawned** (`$PSET`/`$WEAP`/`$SIR`/`$BMAP` written; no `$SPAWN` yet).
 2. **Schedule.** Host picks a go-live moment. MC computes `go_live_t` (a synced wall-clock Unix-ms
    instant, §7) and broadcasts `start { go_live_t, config_id }` (contracts §5) to every lobby node.
-3. **Arm the schedule locally.** Each node calls its own `startAt(go_live_t, config_id)`. It verifies it
-   holds that `config_id` and is freshly synced (§4), enters lifecycle **`ARMED(countdown)`** (§6), and
-   **persists** `{go_live_t, config_id}` to local storage. From here the node needs nothing from anyone.
+3. **Arm the schedule locally.** Each node calls its own `startAt(go_live_t, config_id, seq, countdown_s)`
+   (§7). It verifies it holds that `config_id` and is freshly synced (§4), enters lifecycle
+   **`ARMED(countdown)`** (§6), and **persists** `{go_live_t, config_id, seq}` to local storage. From here
+   the node needs nothing from anyone.
 4. **Disperse.** Players walk to bases and leave Wi-Fi range. The WS drops; that is expected and fine —
    `start` is best-effort and the schedule is already local (contracts §5 store-and-forward semantics).
 5. **Local countdown.** Each node ticks on `synced_now()` and drives the gun-speaker choreography (§2)
@@ -52,7 +53,7 @@ use the two-slot `$PLAY` (§7o): **token 1** = local/effect SFX, **token 4** = t
 | T-30s | voice "thirty seconds — get to your base" | `$PLAY,,4,6,<START_30S>,,,,*` | **PROVISIONAL** — pick from VA voice range by ear |
 | T-20s | voice "twenty seconds" | `$PLAY,,4,6,<START_20S>,,,,*` | PROVISIONAL |
 | T-10s | voice "ten seconds — weapons hot" | `$PLAY,,4,6,<START_10S>,,,,*` | PROVISIONAL (VH `weapons hot` VHT is a candidate) |
-| T-9 … T-4 | one short beep per second (tick) | `$PLAY,U16,,,,,,,*` (token-1 SFX) | `U16` 0.43 s, U = beeps/boops |
+| T-9 … T-4 | one short beep per second (tick) | `$PLAY,U16,,,,,,,*` (token-1 SFX) | **PROVISIONAL tick** — `U16` (0.43 s) is a real bank id (safe to emit); sound-bank lists it as "connect-related," so the countdown-tick *meaning* is unconfirmed |
 | T-3 → T-0 | **"3 … 2 … 1 … GO"** spawn countdown | `$PLAY,VA81,4,6,,,,,*` | **CONFIRMED** `snd.COUNTDOWN` (VA81, 2.97 s) — the native arena spawn countdown; its "GO" lands on T-0 |
 | **T-0** | **arm + klaxon + green flash** | go-live burst §3, then `$SFLASH,*` + `$PLAY,<KLAXON>,4,6,,,,,*` | `$SFLASH` CONFIRMED (§7o); klaxon PROVISIONAL |
 
@@ -91,6 +92,13 @@ $SFLASH,*                  # green-sight flash — "you are live"
 - If the node's runway was shorter than the `VA81` clip (e.g. a degraded late arm, §4), skip the separate
   T-3 cue and let the burst's own `$PLAY,VA81` be the whole countdown-into-arm.
 - **Panic remains** `$CLEAR,*` then `$SP,99,*` (house rule) — an aborted or recalled start uses it (§5).
+- **⚠ PENDING HARDWARE TEST — hold-across-disperse.** The confirmed live arm (`protocol/brx-protocol.md`
+  §7e) writes `$START`→config→`$SPAWN` **within seconds on one held link**. M-START instead holds the gun
+  in `$START`+config-but-**UNSPAWNED** across the walk-to-base (**minutes**) and only fires the T-0 `$SPAWN`
+  at the end. That long-hold-then-spawn path is **UNTESTED** on hardware — does the gun keep the pushed
+  config/loadout while parked unspawned for minutes, or does it time out / need a re-push before `$SPAWN`?
+  Bench-verify before relying on it (see task/test harness §8); if it drops config, the E1 gun-power-cycle
+  re-push path (config head + tail) is the fallback.
 
 ---
 
@@ -121,13 +129,14 @@ $SFLASH,*                  # green-sight flash — "you are live"
 
 **E1 — Power-cycle after dispersing, out of range.** Player reboots phone and/or gun at their base; RAM
 schedule is gone and there's no LAN to re-fetch it. **Primary mitigation: the node persists
-`{go_live_t, config_id, config_hash}` to durable local storage at `startAt()`** (step 3). On relaunch the
+`{go_live_t, config_id}` to durable local storage at `startAt()`** (step 3; `config_id` is the config
+identity/staleness key — contracts §9, there is no separate hash). On relaunch the
 node reads it back, re-verifies `synced_now()` (its offset is also persisted; RTC survives reboot so a
 recent offset is still valid for the minutes involved), and **resumes the countdown from where the clock
 now is** — if `go_live_t` is still future, it re-enters `ARMED` and continues; if already passed, see E5.
 The gun keeps its config across a BLE reconnect only if it wasn't power-cycled; if the **gun** was
 power-cycled the node must **re-push config before arming** — it still holds the `GameConfig` locally
-(it was `assign`ed), so it replays `armFrames()` config head + tail. This is why the node caches the full
+(from the lobby `config` push), so it replays `armFrames()` config head + tail. This is why the node caches the full
 config, not just the go-live time.
 
 **E2 — Late-join at a base still in range.** A straggler arrives at a base that happens to be in Wi-Fi
@@ -158,9 +167,11 @@ their own clock wherever they are. They may be caught in the open; that's a game
 system fault. (Design choice: we start *on time*, not *on arrival*. A host who wants arrival-gated starts
 uses a longer runway.)
 
-**E7 — Abort / reschedule.** Host abort sends `start` with an **abort marker** (proposed additive field
-`abort:true`, or `control{cmd:"recall"}` for in-range nodes). An in-range armed node cancels the countdown,
-returns `ARMED → LOBBY`, and if it had already armed the gun runs **panic** (`$CLEAR,*` → `$SP,99,*`).
+**E7 — Abort / reschedule.** Host abort sends **`control{cmd:"abort_start", seq}`** (contracts §5 control
+table + A1/A2), where `seq` references the `start.seq` being cancelled. An in-range armed node whose current
+schedule matches that `seq` cancels the countdown, returns `ARMED → LOBBY`, and if it had already armed the
+gun runs **panic** (`$CLEAR,*` → `$SP,99,*`). (`recall` is a distinct control — it stops a *live/armed
+game*, not a pending countdown — so it is **not** the cancel-a-schedule path; §6.)
 **Out-of-range nodes can't hear an abort** — this is the fundamental limit of a no-signal start. Mitigations:
 (a) keep the runway long enough that most aborts land while nodes are still in range; (b) reschedule by
 issuing a **new `go_live_t` further out** *before* the old one fires, which supersedes it on any node that
@@ -168,9 +179,9 @@ reconnects; (c) if an out-of-range node does fire on an aborted start, its gun s
 MC recalls it on reconnect. **State clearly to the host:** "once nodes disperse, an abort only reaches those
 back in range — reschedule early."
 
-**E8 — Duplicate/superseding schedules.** A node keeps only the **latest** `start` by a monotonic schedule
-`seq` (proposed additive field) or, absent that, by newest `go_live_t` received. Re-broadcasts (E3) with the
-same pair are no-ops; a new pair supersedes.
+**E8 — Duplicate/superseding schedules.** A node keeps only the **latest** `start` by its MC-stamped
+monotonic schedule `seq` (contracts §5, ratified A1/A2). A higher `seq` supersedes; re-broadcasts (E3) with
+the same `seq`/`config_id`+`go_live_t` are no-ops.
 
 ---
 
@@ -179,7 +190,8 @@ same pair are no-ops; a new pair supersedes.
 Host controls (MC start panel, phase 5):
 - **Schedule start** — host sets **countdown length** (runway; presets 10/30/60 s, default 30) and hits
   Start; MC computes `go_live_t = server synced now + runway`, broadcasts `start` to all ready nodes.
-- **Abort** — best-effort recall (E7); MC warns which nodes are already out of range and thus uncancellable.
+- **Abort** — best-effort `control{cmd:"abort_start", seq}` (E7); MC warns which nodes are already out of
+  range and thus uncancellable. (Distinct from `recall`, which stops a live game.)
 - **Reschedule** — issue a new `go_live_t`; supersedes the old (E8). Offered as the safe alternative to abort.
 - **Re-push start** — idempotent re-broadcast (E3), the default fix for a node showing not-armed.
 
@@ -198,23 +210,26 @@ MC per-node display (fed by node status, §7):
 
 **On the node (M-START API, consumed by M-NODE):**
 ```ts
-startAt(go_live_t: number, config_id: string): ArmResult
-// Preconditions: node holds config_id (assigned) and is fresh-synced (§4).
-// Effect: verify → persist {go_live_t, config_id, offset} → enter ARMED(countdown) →
+startAt(go_live_t: number, config_id: string, seq: number, countdown_s: number): ArmResult
+// Preconditions: node holds config_id (pushed earlier via the `config` message, §M-NET) and is
+//   fresh-synced (§4). Config is NOT a startAt argument — startAt only schedules the arm.
+// Args: go_live_t (synced wall-clock T-0), config_id (staleness key it must already hold),
+//   seq (MC-stamped schedule counter — supersede/abort ordering, E8), countdown_s (runway length, §2).
+// Effect: verify → persist {go_live_t, config_id, seq, offset} → enter ARMED(countdown) →
 //         run the §2 choreography off synced_now() → at T-0 run the §3 go-live burst → LIVE.
 // Returns: { ok, state, reason? }  (reason: "stale_config" | "unsynced" | "past_grace" | ...)
 
-cancelStart(reason): void   // recall/abort while ARMED (E7): stop countdown, panic if already live.
+cancelStart(reason): void   // abort_start while ARMED (E7): stop countdown, panic if already live.
 armState(): { state, go_live_t?, t_minus_ms?, synced: boolean, degraded: boolean }  // for status heartbeat
 ```
 
-**On the wire (contracts §5, already frozen):**
-- MC → node: `start { go_live_t, config_id }`. **Proposed additive amendment** (contracts §9, non-breaking):
-  `start { go_live_t, config_id, countdown_s?, seq?, abort? }` — `seq` for supersede ordering (E8),
-  `abort` for in-band recall (E7), `countdown_s` informational for the node's runway display.
-- node → MC: armed/countdown status rides the existing periodic `status` Event (contracts §4) — extend its
-  optional fields with `arm_state` + `t_minus_ms` + `synced` (additive; consumers ignore unknown fields, §9).
-  No new message type required.
+**On the wire (contracts §5, ratified A1/A2):**
+- MC → node: `start { go_live_t, config_id, seq, countdown_s }` — `seq` is the MC-stamped monotonic schedule
+  counter (supersede ordering, E8); `countdown_s` is the runway length for the node's §2 choreography/display.
+- MC → node: **abort/reschedule via `control{cmd:"abort_start", seq}`** (E7), where `seq` names the schedule
+  to cancel — **not** a field on `start`. (`recall` stops a live game, a different path; §6.)
+- node → MC: armed/countdown status rides the existing periodic `status` Event (contracts §4), which carries
+  `arm_state` + `t_minus_ms` + `synced` (ratified A1/A2). No new message type required.
 
 ---
 
@@ -228,19 +243,31 @@ armState(): { state, go_live_t?, t_minus_ms?, synced: boolean, degraded: boolean
 4. **Go-live burst** — wire `armFrames()` tail (§3); handle gun-was-power-cycled re-push (E1).
 5. **Late/degraded paths** — grace arm, hot-join, unsynced fallback, DNP (E4/E5).
 6. **MC start panel + board** — schedule/abort/reschedule/re-push; per-node armed & sync display (§6).
-7. **Contracts amendment** — land `start.seq/abort/countdown_s` + `status.arm_state` additive fields (§9).
-8. **Sound verification** — pin `START_30S/20S/10S` + klaxon by ear; add as `Cue`s; keep `test_sounds.py` green.
+   Abort/reschedule emits `control{cmd:"abort_start", seq}` (E7), not a `start` field.
+7. **Contracts amendment** — ✅ landed as A1/A2: `start.seq`/`countdown_s`, `control.abort_start`,
+   `status.arm_state`/`t_minus_ms`/`synced`, `config_id` as staleness key (contracts §9). Nothing further to
+   land; consume these shapes as-is.
+8. **Sound verification** — pin `START_30S/20S/10S` + klaxon by ear; **confirm the `U16` countdown-tick
+   meaning** (currently provisional, §2); add as `Cue`s; keep `test_sounds.py` green.
+9. **Mock-clock edge-case test harness** — a deterministic clock injectable for `synced_now()` (advance /
+   jump / drift / reset offset) so E1–E8 are unit-testable without hardware: **E1** persist→relaunch→resume
+   (and gun-power-cycle re-push), **E2** late-join reconnect, **E3** idempotent grace re-arm (same
+   `seq`/`config_id`+`go_live_t` = no-op), **E5** grace-arm / hot-join / match-ended by clock position,
+   **E7** `abort_start` cancel (+ panic if live), **E8** supersede by higher `seq`, and the §4
+   degraded/unsynced fallback. Assert transitions against the §6 lifecycle.
+10. **⚠ Bench: hold-across-disperse arm (pending hardware).** Verify §3's long-hold path — write
+    `$START`+config, leave the gun UNSPAWNED for minutes, then fire `$SPAWN` — actually goes live with the
+    config intact, vs. the confirmed within-seconds `$START`→config→`$SPAWN` (protocol §7e). Determine whether
+    a config re-push is needed before the T-0 `$SPAWN`; log to `docs/experiment-log.md`.
 
 ## 9. Open questions
 
 - **Default runway length?** 30 s is proposed; club play with long walks to bases may want 60–90 s. [DECIDE]
 - **Klaxon id** and the three runway voice lines — by-ear pin (task 8). Until then, ship provisional.
-- **`abort` in-band vs `control{cmd:"recall"}`** — pick one recall path so we don't have two (lean `start.abort`
-  for symmetry with the schedule it cancels). [DECIDE]
+- **Abort path — RESOLVED (A2):** cancel a pending schedule with `control{cmd:"abort_start", seq}`; `recall`
+  is reserved for stopping a live/armed game. No `start.abort` field. (E7 updated.)
 - **Persisted-offset validity after a long-parked reboot** — is an offset from >X minutes ago still trustworthy
   for a same-match rejoin, or must E1 force a fresh sync if any LAN is reachable? Propose: trust for the match
   duration; force-resync opportunistically whenever back in range.
 - **Should MC hard-block force-starting an unsynced node,** or allow it with a loud "degraded, may fire off"
   warning? Propose: allow with warning (host's field call), always logged.
-</content>
-</invoke>

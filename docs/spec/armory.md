@@ -114,7 +114,8 @@ starts until green. It is a **BLE-only** sweep (no USB, no headset PIN needed at
 
 **Experiment-log finding (2026-08-24 / -25):** a one-shot serial sweep (connect → `$PHONE` → wait for
 `$VOLTS` → disconnect) reads battery on **only the strongest-RSSI gun**. `$VOLTS` streams on a **~30 s
-cadence and only after `$PHONE`**, while the firmware drops the client at a random **~6.6 s**. On a 4-gun
+cadence and only after the `$PHONE` or game-config ritual**, while the firmware drops the client at a
+random **~6.6 s**. On a 4-gun
 fleet only **1/4** returned battery; the near gun got it, the −73…−84 dBm guns disconnected before their
 first `$VOLTS`. This is not RSSI-pure but strongly RSSI-correlated.
 
@@ -220,7 +221,9 @@ bind_player(gun_id, player_id) -> void                    // associate a gun wit
   cabled gun and exactly one on BLE; returns a structured error otherwise (never throws to MC).
 - **`rename`** — wraps `_rename`: BLE `$NAME`, `mark_rename` clears `name_confirmed`; MC shows the gun
   amber until a power-cycle + `readiness()` reconfirms.
-- **`readiness`** — the persistent-fleet sweep (§3.2). Side-effect free; safe to poll.
+- **`readiness`** — the persistent-fleet sweep (§3.2). Side-effect free; safe to poll. The gate MC
+  binds is `go = (no reds); amber does not block` — MC starts on `ReadinessSnapshot.go`, **not**
+  all-green (amber rows are shown, not gating; §3.4).
 - **`bind_player`** — the gun↔player link is **session state, not durable armory state** (the same gun
   serves any player next game; ADR-0001 stateless gear). Stored on the `Player.gun_id` (contracts §2),
   not written back into `armory.json`. M-ARMORY only validates the `gun_id` exists and is green.
@@ -272,6 +275,12 @@ pushes the gamertag via `$NAME` is a play-time overlay MC reconciles in its iden
 - **Persistent-connection fleet reader** (§3.2) — the one real gap: hold N links, harvest streaming
   `$VOLTS`, retry `$VERSION`, until fresh-or-timeout. `run_fleet_status`'s serial sweep is refactored into
   "quick single probe" vs. "muster hold" behind one interface.
+- **Fake-BLE multi-gun stub** — a hardware-free fake of the N-tagger fleet (extend the existing
+  `diagnostics.py` fake): N stubbed links that stream `$VOLTS` on a compressed cadence, answer `$VERSION`,
+  and script the muster failure modes (staggered RSSI-correlated drops, a missed-`$VOLTS`/amber gun, a
+  `reverted`-`$NAME` gun, a not-present gun). This is what lets the fleet reader **and** `readiness()`
+  build and unit-test off-bench, and gives M-MC a deterministic `ReadinessSnapshot` source before the
+  multi-gun hardware session lands.
 - **`readiness()`** — assemble `ReadinessSnapshot` from the fleet reader + inventory + §2.2 revert
   detection + §3.3 headset inference + rollup logic.
 - **Contract adapter** (§4.2) — project the internal inventory record onto `ArmoryRecord`/`ReadinessRow`.
@@ -286,13 +295,16 @@ pushes the gamertag via `$NAME` is a play-time overlay MC reconciles in its iden
 1. **Contract adapter** — internal inventory ⇄ `ArmoryRecord`; `list()`. (No hardware.)
 2. **`readiness()` v1** — over today's serial `run_fleet_status`; rollup + `ReadinessRow`. Ship the MC
    board against this first (known-unreliable battery, but the shape is right).
-3. **Persistent-connection fleet reader** — replace the serial sweep for muster; the §3.2 fix. **[needs
-   a multi-gun hardware session]**
-4. **Revert/`Tactix2` detector + reconfirm flow** — wire into `readiness` and `rename`.
-5. **Headset-linked gate** — bench-authoritative + field-inferred merge (§3.3).
-6. **`bind_player` + gamertag/display reconciliation** — keep `$NAME`=sticker; player display is MC-layer.
-7. **Export/import + optional PIN redaction** (§4.3); MacBook rebind-by-name dry run.
-8. **Gen1 manual readiness path** (§6).
+3. **Fake-BLE multi-gun stub** — the N-tagger fake (§7) that streams `$VOLTS`/`$VERSION` and scripts the
+   muster failure modes. Unblocks the fleet reader **and** `readiness()` (and M-MC's board) off-bench.
+   (No hardware.)
+4. **Persistent-connection fleet reader** — replace the serial sweep for muster; the §3.2 fix. Built and
+   unit-tested against the task-3 stub first. **[final validation needs a multi-gun hardware session]**
+5. **Revert/`Tactix2` detector + reconfirm flow** — wire into `readiness` and `rename`.
+6. **Headset-linked gate** — bench-authoritative + field-inferred merge (§3.3).
+7. **`bind_player` + gamertag/display reconciliation** — keep `$NAME`=sticker; player display is MC-layer.
+8. **Export/import + optional PIN redaction** (§4.3); MacBook rebind-by-name dry run.
+9. **Gen1 manual readiness path** (§6).
 
 ## 9. Open questions
 
