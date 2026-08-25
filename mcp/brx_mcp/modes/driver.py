@@ -22,7 +22,7 @@ from typing import Awaitable, Callable, Optional
 from .. import sounds as snd
 from ..gameconfig import GameConfig, RESPAWN_SEQUENCE, END_SEQUENCE
 from .base import (
-    Action, Callout, Eliminate, GameEngine, GameOver, Heal, PlaySound, Respawn,
+    Action, Callout, Eliminate, GameEngine, GameOver, Heal, KillConfirm, PlaySound, Respawn,
     Score, SendFrame, SetTeam,
 )
 
@@ -132,8 +132,12 @@ class GameDriver:
                 await self._send(a.player_id, f"$LIFE,{a.hp},{a.armor},{a.shield},*")
             elif isinstance(a, SetTeam):
                 await self._send(a.player_id, f"$TID,{a.team},*")
+            elif isinstance(a, KillConfirm):
+                await self._send(a.scope, "$SFLASH,*")   # green-sight kill confirm (§7o)
             elif isinstance(a, PlaySound):
-                frame = f"$PLAY,{a.sound_id},4,6,,,,,*"
+                # two slots: token 1 = effect, token 4 = announcer voice (§7o)
+                frame = (f"$PLAY,,4,6,{a.sound_id},,,,*" if a.slot == "voice"
+                         else f"$PLAY,{a.sound_id},4,6,,,,,*")
                 if a.scope == "all":
                     for pid in self.players:
                         await self._send(pid, frame)

@@ -1,17 +1,29 @@
 """Tests for the B18 killstreak/multikill announcer — pure logic + FFA integration.
 
-The announcer is the host-side reconstruction of the guns' native (nRF-only)
-killstreak audio, driven over BLE via $PLAY (exp-log "feedback fork resolved").
+The announcer is the host-side reconstruction of native kill feedback, driven over
+BLE exactly as the official app does it (protocol §7o): $SFLASH for the green-sight
+flash plus $PLAY on the token-4 announcer slot.
 """
 
-from brx_mcp.modes.announcer import KillAnnouncer
-from brx_mcp.modes.base import Callout, PlaySound
+import asyncio
+
+from brx_mcp.modes.announcer import KILL_LINE, KillAnnouncer
+from brx_mcp.modes.base import Callout, KillConfirm, PlaySound
 from brx_mcp.modes.deathmatch import DeathmatchEngine
 from brx_mcp.gameconfig import GameConfig
 
 
 def _phrases(actions):
     return [a.text for a in actions if isinstance(a, Callout)]
+
+
+def _run(coro):
+    """Drive a coroutine on the suite's shared loop.
+
+    Deliberately NOT `asyncio.run()`: that closes the loop it creates, and this
+    module sorts first, so every later `get_event_loop()` test would fail.
+    """
+    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 # --------------------------------------------------------------------------- #
@@ -76,19 +88,38 @@ def test_multikill_tiers_announce_once_no_spam_beyond_four():
     assert "Killtacular" not in phrases[5]  # 6th — not repeated
 
 
-def test_playsound_emitted_only_when_id_configured():
-    # no ids configured → Callout only
+def test_medal_playsound_emitted_only_when_id_configured():
+    """The MEDAL line needs a configured id; the plain kill line is confirmed and
+    always plays (§7o) — so 'no ids configured' means Callout + kill line only."""
     a = KillAnnouncer()
     a.on_kill("A", "B", now=0.0)
     acts = a.on_kill("A", "C", now=1.0)
-    assert not any(isinstance(x, PlaySound) for x in acts)
+    ids = [x.sound_id for x in acts if isinstance(x, PlaySound)]
+    assert ids == [KILL_LINE]                    # kill confirm line, no medal sound
     assert "Double Kill" in _phrases(acts)
-    # configure the double-kill id → PlaySound scoped to the shooter appears
+    # configure the double-kill id → its PlaySound appears alongside the kill line
     b = KillAnnouncer(sounds={"double_kill": "VX99"})
     b.on_kill("A", "B", now=0.0)
     acts = b.on_kill("A", "C", now=1.0)
     ps = [x for x in acts if isinstance(x, PlaySound)]
-    assert ps and ps[0].sound_id == "VX99" and ps[0].scope == "A"
+    assert [x.sound_id for x in ps] == [KILL_LINE, "VX99"]
+    assert all(x.scope == "A" for x in ps)
+    # every announcer line speaks on the token-4 voice slot, not the effect slot
+    assert all(x.slot == "voice" for x in ps)
+
+
+def test_every_kill_emits_the_sight_flash_and_kill_line():
+    """The app's per-kill pair: $SFLASH (green sight) + the confirmed kill line,
+    both scoped to the shooter — even for an unremarkable kill with no medal."""
+    a = KillAnnouncer()
+    a.on_kill("A", "B", now=0.0)          # burn first blood
+    acts = a.on_kill("C", "D", now=30.0)  # plain kill, no medal, no streak
+    flashes = [x for x in acts if isinstance(x, KillConfirm)]
+    assert len(flashes) == 1 and flashes[0].scope == "C"
+    ids = [x.sound_id for x in acts if isinstance(x, PlaySound)]
+    assert ids == [KILL_LINE]
+    # the flash leads, exactly as the app orders it
+    assert isinstance(acts[0], KillConfirm)
 
 
 def test_all_actions_scoped_to_shooter():
@@ -152,3 +183,46 @@ def test_tdm_does_not_announce_per_player():
     acts = e.on_event("V", _dead(), now=1.0)
     assert "First Blood" not in _phrases(acts)      # team1 killer not a single gun
     assert e.snapshot()["announcer"]["first_blood"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Wire rendering — what actually reaches the gun                              #
+# --------------------------------------------------------------------------- #
+def test_kill_feedback_renders_to_the_frames_the_app_sends():
+    """End-to-end: a credited kill must put the app's exact per-kill frames on the
+    shooter's gun — `$SFLASH,*` then the kill line on the **token-4** announcer slot
+    (protocol §7o). Guards the slot rendering, which is easy to get backwards."""
+    from brx_mcp.modes.driver import GameDriver
+
+    sent: list[tuple[str, str]] = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    drv = GameDriver(GameConfig(mode="ffa"), {"A": 1, "B": 2}, sender=sender,
+                     announce=lambda *_: None)
+    acts = KillAnnouncer().on_kill("A", "B", now=0.0)
+    _run(drv.execute(acts))
+
+    assert ("A", "$SFLASH,*") in sent, sent
+    assert ("A", f"$PLAY,,4,6,{KILL_LINE},,,,*") in sent, sent
+    # the flash lands before the voice line, as the app orders it
+    assert sent.index(("A", "$SFLASH,*")) < sent.index(("A", f"$PLAY,,4,6,{KILL_LINE},,,,*"))
+    # nothing was addressed to the victim
+    assert all(pid == "A" for pid, _ in sent), sent
+
+
+def test_effect_slot_still_renders_the_token_1_form():
+    """Non-announcer sounds (explosions, stings) keep the original slot-1 form —
+    the two slots must not collapse into one."""
+    from brx_mcp.modes.driver import GameDriver
+
+    sent: list[tuple[str, str]] = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    drv = GameDriver(GameConfig(mode="ffa"), {"A": 1}, sender=sender,
+                     announce=lambda *_: None)
+    _run(drv.execute([PlaySound("X13", scope="A")]))                # default slot
+    assert sent == [("A", "$PLAY,X13,4,6,,,,,*")], sent

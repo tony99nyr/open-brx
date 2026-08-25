@@ -1,10 +1,18 @@
 """B18 — host-side killstreak / multikill announcer (MC as scorekeeper).
 
-Implements the feedback layer proven possible over BLE in the 2026-08-25 bench
-session (exp-log "feedback fork resolved"): the guns' native green-sight/"double
-kill" ride the nRF mesh and are invisible to BLE, BUT `$PLAY,<id>` works over BLE,
-so **Mission Control can rebuild the announcer audio itself** — watch credited
-kills, and play the right line back to the SHOOTER's gun.
+Mission Control is the scorekeeper and drives the feedback itself: watch credited
+kills, and send the right feedback back to the SHOOTER's gun.
+
+**This is what the official app does** — `cap8` (protocol §7o) caught Callsign, which
+has no nRF radio either, emitting per kill over plain BLE:
+
+    $SFLASH,*              the green-sight kill-confirm flash  (~0.4 s after the shot)
+    $PLAY,,4,6,V3A,,,,*    "kill", on the token-4 ANNOUNCER slot
+    $PLAY,,4,6,VB17,,,,*   score line, only when the lead changes
+
+So the earlier reading — *"green-sight is nRF-only, BLE-invisible, audio
+compensates"* — is **superseded**: it probed `$GLED` (team-derived, §7i), the wrong
+command. The visual is ours too, via `KillConfirm`.
 
 Pure / transport-free → unit-tested without hardware. An engine calls `on_kill`
 when it credits a kill to a *specific* shooter gun (works where team→player is 1:1:
@@ -15,14 +23,18 @@ the driver like any other.
 Multikill window = **4 s** (game-medals-config.json Key 14: 2+ kills within 4 s of
 the previous kill). Streaks are per-life and reset on the shooter's own death.
 
-Sound ids are **UNCONFIRMED** — the digested sound-bank lacks the medal announcer
-ids. They live in a config map to fill from a bench `$PLAY` probe or the full 2166
-bank. Until an id is set, only a `Callout` (the phrase) is emitted, so the driver
-can still log/surface it; a set id also emits a `PlaySound` to the shooter.
+The plain **kill** line is CONFIRMED (`V3A`, documented as "kill" in `sound-bank.md`
+and captured live). The **medal/streak** ids are still unconfirmed — the digested
+bank lacks them — so they live in a config map to fill from a bench `$PLAY` probe.
+Until such an id is set, only a `Callout` (the phrase) is emitted, so the driver can
+still log/surface it; a set id also emits a `PlaySound` to the shooter.
 """
 from __future__ import annotations
 
-from .base import Action, Callout, PlaySound
+from .base import Action, Callout, KillConfirm, PlaySound
+
+# The per-kill confirm line — CONFIRMED (sound-bank.md "V3A kill"; live in cap8).
+KILL_LINE = "V3A"
 
 MULTIKILL_WINDOW_S = 4.0  # game-medals-config.json Key 14
 
@@ -61,12 +73,18 @@ class KillAnnouncer:
         acts: list[Action] = [Callout(phrase, scope=shooter)]
         sid = self.sounds.get(key)
         if sid:
-            acts.insert(0, PlaySound(sid, scope=shooter))
+            acts.insert(0, PlaySound(sid, scope=shooter, slot="voice"))
         return acts
 
     def on_kill(self, shooter: str, victim: str, now: float) -> list[Action]:
-        """Credit a kill to `shooter` and return announcer Actions (scoped to shooter)."""
-        acts: list[Action] = []
+        """Credit a kill to `shooter` and return announcer Actions (scoped to shooter).
+
+        Always leads with the app's own per-kill pair — the green-sight flash and the
+        confirmed kill line (§7o) — then any medal/streak lines earned on top.
+        """
+        acts: list[Action] = [KillConfirm(scope=shooter)]
+        if KILL_LINE:
+            acts.append(PlaySound(KILL_LINE, scope=shooter, slot="voice"))
 
         if not self._first_blood:
             self._first_blood = True

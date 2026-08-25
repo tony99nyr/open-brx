@@ -64,9 +64,28 @@ class SetTeam(Action):
 
 @dataclass
 class PlaySound(Action):
-    """Play a bank sound id. scope='all' or a specific player_id."""
+    """Play a bank sound id. scope='all' or a specific player_id.
+
+    `$PLAY` has **two independent sound slots** (protocol §7o, from cap8):
+      slot="effect" -> `$PLAY,<id>,4,6,,,,,*`   token 1: local/effect sound
+      slot="voice"  -> `$PLAY,,4,6,<id>,,,,*`   token 4: the ANNOUNCER channel
+    The official app speaks every voice line on the token-4 slot, so announcer
+    lines should use slot="voice"; effects (explosions, stings) use the default.
+    """
     sound_id: str
     scope: str = "all"
+    slot: str = "effect"
+
+
+@dataclass
+class KillConfirm(Action):
+    """The shooter's green-sight kill-confirm flash -> `$SFLASH,*` (§7o).
+
+    Captured from the official app: exactly one per kill scored, ~0.4 s after the
+    shot. This is the *visual* half of native feedback, and it IS BLE-drivable —
+    the earlier "green-sight is nRF-only" reading probed `$GLED`, the wrong command.
+    """
+    scope: str
 
 
 @dataclass
