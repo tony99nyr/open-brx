@@ -69,25 +69,60 @@ async function sendFrame(id, frame){ for(let o=0;o<frame.length;o+=20){
   await BleClient.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o,20))); if(frame.length>20) await sleep(8);} }
 async function sendMany(id, frames){ for(const f of frames){ await sendFrame(id,f); await sleep(18);} }
 
-async function ensureInit(){ await BleClient.initialize({ androidNeverForLocation:false }); }
+// Initialize EXACTLY ONCE. The iOS plugin's initialize() does
+// `self.deviceManager = DeviceManager(...)` — it REPLACES the manager that owns the
+// CBCentralManager and every connected peripheral, so calling it again deallocates
+// the old one and drops every live gun (cap9: notifications disabled, then HCI
+// disconnect reason 0x16 "Terminated By Local Host"). Calling it per-setGun meant
+// connecting Gun B disconnected Gun A.
+let _init = null;
+function ensureInit(){ return (_init ||= BleClient.initialize({ androidNeverForLocation:false })); }
+
+// BRX BLE establishment succeeds roughly 1 attempt in 3 — holding a link is fine,
+// getting one is flaky (brx-protocol.md / HANDOFF "connecting is flaky, holding is not").
+// Retrying was the ENTIRE fix on the Python side (ble.py, 5 attempts); without it here
+// the user is the retry loop, tapping Set Gun until it takes.
+async function connectWithRetry(key, deviceId, attempts, guard){
+  let last;
+  for(let i=1; i<=attempts; i++){
+    if(guard && !guard()) return false;
+    try{
+      await BleClient.connect(deviceId, ()=>onDrop(key));
+      await BleClient.startNotifications(deviceId, NUS, TX, v=>onNotify(key,v));
+      return true;
+    }catch(e){
+      last = e;
+      if(i < attempts){ log(`${key} connect ${i}/${attempts} failed — retrying…`); await sleep(1200); }
+    }
+  }
+  throw last;
+}
+
 async function setGun(key){
   const p = players[key];
   try{
     await ensureInit();
     const dev = await BleClient.requestDevice({ namePrefix:'Tactix', optionalServices:[NUS] });
-    p.deviceId = dev.deviceId; p.name = dev.name || dev.deviceId;
-    await BleClient.connect(p.deviceId, ()=>onDrop(key));
-    await BleClient.startNotifications(p.deviceId, NUS, TX, v=>onNotify(key,v));
+    const label = dev.name || dev.deviceId;
+    log(`${key} connecting to ${label}…`);
+    // Only commit deviceId AFTER the link is up: it gates updateStart(), so setting it
+    // on a failed connect would enable "Start game" for a gun that isn't there.
+    await connectWithRetry(key, dev.deviceId, 5);
+    p.deviceId = dev.deviceId; p.name = label;
     log(`${key} = ${p.name} connected`,'lk'); renderPlayer(key); updateStart();
-  }catch(e){ log(`set ${key}: ${e.message||e}`,'le'); }
+  }catch(e){ log(`set ${key}: ${e.message||e}`,'le'); renderPlayer(key); updateStart(); }
 }
+
 function onDrop(key){ const p=players[key]; log(`*** ${key} (${p.name}) disconnected ***`,'le');
   if(p.deviceId) reconnect(key); }
-async function reconnect(key){ const p=players[key];
-  for(let i=1;i<=6 && p.deviceId;i++){ log(`${key} reconnect ${i}…`);
-    try{ await BleClient.connect(p.deviceId, ()=>onDrop(key));
-      await BleClient.startNotifications(p.deviceId, NUS, TX, v=>onNotify(key,v)); log(`${key} reconnected`,'lk'); return; }
-    catch(e){ await sleep(1200); } } }
+
+async function reconnect(key){
+  const p = players[key];
+  try{
+    const ok = await connectWithRetry(key, p.deviceId, 6, ()=>!!players[key].deviceId);
+    if(ok) log(`${key} reconnected`,'lk');
+  }catch(e){ log(`${key} reconnect failed — tap Set Gun ${key}`,'le'); }
+}
 
 function onNotify(key, value){ for(const f of pump(players[key], dataViewToText(value))) handleFrame(key, f); }
 
