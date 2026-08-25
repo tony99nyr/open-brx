@@ -1,0 +1,9 @@
+# Cloudflare Workers static-site config.
+# Serves ONLY the webapp/ folder (ble-test.html, mission-control.html, later the
+# PWA + BRX manual) — the rest of the (private) repo is NOT published.
+# No `main` script → assets-only static site.
+name = "open-brx"
+compatibility_date = "2024-11-01"
+
+[assets]
+directory = "./webapp"
