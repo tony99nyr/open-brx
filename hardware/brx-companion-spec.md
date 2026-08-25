@@ -22,6 +22,54 @@ Four hard facts from `docs/experiment-log.md` drive every design decision:
 The official system solves #1/#2 by making every player carry a phone. The Companion **is that
 phone**, purpose-built, cheaper, open, and without the AWS cloud dependency.
 
+## ⚡ 2026-08-25 reframe — the `$SFLASH` tier collapse + the real core BOM
+
+Two findings since this spec was written change the shape of the product (see ADR-0001,
+protocol §7o):
+
+**The gun is already the speaker AND the display.** The `$SFLASH` capture proved a host can drive
+the gun's own feedback over BLE: `$SFLASH,*` greens the sight, `$PLAY` plays on the gun's (loud)
+speaker, `$TID` sets the team LED. So the Companion **does not need its own speaker (T1) or HUD
+(T2) to deliver the full native feel** — it just drives the gun's output. **The T0→T1→T2 ladder
+collapses: T0 (the Brain) now delivers the complete experience.** T1 (a louder Companion speaker
+for custom audio beyond the gun's bank) and T2 (a wrist HUD) are **optional luxuries**, not the path
+to a complete unit.
+
+**The real, redefined core Companion (~$12–15):**
+
+| Part | ~$ | Why |
+|---|---|---|
+| ESP32-S3 module | 3–6 | brain: BLE central (drive `$SFLASH`/`$PLAY`/scoring), Wi-Fi (OTA + lobby), **ESP-NOW mesh built-in** (Companion↔Companion kill-sharing — *no extra radio*), dual-core engine |
+| LiPo 1000–2000 mAh | 3–4 | portable power, sized to outlast the gun |
+| TP4056 charge+protect | 0.5 | USB-C LiPo charging + safety (or a dev board with charging) |
+| Momentary button | 0.1 | pairing/bind + power/mode (see Pairing, below) |
+| Status LED (WS2812) | 0.3 | link/battery/firmware self-test at a glance on the rack |
+| **VS1838B IR receiver** | 0.3 | decode the shot's **6-bit player-id → per-player attribution (P2)** with no nRF tap |
+| printed clip + wiring | ~3 | slim **body** mount, out of the sight line (ADR-0001) |
+| **Total** | **~$12–15** | |
+
+**Absent by design:** no speaker/amp (gun's speaker via `$PLAY`), no display (gun's sight+LED),
+**no nRF24** (ESP-NOW does the mesh; nRF24 was only for the deprioritized native-mesh tap). So the
+core unit is ~$15 and simpler than the old $25 T2. The T1/T2 sections below remain valid as
+**optional** add-ons.
+
+**Buildable from the 2026-08-26 kit:** the ELEGOO kit (button, LEDs, breadboard, 2N2222, caps) +
+CHANZON 940nm/VS1838B + 2× ESP32-S3 build the **entire functional Companion on the bench** (drive
+the gun, run modes, ESP-NOW mesh between the two boards, IR player-id decode). Only a **LiPo+TP4056**
+(bench runs on USB) and the **printed enclosure** (needs calipers) are missing for a wearable unit.
+
+## Pairing — bind to THE gun, not the neighbor (open, important)
+
+A Companion must reliably connect to the gun it's clipped to, not an identical tagger 30 cm away on
+the rack. A button alone can't disambiguate (adjacent guns are all close; RSSI is unreliable).
+**Primary mechanism: MC-assigned binding at muster** — each Companion registers with MC over the
+muster Wi-Fi (it's there for OTA anyway); MC, which knows every gun's BLE address + self-ID
+([[tagger-naming-architecture]]), hands each Companion the **exact address** of its gun.
+Deterministic, no RSSI guessing. **The button** is then for power + a manual field re-bind when MC
+isn't in range. Stateless/interchangeable (ADR-0001) means any Companion binds to any gun this way.
+**Still to design:** the registration handshake, what a Companion does if it can't reach MC, and the
+field re-bind gesture.
+
 ## Platform: ESP32-S3
 
 One chip covers every requirement:
@@ -100,7 +148,7 @@ The concern is real: the tagger's built-in speaker is deliberately loud. To matc
 
 | Tier | Adds | ~BOM | What you get |
 |---|---|---|---|
-| **T0 — Brain** | ESP32-S3 + LiPo + mount | **$8–12** | BLE link, offline game engine, powerups, Wi-Fi sync, store-and-forward. Replaces the phone; solves range + state + powerups. |
+| **T0 — Brain** | ESP32-S3 + LiPo + mount **+ button + IR RX + LED** (see the reframe above) | **~$12–15** | BLE link, offline game engine, powerups, Wi-Fi sync, store-and-forward — **and drives the gun's OWN flash (`$SFLASH`) + audio (`$PLAY`) + team LED**, so this tier alone now delivers the full native feel. IR RX adds per-player attribution (P2). |
 | **T1 — +Audio** | MAX98357A + speaker (+ piezo horn) + microSD | **+$5–7** | unlimited custom sounds |
 | **T2 — +HUD** | SSD1306 OLED or ST7789 TFT + WS2812 LEDs + bigger LiPo + printed shell | **+$8–12** | health/ammo/lives/respawn HUD, team color, hit flash |
 
@@ -160,3 +208,16 @@ no on-device scoring / "how do I see my score?" — by being the score-keeper an
 - Does re-pushing `$WEAP` mid-game glitch the active weapon (reload/ammo reset)? Test on hardware.
 - BLE re-establishment reliability on the S3 (establishment is ~1-in-3 flaky per §experiment-log;
   holding is fine) — the Companion reconnects transparently, but validate.
+- **Pairing/binding handshake** (see Pairing above) — the MC-assigned registration protocol, the
+  no-MC fallback, and the field re-bind gesture. The single most important unsolved question.
+- **Battery monitoring** — Companion reports its own % to MC's muster/readiness board (alongside the
+  B18b headset gate + gun battery); define the reporting + the "too low to start" threshold.
+- **OTA update flow** — dual-partition A/B with auto-rollback; a "update-all" at muster over MC's
+  Wi-Fi AP; firmware version shown/gated in the readiness board.
+- **Mount** — exact slim body location + sight-clearance, from **caliper measurements on the real
+  gun** (the CAD blocker in `print-files.md`); positive-lock + tether.
+- **Two ADR-0001 confirmations owed** — (a) a host-armed game does NOT self-fire feedback out of
+  range (arm our way, disconnect, play, watch the sight); (b) `$SFLASH` from *our* stack greens the
+  sight on hardware. Both are first-up next bench session.
+- **`$SFLASH`/`$PLAY` from the Companion end-to-end** — the KillAnnouncer logic (B18) runs on the
+  Companion, not MC; validate the full per-kill burst (`$SFLASH` → `$PLAY,,4,6,V3A`) from the rider.
