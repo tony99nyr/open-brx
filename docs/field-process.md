@@ -101,13 +101,18 @@ objective modes — every tagger armed to its station **before** kickoff.
    - **Arm each tagger** by exposing it to the station's IR (respawn: the grenade button pressed near each
      player at base, and/or facing the station front + trigger). A tagger that is **not** armed will
      **self-respawn normally** — so arm *every* participating tagger.
-   - **⚠️ Timing is not settled — [HW-CONFIRM].** Two accounts (both in `reference/grenade.md`
-     §Respawn Station): arm **before** the game starts (Jay's grenade video, 2026-08-25 — the tagger then
-     knows to respawn at the station instead of automatically), vs arm **just after** `$SPAWN` on a timed
-     match (exp-log #37 — guns are inert until live, two-horn start buys ~5 s). Likely the **same arming
-     action**; **pre-game arming is the natural config step**. Confirm on hardware whether arming works
-     before `$SPAWN` and whether the per-player button-press is a separate step from the grenade's passive
-     beacon. Credit Jay (Extreme Laser Tag And More! / @extremelasertag3602) for the pre-game-arming framing.
+   - **Two arming paths — either works (Jay's video, 2026-08-25 — Extreme Laser Tag And More! /
+     @extremelasertag3602):**
+     - **Pre-game (here in Muster):** expose each tagger to the station IR **before** kickoff → it respawns
+       at the station instead of automatically for the game. The natural config step.
+     - **Mid-game (per gun):** even if the game **started before** the grenade was set to a respawn station,
+       **pressing the grenade button** beams the station IR to each gun in range and **forces respawn-station
+       mode mid-match**. This is the **reliable per-gun force / re-arm** — usable to arm stragglers or to
+       arm the whole field just after `$SPAWN`.
+   - **[HW-CONFIRM]** (narrowed — the button-after-start path is reported working by Jay): confirm on
+     hardware that (a) a gun armed by the post-start button **stays** station-respawn for the rest of the
+     match, and (b) whether the **passive beacon alone (no button)** also arms. See
+     `reference/grenade.md` §Respawn Station and `verification-checklist.md`.
    - **Respawn-authority caveat (B12):** if a mode uses grenade respawn stations, the host engine must
      **not** also drive `$SPAWN` respawns for those players (two competing authorities). Pick one respawn
      authority per mode. (`FOLLOWUPS.md` B12.)
@@ -129,7 +134,7 @@ every tagger armed to its station.
 | Print / reconfirm the armory map | `python -m brx_mcp armory` | **[BUILT]**; correlate loop **[HW-CONFIRM]** |
 | Config + start a game (config-all-then-spawn) | `python -m brx_mcp play <mode> <addr…> [k=v…]` | **[BUILT]**; live run **[HW-CONFIRM]** |
 | Physical sticker label (headset code on the gun) | *(label printer — no tooling)* | recommended practice |
-| Station Arming (deliver station IR to each tagger) | *(on-device grenade + per-tagger IR)* | **[HW-CONFIRM]** timing |
+| Station Arming (deliver station IR to each tagger) | *(on-device grenade + per-tagger IR; pre-game or grenade-button mid-game)* | reported working (Jay); **[HW-CONFIRM]** persistence |
 
 ## See also
 - `reference/grenade.md` — grenade modes, on-grenade programming, Respawn Station mechanics + the timing reconciliation.

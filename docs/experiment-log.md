@@ -915,6 +915,14 @@ No hardware this pass — Tony relaying facts from **Jay's grenade video** (Extr
   until guns are live. **Did NOT silently overwrite** grenade.md's note — both accounts are now presented
   there with the likely resolution, and a hardware item (verification-checklist) will pin the exact
   before-vs-after-`$SPAWN` timing and whether the per-player button-press is separate from the passive beacon.
+  **UPDATE (same session — Jay, RECONCILED):** the timing question is resolved — there are **two arming
+  paths**. If you **START the game BEFORE** setting the grenade to a respawn station, **pressing the grenade
+  button** beams the station IR to each gun in range and **forces respawn-station mode mid-match** (not
+  auto-spawn). So exp-log #37's "signal each gun after start" = the **grenade-button arming**, and it works
+  post-`$SPAWN`; Jay's earlier "arm pre-game" = passive/config arming. **Both valid**, and the button press
+  is the reliable per-gun (re-)arm at any time. Open HW items narrowed to: (a) a button-armed gun **stays**
+  station-respawn all match; (b) does the passive beacon alone (no button) arm? Docs updated: grenade.md,
+  field-process.md, verification-checklist.md, FOLLOWUPS B12.
 - **Physical labeling.** Stock BRX taggers ship **unlabeled** and are easy to mix up (can't tell which gun
   pairs to which headset). **Recommended Open BRX practice (Tony):** use a **sticker/label printer** to print
   the **headset's 5-char code (Serial / Head PIN)** onto the **tagger** — the physical gun↔headset pairing

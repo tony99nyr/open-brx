@@ -96,12 +96,12 @@ The whole M0 engine is tested in software but never driven on real guns.
   host respawn, loud channel alarm). Needs the station to feed `ZONE`/`LEAVE`/`LOOT`/`PICKUP`; the combat
   half (kill drops loot, killer gains kill-loot) runs off the gun stream today.
 - ⬜ **Grenade G9/G10** — CTF flag team-assign (turned red not team colour); `$GREN` thrown-blast on a paired grenade.
-- ⬜ **Station-Arming timing (respawn)** — resolve the before-vs-after-`$SPAWN` question (`reference/grenade.md`
-  §Respawn Station; `field-process.md` §Muster→Station Arming). Set the grenade to Respawn, then test: (a) arm a
-  tagger with the station IR **BEFORE** starting the game — does its self-respawn stay disabled through the match
-  (Jay's account)? (b) arm **AFTER** `$SPAWN` — does that also stick? (c) is the **per-player grenade-button press**
-  a distinct step from the grenade's **passive beacon** (does a tagger that only saw the passive beacon get armed)?
-  A tagger that was never armed should just self-respawn. Record which timing is reliable → update grenade.md/B12.
+- ⬜ **Station-Arming persistence (respawn)** — the before-vs-after-`$SPAWN` timing is **reconciled** (Jay's video,
+  2026-08-25): both paths arm — pre-game passive arming AND a **post-start grenade-button press** (which forces a
+  gun into respawn-station mode mid-match). Remaining to confirm on hardware (`reference/grenade.md` §Respawn Station;
+  `field-process.md` §Muster→Station Arming): (a) a gun armed by the **post-start button** press **stays**
+  station-respawn for the rest of the match; (b) does the grenade's **passive beacon alone (no button)** also arm a
+  tagger, or is the button press required? A never-armed tagger should just self-respawn. Record → grenade.md/B12.
 
 ## Session G — phones (Android phone + tagger, ~30 min) — G4, gates M2
 - ⬜ **Android BLE hold** — `webapp/ble-test.html` (Chrome) vs nRF Connect: does Android Chrome hold a BRX NUS link? (Gates the whole phone/PWA branch; also decides web-vs-hybrid.)

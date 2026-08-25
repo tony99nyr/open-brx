@@ -126,22 +126,22 @@ of the per-game **Muster** process: `../field-process.md`.)*
   that never got the station signal just **self-respawns normally**; once it has received the station
   beacon it's locked to needing the station.
 
-  **⚠️ Two accounts of the timing — reconcile on hardware (do not treat as settled):**
-  - *Earlier note here (Tony, exp-log #37):* signal the respawn action to each gun **AFTER the game
-    starts** — everyone at base, a leader presses the grenade button on each player *after* `$SPAWN`,
-    using a two-horn start (or unlimited-time) to buy the ~5 s.
-  - *Jay's grenade video (2026-08-25, Tony relaying — Extreme Laser Tag And More! / @extremelasertag3602):*
-    the respawn-station IR is delivered to each tagger **BEFORE the game starts**. Once a tagger has
-    received it, that tagger **knows during the game to respawn at the station instead of automatically**
-    (its self-respawn is disabled). Framed this way it is a **pre-game configuration/arming** step, not a
-    mid-game one.
-  - **Likely resolution:** these are the *same* arming action described at two moments — the point is
-    that every tagger must be hit by the station signal, and **pre-game arming is the natural config
-    step** (deliver station IR at base as part of Muster, before kickoff). The "after start" wording may
-    just reflect that on a *timed* match you can't arm until the guns are live (they're inert pre-`$SPAWN`),
-    so the two-horn trick arms in the first seconds. **Unconfirmed** — see the verification-checklist item
-    for the exact before-vs-after-`$SPAWN` timing and whether the per-player button-press is a separate
-    step from the grenade's passive beacon. Credit Jay (Extreme Laser Tag And More!) for the pre-game-arming framing.
+  **Timing — RECONCILED (Jay's grenade video, 2026-08-25, Tony relaying — Extreme Laser Tag And More! /
+  @extremelasertag3602):** arming works **both** pre-game and mid-game, because there are **two arming
+  paths** and either one switches a gun from auto-respawn to station-respawn:
+  - **Pre-game (passive/config) arming:** set the grenade to Respawn and expose each tagger to its station
+    IR **before** the game starts. Once armed, that tagger **knows during the game to respawn at the
+    station instead of automatically** (self-respawn disabled). This is the natural config step.
+  - **Post-start (button) arming — the reliable per-gun force:** even if you **START the game BEFORE**
+    setting the grenade to a respawn station, **pressing the button on the grenade** beams the station IR
+    to each gun in range and **forces the tagger into respawn-station mode mid-game** (not auto-spawn).
+    So the grenade-button press is a **distinct arming action that works AFTER `$SPAWN`** — this is exactly
+    the exp-log #37 "signal each gun after the game starts" behaviour, now explained.
+  - **Bottom line:** pre-game passive arming **or** a post-start grenade-button press per gun both arm a
+    tagger; the button press is the dependable per-gun re-arm at any time. A tagger that is never armed by
+    either path just **self-respawns normally**. **Still to confirm on hardware** (verification-checklist):
+    (a) a gun armed by the post-start button stays station-respawn for the rest of the match, and (b)
+    whether the **passive beacon alone (no button)** also arms. Credit Jay (Extreme Laser Tag And More!).
 - Respawn stations **can be overtaken** by another team (shoot/grenade it) — "not always consistent"
   (a real reliability quirk the community also reports).
 
