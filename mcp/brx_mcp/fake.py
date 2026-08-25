@@ -32,7 +32,8 @@ class FakeTagger:
     """One emulated gun. Feed it frames with `write`; shoot it with `receive_ir`."""
 
     def __init__(self, address: str, name: str | None = None, hp: int = 45,
-                 armor: int = 70, team: int = 0, damage: int = 25):
+                 armor: int = 70, team: int = 0, damage: int = 25,
+                 friendly_fire: bool = False):
         self.address = address
         self.name = name or f"FAKE-{address[-4:]}"
         self.cfg_hp, self.cfg_armor, self.cfg_shield = hp, armor, 0
@@ -40,6 +41,7 @@ class FakeTagger:
         self.team = team
         self.alive = True
         self.damage = damage
+        self.friendly_fire = friendly_fire  # set from $GSET token1 when a game configs it
         self._out: list[str] = []          # queued rx frames (tagger→host)
 
     # -- host → tagger ------------------------------------------------------- #
@@ -57,6 +59,8 @@ class FakeTagger:
             v = _int(t[1]) if len(t) > 1 else None
             if v is not None:
                 self.team = v
+        elif cmd == "GSET":                 # GSET,friendlyFire,outdoor,... (token1)
+            self.friendly_fire = len(t) > 1 and t[1] == "1"
         elif cmd == "PSET":                 # PSET,0,0,hp,armor,shield,...
             for idx, attr in ((3, "cfg_hp"), (4, "cfg_armor"), (5, "cfg_shield")):
                 v = _int(t[idx]) if idx < len(t) else None
@@ -76,9 +80,12 @@ class FakeTagger:
     # -- IR hit → events ----------------------------------------------------- #
     def receive_ir(self, shooter_team: int) -> None:
         """Take a hit from `shooter_team`: emit `$HIR` then `$HP` (0 = died).
-        No-op if dead or friendly-fire-from-own-team (mirrors the real gun needing
-        distinct teams to damage)."""
-        if not self.alive or shooter_team == self.team:
+        No-op if dead, or a same-team hit while friendly-fire is off (the real gun
+        ignores teammate IR unless FF is enabled via $GSET). With FF on, a same-team
+        hit DOES damage — the host engine then declines to credit it as a kill."""
+        if not self.alive:
+            return
+        if shooter_team == self.team and not self.friendly_fire:
             return
         d = self.damage
         if self.armor >= d:
@@ -122,6 +129,7 @@ class FakeConnectionManager:
     def __init__(self, taggers: list[FakeTagger]):
         self.taggers = {t.address: t for t in taggers}
         self.sessions: dict[str, _FakeSession] = {}
+        self.dropped: set[str] = set()     # aliases whose BLE link has "dropped"
 
     async def scan(self, duration_s: int = 8) -> list[dict]:
         return [{"name": t.name, "address": a, "rssi": -50, "has_uart_service": True}
@@ -132,6 +140,8 @@ class FakeConnectionManager:
         return {"alias": alias, "address": address, "connected": True}
 
     async def send(self, alias: str, command: str, reply_window_ms: int = 0) -> dict:
+        if alias in self.dropped:            # writing to a dropped link fails (real BLE raises)
+            raise ConnectionError(f"link dropped: {alias}")
         s = self.sessions[alias]
         s.record("tx", command)
         tagger = self.taggers[s.address]
@@ -142,9 +152,16 @@ class FakeConnectionManager:
         return {"sent": command, "replies_within_window": []}
 
     def get_events(self, alias: str, since_seq: int = 0, max_events: int = 200) -> dict:
+        if alias in self.dropped:            # a dropped link goes silent (no new events)
+            return {"events": []}
         s = self.sessions[alias]
         evs = [e.to_dict() for e in s.buffer if e.seq > since_seq][:max_events]
         return {"events": evs}
+
+    def drop(self, alias: str) -> None:
+        """Simulate a mid-game BLE drop: writes to this alias raise, reads go silent,
+        and it can't be shot any more. Use to test that a game survives a lost link."""
+        self.dropped.add(alias)
 
     async def disconnect(self, alias: str) -> dict:
         self.sessions.pop(alias, None)
@@ -152,6 +169,8 @@ class FakeConnectionManager:
 
     # -- simulate shooting --------------------------------------------------- #
     def inject_hit(self, victim_alias: str, shooter_team: int) -> None:
+        if victim_alias in self.dropped:     # a dropped gun can't report a hit
+            return
         s = self.sessions[victim_alias]
         tagger = self.taggers[s.address]
         tagger.receive_ir(shooter_team)
