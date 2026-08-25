@@ -61,12 +61,14 @@ macOS gives UUIDs, Windows/BlueZ MACs — never assume format.
 | Connection health — buffer depth, drops, last-seen | `list_connections` |
 | Live sensor test — trigger/buttons, IR hits | `$BUT` / `$HIR` event stream (fire the trigger, tap the headset, watch events) |
 
-**Full diagnostic dump (USB bench, richest):** when a tagger is cabled to the server, the Teensy
-`QUERY` console (hold nothing — just the USB "Programing Port") returns the deep record:
-**Serial Number / Head PIN** (e.g. `R0BQT`), all component **versions** + BT central version,
-**voltages** (gun + head), **radio flags** `NRFhost`/`NRFslave`/`devHost`, **PCB revision**
-(`PCB-5`), and factory `Tested by`. Mission Control parses this into the device record and saves it
-to `~/.brx-mcp/device-backups/`. (This is bench prep, not in-field — BLE covers the field.)
+**Full diagnostic dump (USB bench, richest) — BUILT (`usb-query`, verified 2026-08-24):** when a tagger
+is cabled to the server, the Teensy `QUERY` console (VID 16C0, just the USB "Programing Port") returns
+the deep record: **Serial Number / Head PIN = the paired headset's unique-ID sticker**, all component
+**versions** + BT central version, **voltages** (gun + head), **radio flags** `NRFhost`/`NRFslave`/`devHost`,
+**Grenade Pin**, **PCB revision** (`PCB-5`), laser power, and factory `Tested by`. `brx_mcp/usbconsole.py`
+parses it (`headset_linked` flag included) and saves the raw dump to `~/.brx-mcp/device-backups/<serial>.txt`
+(**out of repo — holds the headset PIN**). This is the path to an **armory inventory**: match each tagger
+to its headset's sticker. Bench prep, not in-field — BLE covers the field.
 
 **Fleet health dashboard** — the payoff of the above across the whole armory:
 - **Battery levels** for every tagger at a glance (sort by lowest; flag &lt; threshold) — logged over

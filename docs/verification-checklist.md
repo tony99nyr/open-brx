@@ -36,6 +36,9 @@ The whole M0 engine is tested in software but never driven on real guns.
 - ⬜ **`$VOLTS` token4** — the 4th token (76) meaning still TBC; grab samples at high vs low charge to disambiguate.
 - ⬜ **Headset presence heuristic** — confirm the "silently drops with no frames = no headset" rule by testing with the headset OFF (does `diagnose` come back reachable-but-empty / drop?).
 - ⬜ **Multi-tagger fleet** — run `fleet` with 2+ taggers on; confirm serial diagnose + the dashboard line per tagger.
+- ✅ **USB `QUERY` device record** (`usb-query`, verified 2026-08-24) — Serial/Head PIN (= headset sticker), headset version + head voltage, PlayerID, nRF flags, PCB, etc. Teensy VID 16C0 (COM5).
+- ⬜ **Armory inventory** — cable each tagger, `usb-query`, and record which headset (sticker/serial) pairs to which gun. Build the tagger↔headset map for match-day gear tracking.
+- ⬜ **`SETUP` (writes)** — the factory-provisioning side (set tagger id / re-pair headset → P2). NOT built; verify carefully on a throwaway tagger before trusting it.
 
 ## Session D — native multikills + nRF (2 taggers, ~15 min) — high upside (D4/D1)
 - ⬜ **Native multikill under our config** — does the gun still say "double kill" on two back-to-back enemy kills in a `play tdm` game? (If yes → free announcer sounds.)

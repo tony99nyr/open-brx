@@ -841,3 +841,22 @@ matches the headset's unique-ID sticker). Findings:
 **Takeaway for Mission Control:** matching taggers↔headsets↔stickers (armory inventory) needs the **USB
 serial-console backend (B7)**; BLE alone gives headset *presence* (link-hold) but not the paired headset's
 identity. The BLE `$QUERY` status array is a separate decode target (possible live player/score state).
+
+### 2026-08-24 — B7 USB serial console BUILT: QUERY device record read live ✅
+`brx_mcp/usbconsole.py` + CLI `usb-query [port]`. The tagger's USB "Programming Port" enumerates as a
+**Teensy USB CDC (VID 16C0)** — on the tower it was **COM5** (VID `16C0:0483`), distinct from the ESP32
+(303a) and a CH340 (1a86). Sent `QUERY\r`, read until quiet, parsed the full device record:
+
+- **Serial Number/Head PIN = the paired headset's sticker id** (read live; value kept in the local backup
+  only, NOT the repo). **This is the answer to "which headset is it paired to"** — USB-only; BLE can't.
+- `headset_linked=true`, **Headset Version `hds.59`, Head 4.0 V** (headset battery), Gun 7.28 V, PlayerID 0,
+  FieldID 1, NRFhost/NRFslave/devHost = 1, **Grenade Pin 7052**, Laser `UNTESTED`, PCB-5, BTchip 4,
+  BT central `devhost.03`, Tested by `JB`.
+- **Real-format quirks** (vs the documented sample): `Gun Name` is **NUL-padded** ("Tactix\0\0…"), lines end
+  **`\r\r\n`**, `Laser` can be a word (`UNTESTED`) not mW, `Grenade Pin` is a real non-zero value. Parser
+  strips control/NUL chars, captures `laser` as string + `laser_mw` only when numeric. `parse_query` is pure
+  + unit-tested (6 cases); `save_backup` writes `~/.brx-mcp/device-backups/<serial>.txt` (out of repo).
+
+**Unlocks:** an **armory inventory** — cable each tagger, `usb-query`, map tagger↔headset-sticker↔serial for
+match-day gear tracking (Mission Control bench-prep tier). **Not built:** `SETUP` (writes tagger id / re-pairs
+the headset → feeds P2 per-player identity) — deliberately deferred; it's factory provisioning, gate on confirm.

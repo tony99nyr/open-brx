@@ -21,6 +21,7 @@
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
   python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
+  python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
 """
 
 from __future__ import annotations
@@ -855,6 +856,23 @@ def _ir_capture(port: str | None, seconds: float) -> None:
         print(f"\n# diff {uniq[0]} vs {uniq[1]}:\n  {diff_bits(uniq[0], uniq[1])}")
 
 
+def _usb_query(port: str | None) -> None:
+    """Read a cabled tagger's device record over USB (B7) + save a local backup."""
+    from .usbconsole import UsbConsole, save_backup
+    con = UsbConsole(port)
+    print(f"# QUERY on {con.port} ...", file=sys.stderr)
+    rec = con.query()
+    con.close()
+    if not rec.get("raw"):
+        print("no response — is it the tagger's Teensy CDC port? try another COM/tty.")
+        return
+    fields = {k: v for k, v in rec.items() if k not in ("raw",)}
+    _print(fields)
+    path = save_backup(rec)
+    if path:
+        print(f"\n# backup saved: {path}", file=sys.stderr)
+
+
 def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
     """One walk-back station: capture a window, report the range reading. Stand at
     a tape distance, fire `expected` shots during the window, read the hit-rates."""
@@ -1078,6 +1096,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         port = args[2] if len(args) > 2 and not args[2].isdigit() else None
         repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
         _ir_emit(bits, port, repeat)
+    elif cmd == "usb-query":
+        _usb_query(args[1] if len(args) > 1 else None)
     elif cmd == "ir-range":
         port = args[1] if len(args) > 1 and not args[1].isdigit() else None
         nums = [float(a) for a in args[1:] if a.replace(".", "").isdigit()]
