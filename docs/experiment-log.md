@@ -1014,3 +1014,23 @@ deathmatch(24), survival/lms(20), cs(19), domination(22), ctf(20), extraction(20
 **Payoff for bench time:** game *logic* for all modes is now exhaustively verified in software, so a
 hardware session confirms only what the sim CAN'T model (BLE reliability/timing, physical LED/headset/
 audio state, real IR) — not logic. That's the efficient-bench goal.
+
+### 2026-08-25 — live-path resilience + diagnostics hardened (with adversarial review)
+Beyond the mode-logic sim battery, hardened the run_live control path and diagnostics against the BLE
+reality we hit on the bench, all testable via the FakeTagger/FakeConnectionManager:
+- **run_live resilience:** connect-grace (play with the taggers that connect; error if none), wall-clock
+  safety (a stalled clock-less game force-stops instead of hanging), and mid-game reconnection (a dropped
+  gun rejoins). A 2-agent adversarial review then found **3 real-BLE HIGH bugs the fake couldn't show**
+  (all fixed): (1) an in-loop reconnect could freeze the whole game ~20 s on a real `BleakClient` timeout
+  → time-boxed to 3 s; (2) a flapping link reconnected forever → rate-limited (8 s) + total cap (6/gun);
+  (3) `resetup` respawned a gun regardless of engine state → now only `$SPAWN`s if the engine considers
+  the player alive (else the engine's own Respawn brings it back), avoiding a gun-alive/engine-dead desync.
+- **diagnostics:** the `$STOP→$PHONE→$VERSION→$VOLTS` handshake (fixed live 8-24) + `fleet_status` extracted
+  to a bleak-free, transport-agnostic `diagnostics.py` and unit-tested against the fake (firmware+battery
+  read, battery-needs-`$PHONE`, cold-`$VERSION`-silent, unreachable-reported, fleet dashboard assembly).
+- **FakeTagger** gained: drop / fail_connect / is_connected / heals-on-reconnect / $PHONE-gated $VERSION /
+  duplicate-alias guard — so the reconnection, connect-grace, and diagnostics flows are all CI-covered.
+
+**Suite 151 → 317 green this session.** Every game-logic and live-path control-flow path is now verified
+without hardware; the bench confirms only BLE reliability/timing and physical LED/audio/IR (see the
+EFFICIENT BENCH PLAN in verification-checklist.md).
