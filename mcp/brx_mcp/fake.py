@@ -139,8 +139,12 @@ class FakeConnectionManager:
     async def connect(self, address: str, alias: str, **_) -> dict:
         if address in self.fail_connect:            # simulate a gun that won't come up
             raise ConnectionError(f"could not connect to {address}")
+        self.dropped.discard(alias)                 # a (re)connect heals a recoverable drop
         self.sessions[alias] = _FakeSession(alias=alias, address=address)
         return {"alias": alias, "address": address, "connected": True}
+
+    def is_connected(self, alias: str) -> bool:
+        return alias in self.sessions and alias not in self.dropped
 
     async def send(self, alias: str, command: str, reply_window_ms: int = 0) -> dict:
         if alias in self.dropped:            # writing to a dropped link fails (real BLE raises)

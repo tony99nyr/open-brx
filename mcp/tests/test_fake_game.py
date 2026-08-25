@@ -142,6 +142,27 @@ def test_fake_run_live_connect_grace_one_gun_fails():
     assert "BB:2" not in snap["players"]             # the unconnected gun isn't in the game
 
 
+def test_fake_run_live_reconnects_dropped_gun():
+    # a recoverable mid-game drop is brought back (reconnect + resetup) so the gun
+    # rejoins and the game can still finish — not lost for the rest of the match.
+    A = FakeTagger("AA:1"); B = FakeTagger("BB:2")
+    mgr = FakeConnectionManager([A, B])
+    cfg = GameConfig(mode="tdm", frag_limit=1, game_time_s=0, respawn_s=1)
+
+    async def play():
+        task = asyncio.ensure_future(
+            run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
+        await asyncio.sleep(0.05)
+        mgr.drop("BB:2")                             # recoverable drop (not in fail_connect)
+        await asyncio.sleep(0.15)                    # run_live detects + reconnects it
+        assert mgr.is_connected("BB:2")              # B is back on the link
+        mgr.inject_kill("BB:2", shooter_team=1)      # killable again → A scores → win
+        return await asyncio.wait_for(task, timeout=5)
+
+    snap = _run(play())
+    assert snap["over"] and snap["winner"] == "team1"
+
+
 def test_fake_run_live_force_stops_on_stall():
     # a frag game (no clock) where the opponent drops so no more kills happen must
     # NOT hang — the wall-clock safety force-stops it.

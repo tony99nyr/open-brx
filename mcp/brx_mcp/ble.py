@@ -185,6 +185,14 @@ class ConnectionManager:
             del self.sessions[alias]
         return {"alias": alias, "disconnected": True}
 
+    def is_connected(self, alias: str) -> bool:
+        """Live link state for `alias` — used by run_live to detect mid-game drops."""
+        s = self.sessions.get(alias)
+        try:
+            return bool(s and s.client.is_connected)
+        except Exception:  # noqa: BLE001 — a torn-down client can raise
+            return False
+
     def list_connections(self) -> list[dict[str, Any]]:
         out = []
         for s in self.sessions.values():

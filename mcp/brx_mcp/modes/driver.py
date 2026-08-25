@@ -172,6 +172,14 @@ class GameDriver:
                 await self._send(pid, f)
         self.announce(f"game live: {self.config.summary()}")
 
+    async def resetup(self, pid: str) -> None:
+        """Re-config + respawn ONE gun (after a mid-game reconnect) so it rejoins live."""
+        for f in self.config.setup_frames():
+            await self._send(pid, f)
+        await self._send(pid, f"$TID,{self.players[pid]},*")
+        for f in self.config.spawn_frames():
+            await self._send(pid, f)
+
     async def teardown(self) -> None:
         for pid in self.players:
             for f in END_SEQUENCE:
@@ -248,9 +256,33 @@ async def run_live(config: GameConfig, addresses: list[str],
         deadline = (config.game_time_s + 60) if config.game_time_s else 3600.0
         limit = max_s if max_s is not None else deadline
         game_start = time.monotonic()
+        reconnect_tries: dict[str, int] = {addr: 0 for addr in connected}
+        RECONNECT_CAP = 3            # give up on a gun after this many mid-game reconnects
+        loops = 0
         while not driver.over:
             await asyncio.sleep(tick_s)
             now = time.monotonic()
+            loops += 1
+            # Mid-game reconnection: if a gun's link dropped, try to bring it back
+            # (time-boxed: one connect attempt) so it rejoins instead of being lost.
+            # Only if the manager can report link state.
+            if loops % 5 == 0 and hasattr(mgr, "is_connected"):
+                for addr in connected:
+                    if mgr.is_connected(addr) or reconnect_tries[addr] >= RECONNECT_CAP:
+                        continue
+                    reconnect_tries[addr] += 1
+                    try:
+                        try:
+                            await mgr.disconnect(addr)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        await mgr.connect(addr, addr, attempts=1)
+                        await driver.resetup(addr)
+                        last_seq[addr] = mgr.sessions[addr].seq
+                        reconnect_tries[addr] = 0        # recovered → fresh budget next time
+                        print(f"(reconnected {addr})", file=sys.stderr)
+                    except Exception as e:  # noqa: BLE001 — stay in the game if it fails
+                        print(f"(reconnect {addr} failed: {type(e).__name__})", file=sys.stderr)
             for addr in connected:
                 for ev in mgr.get_events(addr, since_seq=last_seq[addr])["events"]:
                     last_seq[addr] = ev["seq"]
