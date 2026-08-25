@@ -207,7 +207,7 @@ Volume **69** for real games (30 is inaudible). BLE writes chunk at 20 bytes (§
 - **Constants** (single source — modules reference by name, never redefine): `ASSIST_WINDOW_MS = 4000`,
   `MULTI_KILL_MS = 4000`, `ATTRIB_FUSE_MS = 6000`, `STATUS_HEARTBEAT_MS = 2000`, `STALE_AFTER_MS = 8000`,
   `SYNC_FRESH_MS = 10000` (clock-sync considered fresh; gates ready-up in M-START),
-  `LATE_ARM_GRACE_MS = 30000` (window a late/hot-joined node may still self-arm after `go_live_t`),
+  `LATE_ARM_GRACE_MS = 8000` (window a late/hot-joined node may still self-arm after `go_live_t`),
   `CONFIG_TTL_MS = 1800000` (how long a stored `config_id` is trusted without refresh), `MAX_HP`/`MAX_AR`
   from GameConfig. All are tunable defaults.
 

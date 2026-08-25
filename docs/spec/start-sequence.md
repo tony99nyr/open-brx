@@ -18,7 +18,7 @@ offline — counts itself down on its **own synced clock**, arms its gun, and pl
 ## 1. Core mechanism
 
 1. **Lobby (in range).** Config is already on the tagger — the lobby `config` message pushed the full
-   `GameConfig` + loadout at ready-up (`README.md` §6 decision) and the node applied it (`ack_config`). The gun is
+   `GameConfig` at all-ready (loadout rides `assign`, contracts §5) and the node applied it (`ack_config`). The gun is
    configured but **not spawned** (`$PSET`/`$WEAP`/`$SIR`/`$BMAP` written; no `$SPAWN` yet).
 2. **Schedule.** Host picks a go-live moment. MC computes `go_live_t` (a synced wall-clock Unix-ms
    instant, §7) and broadcasts `start { go_live_t, config_id }` (contracts §5) to every lobby node.
@@ -156,7 +156,7 @@ the host force-starts it from receipt.
 
 **E5 — Time already passed when a node (re)connects/reboots.** `synced_now() > go_live_t` at the moment the
 node learns/recovers the schedule. Rules by how late:
-  - **Within a grace window `LATE_ARM_GRACE_MS` (propose 8 000 ms):** arm **immediately** — run the go-live
+  - **Within a grace window `LATE_ARM_GRACE_MS` (contracts §9, = 8 000 ms):** arm **immediately** — run the go-live
     burst now, skip the runway, play only `VA81`+`$SFLASH` so the player still gets a "GO." They join a few
     seconds behind; acceptable.
   - **Beyond grace but match still live (`go_live_t < now < go_live_t + time_limit`):** **hot-join** — arm

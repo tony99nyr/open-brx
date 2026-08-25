@@ -164,7 +164,8 @@ full game, no scoring, no announcement.
 - **Team assignment finalized:** drag-and-drop team builder, auto-balance, lock teams before start
   (`mission-control-spec.md` §2). Board shows each team's roster + colors.
 - **Per-player READY-UP:** each player readies on **their node**, which sends **`ready { player_id, ready }`**
-  over M-NET (`contracts.md` §5, A1) to flip `Player.ready` — a LOBBY-state toggle. The lobby shows a live
+  over M-NET (`contracts.md` §5, A1) to flip `Player.ready` — a ready-up toggle while the node is in
+  **KITTED** (all-ready then gates the `config` push → LOBBY, §7/contracts §6). The lobby shows a live
   ready/not-ready column; the host can also override-ready a player.
 - **Push config on all-ready:** when every rostered player is ready (and readiness is `go`), MC pushes the
   **full `GameConfig`** to each node via the **`config { config: GameConfig }`** message (`contracts.md` §5,

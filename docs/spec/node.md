@@ -96,7 +96,7 @@ The engine emits **only node-observable facts**, handed to Transport (queued if 
 §3.7). Mapping from local state to the frozen `Event` union:
 
 - **`status`** — every `STATUS_HEARTBEAT_MS` (2000): `{hp, armor, ammo, alive, deadline_s?, battery,
-  arm_state, t_minus_ms?, synced}` (contracts §4, A1/A2). `arm_state ∈ idle|kitted|lobby|armed|live`
+  arm_state, t_minus_ms?, synced}` (contracts §4, A1/A2). `arm_state ∈ idle|connected|kitted|lobby|armed|live`
   (the §3.8 game phase — **orthogonal** to link state, which is connected/disconnected); `t_minus_ms`
   is sent **only while ARMED** (countdown remaining, from synced time); `synced` = clock-sync is fresh
   (else degraded, §7). `deadline_s` = seconds left on the respawn timer when DOWN (§3.4).
@@ -282,8 +282,8 @@ Blackout means **truly dark**, not "dark theme":
 |---|---|---|---|---|
 | IDLE | grey "SET GUN" | — | hidden | picker CTA (§7) front and center |
 | CONNECTED | grey "READY" | live from gun | hidden | gun linked, not yet kitted |
-| KITTED | team-tint "KITTED" | caps from config | shown, all "— MC" | shows loadout/weapon name |
-| LOBBY | team-tint "READY UP ✓/○" | caps | shown | ready toggle sends `ready` to MC |
+| KITTED | team-tint "READY UP ✓/○" | caps (loadout) | shown, all "— MC" | ready toggle sends `ready` to MC; loadout/weapon shown |
+| LOBBY | team-tint "LOBBY — armed-pending" | caps from config | shown | `ack_config` applied; awaiting `start` |
 | ARMED (countdown) | **giant T-minus** | full caps | shown | M-START countdown; gun plays klaxon |
 | LIVE · ALIVE | **green ALIVE** | live | K/D/A/ACC | D is local-real; K/A/ACC = MC |
 | LIVE · DOWN | **red + respawn count** | health 0, ammo dim | stat row frozen | "☠ by <TEAM>"; countdown = `deadline_s` |
