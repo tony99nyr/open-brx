@@ -41,5 +41,11 @@ token positions, 2166-id sound bank, game modes, grenade). System specs: `missio
 ## Layout
 
 `mcp/` Python MCP server (M1–M3 lab instrument, later game-master backend) ·
-`firmware/` PlatformIO ESP32 flavors · `server/` game engine + MQTT · `webapp/` static
-Web-Bluetooth site · `hardware/` STLs/BOM · `protocol/` + `docs/` reference.
+`app/` native phone app (Capacitor → Android + iOS; see `app/README.md`) ·
+`firmware/` PlatformIO ESP32 flavors · `server/` game engine + MQTT · `webapp/` static site
+(Mission Control + the Web-Bluetooth **test harness** — Web BT is not the player path) ·
+`hardware/` STLs/BOM · `protocol/` + `docs/` reference.
+
+**Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and
+rebuilt by `npm run` scripts). iOS settings we depend on live in `app/scripts/ios-setup.sh`, not in
+the Xcode project — regenerating the platform wipes anything edited there.

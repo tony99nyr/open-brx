@@ -32,13 +32,17 @@ each budget) · [`docs/game-modes.md`](docs/game-modes.md) (mode catalog).
 | `mcp/` | **brx-mcp** — MCP server + CLI giving direct BLE control (scan/identify/listen/startgame/deathmatch/arena/…) ✅ |
 | `firmware/` | PlatformIO monorepo: bridge/Companion, item-pack, objective-station, effect-node (todo) |
 | `server/` | Game engine: MQTT, rules/modes, scoring, announcer, event log (todo) |
-| `webapp/` | Web Bluetooth scanner/config, flasher, scoreboard, replay (todo) |
+| `app/` | **BRX Companion** — the native phone app (Capacitor: one codebase → Android + iOS, native BLE). Build instructions: [`app/README.md`](app/README.md) ✅ |
+| `webapp/` | Static site: Mission Control operator console + `ble-test.html`. **Web Bluetooth is a dev/test harness only** — it has no iOS support and is disabled by default on Android, so the player-facing phone path is `app/` (ADR-0001) |
 | `hardware/` | **`brx-companion-spec.md`** (per-tagger accessory) ✅; STLs, wiring, BOM (todo) |
 | `docs/` | **[`docs/README.md`](docs/README.md)** index — architecture, specs (Mission Control, phone app), followups, reference (manual, LaserTagMods, community) |
 
 **Current status:** protocol largely decoded (remote game start, `$WEAP`/`$GSET` maps, full sound
-bank, game modes, grenade config). Working `brx-mcp` drives real matches. Next: the per-player
-node (Companion / phone app), Mission Control UI, and the MQTT engine. See `docs/FOLLOWUPS.md`.
+bank, game modes, grenade config) — including **native kill feedback over BLE** (`$SFLASH` +
+the `$PLAY` announcer slot, `protocol/brx-protocol.md` §7o), so a host can drive the green-sight
+kill confirm and announcer the same way the official app does. Working `brx-mcp` drives real
+matches. Next: the per-player node (Companion / phone app), Mission Control UI, and the MQTT
+engine. See `docs/FOLLOWUPS.md`.
 
 ## brx-mcp quickstart
 
@@ -69,6 +73,22 @@ claude mcp add brx -- python -m brx_mcp
   `~/.brx-mcp/known-devices.json` registry is per-machine — re-scan on the MacBook.
 - **Gen1 taggers** use Bluetooth Classic (SPP, 57600 baud; headset must be connected). `bleak`
   is BLE-only — pair the tagger in the OS and use the serial port path instead (guide todo).
+
+## Phone app quickstart
+
+The player-facing app is a Capacitor project in [`app/`](app/) — one codebase for **Android and
+iOS**, using native BLE (not Web Bluetooth, which has no iOS support and ships disabled on Android).
+
+```bash
+cd app
+npm ci
+npm run build            # bundle src/app.js -> www/app.js
+
+npm run ios:setup        # macOS + full Xcode; adds the iOS platform and applies our iOS config
+npm run android:setup    # JDK 21 + Android SDK
+```
+
+Full prerequisites, signing notes, and what's generated vs committed: **[`app/README.md`](app/README.md)**.
 
 ## Safety
 
