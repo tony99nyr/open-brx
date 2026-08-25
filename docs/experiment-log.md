@@ -940,3 +940,17 @@ No hardware this pass — Tony relaying facts from **Jay's grenade video** (Extr
 **Docs touched:** `reference/grenade.md` (§Respawn Station reconciliation + Muster pointer), new
 `field-process.md`, `verification-checklist.md` (Station-Arming timing + Armory/Muster end-to-end),
 `FOLLOWUPS.md` B12, `README.md` index. No code changes.
+
+### 2026-08-25 — $VOLTS token4 is variable (cell-voltage SoC); fleet battery unreliable
+Surfaced `$VOLTS` token4 (`level_pct`) in `diagnose`. Data points:
+- cell **3.955 V → t3=43, t4=76**
+- cell **3.675 V → t3=42, t4=29** (R0BP1, this session)
+**token4 is NOT constant** (earlier "fixed 76" guess was wrong) — it swings strongly with **cell voltage**
+(76 @ 3.96 V → 29 @ 3.68 V), a plausible Li state-of-charge curve; **token3 stayed flat (43→42)** across the
+same swing (and earlier rose 43→44 while charging). **Leaning:** t4 = a finer cell-voltage state-of-charge,
+t3 = a coarser/pack-level metric. Not conclusive — needs a **controlled single-gun charge/discharge sweep**
+watching both tokens to decide which is the "real" charge %.
+**Fleet battery reliability = poor (confirmed):** a 4-gun `fleet` caught battery on only **1/4** (R0BQT not
+found; R0BAS −63 & R0BAT −84 connected but missed `$VOLTS`). The random ~6.6 s client drop vs the 30 s VOLTS
+cadence makes the serial one-shot sweep unreliable → a **persistent-connection fleet** (hold links, collect
+VOLTS as they stream) is the fix for a live dashboard. Not RSSI-pure (R0BP1 −70 got it; R0BAS −63 didn't).

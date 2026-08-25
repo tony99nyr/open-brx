@@ -326,7 +326,8 @@ class ConnectionManager:
                 p = br["event"]["parsed"]
                 rec["battery"] = {"pack_v": p.get("pack_v"),
                                   "cell_v": p.get("cell_v"),
-                                  "charge_pct": p.get("charge_pct")}
+                                  "charge_pct": p.get("charge_pct"),
+                                  "level_pct": p.get("level_pct")}  # token4 (TBC)
         except Exception as e:  # noqa: BLE001 — report, don't crash a fleet sweep
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
