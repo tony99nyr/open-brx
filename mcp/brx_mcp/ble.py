@@ -299,18 +299,8 @@ class ConnectionManager:
         devices first, then diagnose each **serially** (one radio → one BLE
         link at a time). Returns the scan list + a per-tagger diagnostic record.
         """
-        scanned = await self.scan(scan_s)
-        if addresses is None:
-            addresses = [d["address"] for d in scanned if d["has_uart_service"]]
-        rssi = {d["address"]: d["rssi"] for d in scanned}
-        names = {d["address"]: d["name"] for d in scanned}
-        fleet = []
-        for addr in addresses:
-            rec = await self.diagnose(addr)
-            rec["name"] = names.get(addr, "")
-            rec["rssi"] = rssi.get(addr)
-            fleet.append(rec)
-        return {"scanned": len(scanned), "taggers": fleet}
+        from .diagnostics import run_fleet_status
+        return await run_fleet_status(self, addresses, scan_s)
 
     # -- helpers -----------------------------------------------------------
 

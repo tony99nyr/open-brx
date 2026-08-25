@@ -16,6 +16,24 @@ import time
 from typing import Any
 
 
+async def run_fleet_status(mgr, addresses=None, scan_s: int = 8) -> dict[str, Any]:
+    """Armory dashboard: scan for BRX (Nordic-UART) devices (unless `addresses` given),
+    then diagnose each SERIALLY (one radio → one link at a time), attaching name+rssi.
+    Transport-agnostic — `mgr` needs `scan`, `diagnose`."""
+    scanned = await mgr.scan(scan_s)
+    if addresses is None:
+        addresses = [d["address"] for d in scanned if d["has_uart_service"]]
+    rssi = {d["address"]: d["rssi"] for d in scanned}
+    names = {d["address"]: d["name"] for d in scanned}
+    fleet = []
+    for addr in addresses:
+        rec = await mgr.diagnose(addr)
+        rec["name"] = names.get(addr, "")
+        rec["rssi"] = rssi.get(addr)
+        fleet.append(rec)
+    return {"scanned": len(scanned), "taggers": fleet}
+
+
 async def run_diagnose(mgr, address: str, volts_wait_s: int = 34) -> dict[str, Any]:
     """Connect, read firmware (`$VERSION`), ping latency (`$PING`→`$PONG`; unanswered
     on this firmware), and battery (`$VOLTS`), then disconnect. Never raises for an

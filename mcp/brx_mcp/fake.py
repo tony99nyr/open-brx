@@ -191,6 +191,10 @@ class FakeConnectionManager:
         self.sessions.pop(alias, None)
         return {"alias": alias, "disconnected": True}
 
+    async def diagnose(self, address: str, volts_wait_s: int = 34) -> dict:
+        from .diagnostics import run_diagnose      # same flow the real manager uses
+        return await run_diagnose(self, address, volts_wait_s)
+
     # -- simulate shooting --------------------------------------------------- #
     def inject_hit(self, victim_alias: str, shooter_team: int) -> None:
         if victim_alias in self.dropped:     # a dropped gun can't report a hit
