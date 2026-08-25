@@ -1034,3 +1034,33 @@ reality we hit on the bench, all testable via the FakeTagger/FakeConnectionManag
 **Suite 151 → 317 green this session.** Every game-logic and live-path control-flow path is now verified
 without hardware; the bench confirms only BLE reliability/timing and physical LED/audio/IR (see the
 EFFICIENT BENCH PLAN in verification-checklist.md).
+
+### 2026-08-25 — D4 probe (bench, R0BAS vs R0BP1): NO shooter-side kill event on BLE
+Armed 2 guns for TDM and logged EVERY rx frame from both while shooting (throwaway `probe_kills.py`).
+Over ~122 s the ONLY rx frame types on ANY stream were: `$BUT` (trigger), `$ALCD` (ammo), `$HIR` (hit,
+victim-side), `$HP` (health, victim-side incl. `$HP,0,0,0` on death), `$VOLTS` (battery). **At the kill,
+the SHOOTER's stream showed only `$BUT`/`$ALCD` — no `$DD`, no kill/streak/multikill frame, nothing.**
+Conclusions (D4):
+- **No shooter-side kill event over BLE.** A kill is host-visible ONLY from the victim (`$HP,0` + the
+  victim's last `$HIR` giving the shooter's TEAM, not the specific gun). So **per-player kill attribution
+  over BLE is impossible** (team-granularity only) — confirms every attribution design choice (unique teams
+  for FFA/juggernaut; true per-player needs P2).
+- The gun's native "double kill" knowledge therefore rides a **non-BLE channel** (the nRF mesh / IR-ack) —
+  it never surfaces on BLE. → **Offline/relay scoring can't ride BLE alone; you'd tap the nRF radio (D1),
+  most likely via a Companion listening to the mesh.** That's the concrete next architectural probe.
+- Note: the gun streamed `$VOLTS` while game-armed (no `$PHONE` sent) — telemetry opens under game config too.
+STILL OPEN (needs 3 guns + listening): does the "double kill" AUDIO fire under OUR config (free announcer
+sounds, D4 #1). And the nRF tap itself (can a Companion read the mesh?).
+
+### 2026-08-25 — direct-BLE 3-gun sync arm is UNRELIABLE (repeatable): only 2 of 3 enter the game
+Tried the 3-gun multikill test (shooter + 2 targets) three times. Every time all 3 **connect** ("phone
+connected") but **only 2 actually enter the game** (get the 3-2-1 countdown + "get some" spawn + LEDs) — a
+marginal 3rd link drops during the ~25-frame config burst, so that gun stays half-configured and never
+spawns. Guarding the sends + a config-all-then-spawn-all barrier (B10) + a re-config-if-silent retry got
+all 3 to *echo* frames, but Tony confirms **still only 2 in-game**. **This is a real finding, not a fluke:**
+reliably arming/syncing 3+ guns over **direct BLE** doesn't work (the ~6.6 s client drop, §7e, hits the
+config burst) — strong evidence that real multi-gun games need the per-player **Companion (B1)** driving
+config locally, not a central host fanning out over one flaky radio. Also note the community gotcha (BRX
+serial wants ~5 ms/char) — our fast burst may overrun a marginal link. **Multikill-AUDIO test (D4 #1)
+deferred** — it needs 3 reliably-armed guns, which direct BLE can't deliver today. The pivotal D4 finding
+(no shooter-side kill event on BLE) stands from the 2-gun probe.
