@@ -190,6 +190,36 @@ def test_fake_run_live_no_taggers_connect_returns_error():
     assert snap.get("error") == "no taggers connected" and snap["over"] is False
 
 
+def test_resetup_does_not_revive_a_dead_player():
+    # reconnect resetup must NOT spawn a gun the engine has DEAD (avoids the
+    # gun-alive/engine-dead desync) — but DOES spawn a live one.
+    from brx_mcp.modes.driver import GameDriver
+
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    cfg = GameConfig(mode="tdm", frag_limit=5, respawn_s=100, game_time_s=0)
+    drv = GameDriver(cfg, {"AA": 1, "BB": 2}, sender)
+    _run(drv.setup())
+    # kill BB in the engine (long respawn_s so it stays dead)
+    _run(drv.execute(drv.feed("BB", {"command": "HIR",
+         "tokens": ["HIR", "0", "0", "0", "1", "9", "0", "3"]}, 0.0)))
+    _run(drv.execute(drv.feed("BB", {"command": "HP", "tokens": ["HP", "0", "0", "0"]}, 0.0)))
+    assert not drv.engine.roster.get("BB").alive
+
+    sent.clear()
+    _run(drv.resetup("BB"))
+    bb = [f for (p, f) in sent if p == "BB"]
+    assert any(f.startswith("$TID") for f in bb)        # re-configured + team
+    assert not any(f.startswith("$SPAWN") for f in bb)  # but NOT revived (engine says dead)
+
+    sent.clear()
+    _run(drv.resetup("AA"))                              # AA is alive → gets spawned
+    assert any(f.startswith("$SPAWN") for f in [f for (p, f) in sent if p == "AA"])
+
+
 def test_fake_run_live_ffa_credits_specific_gun():
     A = FakeTagger("AA:1"); B = FakeTagger("BB:2"); C = FakeTagger("CC:3")
     mgr = FakeConnectionManager([A, B, C])

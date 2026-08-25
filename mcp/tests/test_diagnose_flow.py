@@ -22,17 +22,19 @@ def test_diagnose_reads_firmware_and_battery():
     assert "__diag_AA:1" not in mgr.sessions         # session released + disconnected
 
 
-def test_diagnose_battery_requires_phone_tap():
-    # if the handshake stopped opening the tap, $VOLTS never comes — a regression guard.
+def test_diagnose_needs_the_phone_ritual():
+    # if the handshake stopped opening the tap ($PHONE), the gun answers NEITHER
+    # $VERSION nor $VOLTS (a cold gun is silent) — guards the whole ritual insight.
     class NoPhone(FakeTagger):
         def write(self, frame):
             if frame.startswith("$PHONE"):
-                return                                # tap never opens → no $VOLTS
+                return                                # tap never opens
             super().write(frame)
     mgr = FakeConnectionManager([NoPhone("BB:2")])
     rec = _run(run_diagnose(mgr, "BB:2", volts_wait_s=1))
-    assert rec["firmware"] == "v4.32"               # VERSION still answered
-    assert rec["battery"] is None                    # but no battery without the tap
+    assert rec["reachable"] is True                  # it connected...
+    assert rec["firmware"] is None                    # ...but stayed silent without the tap
+    assert rec["battery"] is None
 
 
 def test_diagnose_unreachable_is_reported_not_raised():

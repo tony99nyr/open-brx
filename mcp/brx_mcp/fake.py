@@ -42,6 +42,7 @@ class FakeTagger:
         self.alive = True
         self.damage = damage
         self.friendly_fire = friendly_fire  # set from $GSET token1 when a game configs it
+        self._tap = False                   # $PHONE opens the event tap (models the ritual)
         self._out: list[str] = []          # queued rx frames (tagger→host)
 
     # -- host → tagger ------------------------------------------------------- #
@@ -49,8 +50,10 @@ class FakeTagger:
         t = _toks(frame)
         cmd = t[0] if t else ""
         if cmd == "VERSION":
-            self._out.append("$VERSION,v4.32,?,4,,devhost.03,*")
+            if self._tap:                           # cold $VERSION gets no reply (exp-log 8-24)
+                self._out.append("$VERSION,v4.32,?,4,,devhost.03,*")
         elif cmd == "PHONE":
+            self._tap = True                        # open the event tap → VERSION/VOLTS answer
             self._out.append("$BUT,3,0,*")
             self._out.append("$VOLTS,7500,3900,55,70,*")
         elif cmd == "PING":
@@ -137,6 +140,8 @@ class FakeConnectionManager:
                 for a, t in self.taggers.items()]
 
     async def connect(self, address: str, alias: str, **_) -> dict:
+        if alias in self.sessions:                  # mirror the real manager (catches a
+            raise ValueError(f"alias '{alias}' already connected")  # missing disconnect)
         if address in self.fail_connect:            # simulate a gun that won't come up
             raise ConnectionError(f"could not connect to {address}")
         self.dropped.discard(alias)                 # a (re)connect heals a recoverable drop

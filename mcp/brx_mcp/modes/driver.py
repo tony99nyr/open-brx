@@ -172,13 +172,28 @@ class GameDriver:
                 await self._send(pid, f)
         self.announce(f"game live: {self.config.summary()}")
 
+    def _player_alive(self, pid: str) -> bool:
+        """Best-effort: does the ENGINE consider this player alive? Used by the
+        reconnect path so we don't revive a gun the engine has dead/eliminated
+        (which would desync the physical gun from the scoreboard). Unknown → True."""
+        roster = getattr(self.engine, "roster", None)
+        if roster is not None:
+            p = roster.get(pid)
+            if p is not None:
+                return bool(getattr(p, "alive", True))
+        return True
+
     async def resetup(self, pid: str) -> None:
-        """Re-config + respawn ONE gun (after a mid-game reconnect) so it rejoins live."""
+        """Re-config ONE gun (after a mid-game reconnect) so it rejoins. Re-sends
+        config + team always, but only SPAWNS it live if the engine still considers
+        it alive — a gun that dropped while dead stays dead (the engine's own Respawn
+        action brings it back on schedule), avoiding a gun-alive/engine-dead desync."""
         for f in self.config.setup_frames():
             await self._send(pid, f)
         await self._send(pid, f"$TID,{self.players[pid]},*")
-        for f in self.config.spawn_frames():
-            await self._send(pid, f)
+        if self._player_alive(pid):
+            for f in self.config.spawn_frames():
+                await self._send(pid, f)
 
     async def teardown(self) -> None:
         for pid in self.players:
@@ -257,29 +272,36 @@ async def run_live(config: GameConfig, addresses: list[str],
         limit = max_s if max_s is not None else deadline
         game_start = time.monotonic()
         reconnect_tries: dict[str, int] = {addr: 0 for addr in connected}
-        RECONNECT_CAP = 3            # give up on a gun after this many mid-game reconnects
+        last_reconnect: dict[str, float] = {addr: -1e9 for addr in connected}
+        RECONNECT_CAP = 6          # TOTAL reconnects/gun — bounds a flapping link
+        MIN_RECONNECT_S = 8.0      # rate-limit between attempts for the same gun
+        RECONNECT_TIMEOUT_S = 3.0  # time-box ONE attempt so a slow connect can't freeze the loop
         loops = 0
         while not driver.over:
             await asyncio.sleep(tick_s)
             now = time.monotonic()
             loops += 1
-            # Mid-game reconnection: if a gun's link dropped, try to bring it back
-            # (time-boxed: one connect attempt) so it rejoins instead of being lost.
-            # Only if the manager can report link state.
+            # Mid-game reconnection: bring a dropped gun back so it rejoins. Guarded:
+            # only if the manager reports link state; time-boxed so a slow real connect
+            # can't freeze live players; rate-limited + total-capped so a flapping link
+            # can't churn the game forever.
             if loops % 5 == 0 and hasattr(mgr, "is_connected"):
                 for addr in connected:
-                    if mgr.is_connected(addr) or reconnect_tries[addr] >= RECONNECT_CAP:
+                    if (mgr.is_connected(addr)
+                            or reconnect_tries[addr] >= RECONNECT_CAP
+                            or now - last_reconnect[addr] < MIN_RECONNECT_S):
                         continue
+                    last_reconnect[addr] = now
                     reconnect_tries[addr] += 1
                     try:
                         try:
                             await mgr.disconnect(addr)
                         except Exception:  # noqa: BLE001
                             pass
-                        await mgr.connect(addr, addr, attempts=1)
+                        await asyncio.wait_for(mgr.connect(addr, addr, attempts=1),
+                                               timeout=RECONNECT_TIMEOUT_S)
                         await driver.resetup(addr)
                         last_seq[addr] = mgr.sessions[addr].seq
-                        reconnect_tries[addr] = 0        # recovered → fresh budget next time
                         print(f"(reconnected {addr})", file=sys.stderr)
                     except Exception as e:  # noqa: BLE001 — stay in the game if it fails
                         print(f"(reconnect {addr} failed: {type(e).__name__})", file=sys.stderr)
