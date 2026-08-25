@@ -77,6 +77,12 @@ def test_empty_and_garbage_dont_crash():
     assert parse_query("")["headset_linked"] is False
 
 
+def test_gun_name_does_not_bleed_across_interleaved_read():
+    # a stale/interleaved read: "Gun Name: Tac" then a re-echoed "QUERY\rGun Info"
+    raw = "Gun Name: Tac\x00\x00QUERY\rGun Info\r\n"
+    assert parse_query(raw)["gun_name"] == "Tac"   # bounded at NUL, no bleed
+
+
 # ---- armory inventory accumulator (temp BASE_DIR, no hardware) ------------- #
 import tempfile, pathlib
 import brx_mcp.storage as _storage

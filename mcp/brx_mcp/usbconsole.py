@@ -61,7 +61,7 @@ def parse_query(text: str) -> dict:
     rec = {
         "gun_version": grab(r"Gun Version:\s*(\S+)"),
         "serial_head_pin": grab(r"Serial Number/Head PIN:\s*(\S+)"),
-        "gun_name": grab(r"Gun Name:\s*(.+)"),
+        "gun_name": grab(r"Gun Name:\s*([^\r\n\x00]*)"),   # bounded — don't bleed across lines
         "headset_version": grab(r"Headset Version:\s*(\S+)"),
         "gun_volts": _num(grab(r"Gun:\s*([\d.]+)\s*VOLTS")),
         "head_volts": _num(grab(r"Head:\s*([\d.]+)\s*VOLTS")),
@@ -105,25 +105,42 @@ class UsbConsole:
         except Exception:
             pass
 
-    def _read_until_quiet(self, overall_s: float = 3.0, quiet_s: float = 0.6) -> str:
-        """Read until no new bytes for `quiet_s`, or `overall_s` elapses."""
-        chunks: list[str] = []
+    _END_MARKER = "BT central V"   # the last line of a QUERY dump
+
+    def _flush_stale(self, drain_s: float = 0.3) -> None:
+        """Discard any bytes left from a prior response so this read is clean."""
+        self._ser.reset_input_buffer()
         start = time.monotonic()
-        last = start
+        while time.monotonic() - start < drain_s:
+            if not self._ser.read(256):
+                break
+
+    def _read_record(self, overall_s: float = 3.0, tail_s: float = 0.3) -> str:
+        """Read until the terminal marker appears (a COMPLETE record), or timeout."""
+        buf = ""
+        start = time.monotonic()
         while time.monotonic() - start < overall_s:
             data = self._ser.read(256)
             if data:
-                chunks.append(data.decode("utf-8", errors="replace"))
-                last = time.monotonic()
-            elif time.monotonic() - last >= quiet_s and chunks:
-                break
-        return "".join(chunks)
+                buf += data.decode("utf-8", errors="replace")
+                if self._END_MARKER.lower() in buf.lower():
+                    time.sleep(tail_s)   # let the last line finish
+                    buf += self._ser.read(2048).decode("utf-8", errors="replace")
+                    break
+        return buf
 
-    def query(self) -> dict:
-        """Send `QUERY` and return the parsed device record + raw text."""
-        self._ser.reset_input_buffer()
-        self._ser.write(b"QUERY\r")
-        text = self._read_until_quiet()
+    def query(self, retries: int = 2) -> dict:
+        """Send `QUERY` and return the parsed device record + raw text. Flushes
+        stale bytes first and retries if the record comes back incomplete
+        (a partial/interleaved read misses the serial or the terminal line)."""
+        text = ""
+        for _ in range(retries + 1):
+            self._flush_stale()
+            self._ser.write(b"QUERY\r")
+            text = self._read_record()
+            rec = parse_query(text)
+            if rec.get("serial_head_pin") and rec.get("bt_central_v"):
+                return {"port": self.port, "raw": text, **rec}
         return {"port": self.port, "raw": text, **parse_query(text)}
 
 
