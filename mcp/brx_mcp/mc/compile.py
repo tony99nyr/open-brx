@@ -247,7 +247,9 @@ class Compiler:
         if mode == "lms" and config.get("respawn", {}).get("type") == "auto":
             errors.append("lms cannot use respawn.type=='auto'")
 
-        # station-gated objective modes need a Tier-1 station/objective source (modes §7)
+        # station-gated objective modes need a Tier-1 station/objective source (modes §7).
+        # `extraction` is deliberately NOT gated: its objective logic runs MC-side on gun events
+        # (modes §2 — coverage-zone gameplay), no IR station required.
         if mode in {"domination", "koth", "ctf", "cs", "bomb"} and not opts.get("station_source"):
             errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set opts.station_source")
 

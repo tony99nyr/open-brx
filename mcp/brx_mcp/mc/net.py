@@ -329,9 +329,14 @@ class NetServer:
         body = env["body"]
         node_id = str(body["node_id"])
         rec = self.nodes.get(node_id)
+        presented_key = str(body.get("node_key") or "")
         if rec is None:
             rec = NodeRecord(node_id=node_id, node_key=secrets.token_urlsafe(9))
             self.nodes[node_id] = rec
+        elif rec.ws is None and presented_key != rec.node_key:
+            # A8: a hello for a known-but-disconnected node_id that did not prove the key gets a fresh
+            # key — the old one (which a rogue could have missed by a beat) is invalidated.
+            rec.node_key = secrets.token_urlsafe(9)
         elif rec.ws is not None and rec.ws is not ws:
             # A8: a live node_id is only handed over if the newcomer proves the key, or the old
             # socket has gone unresponsive (stale). Otherwise a rogue hello can't kick a player.
@@ -347,6 +352,26 @@ class NetServer:
             rec.ws = None
             with contextlib.suppress(Exception):
                 await old.close(_CLOSE_TAKEOVER, "taken over")
+        # A8 (gun): the same fresh-holder rule as bind, applied BEFORE hydrate — hydrate rebinds the
+        # player to this node, so a keyless hello carrying a copied gun name must never reach it.
+        gun0 = body.get("gun") if isinstance(body.get("gun"), dict) else {}
+        gun_name_new = str(gun0.get("name") or "")
+        if gun_name_new:
+            for other in list(self.nodes.values()):
+                if other is rec or other.ws is None or other.gun_name != gun_name_new:
+                    continue
+                fresh = (time.monotonic() - other.last_seen) * 1000 < self.stale_after_ms
+                if fresh and presented_key != other.node_key:
+                    self.stats["rejected"] += 1
+                    log.warning("rejected hello for gun %s — node %s holds it (fresh, key not proven)", gun_name_new, other.node_id)
+                    await ws.close(_CLOSE_INUSE, "gun in use")
+                    raise _Rejected()
+                self.stats["takeovers"] += 1
+                log.warning("gun %s re-bound at hello from %s node %s to %s", gun_name_new, "stale" if not fresh else "keyed", other.node_id, node_id)
+                old = other.ws
+                other.ws = None
+                with contextlib.suppress(Exception):
+                    await old.close(_CLOSE_TAKEOVER, "gun taken over")
         rec.ws = ws
         rec.hello_ok = True
         rec.node_type = str(body.get("node_type", "phone"))
@@ -447,8 +472,7 @@ class NetServer:
                 other.ws = None
                 self._loop.create_task(self._close_quiet(old, _CLOSE_TAKEOVER, "gun taken over"))
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, gun_tail or rec.gun_tail
-        if body.get("player_id"):
-            rec.player_id = str(body["player_id"])
+        # A8: the player binding is the server's (set by hydrate); a client-supplied player_id is never honoured.
         self._fire_node(rec)
 
     async def _close_quiet(self, ws, code: int, reason: str) -> None:

@@ -93,6 +93,7 @@ class _AuthMiddleware:
                    (scope["type"] == "http" and path.startswith("/api/") and method not in ("GET", "HEAD", "OPTIONS"))
             if need and not self._ok(scope):
                 if scope["type"] == "websocket":
+                    await send({"type": "websocket.accept"})          # accept, then close so the client sees 4401
                     await send({"type": "websocket.close", "code": 4401})
                 else:
                     await send({"type": "http.response.start", "status": 401,
@@ -102,13 +103,15 @@ class _AuthMiddleware:
         await self.app(scope, receive, send)
 
     def _ok(self, scope) -> bool:
-        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        import hmac
+        headers = {k.decode(errors="ignore").lower(): v.decode(errors="ignore") for k, v in scope.get("headers", [])}
         auth = headers.get("authorization", "")
-        if auth.startswith("Bearer ") and auth[7:] == self.token:
+        if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], self.token):
             return True
         from urllib.parse import parse_qs
-        qs = parse_qs(scope.get("query_string", b"").decode())
-        return qs.get("tok", [None])[0] == self.token
+        qs = parse_qs(scope.get("query_string", b"").decode(errors="ignore"))
+        tok = qs.get("tok", [None])[0]
+        return bool(tok) and hmac.compare_digest(tok, self.token)
 
 
 def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
@@ -284,7 +287,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         try:
             await ws.send_text(json.dumps({"kind": "snapshot", "state": s.snapshot()}, default=str))
             while True:
-                await ws.receive_text()   # UI has nothing to say yet; keeps the socket open
+                try:
+                    await ws.receive_text()   # UI has nothing to say yet; keeps the socket open
+                except WebSocketDisconnect:
+                    break
+                except Exception:              # a binary/odd frame must not tear down the feed loop
+                    continue
         except WebSocketDisconnect:
             pass
         finally:
@@ -334,9 +342,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 t.cancel()
 
     app = Starlette(routes=routes, lifespan=lifespan,
-                    middleware=[Middleware(_AuthMiddleware, token=token),
-                                Middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-                                           allow_methods=["*"], allow_headers=["*"])])
+                    middleware=[Middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+                                           allow_methods=["*"], allow_headers=["*"]),   # outermost so 401s carry CORS headers
+                                Middleware(_AuthMiddleware, token=token)])
     app.state.session = s
     app.state.broadcaster = bc
     return app

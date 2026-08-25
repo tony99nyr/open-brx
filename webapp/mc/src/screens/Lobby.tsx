@@ -103,7 +103,7 @@ function MemberRow({ p, teamIds, onDragStart, onMove }: { p: Player; teamIds: st
         <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
       </span>
       {/* tap-to-move (tablets have no HTML5 drag): one chip per other team */}
-      <span style={{ display: 'inline-flex', gap: 3 }} aria-label={`move ${p.display} to`}>
+      <span role="group" style={{ display: 'inline-flex', gap: 3 }} aria-label={`move ${p.display} to`}>
         {others.map(t => (
           <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
             style={{ ...BTN_RESET, font: F.chk(700, 9), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>

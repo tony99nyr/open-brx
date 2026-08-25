@@ -94,6 +94,7 @@ export class Transport {
   setStatusProvider(fn) { this.statusProvider = fn; }
   close() {
     this.closed = true; this._clearTimers();
+    if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: transport closed')); }
     const ws = this._ws; this._ws = null;
     if (ws) { try { ws.close(1000, 'closed'); } catch (_) { /* ignore */ } }
     this._setState('offline');

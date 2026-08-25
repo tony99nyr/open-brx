@@ -80,3 +80,116 @@ def test_bad_bodies_return_4xx_not_500():
     assert c.post("/api/start", json={"runway_s": "abc"}).status_code == 400
     assert c.get("/api/weapons").status_code == 200 and all(
         w["dmg"] is not None for w in c.get("/api/weapons").json())
+
+
+# ---------------------------------------------------------------- iteration 2 regressions
+def test_team_id_validated_on_add_and_patch():
+    s = _sess()
+    try:
+        s.add_player("X", team_id="purple"); assert False
+    except ValueError:
+        pass
+    p = s.add_player("Y", team_id="blue")
+    try:
+        s.patch_player(p["player_id"], team_id="nope"); assert False
+    except ValueError:
+        pass
+    assert s.players[p["player_id"]]["team_id"] == "blue"
+    s.patch_player(p["player_id"], team_id=None)
+    assert s.players[p["player_id"]]["team_id"] is None
+
+
+def test_player_num_base_honoured():
+    s = _sess()
+    s.set_config({"player_num_base": 32})
+    a = s.add_player("A"); b = s.add_player("B")
+    assert (a["player_num"], b["player_num"]) == (32, 33)
+    try:
+        s.set_config({"player_num_base": 0}); assert False
+    except ValueError:
+        pass
+
+
+def test_patch_team_mid_match_updates_scorer_and_display_capped():
+    s = _sess()
+    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
+    s.set_config({"time_limit_s": 60})
+    for p in (a, b):
+        s._bind(f"n-{p['player_id']}", p)
+        s.nodes[f"n-{p['player_id']}"]["synced"] = True
+    s.patch_player(a["player_id"], ready=True); s.patch_player(b["player_id"], ready=True)
+    s.push_config()
+    for pid in (a["player_id"], b["player_id"]):
+        s._on_node_message(s.players[pid]["node_id"], "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD,0,0,0,0,0,0,*"}, s.now_ms())
+    s.start(runway_s=5)
+    assert s.scorer.stats[a["player_id"]].team_id == "blue"
+    s.patch_player(a["player_id"], team_id="yellow", display="x" * 40)
+    assert s.scorer.stats[a["player_id"]].team_id == "yellow"
+    assert len(s.players[a["player_id"]]["display"]) == 24
+    try:
+        s.patch_player(a["player_id"], display="   "); assert False
+    except ValueError:
+        pass
+
+
+def test_ingest_batch_records_seq_for_dedup():
+    s = _sess()
+    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
+    s.set_config({"time_limit_s": 60})
+    for p in (a, b):
+        s._bind(f"n-{p['player_id']}", p); s.nodes[f"n-{p['player_id']}"]["synced"] = True
+        s.patch_player(p["player_id"], ready=True)
+    s.push_config()
+    for pid in (a["player_id"], b["player_id"]):
+        s._on_node_message(s.players[pid]["node_id"], "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD,0,0,0,0,0,0,*"}, s.now_ms())
+    s.start(runway_s=1)
+    mid = s.start_info["match_id"]; t = s.now_ms()
+    nid = s.players[b["player_id"]]["node_id"]
+    ev = {"type": "death", "t": t, "match_id": mid, "node_id": nid, "player_id": b["player_id"],
+          "shooter_num": a["player_num"], "shooter_team": 1, "seq": 7}
+    s.ingest_batch(nid, [dict(ev)], t)
+    assert (nid, 7) in s.scorer.seen
+    s.ingest_batch(nid, [dict(ev)], t + 10)          # replay with the same seq is ignored
+    assert s.scorer.stats[b["player_id"]].deaths == 1
+
+
+def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
+    """A8: a keyless hello carrying a live gun's name must be closed 4003 BEFORE hydrate rebinds anything."""
+    try:
+        import websockets  # noqa: F401
+        from websockets.asyncio.client import connect
+    except Exception:
+        print("SKIP rogue_hello (no websockets)"); return
+    import asyncio, json, sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from e2e_util import Stack
+    from brx_mcp.mc import envelope as E
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
+            a = await st.connect_node("GUN-A-3D4F"); b = await st.connect_node("GUN-B-4E60")
+            assert await st.wait_ready(), st.session.readiness()
+            a.send_ready(); b.send_ready()
+            await st.push_and_start(runway_s=1)
+            assert await st.wait_live()
+            a.fire(20); await asyncio.sleep(0.4)
+            before = st.session.scorer.shots_total(p["player_id"])
+            legit_nid = st.session.players[p["player_id"]]["node_id"]
+            closed_code = None
+            async with connect(st.url) as ws:
+                hello = {"node_id": "rogue-1", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                         "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}}
+                await ws.send(E.encode(E.make_envelope("hello", hello)))
+                try:
+                    msg = json.loads(await asyncio.wait_for(ws.recv(), 3))
+                    assert msg.get("kind") != "welcome" or not msg["body"].get("node"), "rogue must not be hydrated"
+                except websockets.exceptions.ConnectionClosed as e:
+                    closed_code = e.rcvd.code if e.rcvd else None
+            assert closed_code == 4003, closed_code
+            await asyncio.sleep(0.3)
+            assert st.session.players[p["player_id"]]["node_id"] == legit_nid
+            assert st.session.scorer.shots_total(p["player_id"]) == before
+            assert st.net.stats["rejected"] >= 1
+    asyncio.run(asyncio.wait_for(go(), 40))

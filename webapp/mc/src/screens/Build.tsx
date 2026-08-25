@@ -106,7 +106,7 @@ export function Build() {
 
 function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 }}>
       <span style={{ font: F.chk(600, 13), letterSpacing: '.1em' }}>{label}</span>
       {children}
     </div>

@@ -55,7 +55,13 @@ let transport = null;
 const link = new BrxLink({
   log, onFrame: f => engine.feedFrame(f),
   onDrop: () => { engine.onBleDropped(); haptic('down'); },
-  onUp: advert => { engine.onBleConnected(advert); if (transport) { transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined }; } },
+  onUp: advert => {
+    engine.onBleConnected(advert);
+    if (transport) {
+      transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined };
+      if (transport.state === 'bound') { try { transport.bind({ player_id: engine.player && engine.player.player_id }); } catch (_) { /* best-effort */ } }
+    }
+  },
   unbounded: () => engine.phase === 'armed' || engine.phase === 'live',
 });
 const engine = new Engine({

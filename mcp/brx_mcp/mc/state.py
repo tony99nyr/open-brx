@@ -136,18 +136,28 @@ class Session:
     # ---------- roster ----------
     def _next_num(self) -> int:
         used = {p["player_num"] for p in self.players.values()}
-        for n in range(1, MAX_PLAYERS + 1):
+        base = int(self.config.get("player_num_base") or 1)     # A6.5: disjoint ranges for concurrent games
+        for n in range(max(1, min(base, MAX_PLAYERS)), MAX_PLAYERS + 1):
             if n not in used:
                 return n
         raise ValueError("roster full")
 
     ROSTER_PHASES = ("muster", "build", "kit", "lobby")
 
+    def _check_team(self, team_id):
+        """A team_id must name one of config.teams (or be None); never park a player in an unknown team."""
+        if team_id is None:
+            return None
+        if not any(t["team_id"] == team_id for t in self.teams):
+            raise ValueError(f"unknown team_id {team_id!r}")
+        return team_id
+
     def add_player(self, display: str, team_id: str | None = None, gun_id: str | None = None,
                    voice: str = "male", loadout: dict | None = None) -> Player:
         if len(self.players) >= MAX_PLAYERS:
             raise ValueError("roster full")
         pid = uuid.uuid4().hex[:8]
+        team_id = self._check_team(team_id)
         if team_id is None and self.teams:
             counts = {t["team_id"]: 0 for t in self.teams}
             for p in self.players.values():
@@ -175,9 +185,18 @@ class Session:
                 raise ValueError(f"player_num must be 1..{MAX_PLAYERS} (0 is reserved)")
             if any(q["player_num"] == n and q["player_id"] != pid for q in self.players.values()):
                 raise ValueError("player_num already taken")
+        if "team_id" in fields:
+            fields["team_id"] = self._check_team(fields["team_id"])
+        if "display" in fields and fields["display"] is not None:
+            d = str(fields["display"]).strip().upper()[:24]
+            if not d:
+                raise ValueError("display must not be empty")
+            fields["display"] = d
         for k in ("display", "team_id", "voice", "loadout", "player_num", "gun_id", "ready"):
             if k in fields and fields[k] is not None or (k in fields and k in ("team_id", "gun_id")):
-                p[k] = fields[k] if k != "display" else str(fields[k]).strip().upper()
+                p[k] = fields[k]
+        if "team_id" in fields and self.scorer and pid in self.scorer.stats:
+            self.scorer.stats[pid].team_id = p["team_id"]   # team scores + friendly rule follow a mid-match re-team
         if "gun_id" in fields:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
@@ -237,7 +256,7 @@ class Session:
         if self.phase not in ("muster", "build", "kit", "lobby"):
             raise ValueError("cannot change config after the match has started")
         mode = patch.get("mode", self.config["mode"])
-        if mode not in {m["mode"] for m in MODES}:
+        if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
         cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
         for k, v in patch.items():
@@ -270,12 +289,18 @@ class Session:
                 if k == "health":
                     for hk in ("max_hp", "max_armor"):
                         hv = merged.get(hk, 0)
-                        if not (isinstance(hv, int) and not isinstance(hv, bool) and 0 <= hv <= 255):
-                            raise ValueError(f"health.{hk} must be 0..255")
+                        lo = 1 if hk == "max_hp" else 0
+                        if not (isinstance(hv, int) and not isinstance(hv, bool) and lo <= hv <= 255):
+                            raise ValueError(f"health.{hk} must be {lo}..255")
                 cfg[k] = merged
             elif k == "teams":
-                if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t for t in v)):
-                    raise ValueError("teams must be a list of team objects")
+                if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t
+                                                   and isinstance(t.get("tid"), int) and not isinstance(t.get("tid"), bool) for t in v)):
+                    raise ValueError("teams must be a list of team objects with team_id + integer tid")
+                cfg[k] = v
+            elif k == "led":
+                if v is not None and not isinstance(v, dict):
+                    raise ValueError("led must be an object")
                 cfg[k] = v
             elif k == "player_num_base":
                 if not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= MAX_PLAYERS):
@@ -347,8 +372,8 @@ class Session:
         self.node_player[nid] = p["player_id"]
         p["node_id"] = nid
         self.nodes.setdefault(nid, {"node_id": nid})["player_id"] = p["player_id"]
-        if self.nodes.get(nid, {}).get("synced"):
-            self.synced_at_lobby[nid] = True
+        if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
+            self.synced_at_lobby[nid] = True   # same pre-live gate as _on_status (A5.7)
         # A5.6 late joiner: a node binding a player after the lobby push gets its bundle (+ the running start) now.
         if self.lobby_pushed and p["player_id"] not in self.bundles:
             self._push_config_to(p)
@@ -409,8 +434,7 @@ class Session:
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped") if k in body})
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
-        if body.get("player_id") in self.players and self.node_player.get(nid) != body["player_id"]:
-            self._bind(nid, self.players[body["player_id"]])
+        # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
             self.synced_at_lobby[nid] = True   # any node synced before it goes live keeps its own t (A5.7)
         self._log(nid, "status", body, t_recv)
@@ -431,10 +455,12 @@ class Session:
     def ingest_batch(self, nid: str, events: list[dict], t_recv: int):
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
         for ev in events:
-            self._log(nid, ev.get("type", "event"), ev, t_recv, parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
+            self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
+                      parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
         if self.scorer:
             self.scorer.ingest_batch(nid, events, t_recv)
-            self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
+            if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
+                self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
             self._push_scores()
             self._changed()
 

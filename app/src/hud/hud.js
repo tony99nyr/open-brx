@@ -48,9 +48,13 @@ export class Hud {
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
-      st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.wsState, st.bleUp, st.ended,
-      !!st.headEcho, st.synced, st.rejoin, !!st.pendingTeardown].join('|');
-    if (sig !== this.sig) { this.sig = sig; this.hudEl.innerHTML = this._structure(st); }
+      st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
+      st.rejoin, !!st.pendingTeardown].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
+    if (sig !== this.sig) {
+      const urlEl = this.hudEl.querySelector('#mcurl');
+      const typing = urlEl && typeof document !== 'undefined' && document.activeElement === urlEl;
+      if (!typing) { this.sig = sig; this.hudEl.innerHTML = this._structure(st); }
+    }
     this._patch(st);
     this._chips(st);
     this._moments(st);
@@ -95,16 +99,16 @@ export class Hud {
     let foot, status;
     if (mode === 'connected') {
       foot = `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><div class="note">Waiting for kit-out from Mission Control. Scan the QR on the MC screen or type its address.</div>`;
-      status = `<div class="status">GUN <b>LINKED</b> · MC ${st.wsState === 'bound' ? '<b>LINKED</b>' : '<span class="bad">' + esc(st.wsState.toUpperCase()) + '</span>'}</div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'kitted') {
-      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note">${st.ready ? 'Waiting for the host to arm the match. Tap again to un-ready.' : (st.synced ? 'Tap when you are set. The host pushes the game once everyone is ready.' : 'Syncing clock with Mission Control…')}</div>`;
-      status = `<div class="status">${st.tutorial ? '<span style="color:var(--warn)">TRY-OUT ARMED — FIRE A FEW ROUNDS</span><br>' : ''}MC ${st.wsState === 'bound' ? '<b>LINKED</b>' : '<span class="bad">' + esc(st.wsState.toUpperCase()) + '</span>'} · CLOCK ${st.synced ? '<b>SYNCED</b>' : '<span class="bad">UNSYNCED</span>'}</div>`;
+      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'over') {
       foot = `<button class="ready wait" data-act="onReady"><span class="unskew">MATCH COMPLETE — READY FOR NEXT</span></button><div class="note">Scores reconcile at Mission Control. Tap when you're set for the next match.</div>`;
       status = `<div class="status">D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>`;
     } else {
       foot = `<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">Loadout is on the gun. Waiting for the host to start the countdown.</div>`;
-      status = `<div class="status">GUN <b>ARMED-PENDING</b>${st.headEcho ? ' · ECHO <b>OK</b>' : ' · <span class="bad">NO ECHO</span>'} · CLOCK ${st.synced ? '<b>SYNCED</b>' : '<span class="bad">UNSYNCED</span>'}</div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
       <div class="top"><span class="cs">${cs}</span><span class="row">${team}<span class="gid">${nm}-${tail}</span></span></div>${plates}
@@ -145,9 +149,26 @@ export class Hud {
   }
 
   // ---------- per-tick patch ----------
+  _statusLine(st, mode) {
+    const mc = st.wsState === 'bound' ? '<b>LINKED</b>' : '<span class="bad">' + esc(String(st.wsState || 'offline').toUpperCase()) + '</span>';
+    const clock = st.synced ? '<b>SYNCED</b>' : '<span class="bad">UNSYNCED</span>';
+    if (mode === 'connected') return `GUN <b>LINKED</b> · MC ${mc}`;
+    if (mode === 'lobby') return `GUN <b>ARMED-PENDING</b>${st.headEcho ? ' · ECHO <b>OK</b>' : ' · <span class="bad">NO ECHO</span>'} · CLOCK ${clock}`;
+    return `${st.tutorial ? '<span style="color:var(--warn)">TRY-OUT ARMED — FIRE A FEW ROUNDS</span><br>' : ''}MC ${mc} · CLOCK ${clock}`;
+  }
+  _readyNote(st) {
+    return st.ready ? 'Waiting for the host to arm the match. Tap again to un-ready.'
+      : (st.synced ? 'Tap when you are set. The host pushes the game once everyone is ready.' : 'Syncing clock with Mission Control…');
+  }
   _patch(st) {
     const q = id => this.hudEl.querySelector('#' + id);
     const set = (id, v) => { const el = q(id); if (el && el.textContent !== String(v)) el.textContent = v; };
+    const setHtml = (id, html) => { const el = q(id); if (el && el.innerHTML !== html) el.innerHTML = html; };
+    if (st.phase === 'connected' || st.phase === 'kitted' || st.phase === 'lobby') {
+      const mode = st.phase === 'connected' ? 'connected' : st.phase === 'lobby' ? 'lobby' : (st.ended ? 'over' : 'kitted');
+      if (mode !== 'over') setHtml('mcstatus', this._statusLine(st, mode));
+      if (mode === 'kitted') setHtml('readynote', this._readyNote(st));
+    }
     if (st.phase === 'live') {
       set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', pad2(st.ammo)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
       set('batt', st.battery != null ? st.battery + '%' : '—');

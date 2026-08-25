@@ -97,7 +97,7 @@ export interface LiveView {
 export interface Honor { award: string; player_id: string; stat: string }
 
 export interface RecapView {
-  winner: { team_id?: string; player_id?: string };
+  winner: { team_id?: string | null; player_id?: string; undecided?: string; tie?: string[] };   // team / FFA player / undecided (win_by) / tie
   score: Record<string, number>;
   rows: ScoreRow[];
   honors: Honor[];
@@ -117,7 +117,7 @@ export interface State {
   session_id: string;
   phase: Phase;
   t: number;
-  lan: { mode: 'router' | 'hotspot' | 'unknown'; ssid?: string; ip: string; port: number; ws_url: string; qr: string };
+  lan: { mode: 'router' | 'hotspot' | 'unknown'; ssid?: string; ip: string; port: number; ws_url: string; qr: string; auth_required?: boolean };
   nodes: NodeView[];
   readiness: ReadinessSnapshot;
   config: GameConfig;

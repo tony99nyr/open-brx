@@ -65,10 +65,10 @@ export function CommandBar() {
         <span>UPLINK ▸ <span style={{ color: offline ? T.bad : state ? T.ok : T.bad }}>{offline ? 'DOWN' : state ? 'OK' : 'NO SERVER'}</span> · SYNC {sync}</span>
         <JoinQr />
         {error && <button type="button" role="alert" onClick={clearError} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: T.bad, cursor: 'pointer', padding: 0, minHeight: 44 }} title="dismiss">▲ {error.toUpperCase()}</button>}
-        {(authRequired || (!mock && !hasToken)) && (
-          <form onSubmit={e => { e.preventDefault(); if (tokDraft.trim()) { setToken(tokDraft); setTokDraft(''); } }} role="alert"
+        {(authRequired || (!mock && state?.lan.auth_required !== false && !hasToken)) && (
+          <form onSubmit={e => { e.preventDefault(); if (tokDraft.trim()) { setToken(tokDraft); setTokDraft(''); } }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: T.warn }}>
-            <label htmlFor="mc-tok">▲ {authRequired ? 'OPERATOR TOKEN REQUIRED' : 'OPERATOR TOKEN'}</label>
+            <label htmlFor="mc-tok" role="alert">▲ {authRequired ? 'OPERATOR TOKEN REQUIRED' : 'OPERATOR TOKEN'}</label>
             <input id="mc-tok" className="textbox" value={tokDraft} onChange={e => setTokDraft(e.target.value)} placeholder="paste from the MC console"
               autoComplete="off" spellCheck={false} style={{ width: '14ch', borderBottom: `1px solid ${T.warn}`, color: T.ink, minHeight: 32 }} />
             <button type="submit" style={{ background: T.warn, color: T.accInk, border: 'none', font: F.chk(700, 10), letterSpacing: '.16em', padding: '6px 10px', cursor: 'pointer', minHeight: 32 }}>APPLY</button>

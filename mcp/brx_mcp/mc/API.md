@@ -29,9 +29,10 @@ State {
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive? }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[] }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s?: number, sync_age_ms: number }
-RecapView { winner: { team_id?: string, player_id?: string }, score: { [team_id]: number }, rows: ScoreRow[],
+RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
             honors: { award: string, player_id: string, stat: string }[], provisional: boolean, missing: string[],
             post_end_facts: number }   // A6.1: facts after end_t, recorded but not scored
+Winner   { team_id?: string|null, player_id?: string, undecided?: string /* win_by not decided by kills: host/objective decides */, tie?: string[] /* tied team_ids */ }
 FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"STREAK ×N"|"FIRST BLOOD"|"TEAM KILL"|"SYNC POINT", kind: "kill"|"sync"|"info" }
 ```
 

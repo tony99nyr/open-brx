@@ -47,6 +47,7 @@ export function createHttpApi(): Api {
       let ws: WebSocket | null = null, closed = false, delay = 500;
       const open = () => {
         if (closed) return;
+        let opened = false;
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const tok = getToken();
         ws = new WebSocket(`${proto}://${location.host}/ui-ws${tok ? `?tok=${encodeURIComponent(tok)}` : ''}`);
@@ -58,10 +59,15 @@ export function createHttpApi(): Api {
             else if (m.kind === 'error' && m.code === 401) notifyAuth(true);
           } catch { /* malformed frame: ignore */ }
         };
-        ws.onopen = () => { delay = 500; onLink?.(true); };
+        ws.onopen = () => { opened = true; delay = 500; onLink?.(true); };
         ws.onclose = ev => {
           onLink?.(false);
           if (ev.code === 4401 || ev.code === 1008) notifyAuth(true);     // server refused the token
+          else if (!opened && !closed) {
+            // Handshake refused before open (browsers report 1006): if the HTTP API answers, the server is up and
+            // the WS refusal was auth — show the token prompt instead of "MC OFFLINE".
+            fetch('/api/state', { method: 'GET' }).then(r => { if (r.ok) notifyAuth(true); }).catch(() => { /* really offline */ });
+          }
           if (!closed) { setTimeout(open, delay); delay = Math.min(delay * 2, 10000); }
         };
         ws.onerror = () => ws?.close();

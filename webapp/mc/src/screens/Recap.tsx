@@ -12,8 +12,14 @@ export function Recap() {
   const rc = state.recap;
   if (!rc) return <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO RECAP YET — THE MATCH ENDS AT THE TIME LIMIT ON EVERY NODE.</div>;
   const name = (id: string) => state.players.find(p => p.player_id === id)?.display ?? rc.rows.find(r => r.player_id === id)?.display ?? id;
-  const ffa = !rc.winner.team_id;
-  const winColor = ffa ? T.ink : teamColor(rc.winner.team_id);
+  const w = rc.winner ?? {};
+  const teamLabel = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
+  const winColor = w.team_id ? teamColor(w.team_id) : T.ink;
+  const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(teamLabel).join(' / ')}`, tail: '' }
+    : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
+    : w.player_id ? { text: name(w.player_id), tail: ' WINS' }
+    : w.team_id ? { text: teamLabel(w.team_id), tail: ' WINS' }
+    : { text: 'NO RESULT', tail: '' };
   const scores = Object.entries(rc.score);
   const rows = [...rc.rows].sort((a, b) => b.kills - a.kills);
   const mvpId = rc.honors.find(h => h.award === 'MVP')?.player_id;
@@ -30,7 +36,7 @@ export function Recap() {
         <div>
           <div style={{ font: F.mono(500, 9), letterSpacing: '.28em', color: T.micro }}>[ A8 // MATCH COMPLETE · {state.config.mode.toUpperCase()} · {fmtClock(state.config.time_limit_s ?? 0)} ]</div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15, marginTop: 6 }}>
-            <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{ffa ? name(rc.winner.player_id ?? '') : rc.winner.team_id?.toUpperCase()}</span> WINS
+            <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
         </div>
         {scores.length >= 2 ? (

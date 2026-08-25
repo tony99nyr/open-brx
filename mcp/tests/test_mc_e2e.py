@@ -267,7 +267,8 @@ def test_hot_swap_preserves_shots_total():
             na.fire(10)                                    # A fires 10 → reported via status.shots
             assert await until(lambda: s.session.scorer.shots_total(a["player_id"]) >= 10, 5.0), \
                 "A's shots reached the scorer"
-            na._paused = True                              # A's phone dies
+            await na.close()                               # A's phone dies — its socket drops (A8: a live/fresh
+            #   socket would legitimately block a keyless re-claim for STALE_AFTER_MS; a dead phone closes)
             # hot-swap: a NEW node_id binds the SAME gun → old shots fold into the baseline (A6.2)
             na2 = await s.connect_node("GUN-A", node_id="GUN-A-swap")
             assert await until(lambda: na2.player_id == a["player_id"], 5.0), "swapped phone hydrated by gun"

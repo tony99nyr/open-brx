@@ -144,7 +144,7 @@ class Scorer:
             rebase = t_recv - newest
             suppress = True
         for ev in sorted(events, key=lambda e: int(e.get("t", 0))):
-            self.ingest(node_id, ev, t_recv, rebase=rebase, suppress_awards=suppress)
+            self.ingest(node_id, ev, t_recv, rebase=rebase, suppress_awards=suppress, seq=ev.get("seq"))
 
     def ingest(self, node_id: str, ev: Event, t_recv: int, *, rebase: int | None = None,
                suppress_awards: bool = False, seq: int | None = None) -> str:
@@ -372,7 +372,8 @@ class Scorer:
         return {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
                 "honors": self.honors(),
                 "provisional": bool(missing) if provisional_override is None else provisional_override,
-                "missing": missing, "post_end": len(self.post_end), "parked": len(self.parked)}
+                "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),
+                "parked": len(self.parked)}
 
     @staticmethod
     def _csv_safe(v):

@@ -45,9 +45,9 @@ export function Armed() {
         </>
       } />
       <Brackets style={{ padding: '18px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 44px', marginBottom: 16 }}>
-        <div role="status" aria-live="polite" aria-atomic style={{ opacity: connected ? 1 : .45 }} title={connected ? undefined : 'MC offline — countdown shown from the last snapshot'}>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>{connected ? 'SYNCED GO-LIVE IN' : 'SYNCED GO-LIVE IN · OFFLINE'}</div>
-          <div style={{ font: F.osw(700, 56), ...TAB, letterSpacing: '.04em', lineHeight: 1 }}>T-{fmtClock(tMinus / 1000)}</div>
+        <div style={{ opacity: connected ? 1 : .45 }} title={connected ? undefined : 'MC offline — countdown shown from the last snapshot'}>
+          <div role="status" aria-live="polite" style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>{connected ? 'SYNCED GO-LIVE IN' : 'SYNCED GO-LIVE IN · OFFLINE'}</div>
+          <div aria-live="off" style={{ font: F.osw(700, 56), ...TAB, letterSpacing: '.04em', lineHeight: 1 }}>T-{fmtClock(tMinus / 1000)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>COUNTDOWN</span>

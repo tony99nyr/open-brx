@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
-import { CHAMFER, CLS_COLOR, F, T, TAB, TEAM, fmtAge, teamColor } from '../tokens';
+import { CHAMFER, CLS_COLOR, F, T, TAB, fmtAge, teamColor } from '../tokens';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag, onKey } from '../ui';
 
 export function Kit() {
@@ -73,11 +73,12 @@ export function Kit() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>TEAM</span>
                 <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                  {(state.config.mode === 'ffa' ? ['ffa'] : ['blue', 'yellow', 'red', 'green']).map(t => {
+                  {(state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(tm => tm.team_id)).map(t => {
                     const on = sp.team_id === t;
+                    const col = state.teams.find(tm => tm.team_id === t)?.color ?? teamColor(t);
                     return (
                       <button key={t} type="button" className="hit44" onClick={() => patch({ team_id: t })} aria-pressed={on}
-                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '5px 12px', background: on ? TEAM[t] : 'transparent', color: on ? T.accInk : TEAM[t], border: `1px solid ${on ? TEAM[t] : T.line}`, cursor: 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '5px 12px', background: on ? col : 'transparent', color: on ? T.accInk : col, border: `1px solid ${on ? col : T.line}`, cursor: 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
                         {t.toUpperCase()}
                       </button>
                     );
@@ -156,9 +157,15 @@ export function Kit() {
 /** Player number 1–63, draft-then-commit (see ValueBox). */
 function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
   const [draft, setDraft] = useState(String(value));
-  const [focused, setFocused] = useState(false);
-  useEffect(() => { if (!focused) setDraft(String(value)); }, [value, focused]);
-  const commit = () => { const n = Number(draft); if (Number.isInteger(n) && n >= 1 && n <= 63 && n !== value) onCommit(n); else setDraft(String(value)); };
+  const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
+  latest.current = value;
+  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
+  const commit = () => {
+    const n = Number(draft);
+    if (Number.isInteger(n) && n >= 1 && n <= 63 && n !== value) { pending.current = n; onCommit(n); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
+    else setDraft(String(value));
+  };
+  const setFocused = (f: boolean) => { focused.current = f; };
   return (
     <input className="numbox" type="number" min={1} max={63} value={draft} aria-label="player number (1–63)" style={{ width: '2.6em', font: F.mono(600, 10), color: T.acc, textAlign: 'left', minHeight: 32 }}
       onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}

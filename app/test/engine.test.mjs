@@ -285,3 +285,65 @@ test('ARMED + BLE reconnect re-writes the head and still spawns at T-0', () => {
   h.adv(7000); h.eng.tick();
   assert.equal(h.eng.phase, 'live');
 });
+
+// ---------- polish iteration 2 regressions ----------
+function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); return h; }
+
+test('resync head re-write: the $LCD,0,… echo adds 0 shots', () => {
+  const h = goLive(harness());
+  h.frame('$ALCD,34,100,0,216,0,*');
+  assert.equal(h.eng.shots, 2);
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(h.eng.resync, 'resync protocol started');
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');           // trigger, no $ALCD → step 2
+  h.frame('$BUT,2,1,*'); h.adv(1600); h.eng.tick();        // reload silent, reserve > 0 → not a live gun → head re-write
+  const headWrites = h.writes.filter(f => f === '$CLEAR,*').length;
+  assert.ok(headWrites >= 2, 'head re-written on resync');
+  h.frame('$LCD,0,0,0,0,0,0,*');                            // the head echo
+  assert.equal(h.eng.shots, 2, 'echo counted as a reset, not a magazine dump');
+  h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  assert.equal(h.eng.shots, 2, 'revive refill is an increase, not shots');
+  h.frame('$ALCD,35,100,0,216,0,*');
+  assert.equal(h.eng.shots, 3, 'real shots still count');
+});
+
+test('restored ARMED past the match end: no spawn, ends cleanly', () => {
+  const h = harness({ timeLimit: 60 }).kit().config_().echo().start(5000);
+  assert.equal(h.eng.phase, 'armed');
+  h.eng.onBleDropped();
+  const before = h.writes.length;
+  h.adv(5000 + 61_000);                                     // T-0 and the whole match passed while unlinked
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  const after = h.writes.slice(before);
+  // frames.end also begins with $SPAWN,, (revive-then-stop), so look for the spawn TAIL ($AMMO / $BMAP,0,0) instead
+  assert.ok(!after.some(f => f.startsWith('$AMMO,')), 'never spawns (loads magazines) for an expired match');
+  assert.ok(after.includes('$STOP,*'), 'teardown written');
+  assert.equal(h.eng.phase, 'kitted');
+  assert.ok(h.eng.ended);
+});
+
+test('MC-first hydrate (welcome before the gun links) lands in LOBBY with the head written', () => {
+  const h = harness();
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, config: h.config, frames: h.bundle });
+  assert.ok(!h.writes.includes('$START,*'), 'nothing written while unlinked');
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(h.eng.phase, 'lobby');
+  assert.ok(h.writes.includes('$START,*'), 'head written on link');
+  h.adv(1600); h.echo(); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.ok(ack && ack.b.ok === true, 'acked');
+});
+
+test('local panic does not retire the running match_id', () => {
+  const h = goLive(harness());
+  h.eng.control({ cmd: 'panic' });
+  assert.ok(!h.eng.endedMatches.includes('m1'));
+  assert.equal(h.eng._resyncRevive, false);
+});
+
+test('weaponName follows the active slot', () => {
+  const h = goLive(harness());
+  h.player.loadout.weapons.push({ weapon_id: 'shotgun' });
+  h.frame('$ALCD,6,100,1,24,0,*');
+  assert.equal(h.eng.weaponName, 'SHOTGUN');
+});

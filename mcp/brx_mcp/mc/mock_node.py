@@ -381,7 +381,8 @@ class MockNode:
 
     async def _heartbeat(self) -> None:
         while True:
-            self._send(E.make_envelope("status", self.status_body()))
+            if not self._paused:                       # a paused (asleep / out-of-range) phone sends nothing
+                self._send(E.make_envelope("status", self.status_body()))
             await asyncio.sleep(self.heartbeat_ms / 1000.0)
 
     async def _engine_tick(self) -> None:

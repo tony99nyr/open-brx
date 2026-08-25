@@ -1,5 +1,5 @@
 // Primitives that encode the "military armory" design language (see design README).
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
 
 type Sx = CSSProperties;
@@ -190,15 +190,18 @@ export function CountBlock({ value, label, color }: { value: number; label: stri
 export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1, label }:
   { value: number; unit?: string; onChange: (v: number) => void; min?: number; max?: number; step?: number; label?: string }) {
   const [draft, setDraft] = useState(String(value));
-  const [focused, setFocused] = useState(false);
-  useEffect(() => { if (!focused) setDraft(String(value)); }, [value, focused]);
+  const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
+  latest.current = value;
+  // Sync from the server only when ITS value changes (never on blur), so a just-committed edit doesn't flash the old value.
+  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
   const commit = () => {
     const v = Number(draft);
     if (Number.isNaN(v) || draft.trim() === '') { setDraft(String(value)); return; }
     const c = Math.max(min, Math.min(max, v));
     setDraft(String(c));
-    if (c !== value) onChange(c);
+    if (c !== value) { pending.current = c; onChange(c); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
   };
+  const setFocused = (f: boolean) => { focused.current = f; };
   return (
     <span style={{ font: F.osw(700, 17), ...TAB, background: T.inset, border: `1px solid ${T.line2}`, padding: '4px 14px', display: 'inline-flex', alignItems: 'baseline', gap: 6, minHeight: 44 }}>
       <input className="numbox" type="number" value={draft} min={min} max={max} step={step} aria-label={label ?? unit ?? 'value'}
@@ -214,9 +217,15 @@ export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1,
 export function DraftText({ value, onCommit, className = 'textbox', style, transform, ariaLabel, maxLength = 24 }:
   { value: string; onCommit: (v: string) => void; className?: string; style?: Sx; transform?: (s: string) => string; ariaLabel?: string; maxLength?: number }) {
   const [draft, setDraft] = useState(value);
-  const [focused, setFocused] = useState(false);
-  useEffect(() => { if (!focused) setDraft(value); }, [value, focused]);
-  const commit = () => { const v = (transform ? transform(draft) : draft).trim(); if (v && v !== value) onCommit(v); else setDraft(value); };
+  const focused = useRef(false), pending = useRef<string | null>(null), latest = useRef(value);
+  latest.current = value;
+  useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(value); }, [value]);
+  const commit = () => {
+    const v = (transform ? transform(draft) : draft).trim();
+    if (v && v !== value) { pending.current = v; onCommit(v); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(latest.current); } }, 1500); }
+    else setDraft(value);
+  };
+  const setFocused = (f: boolean) => { focused.current = f; };
   return (
     <input className={className} value={draft} maxLength={maxLength} aria-label={ariaLabel} style={style}
       onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
