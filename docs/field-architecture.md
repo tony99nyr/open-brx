@@ -20,6 +20,36 @@ Tonight established, empirically:
 for the whole match.** A single laptop at the edge of a field cannot work. This is a design
 property of the BRX, not a gap in our knowledge.
 
+## System topology — who talks to whom, over what, when
+
+**The nodes:**
+- **Tagger + headset** — the *dumb* endpoint. Shoots/receives IR; reports events (`$HIR`/`$HP`/`$BUT`/
+  `$VOLTS`) and accepts commands (incl. the feedback primitives `$SFLASH`/`$PLAY`, §7o) over BLE. Holds
+  no game state.
+- **Per-player node** — a **Companion** (ESP32 rider) *or* a **phone app** (PWA), **interchangeable**,
+  one per player, **carried**. Holds the BLE link to *its own* gun the whole match, runs the game rules,
+  drives the gun's feedback (`$SFLASH` flash + `$PLAY` audio), logs events.
+- **Mission Control** — operator console: authors games, configures/arms guns at muster, aggregates
+  scores. **Stationary base.**
+- **(Optional) stations** — objective/respawn nodes (ESP32 + IR), self-authoritative, on a LoRa/nRF
+  backbone (below).
+
+**Three phases — the timing is the whole design:**
+
+| Phase | MC ↔ guns | MC ↔ nodes | Node ↔ its gun | Nodes ↔ each other |
+|---|---|---|---|---|
+| **Muster** (players at base) | **BLE** — configure/arm, readiness gate, assign node↔gun binding | **Wi-Fi** — push the game definition | binding | — |
+| **Play** (players dispersed) | ✗ **none** (out of range) | best-effort Wi-Fi/mesh relay only | **BLE** — drive `$SFLASH`/`$PLAY`, run rules, log | Wi-Fi / ESP-NOW / LoRa (kill-share, broadcasts) |
+| **Recap** (players back) | **BLE** — read state | **Wi-Fi** — collect final logs | idle | — |
+
+**The load-bearing rule (ADR-0001, `mc-not-live-during-gameplay`):** *MC never drives the guns during
+play — the per-player node does.* MC touches guns directly only at muster/recap. Everything live is
+node-local + best-effort mesh; **final results are always complete** (store-and-forward).
+
+**Channels:** Tagger↔node = **BLE** (Nordic UART, ~1 m, whole match). MC↔tagger = **BLE**, muster+recap
+only. MC↔node and node↔node = **Wi-Fi** (arena) / **ESP-NOW** / **LoRa** (field backbone) — transport
+ladder in "Do we need a long-range radio" below. **MC authors + pushes the game; the node executes it.**
+
 ## The proposal: one cheap device per player
 
 This is what the official system does — every player carries a phone, so the BLE link is

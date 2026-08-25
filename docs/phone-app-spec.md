@@ -96,6 +96,42 @@ pick, one link, ~1 m away.
   BRX NUS link (nRF Connect: connect `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign), subscribe TX `…0003`, write `$PING,*` to RX
   `…0002`, expect `$PONG`). The whole plan rests on this 10-minute check.
 
+## FAIL-FAST — the Web Bluetooth gate spike (do this BEFORE building the PWA)
+
+The nRF Connect check above proves **native** Android BLE reaches the gun. It does **not** prove
+**Web Bluetooth** (Chrome) can drive it well enough to run a game — and if Web Bluetooth can't, the
+whole browser-PWA path collapses and we go native (Capacitor) or lean on the Companion. So spend **one
+afternoon** on a throwaway spike that answers it decisively, before any PWA investment.
+
+**Deliverable:** a single-file **`webapp/ble-test.html`** — no framework, no build — served over
+**HTTPS or `localhost`**, run on an **Android Chrome** phone with a BRX (headset on). The frames are
+already known-good (mirror `mcp/brx_mcp/gameconfig.py` `setup_frames()`/`spawn_frames()`); the *only*
+question is whether the **browser** can send/receive them reliably.
+
+**Escalating gates — each must pass to proceed; the FIRST failure is the answer:**
+
+| Gate | Test | PASS |
+|---|---|---|
+| **G1 Connect** | `requestDevice` (NUS filter) → connect | link established |
+| **G2 Notify** | subscribe TX `…0003`; pull trigger → `$BUT`; take a hit → `$HIR`/`$HP` | frames stream in |
+| **G3 Write** | write `$VOL,69,0,*` then `$PLAY,VA20,4,6,,,,,*` to RX `…0002` | the gun speaks |
+| **G4 Feedback** | write **`$SFLASH,*`** | **sight greens** — the load-bearing primitive for our design (§7o) |
+| **G5 Arm** | send `setup_frames` + `$TID` + `spawn_frames` (incl. **MTU chunking** for long `$WEAP`) | gun goes live (countdown/`$LCD`) |
+| **G6 Stability** | hold the link ~3 min while walking; survive/auto-reconnect the ~6.6 s client drop (`getDevices()` + `watchAdvertisements()`); no dropped frames | stable enough for a match |
+
+**Decision:**
+- **All pass →** Web Bluetooth PWA is viable. **Build it** (Android now; iOS via the Capacitor wrap /
+  Bluefy later). This is the cheap, no-install path.
+- **Fails G1–G3 (connect / notify / write) →** Web Bluetooth is inadequate on this stack. **Pivot to
+  native/hybrid** (Capacitor + a BLE plugin — same transport-free core, just a native shell) or lean on
+  the **Companion**. Fail fast, no PWA sunk cost.
+- **Writes work but G6 flaky →** it's the connection-interval/MTU sensitivity (§7b, often client-fixable):
+  try requesting a larger MTU + a slower connection interval; if still unstable, go native.
+
+**Cost:** an afternoon, zero purchase (a phone + a gun you already have). This one spike greenlights or
+kills the entire phone path — and it exercises the exact `$SFLASH`/`$PLAY` mechanism the ADR-0001
+confirmations need, so it doubles as the "does `$SFLASH` fire from our stack" test on the phone side.
+
 ## Common core, platform shells (and first-class iOS)
 
 The iOS "limit" is a **browser** limit, not an iOS limit — **native iOS apps have full BLE via
