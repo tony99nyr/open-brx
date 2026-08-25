@@ -62,6 +62,12 @@ def extract_att(packets: list[dict[str, Any]]) -> list[dict[str, Any]]:
             acl = d[1:]
         if len(acl) < 8:
             continue
+        # ACL header: 12-bit connection handle + 2-bit PB + 2-bit BC flags.
+        # The connection handle is what distinguishes TWO GUNS in one capture —
+        # the ATT characteristic handle is identical across identical devices,
+        # so keying streams on it alone interleaves both guns into one buffer.
+        acl_hdr = struct.unpack("<H", acl[0:2])[0]
+        conn = acl_hdr & 0x0FFF
         l2len, cid = struct.unpack("<HH", acl[4:8])
         if cid != ATT_CID:
             continue
@@ -77,16 +83,21 @@ def extract_att(packets: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         handle = struct.unpack("<H", att[1:3])[0]
         events.append({"ts_us": p["ts_us"], "direction": direction,
-                       "handle": handle, "value": att[3:]})
+                       "conn": conn, "handle": handle, "value": att[3:]})
     return events
 
 
 def reconstruct_frames(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Reassemble per-(direction, handle) byte streams and split on ',*'."""
-    streams: dict[tuple[str, int], bytes] = {}
+    """Reassemble per-(direction, connection, handle) byte streams, split on ',*'.
+
+    Keying on the ACL **connection handle** as well as the ATT handle keeps two
+    simultaneously-connected taggers apart; without it their byte streams
+    interleave and reassembly produces garbage.
+    """
+    streams: dict[tuple[str, int, int], bytes] = {}
     frames = []
     for ev in events:
-        key = (ev["direction"], ev["handle"])
+        key = (ev["direction"], ev.get("conn", 0), ev["handle"])
         streams[key] = streams.get(key, b"") + ev["value"]
         buf = streams[key]
         while b",*" in buf:
@@ -95,7 +106,8 @@ def reconstruct_frames(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if "$" in text:
                 text = text[text.index("$"):]
                 frames.append({"ts_us": ev["ts_us"], "direction": ev["direction"],
-                               "handle": ev["handle"], "raw": text})
+                               "conn": ev.get("conn", 0), "handle": ev["handle"],
+                               "raw": text})
         streams[key] = buf
     frames.sort(key=lambda f: f["ts_us"])
     return frames
@@ -109,10 +121,16 @@ def main() -> None:
     packets = parse_btsnoop(sys.argv[1])
     frames = reconstruct_frames(extract_att(packets))
     t0 = frames[0]["ts_us"] if frames else 0
+    conns = sorted({f["conn"] for f in frames})
+    label = {c: chr(ord("A") + i) for i, c in enumerate(conns)}
+    if len(conns) > 1:
+        print(f"# {len(conns)} connections: "
+              + ", ".join(f"{label[c]}=0x{c:03x}" for c in conns))
     lines = []
     for f in frames:
         arrow = ">>" if f["direction"] == "tx" else "<<"
-        line = f"[{(f['ts_us'] - t0) / 1e6:9.3f}s] {arrow} {f['raw']}"
+        tag = f"{label[f['conn']]} " if len(conns) > 1 else ""
+        line = f"[{(f['ts_us'] - t0) / 1e6:9.3f}s] {tag}{arrow} {f['raw']}"
         print(line)
         lines.append(line)
     print(f"\n{len(frames)} frames from {len(packets)} HCI packets",
