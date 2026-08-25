@@ -975,3 +975,23 @@ whole class: `main()` now `reconfigure(encoding="utf-8", errors="replace", line_
 stdout/stderr — no glyph can ever crash a command again, and live output streams in real time; the driver
 announcer also flushes. (This is the 3rd time this cp1252-glyph class bit us — now killed at the source.)
 Not exercised yet: time-limit end, respawn ramp.
+
+### 2026-08-25 — teardown bug: dead gun left stuck; fixed the game-over sequence (live, on R0BAS)
+After the first live game, the loser (R0BAS, dead at frag-limit) was left **stuck showing the death-glow** —
+the old `END_SEQUENCE` (`$HLED,,6` + `$STOP` + `$CLEAR` + `$PLAY,VS6`) never REVIVES a gun that's dead at
+game end. Dialed in the fix live against R0BAS (Tony observing each step):
+- **`$SPAWN,,*` revives** the dead gun (`$LCD,45,70` — HP/armor restored) → clears the death-glow. But it
+  re-spawns into a live state: pulls the **team colour** on the tagger + plays the **spawn voice ("GET SOME"**,
+  the Heavy `V3I` line).
+- **`$PLAYX,0,*`** immediately after silences that spawn voice (confirmed: no voice).
+- **`$STOP,*` + `$CLEAR,*`** settle the game state; **`$HLOOP,0,0` + `$HLED,0,0,0,0,0,0`** blank the headset
+  (confirmed: headset dark).
+- The tagger keeps **pulsing its team colour** — Tony's call: that's a nice "you were on team X last game"
+  end-of-match indicator, so teardown deliberately does NOT reset `$TID`.
+
+**New datum — `$TID` LED colours:** `1`=blue, `2`=yellow, **`0`=RED** (not off; there is no "$TID off" — the
+gun always shows some team colour; true LEDs-off needs the unconfirmed `$GLED`/P17 path).
+
+New `END_SEQUENCE` = `$SPAWN,,* → $PLAYX,0,* → $STOP,* → $CLEAR,* → $HLOOP,0,0,* → $HLED,0,0,0,0,0,0,*`.
+Exposed as a manual **`reset <address>`** CLI (same sequence). Open: whether `$LIFE` alone revives a dead
+gun (would avoid the SPAWN→GET-SOME→silence dance) — untested (needs a dead gun on the bench).

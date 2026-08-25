@@ -64,7 +64,13 @@ _BMAP = (
 # which recomputes $AMMO from the SELECTED weapons.
 SPAWN_SEQUENCE = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$AMMO,1,6,12,1,*", "$BMAP,0,0,,,,,*")
 RESPAWN_SEQUENCE = ("$HLOOP,0,0,*", "$SPAWN,,*")
-END_SEQUENCE = ("$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*", "$PLAY,VS6,4,6,,,,,*")
+# Game-over teardown (verified 2026-08-25 on R0BAS): revive so a gun left DEAD at
+# game end isn't stuck showing the death-glow ($SPAWN restores 45/70), immediately
+# silence the spawn voice ($PLAYX,0), settle the game state ($STOP/$CLEAR), and blank
+# the headset LED. Deliberately does NOT touch $TID — the gun pulses its LAST-GAME
+# team colour (blue/yellow), a nice "you were on team X" end-of-match indicator.
+END_SEQUENCE = ("$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*",
+                "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*")
 
 # on-gun volume 1–5 → $VOL (Tony's field-tested estimate), for the operator UI.
 VOLUME_LEVELS = {1: 60, 2: 70, 3: 80, 4: 90, 5: 100}

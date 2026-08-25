@@ -21,6 +21,7 @@
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
   python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
+  python -m brx_mcp reset <address>                     # reset a tagger to clean idle (revive if dead, silence, headset dark)
   python -m brx_mcp rename <address> <name>             # set a tagger's persistent name over BLE ($NAME); power-cycle to see the advert update
   python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
   python -m brx_mcp armory                              # QUERY the cabled tagger + print the accumulated gun<->headset inventory
@@ -1118,6 +1119,33 @@ async def _enroll(name: str | None) -> None:
           + ("  Power-cycle to refresh its BLE advert." if nm else ""), file=sys.stderr)
 
 
+async def _reset(address: str) -> None:
+    """Reset a tagger to a clean idle state — including reviving a gun left DEAD at
+    game end (the death glow that END_SEQUENCE doesn't clear). Finds the sequence
+    that clears it; the winner becomes the teardown fix."""
+    from .ble import ConnectionManager
+    mgr = ConnectionManager()
+    # revive (SPAWN clears the dead HP state), immediately silence the spawn voice
+    # ($PLAYX,0), then STOP+CLEAR to settle to idle, and blank the headset LED.
+    from .gameconfig import END_SEQUENCE
+    seq = list(END_SEQUENCE)
+    try:
+        await mgr.connect(address, "rst")
+        try:
+            for cmd in seq:
+                r = await mgr.send("rst", cmd, reply_window_ms=200)
+                print(">> " + cmd
+                      + "".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', [])))
+            await asyncio.sleep(0.4)
+        finally:
+            await mgr.disconnect("rst")
+    except Exception as e:  # noqa: BLE001
+        print(f"# reset FAILED to reach {address}: {type(e).__name__}: {e}", file=sys.stderr)
+        return
+    print(f"\n# reset {address} to clean idle (revived, quiet, headset dark; pulses its "
+          f"team colour). Same sequence the game teardown uses.", file=sys.stderr)
+
+
 async def _rename(address: str, name: str) -> None:
     """Set a tagger's persistent name over BLE via `$NAME` (the app's rename path).
     Mirrors the app ritual ($STOP → $PLAYX,0 → $NAME) — no $PHONE, so the on-gun
@@ -1249,6 +1277,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         port = args[2] if len(args) > 2 and not args[2].isdigit() else None
         repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
         _ir_emit(bits, port, repeat)
+    elif cmd == "reset" and len(args) > 1:
+        asyncio.run(_reset(args[1]))
     elif cmd == "rename" and len(args) > 2:
         asyncio.run(_rename(args[1], " ".join(args[2:])))   # keep multi-word names
     elif cmd == "enroll":
