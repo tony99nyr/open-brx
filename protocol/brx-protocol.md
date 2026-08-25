@@ -1031,7 +1031,7 @@ This matters for us in two ways:
   phones disappears and every gun's feedback is driven directly. Fewer moving parts than the
   official system, not more.
 
-## 7p. STRONG LEAD — `$PSET` token 1 looks like the PLAYER ID (P2, settable over BLE)
+## 7p. CONFIRMED — `$PSET` token 1 IS the PLAYER ID, settable over BLE (P2 set-path)
 
 **Capture:** `cap10` (2026-08-25). Single device, Callsign **Start Offline Game**, with the app's
 **player id set to 69**.
@@ -1061,22 +1061,47 @@ receiver decoding the 6-bit field out of the air. If `$PSET` token 1 sets it, **
 assignable over BLE at arm time, per game, with no cable and no extra hardware** — Mission Control
 can just number the fleet.
 
-### NOT yet confirmed — the one test that settles it
+### CONFIRMED by `cap11` — with a prediction made in advance
 
-The inference rests on a single data point that happened to land on a boundary value. Before
-anything is built on it:
+Two further observations settled it the same evening:
 
-1. Set the app's player id to a **small in-range value (e.g. 7)** and capture. Expect
-   `$PSET,7,0,45,…`. That distinguishes "token 1 is the player id" from "token 1 saturated for some
-   other reason".
-2. Check **off-by-one**: is app-id 1 wire-value 1, or 0?
-3. Then prove it end-to-end: set two guns to distinct ids, have one shoot the other, and see whether
-   the id surfaces — in `$HIR` (BLE) and/or in the IR payload via the VS1838B bench.
+- Re-opening the app showed the id field **prefilled with 64**, not 69 — so the app clamps to a max
+  of **64**, and its range is **1–64** (64 distinct values, 1-based).
+- That predicted a **0-based wire**: app 64 → wire 63, so app **7 should send 6**. Captured
+  (`cap11`): **`$PSET,6,0,45,70,70,50,…`**. Exactly as predicted.
 
-Until (1) is done this is a **lead, not a fact**. Note the APK's source-derived `$PSET` field list
-(`protocol-classes.md`) starts at `maxHP, maxShields, criticalDamageBonus…` and does **not** name
-tokens 1–2 at all, so it neither confirms nor contradicts this — those two leading tokens are
-simply absent from the decompiled map.
+| | app (Callsign UI) | wire (`$PSET` token 1) |
+|---|---|---|
+| range | 1 – 64 | **0 – 63** (6 bits) |
+| example | 7 | 6 |
+| max | 64 | 63 |
+| out of range | 69 → clamped to 64 | 63 |
+
+**`$PSET` token 1 = player id, 0-based, 0–63.** Subtract one from any 1-based number you show an
+operator. This matches the IR shot payload's 6-bit player field exactly, which is presumably where
+the value ends up.
+
+(The APK's source-derived `$PSET` map in `protocol-classes.md` starts at `maxHP, maxShields,
+criticalDamageBonus…` and never names tokens 1–2 — so the decompiled map is simply incomplete here,
+and the wire is the better authority.)
+
+### What this closes, and what it doesn't
+
+**Closed: SETTING identity.** No USB `SETUP` cable per gun, no IR hardware. Mission Control numbers
+the fleet over BLE at arm time, per game, in the frame it already sends.
+
+**Still open: READING who fired.** `$HIR` was decoded as giving the shooter's *team* (§7k). But note
+`$HIR` has long been parsed as `token 3 = shooter player id, token 4 = shooter team id`
+(`mcp/brx_mcp/protocol.py`), and **every capture behind that decode was taken with all guns at the
+default id** — so a player-id field could not have been distinguished from a constant. That
+conclusion may have been confounded.
+
+**The next experiment is cheap and could close P2 entirely over BLE:** set two guns to distinct ids
+(e.g. app 7 and app 20 → wire 6 and 19), have each shoot the other, and watch `$HIR` token 3. If it
+tracks the shooter's id, per-player attribution needs **no IR receiver at all** and the VS1838B bench
+becomes an optimisation rather than a prerequisite.
+
+
 
 **Token 2 remains `0` in every capture, including this one — still unknown.**
 

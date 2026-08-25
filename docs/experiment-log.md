@@ -1276,3 +1276,32 @@ module map, parallel-workstream plan) + `contracts.md` (shared data models, node
 model, clock sync). Three design calls locked: field LAN = travel router (macOS AP is weak), dispersed
 start = **time-synced local countdown played through the gun speaker**, attribution = team-level on
 phones / player-level needs Companion IR decode (P2).
+
+### 2026-08-25 — P2 set-path SOLVED: `$PSET` token 1 is the player id (cap10 + cap11)
+Operator hypothesis, operator-run, two captures. Callsign **Start Offline Game**, single device.
+
+- **cap10** — app player id set to **69**. Whole arm identical to every prior capture except one
+  token: `$PSET,`**`63`**`,0,45,70,70,50,…` (it is `0` everywhere else). 63 = the **6-bit maximum**,
+  and the IR shot payload's player field is exactly 6 bits (0–63, `brx-ir-protocol.md`, from
+  NRFL-Bases — an independent source). Filed as a lead, not a fact: one point, on a boundary value.
+- **Then the app prefilled `64`** on reopening — so it clamps to a max of 64 and is **1-based**.
+  That predicted a **0-based wire**: app 7 should send **6**.
+- **cap11** — id set to 7 → **`$PSET,6,…`**. Prediction confirmed.
+
+**`$PSET` token 1 = player id, 0-based, 0–63; the app shows 1–64.** Subtract one from anything shown
+to an operator.
+
+**What it closes:** per-player identity was the last stock-feel gap over pure BLE, and both assumed
+fixes were awkward — a USB `SETUP` cable into every gun at Armory Setup, or an IR receiver. **Neither
+is needed to ASSIGN an id.** MC numbers the fleet over BLE at arm time, per game, in a frame it
+already sends.
+
+**What it doesn't close — and a conclusion worth re-examining:** reading *who fired*. `$HIR` was
+decoded as carrying the shooter's **team** (§7k). But `protocol.py` has always parsed `$HIR` as
+`tok3 = shooter player id, tok4 = team`, and **every capture behind the team-only reading was taken
+with all guns at the default id** — a player-id field would have been indistinguishable from a
+constant. **Next experiment (cheap, no new hardware):** set two guns to distinct ids, trade shots,
+watch `$HIR` tok3. If it tracks the shooter, per-player attribution is BLE-native and the VS1838B
+bench becomes an optimisation rather than a prerequisite.
+
+Both traces archived (`protocol/captures/raw/`) with decoded transcripts.
