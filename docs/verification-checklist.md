@@ -29,12 +29,14 @@ The newest, least-verified work. Do these first while the taggers are out.
 - ⬜ **Fleet battery reliability** — weak-signal taggers missed `$VOLTS`; decide persistent-connection vs RSSI-dependent.
 - ⬜ **Headset-OFF heuristic** — power a headset off, connect: confirm "reachable but drops with zero frames".
 
-## Session A — M0 live run (2 taggers, ~20 min) — highest priority
-The whole M0 engine is tested in software but never driven on real guns.
-- ⬜ **`play tdm <A> <B>`** — config-all-then-spawn barrier works; both guns go live ~together (B10).
-- ⬜ **Kill scoring** — shoot B with A → `$HIR`/`$HP,0` → the driver credits A's team, scoreboard ticks.
-- ⬜ **Host respawn** — a downed gun comes back after `respawn_s`; ramp (15→30→45→90) if enabled.
-- ⬜ **Frag/time limit** ends the game with the right winner.
+## Session A — M0 live run — ✅ VERIFIED 2026-08-25 (R0BAS vs R0BP1, TDM, frag_limit=3)
+The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full narration in experiment-log.
+- ✅ **`play tdm <A> <B>`** — config-all-then-spawn barrier worked; both guns went live together (B10).
+- ✅ **Kill scoring** — real `$HIR`/`$HP,0` from the guns → the driver credited the right team, scoreboard ticked.
+- ✅ **Host respawn** — downed guns came back after `respawn_s` (both respawned live).
+- ✅ **Frag limit** ended the game with the correct winner (team2 to 3).
+- ✅ **BLE held the whole match** — Tier-0 direct BLE sustained a 2-gun game with no mid-game drop.
+- ⬜ **Time limit / respawn ramp** — not exercised this run (frag limit ended it); confirm separately.
 - ⬜ **FFA** (`play ffa <A> <B> <C>`) — unique `$TID` per gun; the *specific* killer is credited.
 - ⬜ **Attribution fuse** — a non-fatal hit long before a later (unrelated) death does NOT steal a kill.
 

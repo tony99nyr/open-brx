@@ -954,3 +954,24 @@ watching both tokens to decide which is the "real" charge %.
 found; R0BAS −63 & R0BAT −84 connected but missed `$VOLTS`). The random ~6.6 s client drop vs the 30 s VOLTS
 cadence makes the serial one-shot sweep unreliable → a **persistent-connection fleet** (hold links, collect
 VOLTS as they stream) is the fix for a live dashboard. Not RSSI-pure (R0BP1 −70 got it; R0BAS −63 didn't).
+
+### 2026-08-25 — 🎯 FIRST LIVE M0 GAME (Session A) — the engine works on real guns ✅
+Ran `play tdm D9:50:2F:98:FE:30 DF:F5:DA:08:94:98 game_time_s=120 respawn_s=10 frag_limit=3 volume=69`
+(R0BAS team1 vs R0BP1 team2). **Full game, end to end, on real hardware:**
+```
+game live: {...}                       # config-all-then-spawn barrier → both live together (B10)
+🎯 team1: 1   ↻ respawn R0BP1           # R0BAS tagged R0BP1; host-respawn brought it back
+🎯 team2: 1,2,3   ↻ respawn R0BAS ×3    # R0BP1 tagged R0BAS 3×, each respawned
+🏆 GAME OVER — team2  scores={1:1, 2:3} # frag_limit=3 → correct winner
+```
+Final scoreboard: R0BAS 1 kill/3 deaths, R0BP1 3 kills/1 death. **Validated: config barrier, real
+`$HIR`/`$HP,0` kill scoring + team credit, host respawn, frag-limit end + winner — AND the BLE link held
+the entire match (Tier-0 direct BLE sustained a 2-gun game, no mid-game drop).**
+
+**Resilience bug fixed (Tony: "our scripts need to be more resilient than that"):** the FIRST attempt
+crashed mid-score — the 🎯 emoji in the scoreboard hit the Windows console's cp1252 codec
+(`UnicodeEncodeError`, which is a `ValueError` → main swallowed it into a usage dump). Root-caused the
+whole class: `main()` now `reconfigure(encoding="utf-8", errors="replace", line_buffering=True)` on
+stdout/stderr — no glyph can ever crash a command again, and live output streams in real time; the driver
+announcer also flushes. (This is the 3rd time this cp1252-glyph class bit us — now killed at the source.)
+Not exercised yet: time-limit end, respawn ramp.

@@ -729,6 +729,15 @@ async def _diag(address: str) -> None:
 
 
 def main() -> None:
+    # The Windows console defaults to cp1252, which raises UnicodeEncodeError on the
+    # emoji/arrows in game output (crashed a live game mid-score). Force UTF-8 with
+    # graceful fallback (errors="replace" → no glyph can EVER kill a command) and
+    # line buffering so live game/scoreboard output streams in real time.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+        except Exception:  # noqa: BLE001 — older Pythons / non-reconfigurable streams
+            pass
     args = sys.argv[1:]
     if not args:
         from .server import main as run_server

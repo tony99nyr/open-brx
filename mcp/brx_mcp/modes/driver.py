@@ -104,7 +104,7 @@ class GameDriver:
         self.players = players
         self.sender = sender
         self.engine = build_engine(config, now)
-        self.announce = announce or (lambda s: print(s))
+        self.announce = announce or (lambda s: print(s, flush=True))
         self.callsigns = {pid: clean_callsign(n) for pid, n in (callsigns or {}).items()
                           if clean_callsign(n)}
         for pid, team in players.items():
