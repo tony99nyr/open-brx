@@ -100,7 +100,7 @@ the tagger latches connected state and only notices via supervision timeout.
 Micro-USB enumerates as `USB Serial` / **Teensyduino** → the MCU is a **Teensy**, and the
 port is the manual's "Programing Port". Commands (from LaserTagMods' notes) are `QUERY`
 and `SETUP`; everything else answers `ERROR`.
-`QUERY` dumps: versions, `Serial Number/Head PIN: R0BQT` (matches the headset sticker),
+`QUERY` dumps: versions, `Serial Number/Head PIN: <redacted>` (matches the headset sticker),
 voltages, `NRFhost 1` / `NRFslave 1` / **`devHost 1`**, `BT central V: devhost.03`,
 `Tested by: JB`, `PCB-5`. Saved to `~/.brx-mcp/device-backups/`.
 `SETUP` is factory provisioning (prompts for headset SN, bilingual EN/中文). Entering it
@@ -878,11 +878,11 @@ connect-diagnose-disconnect. Filed as a followup. **The reliable armory data is 
 gun+head voltage, headset PIN) — cable each tagger; BLE battery % is a rough live gauge, best for near guns.
 
 ### 2026-08-24 — armory USB↔BLE correlation via gun name; cp1252 console fix
-Cabled tagger 3 → `armory`: **Gun Name `RocTheLegend`, headset PIN `R0BAS`** (hds.59, head 3.91 V, gun
+Cabled tagger 3 → `armory`: **Gun Name `RocTheLegend`, headset PIN `<redacted>`** (hds.59, head 3.91 V, gun
 7.80 V, PCB-5, PID 0, linked). Its BLE advert was **`RocTheLegend-FE30`** — so **the BLE name =
 `<GunName>-<MAC tail>`**, and a *custom* gun name lets us **correlate a USB identity record to its BLE
 address** (stock "Tactix" names collide; custom/`$NAME` gamertags don't). Ties the gamertag feature to the
 armory: name each gun uniquely → the two diagnostic tiers link up.
-Serials are sequential across the fleet (tagger 1 = `R0BAT`, tagger 3 = `R0BAS`).
+Serials are sequential across the fleet (values redacted — real PINs live only in `~/.brx-mcp/armory.json`, never the repo).
 **Bug fixed:** the armory table used `✓`/`·`; the Windows console is cp1252 and threw `UnicodeEncodeError`
 mid-row (which bubbled up as a usage dump). Table is now ASCII (`yes`/`no`).

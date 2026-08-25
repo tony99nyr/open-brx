@@ -4,7 +4,7 @@ from brx_mcp.usbconsole import parse_query
 
 SAMPLE = """Gun Info
 Gun Version: v4.32
-Serial Number/Head PIN: R0BQT
+Serial Number/Head PIN: SNTEST01
 Gun Name: Tactix2
 Headset Version: hds.59
 Gun: 7.671 VOLTS
@@ -29,7 +29,7 @@ BT central V: devhost.03
 def test_parses_core_identity_fields():
     r = parse_query(SAMPLE)
     assert r["gun_version"] == "v4.32"
-    assert r["serial_head_pin"] == "R0BQT"       # the headset sticker id
+    assert r["serial_head_pin"] == "SNTEST01"       # the headset sticker id
     assert r["gun_name"] == "Tactix2"
     assert r["headset_version"] == "hds.59"
     assert r["bt_central_v"] == "devhost.03"
@@ -49,7 +49,7 @@ def test_headset_linked_flag():
     assert parse_query(SAMPLE)["headset_linked"] is True
     # a fresh power-cycle reads Headset Version '?' until re-handshake → not linked
     unlinked = SAMPLE.replace("Headset Version: hds.59", "Headset Version: ?") \
-                     .replace("Serial Number/Head PIN: R0BQT", "Serial Number/Head PIN:")
+                     .replace("Serial Number/Head PIN: SNTEST01", "Serial Number/Head PIN:")
     assert parse_query(unlinked)["headset_linked"] is False
 
 
@@ -101,14 +101,14 @@ def _with_tmp_base(fn):
 def test_inventory_add_and_merge_keyed_by_pin():
     def body():
         assert _uc.load_inventory() == {}
-        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "R0BQT"})
+        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "SNTEST01"})
         inv = _uc.load_inventory()
-        assert "R0BQT" in inv and inv["R0BQT"]["headset_linked"] is True
-        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "R0BQT", "player_id": 5})
+        assert "SNTEST01" in inv and inv["SNTEST01"]["headset_linked"] is True
+        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "SNTEST01", "player_id": 5})
         inv = _uc.load_inventory()
-        assert len(inv) == 1 and inv["R0BQT"]["player_id"] == 5
+        assert len(inv) == 1 and inv["SNTEST01"]["player_id"] == 5
         _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "Z9XYZ"})
-        assert set(_uc.load_inventory()) == {"R0BQT", "Z9XYZ"}
+        assert set(_uc.load_inventory()) == {"SNTEST01", "Z9XYZ"}
     _with_tmp_base(body)
 
 

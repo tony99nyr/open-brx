@@ -41,14 +41,14 @@ def test_parse_event_routes_diagnostics():
 def test_parse_query():
     dump = (
         "BRX QUERY\n"
-        "Serial Number/Head PIN: R0BQT\n"
+        "Serial Number/Head PIN: SNTEST01\n"
         "BT central V: devhost.03\n"
         "NRFhost 1\nNRFslave 1\ndevHost 1\n"
         "Tested by: JB\n"
         "PCB-5\n"
     )
     q = P.parse_query(dump)
-    assert q["serial_head_pin"] == "R0BQT"
+    assert q["serial_head_pin"] == "SNTEST01"
     assert q["bt_central_version"] == "devhost.03"
     assert q["nrf_host"] == 1 and q["nrf_slave"] == 1 and q["dev_host"] == 1
     assert q["pcb_rev"] == "PCB-5"
