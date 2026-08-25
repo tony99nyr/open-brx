@@ -1,0 +1,103 @@
+/* Open BRX — design tokens (seed for Claude Design; evolve freely, keep the roles).
+   Two environments to design: default/staging, bright-outdoor (max contrast), and a
+   separate blackout/night mode. Team colors are fixed and meaningful — never decorative. */
+
+:root {
+  /* ---- ground & structure (dark, tactical) ---- */
+  --bg:        #0c1016;   /* near-black navy */
+  --panel:     #141b24;
+  --panel-2:   #0e141b;   /* insets, bar tracks */
+  --line:      #25313f;
+
+  /* ---- ink ---- */
+  --ink:       #e8eef5;
+  --dim:       #8aa0b4;
+
+  /* ---- accent (brand, not state) ---- */
+  --accent:    #39b4ff;   /* electric blue */
+  --accent-ink:#04121e;   /* text on accent */
+
+  /* ---- semantic state (separate from accent) ---- */
+  --ok:        #2ecc71;
+  --warn:      #ffb020;
+  --bad:       #ff5252;
+
+  /* ---- teams (FIXED — meaning, not style) ---- */
+  --team-blue:   #3a86ff;
+  --team-yellow: #ffd23f;
+  --team-red:    #ff5252;
+  --team-green:  #2ecc71;
+
+  /* ---- health/armor semantics ---- */
+  --health: var(--ok);
+  --armor:  var(--warn);
+
+  /* ---- type ---- */
+  --font-display: /* strong, slightly condensed for numerals/labels */
+    "Oswald", "Rajdhani", system-ui, sans-serif;
+  --font-ui: -apple-system, "Inter", Roboto, system-ui, sans-serif;
+  --num: var(--font-display);         /* tabular numerals live here */
+
+  /* type scale (fluid-ish; HUD numbers go bigger, see .hud-* below) */
+  --t-cap: 11px; --t-sm: 12px; --t-md: 15px; --t-lg: 18px;
+  --t-xl: 24px; --t-2xl: 34px; --t-3xl: 48px; --t-hud: 72px;
+
+  --radius: 12px; --radius-sm: 8px;
+  --gap: 8px;
+}
+
+/* Numbers that change get tabular figures everywhere (HP, ammo, timers, K/D). */
+.num, .hud-num, .score-num { font-family: var(--num); font-variant-numeric: tabular-nums; }
+
+/* ============================================================================
+   BRIGHT OUTDOOR — max contrast, heavier ink, thicker structure.
+   Apply on the phone HUD when in daylight (auto by ambient / manual).
+   ============================================================================ */
+[data-env="outdoor"] {
+  --bg:    #05070a;
+  --ink:   #ffffff;
+  --dim:   #b9c7d6;      /* never use --dim for load-bearing text outdoors */
+  --line:  #3a4a5c;
+  --panel: #10161e;
+  /* bars/readouts should thicken and type should scale up a step outdoors */
+}
+
+/* ============================================================================
+   BLACKOUT / NIGHT — near-total darkness, NO white, dim red/amber only,
+   no bright flashes, minimal luminance. A distinct mode, not a dimmed copy.
+   The phone must not act like a flashlight or give away position.
+   ============================================================================ */
+[data-env="night"] {
+  --bg:        #000000;
+  --panel:     #050505;
+  --panel-2:   #000000;
+  --line:      #1a0a0a;
+  --ink:       #b23b3b;   /* dim red, the ONLY prominent ink */
+  --dim:       #5a1f1f;
+  --accent:    #7a2a2a;   /* muted, no glow */
+  --ok:        #4a6b2f;   /* desaturated */
+  --warn:      #7a5a1f;
+  --bad:       #b23b3b;
+  --health:    #7a3a3a;
+  --armor:     #7a5a1f;
+  /* team accents drop to low-luminance tints; no white fields anywhere */
+}
+
+/* ---- component seeds (starting points, not prescriptions) ---- */
+.bar        { height: 16px; background: var(--panel-2); border-radius: var(--radius-sm); overflow: hidden; }
+.bar > .fill{ height: 100%; background: var(--health); transition: width .15s; }
+.bar.armor > .fill { background: var(--armor); }
+
+.badge      { font-size: var(--t-sm); font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+.badge.alive{ background: color-mix(in srgb, var(--ok) 22%, var(--bg)); color: var(--ok); }
+.badge.down { background: color-mix(in srgb, var(--bad) 22%, var(--bg)); color: var(--bad); }
+
+.team-edge  { box-shadow: inset 0 0 0 2px var(--team-blue); } /* ambient team tint on the HUD */
+
+/* HUD hero readouts — big, tabular, glare-legible */
+.hud-health { font: 700 var(--t-hud)/1 var(--num); font-variant-numeric: tabular-nums; }
+.hud-ammo   { font: 700 var(--t-2xl)/1 var(--num); font-variant-numeric: tabular-nums; }
+.hud-timer  { font: 600 var(--t-xl)/1 var(--num);  font-variant-numeric: tabular-nums; }
+
+/* "— MC" placeholder: intentional, not broken (kills/assists/accuracy come from Mission Control) */
+.pending    { color: var(--dim); font-weight: 600; font-size: var(--t-md); letter-spacing: .02em; }

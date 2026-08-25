@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:ital,wght@0,600;0,700;1,600;1,700&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#030407;color:#e8eef5;font-family:'Chakra Petch',system-ui,sans-serif}
+a{color:#39b4ff;text-decoration:none} a:hover{color:#8fd4ff}
+:root{
+  --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#ff5252;--team-green:#2ecc71;
+  --team:var(--team-blue);--team-ink:#04121e;
+  --num:#eef9ff;--glow:#5fd6ff;--mut:#7fa0b8;
+  --plate:rgba(12,28,44,.85);--plate2:rgba(4,12,20,.9);--edge:#2a4e6e;
+  --health:#39e07c;--armor:#7fd4ff;--warn:#ffb020;--bad:#ff5252;--ok:#39e07c;
+  --fd:'Saira Condensed',sans-serif;--fl:'Chakra Petch',sans-serif;
+}
+/* holo skin baked in as the one look */
+[data-env="night"]{--num:#b23b3b;--glow:transparent;--mut:#5a1f1f;--plate:transparent;--plate2:transparent;--edge:#1a0a0a;
+  --health:#7a3a3a;--armor:#7a5a1f;--team:#5a2222;--team-ink:#000;--warn:#7a5a1f;--bad:#b23b3b;--ok:#4a6b2f}
+[data-team="blue"]{--team:var(--team-blue);--team-ink:#04121e}
+[data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
+[data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}
+[data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes hudglow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+@keyframes raysspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes ringpulse{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.5}50%{transform:translate(-50%,-50%) scale(1.06);opacity:.3}}
+</style>
+<script src="./image-slot.js"></script>
+</helmet>
+<div data-team="{{ team }}" style="background:#030407;padding:48px 56px 96px;display:flex;flex-direction:column;gap:56px">
+
+<section style="display:flex;flex-direction:column;gap:8px">
+  <div style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:30px;letter-spacing:.04em;color:#e8eef5">BRX HUD v2 — LANDSCAPE / RAIL-MOUNTED</div>
+  <div style="color:#7e93a8;font-size:14px;max-width:900px">Phone rides the picatinny rail in landscape. Game HUD, not a webpage: diegetic plates, segmented bars, glow numerals, and full-screen moments (T-MINUS, KILL CONFIRM, DOWN, REDEPLOY) with transition notes. Team color in Tweaks.</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+  <div style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.06em;color:#e8eef5">THE HUD — ALIVE</div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">ALIVE — combat idle</div>
+      <div style="width:844px;height:390px;background:radial-gradient(ellipse 120% 90% at 50% 45%,#0b1220 0%,#05080d 60%,#02040a 100%);color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0 1px,transparent 1px 4px)"></div>
+        <div style="position:absolute;inset:0;box-shadow:inset 0 0 120px -40px var(--team)"></div>
+        <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,transparent,var(--team),transparent)"></div>
+        <div style="position:absolute;right:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,transparent,var(--team),transparent)"></div>
+        <div style="position:absolute;top:26px;left:50%;transform:translateX(-50%) skewX(-12deg);background:var(--plate);border:1px solid var(--edge);padding:4px 26px">
+          <div style="transform:skewX(12deg);display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:var(--fd);font-weight:700;font-size:30px;font-variant-numeric:tabular-nums;letter-spacing:.04em;text-shadow:0 0 18px color-mix(in srgb,var(--glow) 55%,transparent)">12:42</span>
+            <span style="font-size:10px;letter-spacing:.24em;color:var(--mut);font-weight:600">TDM</span>
+          </div>
+        </div>
+        <div style="position:absolute;top:28px;left:34px;display:flex;align-items:center;gap:8px">
+          <span style="width:0;height:0;border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:14px solid var(--team)"></span>
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.1em">REAPER</span>
+          <span style="font-size:10px;letter-spacing:.2em;color:var(--team);font-weight:700">{{ teamName }} SQUAD</span>
+        </div>
+        <div style="position:absolute;top:30px;right:36px;display:flex;align-items:center;gap:14px;font-size:11px;color:var(--mut);font-weight:600">
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;background:var(--ok);border-radius:50%;box-shadow:0 0 8px var(--ok)"></span>LINK</span>
+          <span style="display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums"><span style="width:24px;height:11px;border:1.5px solid var(--mut);border-radius:2px;position:relative;display:inline-block"><span style="position:absolute;inset:2px;right:20%;background:var(--ok)"></span></span>82%</span>
+          <span style="border:1px solid var(--edge);color:var(--mut);font-size:10px;font-weight:700;letter-spacing:.16em;padding:3px 10px;transform:skewX(-10deg)"><span style="display:inline-block;transform:skewX(10deg)">◉ CAM</span></span>
+        </div>
+        <div style="position:absolute;top:66px;right:36px;display:flex;gap:12px;font-size:12px;color:var(--mut);font-weight:600;font-variant-numeric:tabular-nums">
+          <span>K <b style="color:var(--num);font-family:var(--fd);font-size:15px">4</b><b style="color:var(--ok);font-size:9px;vertical-align:top"> ✓MC</b></span>
+          <span>D <b style="color:var(--num);font-family:var(--fd);font-size:15px">3</b></span>
+          <span>A <b style="color:var(--mut);font-family:var(--fd);font-size:15px">—</b></span>
+          <span>ACC <b style="color:var(--mut);font-family:var(--fd);font-size:15px">—</b></span>
+        </div>
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;border:1px solid var(--mut);border-radius:50%;opacity:.55"></div>
+        <div style="position:absolute;left:36px;bottom:32px;display:flex;flex-direction:column;gap:7px;width:300px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;font-variant-numeric:tabular-nums;text-shadow:0 0 24px color-mix(in srgb,var(--health) 50%,transparent)">45</span>
+            <span style="font-family:var(--fd);font-weight:700;font-size:24px;font-variant-numeric:tabular-nums;color:var(--armor)">70</span>
+          </div>
+          <div style="height:14px;transform:skewX(-18deg);background:var(--plate2);border:1px solid var(--edge);padding:2px">
+            <div style="width:100%;height:100%;background:repeating-linear-gradient(90deg,var(--health) 0 22px,transparent 22px 26px);box-shadow:0 0 12px color-mix(in srgb,var(--health) 60%,transparent)"></div>
+          </div>
+          <div style="height:9px;width:78%;transform:skewX(-18deg);background:var(--plate2);border:1px solid var(--edge);padding:2px">
+            <div style="width:100%;height:100%;background:repeating-linear-gradient(90deg,var(--armor) 0 34px,transparent 34px 38px)"></div>
+          </div>
+        </div>
+        <div style="position:absolute;right:36px;bottom:32px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;font-variant-numeric:tabular-nums;text-shadow:0 0 24px color-mix(in srgb,var(--glow) 50%,transparent)">36</span>
+            <span style="font-family:var(--fd);font-weight:600;font-size:26px;color:var(--mut);font-variant-numeric:tabular-nums">/216</span>
+          </div>
+          <div style="display:flex;gap:3px">
+            <span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.25;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.25;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.25;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.25;transform:skewX(-14deg)"></span>
+          </div>
+          <span style="font-family:var(--fd);font-weight:600;font-size:11px;letter-spacing:.24em;color:var(--mut)">ASSAULT RIFLE</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">LOOK-THROUGH — camera passthrough (◉ CAM active) · drop an arena photo into the feed</div>
+      <div style="width:844px;height:390px;position:relative;overflow:hidden;flex:0 0 auto;background:#000;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;inset:0"><image-slot id="cam-feed" shape="rect" placeholder="camera feed — drop an arena photo"></image-slot></div>
+        <div style="position:absolute;inset:0;pointer-events:none">
+          <div style="position:absolute;top:0;left:0;right:0;height:80px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent)"></div>
+          <div style="position:absolute;bottom:0;left:120px;right:0;height:110px;background:linear-gradient(0deg,rgba(0,0,0,.55),transparent)"></div>
+          <div style="position:absolute;top:26px;left:50%;transform:translateX(-50%) skewX(-12deg);background:rgba(4,8,14,.6);border:1px solid var(--edge);padding:4px 26px">
+            <div style="transform:skewX(12deg);display:flex;align-items:baseline;gap:10px">
+              <span style="font-family:var(--fd);font-weight:700;font-size:30px;font-variant-numeric:tabular-nums;letter-spacing:.04em;color:var(--num);text-shadow:0 1px 6px rgba(0,0,0,.9)">12:42</span>
+              <span style="font-size:10px;letter-spacing:.24em;color:var(--mut);font-weight:600">TDM</span>
+            </div>
+          </div>
+          <div style="position:absolute;top:28px;left:34px;display:flex;align-items:center;gap:8px;text-shadow:0 1px 6px rgba(0,0,0,.9)">
+            <span style="width:0;height:0;border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:14px solid var(--team)"></span>
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.1em;color:var(--num)">REAPER</span>
+          </div>
+          <div style="position:absolute;top:30px;right:36px;display:flex;align-items:center;gap:14px;font-size:11px;color:var(--num);font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.9)">
+            <span style="display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums"><span style="width:24px;height:11px;border:1.5px solid var(--num);border-radius:2px;position:relative;display:inline-block"><span style="position:absolute;inset:2px;right:20%;background:var(--ok)"></span></span>82%</span>
+            <span style="background:var(--glow);color:#04121e;font-size:10px;font-weight:700;letter-spacing:.16em;padding:3px 10px;transform:skewX(-10deg)"><span style="display:inline-block;transform:skewX(10deg)">◉ CAM ON</span></span>
+          </div>
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;border:1px solid var(--num);border-radius:50%;opacity:.7"></div>
+          <div style="position:absolute;left:36px;bottom:32px;display:flex;flex-direction:column;gap:7px;width:300px">
+            <div style="display:flex;align-items:baseline;gap:10px;text-shadow:0 2px 10px rgba(0,0,0,.95)">
+              <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;font-variant-numeric:tabular-nums;color:var(--num)">45</span>
+              <span style="font-family:var(--fd);font-weight:700;font-size:24px;font-variant-numeric:tabular-nums;color:var(--armor)">70</span>
+            </div>
+            <div style="height:14px;transform:skewX(-18deg);background:rgba(0,0,0,.5);border:1px solid var(--edge);padding:2px">
+              <div style="width:100%;height:100%;background:repeating-linear-gradient(90deg,var(--health) 0 22px,transparent 22px 26px)"></div>
+            </div>
+            <div style="height:9px;width:78%;transform:skewX(-18deg);background:rgba(0,0,0,.5);border:1px solid var(--edge);padding:2px">
+              <div style="width:100%;height:100%;background:repeating-linear-gradient(90deg,var(--armor) 0 34px,transparent 34px 38px)"></div>
+            </div>
+          </div>
+          <div style="position:absolute;right:36px;bottom:32px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-shadow:0 2px 10px rgba(0,0,0,.95)">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;font-variant-numeric:tabular-nums;color:var(--num)">36</span>
+              <span style="font-family:var(--fd);font-weight:600;font-size:26px;color:var(--num);opacity:.7;font-variant-numeric:tabular-nums">/216</span>
+            </div>
+            <span style="font-family:var(--fd);font-weight:600;font-size:11px;letter-spacing:.24em;color:var(--num);opacity:.7">ASSAULT RIFLE</span>
+          </div>
+        </div>
+      </div>
+      <div style="color:#7e93a8;font-size:12px;font-family:ui-monospace,monospace;max-width:844px">◉ CAM toggles the phone camera as the HUD background — plates go translucent, ink gets heavy shadows. Costs battery; off by default.</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">TAKING FIRE — low HP, damage flash, reload cue</div>
+      <div style="width:844px;height:390px;background:radial-gradient(ellipse 120% 90% at 50% 45%,#140a0e 0%,#0a0409 60%,#050205 100%);color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;inset:0;box-shadow:inset 0 0 140px -20px rgba(255,40,40,.55);animation:hudglow 1s infinite"></div>
+        <div style="position:absolute;top:26px;left:50%;transform:translateX(-50%) skewX(-12deg);background:var(--plate);border:1px solid var(--edge);padding:4px 26px">
+          <div style="transform:skewX(12deg)"><span style="font-family:var(--fd);font-weight:700;font-size:30px;font-variant-numeric:tabular-nums">08:11</span></div>
+        </div>
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px">
+          <span style="width:6px;height:6px;border:1px solid var(--bad);border-radius:50%"></span>
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.3em;color:var(--bad);text-indent:.3em;animation:blink .5s infinite">TAKING FIRE</span>
+        </div>
+        <div style="position:absolute;left:36px;bottom:32px;display:flex;flex-direction:column;gap:7px;width:300px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;font-variant-numeric:tabular-nums;color:var(--bad);text-shadow:0 0 28px rgba(255,60,60,.7);animation:blink 1s infinite">09</span>
+            <span style="font-family:var(--fd);font-weight:700;font-size:24px;font-variant-numeric:tabular-nums;color:var(--mut)">0</span>
+          </div>
+          <div style="height:14px;transform:skewX(-18deg);background:var(--plate2);border:1px solid var(--bad);padding:2px">
+            <div style="width:20%;height:100%;background:repeating-linear-gradient(90deg,var(--bad) 0 22px,transparent 22px 26px);box-shadow:0 0 12px rgba(255,60,60,.7)"></div>
+          </div>
+          <div style="height:9px;width:78%;transform:skewX(-18deg);background:var(--plate2);border:1px solid var(--edge);padding:2px"></div>
+        </div>
+        <div style="position:absolute;right:36px;bottom:32px;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <span style="transform:skewX(-12deg);background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.26em;padding:3px 18px;animation:blink .7s infinite"><span style="display:inline-block;transform:skewX(12deg)">RELOAD ▸▸</span></span>
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;font-variant-numeric:tabular-nums;color:var(--warn);text-shadow:0 0 24px rgba(255,176,32,.6)">02</span>
+            <span style="font-family:var(--fd);font-weight:600;font-size:26px;color:var(--mut)">/216</span>
+          </div>
+          <div style="display:flex;gap:3px"><span style="width:5px;height:16px;background:var(--warn);transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--warn);opacity:.3;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.15;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.15;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.15;transform:skewX(-14deg)"></span><span style="width:5px;height:16px;background:var(--num);opacity:.15;transform:skewX(-14deg)"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+  <div style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.06em;color:#e8eef5">FULL-SCREEN MOMENTS — the transitions</div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">T-MINUS — hazard wipe in, punch-scale each second</div>
+      <div style="width:844px;height:390px;background:#04070c;color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;top:0;left:0;right:0;height:26px;background:repeating-linear-gradient(-45deg,var(--warn) 0 22px,#0a0a0a 22px 44px);opacity:.9"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;height:26px;background:repeating-linear-gradient(-45deg,var(--warn) 0 22px,#0a0a0a 22px 44px);opacity:.9"></div>
+        <div style="position:absolute;inset:0;box-shadow:inset 0 0 160px -40px var(--team)"></div>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);display:flex;align-items:center;gap:44px">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:26px;letter-spacing:.3em;color:var(--warn);white-space:nowrap">T-MINUS</span>
+            <span style="font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600">WEAPONS ARMING</span>
+            <span style="font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600">STAND BY</span>
+          </div>
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:230px;line-height:.8;font-variant-numeric:tabular-nums;text-shadow:0 0 60px color-mix(in srgb,var(--glow) 60%,transparent)">05</span>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="background:var(--team);color:var(--team-ink);font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;padding:4px 16px;transform:skewX(-12deg)"><span style="display:inline-block;transform:skewX(12deg)">{{ teamName }} · REAPER</span></span>
+            <span style="font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:center">TDM · 15:00</span>
+          </div>
+        </div>
+      </div>
+      <div style="color:#7e93a8;font-size:12px;font-family:ui-monospace,monospace;max-width:844px">MOTION · stripes slide in 250ms → numeral punch-scales 1.15→1.0 each tick → flash white-out 80ms at zero</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">KILL CONFIRMED — full-screen takeover, victory-moment scale</div>
+      <div style="width:844px;height:390px;background:radial-gradient(circle at 50% 42%,#16264a 0%,#080d1a 55%,#03050c 100%);color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;left:50%;top:42%;width:1400px;height:1400px;transform:translate(-50%,-50%);background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--glow) 13%,transparent) 0deg 6deg,transparent 6deg 16deg);-webkit-mask-image:radial-gradient(circle,#000 0%,transparent 60%);mask-image:radial-gradient(circle,#000 0%,transparent 60%);animation:raysspin 30s linear infinite"></div>
+        <div style="position:absolute;left:50%;top:42%;width:340px;height:340px;transform:translate(-50%,-50%);border:2px solid color-mix(in srgb,var(--glow) 60%,transparent);border-radius:50%;animation:ringpulse 2.4s ease-in-out infinite"></div>
+        <div style="position:absolute;left:50%;top:42%;width:540px;height:540px;transform:translate(-50%,-50%);border:1px solid color-mix(in srgb,var(--glow) 25%,transparent);border-radius:50%"></div>
+        <div style="position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px">
+          <span style="background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.26em;padding:3px 20px;transform:skewX(-12deg)"><span style="display:inline-block;transform:skewX(12deg)">+1 ELIMINATION</span></span>
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:148px;line-height:.82;letter-spacing:.04em;text-shadow:0 0 70px var(--glow),0 0 18px color-mix(in srgb,var(--glow) 70%,transparent)">KILL</span>
+          <span style="font-family:var(--fd);font-weight:700;font-size:34px;letter-spacing:.52em;text-indent:.52em;color:var(--glow);text-shadow:0 0 30px var(--glow)">CONFIRMED</span>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <span style="width:90px;height:5px;background:var(--warn);transform:skewX(-24deg)"></span>
+            <span style="width:34px;height:5px;background:var(--glow);transform:skewX(-24deg)"></span>
+            <span style="width:12px;height:5px;background:var(--glow);opacity:.5;transform:skewX(-24deg)"></span>
+          </div>
+        </div>
+        <div style="position:absolute;bottom:34px;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:16px">
+          <span style="background:var(--team-yellow);color:#1a1400;font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.14em;padding:3px 14px;transform:skewX(-12deg)"><span style="display:inline-block;transform:skewX(12deg)">YELLOW OPERATIVE DOWN</span></span>
+          <span style="font-size:10px;letter-spacing:.26em;color:var(--mut);font-weight:600">K 5 · CONFIRMED BY MISSION CONTROL</span>
+        </div>
+      </div>
+      <div style="color:#7e93a8;font-size:12px;font-family:ui-monospace,monospace;max-width:844px">MOTION · white-out 60ms → rays burst outward + slow spin → "KILL" slams in 1.8→1.0 scale with 2-frame shake → shock ring expands → gold shimmer sweeps type → holds 1.2s → whole comp collapses into the K counter, top-right</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">DOWN — red wash, HUD desaturates behind</div>
+      <div style="width:844px;height:390px;background:radial-gradient(ellipse 120% 90% at 50% 45%,#160709 0%,#0b0305 60%,#040102 100%);color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;inset:0;box-shadow:inset 0 0 180px -30px rgba(255,40,40,.5)"></div>
+        <div style="position:absolute;inset:0;opacity:.15;filter:grayscale(1)">
+          <div style="position:absolute;left:36px;bottom:32px;font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8">00</div>
+          <div style="position:absolute;right:36px;bottom:32px;font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8">36<span style="font-size:26px">/216</span></div>
+        </div>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);display:flex;align-items:center;gap:48px">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;letter-spacing:.14em;color:var(--bad);text-shadow:0 0 40px rgba(255,60,60,.6)">DOWN</span>
+            <span style="display:flex;align-items:center;gap:8px;font-size:13px;letter-spacing:.14em;color:var(--mut);font-weight:600">KILLED BY <b style="background:var(--team-yellow);color:#1a1400;font-family:var(--fd);font-weight:700;padding:2px 12px;transform:skewX(-12deg);display:inline-block"><span style="display:inline-block;transform:skewX(12deg)">YELLOW</span></b></span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center">
+            <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:190px;line-height:.8;font-variant-numeric:tabular-nums">06</span>
+            <span style="font-size:12px;letter-spacing:.34em;color:var(--mut);font-weight:600">REDEPLOY IN</span>
+          </div>
+        </div>
+      </div>
+      <div style="color:#7e93a8;font-size:12px;font-family:ui-monospace,monospace;max-width:844px">MOTION · impact frame: 60ms white flash → red wash floods 300ms → countdown ticks with heartbeat pulse</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">REDEPLOY — team-color wipe, weapons hot</div>
+      <div style="width:844px;height:390px;background:#04070c;color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;top:0;bottom:0;left:-8%;width:56%;background:linear-gradient(90deg,var(--team),color-mix(in srgb,var(--team) 40%,transparent));transform:skewX(-14deg)"></div>
+        <div style="position:absolute;top:0;bottom:0;left:46%;width:3%;background:var(--num);opacity:.9;transform:skewX(-14deg)"></div>
+        <div style="position:absolute;top:50%;left:56%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px">
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;letter-spacing:.08em;line-height:.9;text-shadow:0 0 40px color-mix(in srgb,var(--glow) 50%,transparent)">REDEPLOYED</span>
+          <span style="font-family:var(--fd);font-weight:600;font-size:18px;letter-spacing:.3em;color:var(--ok)">WEAPONS HOT ▸▸▸</span>
+          <span style="font-size:12px;letter-spacing:.16em;color:var(--mut);font-weight:600">45 · 70 · MAG FULL</span>
+        </div>
+        <div style="position:absolute;top:50%;left:10%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;color:var(--team-ink)">
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:34px;letter-spacing:.1em">REAPER</span>
+          <span style="font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.26em">{{ teamName }} SQUAD</span>
+        </div>
+      </div>
+      <div style="color:#7e93a8;font-size:12px;font-family:ui-monospace,monospace;max-width:844px">MOTION · team wipe sweeps L→R 280ms → text tracks in → wipe exits R, HUD elements fly to corners</div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+  <div style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.06em;color:#e8eef5">BLACKOUT — night ops</div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">NIGHT — no white, no glow, essentials only</div>
+      <div data-env="night" style="width:844px;height:390px;background:#000;color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;border:1px solid #150808;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;top:28px;left:50%;transform:translateX(-50%);font-family:var(--fd);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums;color:var(--mut)">12:42</div>
+        <div style="position:absolute;left:38px;bottom:34px;display:flex;flex-direction:column;gap:8px;width:280px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-family:var(--fd);font-weight:700;font-size:76px;line-height:.8;font-variant-numeric:tabular-nums;color:var(--num)">45</span>
+            <span style="font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600">HP</span>
+          </div>
+          <div style="height:5px;background:#120505"><div style="width:100%;height:100%;background:var(--health)"></div></div>
+          <div style="height:4px;width:70%;background:#120505"><div style="width:100%;height:100%;background:var(--armor)"></div></div>
+        </div>
+        <div style="position:absolute;right:38px;bottom:34px;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <div style="display:flex;align-items:baseline;gap:6px">
+            <span style="font-family:var(--fd);font-weight:700;font-size:76px;line-height:.8;font-variant-numeric:tabular-nums;color:var(--num)">36</span>
+            <span style="font-family:var(--fd);font-weight:600;font-size:20px;color:var(--mut)">/216</span>
+          </div>
+          <span style="font-size:10px;letter-spacing:.3em;color:var(--mut);font-weight:600">D 3 · K —</span>
+        </div>
+        <div style="position:absolute;bottom:34px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.34em;color:var(--mut);font-weight:600">NIGHT OPS</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px">
+  <div style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.06em;color:#e8eef5">SETUP — before the match</div>
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">IDLE — set my gun + live scan</div>
+      <div style="width:844px;height:390px;background:radial-gradient(ellipse 120% 90% at 50% 45%,#0b1220 0%,#05080d 60%,#02040a 100%);color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;top:0;bottom:0;left:0;width:46%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px">
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:54px;letter-spacing:.16em;text-indent:.16em">BRX<b style="color:var(--glow)">/</b></span>
+          <span style="font-size:11px;letter-spacing:.4em;color:var(--mut);font-weight:600">COMBAT HUD</span>
+          <button style="height:60px;width:260px;border:0;background:var(--glow);color:#04121e;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.16em;cursor:pointer;transform:skewX(-12deg)"><span style="display:inline-block;transform:skewX(12deg)">SET MY GUN ▸</span></button>
+        </div>
+        <div style="position:absolute;top:0;bottom:0;right:0;width:54%;background:var(--plate2);border-left:1px solid var(--edge);padding:26px 36px 26px 26px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--glow);font-weight:600;letter-spacing:.14em"><span style="width:8px;height:8px;background:var(--glow);border-radius:50%;animation:blink 1.2s infinite"></span>SCANNING FOR TAGGERS</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;background:var(--plate);border:1px solid var(--edge);padding:12px 16px;transform:skewX(-6deg)">
+            <span style="display:inline-block;transform:skewX(6deg);font-family:ui-monospace,monospace;font-size:16px;font-weight:700">GUN-A<span style="color:var(--glow)">-3D4F</span></span>
+            <span style="display:inline-flex;transform:skewX(6deg);align-items:flex-end;gap:2px"><i style="width:4px;height:6px;background:var(--ok)"></i><i style="width:4px;height:10px;background:var(--ok)"></i><i style="width:4px;height:14px;background:var(--ok)"></i><i style="width:4px;height:18px;background:var(--ok)"></i><b style="color:var(--mut);font-size:11px;margin-left:6px">-48</b></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;background:var(--plate);border:1px solid var(--edge);padding:12px 16px;transform:skewX(-6deg)">
+            <span style="display:inline-block;transform:skewX(6deg);font-family:ui-monospace,monospace;font-size:16px;font-weight:700">GUN-B<span style="color:var(--glow)">-88A1</span></span>
+            <span style="display:inline-flex;transform:skewX(6deg);align-items:flex-end;gap:2px"><i style="width:4px;height:6px;background:var(--ok)"></i><i style="width:4px;height:10px;background:var(--ok)"></i><i style="width:4px;height:14px;background:var(--edge)"></i><i style="width:4px;height:18px;background:var(--edge)"></i><b style="color:var(--mut);font-size:11px;margin-left:6px">-71</b></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;background:var(--plate);border:1px solid var(--edge);padding:12px 16px;opacity:.55;transform:skewX(-6deg)">
+            <span style="display:inline-block;transform:skewX(6deg);font-family:ui-monospace,monospace;font-size:16px;font-weight:700">GUN-C<span style="color:var(--glow)">-1C09</span></span>
+            <span style="display:inline-block;transform:skewX(6deg);color:var(--warn);font-size:11px;font-weight:700;letter-spacing:.1em">IN USE</span>
+          </div>
+          <div style="font-size:12px;color:var(--mut);line-height:1.5;margin-top:auto">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="color:#7e93a8;font-size:13px;font-family:ui-monospace,monospace">LOBBY — kitted, ready-up</div>
+      <div style="width:844px;height:390px;background:radial-gradient(ellipse 120% 90% at 50% 45%,#0b1220 0%,#05080d 60%,#02040a 100%);color:var(--num);position:relative;overflow:hidden;flex:0 0 auto;box-shadow:inset 0 0 120px -40px var(--team),0 16px 50px rgba(0,0,0,.6)">
+        <div style="position:absolute;top:30px;left:36px;display:flex;flex-direction:column;gap:4px">
+          <span style="font-family:var(--fd);font-style:italic;font-weight:700;font-size:44px;letter-spacing:.08em;line-height:.9">REAPER</span>
+          <span style="display:flex;align-items:center;gap:8px"><span style="background:var(--team);color:var(--team-ink);font-family:var(--fd);font-weight:700;font-size:12px;letter-spacing:.14em;padding:2px 12px;transform:skewX(-12deg)"><span style="display:inline-block;transform:skewX(12deg)">{{ teamName }} SQUAD</span></span><span style="font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)">GUN-A-3D4F</span></span>
+        </div>
+        <div style="position:absolute;top:124px;left:36px;display:flex;gap:10px">
+          <div style="background:var(--plate);border:1px solid var(--edge);padding:10px 18px;transform:skewX(-8deg)"><div style="transform:skewX(8deg)"><div style="font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.04em">ASSAULT RIFLE</div><div style="font-size:11px;color:var(--mut);letter-spacing:.14em;font-weight:600">MAG 36 · RESERVE 216</div></div></div>
+          <div style="background:var(--plate);border:1px solid var(--edge);padding:10px 18px;transform:skewX(-8deg)"><div style="transform:skewX(8deg)"><div style="font-family:var(--fd);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums"><span style="color:var(--health)">45</span> · <span style="color:var(--armor)">70</span></div><div style="font-size:11px;color:var(--mut);letter-spacing:.14em;font-weight:600">TDM LOADOUT</div></div></div>
+        </div>
+        <div style="position:absolute;left:36px;right:36px;bottom:36px;display:flex;align-items:center;gap:20px">
+          <button style="flex:1;height:96px;border:0;background:var(--ok);color:#04120a;font-family:var(--fd);font-style:italic;font-weight:700;font-size:36px;letter-spacing:.2em;cursor:pointer;transform:skewX(-10deg);box-shadow:0 0 40px -8px var(--ok)"><span style="display:inline-block;transform:skewX(10deg)">READY ✓</span></button>
+          <div style="font-size:13px;color:var(--mut);font-weight:600;max-width:200px;line-height:1.5">Waiting for the host to arm the match. Tap again to un-ready.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;team&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;blue&quot;,&quot;options&quot;:[&quot;blue&quot;,&quot;yellow&quot;,&quot;red&quot;,&quot;green&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const team = this.props.team ?? "blue";
+    return { team, teamName: team.toUpperCase() };
+  }
+}
+</script>
+</body>
+</html>

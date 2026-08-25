@@ -362,7 +362,12 @@ The HUD is the player's whole world during a match. Design target: **readable at
 length on a mounted phone, in direct outdoor sun, while moving** — and **fully dark at night** (§4.3).
 It is a pure render of engine state (§4.4); it holds no game logic.
 
-### 4.1 Layout — big, sparse, thumb-free
+> **Layout is superseded by the Phone HUD v2 design export** (`docs/spec/design/hud-export/`, 2026-08-25):
+> **landscape, rail-mounted (844×390 design frame)**, ten states incl. full-screen moments (T-MINUS, KILL
+> CONFIRMED, DOWN, REDEPLOY), optional camera look-through, blackout. The sections below describe the
+> *requirements* (honesty rule, blackout, glare, state mapping); the export describes the *pixels*.
+
+### 4.1 Layout — big, sparse, thumb-free (original portrait sketch; see the export)
 
 Portrait, full-bleed, **no scrolling during play** (the log/diagnostics live behind a button). One
 screen, three zones:
