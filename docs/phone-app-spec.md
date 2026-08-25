@@ -96,7 +96,22 @@ pick, one link, ~1 m away.
   BRX NUS link (nRF Connect: connect `Tactix-XXXX` (stock) / `Tactix2-XXXX` (renamed by Callsign), subscribe TX `…0003`, write `$PING,*` to RX
   `…0002`, expect `$PONG`). The whole plan rests on this 10-minute check.
 
-## FAIL-FAST — the Web Bluetooth gate spike (do this BEFORE building the PWA)
+## ⛔ RESULT (2026-08-25): Web Bluetooth is NOT the product path — native app or Companion
+
+The gate spike below was run (`webapp/ble-test.html`, hosted on Cloudflare at
+`open-brx.iamrossi.workers.dev/ble-test`). **Outcome: Web Bluetooth failed the bar for a product.**
+- On the test Android phone Chrome reported **"Web Bluetooth API globally disabled"** — it needed
+  `chrome://flags` wrangling that never fully cleared. **Requiring end-users to flip Chrome flags is a
+  non-starter.**
+- **iOS has no Web Bluetooth at all** — so a PWA can never serve iPhone users regardless.
+- **Decision:** the **Web-Bluetooth PWA is demoted to a dev/test harness only** (`ble-test.html` stays
+  useful for that on a clean phone). The **product phone path is a NATIVE app** (Capacitor / React-Native
+  wrapping the same web UI + engine, using native BLE → no flags, works iOS + Android). And the
+  **primary node stays the Companion** (ADR-0001) — a dedicated device with zero phone-platform
+  dependency, and the sellable unit. The rest of this spec's PWA detail is retained as reference for the
+  shared web-UI/engine layer a native wrapper reuses.
+
+## FAIL-FAST — the Web Bluetooth gate spike (ran 2026-08-25 → see RESULT above)
 
 The nRF Connect check above proves **native** Android BLE reaches the gun. It does **not** prove
 **Web Bluetooth** (Chrome) can drive it well enough to run a game — and if Web Bluetooth can't, the
