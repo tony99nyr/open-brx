@@ -1305,3 +1305,24 @@ watch `$HIR` tok3. If it tracks the shooter, per-player attribution is BLE-nativ
 bench becomes an optimisation rather than a prerequisite.
 
 Both traces archived (`protocol/captures/raw/`) with decoded transcripts.
+
+### 2026-08-25 — 🎯 P2 CLOSED over BLE: `$HIR` token 3 IS the shooter's player id (read-path)
+Two guns (`Tactix-E20D`, `Tactix-3D4F`) driven from the Windows `brx-mcp` MCP server (WSL session):
+standard §7e TDM arm at vol 69, config-all-then-spawn-all, identical except **`$PSET,6,…`+`$TID,1`** on
+E20D and **`$PSET,19,…`+`$TID,2`** on 3D4F. Both spawned (`$LCD,45,70,0,0,36,216`). Tony traded shots.
+
+- 3D4F → E20D: **26 × `$HIR,4,0,19,2,9,0,3,*`** (two full kills, armor 70→0 then HP 45→0).
+- E20D → 3D4F: **6 × `$HIR,4,0,6,1,9,0,3,*`**.
+- **Token 3 = the shooter's `$PSET` player id, token 4 = the shooter's `$TID`, on every hit, both
+  directions.** Combined with cap10/cap11 (`$PSET` token 1 sets it), **per-player attribution is fully
+  BLE-native** — no `SETUP` cable, no IR receiver. Written up as `brx-protocol.md` §7q; §7k banner +
+  §4 row updated; FOLLOWUPS P2 ✅.
+- Why it was missed: every prior capture had all guns at id 0, so tok3 never varied.
+- Extras: a **dead gun can't fire** (`$BUT` without `$ALCD` at HP 0 — settles the CS plant gate);
+  `$HIR` token 1 read `4` while armor absorbed, `0` for HP-taking hits and `2` on the killing hit
+  (effect class, unexplained); token 2 still `0`; E20D hit the ~6.6 s bleak drop once right after
+  connect, then held ~3.5 min.
+- **Spec impact (docs/spec/, not yet amended):** `shooter_id` is present on the phone path from `$HIR`
+  tok3; `Player` needs a `player_num` (wire 0–63 / display 1–64); `$PSET` is per-player, not per-game
+  (`setup_frames()` must take the id); FFA = one team + FF on + distinct ids; `feedback{kill}` has a
+  real target; "approx" attribution can be deleted. Amendment A3 to `contracts.md` is the next step.

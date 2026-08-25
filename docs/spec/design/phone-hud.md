@@ -15,18 +15,22 @@ a glance, in sun or dark, while the player is moving and getting shot at.
 |---|---|
 | **IDLE** | "Set my gun" connect screen (B1) |
 | **CONNECTED** | gun named; "waiting for kit-out from Mission Control" |
-| **KITTED** | your loadout (weapon, team, name); "ready when you are" |
-| **LOBBY** | big **READY-UP** toggle; your team + name |
+| **KITTED** | your loadout (weapon, team, name, **#number** 1–63) + the big **READY-UP** toggle (ready-up is a KITTED action) |
+| **LOBBY** | "armed-pending": gun configured, waiting for the host's start — team + name + number, no controls |
 | **ARMED** | full-screen **countdown** (T-minus); the gun is also beeping |
 | **LIVE / ALIVE** | the **HUD** (B2) |
 | **LIVE / DOWN** | **death/respawn** overlay (B3) |
-| any + link lost | small, non-alarming "reconnecting" chip; the HUD keeps running |
+| **match over** | brief "MATCH OVER", then back to **KITTED** (gun + player kept) — never "Set my gun" |
+| any + Wi-Fi/MC lost | small, non-alarming "reconnecting" chip; the HUD keeps running (normal for most of a park match) |
+| any + gun link lost | red "GUN LINK LOST" strip; values freeze |
+| gun relinked (ARMED/LIVE) | amber **"GUN RELINKED — pull the trigger"** prompt (~10 s) → resolves to ALIVE / DOWN |
+| any + preflight fail | small red preflight chip (Wi-Fi / MC / phone battery / screen / gun / headset) → diagnostics |
 
 ### B1 · Set my gun (connect)
 - A **"Set my gun"** button opens a **scanning sheet**: live list of nearby taggers, each with its
   **name** + **MAC-tail** + signal (so the player picks the right gun). Tap to connect. Reassure:
   "power-cycle a gun if it doesn't appear."
-- Then **team** (if self-selected) and a clear "connected — waiting for the host" state.
+- Then a clear "connected — waiting for the host" state. **No team self-select** — team, name, number come from Mission Control.
 
 ### B2 · The in-game HUD (ALIVE) — the hero screen
 A clean FPS HUD. Suggested zones (iterate freely, keep the hierarchy):
@@ -37,15 +41,15 @@ A clean FPS HUD. Suggested zones (iterate freely, keep the hierarchy):
 - **Personal stats cluster** — K / D / A / accuracy. **Deaths is the only one the phone knows locally**;
   **kills / assists / accuracy show "— MC"** (a small "synced" tick when MC supplies them). Make "— MC"
   look intentional.
-- **Team + identity** — team color as an ambient edge tint; name small.
+- **Team + identity** — team color as an ambient edge tint; name small; **player number** `#7` (1–63).
 - **Battery** — small gun-battery indicator + a **low-battery** warning state.
-- **"Killed by …"** — brief callout on death (team-level: "killed by YELLOW").
+- **"Killed by …"** — brief callout on death naming the **killer**: "☠ by REAPER · YELLOW" (the phone knows exactly who shot it).
 Reads in **direct sun** (`data-env="outdoor"`) and **blackout** (`data-env="night"`) with no redesign —
 just re-themed via tokens. Motion minimal (glare + battery); the hit/damage flash and death are the main
 animated moments.
 
 ### B3 · Death & respawn (DOWN)
-- Clear **DOWN** state — desaturate/dim the HUD, big central **respawn countdown**, "killed by <TEAM>".
+- Clear **DOWN** state — desaturate/dim the HUD, big central **respawn countdown**, "☠ by <NAME> · <TEAM>".
 - On respawn: a crisp **"RESPAWNED"** moment, HUD back to full ALIVE. (The gun re-arms itself; the screen
   reflects it.)
 
@@ -61,5 +65,5 @@ field-debug panel + a **"save / share log"** action (the host can pull it). Util
 is fine; it's for fixing problems, not for play.
 
 ## Deliverables to iterate
-B1 connect · B2 HUD in **both sun and blackout** · B3 death/respawn · the ARMED countdown · the LOBBY
-ready-up. Keep it one product with Mission Control (shared `tokens.css`).
+B1 connect · B2 HUD in **both sun and blackout** · B3 death/respawn · the ARMED countdown · the KITTED
+ready-up · the "gun relinked" prompt. Keep it one product with Mission Control (shared `tokens.css`).

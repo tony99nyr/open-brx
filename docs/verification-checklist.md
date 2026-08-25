@@ -6,6 +6,37 @@ the observed behaviour. **This is the to-do list for your next hardware session(
 
 Legend: ⬜ unverified · ✅ verified · ⚠ verified-with-caveat · ❌ failed (→ FOLLOWUPS)
 
+## ⭐ NEXT — post-A4 spec bench items (2026-08-25, `docs/spec/`)
+Each one unblocks a spec decision marked [OPEN — bench] in `docs/spec/README.md` §6. Order = value.
+1. ⬜ **Hold-across-disperse** (M-START §3): write the config head (`$START`+config, NO `$SPAWN`, no `VA81`),
+   leave the gun unspawned **5+ minutes** (walk away, come back), then `$SPAWN,,*` + `$AMMO`. Does it go live with
+   config intact (`$LCD,45,70,…` echo, correct ammo)? If not, the T-10 s head re-write becomes the default.
+2. ⬜ **BLE resync probe** (M-NODE §3.10): while LIVE, drop the link (walk out of range / toggle BT), kill the
+   gun during the gap, reconnect. What does the gun emit on reconnect? Does `$PHONE` (or anything
+   side-effect-free) re-elicit `$LCD`/`$HP` without spawning? Also: does a gun keep its config across a BLE
+   reconnect vs a power-cycle (E1 assumption)?
+3. ⬜ **`$VERSION` with the headset OFF** — does the gun answer? (§7m: `$PING` does.) Decides whether there is a
+   side-effect-free headset detector or only the `$LCD`-echo-on-config path (`ack_config.gun_echo`).
+4. ⬜ **20-minute two-node soak** (Pixel + iPhone, one gun each): screen-lock one phone at T+5, background the
+   other at T+10, walk both out of Wi-Fi range. Check: BLE held? engine resumed on unlock (respawn/expiry
+   reconcile)? outbox flushed on return? timed end fired locally on both?
+5. ⬜ **Tutorial safety** (M-MODES §4): a configured-but-unspawned gun (head written, no `$SPAWN`) — does it take
+   damage / register `$HIR` when a try-out gun shoots it? Decides whether kit-out try-outs are safe in a crowd.
+6. ⬜ **`$PSET` token 2** — vary it (0/1/7) with everything else fixed; any change in `$HIR`, LED, sounds?
+7. ⬜ **`$HIR` token 1** — read `4` while armor absorbed, `0` for HP-taking hits, `2` on the kill (§7q). Confirm
+   the pattern and whether it tracks weapon `$SIR` type vs applied effect.
+8. ⬜ **Phone auto-rejoin** (M-NET §8): on each phone, walk out of the router's range for 3 min, walk back — does
+   it rejoin the no-internet SSID by itself? With mobile data on vs off? Record per OS.
+9. ⬜ **`$VOLTS` % token** — controlled discharge sweep, both tokens (still open; HUD battery reads tok3 today).
+10. ⬜ **Head echo with the headset OFF** (A5.4): write a config head (no `$SPAWN`) to a gun whose headset is off —
+    does it answer `$LCD,0,0,0,0,0,0` anyway? Decides whether the lobby push can prove the headset or only `$SPAWN` can.
+11. ⬜ **`$START` in the head audible?** — at the lobby head write, does the gun play anything? (M-START §3 T-10 re-write.)
+12. ⬜ **Mid-match `$TID` write** (infection `team_flip`): change a live gun's `$TID`; does friendly-fire resolution
+    follow immediately (same-team hits now inert / enemy hits now damage)?
+13. ⬜ **iOS locked-phone BLE**: lock the iPhone node mid-match, take 3 hits, unlock — did the queued `$HIR`/`$HP`
+    notifications reach the JS engine on resume, or were they lost? (node.md §3.11.)
+14. ⬜ **`game_over` cue** — pin by ear (`VSF`+`JAY` per §7o end sequence) and add to `sounds.py`.
+
 ## ⭐ EFFICIENT BENCH PLAN (post sim-hardening, 2026-08-25)
 All game LOGIC for every mode is now exhaustively verified in software (156 sim scenarios + the SimGame
 harness) — so the bench only needs to confirm what the sim CAN'T model. Do these in order; each is fast:
@@ -17,7 +48,7 @@ harness) — so the bench only needs to confirm what the sim CAN'T model. Do the
    mid-game** → confirm it reconnects and rejoins (`reconnected …`); confirm a game never hangs.
 3. ⬜ **Teardown** — after a game, the loser isn't stuck (revived, headset dark, pulses last team). (✅ once.)
 4. ⬜ **Config knobs on-gun** (Session C): night mode LEDs-off (P17), outdoor, kid_mode FF-off, volume, weapons.
-5. ✅ **Native kill feedback** (D4) — RESOLVED 2026-08-25: **fully BLE-drivable** — the host sends `$SFLASH` (green flash) + token-4 `$PLAY` (announcer) per kill, exactly as Callsign does (§7o / B18). Only per-player attribution (P2) remains.
+5. ✅ **Native kill feedback** (D4) — RESOLVED 2026-08-25: **fully BLE-drivable** — the host sends `$SFLASH` (green flash) + token-4 `$PLAY` (announcer) per kill, exactly as Callsign does (§7o / B18). ✅ **Per-player attribution (P2) also RESOLVED** the same day (§7p/§7q).
 6. ⬜ **Health variants** (Session B): syphon/regen `$LIFE` behaviour on real guns.
 7. ⬜ **Objective modes** — need a station (grenade/Utility Box) to emit the IR events; gated on the IR bench
    (Session E/F). Engines + station-event handling are sim-proven; only the IR source is missing.
@@ -42,7 +73,7 @@ The newest, least-verified work. Do these first while the taggers are out.
   config-all-then-spawn barrier → all guns live ~together (B10); teams/loadouts land; for an objective mode, run
   **Station Arming** before kickoff. Confirms the two processes work as one flow.
 - ⬜ **`$VOLTS` token 4** — sample at high vs low charge to decode the 4th number (token 3 = charge %, confirmed).
-- ⬜ **Fleet battery reliability** — weak-signal taggers missed `$VOLTS`; decide persistent-connection vs RSSI-dependent.
+- ❎ **Fleet battery reliability** — superseded by spec A4.9: battery/fw/headset are **node-reported** (each phone holds its own gun); MC's BLE is scan-only presence. No persistent fleet reader.
 - ⬜ **Headset-OFF heuristic** — power a headset off, connect: confirm "reachable but drops with zero frames".
 
 ## Session A — M0 live run — ✅ VERIFIED 2026-08-25 (R0BAS vs R0BP1, TDM, frag_limit=3)
@@ -53,7 +84,7 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ✅ **Frag limit** ended the game with the correct winner (team2 to 3).
 - ✅ **BLE held the whole match** — Tier-0 direct BLE sustained a 2-gun game with no mid-game drop.
 - ⬜ **Time limit / respawn ramp** — not exercised this run (frag limit ended it); confirm separately.
-- ⬜ **FFA** (`play ffa <A> <B> <C>`) — unique `$TID` per gun; the *specific* killer is credited.
+- ⬜ **FFA** (`play ffa <A> <B> <C>`) — one `$TID`, FF on, **distinct `$PSET` player ids**; the *specific* killer is credited from `$HIR` tok3 (P2 ✅ — this is now wiring, not discovery).
 - ⬜ **Attribution fuse** — a non-fatal hit long before a later (unrelated) death does NOT steal a kill.
 
 ## Session B — health variants (2 taggers, ~15 min)
@@ -79,7 +110,7 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ⬜ **Multi-tagger fleet** — run `fleet` with 2+ taggers on; confirm serial diagnose + the dashboard line per tagger.
 - ✅ **USB `QUERY` device record** (`usb-query`, verified 2026-08-24) — Serial/Head PIN (= headset sticker), headset version + head voltage, PlayerID, nRF flags, PCB, etc. Teensy VID 16C0 (COM5).
 - ⬜ **Armory inventory** — cable each tagger, `usb-query`, and record which headset (sticker/serial) pairs to which gun. Build the tagger↔headset map for match-day gear tracking.
-- ⬜ **`SETUP` (writes)** — the factory-provisioning side (set tagger id / re-pair headset → P2). NOT built; verify carefully on a throwaway tagger before trusting it.
+- ❎ **`SETUP` (writes)** — no longer needed for P2 (player id is `$PSET` token 1 over BLE, §7p). Only relevant for headset re-pair; NOT built.
 
 ## Session D — native kill feedback + nRF — ✅ RESOLVED 2026-08-25 (D4); D1 re-scoped
 - ✅ **Native feedback over BLE** — the **host drives the identical feedback over plain BLE**: `cap8`
@@ -88,9 +119,9 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
   call was a wrong-command (`$GLED`) probe. (In a phoneless native game the gun self-fires it over nRF.)
 - ✅ **Shooter-side kill event** — **none** on BLE beyond the victim's `$HIR`/`$HP,0` (team-granular) —
   which is *why the host must decide the kill* and send the feedback (D4 stands, not contradicted).
-- ⬜ **nRF radio** (D1) — re-scoped: **no longer needed for feedback**; its only remaining value is
-  **per-player attribution (P2)** (`$HIR` names the shooter's team, not the gun). The IR shot also
-  carries a 6-bit player id (P2 via VS1838B, `protocol/brx-ir-protocol.md`).
+- ❎ **nRF radio** (D1) — re-scoped twice: not needed for feedback (§7o) **nor for attribution** (§7q —
+  `$HIR` tok3 carries the shooter's player id once `$PSET` sets it). Remaining value: a *bonus* long-range
+  channel only; deprioritised.
 
 ## Session E — the IR bench (when the ESP32 arrives ~Aug 26) — B13
 `hardware/esp32-ir-bridge/` + `hardware/ir-prototype-plan.md`.

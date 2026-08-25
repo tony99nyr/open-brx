@@ -30,14 +30,15 @@ Control has a dark theme but doesn't need true blackout (it sits at the base).
 ## 7. Real content to populate mockups (never lorem)
 - **Teams:** Blue `#3a86ff`, Yellow `#ffd23f` (+Red/Green). Example handles a host would type:
   `REAPER`, `VIPER`, `NOMAD`, `GHOST`, `HAVOC`, `SABLE`.
-- **Gun (armory) names:** sticker-style ids like `R0BAT`, `R0BQT`, `R0BAS`, `R0BP1`, shown as
-  `<NAME>-<tail>` (e.g. `R0BAT-3D4F`).
+- **Gun (armory) names:** sticker-style ids like `GUN-A`, `GUN-B`, `GUN-C`, `GUN-D`, shown as
+  `<NAME>-<tail>` (e.g. `GUN-A-3D4F`).
 - **Health/ammo defaults (TDM):** HP `45`, armor `70`, ammo `36 / 216`.
 - **Modes:** Team Deathmatch, Free-for-All, Infection, Last-Man-Standing, Extraction.
 - **Weapons:** the ~18-weapon roster + real stats are in `weapon-roster.md` (MC package). Per weapon show
   **damage, magazine, reserve, fire-rate, reload time, range, class**. Archetypes: assault rifle, SMG,
   sniper, shotgun, pistol, LMG. **Use the real names/numbers from that file.**
-- **Voices:** Male, Female.
+- **Voices:** Male / Female first; the full voice pack later (modes §5).
+- **Player numbers:** `#1`–`#63`, assigned at kit-out, shown on the phone and every MC row.
 - **Settings enums:** weapon-respawn 30 / 60 / 90 s / 3 min; pickup Scan / Player / Both; respawn type
   Scanner / Auto.
 - **Scoreboard columns:** Player · Team · K · D · A · K/D · Acc% · Streak · Medals.
@@ -47,9 +48,12 @@ Control has a dark theme but doesn't need true blackout (it sits at the base).
 ## 8. Hard constraints (design *with* these, not around them)
 1. **Kills / assists / accuracy are Mission-Control-computed** and reconcile only at sync points while
    players are dispersed. The phone shows **"— MC"** until told — make that state look intentional.
-2. **Deaths, HP, armor, ammo, respawn** ARE known live on the phone — those update in real time.
+2. **Deaths, HP, armor, ammo, respawn, and who killed you** ARE known live on the phone — those update in real time.
 3. **Blackout night mode** is a real requirement, not a nice-to-have.
 4. **Outdoor sun legibility** governs the default HUD — if it's not readable in glare, it's wrong.
 5. **MC is not BLE-connected to guns during play** — its live board is fed by nodes over an intermittent
    LAN; the scoreboard shows **staleness**, never fabricates live individual truth.
 6. Team colors are fixed and meaningful.
+7. **The phone is mounted on the gun/forearm and foreground with the screen on** during the countdown and
+   the match — design for arm's length on a mount, not a phone in a hand or pocket.
+8. **Ready-up is a KITTED action**; LOBBY is the armed-pending wait. A finished match returns to KITTED.

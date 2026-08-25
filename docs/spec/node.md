@@ -1,31 +1,37 @@
 # M-NODE — the phone node: per-gun engine + video-game HUD
 
-- **Status:** Draft (Wave 2). Binds to the frozen backbone: [`README.md`](README.md) §3/§4/§7,
-  [`contracts.md`](contracts.md) §4 (events), §5 (protocol), §6 (lifecycle), §7 (clock).
-- **Owner interface (from README §4):** *the node app; consumes `Transport` (M-NET) + `armFrames()`
-  (M-MODES).* **Depends on:** M-CONTRACTS, M-NET, M-MODES.
+- **Status:** Draft (Wave 2), updated to contracts **A4 + A5**. Binds to the frozen backbone:
+  [`README.md`](README.md) §2/§3/§7, [`contracts.md`](contracts.md) §3 (`FrameBundle`), §4 (events),
+  §5 (protocol), §6 (lifecycle), §7 (clock).
+- **Owner interface (from README §4):** *the node app; consumes `Transport` (M-NET) + the per-player
+  `FrameBundle` (compiled by M-MODES inside MC, delivered over the wire).* **Depends on:** M-CONTRACTS,
+  M-NET. The node **never calls a frame compiler** — it writes bundle frames verbatim (contracts A4.2).
 - **Seed:** the current single-gun app — [`app/src/app.js`](../../app/src/app.js) +
   [`app/www/index.html`](../../app/www/index.html). This spec **evolves that code**; it does not
   rewrite it. Where a mechanism already exists and works, we say *keep it* and point at it.
-- **Later target:** the same engine logic runs on the ESP32 Companion (ADR-0001). Keep the engine a
-  pure state machine over BRX frames + Transport messages so it ports without the DOM.
+- **Later target:** the same engine runs on the ESP32 Companion (ADR-0001). Keep the engine a pure
+  state machine over BRX frames + Transport messages + a `FrameBundle`, so it ports without the DOM
+  and without a compiler — a Companion is the same verbatim frame writer in C++.
 
-> **Invariant this module must never break (README §2, ADR-0001):** a node owns **exactly one gun**
-> and its own-gun loop (arm → damage → death → respawn → local feedback) **runs with the LAN dead.**
-> The gun is **host-blind about its own kills** — the node never tries to detect its own kills. See §3.6.
+> **Invariants this module must never break (README §2, ADR-0001):** a node owns **exactly one gun**
+> and its own-gun loop (arm → damage → death → respawn → local feedback → timed end) **runs with the
+> LAN dead.** The gun is **host-blind about its own kills** — the node never tries to detect its own
+> kills. But every hit it *takes* names the shooter: `$HIR` token 3 = shooter `player_num`, token 4 =
+> shooter team (protocol §7q). The node latches **both** and reports them; MC does the crediting.
 
 ---
 
 ## 1. Scope & non-scope
 
-**In scope:** the per-gun game engine (§3), the HUD (§4), field diagnostics (§5), on-device log
-capture + export (§6), and the BLE plumbing carried over from the seed app (§7). Cross-platform
-notes (§8), tasks + open questions (§9/§10).
+**In scope:** the per-gun game engine (§3), the HUD (§4), field diagnostics + preflight (§5),
+on-device log capture + export (§6), the BLE plumbing carried over from the seed app (§7).
+Cross-platform notes (§8), tasks + open questions (§9/§10).
 
 **Explicitly NOT this module:** cross-player scoring (kills/assists/accuracy — MC derives them,
-contracts §4), the LAN transport itself (M-NET owns the `Transport` class + envelopes), frame
-authoring (M-MODES owns `armFrames()`/`WeaponCatalog`), the dispersed-start scheduler (M-START owns
-`startAt`; the node only executes the countdown it is handed). This module *consumes* all four.
+contracts §4), the LAN transport itself (M-NET owns the `Transport` class, envelopes and the platform
+network gates, net.md §8), frame compilation (M-MODES, in MC — the node receives a `FrameBundle`),
+the dispersed-start scheduler (M-START owns `startAt`; the node executes the countdown it is handed).
+This module *consumes* all four.
 
 ---
 
@@ -37,181 +43,311 @@ Two layers, one process:
    ┌─────────────────────────── M-NODE (one phone, one gun) ────────────────────────────┐
    │  HUD (§4)  ◄── state ──  Engine (§3)  ── frames ──►  BLE plumbing (§7)  ──► the gun  │
    │   glare/blackout          pure state machine          init-once, retry,             │
-   │   diagnostics (§5)        emits Event (§4 contracts)   reassembler, 20B chunk        │
-   │        ▲                       │  ▲                                                  │
-   │        │                       ▼  │  consumes assign/feedback/start/tutorial         │
+   │   diagnostics (§5)        writes FrameBundle verbatim  reassembler, 20B chunk        │
+   │        ▲                  emits Event (§4 contracts)                                 │
+   │        │                       │  ▲                                                  │
+   │        │                       ▼  │  consumes assign/config(bundle)/tutorial/start/feedback/control │
    │   log capture (§6) ◄──────  Transport (M-NET client) ◄──── field LAN ──── MC         │
    └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Engine** is the seed's `me` object + `handleFrame`/`death`/respawn loop, promoted to a real state
   machine over contracts §6. It knows nothing about the DOM or the socket directly — it **emits
-  Events** and **accepts commands**. This is what ports to the Companion.
+  Events**, **accepts commands**, and **writes the frames it was given**. This is what ports to the
+  Companion.
 - **HUD** is a pure function of engine state (§4.4). It never writes frames.
-- **Transport** is injected (M-NET). With no Transport, the node still runs — it just can't report
-  or receive MC feedback. The seed already proves this: it plays a whole local game with no server.
+- **Transport** is injected (M-NET). With no Transport, the node still runs from its persisted
+  bundle — it just can't report or receive MC feedback. The seed already proves the loop: it plays a
+  whole local game with no server.
 
 ---
 
 ## 3. The per-gun engine
 
-### 3.1 Arming from a pushed GameConfig
+### 3.1 Arming from a pushed config + FrameBundle
 
-The seed hard-codes a TDM `SETUP` array and `spawnFrames(team)`. **Replace that with M-MODES.** Kit-out
-(`assign{player, team}`, contracts §5) sets player + team → KITTED; the **lobby `config{GameConfig}`
-push** → LOBBY is what carries the arming config. On that `config` message the node:
+The seed hard-codes a TDM `SETUP` array and `spawnFrames(team)`. **Replace that with the wire.** Kit-out
+(`assign{player, team, roster}`, contracts §5) sets player + team → KITTED. The **lobby
+`config{config, frames, roster}` push** → LOBBY carries the arming material. On `config` the node:
 
-1. stores `player`, `team`, `config` (and `config.health.max_hp`/`max_armor` → the HUD's bar caps,
-   replacing the hard-coded `MAX_HP=45`/`MAX_AR=70`);
-2. calls `frames = armFrames(config, player)` — M-MODES returns the ordered frame list (the
-   team-independent setup + `$WEAP`/`$GSET`/`$PSET`/`$SIR`/`$BMAP` + per-team `$TID`/`$SPAWN`/`$AMMO`,
-   exactly the shape the seed hard-codes today, now derived). The node **never invents frames**
-   (contracts §8);
-3. writes them over BLE (§7) at **volume 69** (house rule — `armFrames` bakes `$VOL,69,...`; the node
-   asserts it, never silently downgrades to the diagnostic default 30);
-4. replies `ack_config{config_id, ok, err?}` (contracts §5). On write failure `ok:false` + the error;
-   MC's readiness board reflects it.
+1. stores `player`, `team`, `roster`, `config`, `frames` (the `FrameBundle`, contracts §3) —
+   persisted (§3.7) — and takes `config.health.max_hp`/`max_armor` as the HUD bar caps (replacing the
+   hard-coded `MAX_HP=45`/`MAX_AR=70`);
+2. writes **`frames.head` verbatim** over BLE (§7) — the config head, **no `$SPAWN`**, no countdown
+   sound; the gun sits configured-but-unspawned until M-START's T-0;
+3. **captures the gun's echo**: a configured gun answers the head with `$LCD,…`/`$ALCD,…` lines
+   (protocol §7e). The node waits ~1.5 s for them. **What the echo proves:** the gun *answered* and holds
+   the config. It does **not** report state — after `$CLEAR` the head echo is `$LCD,0,0,0,0,0,0` on a
+   healthy gun (bench 2026-08-25), not HP. **Silence = the gun did not answer** (headset off / asleep /
+   unconfigured) — **red after the push** per contracts §4 Readiness. ⚠ Whether an unspawned head echoes
+   *at all* with the headset off is **UNVERIFIED** (Q11); the hardware-proven headset detector is the
+   `$LCD,45,70,…` echo on **`$SPAWN`** (B18b). Before the push, headset is amber, never red (A5.4);
+4. replies `ack_config{config_id, ok, err?, gun_echo}` — `gun_echo` is the first `$LCD`/`$ALCD` line
+   verbatim; no echo → `ok:false, err:"no_echo"`; a BLE write failure → `ok:false` + the error. MC's board
+   reflects it.
+
+**Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
+never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
+battery exists at muster) and runs the `$STOP,*` → `$PHONE,*` → `$VERSION,*` ritual once (firmware →
+`hello.gun.fw` / `status.fw`). These are the *only* frames the node sends before it holds a bundle.
+
+The node **owns exactly three literal frame templates** and nothing else (contracts §3/§8):
+`$PLAY,<fx>,<vol?>,<pri?>,<voice>,,,,*` (two-slot; a token-1-only SFX is `$PLAY,<fx>,,,,,,,*`; ids only
+from `frames.cues`), `$SFLASH,*`, `$PLAYX,0,*` — plus the pre-config probe set above. Everything else —
+`head`, `spawn`, `revive`, `end`, `panic`, `team_flip` from the bundle, and the `tutorial{frames}`
+*message* (not a bundle field) — is written verbatim. Volume is MC's concern: the head carries `$VOL,69,…` (house rule — 30 is inaudible); the node
+merely **checks it is present** and logs a warning if not. It never rewrites a frame.
 
 `config.respawn.delay_s` replaces the manual `#respawn` input; `config.time_limit_s` drives the HUD
-match clock (§4.4). `night` selects blackout defaults (§4.3).
+match clock and the local timed end (§3.9). `night` selects blackout defaults (§4.3).
 
-### 3.2 Tracking hp / armor / ammo
+### 3.2 Tracking hp / armor / ammo / shooter
 
 Keep the seed's frame handlers (`handleFrame`), which already work on hardware:
 
 | frame | tokens read | engine effect |
 |---|---|---|
 | `$HP,<hp>,<armor>,*` | hp, armor | set `hp`, `armor`; **if `hp==0 && alive && running` → death() (§3.4)** |
-| `$LCD,...` | hp, armor, ammo (tok 5) | set `hp`, `armor`, `ammo` — the periodic full-state line |
-| `$ALCD,<ammo>,*` | ammo | set `ammo` |
-| `$HIR,...` | shooter team (tok 4), guard tok 2≠`15` | latch `lastShooterTeam` + `lastShooterAt` (§3.5) |
-| `$VOLTS,...` | tok 3 = pack % (**provisional** — protocol marks the last tokens "likely charge %, TBC"; *which* token is the display % is unresolved, §10-Q4) | set `battery` (§4 batt, §5) |
+| `$LCD,...` | hp, armor, ammo (tok 5) | set `hp`, `armor`, `ammo` — the periodic full-state line; also the **config/spawn echo** (§3.1, §3.10) |
+| `$ALCD,<ammo>,...` | ammo (tok 1) | set `ammo`; **a decrement within a magazine = a shot → `shots++`** (§3.3); an increase = reload/pickup, ignored |
+| `$HIR,<ir_proto>,<t2>,<shooter_num>,<shooter_team>,...` | tok 3 = shooter `player_num`, tok 4 = shooter team; **guard tok 2 ≠ `15`** (grenade/station beacon, not a hit) | latch `{shooter_num, shooter_team, at}` (§3.5). Tok 1 varies (`4` while armor absorbs, `0` for HP-taking hits, `2` on the killing hit — protocol §7q, **unexplained**); log it and carry it as `ir_proto` on `hit_taken` |
+| `$VOLTS,...` | pack % (**provisional** token — token 3 vs 4 unresolved, §10-Q4) | set `battery` (§4 batt, §5) |
 
 Ammo is **observed**, never asserted — the gun is the source of truth for its own magazine. The node
 does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
 
-### 3.3 Emitting Events (contracts §4)
+### 3.3 Emitting Events (contracts §4, A4)
 
-The engine emits **only node-observable facts**, handed to Transport (queued if the LAN is down —
-§3.7). Mapping from local state to the frozen `Event` union:
+The engine emits **only node-observable facts**, handed to Transport. Two classes:
 
-- **`status`** — every `STATUS_HEARTBEAT_MS` (2000): `{hp, armor, ammo, alive, deadline_s?, battery,
-  arm_state, t_minus_ms?, synced}` (contracts §4, A1/A2). `arm_state ∈ idle|connected|kitted|lobby|armed|live`
-  (the §3.8 game phase — **orthogonal** to link state, which is connected/disconnected); `t_minus_ms`
-  is sent **only while ARMED** (countdown remaining, from synced time); `synced` = clock-sync is fresh
-  (else degraded, §7). `deadline_s` = seconds left on the respawn timer when DOWN (§3.4).
-- **`hit_taken`** — on a `$HIR` that also drops `$HP`: `{shooter_team, dmg}` (dmg = the hp+armor
-  delta). `shooter_id` omitted (phone can't IR-decode — Companion P2 only).
-- **`death`** — on `$HP→0` (§3.4): `{shooter_team}` from the latched `$HIR`.
-- **`respawn`** — on local respawn (§3.4).
-- **`shot`** — from trigger/ammo deltas: `{weapon_id, ammo_after}`. *(Ammo-delta shot detection is
-  new work vs. the seed; see §10-Q3 for the false-positive risk on reload/pickup.)*
+**Persisted facts** (queued in the ring if the LAN is down — §3.7; carry `Envelope.seq` + `match_id`):
+- **`hit_taken`** — on a `$HIR` (tok 2 ≠ 15) that drops `$HP`: `{shooter_num, shooter_team, dmg,
+  ir_proto?}` (dmg = the hp+armor delta the hit caused).
+- **`death`** — on `$HP→0` (§3.4): `{shooter_num, shooter_team, desync?}` from the latch (§3.5) —
+  `shooter_num: 0` when the latch is older than `DEATH_LATCH_MS` (environmental / unknown) or when the
+  death was inferred by the §3.10 resync (`desync: true`).
+- **`respawn`** — on local respawn (§3.4); `resync: true` when forced by §3.10.
+- **`team_change`** — `{tid}` when this gun moved to another team mid-match (infection, §3.4).
+`shooter_num` **0 is reserved** (contracts A5.1): never a player — a tutorial-armed gun, a stale latch, a
+desync. Players are 1–63.
 
-Every event carries `t = synced_now()` (contracts §7) and a per-node monotonic `seq` (M-NET stamps
-the envelope; the engine just produces the bodies). Idempotent by `(node_id, seq)`.
+Every persisted event carries **`match_id`** (from `start`, contracts A4.3). **Before a `start` is
+known the node emits no persisted events** — hits taken in a tutorial or a pre-start lobby are not match
+facts. `t = synced_now()` (contracts §7). Idempotent by `(node_id, seq)`.
+
+**Live-only** (never queued, never persisted, **no `seq`**; sent only while connected):
+- **`status`** — every `STATUS_HEARTBEAT_MS` (2000): `{match_id?, hp, armor, ammo, alive, shots,
+  deadline_s?, battery, fw?, arm_state, t_minus_ms?, synced, dropped?, preflight}`. `match_id` once armed;
+  `fw` from the probe set (§3.1); `arm_state ∈ idle|connected|kitted|lobby|armed|live` (the §3.8 game
+  phase — **orthogonal** to link state); `t_minus_ms` only while ARMED; `synced` = clock-sync is fresh
+  (§7); `deadline_s` = seconds left on the respawn timer when DOWN; `dropped` = ring-overflow count since
+  last status; `preflight` = `{ssid_ok, mc_reachable, auto_join_ok, cellular_off, dnd_on, phone_batt,
+  screen_on, foreground, gun_linked, headset_ok}` (§5).
+
+**The `shots` counter rule** (replaces the removed per-bullet `shot` event, A4.4): `$ALCD` token 1 is
+the magazine count. A **decrement** (within one magazine, i.e. `new < prev`) adds `prev − new` to
+`shots`; an **increase** (reload, pickup, respawn refill) is ignored and just resets `prev`. `shots`
+resets to 0 at `startAt()` and rides `status`; MC diffs it. Hardware note: `$ALCD` was seen counting
+36→0 shot-by-shot in every live run (exp-log 2026-08-25), so the counter is exact for automatic fire.
 
 ### 3.4 Own-death detection + local respawn
 
 Keep the seed's model exactly — it is already correct:
 
-- **death():** `$HP→0` while alive+running → `alive=false`, `deaths++`, `deadAt=synced_now()`, latch
-  who (from `lastShooterTeam`), emit `death`, HUD flips to DOWN (§4.4). **No frame is written to the
-  gun on death** — the firmware handles its own down-state; the node only *observes* it.
+- **death():** `$HP→0` while alive+running → `alive=false`, `deaths++`, `deadAt=synced_now()`, read the
+  §3.5 latch **only if it is fresher than `DEATH_LATCH_MS` (2 s)** — the killing `$HIR` arrives in the
+  same millisecond as `$HP,0` (§7q), so an older latch means the death had another cause (station, host
+  `$BHIT`, unknown) → `shooter_num: 0`. Emit `death`, HUD flips to DOWN (§4.4). The killed-by line
+  resolves `shooter_num` through `roster` to a **display name** ("☠ by REAPER · YELLOW"); 0 or an unknown
+  number falls back to the team or "☠ DOWN". **No frame is written to the gun on death** — the firmware
+  handles its own down-state; the node only *observes* it. (A dead gun cannot fire — protocol §7q — so
+  the HUD's DOWN state is also physically true.)
+- **Infection (`config.mode == "infection"`):** a killed human, on death, writes
+  `frames.team_flip[<infected tid>]` verbatim, emits **`team_change{tid}`**, flips its own HUD identity
+  chip to the infected team, then runs the normal respawn timer → `frames.revive`. Node-local; works
+  offline. ⚠ Whether a mid-match `$TID` write changes the gun's **friendly-fire resolution** is
+  **UNTESTED** (Q9) — until then infected-vs-human damage may not register.
 - **respawn:** the 500 ms tick. When `respawn.type=="auto"` and `now - deadAt ≥ delay_s`, write
-  `reviveFrames(config, player)` (M-MODES: `$SPAWN` + loadout-correct `$AMMO` refills — the published
-  respawn re-arm, modes.md §7), set `alive=true`, refill HUD caps, emit
-  `respawn`. For `type:"scanner"`/`"none"` the node does **not** auto-revive — it waits for the
-  gun's own respawn signal / stays down (surface a "find a respawn point" HUD hint). Respawn math
-  uses **synced time** so a mid-match reconnect doesn't warp the countdown.
+  **`frames.revive`** verbatim (`$SPAWN,,` + loadout-correct `$AMMO` — respawn restores ammo implicitly,
+  §7f, but the bundle may refill explicitly), set `alive=true`, refill HUD caps, emit `respawn`. For
+  `type:"scanner"`/`"none"` the node does **not** auto-revive — it waits for the gun's own respawn
+  signal / stays down (surface a "find a respawn point" HUD hint; Q2). Respawn math uses **synced time**
+  so a mid-match reconnect doesn't warp the countdown.
 
-### 3.5 Shooter-team from `$HIR`
+### 3.5 Shooter identity from `$HIR`
 
-`$HIR` token 4 = shooter **team** (contracts §4: always available; individual `shooter_id` is
-Companion-only). Latch `lastShooterTeam`+`lastShooterAt` on every valid `$HIR`; at death read the
-latch. This yields **team-level** attribution only (README §6 [DECIDE]) — honest and sufficient for
-the "killed by BLUE" HUD line and for MC's team-level scoring. Never fabricate an individual id.
+`$HIR` token 3 = shooter **`player_num`**, token 4 = shooter **team** — both always present, both
+hardware-verified in both directions (protocol §7q). Latch `{shooter_num, shooter_team, at}` on every
+valid `$HIR` (tok 2 ≠ 15); at death read the latch iff `now − at ≤ DEATH_LATCH_MS`, else report
+`shooter_num: 0`. Attribution is **exact**; there is no team-only
+fallback and no heuristic. The node still **never computes its own kills** — a kill you score is
+invisible in your own stream; only the *victim* reports it (§3.6). The `roster` (contracts §2
+`RosterEntry[]`) turns a number into a name for the HUD; an unknown number is still reported verbatim.
 
 ### 3.6 Kill feedback is MC-driven — do NOT detect own-kills
 
 **Hard boundary (ADR-0001).** In a BLE-armed game the gun does **not** self-fire the green sight; it
-emits **no shooter-side kill event**. The node therefore **cannot and must not** try to detect that
-*it* killed someone. Instead it exposes a **`feedback()` hook** that MC calls (contracts §5
-`feedback{player_id, kind, sound?}`):
+emits **no shooter-side kill event** (exp-log D4). The node therefore **cannot and must not** try to
+detect that *it* killed someone. Instead it exposes a **`feedback()` hook** that MC calls — and since
+A4 MC knows *exactly* who the killer is (victim's `shooter_num`), `feedback{player_id, kind, t, cue?}` is
+targeted, never guessed (contracts §5):
 
 ```
-feedback(kind):  $SFLASH,*   → sleep 120ms → $PLAY,,4,6,<kill|multi|medal line>,,,,*   (vol 69)
+feedback(kind):  $SFLASH,*   → sleep 120ms → $PLAY,,4,6,<cues.kill|cues.multi|cues.medal>,,,,*   (vol from head)
 ```
 
-This is the seed's `feedback()` — keep it. `kind`/`sound` select the sound-bank line (V3A "kill",
-multikill/medal ids from M-MODES). The hook is **best-effort**: no local game logic ever depends on
-receiving it (contracts §5 store-and-forward). If the LAN is down at the kill instant, the sight just
-doesn't flash — the match is unaffected. Kills/assists/accuracy on the HUD stay **"— MC"** (§4.4)
-until MC pushes them; the node never computes them.
+This is the seed's `feedback()` — keep it; the ids come from `frames.cues` (or the message's `cue`).
+`VAA`/`V3A` both played on hardware from our stack (`mcp/play_probe.py`, G3; protocol §7o). The hook is
+**best-effort**: no local game logic ever depends on receiving it. The node **ignores a `feedback` whose
+`t` is older than `FEEDBACK_MAX_AGE_MS`** (contracts §9) so a late flush never flashes a sight minutes
+after the kill.
+
+**Field reality (README §3 coverage honesty, A4.8):** on a large park the victim's report and MC's
+`feedback` both need the LAN, so the green sight and live K/A/ACC fire only in **coverage zones** — a
+base or respawn point inside router range — and at recap. That is the designed behaviour on the phone
+path, not a fault; field-wide instant feedback is the Companion mesh (M6). The HUD's K/A/ACC stay
+**"— MC"** (§4.4) until MC pushes them; the node never computes them.
 
 ### 3.7 Autonomy — the whole loop runs with the LAN down
 
 This is the headline requirement (README §2/§7). Concretely, with **no Transport connected**:
 
-- arming still works if the node already holds a `config` (from a prior `config` push, persisted §6) — and
-  the node can arm from a **locally cached last config** so a power-cycled phone rejoins the same game
-  without MC in range;
-- damage/death/respawn/battery all run off BLE frames alone;
-- Events **queue** in a bounded persisted ring (contracts §5) and flush as `event_batch` on reconnect;
-  the node consumes MC's **`ack{seq_hi}`** (contracts A1) to **prune** the ring — dropping events MC has
-  durably ingested so they aren't held forever (or, if M-NET owns the ring, this prune happens inside
-  Transport and the engine just sees a bounded queue);
+- arming still works: the node **persists its whole context** — `player`, `team`, `roster`, `config`,
+  the `FrameBundle`, the pending `start` (`match_id`, `go_live_t`, `seq`, `countdown_s`) and its clock
+  offset — so a power-cycled phone rejoins the same game without MC in range (M-START E1);
+- damage/death/respawn/battery/timed-end all run off BLE frames + synced time alone;
+- persisted events **queue** in a bounded persisted ring (contracts §5) and flush as `event_batch` on
+  reconnect; the Transport consumes MC's **`ack{seq_hi}`** to prune the ring;
+- on any (re)connect the node sends `hello{…, gun: {name, tail, fw?}, seq_next}` and MC's **`welcome`
+  re-hydrates everything** (`node: {player, team, roster, config, frames, start?, match_id?, score?}` +
+  `seq_hi`, contracts A4.5/A5.5). **Hydration is resolved by the gun**: `gun.name` is the full advert
+  name (`<sticker>-<tail>`) and `tail` is parsed from it — **never from the platform `deviceId`** (iOS
+  gives a UUID, not a MAC). So a **hot-swapped** phone with a brand-new `node_id` is hydrated on its very
+  first `hello`, before `bind`; `score?` seeds its HUD D/K/A so the row doesn't restart at 0. The node
+  adopts `next_seq = max(own, seq_hi+1)` — a reinstalled app can't have its events silently dropped by
+  dedup. After hydrating, the node **re-sends `ack_config`/`ready`** if its own state says they were sent
+  but MC's returned context doesn't reflect them (net.md §6);
 - only two things degrade: MC `feedback` (no sight flash) and cross-player HUD stats (stay "— MC").
 
-The node **never blocks** on the LAN. Start uses the pre-shared `go_live_t` (contracts §7 / M-START),
-so even T-0 needs no signal.
+The node **never blocks** on the LAN. Start uses the pre-shared `go_live_t`, end uses
+`go_live_t + time_limit_s` (contracts §7 / M-START), so neither T-0 nor T-end needs a signal.
 
 ### 3.8 Lifecycle (contracts §6) → engine states
 
 ```
-IDLE ──setGun──► CONNECTED ──assign──► KITTED ──[ready-up; all-ready → config]──► LOBBY ──start(go_live_t)──► ARMED(countdown)
-   ▲                                                                                     │
-   └────────── recall / end / time-expiry ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T ───────────────┘
+IDLE ─setGun─► CONNECTED ─assign─► KITTED ─[ready-up; all-ready → config(bundle)]─► LOBBY ─start(seq,go_live_t)─► ARMED(countdown)
+                    ▲                                                                                                 │
+                    └──── end / recall / panic / local time-expiry ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T = go_live_t ──────┘
 ```
 
 The seed collapses this to IDLE/READY/ALIVE/DOWN; **promote it** to the full set so the HUD and MC
-agree on one vocabulary. `DISCONNECTED` is orthogonal (auto-reconnect, §7) — a node can be
-disconnected in any phase and keep running; it returns to the prior state, it is **not** a game
-transition. `control{cmd:"panic"}` (contracts §5) → the **panic sequence** `$CLEAR,*` then `$SP,99,*`
-(house rule) and drop to IDLE. Three distinct control meanings (contracts §5, A2):
-`control{cmd:"recall"}` **stops a LIVE (or ARMED) game** → the seed's end frames + →IDLE;
-`control{cmd:"end"}` is the normal match end (same teardown); `control{cmd:"abort_start"}` is **not**
-a game-stop — it cancels a *pending* countdown (by `seq`) → back to LOBBY (§3.9). LIVE also ends with
-**no MC command at all** on local time-expiry (§3.9).
+agree on one vocabulary. **IDLE = no gun; CONNECTED = gun, no player; KITTED = gun + player, no game on
+the gun.** A finished, recalled or panicked match returns to **KITTED** (contracts A5.9) — the player is
+still kitted; a rematch is a new `config` push → LOBBY. `DISCONNECTED` (WS) is orthogonal, and so is the
+BLE link (§3.10) — a node can lose either in any phase and keep running; it returns to the prior state,
+it is **not** a game transition. Control meanings (contracts §5, A5.9 — `pause` no longer exists):
+- `control{cmd:"recall"}` **stops a LIVE (or ARMED) game** → write `frames.end` (+ `cues.game_over`) → KITTED;
+- `control{cmd:"end"}` is the normal match end (same teardown) → KITTED;
+- `control{cmd:"panic"}` → write `frames.panic` (`$CLEAR,*` then `$SP,99,*`) → KITTED;
+- `control{cmd:"abort_start", seq}` cancels a *pending* countdown (by `seq`) while ARMED → LOBBY (the
+  gun still holds `head`, nothing to undo). If the node is **already LIVE** for that `seq` it behaves as
+  `recall` (end frames, no panic) → KITTED;
+- `end`/`recall` received in KITTED/LOBBY: write `frames.end` iff a bundle is held (LOBBY), → KITTED.
+LIVE also ends with **no MC command at all** on local time-expiry (§3.9).
 
 ### 3.9 Local time-expiry match end (the timed end, symmetric to the timed start)
 
 Just as the dispersed **start** fires off a pre-shared `go_live_t` with no T-0 signal (§3.7, M-START),
-the dispersed **end** must fire off a pre-shared duration with no `end`/`recall` from MC — otherwise a
-node out of LAN range would keep running past time. **M-NODE owns this.** ⚠ **Bench-untested:** the end
-frames (`endFrames()`/END_SEQUENCE) are hardware-confirmed, but the *composed* time-expiry-end flow has
-not been run on hardware (exp-log 2026-08-25: "time-limit end not yet exercised") — treat as a pending
-bench test, not a proven path. While LIVE, the engine holds
+the dispersed **end** must fire off a pre-shared duration with no `end`/`recall` from MC — on a large
+park it is the **only** end condition that reaches a node (README §6; `time_limit_s` is required).
+**M-NODE owns this.** ⚠ **Bench-untested:** the end frames are hardware-confirmed, but the *composed*
+time-expiry-end flow has not been run on hardware (exp-log 2026-08-25: "time-limit end not yet
+exercised") — treat as a pending bench test, not a proven path. While LIVE, the engine holds
 `go_live_t` and `config.time_limit_s`; when
 
 ```
 synced_now() ≥ go_live_t + time_limit_s * 1000   (contracts §7 synced time)
 ```
 
-the node ends **its own** match locally: write M-MODES `endFrames()` (the game-over teardown), stop the
-loop, LIVE→IDLE — exactly the teardown a `recall`/`end` would have driven, just self-triggered. This is
-best-effort-independent of the LAN: an `end`/`recall` that *does* arrive earlier still ends the game;
-whichever comes first wins (idempotent teardown). When `time_limit_s == null` (untimed) there is no
-local expiry — the game ends only on `recall`/`end`. Expiry math uses **synced time** so a mid-match
-reconnect/clock-resync can't warp the deadline; a never-synced node falls back to the degraded
-`received-start + duration` count (§7).
+the node ends **its own** match locally: write **`frames.end`** verbatim (the game-over teardown), then
+play **`cues.game_over`** if present (the `$PLAY` template — Callsign ends with `VSF`+`JAY`; `frames.end`'s
+own `$SPAWN` voice is already muted by its `$PLAYX,0`), stop the loop, LIVE→**KITTED** — exactly the
+teardown a `recall`/`end` would have driven, just self-triggered. An `end`/`recall` that *does* arrive
+earlier still ends the game; whichever comes first wins (idempotent teardown). Expiry math uses **synced
+time** so a mid-match reconnect/clock-resync can't warp the deadline; a never-synced node falls back to
+the degraded `received-start + duration` count (§7). Frag-limit / survival ends are MC-broadcast `end`s
+and only reach nodes in coverage. `time_limit_s == null` (legal only for a fully-covered venue,
+contracts §3) means **no local expiry** — the match ends only by `end`/`recall`.
+
+### 3.10 BLE resync after a drop — observe before you write
+
+The node's whole loop keys off frames it *observes*. After a BLE drop it **cannot tell a radio blip from
+a gun power-cycle**, and it may have **missed `$HP,0,0,0`** (player is dead, HUD says ALIVE) or the gun
+may have **lost its config** (power-cycled: boots to idle). The lab hit this class once already
+(`resetup` respawning regardless of engine state — exp-log 2026-08-25 "live-path resilience").
+
+**Why the obvious fix is wrong.** Re-writing `head` + `spawn` on every reconnect looks safe but is not:
+the head starts with `$CLEAR`, so its echo is `$LCD,0,0,0,0,0,0` on a healthy gun (bench 2026-08-25) —
+it **cannot** reveal a missed death — and the `$SPAWN` that follows is a **full heal + refill**. A player
+could toggle Bluetooth to heal, and a death that happened during the gap would be **erased** (the killer
+loses the kill). So the node **writes nothing first** (contracts A5.3).
+
+**Observe first (`RESYNC_PROBE_S = 10`, contracts §9).** On BLE reconnect in **ARMED/LIVE** the HUD shows
+**"GUN RELINKED — pull the trigger"** and the node classifies the gun from what it *sees*:
+
+| observation within the window | conclusion | action |
+|---|---|---|
+| `$ALCD` decrement (a shot went out) | alive **and** configured | nothing; HUD back to ALIVE |
+| `$BUT,0,1` with **no** `$ALCD` | the gun is **dead** (a dead gun can't fire — protocol §7q) | HUD DOWN, emit `death{desync:true, shooter_num:0}`, respawn timer from now → `frames.revive` as normal |
+| any `$HP` / `$LCD` line (a hit, a periodic state line) | trust it verbatim | update hp/armor/ammo/alive from it |
+| nothing for `RESYNC_PROBE_S` after the prompt | **unconfigured** (power-cycled / never armed) | re-write `frames.head`; if LIVE also `frames.spawn` and emit `respawn{resync:true}`; if ARMED wait for T-0 |
+| LOBBY (unspawned by design): silence | possibly power-cycled | re-write `frames.head`; expect the (`0,0,…`) echo |
+| `respawn.type:"none"` (LMS) | never grant a life | a "dead" classification stays dead; silence → head only, no spawn |
+
+The prompt costs the player a trigger pull; that is the price of never guessing. Every resync action is
+logged (`resync_*`) and surfaces in recap.
+
+**Bench item (blocking for M4): a side-effect-free gun state probe.** After a reconnect, what does the
+gun emit unprompted? Does `$PHONE` (which triggers `$VOLTS`) or anything else re-elicit `$LCD`/`$HP`
+*without* `$SPAWN`? Does config survive a BLE reconnect vs a power-cycle (M-START E1 assumes yes)? A
+probe that answers "alive? HP? configured?" would replace the trigger prompt with an automatic step.
+
+### 3.11 App lifecycle: foreground, screen-on, mount
+
+The engine is **JavaScript timers in a webview**. The T-0 arm, the respawn tick, the timed end and
+the outbox drain all stop the moment the app is backgrounded or the phone locks. Keep-awake prevents
+auto-lock; it does not stop the power button, an incoming call, or the OS reaping a backgrounded
+webview. On iOS the `bluetooth-central` background mode keeps CoreBluetooth delivering — **but the
+webview's JS still freezes**. Therefore:
+
+- **Hard requirement: the phone is mounted and the app is foreground with the screen on during
+  ARMED/LIVE** (README §7, A4.11). A rail/forearm **phone mount** is a hardware deliverable
+  (`hardware/` H-item); the HUD (§4) is designed for a mounted phone read at arm's length, not a
+  phone in a pocket.
+- **Platform:** Capacitor keep-awake + max brightness while ARMED/LIVE; an **Android foreground
+  service** (persistent notification) so the OS doesn't kill the process; iOS `UIBackgroundModes:
+  bluetooth-central` so the BLE link survives a lock. Both applied by `app/scripts/*-setup.sh`, never
+  hand-edited in the generated projects (§8).
+- **Resume → reconcile = M-START `resumeSchedule()`** (start-sequence §7). On `appStateChange(active)` /
+  `visibilitychange` / relaunch / hot-swap the engine **first runs the §3.10 observe step** — it never
+  spawns a gun that may already be live — then reconciles against `synced_now()`: if
+  `synced_now() ≥ go_live_t` and the gun is classified unspawned → the M-START E5 grace / hot-join path;
+  if a respawn was due while suspended → `frames.revive` now; if the match expired → `frames.end` now
+  (→ KITTED); then flush the outbox. Every reconcile action is logged (`resume_reconcile`).
+- **Unknowns.** Whether BLE notifications queued while the JS was frozen are **delivered on iOS resume**
+  (or dropped) is UNKNOWN (Q10) — if dropped, a death during a lock is only recoverable by §3.10. An
+  incoming **phone call foregrounds the dialer** on both platforms regardless of keep-awake — the muster
+  checklist puts phones in **Do-Not-Disturb** (`preflight.dnd_on`).
+- **Tell MC.** `status.preflight.screen_on` / `foreground` (contracts A4.9) flip to false the instant
+  the app is backgrounded (last heartbeat before suspension) so the readiness/live board can show it.
 
 ---
 
 ## 4. The HUD — a glare-legible video-game HUD (the heart)
 
 The HUD is the player's whole world during a match. Design target: **readable at a glance, at arm's
-length, in direct outdoor sun, while moving** — and **fully dark at night** (§4.3). It is a pure
-render of engine state (§4.4); it holds no game logic.
+length on a mounted phone, in direct outdoor sun, while moving** — and **fully dark at night** (§4.3).
+It is a pure render of engine state (§4.4); it holds no game logic.
 
 ### 4.1 Layout — big, sparse, thumb-free
 
@@ -220,7 +356,7 @@ screen, three zones:
 
 ```
 ┌──────────────────────────────────────────────┐
-│  R0BAT · BLUE            ⏱ 07:12   🔋 55%  ⓘ  │  top strip: identity, match clock, batt, info
+│  GUN-A · #7 · BLUE       ⏱ 07:12   🔋 55%  ⓘ  │  top strip: gun, player number (1–63, as-is), team, clock, batt, info
 ├──────────────────────────────────────────────┤
 │                                                │
 │                  ██  ALIVE  ██                 │  STATE band — the single most important pixel:
@@ -229,9 +365,9 @@ screen, three zones:
 │  HEALTH ███████████████░░░░░   32              │  two fat bars, huge tabular numerals
 │  ARMOR  ████████░░░░░░░░░░░░   18              │
 │                                                │
-│            AMMO   36        ☠ by YELLOW        │  ammo giant; killed-by line (team-colored)
+│            AMMO   36      ☠ by REAPER · YELLOW │  ammo giant; killed-by line (killer name, team-colored)
 ├──────────────────────────────────────────────┤
-│   K —MC    D 2    A —MC    ACC —MC             │  bottom stat row (kills/assists/acc = MC-owned)
+│   K —MC    D 2    A —MC    ACC —MC   ⟳ 4m     │  bottom stat row (kills/assists/acc = MC-owned) + last-synced age
 └──────────────────────────────────────────────┘
 ```
 
@@ -242,7 +378,11 @@ screen, three zones:
   numeral — never a bar alone (color-blind + glare safety). Health bar color steps green→amber→red at
   ~50%/25% for glance-readable danger.
 - Ammo is the largest number on the screen after the state band — it's what a player checks mid-firefight.
-- Match clock (`⏱`) counts down `time_limit_s` off synced time; hidden when `time_limit_s==null`.
+- Match clock (`⏱`) counts down `time_limit_s` off synced time (it *is* the end condition, §3.9).
+- **Preflight chip:** a small red chip in the top strip whenever any `preflight` item fails (Wi-Fi /
+  MC / phone battery / screen / gun / headset — §5). Tap → the diagnostics panel. Green = hidden.
+- Player number shows as **`#<player_num>`** (1–63, exactly the wire value; 0 is reserved and never a
+  player — contracts A5.1), matching what the host sees.
 
 ### 4.2 Outdoor / sun-glare palette
 
@@ -258,7 +398,7 @@ Non-negotiable (README §7). Rules the palette must obey:
   don't jitter as they change.
 - **No thin strokes, no gradients, no shadows** as the only signal — sun flattens them.
 - Force **full brightness** while the HUD is foregrounded (Capacitor: keep-awake + max screen
-  brightness); a dimmed auto-brightness screen is unreadable outdoors.
+  brightness, §3.11); a dimmed auto-brightness screen is unreadable outdoors.
 
 ### 4.3 Blackout night mode (no light leak)
 
@@ -280,44 +420,57 @@ Blackout means **truly dark**, not "dark theme":
 
 | lifecycle (§3.8) | STATE band | health/armor/ammo | stat row | notes |
 |---|---|---|---|---|
-| IDLE | grey "SET GUN" | — | hidden | picker CTA (§7) front and center |
+| IDLE | grey "SET GUN" | — | hidden | picker CTA (§7) front and center; no gun linked |
 | CONNECTED | grey "READY" | live from gun | hidden | gun linked, not yet kitted |
-| KITTED | team-tint "READY UP ✓/○" | caps (loadout) | shown, all "— MC" | ready toggle sends `ready` to MC; loadout/weapon shown |
-| LOBBY | team-tint "LOBBY — armed-pending" | caps from config | shown | `ack_config` applied; awaiting `start` |
-| ARMED (countdown) | **giant T-minus** | full caps | shown | M-START countdown; gun plays klaxon |
-| LIVE · ALIVE | **green ALIVE** | live | K/D/A/ACC | D is local-real; K/A/ACC = MC |
-| LIVE · DOWN | **red + respawn count** | health 0, ammo dim | stat row frozen | "☠ by <TEAM>"; countdown = `deadline_s` |
-| DISCONNECTED | amber "RECONNECTING…" overlay | last-known, dimmed | last-known | non-destructive; returns to prior state |
+| KITTED | team-tint "READY UP ✓/○" | caps (loadout) | shown, all "— MC" | ready toggle sends `ready` to MC; loadout/weapon + `#num` shown; tutorial overlay lives here — **also where a finished match lands** ("MATCH OVER" for a few seconds, then READY UP for the next game; A5.9) |
+| LOBBY | team-tint "LOBBY — armed-pending" | caps from config | shown | head written, `ack_config` sent; awaiting `start` |
+| ARMED (countdown) | **giant T-minus** | full caps | shown | M-START countdown; gun plays the cues |
+| LIVE · ALIVE | **green ALIVE** | live | K/D/A/ACC | D is local-real; K/A/ACC = MC + last-synced age |
+| LIVE · DOWN | **red + respawn count** | health 0, ammo dim | stat row frozen | "☠ by <NAME> · <TEAM>"; countdown = `deadline_s` |
+| WS DISCONNECTED (any) | amber "RECONNECTING…" strip | last-known, dimmed | last-known | non-destructive; returns to prior state; expected for most of a park match |
+| BLE DROPPED (any) | red "GUN LINK LOST" strip | frozen | frozen | the seed's retry loop, unbounded while ARMED/LIVE |
+| BLE RELINKED (ARMED/LIVE) | amber "GUN RELINKED — pull the trigger" | frozen until classified | frozen | §3.10 observe window (`RESYNC_PROBE_S`); resolves to ALIVE / DOWN / re-arm |
+| preflight fail (any) | small red chip, top strip | — | — | Wi-Fi/MC/battery/screen/gun/headset; tap → §5 |
 
-**Honesty rule (README §6, contracts §4):** **Kills, Assists, Accuracy render literally as "— MC"**
+**Honesty rule (README §3, contracts §4):** **Kills, Assists, Accuracy render literally as "— MC"**
 until MC pushes them, because a phone node cannot observe them (host-blind about own kills; hits-landed
-known only from victims). **Deaths and ammo are locally real.** Never show a fabricated kill count —
-the "— MC" is a deliberate honesty affordance, not a placeholder to be filled with a guess.
+are known only from victims). **Deaths, ammo, and who killed you are locally real.** Never show a
+fabricated kill count — the "— MC" is a deliberate honesty affordance, not a placeholder to be filled
+with a guess.
 
-These MC-owned numbers **reconcile only at sync points** — a return to base, a respawn/scanner station,
-or recap — **not continuously** while the player is dispersed (MC is not BLE-connected mid-match; a
-node's stats catch up when its `event_batch` reaches MC and MC pushes back). Until the next sync the
-row keeps showing **"— MC"**, ideally beside a small **"last synced Nm ago"** indicator so the player
-knows the K/A/ACC they last saw is a snapshot, not live.
+These MC-owned numbers **reconcile at coverage zones** — a base or respawn point that the host has
+placed inside router range, or recap — **not continuously**: on a large park a player is out of LAN
+range for most of a match, and MC is never BLE-connected mid-match. Each time the node reconnects it
+flushes its `event_batch` and MC pushes the row back. Until the next zone the row keeps showing the
+last snapshot with a **"⟳ last synced Nm ago"** age so the player knows it is a snapshot, not live.
+Design the venue so every death is a sync point (respawn inside coverage) and the row catches up every
+life.
 
 ---
 
-## 5. Diagnostics — an optional info button for field debugging
+## 5. Diagnostics + preflight — an optional info button for field debugging
 
 Behind the `ⓘ` in the top strip (never in the player's way). A slide-over panel exposing the raw
 state the seed already logs, made inspectable on the field:
 
+- **Preflight (the top block; feeds `status.preflight`, contracts A4.9/A5.4):** expected SSID vs joined
+  SSID (`ssid_ok`), MC reachable + last `welcome` age (`mc_reachable`), field SSID saved with auto-join
+  (`auto_join_ok`), mobile data off where readable (`cellular_off`), Do-Not-Disturb (`dnd_on`), clock-sync
+  age and sample count (`synced`), phone battery % + charging (`phone_batt`), `screen_on` / `foreground`
+  flags, gun link (`gun_linked`), headset (`headset_ok` = the last config/spawn echo arrived — amber until
+  then), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
+  Each row green/amber/red; the HUD chip (§4.1) is the rollup.
 - **BLE link:** deviceId (opaque handle §8), connection state, retry count, last disconnect **HCI
   reason code** with plain-English gloss (`0x16` local, `0x13` gun/headset gate, `0x08` out-of-range,
   `0x3E` failed-establish — table from `handoff-ios-ble-findings.md` §2). This turns "it dropped" into
   "the *gun* hung up (0x13 — headset gate)" on the spot.
 - **Last frames:** a live tail of parsed frames in/out (the seed's `#log`), with the hardened
   reassembler's output so a merged-notify shows as two clean frames.
-- **Engine state dump:** hp/armor/ammo/alive, `lastShooterTeam`, `deadAt`, config_id, team, caps.
+- **Engine state dump:** hp/armor/ammo/alive/shots, the `$HIR` latch (`shooter_num`/team/at),
+  `deadAt`, team, caps, arm_state, go_live_t, resync/reconcile log lines.
 - **Link + battery:** RSSI (from scan), `$VOLTS` pack%/cell mV, time since last `$VOLTS`.
-- **Timings:** clock offset vs MC (contracts §7), last heartbeat sent, queue depth (unflushed events),
-  Transport state.
-- A **Panic** button (house-rule sequence) and a manual **reconnect** here too, for field recovery.
+- **Timings:** clock offset vs MC (contracts §7), last heartbeat sent, Transport state.
+- A **Panic** button (writes `frames.panic`) and a manual **reconnect** here too, for field recovery.
 
 The panel is diagnostic-only — it must not be a path to arm/fire the gun in a way that bypasses the
 game engine.
@@ -330,30 +483,34 @@ The seed's in-DOM `#log` becomes a **rolling on-device log** the node can hand t
 
 - **Rolling ring buffer**, bounded (size + line count), timestamped, persisted across restarts (so a
   crash/power-cycle keeps the pre-crash tail). Captures: frames in/out, connect/disconnect + reason
-  codes, state transitions, emitted Events, config applied, panic.
+  codes, state transitions, emitted Events, config/bundle applied, resync/reconcile actions, panic.
 - **Offer to MC:** on connect (or when MC asks) the node sends `log_offer{node_id, bytes, lines}`
-  (contracts §5); MC replies `pull_log{}`; the node uploads the buffer as an `event_batch`-style
-  transfer (M-NET defines the chunk framing). This feeds MC's recap ingest (README §7 "MC can ingest
-  node logs at recap").
+  (contracts §5); MC replies `pull_log{}`; the node uploads the buffer as **`log_data{seq, chunk,
+  last}`** messages, chunks **≤ 48 KB** (under the 64 KB envelope cap). This feeds MC's recap ingest
+  (README §7 "MC can ingest node logs at recap").
 - **Share out:** a **Share** button in diagnostics uses the native share sheet (Capacitor Share /
   Filesystem) to export the log as a text file — for offline debugging when MC isn't around. On
   Android/iOS both, plain UTF-8 text; filename `brx-node-<gun_tail>-<ts>.log`.
-- **Redaction:** the log is field-debug data, not PII — but it contains the opaque deviceId and gun
-  name; that's fine (both are already on the sticker). Don't log vanity gamertags beyond what MC sent.
+- **Redaction:** the log is field-debug data, not PII — it contains the opaque deviceId, the gun's
+  advert name and player numbers; that's fine. Don't log vanity gamertags beyond what MC sent.
 
 ---
 
 ## 7. BLE plumbing to preserve (reference, don't re-derive)
 
-All of this exists in the seed and is **hardware-proven** (ADR-0001 confirmations; iOS handoff).
-**Carry it forward unchanged**; the notes say *why* so a refactor doesn't regress it.
+All of this exists in the seed and is **hardware-proven** (ADR-0001 confirmations; iOS handoff; the
+two-node game 2026-08-25). **Carry it forward unchanged**; the notes say *why* so a refactor doesn't
+regress it.
 
 - **Init exactly once.** `ensureInit()` memoizes `BleClient.initialize({androidNeverForLocation:true})`.
   iOS `initialize()` **replaces** the CBCentralManager and drops every live gun — a second call
   disconnects the gun (`cap9`). **A "rescan" button must not re-init** (handoff §1).
-- **Connect-with-retry.** BRX establishment succeeds ~1 in 3; retry 5–6 attempts with a guard closure
+- **Connect-with-retry.** BRX establishment succeeds ~1 in 3; retry with a guard closure
   (`connectWithRetry`). Shared by first-connect and reconnect. `deviceId` is committed **only on a
-  successful connect** (handoff §4) so `updateStart()`/arming can't enable for an unconnected gun.
+  successful connect** (handoff §4) so arming can't enable for an unconnected gun. **While ARMED or
+  LIVE the reconnect loop is unbounded with backoff** (500 ms → 10 s cap, jitter) — a match must not lose
+  its node because 1-in-3 establishment failed six times in a row. The seed's 5–6 attempts remain the
+  *interactive* (IDLE→CONNECTED) behaviour where the user is the loop.
 - **Continuous low-latency scan picker.** `requestLEScan({allowDuplicates:true, scanMode:2})` +
   our own in-app list (not `requestDevice`'s one-shot picker), accumulating hits until the player
   taps. Shows name + **MAC-tail suffix** + **RSSI** (closest = in your hand) to disambiguate two
@@ -368,7 +525,12 @@ All of this exists in the seed and is **hardware-proven** (ADR-0001 confirmation
   ignores the option (harmless). iOS also needs `NSBluetoothAlwaysUsageDescription` (via
   `app/scripts/ios-setup.sh`) or the app is terminated on `initialize()` (handoff §5).
 - **Auto-reconnect** on `onDrop` with the same retry loop, guarded by `me.deviceId` so a deliberate
-  disconnect doesn't fight the user.
+  disconnect doesn't fight the user — followed by the **§3.10 resync**.
+- **Before a bundle exists the node sends only the pre-config probe set** (§3.1: `$PHONE`, and the
+  `$STOP→$PHONE→$VERSION` ritual) — nothing else, ever, in CONNECTED/KITTED.
+- **Network gates are M-NET's**, not this module's: iOS Local-Network permission + ATS, Android
+  cleartext + bind-to-Wi-Fi, auto-rejoin of the router SSID — see `net.md` §8. The node only
+  *reports* their state in `preflight`.
 
 Refactor guidance: extract the above into a `BrxLink` module (init/scan/connect/write/notify) so the
 **engine** talks to it through a thin interface — that same seam is where the Companion swaps BLE for
@@ -384,7 +546,8 @@ its native ESP32 stack.
 - **Scan labels:** the MAC-tail suffix is real on Android; on iOS the "tail" is derived from the UUID
   and is only locally stable — still useful for disambiguation, not for cross-host identity.
 - **Blackout works on both** (§4.3) — it's pure CSS/brightness; no platform BLE difference. Keep-awake,
-  brightness, haptics, and share all go through Capacitor plugins that resolve per-platform.
+  brightness, haptics, foreground-service/background-mode (§3.11) and share all go through Capacitor
+  plugins that resolve per-platform.
 - Everything in `mcp/` stays cross-platform (bleak) for the bench; the **node** stays Capacitor
   (Android + iOS) — one web UI/engine, native BLE. Web Bluetooth is **ruled out** (ADR-0001; iOS has
   none) — the node is a **native app**, and the webapp harness is not a player path.
@@ -396,43 +559,66 @@ its native ESP32 stack.
 ## 9. Task breakdown
 
 1. **Extract the engine** from `app.js` into a DOM-free state machine over contracts §6 (states,
-   `handleFrame`, death/respawn, event emission). Unit-testable with a fake BRX frame source.
-2. **Extract `BrxLink`** (§7) behind a thin interface; engine ↔ link seam = the Companion port point.
-3. **Wire M-MODES** `armFrames(config, player)` (arm) / `reviveFrames(config, player)` (respawn re-arm)
-   in place of the hard-coded arrays;
-   caps + respawn + weapon come from `GameConfig`.
-4. **Wire Transport** (M-NET): `hello`/`bind`/`assign`/`event`/`event_batch`/`ack_config`/`feedback`/
-   `control`/`tutorial`/`start`; the bounded persisted event ring + reconnect flush.
-5. **Rebuild the HUD** to §4: STATE band, scaled bars+numerals, match clock, stat row with honest
-   "— MC", full lifecycle mapping (§4.4).
+   `handleFrame`, death/respawn, `$HIR` latch + `DEATH_LATCH_MS`, infection `team_flip`/`team_change`,
+   `shots` counter, event emission). Unit-testable with a fake BRX frame source.
+2. **Extract `BrxLink`** (§7) behind a thin interface; engine ↔ link seam = the Companion port point;
+   unbounded reconnect while ARMED/LIVE.
+3. **FrameBundle writer** — replace the hard-coded arrays with verbatim writes of `frames.head` /
+   `spawn` / `revive` / `end` / `panic` / `team_flip` and the `tutorial{frames}` message; the three
+   literal templates + the pre-config probe set (`$PHONE`, `$STOP→$PHONE→$VERSION`, CONNECTED/KITTED
+   only); echo capture → `ack_config{gun_echo}` / `no_echo`; caps + respawn + clock from `GameConfig`.
+4. **Wire Transport** (M-NET): `hello{seq_next}`/`welcome` re-hydration/`bind`/`assign`/`config`/
+   `event`/`event_batch`/`status`/`ack_config`/`feedback`/`control`/`tutorial`/`start`; the persisted
+   context (§3.7) and the bounded persisted event ring + reconnect flush; `match_id` stamping.
+5. **Rebuild the HUD** to §4: STATE band, scaled bars+numerals, match clock, killer-name line from
+   `roster`, `#num`, stat row with honest "— MC" + last-synced age, preflight chip, full lifecycle
+   mapping (§4.4).
 6. **Blackout mode** (§4.3): night palette, no-flash-on-damage, brightness/haptics, toggle + auto.
-7. **Diagnostics panel** (§5): reason-code decode, frame tail, state dump, timings, panic/reconnect.
-8. **Log ring + export** (§6): persisted buffer, `log_offer`/`pull_log`, native share.
-9. **Tutorial arming** (§3a): handle `tutorial{weapon}` → silent private arm so the player can feel a
-   weapon before committing (M-MODES supplies the frames).
-10. **Clock sync** (contracts §7): `time_req`/`time_res`, smoothed offset, `synced_now()` used by all
-    event `t`, respawn, and countdown math.
-11. **Local time-expiry end** (§3.9): while LIVE, watch `synced_now() ≥ go_live_t + time_limit_s`; on
-    expiry self-trigger `endFrames()` + LIVE→IDLE with no MC command, symmetric to the timed start and
-    idempotent with a `recall`/`end` that arrives first. Skip when `time_limit_s == null`.
+7. **Preflight + diagnostics panel** (§5): the checklist → `status.preflight`; reason-code decode,
+   frame tail, state dump, timings, panic/reconnect.
+8. **BLE resync policy** (§3.10): observe-before-write — the "pull the trigger" prompt, the
+   `$ALCD`/`$BUT`/`$HP` classifier, `RESYNC_PROBE_S` timeout → head (+spawn) re-write, `death{desync}` /
+   `respawn{resync}`, LMS never-revive; unit-tested with a fake link that drops, reboots, and dies-in-gap.
+9. **App-lifecycle handling** (§3.11): keep-awake/brightness, Android foreground service + iOS
+   background mode in the setup scripts, `resumeSchedule()` → observe → reconcile, preflight flags incl.
+   `dnd_on`/`auto_join_ok`/`cellular_off`.
+10. **Log ring + export** (§6): persisted buffer, `log_offer`/`pull_log`/`log_data` chunks, native share.
+11. **Tutorial arming** (§3a): handle `tutorial{weapon, frames}` → write the frames; suppress event
+    emission while tutoring; clean exit on the next `tutorial`/`config`/`end`.
+12. **Clock sync** (contracts §7): `time_req`/`time_res`, smoothed offset, `synced_now()` used by all
+    event `t`, respawn, countdown and expiry math.
+13. **Local time-expiry end** (§3.9): while LIVE, watch `synced_now() ≥ go_live_t + time_limit_s`; on
+    expiry write `frames.end` + LIVE→CONNECTED with no MC command, idempotent with a `recall`/`end`
+    that arrives first.
 
-Ships with its own fakes (a scripted BRX frame emitter + a mock Transport) so it builds and demos with
-neither a gun nor MC present — matching the seed's "runs with the LAN dead" property.
+Ships with its own fakes (a scripted BRX frame emitter + a mock Transport + a sample `FrameBundle`) so
+it builds and demos with neither a gun nor MC present — matching the seed's "runs with the LAN dead"
+property.
 
 ## 10. Open questions
 
-- **Q1 — shot detection source.** Is a reliable `shot` event derivable from `$ALCD`/`$LCD` ammo
-  deltas alone, or do we need `$BUT` trigger frames? Ammo deltas false-positive on reload/pickup.
-  *Recommendation:* prefer a trigger frame if one exists; else ammo-decrement-only with a reload guard,
-  and mark accuracy's shots-fired as approximate until validated on hardware.
 - **Q2 — respawn ownership for `scanner`/`none` modes.** Does the gun emit a respawn-point signal the
   node can observe, or must the node stay DOWN until an `$HP` refill appears? Needs a bench check;
-  affects §3.4.
-- **Q3 — hit vs. death dmg accounting.** `hit_taken.dmg` = `$HP`+armor delta; confirm armor-vs-health
-  order so `dmg` matches what MC expects for assist windows (contracts `ASSIST_WINDOW_MS`).
-- **Q4 — `$VOLTS` token map.** Seed reads token 3 as pack %; protocol §`$VOLTS` marks the last two
-  tokens "likely charge %/levels (TBC)". Confirm which token is the battery % the HUD/readiness shows.
-- **Q5 — cached-config rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from
-  cache without MC in range before it's unsafe/stale? Propose a config TTL + a "stale config" HUD warning.
+  affects §3.4. (Grenade respawn stations disable self-respawn and need a per-gun IR arming step —
+  FOLLOWUPS B12.)
+- **Q3 — dmg accounting.** `hit_taken.dmg` = hp+armor delta. Armor-before-HP order is **confirmed**
+  (protocol §7f/§7q: armor 70→0 at ~9/hit, then HP). Remaining: does a single `$HIR` ever span both
+  pools (armor 7 → HP 43 was one hit), and is that one `hit_taken` with `dmg = 7 + 2`? Assume yes.
+- **Q4 — `$VOLTS` token map.** Seed reads token 3 as pack %; the lab log leans token 4 = cell-voltage
+  SoC. A controlled discharge sweep settles which token the HUD/readiness shows.
+- **Q5 — cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from
+  cache without MC in range before it's unsafe/stale? `CONFIG_TTL_MS` + a "stale config" HUD warning.
 - **Q6 — keep-awake vs. battery.** Full brightness + keep-awake + continuous BLE drains the phone over
   a long event. Measure; consider dimming only the non-STATE zones between firefights.
+- **Q7 — side-effect-free gun state probe (§3.10).** After a BLE reconnect, does anything short of
+  `$SPAWN` make the gun report `$LCD` (HP/armor/ammo + "configured")? Blocking for the resync policy.
+- **Q8 — `$HIR` token 1 meaning.** `4` while armor absorbs, `0` for HP-taking hits, `2` on the killing
+  hit (§7q). Effect class or weapon? Carried as `ir_proto` until understood.
+- **Q9 — mid-match `$TID` write (infection).** Does a `$TID` change on a spawned gun change its
+  friendly-fire resolution, its LED, both, or neither? Bench: flip one gun mid-game, shoot it from both teams.
+- **Q10 — iOS queued BLE notifications on resume.** With `bluetooth-central` background mode, are
+  notifications received while the JS was frozen delivered on resume, or dropped? Decides whether a death
+  during a screen-lock is recoverable from frames or only via §3.10. (Soak item 4.)
+- **Q11 — does an unspawned head echo with the headset OFF?** The proven headset gate is the `$LCD,45,70`
+  echo on `$SPAWN`; if the head's `$LCD,0,0,…` echo also depends on the headset, `ack_config.gun_echo`
+  is a valid pre-spawn gate; if not, the gate only exists at T-0.

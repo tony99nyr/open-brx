@@ -1,5 +1,7 @@
 # Mode limits & feasibility — by tier
 
+> **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
+
 The honest companion to `game-modes.md` (what each mode *is*) and `build-tiers.md` (what each budget
 *adds*). This doc is the **constraints ledger**: for the modes we've designed — Extraction, Counter-
 Strike (plant/defuse), the health/regen variants, the objective family (Domination/KotH/CTF), respawn

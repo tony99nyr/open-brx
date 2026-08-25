@@ -79,7 +79,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,...` | **Hit! Tagger was tagged** | token 3 = shooter player ID, token 4 = shooter team ID |
+| `$HIR,<irProto>,<t2>,<shooterPlayerId>,<shooterTeam>,...,*` | **Hit! Tagger was tagged** | **token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`)** — both hardware-verified (§7k team, §7q player id) |
 | `$HP,<hp>,...` | Health update | `$HP,0,...` = player died (or turned zombie in Survival) |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
@@ -696,6 +696,11 @@ $ALCD,<mag>,<100>,<slot>,<reserve>,<0>,*
 
 ## 7k. SOLVED — `$HIR` token 4 is the shooter's team (verified 2026-08-23)
 
+> **Update 2026-08-25 (§7q):** the "tokens 2 and 3 were `0,0`" observation below was a confound — every gun
+> in this capture had player id 0. **Token 3 IS the shooter's player id** once guns carry distinct
+> `$PSET` token-1 ids. The FFA caveat at the end of this section is therefore resolved: no unique-`$TID`
+> workaround is needed.
+
 Ran one game across **two taggers from a single host** (`arena` command), configs identical
 except for the team id: `$TID,1,*` on one, `$TID,2,*` on the other. 42 hits exchanged.
 
@@ -1090,20 +1095,65 @@ and the wire is the better authority.)
 **Closed: SETTING identity.** No USB `SETUP` cable per gun, no IR hardware. Mission Control numbers
 the fleet over BLE at arm time, per game, in the frame it already sends.
 
-**Still open: READING who fired.** `$HIR` was decoded as giving the shooter's *team* (§7k). But note
-`$HIR` has long been parsed as `token 3 = shooter player id, token 4 = shooter team id`
-(`mcp/brx_mcp/protocol.py`), and **every capture behind that decode was taken with all guns at the
-default id** — so a player-id field could not have been distinguished from a constant. That
-conclusion may have been confounded.
-
-**The next experiment is cheap and could close P2 entirely over BLE:** set two guns to distinct ids
-(e.g. app 7 and app 20 → wire 6 and 19), have each shoot the other, and watch `$HIR` token 3. If it
-tracks the shooter's id, per-player attribution needs **no IR receiver at all** and the VS1838B bench
-becomes an optimisation rather than a prerequisite.
-
-
+**READING who fired — CLOSED the same evening, see §7q:** with distinct `$PSET` ids on two guns,
+`$HIR` token 3 reports the shooter's id on every hit. P2 is fully solved over BLE.
 
 **Token 2 remains `0` in every capture, including this one — still unknown.**
+
+## 7q. CONFIRMED — `$HIR` token 3 IS the shooter's PLAYER ID (P2 read-path; P2 CLOSED over BLE)
+
+**Bench, 2026-08-25, two taggers (`Tactix-E20D`, `Tactix-3D4F`), driven from the Windows `brx-mcp`
+server.** Standard TDM arm at vol 69 (the §7e sequence), config-all-then-spawn-all (B10), identical on
+both guns except two frames:
+
+| gun | `$PSET` token 1 | `$TID` |
+|---|---|---|
+| E20D | `6` (app "7") | `1` (blue) |
+| 3D4F | `19` (app "20") | `2` (yellow) |
+
+Both echoed `$LCD,45,70,0,0,36,216` on spawn (live, headsets linked). Then each shot the other:
+
+```
+3D4F shoots E20D  →  E20D receives  $HIR,4,0,19,2,9,0,3,*   × 26 (two full kills)
+E20D shoots 3D4F  →  3D4F receives  $HIR,4,0,6,1,9,0,3,*    × 6
+                                           ^^ ^
+                                           |  token 4 = shooter's $TID  (§7k)
+                                           token 3 = shooter's $PSET player id  (this section)
+```
+
+Every hit, both directions, token 3 = the *shooter's* `$PSET` token 1 and token 4 = the shooter's `$TID`.
+No exceptions across 32 hits.
+
+```
+$HIR,<irProto>,<t2>,<shooterPlayerId>,<shooterTeam>,<t5>,<t6>,<t7>,*
+```
+
+### Why every earlier capture missed it
+§7f/§7k read tokens 2–3 as a constant `0,0` because **all guns were at the default id 0** — the field
+was there all along (`protocol.py` had parsed token 3 as `shooter_player_id` since day one, on the
+strength of the LaserTagMods note), it just never varied. `$PSET` token 1 (§7p) is what makes it vary.
+
+### Consequences — the last stock-feel gap over pure BLE is gone
+- **Per-player kill attribution is BLE-native.** Victim-side `$HIR` tok3 + `$HP,0` names the exact
+  killer. FFA, individual K/D, assists, Syphon (heal the *killer*), and per-player kill feedback
+  (`$SFLASH` to the right gun) all work with no extra hardware.
+- **No USB `SETUP` cable, no IR receiver** are needed for identity. MC assigns 0–63 at arm time in
+  `$PSET`. The VS1838B/ESP32 IR bench (B13) is now about *stations* (B4) and emit, not attribution.
+- **Display convention:** show operators 1-based ids (Callsign parity, 1–64); write `id-1` on the wire.
+- **FFA no longer needs a unique `$TID` per player** (the §7k caveat / P9 workaround) — one team, FF on,
+  distinct `$PSET` ids. `$TID` goes back to being purely team + LED colour.
+
+### Other observations in the same run
+- **Token 1 varied on kill shots:** the frames that took HP (after armor was exhausted) arrived as
+  `$HIR,0,…` and the killing hit as `$HIR,2,…`, vs `$HIR,4,…` while armor absorbed. Token 1 is the IR
+  protocol/effect class (§7k) — apparently the *applied* effect, not just the weapon. Unexplained; logged.
+- **A dead gun cannot fire:** trigger pulls on the `$HP,0` gun produced `$BUT,0,1/0` but **no `$ALCD`
+  decrement**. Settles the Counter-Strike "dead can't plant" gate (mode-limits.md) in the affirmative.
+- **Damage model reconfirmed:** armor 70 → 61 → 52 → … → 7 → 0 (9/hit), then HP 45 → 43/34/25/16/7 → 0.
+  ~13 hits to kill at default `$PSET`.
+- **Token 2 still `0` in every frame** — still unknown.
+- Our raw bleak client still dropped E20D once at ~6.6 s after the first connect (before any frame was
+  written); reconnect held for the whole session (~3.5 min).
 
 ## 8. Safe testing notes
 

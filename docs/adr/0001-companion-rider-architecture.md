@@ -67,6 +67,13 @@ BLE-connected to **that gun** for the whole match, and is the **live host during
 **Mission Control's role is setup → synced-start → recap; the Companion owns live play.** This
 is the proven Jay/JEDGE pattern (ESP32 tagger-rider, no gun mod). **Companion = our JEDGE.**
 
+> **Addendum 2026-08-25 — P2 closed over BLE (protocol §7p/§7q).** The gun's player id is set by `$PSET`
+> token 1 and returned in `$HIR` token 3 on every hit, so **per-player attribution needs no IR decode and no
+> nRF tap** — the fourth bullet above is no longer a reason for the Companion. What the Companion still
+> uniquely adds on a large field: a **node↔node mesh** (ESP-NOW/LoRa) for *instant, field-wide* kill-confirm
+> and scoreboard where the phone path only gets them in Wi-Fi coverage zones (spec README §3), plus
+> ruggedness/fleet ops. See `docs/spec/contracts.md` A4.
+
 ## Alternatives considered (and why rejected)
 
 | Alternative | Verdict | Why |

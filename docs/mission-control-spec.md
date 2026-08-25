@@ -1,5 +1,7 @@
 # Mission Control — operator console (spec)
 
+> **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
+
 **Status:** proposal, 2026-08-24. Mission Control is the **operator's brain** for running a BRX
 event: discover taggers, build a roster, assign teams/weapons, pick a mode, start/stop, and watch
 a live scoreboard. It sits above the per-player nodes (a **BRX Companion** or a **phone app**) and

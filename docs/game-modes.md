@@ -1,5 +1,7 @@
 # Game modes — catalog & infrastructure tiers
 
+> **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
+
 Every BRX game mode we know of, from all sources (V7 manual, Extended User Guide, the Callsign
 APK harvest, and community), enumerated and classified by **what infrastructure each needs to run
 at scale**. The classifying question is: *does it need only Mission Control + the per-player nodes,

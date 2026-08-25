@@ -1,12 +1,13 @@
 # M-MC — Mission Control (the host app)
 
-- **Status:** Draft (Wave 3 integrator). Binds to [`contracts.md`](contracts.md) — **read it first**.
+- **Status:** Draft (Wave 3 integrator), updated to contracts **A4**. Binds to [`contracts.md`](contracts.md) — **read it first**.
 - **Owner:** M-MC session. **Extends** `docs/mission-control-spec.md` (feature catalog) and matches/beats
   the operator surface in `docs/reference/callsign-ui.md`. Anchored by ADR-0002 (laptop = author + host +
   coordinator, BLE only at the bench).
-- **Role:** the **integrator**. MC owns no game rules, no protocol frames, no transport of its own — it
-  **composes** M-ARMORY, M-MODES, M-NET and drives the host through README §3 phases 1-7. Every data
-  shape it touches is defined in `contracts.md`; this doc says *what MC does with them*, not what they are.
+- **Role:** the **integrator**. MC owns no game rules and no transport of its own — it **composes**
+  M-ARMORY, M-MODES (which runs *inside* MC and compiles every frame), M-NET, and drives the host through
+  README §3 phases 1-7. Every data shape it touches is defined in `contracts.md`; this doc says *what MC
+  does with them*, not what they are.
 
 This is a **design** spec: screens, behaviors, and the interfaces MC consumes. It does not restate schemas,
 protocol frames, or another module's internals — it links them.
@@ -15,37 +16,46 @@ protocol frames, or another module's internals — it links them.
 
 ## 1. What MC is (and is not)
 
-MC is the **one operator surface** for an event: enroll/health-check gear, author a game, kit each player,
-run a synced start, watch a live board, and produce a recap. It is the human's window into the whole
+MC is the **one operator surface** for an event: enroll gear, author a game, kit each player, run a synced
+start, watch a board, and produce a recap. It is the human's window into the whole
 [architecture-at-a-glance](README.md#2-architecture-at-a-glance) diagram.
 
 **MC is not** the game engine (that is M-NODE, per gun) and is **not BLE-connected to guns during play**
-(`mc-not-live-during-gameplay`). MC holds BLE **only at the bench** for armory (phase 0-1). Once players
-disperse, MC talks to **nodes** over the field LAN via M-NET, never to guns. Cross-player truth (kills,
-assists, accuracy, score) is **MC-derived** from node event reports (`contracts.md` §4), eventually
-consistent, never assumed real-time.
+(`mc-not-live-during-gameplay`). MC holds BLE **only at the bench** for Armory Setup and a **scan-only**
+presence sweep. Once players disperse, MC talks to **nodes** over the field LAN via M-NET, never to guns.
 
-## 2. Tech / stack — **[recommend: Python server + local web UI]**
+**Cross-player truth (kills, assists, accuracy, score) is MC-derived** from node event reports
+(`contracts.md` §4) and it is **exact**: every hit a gun takes names the shooter's player id (`$PSET`
+token 1 ↔ `$HIR` token 3, protocol §7p/§7q, hardware-verified). There are **no attribution heuristics** —
+MC maps `shooter_num → player_id` through the match roster and credits. What MC is *not* is real-time:
+**the field is a large park and the LAN covers the base, not the match** (README §3 "coverage honesty",
+contracts A4.8). The live board is a **coverage-zone view** — a node's line is current only while that node
+is in range; everything else is last-known + a staleness age, and reconciles at **sync points** (a base or
+respawn station inside router range, or recap). Design every MC screen around that, never around a live
+LAN.
 
-Per README §6 "MC tech stack", the recommendation the backbone already leans to:
+## 2. Tech / stack — **[DECIDED: Python server + local web UI]**
 
-- **MC server = Python.** It **wraps `mcp/brx_mcp`** for the armory (USB Teensy console + BLE scan/connect
-  via `bleak`), which is already cross-platform — **CoreBluetooth on the MacBook**, WinRT/BlueZ elsewhere.
-  One BLE stack for the bench, reused, not reimplemented. The server also hosts the M-NET WebSocket + mDNS
-  endpoint (`contracts.md` §5) and holds all match state.
+Per README §6:
+
+- **MC server = Python.** It **wraps `mcp/brx_mcp`** for the armory (USB Teensy console + BLE scan via
+  `bleak`), which is already cross-platform — **CoreBluetooth on the MacBook**, WinRT/BlueZ elsewhere. The
+  same process **hosts the frame compiler** (M-MODES = `gameconfig.py`, Python): MC compiles each player's
+  `FrameBundle` and tutorial frames and ships them over the LAN; nodes write them verbatim (contracts A4.2).
+  One BLE stack, one frame authority, reused not reimplemented. The server also hosts the M-NET WebSocket +
+  mDNS/QR endpoint (`contracts.md` §5) and holds all match state.
 - **UI = a local web app** the server serves at `http://<mc-host>:<port>/` — opened in the operator's
-  browser on the same machine. Big-screen roster/board/recap (ADR-0002 "big screen" rationale). Sharing a
-  web/UI kit with the Capacitor node app (M-NODE) where practical keeps **one web-UI language across both
-  surfaces**.
-- **Why not Web Bluetooth in MC:** rejected in `mission-control-spec.md` — no silent bulk scan (user-gesture
-  picker per tagger), ~7-10 link ceiling, no iOS. The Python `bleak` path has none of those limits and is
-  the same code the CLI already uses.
+  browser on the same machine (and on a tablet on the field LAN). Big-screen roster/board/recap (ADR-0002).
+  Sharing a web/UI kit with the Capacitor node app (M-NODE) where practical keeps **one web-UI language**.
+- **Why not Web Bluetooth in MC:** rejected in `mission-control-spec.md` — no silent bulk scan, ~7-10 link
+  ceiling, no iOS. The Python `bleak` path has none of those limits and is the same code the CLI uses.
 - **State store:** match/roster/armory persist under `~/.brx-mcp/` on the host (armory registry already
-  lives there, `contracts.md` §1). Event log → SQLite so recap survives a crash and store-and-forward can
-  backfill late (README §8 M5).
+  lives there, `contracts.md` §1). **Event log → SQLite**, every inbound envelope stored with its node `t`,
+  MC's **`t_recv`** (contracts A4.7), and `match_id` (A4.3), so recap survives a crash, late flushes backfill,
+  and foreign-match events can be **parked** rather than scored.
 
-**Justification in one line:** reuse the working BLE + protocol code (Python), avoid a second BLE stack,
-give the host a real screen, and keep the node's web UI kit shared.
+**Justification in one line:** reuse the working BLE + protocol + frame code (Python), avoid a second BLE
+stack or a JS/C++ frame compiler, give the host a real screen, keep the node's web UI kit shared.
 
 ## 3. Field-LAN control (start/join the network)
 
@@ -59,32 +69,45 @@ MC **must not assume it is the AP** (ADR-0002). Two paths, host picks at session
   a documented small-game fallback, not the default.
 
 **Network screen (always reachable):** shows LAN mode (router / hotspot), **MC's own address** printed big
-(`http://192.168.x.x:PORT` + the mDNS name) so a node whose auto-discovery fails can be **pointed manually**
-(the `contracts.md` §5 "host types MC's IP" fallback). Live list of connected nodes with heartbeat age
-(from M-NET). A node appears here the moment it sends `hello`.
+(`ws://192.168.x.x:PORT` + the mDNS name) **and as a QR code** (net.md §3 — scanning beats typing on 16
+phones), so a node whose auto-discovery fails can be pointed manually. Live list of connected nodes with
+heartbeat age (from M-NET). A node appears here the moment it sends `hello`. The screen also carries the
+**operator preflight checklist** the phones cannot enforce for themselves: *mobile data off (or the app
+bound to Wi-Fi), auto-join the field SSID, auto-lock off, **Do-Not-Disturb on** (`preflight.dnd_on`)* — see net.md §8.
 
-## 4. Phase 1 — Readiness board (muster)
+## 4. Phase 1 — Readiness board (muster) — **node-reported (A4.9)**
 
-Renders **M-ARMORY `readiness()`** (a `ReadinessSnapshot`; MC does not scan the fleet itself — it asks
-M-ARMORY). Per gun, a **red/amber/green** card built straight from the `ReadinessRow` fields (M-ARMORY
-§3.4):
+Readiness is assembled by **MC**, not by a BLE sweep. A gun's single BLE central belongs to its **node**,
+so the node is the thing that can actually see the gun; MC's own BLE is a **scan-only presence sweep**
+(M-ARMORY `scan()`) for guns nobody has claimed yet. Sources, per row:
 
-| Signal | Green when | Source (M-ARMORY `ReadinessRow`) |
+| Signal | Green when | Source |
 |---|---|---|
-| Present / advertising | seen in the BLE `scan()` | `present` (scan) |
-| Identity | advert basename == sticker, not a `Tactix2` revert | `identity` (`correlate`, §2.2) |
-| Headset linked | answers the `$VERSION`/`$VOLTS` ritual ⇒ live headset at link | `headset` (§3.3) |
-| Battery % | fresh `$VOLTS` reading above threshold | `battery_pct` + `battery_age_ms` |
-| Firmware | `$VERSION` after the `$STOP→$PHONE→$VERSION` ritual | `fw` |
-| Reachable | link holds + the notification stream heartbeats | `rssi` + persistent-connection stream |
-| Companion batt/fw (later) | present + charged | `companion` (node `hello`/`status`) |
+| Gun claimed / linked | a node has `bind`-ed this gun and `status.preflight.gun_linked` | node `hello.gun` + `bind` + `status` |
+| Identity | advert basename == sticker (not a `Tactix2` revert), matches the armory | M-ARMORY `scan()` `ScanRow.identity` / armory map |
+| **Headset linked** | **amber until the config push** (A5.4): the only hardware-proven detector is the `$LCD,45,70,…` echo on **`$SPAWN`** (B18b). After the lobby push, a non-empty `ack_config.gun_echo` (the head's echo is `$LCD,0,0,0,0,0,0` — it proves the gun *answered*, not its state) turns it green; an **empty echo is red** and blocks `start`. Whether an unspawned head echoes with the headset off is **UNVERIFIED** (bench, §14). | node `ack_config` / `status.preflight.headset_ok` (amber-only pre-push) |
+| Gun battery % | fresh `$VOLTS` via the node — it streams only after the node's **pre-config probe set** (`$PHONE,*`, contracts §3; CONNECTED/KITTED only); **amber** (not red) if unsampled — a miss ≠ flat (A1) | node `status.battery` |
+| Firmware | `$VERSION` from the node's pre-config probe ritual (`$STOP→$PHONE→$VERSION`, contracts §3) | node `hello.gun.fw` / `status.fw` |
+| Phone battery | above threshold | `status.preflight.phone_batt` |
+| Wi-Fi | on the field SSID | `status.preflight.ssid_ok` |
+| MC reachable | the socket that carried this `status` (self-evident) + `mc_reachable` | node `status` |
+| Clock synced | `status.synced` (fresh within `SYNC_FRESH_MS`) | node `status` |
+| Screen / foreground | `status.preflight.screen_on && foreground` — **amber before `start`** (players lock phones while waiting), red only at the start gate | node `status` |
+| Mobile data off / auto-join / auto-lock off / DND on | operator checklist — the phone can't report all of it reliably (`auto_join_ok`, `cellular_off`, `dnd_on` best-effort) | host ticks it (§3) |
+| Unclaimed guns | advertising but no node — listed separately with tail + RSSI so the host can hand them out | M-ARMORY `scan()` |
+| Companion batt/fw (later) | present + charged | node `hello`/`status` |
 
-- Sort by lowest battery; flag any gun below threshold to charge before play.
-- Each card shows the **sticker id** (`Tactix-XXXX` form in all committed examples — never real labels).
-- **"Re-scan armory"** re-pulls `readiness()`. **Start gates on `ReadinessSnapshot.go` (no reds)** — the
-  board owns the go/no-go, but **amber does not block** (a missed `$VOLTS`, a field-only headset ambiguity,
-  `name_confirmed=false` are shown, not gating; M-ARMORY §3.4, contracts A1 amber-not-red). Amber rows are
-  surfaced for the host to address, red rows must clear before START.
+- **No deadlock (A5.4).** Before the config push, **red** = no node, identity reverted/unknown, never synced, wrong
+  SSID / MC unreachable; **amber** = headset unknown, battery unsampled/stale, low phone battery, screen or
+  foreground off, fw unknown — shown, not gating. The push itself is the headset test: an empty `gun_echo`
+  afterwards is red and blocks `start`. (Making "headset not proven" red pre-push would block the very push that
+  proves it.) The row/board shapes are `ReadinessRow`/`ReadinessSnapshot` in **contracts §4** — MC assembles them,
+  never redefines them.
+- Sort by lowest battery; flag any gun/phone below threshold to charge before play.
+- Each card shows the **sticker id** (`Tactix-XXXX` form in all committed examples — never real labels)
+  and the **player number** once kitted.
+- The board is a projection of the latest `status` per node plus the last `scan()`; it re-renders on every
+  heartbeat. There is **no persistent-connection fleet reader** and MC never holds N links to N guns.
 - Bench BLE actions (enroll, `$NAME` write, panic) delegate to M-ARMORY; MC never issues frames directly.
 
 ## 5. Phase 2 — Build the game (mode author)
@@ -102,33 +125,38 @@ default `GameConfig` (`contracts.md` §3) which the host then tunes.
 |---|---|---|
 | Environment | `environment` | indoor / outdoor |
 | Night / LED | `night` (+ `led`) | on / off → blackout HUD + LED choices |
-| Time limit | `time_limit_s` | minutes, or untimed (null) |
+| **Time limit — required** | `time_limit_s` | minutes. **The only end condition that reaches a dispersed node** (A4.8); `validate()` refuses null unless the host marks the venue fully covered |
 | Respawn | `respawn.{type,delay_s}` | Scanner / Auto / none · delay |
-| Scoring | `scoring.{frag_limit,win_by}` | score-to-win, kills / survival / objective |
+| Scoring | `scoring.{frag_limit,win_by}` | score-to-win, kills / survival / objective — shown with a **"coverage-zone only"** badge: MC can end the match early on these only for nodes it can reach |
 | Health | `health.{max_hp,max_armor}` | mode default, overridable |
-| Teams | `teams[]` | team list + colors (`tid`→`$TID`) |
+| Teams | `teams[]` | team list + colors (`tid`→`$TID`); FFA = one team, FF on |
 
 MC **does not** compute frames or validate enums itself — it edits the `GameConfig` object and lets
-**M-MODES** own defaults/validation. Output of this phase is a single serializable `GameConfig` that
-round-trips (author → JSON → frames) with no hidden state (`contracts.md` §3). Save/load named games.
+**M-MODES** own defaults/validation (`validate()`). Output of this phase is a single serializable
+`GameConfig` that round-trips (author → JSON → frames) with no hidden state. Save/load named games.
 
 ## 6. Phase 3 — Kit each player
 
 Done **while players gear up and size straps** — the UI is built for a host walking down a line, not a
 sit-down form. One **player card** per person (a `Player`, `contracts.md` §2):
 
+- **Player number** — `player_num`, **1–63, shown as-is** and written as-is to `$PSET` token 1 (contracts A5.1;
+  **wire 0 is reserved** for tutorial arms / unknown shooter and is never a player). MC **auto-assigns in roster
+  order** (first player = 1) and lets the host edit; unique per match, ≤63 players.
+  This is the id every enemy gun will report when it is hit by this player — it is what makes K/D exact.
 - **Vanity DISPLAY NAME** — the gamertag the host types. This is a **display layer only**; it is **never
   written to the gun** (the gun's `$NAME` is the permanent sticker id — `tagger-naming-architecture`,
-  `mission-control-spec.md` §1b). It labels the scoreboard and recap.
+  `mission-control-spec.md` §1b). It labels the scoreboard, recap, and other players' "☠ by …" line.
 - **Team** — assign to a `Team`; color follows `tid` automatically.
 - **Voice** — dropdown; Male / Female today (`callsign-ui.md`), room for the full voice-pack set later.
 - **Per-player settings / overrides** — `Loadout.overrides` (max_hp/armor) where the mode allows.
 - **Gun binding** — pick which rostered gun (`gun_id`) this player carries; the readiness board must show
-  it green.
+  its node green.
 
-Committing a player card pushes **`assign { player, team }`** to that player's node (`contracts.md` §5) —
-**player + team only, no config** — moving the node to **KITTED**. This is what makes the phase-3a tutorial
-legal (KITTED precondition); the full `GameConfig` is the *separate* lobby `config` push (§7).
+Committing a player card pushes **`assign { player, team, roster }`** to that player's node
+(`contracts.md` §5) — player + team + the current roster, **no config** — moving the node to **KITTED**.
+`assign` is **re-sent on any change** to that player (name, team, number, loadout); the node's latest
+`player` is authoritative. The full `GameConfig` + frames is the *separate* lobby `config` push (§7).
 
 ### 6a. Weapon select — a **cool, visible** UI
 
@@ -142,92 +170,125 @@ badges, filter/sort by class or stat. Selecting a weapon sets a `WeaponSel` in t
 icon set** (class-based silhouettes) as the owner/fallback and renders it wherever `icon` is absent; real
 per-weapon art is TBD and drops in without a schema change (additive `icon` on the `WeaponCatalog`).
 
-### 6b. Phase 3a — Weapon try-out (silent tutorial arming)
+### 6b. Phase 3a — Weapon try-out (tutorial arming)
 
-**The magic moment:** the instant the host changes a player's weapon, MC **silently pushes a private
-tutorial arming to that player's gun** so they can **shoot + reload to feel it** before committing — no
-full game, no scoring, no announcement.
+**The magic moment:** the instant the host changes a player's weapon, MC pushes a private tutorial arming
+to that player's gun so they can **shoot + reload to feel it** before committing — no full game, no
+scoring, no announcement (it is *audible* — the point is to hear fire + reload).
 
-- MC sends **`tutorial { weapon }`** to that player's node (`contracts.md` §5, MC→Node). The node arms its
-  gun with **M-MODES `armFrames()`/tutorial frames** and lets the player fire and reload; nothing is
-  scored and no `start` is implied. State stays in `KITTED` (node lifecycle, `contracts.md` §6).
+- MC calls **M-MODES `tutorialFrames(weapon, environment)`** (environment from the current `GameConfig`,
+  default indoor) and sends **`tutorial { weapon, frames }`** to that player's node (`contracts.md` §5).
+  The node writes the frames verbatim; nothing is scored and no `start` is implied. State stays **KITTED**.
 - **UX:** on the player card, weapon selection is **live** — tap a new weapon, a subtle "trying out on
   <name>'s gun" indicator appears; the player squeezes the trigger a few times, feels the fire rate + mag +
-  reload, and either the host keeps it or taps another. Volume for these arming pushes **must be `VOL 69`**
-  (the audible game value, `modes.md`) — **not** the diagnostic `30`, which is inaudible for weapon/game
-  audio — so the try-out is actually heard; it rides the node's game audio path, never the probe default.
-- This flows **MC → M-NET → node → M-MODES frames → gun**; MC never touches the gun (players may already be
-  out of bench BLE range — this is why it goes over the LAN via the node).
+  reload, and either the host keeps it or taps another. The compiled frames carry **`$VOL,69`** (the audible
+  game value, `modes.md` §4) — never the diagnostic `30`.
+- This flows **MC (compile) → M-NET → node (write) → gun**; MC never touches the gun over BLE (players may
+  already be out of bench range — this is why it goes over the LAN via the node).
+
+- **Try-out safety rule (interim, from modes.md §4):** once any node has reached **LOBBY** (config head written,
+  `$SIR` table live on that gun) MC **disables further try-outs** for the session — a try-out shot may register on a
+  configured-but-unspawned gun (bench-unverified). Re-enable only if the bench proves an unspawned gun ignores IR.
 
 ## 7. Phase 4 — Lobby
 
 - **Team assignment finalized:** drag-and-drop team builder, auto-balance, lock teams before start
-  (`mission-control-spec.md` §2). Board shows each team's roster + colors.
+  (`mission-control-spec.md` §2). Board shows each team's roster + colors + numbers.
 - **Per-player READY-UP:** each player readies on **their node**, which sends **`ready { player_id, ready }`**
-  over M-NET (`contracts.md` §5, A1) to flip `Player.ready` — a ready-up toggle while the node is in
-  **KITTED** (all-ready then gates the `config` push → LOBBY, §7/contracts §6). The lobby shows a live
-  ready/not-ready column; the host can also override-ready a player.
-- **Push config on all-ready:** when every rostered player is ready (and readiness is `go`), MC pushes the
-  **full `GameConfig`** to each node via the **`config { config: GameConfig }`** message (`contracts.md` §5,
-  A2) — the **separate** lobby push, distinct from the phase-3 `assign` (which carried player+team only, no
-  config). Nodes store it, enter **LOBBY**, and return **`ack_config`**; MC shows per-node applied/failed and
-  **blocks start on any un-acked node**. This is the "push full config at lobby ready-up, in range" timing
-  decision (README §6). After this only the lightweight go-live schedule is sent at start.
+  over M-NET (`contracts.md` §5) to flip `Player.ready` — a toggle while the node is **KITTED**. A node may
+  only go ready when **`status.synced` is true** (clock fresh within `SYNC_FRESH_MS`, M-START §4) and its
+  preflight is green; MC shows why a node can't ready. The host can override-ready a player (logged).
+- **Push config on all-ready:** when every rostered player is ready (and the board has no reds), MC calls
+  **M-MODES `compile(config, player)`** for each player and pushes **`config { config, frames, roster }`**
+  (`contracts.md` §5) — the per-player **`FrameBundle`** (head / spawn / revive / end / panic / team_flip /
+  cues). Nodes write **`frames.head`** (gun configured, **unspawned**), enter **LOBBY**, and return
+  **`ack_config { ok, gun_echo }`**. MC **gates START on `ok:true` AND a non-empty `gun_echo` from every
+  node** — the echo is the headset-present proof (§4; pre-push reds are the §4 list, headset is *not* one of them). A `player_num` / loadout / team change after the
+  push **re-compiles and re-pushes that player's bundle** (and the roster to everyone); an un-acked node
+  blocks start until it re-acks. This is the "push everything in range, then only `start`" decision (README §6).
 
 ## 8. Phase 5 — Dispersed timed start
 
 MC **delegates the start choreography to M-START** — it does not implement the countdown. MC's job:
 
-- Host taps **START**; MC picks a **go-live wall-clock time** `go_live_t` (synced clock, `contracts.md` §7)
-  a configurable lead ahead (enough to walk to bases), and issues **`start { go_live_t, config_id, seq,
-  countdown_s }`** to every node (`contracts.md` §5).
-- **MC MUST stamp a monotonic `seq`** (per session) on **every** `start` it issues. The `seq` is what a
-  reschedule or an **`abort_start`** targets — a higher `seq` supersedes a prior schedule — so a specific
-  pending start can be cancelled or replaced unambiguously (contracts §9 "three `seq` namespaces": this is
-  `start.seq`, MC-owned, distinct from the per-node event counter). Re-issuing `start` to a straggler carries
-  a fresh higher `seq`.
-- **Per-node "armed, T-minus" board:** each node counts down on its **own synced clock** and arms its gun +
-  plays the countdown/klaxon **through the gun speaker** at T — no signal needed at the instant (README §5,
-  M-START). MC shows each node's state: got-start → armed → T-minus HH:MM:SS → LIVE. A node that never
-  synced falls back to `now + duration` from receipt (degraded, flagged) — MC surfaces the flag.
-- Late/early-join and power-cycle-after-dispersal re-sync are **M-START's** concern; MC just reflects node
-  state and can re-issue `start` to a straggler.
+- Host taps **START**; MC **mints a `match_id`** (never reused — it stamps every event of this play,
+  contracts A4.3), picks `go_live_t` (synced clock, `contracts.md` §7) a configurable runway ahead, and
+  issues **`start { match_id, go_live_t, config_id, seq, countdown_s }`** to every node. Runway default
+  **`DEFAULT_RUNWAY_S = 120`** — it is *walk time* on a park, not a drum-roll; presets 60 / 120 / 180 s.
+- **MC MUST stamp a monotonic `seq`** (per session) on **every** `start`. `seq` is what a reschedule or an
+  **`abort_start`** targets — a higher `seq` supersedes (contracts §9 "three `seq` namespaces"). **Rules (A5.6):** re-issuing the
+  *same* schedule to a straggler = **same `seq`, same `match_id`** (a node that already holds it treats it as a
+  no-op); a **reschedule** = **new `seq` + new `match_id`** (supersedes on every node that hears it).
+- **Per-node "armed, T-minus" board with a coverage indicator:** each node counts down on its **own**
+  clock and spawns its gun at T (README §5, M-START). MC shows per node: got-start → armed → T-minus →
+  LIVE, **and whether the node is currently in range** (last heartbeat age). A node that never synced falls
+  back to `now + duration` from receipt (degraded, flagged).
+- **Abort reaches only nodes in range.** The Start screen says so in plain words and offers **Reschedule**
+  (a new `go_live_t` further out, higher `seq`) as the **default** recovery — issued *before* the old T-0
+  while most nodes are still near the base. Abort is the secondary action and lists which nodes it cannot
+  reach. Late/early-join and power-cycle-after-dispersal re-sync are **M-START's** concern.
+- **Late joiner mid-match** (A5.6): kit the player (`assign`), push their `config` (compile → `frames`, `ack_config`
+  + echo), then re-push the **same `start`** (same `seq`/`match_id`); the node hot-joins per M-START E5/E11. The
+  all-nodes-acked start gate does not apply to a joiner — the match is already running.
 
-## 9. Phase 6 — Live scoreboard
+## 9. Phase 6 — Live board
 
-A **Halo-style live board** assembled from node **`status`/`event`** reports over the LAN (M-NET). Built
-for **store-and-forward tolerance** — the board is a projection of eventually-consistent data, never a
-real-time assumption.
+A **Halo-style board** assembled from node **`hit_taken` / `death` / `respawn`** (persisted facts) and
+**`status`** (live heartbeat + counters) over the LAN (M-NET). It is a projection of **eventually-consistent,
+coverage-zone** data — never a real-time assumption (§1).
 
 - **Rows** are `ScoreRow` (`contracts.md` §4): kills, deaths, assists, shots, hits, accuracy, K/D, streak,
-  medals — **all MC-derived**. MC ingests node-observable `Event`s (`shot`, `hit_taken`, `death`, `respawn`,
-  `status`) and computes cross-player truth using the §4 rules and the §9 constants (`ASSIST_WINDOW_MS`,
-  `MULTI_KILL_MS`, `ATTRIB_FUSE_MS`, etc.). **Kills/assists/accuracy are never sent by nodes** — MC alone
-  produces them from victim-side `hit_taken`/`death` (the gun is host-blind about its own kills).
-- **Attribution fidelity (README §6):** ship **team-level** now (from `shooter_team`); when a Companion
-  supplies `shooter_id` (P2) go exact; otherwise MC MAY best-effort individual-attribute from timing/
-  proximity, **flagged `approx`** on the row.
-- **Staleness:** dedup by `(node_id, seq)`; treat a missing node as **stale, not gone** — show last-known
-  values with a **staleness age** (grey after `STALE_AFTER_MS`). Late `event_batch` flushes on reconnect
-  reconcile silently.
-- **Feedback loop:** when MC scores a kill/multi/medal it MAY send **`feedback`** to the scoring node so it
-  greens the sight + plays audio (`contracts.md` §5) — best-effort, the node never depends on it.
-- **Host controls:** `control { cmd: end|pause|panic|abort_start|recall }` (`contracts.md` §5). One meaning
-  each: **`abort_start`** cancels a *pending* scheduled start (by `seq`, back to LOBBY — issued from the Start
-  screen before go-live); **`recall`** stops a *live/armed* game; `end` is a normal match end; `pause` holds.
-  **Panic** relays the safe sequence to nodes, which apply `$CLEAR,*` then `$SP,99,*` to their gun (MC issues
-  the *command*, the node issues the frames).
+  medals — **all MC-derived**. **Attribution is exact:** `death.shooter_num` → roster → killer;
+  `hit_taken.shooter_num` → assists (`ASSIST_WINDOW_MS`) and hits. A `shooter_num` not in the roster (a
+  station/grenade `$HIR`, or a gun from another game) is logged, not credited.
+- **Team-kills** are **roster-based, never `$TID`-based** (A5.2): friendly ⇔ killer and victim share a non-null
+  roster `team_id` **and `mode != "ffa"`** (FFA is one `$TID` for everyone — `$TID` equality would make every
+  FFA kill a team-kill). Flagged on the row and in the feed (−1 by default, mode may override). **Infection:**
+  ingest `team_change{player_id, tid}` facts and re-evaluate roster teams from them before scoring later kills.
+- **Winner:** `mode == "ffa"` → top `ScoreRow`; team modes → team kills (or `scoring.win_by`).
+- **Accuracy** = `hits` (count of *victims'* `hit_taken` whose `shooter_num` is me, **non-friendly targets only**)
+  ÷ my latest `status.shots`. Both are counters MC already holds; there is no per-bullet event (A4.4). If a node's
+  last `status` predates the match (phone died mid-game), accuracy shows **"—"**, never 0.
+- **Time base (A4.7/A5.7):** a node that was synced at lobby keeps its own `t` for the whole match (drift ≪1 s).
+  For a **never-synced** node MC uses `t_recv` for live `event`s, re-bases an `event_batch` once per flush
+  (`offset = t_recv − t_newest`, order preserved), and **suppresses window awards** (multi-kill, first blood)
+  derived from that node's facts.
+- **`match_id` parking (A4.3):** events whose `match_id` is not the current match are **parked** (stored,
+  visible in that match's recap, never scored into this one). This is what makes a phone that flushes
+  last match's deaths during this match harmless.
+- **Staleness:** dedup by `(node_id, seq)`; a missing node is **stale, not gone** — last-known values +
+  age (grey after `STALE_AFTER_MS`). Late `event_batch` flushes reconcile silently.
+- **Feedback loop:** when MC scores a kill/multi/medal it sends **`feedback { player_id, kind, t, cue? }`** to the
+  **killer's** node (it knows exactly who — A4.1) so it greens the sight + plays the cue — **only if the
+  death is fresher than `FEEDBACK_MAX_AGE_MS`** (no flash minutes later for a late flush), and only if that
+  node is in range. In a large park this fires in **coverage zones**; that is expected.
+- **Host controls:** `control { cmd: end|panic|abort_start|recall }` (`contracts.md` §5). One meaning each
+  (A5.9): **`abort_start`** cancels a *pending* start (by `seq`) while a node is ARMED — a node that is already
+  LIVE for that `seq` treats it as `recall`; **`recall`** stops a *live/armed* game; **`end`** is the normal
+  early end; **`panic`** relays the safe sequence (node writes `frames.panic`). Every one of them lands the node
+  in **KITTED** (gun + player retained) — a **rematch is just a new `config` push** → LOBBY → `start`. There is
+  **no `pause`** (A4.6). **Frag-limit / survival / objective ends:** MC decides the winner when the event log says
+  so and broadcasts `end` **best-effort** — nodes in range stop; nodes out of range **keep playing until
+  `go_live_t + time_limit_s`**, which is the end that reaches everyone. Say this on screen ("early end sent
+  to 5/8 nodes; the rest end at 12:00").
 - **TV mode:** a full-screen board for a spectator display.
 
 ## 10. Phase 7 — Recap
 
 When players return in range, MC **reconciles final events and computes end state**:
 
-- **Ingest node logs:** a node offers `log_offer`; MC requests **`pull_log`** and folds the diagnostic
-  events into the SQLite log so late/dropped events complete the record (store-and-forward closure).
-- **Compute end state** from the reconciled event log: **winner** (by `scoring.win_by`), **most kills**,
-  **best K/D**, **accuracy leader**, and **medals** (MVP / Top Gun / Sharp Shooter / multi-kills — sourced
-  from `config-facts.md` via M-MODES/contracts constants).
+- **Ingest late flushes and parked events:** `event_batch`es land as nodes reconnect; parked foreign-match
+  events are routed to their own match's record. Recap is explicitly allowed to **complete late** and shows
+  "waiting for N nodes" until every rostered node has flushed (or the host finalizes with last-known).
+- **Ingest node logs:** a node offers `log_offer`; MC requests **`pull_log`** and folds the chunked
+  **`log_data`** into the SQLite log so dropped events and BLE-resync respawns (node.md §3.10) are visible.
+- **Recap is provisional until every rostered node has flushed** (A5.11): kills exist only in *victims'* reports,
+  so an absent victim silently under-counts *other* players' kills. Show **"N victims missing — kills
+  provisional"** and mark the export provisional until the host finalizes.
+- **Compute end state** from the reconciled event log: **winner** (FFA → top `ScoreRow`; team modes →
+  `scoring.win_by` or team kills at time-expiry), **most kills**, **best K/D**, **accuracy leader**, and **medals** — all **per player** now
+  (M-MODES `medalCatalog()` + `awardMedals(rows, kills)`; MVP / Top Gun / Sharp Shooter / Survivalist / First
+  Blood / multi-kills / Assistant).
 - **Export:** match summary + per-player `ScoreRow`s + kill feed to a file (JSON/CSV) under `~/.brx-mcp/`;
   optional at-home sync is out of scope for the field (ADR-0002 — the field is an island).
 
@@ -238,45 +299,59 @@ a reach-in.
 
 | Module | MC consumes | For |
 |---|---|---|
-| **M-ARMORY** | `readiness()` snapshot; armory CRUD (enroll/`$NAME`/bind); bench panic | phases 0-1 |
-| **M-MODES** | mode catalog + `GameConfig` builder/defaults/validation; `WeaponCatalog`; `armFrames()`/tutorial frames | phases 2, 3, 3a |
-| **M-NET** | Transport **server**: mDNS advertise, node WS, heartbeat, store-and-forward intake, clock-sync; `hello`/`bind`/`event`/`event_batch`/`ack_config`/`log_offer` in; `welcome`/`assign`/`config`/`tutorial`/`start`/`feedback`/`control`/`pull_log` out | phases 3a-7 |
-| **M-START** | `startAt(go_live_t, config_id, seq, countdown_s)` control (MC-stamped `seq`) + per-node armed/T-minus state; `abort_start(seq)` | phase 5 |
-| **M-CONTRACTS** | every data shape: `ArmoryRecord`, `Player`, `Team`, `Loadout`, `GameConfig`, `Weapon`, `Event`, `Kill`/`Assist`/`ScoreRow`, envelope, constants | all |
+| **M-ARMORY** | `list()` / `enroll()` / `rename()` armory CRUD; **`scan() → ScanRow[]`** (presence + identity + RSSI); `bind_player()` validation; bench panic | phases 0-1 |
+| **M-MODES** (in-process) | mode catalog + `GameConfig` builder/defaults/**`validate()`**; `WeaponCatalog`; **`compile(config, player) → FrameBundle`**; **`tutorialFrames(weapon, environment)`**; `cues`; `medalCatalog()` + **`awardMedals()`** | phases 2, 3, 3a, 4, 7 |
+| **M-NET** | `NetServer`: mDNS/QR advertise, node WS, heartbeat + **`status`** intake, store-and-forward intake with **`t_recv`**, clock-sync; **`hydrate(hello) → welcome.node`** hook MC answers on every `hello` — resolved **by `hello.gun` (sticker/tail → the player bound to that gun) first, `node_id` second** (A5.5), returning player/team/roster/config/frames/start/match_id/**score**; `hello`/`bind`/`event`/`event_batch`/`status`/`ack_config`/`ready`/`log_offer`/`log_data` in; `welcome`/`assign`/`config`/`tutorial`/`start`/`feedback`/`control`/`pull_log`/`ack` out | phases 1-7 |
+| **M-START** | `start { match_id, go_live_t, config_id, seq, countdown_s }` (MC mints `match_id`, stamps `seq`; **same-`seq` re-push vs new-`seq`+new-`match_id` reschedule**, A5.6) + per-node armed/T-minus/coverage state; `abort_start(seq)` | phase 5 |
+| **M-CONTRACTS** | every data shape: `ArmoryRecord`, `Player` (+`player_num`), `Team`, `Loadout`, `RosterEntry`, `GameConfig`, `FrameBundle`, `Weapon`, `Event`, `Kill`/`Assist`/`ScoreRow`, envelope, constants | all |
 
-MC **produces**: the roster/match state, the derived scoreboard (`ScoreRow`), the recap + export, and the
-operator UI itself. It **owns** none of the schemas or frames.
+MC **produces**: the roster/match state (incl. `player_num`s and `match_id`s), the compiled bundles (via
+M-MODES), the derived scoreboard (`ScoreRow`), the recap + export, and the operator UI itself. It **owns**
+none of the schemas.
 
 ## 12. Screen map (the app)
 
 | Screen | Phase | Core content |
 |---|---|---|
-| **Network** | any | LAN mode, MC address (big), connected-node list + heartbeat |
-| **Readiness** | 1 | red/green gun cards from `readiness()`; start-gate |
-| **Build Game** | 2 | mode grid + global settings panel (`GameConfig`) |
-| **Kit Players** | 3/3a | player cards; weapon gallery; live try-out |
-| **Lobby** | 4 | team builder, ready column, push-config + ack status |
-| **Start** | 5 | START + per-node armed/T-minus board |
-| **Live** | 6 | Halo-style board, staleness, host controls, TV mode |
-| **Recap** | 7 | winner/leaders/medals, log ingest, export |
+| **Network** | any | LAN mode, MC address (big) + QR, connected-node list + heartbeat, operator preflight checklist |
+| **Readiness** | 1 | **node-reported** red/amber/green cards (headset/screen amber pre-push, A5.4) + unclaimed-gun list from `scan()`; push-gate |
+| **Build Game** | 2 | mode grid + global settings panel (`GameConfig`; time limit required) |
+| **Kit Players** | 3/3a | player cards incl. **player number**; weapon gallery; live try-out |
+| **Lobby** | 4 | team builder, ready column (sync-gated), bundle push + `ack_config`/`gun_echo` ticks |
+| **Start** | 5 | START + per-node armed/T-minus/**coverage** board; Reschedule (primary) / Abort |
+| **Live** | 6 | Halo-style board, exact K/D/A, team-kill marks, staleness, host controls, TV mode |
+| **Recap** | 7 | winner/leaders/medals, **provisional until all nodes flushed**, late-flush + parked ingest, log ingest, export |
 
 ## 13. Task breakdown
 
 1. **Python server skeleton** — HTTP static + JSON API; serve the web UI; state store + SQLite event log
-   under `~/.brx-mcp/`.
-2. **Wrap M-ARMORY** — `readiness()` render + re-scan; bench actions delegated (mock until M-ARMORY lands).
-3. **M-NET server integration** — mDNS advertise, node WS intake, node list + heartbeat, store-and-forward
-   ingest, clock-sync serving.
-4. **Build-game UI** — mode grid + global settings bound to `GameConfig` (M-MODES catalog/defaults).
-5. **Kit-players UI** — player cards; **weapon gallery** from `WeaponCatalog`; team/voice/overrides.
-6. **Tutorial try-out** — live weapon change → `tutorial` push → node arms; the "trying out" UX.
-7. **Lobby** — team builder + ready column; `config` push + `ack_config` gate.
-8. **Start** — delegate to M-START; per-node armed/T-minus board.
-9. **Scoring engine** — ingest `Event`s → `Kill`/`Assist`/`ScoreRow` per `contracts.md` §4 + constants;
-   staleness; `approx` flag; `feedback` emit.
-10. **Live board + host controls** — Halo-style board, TV mode, end/pause/panic/recall.
-11. **Recap** — end-state compute, `pull_log` ingest, medals, export.
-12. **Network chooser** — router-join vs Mac-hotspot with the macOS-AP-weak warning + manual-IP display.
+   (`t`, `t_recv`, `match_id`, parked flag) under `~/.brx-mcp/`.
+2. **Wrap M-ARMORY** — `scan()` render + unclaimed list; enroll/rename delegated (mock until M-ARMORY lands).
+3. **M-NET server integration** — mDNS/QR advertise, node WS intake, `status` intake → readiness board,
+   store-and-forward ingest with `t_recv`, clock-sync serving, **`hydrate()` hook** answering `welcome.node`.
+4. **Readiness board** — node-reported rollup (§4, contracts §4 shapes) + operator checklist; the A5.4 red/amber
+   rules (no headset deadlock).
+5. **Build-game UI** — mode grid + global settings bound to `GameConfig` (M-MODES catalog/defaults/validate;
+   time limit required; coverage-only badge on frag/survival).
+6. **Kit-players UI** — player cards with **`player_num` auto-assign + edit**; **weapon gallery** from
+   `WeaponCatalog`; team/voice/overrides; `assign` re-send on change.
+7. **Tutorial try-out** — weapon change → `tutorialFrames()` → `tutorial{weapon, frames}` push; the
+   "trying out" UX.
+8. **Lobby** — team builder + sync-gated ready column; **`compile()` per player → `config{config, frames,
+   roster}` push**; `ack_config` + `gun_echo` gate; re-compile/re-push on late edits.
+9. **Start** — mint `match_id`; delegate to M-START; per-node armed/T-minus/**coverage** board; Reschedule
+   primary (new `seq`+`match_id`), Abort secondary with reach warning; same-`seq` re-push; **late-joiner flow**
+   (assign → config → same `start`).
+10. **Scoring engine** — ingest facts → exact `Kill`/`Assist`/`ScoreRow` per `contracts.md` §4 + constants;
+    roster `shooter_num` map (0 = no killer); **roster-based friendly rule (never in FFA)**; `team_change`
+    ingest; accuracy from counters (non-friendly hits; "—" on stale `status`); A5.7 time base + award
+    suppression; **`match_id` parking**; staleness; fresh-only `feedback{…, t}` to the killer's node.
+11. **Live board + host controls** — Halo-style board, TV mode, end/panic/abort_start/recall (no pause);
+    "early end reached N/M nodes" copy.
+12. **Recap** — late-flush + parked reconciliation, **provisional flag until all nodes flushed**, `log_data`
+    ingest, per-player medals via `awardMedals()`, FFA/team winner, export. **Rematch** = new `config` push to
+    the KITTED nodes.
+13. **Network chooser** — router-join vs Mac-hotspot with the macOS-AP-weak warning + manual-IP/QR display.
 
 Each ships with **mocks** for its dependencies (README §5 rule 3) so MC builds before M-ARMORY/M-MODES/
 M-NET are live.
@@ -284,16 +359,21 @@ M-NET are live.
 ## 14. Open questions
 
 - **`feedback` fan-out cost.** How aggressively should MC push `feedback` (every kill? only medals?) given
-  best-effort delivery and node audio load. Default: kills + medals, coalesced.
-- **`approx` attribution algorithm.** The timing/proximity heuristic for individual attribution without
-  `shooter_id` (P2) needs a concrete rule inside `ATTRIB_FUSE_MS` — spec vs defer to Companion.
+  best-effort delivery and node audio load. Default: kills + medals, coalesced, fresh-only.
+- **Coverage-zone planning UI.** Should MC help the host *plan* coverage — mark which base/respawn point is
+  in router range (from node heartbeats seen during setup walks) and warn when a respawn point is out of
+  range? Cheap and directly improves how often K/A/ACC catch up mid-match (README §3).
 - **Host-side mid-match interventions.** `mission-control-spec.md` §5 lists powerups/extra-life/loadout-swap.
-  ADR-0002 says MC is not gun-connected mid-match — so any intervention must ride `control`/`assign` **via
-  the node**. Confirm which interventions are in scope for M-MC vs deferred.
+  MC is not gun-connected mid-match — any intervention must ride `control`/`assign` **via the node** and only
+  reaches nodes in range. Confirm which interventions are in scope for M-MC vs deferred.
 - **Multi-operator / handoff.** One host today; is a second read-only board (another laptop/phone on the
   LAN) wanted for a co-host? Out of scope unless requested.
-- **Node → player binding trust.** How MC confirms a node actually holds the gun it claims (`bind.gun_tail`)
-  before pushing config — reconcile against readiness/armory map.
+- **Node → player binding trust.** How MC confirms a node actually holds the gun it claims (`bind.gun_name`/
+  `gun_tail`, from the advert name) before pushing config — reconcile against `scan()` presence + the armory map;
+  the `gun_echo` closes it.
+- **[HW-CONFIRM] Does an unspawned head echo with the headset off?** If yes, `gun_echo` after the lobby push is
+  *not* a headset proof and the gate must move to the T-0 `$SPAWN` echo (`status.preflight.headset_ok` from the
+  node at spawn). Bench item; until then the push-echo is the gate and this is flagged unverified (§4).
 
 ---
 

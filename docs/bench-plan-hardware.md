@@ -1,5 +1,7 @@
 # Bench plan — IR + nRF hardware (arriving 2026-08-26)
 
+> **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
+
 Ready-to-run playbook for the incoming kit. Do the sessions in order; each has a **goal**, **wiring**,
 **flash/run**, **expected output**, and a **pass/fail** line. Ground truth: `protocol/brx-ir-protocol.md`
 (IR word), `hardware/ir-breadboard.svg` (wiring), `hardware/bench-shopping-list.md` (parts + power).

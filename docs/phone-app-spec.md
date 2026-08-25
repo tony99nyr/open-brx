@@ -1,5 +1,7 @@
 # Phone app — Callsign replacement (spec)
 
+> **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
+
 **Status:** proposal, 2026-08-24. An open per-player app that replaces Battle Company's **Callsign**
 — the same role (the phone *is* the per-player game engine + HUD), minus the AWS cloud dependency,
 the iOS-only restriction, and the buggy connection handling. It is the **software twin of the BRX

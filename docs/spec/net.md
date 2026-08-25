@@ -1,7 +1,7 @@
 # M-NET — field LAN transport (node ↔ Mission Control)
 
-- **Status:** Draft (Wave 1). Binds to [`contracts.md`](contracts.md) §5 (protocol), §7 (clock sync),
-  §9 (versioning/constants); realizes [ADR-0002](../adr/0002-laptop-mission-control-host.md)
+- **Status:** Draft (Wave 1), updated to contracts **A4 + A5**. Binds to [`contracts.md`](contracts.md) §4/§5
+  (events + protocol), §7 (clock sync), §9 (versioning/constants); realizes [ADR-0002](../adr/0002-laptop-mission-control-host.md)
   (local-first, store-and-forward, no cloud). Module role: [`README.md`](README.md) §4 (M-NET).
 - **Owns:** the wire between each player node (phone now, Companion later) and the MC server — discovery,
   the WebSocket, heartbeat, store-and-forward queue, the clock-sync handshake, reconnect/backoff.
@@ -34,7 +34,9 @@ bidirectional, ordered, framed. Rationale:
 - **Store-and-forward is ours, not the broker's.** We need a *bounded, persisted, replayable* node-side
   queue with `(node_id, seq)` dedup at MC (§4 below). QoS-1/retained-message semantics from a broker
   don't match this — the queue must survive the node app being backgrounded and the broker being *gone*
-  (LAN dead). Owning the queue in the node is simpler and stronger than leaning on broker delivery.
+  (LAN dead). Owning the queue in the node is simpler and stronger than leaning on broker delivery. Only the
+  **persisted facts** (`hit_taken`/`death`/`respawn`/`team_change`) ride the queue; `status` is **live-only** — no `seq`,
+  never queued (contracts A4.4) — so a broker's retained-message model would be actively wrong for it.
 
 **Why MQTT is still on the roadmap.** MQTT earns its keep for **inter-Companion** traffic later (README
 M6): a mesh of ESP32 nodes that gossip peer state (nearby-player presence, IR-decoded shooter-ids,
@@ -58,31 +60,45 @@ M-NET assumes an IP LAN with no internet (ADR-0002 §2). Two ways it gets stood 
   it as *small-game only*; the router is the real answer. M-NET code must not care which is in use — it
   binds to whatever LAN IP it's given.
 
+**The LAN covers the base, not the match (contracts A4.8, README §3 "coverage honesty").** The venue is a
+large park. A travel router reaches tens of metres; players spread over hundreds. So the design point is
+**not** "a node blips out for a few seconds" — it is **"most nodes are offline for most of the match, for
+minutes at a time, and come back at a base or at recap."** Everything in this doc that mentions an outage
+means that. Config, sync, and `start` happen in the lobby *because* it is the last moment everyone is in
+range; the socket is expected to be dead at T-0 and to reconnect only at sync points. A **second battery
+mesh AP at a far base** (same SSID, router mesh mode) is the cheap way to add a coverage zone so a death
+there becomes a sync point (optional, M4); M-NET needs no change for it — it is one LAN.
+
 **Addressing & client cap.** Nodes are DHCP clients on the LAN subnet; MC discovers its own bound IP at
 startup (all interfaces, pick the LAN one) and advertises *that*. **Do not hard-code or cache an MC IP**
 across sessions — router DHCP reassigns, and (per contracts §1) address formats differ by OS. Practical
 ceiling: **travel-router LANs comfortably do 16-32 clients; a phone/Mac hotspot ~5-10.** Above the
-hotspot cap, degradation is join failures, not corruption — surface it in readiness (M-ARMORY), don't
-paper over it. One WS per node; MC holds N sockets, one per connected node.
+hotspot cap, degradation is join failures, not corruption — surface it on the readiness board (from
+`status.preflight`, contracts A4.9), don't paper over it. One WS per node; MC holds N sockets, one per
+connected node (contracts `MAX_PLAYERS = 63`).
 
 ## 3. Discovery
 
-MC advertises, nodes resolve, with a manual fallback (`contracts.md` §5):
+MC advertises; nodes join by **QR** (the field default), by mDNS (the convenience), or by typing
+(the mandatory floor) — contracts §5:
 
-1. **mDNS/Bonjour.** MC publishes `_openbrx._tcp` on the LAN with TXT records
+1. **QR join (required for M2).** MC renders its `ws://<ip>:<port><ws_path>` (+ `session_id`) as a QR on
+   the Network screen; the node scans it with the phone camera and connects. This is the path you actually
+   use with 16 phones on a field — typing IPs into 16 handsets is the fallback you hit first if this is
+   missing. Treat it as M2 scope, not polish.
+2. **mDNS/Bonjour.** MC publishes `_openbrx._tcp` on the LAN with TXT records
    `{ ver, session_id, ws_path, server_name }` on its WS port. Bonjour is native on macOS/iOS; Android
-   uses NSD; browsers can't do raw mDNS, so the Capacitor node uses a small native NSD/Bonjour plugin
-   (shared with M-ARMORY's discovery needs). Node browses `_openbrx._tcp`, reads the TXT, opens
-   `ws://<resolved-ip>:<port><ws_path>`.
-2. **Manual IP entry (mandatory fallback).** mDNS fails on hostile/guest Wi-Fi, some Android OEM stacks,
-   and locked-down routers. The node UI always offers **"Enter Mission Control address"** — host reads
-   the IP:port off MC's screen (MC displays its bound LAN address prominently) and types it. This path
-   must be as first-class as mDNS; never make the game un-startable because Bonjour is filtered.
-3. **QR convenience (optional).** MC may render its `ws://ip:port` as a QR the node scans — same manual
-   path, less typing. Nice-to-have, not required for M2.
+   uses NSD; browsers can't do raw mDNS, so the Capacitor node uses a small native NSD/Bonjour plugin.
+   Node browses `_openbrx._tcp`, reads the TXT, opens `ws://<resolved-ip>:<port><ws_path>`. iOS requires
+   the `NSBonjourServices` `Info.plist` key (not an entitlement) or the browse silently returns nothing (§8 gates).
+3. **Manual IP entry (mandatory fallback).** mDNS fails on hostile/guest Wi-Fi, some Android OEM stacks,
+   and locked-down routers; a camera can be cracked. The node UI always offers **"Enter Mission Control
+   address"** — host reads the IP:port off MC's screen (displayed prominently) and types it. Never make the
+   game un-startable because Bonjour is filtered or a camera is dead.
 
 Discovery yields a URL; from there §5's lifecycle takes over. Discovery is *only* used to find MC the
-first time and after a full address change — a warm socket is never re-discovered.
+first time and after a full address change — a warm socket is never re-discovered, and a node that walks
+back into range reconnects to the cached URL without re-scanning.
 
 ## 4. Store-and-forward
 
@@ -91,62 +107,101 @@ rule of the whole module. The node's engine writes to the gun over BLE and emits
 **in-process outbox**; the WS layer drains the outbox asynchronously. If the socket is down, slow, or
 buffering, the engine does not notice and does not wait.
 
-**Outbox = a bounded, persisted ring.**
-- Every `Event` gets the node's next monotonic `seq` (`Envelope.seq`, contracts §5) at enqueue time and
-  is appended to a ring buffer that is **persisted** (e.g. IndexedDB / SQLite / a capped file) so it
-  survives the app being backgrounded or killed mid-match.
-- **Bounded:** cap by count *and* age (recommend **~2000 events or 20 min**, whichever first). On
-  overflow, **drop oldest** and increment a `dropped` counter reported in the next `status`. A match is
-  minutes long; the cap only bites during a very long outage, and old status frames are the least
-  valuable thing to lose.
-- **Never** persist `feedback`/`start`/`assign` (MC→node) — those are best-effort and re-derivable; only
-  the node's own outbound `Event` facts are precious.
+**Two kinds of uplink (contracts A4.4).**
+- **Persisted facts** — `hit_taken`, `death`, `respawn`, `team_change`. Each gets the node's next monotonic `seq`
+  (`Envelope.seq`) at enqueue time, is appended to the ring, and is replayed until MC `ack`s it.
+- **Live-only** — `status` (the heartbeat + counters) and the other `NodeMessage`s. `status` carries **no
+  `seq`, is never queued, never persisted**: if the socket is down it is simply not sent; the next one
+  carries the current truth (`shots`, `hp`, `arm_state`, `preflight`, `dropped`). Queuing a heartbeat is
+  worse than useless — it would flush minutes of stale snapshots at reconnect.
+
+**Outbox = a bounded, persisted ring (facts only).**
+- Persisted (IndexedDB / SQLite / a capped file) so it survives the app being backgrounded or killed
+  mid-match, and survives the **minutes-long** outages of §2.
+- **Bounded:** cap by count *and* age — recommend **~500 facts or 2 h**, whichever first. Sizing: a
+  kill is ~13 `hit_taken` + 1 `death` + 1 `respawn`; ten deaths in a match is ~150 facts, so 500 covers a
+  long match plus a late recap with margin, and it is small enough to flush in three `event_batch`es. The
+  old 20-minute age cap is gone — a phone may not see MC until well after the match. On overflow, **drop
+  oldest** and increment `dropped` (reported in the next `status`).
+- **`match_id` is stamped on every fact** (contracts A4.3). The ring may legitimately hold facts from
+  match N when match N+1 starts (a phone that never got back in range); MC **parks** foreign-match facts
+  into that match's recap and never scores them into the current one. The node does not filter — it
+  flushes everything un-acked, oldest first.
+- **Never queue `feedback`/`start`/`assign`/`config` (MC→node) in the outbox ring** — the ring holds only the
+  node's own outbound facts. The node *does* persist its current context (player/team/roster/config/bundle/
+  pending `start`) separately (node.md §3.7), and `welcome` re-hydrates it anyway (§5).
 
 **Flush on reconnect.** On (re)establishing the socket and completing `hello`/`welcome`, the node sends
-all un-acked events as one or more `event_batch` messages (`{ events: Event[] }`, contracts §5), oldest
-first, chunked (recommend ≤200 events/batch to stay under §7 size limits). Live events emitted during a
-healthy connection go as single `event` messages; the batch path is purely the backlog drain.
+all un-acked facts as one or more `event_batch` messages (`{ events: Event[] }`, contracts §5), oldest
+first, chunked (≤200 events/batch, well under the §8 size cap). Live facts emitted during a healthy
+connection go as single `event` messages; the batch path is purely the backlog drain. `status` resumes
+on its own cadence the moment the socket is `bound`.
 
 **Idempotent dedup at MC.** MC keeps, per `node_id`, the highest `seq` applied (and a small recent-set
-to tolerate reordering). An arriving event with `seq ≤ last_applied` is a **replay → dropped silently**.
+to tolerate reordering). An arriving fact with `seq ≤ last_applied` is a **replay → dropped silently**.
 This makes reconnect-flush, at-least-once delivery, and duplicate sockets all safe (contracts §4:
-"Events are idempotent by `(node_id, seq)`"). MC ACKs progress (see §6 `ack` / high-water) so the node
-can prune its ring; un-ACKed events are retained and re-sent next flush.
+"idempotent by `(node_id, seq)`"). MC ACKs progress (`ack {seq_hi}`, §6) so the node can prune its ring;
+un-ACKed facts are retained and re-sent next flush. The one hole in a high-water-mark dedup — a node
+whose storage was wiped restarting at `seq = 0` and having every real fact silently dropped — is closed
+by the `hello.seq_next` / `welcome.seq_hi` exchange in §5.
 
 ## 5. Connection lifecycle
 
 ```
-resolve(§3) → CONNECTING → OPEN → hello ─────► welcome → BOUND(bind/assign) → LIVE
-     ▲                                  │                                        │
-     └──── backoff ◄── CLOSED/ERROR ◄───┴──── heartbeat lost / socket drop ◄─────┘
+resolve(§3) → CONNECTING → OPEN → hello ─────► welcome(hydrate) → BOUND(bind) → LIVE
+     ▲                                  │                                          │
+     └──── backoff ◄── CLOSED/ERROR ◄───┴──── heartbeat lost / socket drop ◄───────┘
 ```
 
-- **Handshake.** On OPEN the node sends `hello { node_id, node_type, app_ver, gun? }` (contracts §5). MC
-  replies `welcome { session_id, server_t, config? }`. `server_t` seeds the first clock estimate (§7);
-  `config` lets a reconnecting node re-hydrate an in-progress match without a fresh push. Node must not
-  send `event`s before `welcome` (they queue in the outbox regardless, so this is free).
-- **Bind.** After `welcome` the node sends `bind { node_id, player_id?, gun_tail }` claiming its gun and
-  (if known) player. MC maps `node_id ↔ player_id ↔ gun`. Re-`bind` on reconnect is idempotent —
-  rebinding the same node updates the mapping in place; a node whose gun_tail changed (hot-swap, README
-  §7) just rebinds and MC re-associates. This is how "any node clips to any gun" stays true on the wire.
-- **Heartbeat.** The node's periodic `status` event (contracts §4, every `STATUS_HEARTBEAT_MS = 2000`)
+- **Handshake + re-hydration (contracts A4.5, A5.5).** On OPEN the node sends
+  `hello { node_id, node_type, app_ver, gun?: {name, tail, fw?}, seq_next }`. `gun.name` is the **full advert
+  name** (`<sticker>-<tail>`); `tail` is parsed from that name — **never from the platform deviceId** (iOS
+  gives per-device UUIDs, so a UUID-derived tail would never match MC's armory). MC replies
+  `welcome { session_id, server_t, seq_hi, node?: { player, team, roster, config, frames, start?, match_id?, score? } }`
+  — **everything this node needs to resume its current phase**, not just the config. **MC resolves the
+  context by the gun first** (`hello.gun` sticker/tail → the player bound to that gun), **`node_id` second** —
+  so a hot-swapped phone with a brand-new `node_id` is hydrated on its **first** `hello`, before `bind`, with
+  no post-bind push. `score?` is that player's current `ScoreRow`, so a swapped phone's HUD deaths/kills start
+  right. A relaunched, reinstalled, or hot-swapped phone rebuilds KITTED/LOBBY/ARMED/LIVE from `welcome`
+  alone; MC never has to remember to "re-push". M-NET gets this from M-MC's `hydrate(hello)` hook (§6) and
+  passes the object through untouched. `server_t` seeds the first clock estimate (§7). Node must not send
+  facts before `welcome` (they queue in the outbox regardless, so this is free).
+- **`seq_next` / `seq_hi`.** The node reports the seq it will stamp next; MC returns the highest seq it has
+  durably ingested from this `node_id`. The node then sets **`next_seq = max(own, seq_hi + 1)`**. This is
+  what makes a **wiped install** safe: a fresh app on the same `node_id` would otherwise restart at 0 and
+  every real fact would land below MC's high-water mark and be dropped as a replay. MC also logs a
+  `seq_next < seq_hi` hello as "node storage reset" so recap can explain a gap.
+- **Bind.** After `welcome` the node sends `bind { node_id, player_id?, gun_name, gun_tail }` (both from the
+  advert name, A5.5) claiming its gun and (if known) player. MC maps `node_id ↔ player_id ↔ gun`. Re-`bind`
+  on reconnect is idempotent — rebinding the same node updates the mapping in place. Because `welcome`
+  already hydrated by gun, a hot-swap needs nothing more; **only if the gun in `hello` was unknown to MC**
+  (unenrolled, or not yet assigned to a player) does MC fall back to pushing `assign`/`config` after `bind`.
+  This is how "any node clips to any gun" stays true on the wire.
+- **Heartbeat.** The node's `status` message (contracts §4, every `STATUS_HEARTBEAT_MS = 2000`, live-only)
   doubles as the liveness heartbeat — no separate ping needed for node→MC liveness. MC treats any frame
-  as proof-of-life. If a node is alive but idle (no game events), the `status` cadence keeps the socket
-  warm and NAT/router idle-timeouts from reaping it. MC→node liveness rides WS ping/pong at the same
-  cadence.
+  as proof-of-life. The cadence also keeps the socket warm against router idle-timeouts. MC→node liveness
+  rides server-initiated WS ping/pong at the same cadence (browser JS cannot see pongs; the server side
+  does the checking).
 - **Staleness.** If MC sees no frame from a node for `STALE_AFTER_MS = 8000` (4 missed heartbeats), it
   marks the node **stale, not gone** (contracts §5): scoreboard shows last-known state + a staleness age
-  badge (M-MC). The node is never dropped from the roster on staleness alone — it's expected to walk back
-  into range. A node only leaves the roster on explicit host removal or session end.
+  badge (M-MC). On a large field *most* nodes are stale *most* of the match — the board must read that as
+  normal, not as an alarm. A node only leaves the roster on explicit host removal or session end.
 - **Reconnect / backoff.** On any drop the node re-enters CONNECTING and retries with **exponential
   backoff + jitter**: base 500 ms, ×2, cap 10 s, ±20% jitter (jitter prevents a thundering herd when the
-  AP blips and 20 nodes reconnect at once). Backoff resets on a successful `welcome`. The node keeps
-  playing throughout (§4). After a long outage the node re-resolves via §3 only if the cached URL fails
-  to connect several times (address may have changed); otherwise it reuses the last URL.
+  AP blips and 20 nodes reconnect at once). Backoff resets on a successful `welcome`. **While the node is
+  ARMED or LIVE the retry is unbounded** — it never gives up mid-match; a 15-minute walk out of range is
+  ~90 quiet attempts at the 10 s cap, which is the intended behaviour. After `end`/`recall` the node may
+  stop retrying once its ring is empty. After a long outage the node re-resolves via §3 only if the cached
+  URL fails to connect several times *while `ssid_ok`* (address may have changed); otherwise it reuses
+  the last URL.
+- **Auto-rejoin is the OS's job and it may refuse.** A phone that walked out of range has, from the OS's
+  point of view, *lost* a Wi-Fi network with no internet — Android may decline to auto-rejoin it and iOS
+  may have Auto-Join off. The socket layer cannot fix that; the §8 gates + preflight (`ssid_ok`) make it
+  visible, and the operator checklist makes it not happen.
 - **Graceful degradation.** A vanished node degrades to *local-only*: full gun loop, HUD shows an
   "offline — will sync" indicator, outbox grows. On return it flushes and MC reconciles. Nothing about
   the match outcome depends on the node being online during play (ADR-0002 §3) — only the *shared*
-  scoreboard lags.
+  scoreboard and MC-driven feedback lag (README §3).
 
 ## 6. Interfaces
 
@@ -156,34 +211,38 @@ M-MC bind to; language-idiomatic equivalents are fine (async/await, callbacks, o
 **Client (consumed by a node — M-NODE):**
 ```ts
 interface Transport {
-  connect(discovery: { mdns?: boolean; url?: string }): Promise<void>; // resolve+open+hello+welcome
-  bind(b: { node_id: string; player_id?: string; gun_tail: string }): void;
-  send(ev: Event): void;          // enqueue an Event to outbox; NEVER blocks, NEVER throws on offline
-  report(msg: NodeMessage): void; // non-Event uplink — ready|ack_config|log_offer|log_data (also store-and-forward queued)
-  syncedNow(): number;            // §7 — local_now() + smoothed offset
-  onMessage(cb: (msg: MCMessage) => void): void; // assign|config|tutorial|start|feedback|control|time_res|pull_log (ack consumed internally, §4)
+  connect(discovery: { qr?: string; mdns?: boolean; url?: string }): Promise<Welcome>; // resolve+open+hello+welcome; returns welcome.node (player/team/roster/config/frames/start?/match_id?/score?) for hydration
+  bind(b: { node_id: string; player_id?: string; gun_name: string; gun_tail: string }): void; // gun_name/gun_tail from the advert name, never the deviceId
+  send(ev: Event): void;            // PERSISTED facts only (hit_taken|death|respawn): enqueue to ring; NEVER blocks, NEVER throws offline
+  status(body: StatusBody): void;   // live-only heartbeat: sent iff bound, else dropped (no seq, no queue)
+  report(msg: NodeMessage): void;   // ready|ack_config|log_offer|log_data — sent iff bound; ack_config/ready are retried by M-NODE on hydrate, not queued here
+  syncedNow(): number;              // §7 — local_now() + smoothed offset
+  synced(): boolean;                // §7 — offset fresh within SYNC_FRESH_MS (what M-NODE puts in status.synced)
+  onMessage(cb: (msg: MCMessage) => void): void; // assign|config|tutorial|start|feedback|control|time_res|pull_log (welcome + ack consumed internally)
   onState(cb: (s: LinkState) => void): void;     // 'connecting'|'open'|'bound'|'offline'
   close(): void;
 }
 ```
 `send()` is fire-and-forget into the persisted ring; delivery is the Transport's problem, not the
-caller's. The Transport **consumes `ack {seq_hi}`** itself (contracts A1) — it prunes the store-and-forward
-ring up to the durably-ingested `seq_hi` and does **not** surface `ack` to the caller. `onMessage` delivers
-the remaining MC→node envelopes already validated (§8) and version-gated; bodies are passed through
-untouched for M-NODE/M-START to interpret.
+caller's. The Transport **consumes `welcome`** (it hands `welcome.node` back from `connect()` / an
+`onHydrate` callback and applies `seq_hi`) and **consumes `ack {seq_hi}`** (prunes the ring) — neither
+is surfaced through `onMessage`. `onMessage` delivers the remaining MC→node envelopes already validated
+(§8) and version-gated; bodies pass through untouched for M-NODE/M-START to interpret.
 
-`NodeMessage` = the **non-Event** Node→MC envelopes — `ready`, `ack_config`, `log_offer`, `log_data`
-(contracts §5). Events go via `send()`/`onEvent`; everything else goes via `report()`/`onNodeMessage`.
-This is the surface M-NODE uses to ack a config, toggle lobby-ready, and hand up its log — and M-MC uses
-to gate start on `ack_config`, set `Player.ready`, and ingest logs at recap.
+`NodeMessage` = the **non-fact** Node→MC envelopes — `ready`, `ack_config`, `log_offer`, `log_data`.
+Facts go via `send()`/`onEvent`; the heartbeat via `status()`/`onStatus`; everything else via
+`report()`/`onNodeMessage`.
 
 **Server (consumed by MC — M-MC):**
 ```ts
 interface NetServer {
-  start(bind: { host: string; port: number; wsPath: string }): void;     // binds LAN IP + advertises mDNS
-  onNode(cb: (n: { node_id: string; node_type: string; player_id?: string; gun_tail?: string }) => void): void; // hello+bind (gun_tail from bind, contracts §5 — MC maps node↔gun & reconciles vs armory)
-  onEvent(cb: (node_id: string, ev: Event) => void): void;   // post-dedup, monotonic per node
-  onNodeMessage(cb: (node_id: string, msg: NodeMessage) => void): void; // non-Event uplink: ready|ack_config|log_offer|log_data
+  start(bind: { host: string; port: number; wsPath: string }): void;     // binds LAN IP + advertises mDNS + exposes the QR payload
+  joinInfo(): { url: string; session_id: string; qr: string };           // what the Network screen renders (§3)
+  hydrate(cb: (hello: Hello) => WelcomeNode | undefined): void; // MC supplies welcome.node (A4.5/A5.5): resolve by hello.gun (sticker/tail → bound player) FIRST, node_id second; M-NET adds session_id/server_t/seq_hi
+  onNode(cb: (n: { node_id: string; node_type: string; player_id?: string; gun_tail?: string }) => void): void; // hello+bind
+  onEvent(cb: (node_id: string, ev: Event, t_recv: number) => void): void;    // post-dedup persisted facts, monotonic per node
+  onStatus(cb: (node_id: string, s: StatusBody, t_recv: number) => void): void; // live-only heartbeat (never dedup'd — latest wins)
+  onNodeMessage(cb: (node_id: string, msg: NodeMessage, t_recv: number) => void): void; // ready|ack_config|log_offer|log_data
   onStale(cb: (node_id: string, ageMs: number) => void): void;
   onReturn(cb: (node_id: string) => void): void;             // stale → live again
   push(node_id: string, msg: MCMessage): void;               // assign|config|tutorial|start|feedback|control|time_res|pull_log|ack
@@ -191,14 +250,19 @@ interface NetServer {
   timeService(): void;                                       // answers time_req with time_res (§7)
 }
 ```
-`onEvent` fires **only for events that passed dedup** — M-MC never sees a replay. `push`/`broadcast` are
-best-effort (contracts §5): they return without waiting for delivery; a node offline at push time gets
-`config` re-hydrated on its next `welcome` instead.
+`onEvent` fires **only for facts that passed dedup** — M-MC never sees a replay. `ack_config`/`ready` are not
+queued by the Transport; M-NODE re-sends them after a hydrate if its state says they are owed. Every callback carries
+**`t_recv`** (MC's receive clock, contracts A4.7) so scoring can fall back to it for a node whose latest
+`status.synced` is false. `push`/`broadcast` are best-effort (contracts §5): they return without waiting
+for delivery; a node offline at push time gets the current context re-hydrated on its next `welcome`
+instead — which is why M-MC's `hydrate` hook must always answer with the *current* player/config/frames/
+start, never a cached copy.
 
 ## 7. Clock sync (contracts §7)
 
-Load-bearing for the dispersed start (M-START): a pre-shared `go_live_t` must fire together on every
-node with **no T-0 signal**.
+Load-bearing for the dispersed start **and the dispersed end** (M-START / M-NODE §3.9): a pre-shared
+`go_live_t` must fire together on every node with **no T-0 signal**, and `go_live_t + time_limit_s` must
+end the match with no end signal.
 
 - **NTP-lite handshake.** Node sends `time_req { t_node }`; MC replies `time_res { t_node, server_t }`.
   Node computes `rtt = local_now() - t_node`, `offset = server_t - (t_node + rtt/2)` — assuming a
@@ -207,14 +271,20 @@ node with **no T-0 signal**.
   on connect**, keep the sample with the **smallest rtt** (least queuing noise), and thereafter feed an
   **EWMA** (α≈0.2). Reject any sample whose rtt is > 3× the running median (a buffered outlier).
 - **Re-sync cadence.** Full burst at connect and **at lobby** (contracts §7: "re-sync at lobby is
-  enough"). During LIVE, a lightweight single `time_req` every **~30 s** keeps the EWMA fresh; phone
+  enough"). While connected, a lightweight single `time_req` every **~30 s** keeps the EWMA fresh; phone
   clocks drift <<1 s over a match so this is belt-and-suspenders. Re-burst after any reconnect.
-- **`syncedNow() = local_now() + offset`.** All `go_live_t` and `deadline_s` math uses synced time, never
-  raw local time (contracts §7). M-START reads only `syncedNow()`.
+- **`syncedNow() = local_now() + offset`; `synced()` = a sample fresher than `SYNC_FRESH_MS`.** All
+  `go_live_t`, expiry, respawn, and fact-`t` math uses synced time, never raw local time. M-NODE copies
+  `synced()` into `status.synced`. **Time base at MC (contracts A4.7/A5.7):** a node that was synced at the
+  lobby keeps its own `t` for the whole match (drift ≪1 s). For a **never-synced** node, live `event`s use
+  `t_recv`; an `event_batch` is re-based **once per flush** (`offset = t_recv − t_newest`, applied to every
+  fact in the batch, order preserved), and MC **suppresses window awards** (multi-kill, first blood) derived
+  from those facts — a batch must never collapse ten deaths onto one instant.
 - **Degraded fallback.** A node that **never completed a sync** (e.g. joined the LAN after `start`
-  already went out, or mDNS + manual both failed until late) falls back to counting `now + duration` from
+  already went out, or QR/mDNS/manual all failed until late) falls back to counting `now + duration` from
   the instant it *received* `start` — correct to within one one-way latency, logged as `degraded_start`
-  so recap can flag it. This keeps a late/re-joining player in the game rather than dead-on-arrival.
+  and reported `synced=false` so recap can flag it. This keeps a late/re-joining player in the game rather
+  than dead-on-arrival.
 
 ## 8. Security & robustness on an open field LAN
 
@@ -231,63 +301,101 @@ message layer:
   dropped + counted, connection **not** killed (one bad frame shouldn't drop a player). Repeated malformed
   frames from one socket (> ~20/s) → close that socket (likely a bad or hostile client).
 - **Size limits.** Hard cap per envelope (recommend **64 KB**; a `status` is a few hundred bytes, a max
-  `event_batch` of 200 events stays well under). Oversized frame → reject the frame, don't buffer it.
-  This caps memory and defuses a trivial flood.
+  `event_batch` of 200 facts stays well under; **`log_data` chunks are ≤ 48 KB** so a chunk plus envelope
+  never trips the cap). Oversized frame → reject the frame, don't buffer it.
 - **Rogue-client handling.** A socket that never sends a valid `hello`, or sends `hello` then floods, is
   **quarantined**: no `onNode`/`onEvent` fires for it, it's rate-limited, and dropped after a grace
   window. A node claiming a `node_id`/`gun_tail` already bound to a *live* socket is treated as a
   **takeover** (hot-swap / app restart) — newest wins, old socket closed — because that's the legitimate
   common case; MC logs it so a genuine collision is visible in recap. Player identity is by `node_id` +
   host-confirmed `bind`, never by IP.
-- **No trust in event content for safety.** Events are *facts a node observed*; MC's scoring already
+- **No trust in event content for safety.** Facts are *things a node observed*; MC's scoring already
   treats them as claims to reconcile (contracts §4), so a lying node corrupts only its own score line,
   not the match engine or other players' nodes. There is no wire command that lets one node write another
   node's gun — MC→node commands are the only downlink and they originate at MC.
 
+### 8b. Platform network gates (blocking for M2)
+
+None of §1–§7 works until the phone OS *lets* a Capacitor app talk `ws://` to a private IP on a Wi-Fi
+that has no internet. These are not polish; each one silently breaks the whole LAN path. They live in
+`app/scripts/ios-setup.sh` / `android-setup.sh` (generated platforms are rebuilt — never hand-edit Xcode/
+Studio) and the node's preflight (`status.preflight`, contracts A4.9) proves them at muster.
+
+| # | Gate | Symptom if missing | Fix |
+|---|---|---|---|
+| (a) | **iOS ATS** — App Transport Security does *not* exempt `ws://` to an IP literal (only `localhost`/`.local`). | WebView refuses the socket; no error the player can see. | `NSAppTransportSecurity → NSAllowsLocalNetworking = true` in `Info.plist` via `ios-setup.sh`. |
+| (b) | **iOS 14+ Local Network privacy** | App is silently blocked from the LAN and from browsing mDNS; the permission prompt never appears without the keys. | `NSLocalNetworkUsageDescription` + `NSBonjourServices: ["_openbrx._tcp"]` in `Info.plist` via `ios-setup.sh`; expect the one-time system prompt at first connect. |
+| (c) | **Android cleartext** | `ws://` blocked on API 28+. Capacitor's `allowMixedContent` is about mixed HTTPS pages, **not** this. | `android:usesCleartextTraffic="true"` or a `network_security_config` that permits cleartext to private ranges, applied by `android-setup.sh`. |
+| (d) | **No-internet Wi-Fi is deprioritised** — Android and iOS treat a Wi-Fi with no captive-portal/internet reachability as second-class and may route the default network to **cellular**; the socket to `192.168.x.x` then leaves over LTE and dies. | Node shows "connecting…" forever while the phone has full bars. | Android: a small native plugin calls `ConnectivityManager.requestNetwork(WIFI)` + `bindProcessToNetwork` so the WebView's sockets use Wi-Fi regardless of validation; tap "keep connected / use this network" if the OS asks. iOS: Wi-Fi Assist **off**; the LAN IP is on-link so it routes via Wi-Fi as long as the phone stays joined. Preflight reports `ssid_ok` (joined the expected SSID) and `mc_reachable` (a HEAD/`time_req` round-trip succeeded). |
+| (e) | **Auto-rejoin after walking out of range** | Player returns to base, nothing syncs, recap is empty — the phone never rejoined the SSID (Android "no internet" networks may be un-auto-joined; iOS Auto-Join off). | Preflight includes `auto_join_ok` (the network is saved with auto-join on); operator step per OS in the muster checklist: Android — forget other saved networks nearby, set the field SSID "auto-connect", **mobile data off**; iOS — Settings → Wi-Fi → field SSID → Auto-Join on, Wi-Fi Assist off. MC's Network screen shows the SSID it expects. |
+| (f) | **Mobile data off** | Even with (d), some OEMs re-route when cellular looks better. | Part of the muster checklist and preflight (`cellular_off` best-effort where readable); MC surfaces amber if unknown. |
+| (g) | **Do-Not-Disturb / calls** | An incoming call foregrounds the dialer (iOS regardless of app state) and suspends the webview — countdown, respawn and expiry timers stop (node.md §3.11). | DND on for the match is part of the muster checklist; preflight `dnd_on` (best-effort where readable); the resume→reconcile path is the recovery. |
+
+Any of (a)–(e) failing is a **red** on the readiness board for that node, with the gate named. The
+platform-gate task is #1 in §10 — build the transport against a mock, but *prove* the gates on a real
+Android and a real iPhone on a no-internet router before anything else in M2.
+
 ## 9. Failure matrix
 
-| When | LAN event | What happens | Recovery |
+| When | Event | What happens | Recovery |
 |---|---|---|---|
+| **Muster** | Phone on the wrong SSID / cellular fallback (§8b d) | Node can't reach MC; preflight `ssid_ok`/`mc_reachable` false → **red** on the board with the gate named. | Join the field SSID, mobile data off; node auto-connects (§5) and goes green. |
 | **Lobby** | LAN down before ready-up | No config push; host can't see nodes ready. Game **cannot start synced** yet — nodes have no `go_live_t`. | Stand up the LAN (router primary, hotspot fallback §2); nodes auto-connect (§5), the `config` message pushes the game, ready-up proceeds. Bench-local single-gun play still works with no LAN at all. |
-| **Lobby** | One node can't discover MC | That player is un-kitted; rest proceed. | Manual IP entry (§3.2); or host reads MC address to the player. |
-| **Mid-game** | LAN blips / node walks out of range | Node keeps playing (§4); events queue in the persisted ring; MC marks it **stale** after `STALE_AFTER_MS`, scoreboard shows last-known + age. | On return, socket reconnects (backoff §5), `event_batch` flushes, MC dedups + reconciles. No lost facts unless the ring overflowed (counted). |
-| **Mid-game** | Whole LAN dies (router off) | **Every** node goes local-only; the match runs to completion on nodes alone (ADR-0002 §3). Live scoreboard freezes. | Restore any LAN; all nodes flush backlog; MC reconciles to correct end-state. Start already fired locally (`go_live_t` was pre-shared, §7), so the match itself is unaffected. |
-| **Mid-game** | Node app killed / phone dies | Persisted ring survives an app kill → relaunch flushes. A dead battery loses only that player's un-flushed tail; their gun still holds last BRX state until re-driven. | Relaunch → reconnect → flush. Hot-swap the node to a charged unit (README §7); it `bind`s the same gun_tail and resumes. |
-| **Recap** | LAN down at return | MC can't reconcile finals; recap shows partial + "waiting for N nodes." | Bring nodes into range on any LAN; each flushes its ring; MC recomputes finals as batches land (eventual consistency). Recap is explicitly allowed to complete late. |
+| **Lobby** | One node can't discover MC | That player is un-kitted; rest proceed. | QR join (§3.1), then manual IP; or the host reads MC's address to the player. |
+| **Mid-game (the norm)** | Node walks out of range for minutes | Node keeps playing (§4) — including its own timed end; facts queue in the persisted ring (`match_id`-stamped); MC marks it **stale** after `STALE_AFTER_MS`, board shows last-known + age (expected, not an error). No feedback reaches it. | On return to a coverage zone or recap, socket reconnects (unbounded backoff §5), `welcome` re-hydrates, `event_batch` flushes, MC dedups + reconciles. No lost facts unless the ring overflowed (`dropped` counted). |
+| **Mid-game** | Whole LAN dies (router off) | **Every** node goes local-only; the match runs to completion on nodes alone (ADR-0002 §3), ends on `time_limit_s`. Live board freezes. | Restore any LAN; all nodes flush backlog; MC reconciles to correct end-state. Start already fired locally (`go_live_t` was pre-shared, §7), so the match itself is unaffected. |
+| **Mid-game** | Phone returns but did not auto-rejoin the SSID (§8b e) | Node stays offline at the base; nothing flushes; board stays stale. | Player/host taps the SSID; preflight `auto_join_ok` was the muster-time warning. Log it — this is the most likely "recap is empty" cause. |
+| **Mid-game** | Screen lock / app backgrounded | JS engine suspended: no countdown, respawn or expiry ticks, no drain (see node.md §3.11). BLE may still be up. | Foreground → node reconciles against `syncedNow()` (missed T-0 → grace/hot-join; missed expiry → end now), then reconnects. Mount + keep-awake make this rare. |
+| **Mid-game** | Node app killed / phone dies | Persisted ring survives an app kill → relaunch flushes. A dead battery loses that player's un-flushed tail **and its `status.shots` counter** — MC shows that player's accuracy as "—", not 0 (contracts §4); their gun still holds last BRX state until re-driven. | Relaunch → `hello{seq_next}` → `welcome{seq_hi, node}` re-hydrates phase + frames + pending `start` → flush. Hot-swap to a charged phone: the new phone's **first `hello` carries the gun's advert name, MC hydrates by gun** (A5.5) — full context + `score?` seeds the HUD before `bind`; the dead phone's un-flushed tail arrives whenever it is powered again (dedup + `match_id` parking make that safe). |
+| **Recap** | LAN down at return | MC can't reconcile finals; recap shows partial + "waiting for N nodes." **Recap is provisional until every rostered node has flushed** — kills live only in victims' reports, so a missing victim hides other players' kills. | Bring nodes into range on any LAN; each flushes its ring; MC recomputes finals as batches land (eventual consistency). Recap is explicitly allowed to complete late; export is marked provisional until finalized. |
 | **Recap** | A node never returns | MC finalizes with that player's **last-known** line, flagged incomplete. | Node's log can be side-loaded later (contracts `log_offer`/`pull_log`) to backfill if it matters. |
+| **Next match** | A late flush carries match-N facts during match N+1 | MC **parks** them under match N (contracts A4.3) and updates N's recap; match N+1 is untouched. | Nothing to do — by design. |
 
 ## 10. Task breakdown
 
-1. **Envelope + validation core** — encode/decode, `v` gate, schema check, size cap (§8). Shared by
+1. **Platform network gates (§8b) — first.** `ios-setup.sh`/`android-setup.sh` keys, the bind-to-Wi-Fi
+   native plugin, preflight probes (`ssid_ok`, `mc_reachable`, `auto_join_ok`, `cellular_off`, `dnd_on`), proven on a
+   real Android + iPhone against a no-internet travel router. Nothing else in M2 is testable on a field
+   without this.
+2. **Envelope + validation core** — encode/decode, `v` gate, schema check, size cap (§8). Shared by
    client & server. Ships with a fuzz/malformed-frame test.
-2. **Persisted outbox** — bounded ring with `seq` assignment, age/count cap, overflow-drop counter,
-   survives background/kill. Platform storage behind one interface (IndexedDB/SQLite/file).
-3. **Client Transport** — connect/hello/bind, async drain, `event_batch` chunking, backoff+jitter,
-   reconnect, `onState`/`onMessage` (§6). Builds against a **mock MC** (README §5 rule 3).
-4. **Server NetServer** — WS listener bound to LAN IP, per-node `seq` high-water + dedup, `onEvent`/
-   `onStale`/`onReturn`, `push`/`broadcast`, quarantine/rate-limit (§6, §8).
-5. **Discovery** — MC mDNS advertiser (`_openbrx._tcp` + TXT) and node browser (native NSD/Bonjour
-   plugin), manual-IP path, optional QR (§3).
-6. **Clock service** — server `time_res` responder; client burst + EWMA + re-sync cadence + degraded
-   fallback; `syncedNow()` (§7). Test with injected asymmetric latency.
-7. **Staleness/heartbeat wiring** — hook `STATUS_HEARTBEAT_MS`/`STALE_AFTER_MS` to `onStale`/`onReturn`
-   and the M-MC badge (§5).
-8. **Failure-matrix test harness** — scripted LAN-drop/kill/late-join scenarios (§9) as integration tests
-   both sides run in CI without hardware.
+3. **Persisted outbox (facts only)** — bounded ring with `seq` assignment, count/age cap (500 / 2 h),
+   overflow-drop counter, `match_id` pass-through, survives background/kill. Platform storage behind one
+   interface (IndexedDB/SQLite/file). `status` explicitly bypasses it.
+4. **Client Transport** — connect (QR/mDNS/manual) / `hello{seq_next}` / `welcome` hydration + `seq_hi`
+   resume / bind, async drain, `event_batch` chunking, `status()`/`report()` paths, backoff + jitter with
+   **unbounded retry while ARMED/LIVE**, `onState`/`onMessage`/`synced()` (§5–§7). Builds against a **mock
+   MC** (README §5 rule 3).
+5. **Server NetServer** — WS listener bound to LAN IP, `joinInfo()` (URL + QR payload), `hydrate` hook
+   (**resolve by `hello.gun` first, `node_id` second**; include `score?`),
+   per-node `seq` high-water + dedup + `seq_next` reset detection, `onEvent`/`onStatus`/`onNodeMessage`
+   with `t_recv`, `onStale`/`onReturn`, `push`/`broadcast`, quarantine/rate-limit (§6, §8).
+6. **Discovery** — QR render (MC) + scan (node) as the M2 default; MC mDNS advertiser (`_openbrx._tcp` +
+   TXT) and node browser (native NSD/Bonjour plugin, `NSBonjourServices`); manual-IP path (§3).
+7. **Clock service** — server `time_res` responder; client burst + EWMA + re-sync cadence + degraded
+   fallback; `syncedNow()`/`synced()` (§7). Test with injected asymmetric latency.
+8. **Staleness/heartbeat wiring** — hook `STATUS_HEARTBEAT_MS`/`STALE_AFTER_MS` to `onStale`/`onReturn`
+   and the M-MC badge (§5), with "stale is normal" defaults for a dispersed board.
+9. **Failure-matrix test harness** — scripted scenarios from §9 (minutes-long outage, wiped install with
+   `seq_next` reset, hot-swap, late match-N flush during N+1, background/resume) as integration tests both
+   sides run in CI without hardware.
 
 ## 11. Open questions
 
-- **mDNS on Capacitor Android/iOS** — which NSD/Bonjour plugin, and does it survive app-background? May
-  force manual-IP as the *default* on some OEMs. (Prototype in M2, feeds §3.)
-- **Outbox sizing** — is 2000 events / 20 min right for a worst-case long-outage 12-gun game? Tune once
-  real event rates are measured (M-NODE).
-- ~~**`ack`/high-water shape**~~ — **RESOLVED (contracts A1):** the amendment landed as MC→node
-  `ack {seq_hi}`, so the node prunes its ring precisely on durable ingest rather than on flush-sent (which
-  risked dropping un-applied events). Consumed by the Transport (§4, §6); the ready-up message this raised
-  alongside also ratified as Node→MC `ready` in the same amendment.
-- **Multi-network safety** — if a phone is on the field Wi-Fi *and* cellular, ensure the WS binds to the
-  LAN route (nodes must not try to reach MC's private IP over cell). Platform routing hint needed.
+- **mDNS on Capacitor Android/iOS** — which NSD/Bonjour plugin, and does it survive app-background? With
+  QR as the M2 default this is a convenience question, not a blocker. (Prototype in M2, feeds §3.)
+- **Bind-to-Wi-Fi plugin on iOS** — Android has `bindProcessToNetwork`; iOS has no equivalent. Confirm
+  that an on-link `192.168.x.x` reliably stays on Wi-Fi with Wi-Fi Assist off, or find a `NWConnection`
+  `requiredInterfaceType = .wifi` path via a plugin. (§8b d)
+- **Outbox sizing** — 500 facts / 2 h is derived from the damage model (~13 hits per kill); revisit once
+  real per-match fact counts are measured (M-NODE), especially for high-ROF weapons that raise hits-per-kill.
+- ~~**`ack`/high-water shape**~~ — **RESOLVED (contracts A1):** MC→node `ack {seq_hi}`; the node prunes on
+  durable ingest. Consumed by the Transport (§4, §6).
+- ~~**Multi-network safety**~~ — **RESOLVED (§8b d/e):** bind the socket to the Wi-Fi network on Android via
+  a native plugin, Wi-Fi Assist off on iOS, mobile data off in the muster checklist, and preflight proves it.
 - **TLS on the field** — deferred. Is a self-signed `wss://` + pinned cert worth it later, or is a
-  private LAN + message-layer validation (§8) sufficient? Revisit if untrusted-venue play appears.
-- **Companion parity** — confirm the ESP32 WS client can hold the same warm socket + persisted ring under
-  RAM limits (M6); may need a smaller ring and tighter batch cap. No contract change expected.
+  private LAN + message-layer validation (§8) sufficient? Revisit if untrusted-venue play appears. (Note:
+  `wss://` to an IP literal would *also* need ATS work — §8b a.)
+- **Companion parity** — confirm the ESP32 WS client can hold the same warm socket + a 500-fact persisted
+  ring under RAM limits (M6); may need a smaller ring and tighter batch cap. The `hello`/`welcome`
+  hydration shape (by gun name) is unchanged for it. No contract change expected.

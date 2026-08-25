@@ -87,7 +87,8 @@ def parse_event(message: str) -> dict[str, Any]:
         return tokens[i] if i < len(tokens) else None
 
     if name == "HIR":
-        # token 3 = shooter player ID, token 4 = shooter team ID (per protocol §4)
+        # token 3 = shooter player id (0-63, set via $PSET token 1), token 4 = shooter
+        # team ($TID). Both hardware-verified: protocol §7q (player id), §7k (team).
         parsed["shooter_player_id"] = tok(3)
         parsed["shooter_team_id"] = tok(4)
     elif name == "HP":

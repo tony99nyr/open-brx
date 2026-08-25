@@ -40,7 +40,7 @@ holds no game state**, the host controls essentially everything the gun can do. 
 is **very high** — the real limits are ergonomic/physical, not protocol:
 - No on-gun screen/HUD (BRX has none) — we add it on the rider/phone.
 - No on-gun WiFi — the rider (Companion) provides it.
-- IR hit carries shooter **team, not player** — fixable by setting `PlayerID` via `SETUP` (P2).
+- IR hit carries shooter **team AND player id** — the id is set per game over BLE (`$PSET` token 1) and read from `$HIR` token 3 (§7p/§7q, 2026-08-25). Per-player scoring needs no cable and no extra hardware.
 - The built-in **nRF radio is unprobed** — potential free field-range upside (D1).
 
 ## What the BRP does that the BRX can't (mostly hardware, not gameplay)

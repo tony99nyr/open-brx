@@ -1,5 +1,7 @@
 # Field architecture — how a real match actually works
 
+> **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
+
 **Status:** proposal, 2026-08-23. Written after the findings in `protocol/brx-protocol.md`
 §7n forced a rethink. Complements `docs/brx-architecture-v0.2.md` (master plan) — this doc
 is specifically about **what happens on a field, out of Bluetooth range of any laptop.**

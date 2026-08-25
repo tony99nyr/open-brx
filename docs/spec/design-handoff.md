@@ -70,10 +70,19 @@ control. A left rail or stepper for the phases.
 
 ### A1. Muster / Readiness board *(phase 1)*
 A red/amber/green **gear grid** — one card per gun. The go/no-go gate before a game.
-- Per gun: **sticker name** (e.g. `R0BAT`), **powered?**, **headset connected?**, **battery %**,
-  **link/last-seen**, and a **Companion batt/fw** slot (future, show as "—" for now).
-- State color: **green** = ready, **amber** = unknown/unsampled (e.g. battery not yet read — does NOT
-  block start), **red** = a real problem (off / no headset), blocks start.
+- The signals are **reported by each player's phone** (it is the thing holding the gun), not by a scan
+  from the laptop. Per gun/node card: **sticker name** (e.g. `GUN-A`), **player number** once kitted,
+  **gun linked?**, **headset (gun echo)?**, **gun battery %**, **phone battery %**, **on the field Wi-Fi?**,
+  **clock synced?**, **screen on / app foreground?**, **last-seen**, and a **Companion batt/fw** slot
+  (future, show as "—" for now). A separate small list: **unclaimed guns** the laptop's scan can see
+  but no phone has taken yet (name + signal), so the host can hand them out.
+- State color: **green** = ready; **amber** = unknown/unsampled and does NOT block (battery not yet read,
+  low phone battery, **headset not yet proven**, **screen off / app backgrounded** — those only matter at
+  start); **red** = a real problem that blocks the config push (no phone on the gun / gun identity unknown or
+  reverted / wrong Wi-Fi or MC unreachable / never synced). After the config push, a gun that **didn't echo**
+  turns red (headset absent) and blocks start.
+- An **operator checklist** strip the phones can't self-report: mobile data off, auto-join field SSID,
+  auto-lock off, **Do-Not-Disturb on**.
 - A clear **"Ready to start: 6/8 green, 2 amber, 0 red — GO"** summary; the gate is **no reds**, not
   all-green. Show *why* a gun is red.
 
@@ -88,7 +97,9 @@ Mode picker + global settings. Callsign-parity, cleaner.
 ### A3. Kit each player *(phase 3)* — the centerpiece
 A **per-player card/panel**, filled out while the player is gearing up and sizing their strap. This is
 where the "cool" lives.
-- **Vanity display name** (free text), **team** (color chips), **voice** (Male/Female).
+- **Player number** (**1–63**, auto-filled in roster order, editable — this is the id enemy guns report
+  when hit by this player, so it must be visible and unique; 0 is never shown), **vanity display name** (free text),
+  **team** (color chips), **voice** (Male/Female).
 - **Weapon select — make it a showcase.** A visual gallery of the **~18-weapon roster** (names + stats
   from `reference/callsign-ui.md` / the WeaponCatalog — use the real ones, §7): weapon art, class, and a
   clean **stat block** (damage, magazine, reserve, fire-rate, reload time, range). Selecting a weapon
@@ -106,32 +117,49 @@ like a natural part of kit-out, not a separate mode the host has to manage.
 ### A5. Lobby *(phase 4)*
 Teams + ready-up, the last step before dispersal.
 - **Team assignment**: drag players between team columns (Blue/Yellow/…), balanced-count hint.
-- **Ready-up**: each player's node reports ready; show a **ready checklist** filling in
-  ("5/8 ready"). When all ready, the host pushes the config to the taggers (one action).
+- **Ready-up**: each player's node reports ready (only possible when its clock is synced and its
+  preflight is green — show *why* a player can't ready); a **ready checklist** filling in ("5/8 ready").
+  When all ready, the host pushes the game to the taggers (one action) — per player this shows two ticks:
+  **frames written** and **gun echoed** (the echo is the headset-present proof). Start stays disabled until
+  every player has both ticks.
 - This is the last moment everyone's in Wi-Fi range — make "everyone ready, push config, then start" feel
   like an obvious, confident sequence.
 
 ### A6. Start *(phase 5)* — dispersed countdown control
-- Host sets a **countdown length** and hits start; MC hands every node a synced go-live time. Players
-  **walk to their bases** out of range; the guns run the countdown themselves.
+- Host sets a **countdown length** (default **120 s** — it is *walk time*; presets 60 / 120 / 180) and hits
+  start; MC hands every node a synced go-live time. Players **walk to their bases** out of range; the guns run
+  the countdown themselves.
 - MC shows a **per-node "armed, T-minus" board** — who's armed and counting, who hasn't acknowledged —
-  and an **abort/reschedule** control. Convey "the match is arming even though players have scattered."
+  with a **coverage indicator** per node (in range / last seen N s ago). Convey "the match is arming even
+  though players have scattered."
+- Controls: **Reschedule** (primary — push the start further out; reaches every node that is still in
+  range, and a node that comes back in range picks it up; it is a *new* schedule) and **Abort** (secondary).
+  A late-arriving player is kitted, pushed, and handed the *same* start — they hot-join. Copy must say plainly:
+  *"Once players disperse, an abort only reaches phones still in range — reschedule early."* Show which
+  nodes an abort cannot reach.
 
 ### A7. Live scoreboard *(phase 6)* — Halo-style
 The signature live screen. A big, glanceable scoreboard the host (and a spectator tablet) watches.
-- **Team totals** up top (big numbers, team colors), **time remaining**, and a **live feed** of
-  events (kills, multikills, first blood).
-- **Per-player rows:** display name, team, kills / deaths / assists, K/D, accuracy, streak, current
-  alive/dead + respawn. Sort by score.
-- **Honesty:** kills/assists/accuracy are **MC-derived and reconcile at sync points** — show a
-  **staleness indicator** per node ("synced 40s ago") and don't imply second-by-second truth while
-  players are dispersed. A node that's out of range shows last-known + its age, **not** as "gone."
+- **Team totals** up top (big numbers, team colors), **time remaining** (the match ends everywhere at
+  this time — even for phones out of range), and a **live feed** of events: **"REAPER ☠ VIPER"** (killer
+  and victim named — attribution is exact per player), multikills, first blood, **team-kill** entries
+  marked distinctly (team modes only — there are no team-kills in FFA).
+- **Per-player rows:** player number, display name, team, kills / deaths / assists, K/D, accuracy, streak,
+  team-kills, current alive/dead + respawn. Sort by score. No "team-only" caveat anywhere — every kill has
+  a named killer. In **FFA the winner is the top row**; in team modes the team total.
+- **Honesty is about *time*, not attribution:** rows are **MC-derived and reconcile at sync points** —
+  show a **staleness indicator** per node ("synced 40s ago" / "in range") and don't imply second-by-second
+  truth while players are dispersed. A node that's out of range shows last-known + its age, **not** as
+  "gone." An early-end control shows "sent to 5/8 phones — the rest end at 12:00".
 
 ### A8. Recap *(phase 7)*
 The post-match payoff.
-- **Winner** (team or player) up top, celebratory but tactical.
+- **Winner** (team, or the top player in FFA) up top, celebratory but tactical.
+- **Provisional state:** until every phone has come back in range and flushed, the recap says
+  **"N players still out — kills provisional"** (a missing victim hides *other* players' kills) and the export
+  button is marked provisional. Design the finalized vs provisional look distinctly.
 - **Superlatives / medals:** MVP, Most Kills, Best K/D, Sharpshooter (accuracy), Survivor (fewest
-  deaths), First Blood, Multikill — as award cards.
+  deaths), First Blood, Multikill, Assistant — as award cards.
 - **Full stats table** (all players, all columns), and an **export** action.
 
 ---
@@ -151,18 +179,22 @@ The phone moves through these states; design the HUD's dominant readout for each
 |---|---|
 | **IDLE** | "Set my gun" — connect screen (see B1) |
 | **CONNECTED** | gun named, "waiting for kit-out from Mission Control" |
-| **KITTED** | your loadout shown (weapon, team, name) — "ready when you are" |
-| **LOBBY** | a big **READY-UP** button/toggle; shows your team + name |
+| **KITTED** | your loadout (weapon, team, name, **#number**) and the big **READY-UP** toggle — ready-up is a KITTED action |
+| **LOBBY** | "armed-pending": the gun has its config, waiting for the host's start — team + name + number, no controls |
 | **ARMED** | full-screen **countdown** (T-minus) — the pre-match moment; the gun is also beeping |
 | **LIVE / ALIVE** | the **HUD** (B2) |
 | **LIVE / DOWN** | **death/respawn** overlay (B3) |
-| any + link lost | a small, non-alarming "reconnecting" indicator; the HUD keeps running |
+| **match over** | a brief "MATCH OVER" moment, then back to **KITTED** (gun + player kept, READY-UP for the next game) — never back to "Set my gun" |
+| **gun relinked** (ARMED/LIVE) | after a Bluetooth drop: an amber **"GUN RELINKED — pull the trigger"** prompt for up to ~10 s while the app works out whether the gun is alive, dead, or needs re-arming; then it resolves to ALIVE / DOWN |
+| any + Wi-Fi/MC lost | a small, non-alarming "reconnecting" indicator; the HUD keeps running (this is the *normal* state for most of a park match) |
+| any + gun link lost | a clear red "GUN LINK LOST" strip; HUD values freeze until the link returns |
+| any + preflight fail | a small red **preflight chip** in the top strip (Wi-Fi / MC / phone battery / screen / gun / headset); tap → diagnostics |
 
 ### B1. Set my gun (connect)
 - A **"Set my gun"** button opens a **scanning sheet**: a live list of nearby taggers, each showing its
   **name** and **MAC-tail** + signal (so a player picks the right gun). Tap to connect. Include the
   reassuring line: "power-cycle a gun if it doesn't appear."
-- Then **team** (if the player self-selects) and a clear "connected — waiting for the host" state.
+- Then a clear "connected — waiting for the host" state. There is **no team self-select** — team, name and number arrive from Mission Control at kit-out.
 
 ### B2. The in-game HUD *(ALIVE)* — the hero screen
 A clean FPS HUD. Suggested reading order / zones (iterate freely, keep the hierarchy):
@@ -176,16 +208,18 @@ A clean FPS HUD. Suggested reading order / zones (iterate freely, keep the hiera
 - **Personal stats cluster** — kills / deaths / assists / accuracy. **Deaths is the only one the phone
   knows locally**; **kills / assists / accuracy show "— MC"** (a small "synced" tick when MC has
   supplied them). Design this so the "— MC" state looks intentional, not broken.
-- **Team + identity** — your team color as an ambient accent (a border/edge tint), your name small.
+- **Team + identity** — your team color as an ambient accent (a border/edge tint), your name small,
+  and your **player number** (`#7`, 1–63, exactly as the host sees it).
 - **Battery** — a small gun-battery indicator; a **low-battery warning** state.
-- **"Killed by …"** — a brief callout on death (team-level: "killed by YELLOW").
+- **"Killed by …"** — a brief callout on death naming the **killer** ("killed by REAPER · YELLOW");
+  the phone knows who shot it, so this is exact. (Only *your own* kills are unknown locally.)
 
 Contrast is everything here: this must read in **direct sun** (B-outdoor) and in **blackout** (B-night)
 without redesign — just re-themed. Motion: keep it minimal (glare + battery); a hit/damage flash and a
 death state are the main animated moments.
 
 ### B3. Death & respawn *(DOWN)*
-- A clear **DOWN** state — desaturate/dim the HUD, big **respawn countdown**, "killed by <TEAM>".
+- A clear **DOWN** state — desaturate/dim the HUD, big **respawn countdown**, "killed by <NAME> · <TEAM>".
 - On respawn: a crisp "**RESPAWNED**" moment, HUD returns to full ALIVE. (The gun re-arms itself; the
   screen just reflects it.)
 
@@ -206,15 +240,16 @@ pull it). This screen can be plain; it's for fixing problems, not for play.
 
 - **Teams:** Blue `#3a86ff`, Yellow `#ffd23f` (Red/Green for 3-4 team modes). Example rosters: use real
   callsign-style handles the host would type — e.g. `REAPER`, `VIPER`, `NOMAD`, `GHOST`, `HAVOC`, `SABLE`.
-- **Guns (armory names):** sticker-style ids like `R0BAT`, `R0BQT`, `R0BAS`, `R0BP1` (+ a MAC-tail like
-  `3D4F`). Format is `<NAME>-<tail>`.
+- **Guns (armory names):** sticker-style ids like `GUN-A`, `GUN-B`, `GUN-C`, `GUN-D` (+ a MAC-tail like
+  `3D4F`). Format is `<NAME>-<tail>`, e.g. `GUN-A-3D4F`. (Never use real sticker labels in mockups.)
+- **Player numbers:** `#1`–`#63` (0 is reserved), assigned by the host at kit-out; shown on the phone and on every MC row.
 - **Health/ammo defaults (TDM):** HP `45`, armor `70`, ammo `36 / 216`.
 - **Modes:** Team Deathmatch, Free-for-All, Infection, Last-Man-Standing, Extraction.
 - **Weapons:** the ~18-weapon roster + stats live in `docs/reference/callsign-ui.md` (the WeaponCatalog).
   Use those **real names and numbers**. Stat fields to render per weapon: **damage, magazine, reserve,
   fire-rate, reload time, range, class**. Archetypes present: assault rifle, SMG, sniper, shotgun, pistol,
   LMG (pull exact entries from the catalog).
-- **Voices:** Male, Female.
+- **Voices:** Male / Female first; the full voice pack later (modes §5) — leave room in the picker.
 - **Settings enums (from callsign-ui):** weapon-respawn 30 / 60 / 90 s / 3 min; pickup Scan / Player /
   Both; respawn type Scanner / Auto.
 - **Scoreboard columns:** Player · Team · K · D · A · K/D · Acc% · Streak · Medals.
@@ -223,20 +258,26 @@ pull it). This screen can be plain; it's for fixing problems, not for play.
 
 ## 8. Hard constraints (don't design around these — design *with* them)
 
-1. **Kills / assists / accuracy are Mission-Control-computed**, and reconcile at sync points while
-   players are dispersed. Phone shows **"— MC"** until told. (The gun is blind to its own kills.)
-2. **Deaths, HP, armor, ammo, respawn** ARE known live on the phone — those can update in real time.
+1. **Kills / assists / accuracy are Mission-Control-computed**, and reconcile only at **coverage zones**
+   (a base or respawn point inside router range) and at recap — on a large park the phone is out of
+   Wi-Fi for most of the match. Phone shows **"— MC"** plus a "last synced" age until told. (The gun is
+   blind to its own kills.)
+2. **Deaths, HP, armor, ammo, respawn, and who killed you** ARE known live on the phone — those can
+   update in real time.
 3. **Blackout night mode** is a real requirement, not a nice-to-have.
 4. **Outdoor sun legibility** governs the default HUD — if it's not readable in glare, it's wrong.
 5. **MC is not BLE-connected to guns during play** — its live board is fed by nodes over the LAN, which
    is intermittent by design; the scoreboard shows **staleness**, never fabricates live individual truth.
 6. Team colors are **fixed and meaningful** — don't repurpose them as decoration.
+7. **The phone is mounted on the gun/forearm and the app is foreground with the screen on** during the
+   countdown and the match — design for a mounted phone read at arm's length, not a phone in a hand or
+   pocket. Background/lock is a fault the app recovers from, not a state to design for.
 
 ## 9. Deliverables to iterate in Claude Design
 
 - **Mission Control:** the 8 screens A1-A8 (desktop + a tablet variant of the kit-out and scoreboard).
 - **Phone HUD:** B1 connect, B2 HUD (in **both** sun and blackout), B3 death/respawn, the ARMED
-  countdown, and the LOBBY ready-up.
+  countdown, the KITTED ready-up, and the "gun relinked" prompt.
 - Deliver a small **design-system frame** (palette incl. both environments, type scale, the number/bar
   components, team-color treatment) so both UIs feel like one product.
 

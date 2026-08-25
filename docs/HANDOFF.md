@@ -17,7 +17,8 @@ Protocol ground truth: `protocol/brx-protocol.md`.
 > (**B10**) — the old "pilot-only" call is dead. (4) **The BRX IR shot protocol is decoded**
 > (`protocol/brx-ir-protocol.md`) — per-player id is in the IR.
 >
-> **Per-player attribution (P2) is now the ONLY stock-feel gap over pure BLE** (`$HIR` names the
+> **UPDATE 2026-08-25 (later): P2 is CLOSED — `$PSET` token 1 sets the player id, `$HIR` token 3 reads it (§7p/§7q). No stock-feel gap remains over pure BLE; the IR/nRF bench is for stations, not attribution.**
+> ~~**Per-player attribution (P2) is now the ONLY stock-feel gap over pure BLE**~~ (`$HIR` names the
 > shooter's *team*, not the player). Re-scope the IR/nRF bench around that alone — not around
 > feedback, which BLE now covers. Bench plan: `docs/bench-plan-hardware.md`.
 
@@ -124,7 +125,7 @@ id — P2, F, D1…). Summary below is a snapshot only:
 | `$GLED` tokens | ✅ colour is team-derived (`$TID`); `$GLED` = mid/effect/optionA/optionB with a LedEffect enum |
 | Sound inventory | ✅ **2166-id bank** (`sound-bank.md`) |
 | Smart Grenade | ✅ config = `$GREN` to gun (FlashBang/Gas/Confusion/Molotov). ⬜ hardware test pending (followup F) |
-| Per-player identity | ⬜ `$HIR` names shooter's **team**, not player. FFA scoring needs per-player; `QUERY` shows a device `PlayerID` we've never set |
+| Per-player identity | ✅ **SOLVED 2026-08-25** — `$PSET` token 1 = player id (0–63), `$HIR` token 3 = shooter id on every hit (§7p/§7q). Over BLE, per game, no cable. |
 | Results read-back | ⬜ likely doesn't exist — gun keeps no score (§7n) |
 | `$HIR` `45,0,0`/`70,0,0` variants | ⬜ recur; equal starting HP/armor |
 | `$SFLASH,*` | ✅ shooter's green-sight kill-confirm flash, 1 per kill scored — host-driven over BLE (§7o / P7) |
