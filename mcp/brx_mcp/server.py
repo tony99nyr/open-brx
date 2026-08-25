@@ -10,12 +10,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from . import protocol, storage
 from .ble import ConnectionManager
 
-mcp = FastMCP("brx")
+# mcp 2.0 replaced the mcp.server.fastmcp.FastMCP high-level API with
+# mcp.server.mcpserver.MCPServer. The decorator surface (@tool/@resource) and
+# .run() default to stdio are unchanged, so this is a 1:1 rename port.
+mcp = MCPServer("brx")
 manager = ConnectionManager()
 
 # protocol/brx-protocol.md. The server is installed editable from the repo
