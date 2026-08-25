@@ -47,7 +47,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, **100=weapon-cycle (verified on hardware 2026-08-23)**. Note: with only one `$WEAP` slot loaded, function 100 has nothing to cycle to and **falls back to reloading** — which looks like a wrong mapping but is not. Load a secondary to see it switch. |
 | `$GLED,...` | Set gun LED — fields `mid, effect, optionA, optionB` (from APK, `callsign-extract/protocol-classes.md`); `effect` = LedEffect enum (Solid/Glow/ChaseBack/ChaseForward/StopIR) | The old `<r>,<g>,<b>` reading is **disproven** (§7i); LED **colour** is team-derived from `$TID`, not `$GLED`. e.g. `$GLED,1,1,1,0,10,,*` |
-| `$PLAY,<soundID>,<volume?>,<priority?>,,,,,*` | Play a sound/voice line by ID | **Complete 2166-id bank in `callsign-extract/sound-bank.md`.** e.g. `VA20`="connection established". Any id not in that list is invalid (no fallback ambiguity) |
+| `$PLAY,<soundID>,<volume?>,<priority?>,<announcerID?>,,,,*` | Play a sound/voice line by ID | **Complete 2166-id bank in `callsign-extract/sound-bank.md`.** e.g. `VA20`="connection established". **Two independent slots (§7o):** token 1 = local/effect sound; **token 4 = the announcer/voice channel** — `$PLAY,,4,6,V3A,,,,*` leaves token 1 empty and speaks `V3A` ("kill"). Both can carry an id at once (`$PLAY,VSF,4,6,JAY,,,,*` at game end). Any id not in the bank is invalid |
 | `$AS,...` | Applicator/game-control settings | e.g. `$AS,1,0,4,0,10,0,95,*` |
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
 | `$STOP,*` | Stop (captured from official app, 2026-08-23) | First command the app sends on connect |
@@ -511,7 +511,7 @@ The **host drives respawn**, the gun does not self-revive:
 
 | Command | Notes |
 |---|---|
-| `$SFLASH,*` | No arguments. Sent by the host periodically during play (4x here, ~30–60 s apart), never near a hit or death. Purpose unknown. |
+| `$SFLASH,*` | **SOLVED — the shooter's green-sight kill-confirm flash (§7o).** No arguments. The host sends exactly one per **kill the holder scores**. The "periodic, never near a hit" reading in this row was wrong: this capture is the **victim's** gun, so its kills are outgoing — correlate with `$BUT` trigger bursts, not with `$HIR`/`$HP`. |
 | `$HLOOP,<a>,<b>,*` | Seen only as `$HLOOP,0,0,*`, immediately after each death. Was a §7d lead from LaserTagMods sources; now confirmed live. |
 
 ## 7g. Callsign's game model (operator walkthrough, 2026-08-23)
@@ -924,6 +924,112 @@ on our hardware/version** (ours is v4.32; behaviour may differ). See followup fo
 **Respawn delay** is a game setting that **ramps per death, capping at 45 s / 90 s** (FB group —
 [post](https://www.facebook.com/groups/712027809192113/posts/2284364655291746/)) — consistent with
 §7f's observed ~10 s first-death gap.
+
+## 7o. SOLVED — native kill feedback IS BLE-drivable (`$SFLASH` + the announcer slot)
+
+**Capture:** `cap8` (2026-08-25, MacBook/PacketLogger). Two taggers, official iOS Callsign,
+3 kills scored by the captured gun. **This overturns the 2026-08-25 bench conclusion that the
+green sight and killstreak announcer are nRF-only and unreachable from BLE.**
+
+### What the app actually does
+
+The captured gun is the **shooter** (`$ALCD` ammo 36→6, `$BUT` trigger bursts, never hit). Each
+kill produced, from the phone, over plain BLE:
+
+```
+[215.031s] << $BUT,0,1,*              # last shot of the burst
+[215.423s] >> $SFLASH,*               # <- the green-sight kill-confirm flash
+[215.622s] >> $PLAY,,4,6,V3A,,,,*     # <- "kill" on the announcer slot
+[216.423s] >> $PLAY,,4,6,VB17,,,,*    # <- score line ("<team> takes the lead")
+```
+
+Three kills → three `$SFLASH` + three `V3A`, each ~0.4 s after a trigger burst ends. `V3A` is
+independently documented as **"kill"** in our own `sound-bank.md`. `VB17` fired only on the
+**first** kill — the moment the lead changed — and is the line Tony heard as *"red team takes
+the lead"*.
+
+**So the phone is the scorekeeper and it drives the feedback.** There is no nRF handshake to
+discover: Callsign has no nRF radio either. It does exactly what our Mission Control was designed
+to do, using two commands we had misread.
+
+### Two commands corrected
+
+- **`$SFLASH,*` = the shooter's kill-confirm sight flash** (one per kill), not a periodic
+  keep-alive. §7f called it *"never near a hit or death, purpose unknown"* because that capture
+  was the **victim's** gun — a kill you *score* is invisible in your own `$HIR`/`$HP` stream, so
+  it must be correlated against `$BUT` trigger bursts.
+- **`$PLAY` has a second, independent sound slot at token 4** — the announcer/voice channel.
+  `$PLAY,,4,6,V3A,,,,*` plays a voice line with token 1 empty. Both slots can be used at once:
+  the game-end frame is `$PLAY,VSF,4,6,JAY,,,,*`.
+
+Why the bench `$GLED` probes failed: right observation, wrong command. `$GLED` is team-derived
+(§7i) and never drives this flash; `$SFLASH` does.
+
+### Game end is host-driven, and uses both `$PLAY` slots
+
+The operator ended the match by hand (**Settings ▸ End Game** on the host phone) after the third
+kill — the game did not end on a limit. The tail is therefore the app's deliberate end-game
+sequence:
+
+```
+[252.223s] >> $VOL,69,0,*
+[252.424s] >> $HLED,,6,,,,,*
+[252.624s] >> $STOP,*
+[252.824s] >> $CLEAR,*
+[256.709s] >> $PLAY,VSF,4,6,JAY,,,,*   # both slots: VSF sting + JAY (5.69 s) outro
+```
+
+Same shape as the solo capture's ending (`$VOL → $HLED → $STOP → $CLEAR → $PLAY`), but the solo
+game closed with a single-slot `$PLAY,VS6` — here the two-slot form carries a short sting **and** a
+long announcer clip. Note the ~3.9 s gap before the final `$PLAY`: the app lets `$CLEAR` settle
+before speaking.
+
+**`cap8` is operator-annotated end to end** — connect → arm → 3 kills scored → manual end — with
+every step confirmed against what the operator did and heard. That makes it the reference trace for
+what a complete hosted game looks like on the wire.
+
+### The enabler frame does not exist — and is not needed
+
+Callsign's arm is otherwise **byte-identical to ours** (`$CLEAR → $START → $GSET → $PSET →
+$WEAP×3 → $SIR×10 → $BMAP×7 → $PLAYX → $PLAY,VA81 → $SPAWN → $AMMO → $BMAP`; same
+`$GSET,1,0,1,0,1,0,50,1`). **No channel, session, network-id, `$PB*` or `$NRF*` frame anywhere.**
+The hypothesis that some BLE frame flips guns into autonomous nRF peering is **dead** — but so is
+its consequence, because the feedback layer turns out to be directly commandable.
+
+Only difference worth noting: `$WEAP,1` carried a different secondary (`J15`, 1/3 ammo — a
+launcher) because a different loadout was picked in-app, and `$VOL,69` vs our 75.
+
+### Consequence
+
+A **BLE-only Mission Control can deliver the full native feel** — green-sight kill confirm,
+kill/announcer voice, and score lines — with no nRF hardware. This retires the "audio compensates
+for the lost visual" compromise: the visual is available too. Per-player attribution (P2) remains
+the one thing BLE cannot give us, since `$HIR` names the shooter's **team**, not the shooter.
+
+Corroboration: the identical `$SFLASH → $PLAY,,4,6,V3A → VB17` pattern is present in the
+**2026-08-23** two-tagger capture (lines 99–101, 172–173). We had the evidence for two days and
+misread it.
+
+### The capture is the HOST phone's view — the role MC plays
+
+`cap8` contains exactly **one** BLE connection, yet **both** taggers announced the score line. The
+setup (operator-confirmed): the **captured iPhone hosted the game** and a second phone **joined it
+through Callsign** (§7g's host/client lobby), each phone bonded to its own tagger.
+
+So the architecture is: **game state is shared phone-to-phone over the network, and each phone
+drives only the one gun it owns over BLE.** Nothing propagates gun-to-gun — there is no nRF score
+channel, and none is needed. The score line reached the second tagger because the *client phone*
+sent it there.
+
+This matters for us in two ways:
+
+- **What we captured is the host's own traffic** — the same role Mission Control occupies. The kill
+  burst above is not a client echoing someone else's decision; it is the authority acting on a kill
+  it scored.
+- **MC collapses the topology.** Callsign needs one phone per player because a phone can hold one
+  gun; MC connects to the whole fleet from a single machine, so the network sync layer between
+  phones disappears and every gun's feedback is driven directly. Fewer moving parts than the
+  official system, not more.
 
 ## 8. Safe testing notes
 

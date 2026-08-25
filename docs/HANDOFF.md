@@ -4,15 +4,22 @@
 then `docs/experiment-log.md` (shared lab notebook — **append after every session**).
 Protocol ground truth: `protocol/brx-protocol.md`.
 
-> **⚡ LATEST (2026-08-25) — read the two newest `experiment-log.md` entries before hardware work.**
-> Big shifts since this doc was written: (1) **the "feedback fork" is resolved** — BLE-only Mission
-> Control = authoritative scoring + `$PLAY`-driven native-feel *audio*; green-sight is nRF-only
-> (FOLLOWUPS **B18**). (2) **Headset-present is a hard pre-game join-gate** (**B18b**) — a dark headset
-> silently blocks a gun (was the real cause of "only 2 of 3 armed"). (3) **Direct-BLE 3-gun synced arm
-> is HW-proven** (**B10**) — the old "pilot-only" call is dead. (4) **The BRX IR shot protocol is
-> decoded** (`protocol/brx-ir-protocol.md`) — per-player id is in the IR (**P2** solvable via VS1838B).
-> Next probe: the Callsign 2-gun BLE capture (`docs/handoff-callsign-nrf-capture.md`). Bench plan for
-> the incoming IR/nRF kit: `docs/bench-plan-hardware.md`.
+> **⚡ LATEST (2026-08-25) — read the newest `experiment-log.md` entries before hardware work.**
+> (1) **The feedback fork is resolved, then resolved AGAIN in our favour.** A BLE-only Mission Control
+> gets the **full native feel including the green sight** — the Callsign capture (`cap8`) showed the
+> app has no nRF radio either: it scores on the phone and sends **`$SFLASH,*`** (the green-sight
+> kill-confirm) plus **`$PLAY,,4,6,<id>,,,,*`** (the announcer slot) over plain BLE. **The earlier
+> "green-sight is nRF-only" call is WRONG — it probed `$GLED`, the wrong command.** See
+> **`protocol/brx-protocol.md` §7o** and `docs/handoff-callsign-nrf-capture-RESULTS.md`. There is **no
+> hidden enabler frame** — Callsign's arm is byte-identical to ours — and none is needed.
+> (2) **Headset-present is a hard pre-game join-gate** (**B18b**) — a dark headset silently blocks a
+> gun (the real cause of "only 2 of 3 armed"). (3) **Direct-BLE 3-gun synced arm is HW-proven**
+> (**B10**) — the old "pilot-only" call is dead. (4) **The BRX IR shot protocol is decoded**
+> (`protocol/brx-ir-protocol.md`) — per-player id is in the IR.
+>
+> **Per-player attribution (P2) is now the ONLY stock-feel gap over pure BLE** (`$HIR` names the
+> shooter's *team*, not the player). Re-scope the IR/nRF bench around that alone — not around
+> feedback, which BLE now covers. Bench plan: `docs/bench-plan-hardware.md`.
 
 ## Machine roles (NEW — this changed today)
 

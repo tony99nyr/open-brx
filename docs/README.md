@@ -66,6 +66,11 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[reference/grenade.md](reference/grenade.md)** — the de-facto Smart Grenade manual (modes, on-grenade programming, respawn/KotH mechanics, pairing) — from the 2019 grenade videos.
 - **[reference/jay-ecosystem.md](reference/jay-ecosystem.md)** — **Jay's DIY BRX ecosystem** (Extreme Laser Tag And More!): JBOX/JCUBE/JBOX Mini/JTOWER/JHALO/JEDGE devices, measured ESP-NOW/LoRa ranges, the game-mode mechanics he actually runs, and the **feasibility map to our tiers + the "what can an old phone do" answer**. Synthesized from ~30 of his videos.
 - **[../protocol/captures/](../protocol/captures/)** — decoded BLE/HCI capture transcripts behind the findings (see its README).
+- **[../protocol/captures/raw/](../protocol/captures/raw/)** — the **raw btsnoop traces**, one described row each. Re-decodable with
+  `python -m brx_mcp.btsnoop` / `callsigndiff` when a new question comes up — which is exactly how §7o was found,
+  two days after the bytes were captured.
+- **[handoff-callsign-nrf-capture-RESULTS.md](handoff-callsign-nrf-capture-RESULTS.md)** — answers `handoff-callsign-nrf-capture.md`:
+  native kill feedback **is** BLE-drivable (`$SFLASH` + the `$PLAY` announcer slot), and no nRF enabler frame exists.
 
 ## The system in one paragraph
 The BRX tagger is **dumb** — it fires a weapon we define (`$WEAP`), reads IR hits, tracks health,

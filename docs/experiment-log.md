@@ -1137,3 +1137,59 @@ mesh params (still unknown). **But it handed us two bigger wins:**
 2× ESP32-S3-DevKitC-1 = the **IR bench** (B13 verify, B4, range). **nRF24 kit chosen** (Aideepen 3×
 PA/LNA + 3× AMS1117 adapters, overnight). Full BOM + power + wiring in `hardware/bench-shopping-list.md`;
 IR wiring diagram `hardware/ir-breadboard.svg` (RX GPIO4, TX GPIO5, status LED GPIO6).
+
+### 2026-08-25 — SOLVED: native kill feedback IS BLE-drivable (`$SFLASH`) — overturns the fork
+MacBook session answering `docs/handoff-callsign-nrf-capture.md`. Capture `cap8` (PacketLogger,
+iOS Callsign, 2 taggers, 3 kills, **shooter-side**). Full write-up: **`brx-protocol.md` §7o**,
+report for the WSL session: `docs/handoff-callsign-nrf-capture-RESULTS.md`.
+
+**Step 0 (the pre-check): the sight went GREEN**, 3/3 kills, in the app game — and both taggers
+said *"red team takes the lead"*. Premise confirmed.
+
+**The hypothesis was wrong, and the result is better.** There is **no BLE frame that flips the guns
+into nRF peering** — Callsign's arm is **byte-identical to ours** (no channel/session/`$PB*`/`$NRF*`
+anywhere; only `$VOL,69` vs 75 and a different `$WEAP,1` secondary). Callsign has no nRF radio
+either. **It scores on the phone and sends the feedback over plain BLE:**
+
+```
+[215.031s] << $BUT,0,1,*           last shot
+[215.423s] >> $SFLASH,*            <- the green-sight kill-confirm flash
+[215.622s] >> $PLAY,,4,6,V3A,,,,*  <- "kill" (V3A is documented as 'kill' in our own sound-bank)
+[216.423s] >> $PLAY,,4,6,VB17,,,,* <- score line; fired ONLY on kill 1, when the lead changed
+```
+
+3 kills → 3 `$SFLASH`, each ~0.4 s after a trigger burst. Game end = `$PLAY,VSF,4,6,JAY,,,,*`.
+
+**Two commands corrected.** (a) **`$SFLASH,*` is the kill-confirm flash**, not a periodic keep-alive
+— P7 resolved. (b) **`$PLAY` has a second sound slot at token 4**, the announcer channel.
+
+**Why we missed it for two days:** the old note said `$SFLASH` appears "never near a hit" — from a
+**victim-side** capture. **A kill you SCORE is invisible in your own gun's stream** (`$HIR`/`$HP` =
+damage *taken*; the shooter emits only `$BUT`/`$ALCD`). Correlate host→gun feedback against **`$BUT`
+bursts**, not `$HIR`. The same `$SFLASH → V3A → VB17` burst is in the **2026-08-23** two-tagger
+capture at 295 s/325 s — we had the bytes all along. This also *confirms* D4 rather than
+contradicting it: there is no shooter-side kill event, which is precisely why the **host** must
+decide the kill.
+
+**Why the bench `$GLED` probes failed:** right observation, wrong command — `$GLED` is team-derived
+(§7i); `$SFLASH` drives the flash.
+
+**Net:** "the green-sight visual is nRF-internal, audio compensates" is **retired** — a BLE-only
+Mission Control delivers the full native feel, visual included. MC is better placed than Callsign
+here: Callsign is one-phone-per-player and sees only its own gun, while MC connects to every gun
+and sees the victim's `$HP,0,0,0`/`$HIR` directly. **Per-player attribution (P2) is now the sole
+stock-feel gap over pure BLE** — worth re-scoping the nRF/IR work around that alone.
+
+**Tooling:** `callsigndiff.py` (decode + diff a capture against `GameConfig.setup_frames()` in one
+command). **`btsnoop.py` now keys streams on the ACL connection handle** — it keyed on
+`(direction, ATT handle)`, identical across identical taggers, so a real two-gun capture would have
+merged both streams and reassembled into garbage *silently*; pinned by `test_btsnoop_multigun.py`.
+All 8 raw traces committed to `protocol/captures/raw/` with an index (scanned clean of headset PINs).
+
+**RESOLVED same session:** only one BLE connection is in `cap8`, yet both taggers announced. The
+**captured iPhone HOSTED the game**; a second phone **joined through Callsign** (§7g lobby) with its
+own tagger. Game state syncs **phone-to-phone over the network**; each phone drives only its own gun
+over BLE. **No gun-to-gun sharing exists** — no nRF score channel to chase. Two things follow:
+`cap8` is the **host's** traffic, i.e. exactly the role MC plays (the kill burst is the authority
+acting, not a client echoing); and **MC collapses the topology** — one machine drives the whole
+fleet, so the phone-to-phone sync layer Callsign needs disappears.
