@@ -821,3 +821,23 @@ First live run of the `diagnose`/`fleet` BLE health sweep against a real tagger 
 **Net:** Mission Control CAN show, per tagger over BLE: **firmware/host-image, battery pack/cell voltage +
 charge %, connection health**. Headset presence is inferable (link-hold); headset battery + serial/PIN are
 USB-only. Data contract for the fleet dashboard is confirmed real.
+
+### 2026-08-24 — `$QUERY` over BLE ≠ the USB device record; headset PIN is USB-only
+Tony asked whether we can read **which headset a tagger is paired to** over BLE (the Serial/Head PIN that
+matches the headset's unique-ID sticker). Findings:
+- The **paired-headset identity lives in the USB `QUERY` device record** — `Serial Number/Head PIN: <…>`
+  ("matches the sticker on the paired headset"), plus `Headset Version: hds.59`, `Head: <V>`. That's the
+  **USB serial console (B7), cable-only** — not yet built as a backend.
+- **`$QUERY,*` DOES reply over BLE**, but it's a *different* command: it returns a `$`-framed status
+  array `$QUERY,0,0,0,0,0,,1,0,,0,,0,,0,,…,*` (all-zero here, no game running) + a `$LCD,…`. **No serial,
+  no headset PIN, no version.** Shape (a leading fixed group then ~11 `value,,` pairs) looks like a
+  per-slot/player state table — worth decoding under a live game, but it is NOT the device record.
+- Bare/CR variants (`QUERY\r`, `QUERY\n`, `$QUERY\r`) got **no reply** over BLE — the USB console's
+  CR-terminated `QUERY` is a distinct interface from the BLE NUS `$…,*` protocol.
+- **Note on names:** the **BLE advertised name** is `Tactix-3D4F` (derived from the MAC tail `3D:4F`),
+  while the USB record's **`Gun Name` is `Tactix2`** (the settable name our `$NAME`/gamertag writes). Two
+  different fields.
+
+**Takeaway for Mission Control:** matching taggers↔headsets↔stickers (armory inventory) needs the **USB
+serial-console backend (B7)**; BLE alone gives headset *presence* (link-hold) but not the paired headset's
+identity. The BLE `$QUERY` status array is a separate decode target (possible live player/score state).
