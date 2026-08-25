@@ -1199,3 +1199,24 @@ over BLE. **No gun-to-gun sharing exists** — no nRF score channel to chase. Tw
 `cap8` is the **host's** traffic, i.e. exactly the role MC plays (the kill burst is the authority
 acting, not a client echoing); and **MC collapses the topology** — one machine drives the whole
 fleet, so the phone-to-phone sync layer Callsign needs disappears.
+
+### 2026-08-25 — NATIVE app validated on hardware; Web Bluetooth dead; $SFLASH from OUR stack CONFIRMED
+Pivot in one evening. **Web Bluetooth is out:** the hosted `ble-test.html` (Cloudflare HTTPS,
+`open-brx.iamrossi.workers.dev/ble-test`) hit **"Web Bluetooth API globally disabled"** on the test
+Android (won't clear without chrome flags) — and iOS has none. Non-starter for a product (recorded:
+`phone-app-spec.md` §RESULT, ADR-0001 B2 row).
+**Built the native replacement, same evening:** a **Capacitor** app (`app/`, one codebase → Android +
+iOS) using `@capacitor-community/bluetooth-le` (native Android BLE / iOS CoreBluetooth), reusing the
+ble-test UI/gates. Built the APK in WSL (JDK 21 + Android SDK 35), hosted it
+(`webapp/brx-companion.apk`), and **pushed it to the phone via Windows adb over USB** (WSL can't see
+USB; installed Windows platform-tools via winget, `adb -s … install` → Success).
+**Bench result — every core gate PASSED over native BLE, no flags:**
+- **G1 connect** ✓ — native `requestDevice` connected where Web BT was globally disabled.
+- **G3 speak** ✓ — `$VOL` + `$PLAY,VA20` played on command.
+- **G4 `$SFLASH` → sight GREEN** ✓ — **this meets the ADR-0001 owed confirmation** ("$SFLASH from our
+  own stack greens the sight on hardware"). The green-sight visual is fully ours to drive over BLE.
+- **G5 Arm TDM** ✓ — the native app pushed the **full config + spawn** sequence (incl. the chunked
+  >20-byte `$WEAP`/`$PSET` frames, 20-byte writes) and the gun **counted down 3-2-1 and went live**.
+**Net:** the native phone/Companion path is hardware-proven end-to-end — connect, drive feedback
+(speak + green flash), and configure+arm a game, all over native BLE. The same `app/` codebase produces
+the iOS build (`npx cap add ios`). Remaining/optional: G2 (trigger→frames stream) and G6 (3-min soak).

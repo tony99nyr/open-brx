@@ -125,8 +125,10 @@ This ADR rests partly on **strong inference**, not yet fully bench-confirmed:
 1. **Host-mode requires a live host.** Test: arm a game our way, **disconnect**, play a couple
    of kills, watch the sight — prediction: it stays **red/silent** (confirming a live host is
    needed). If instead it self-fires, the native-mode fallback widens.
-2. **`$SFLASH` from *our* stack** actually greens the sight on hardware (we captured the app
-   sending it; we have not yet emitted it ourselves).
+2. ✅ **`$SFLASH` from *our* stack greens the sight — CONFIRMED 2026-08-25.** Our native Capacitor
+   app (native BLE, no Web Bluetooth) sent `$SFLASH,*` and the sight went green (bench gate G4). Also
+   confirmed from our stack: `$PLAY` speak (G3) and a full config+spawn arm with chunked >20-byte
+   frames (G5, countdown live). See exp-log "NATIVE app validated on hardware."
 
 If (1) reverses, revisit the native-mode fallback; the Companion decision otherwise stands on
 the offline-dispersed-field fact alone (MC can't be live in the field regardless).
