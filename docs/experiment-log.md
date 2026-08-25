@@ -1229,3 +1229,28 @@ and **`$ALCD` ammo counted 36→0** as it fired (re-armed and repeated); `$SFLAS
 and panic (`$CLEAR`/`$SP,99`) all sent fine; `$VOLTS` telemetry every ~60 s; no drops. A fully
 functioning live weapon driven end-to-end by our native app. (Minor: one notify showed two frames
 merged — `$ALCD,…$BUT,0,1,*` — a rare reassembly boundary quirk, non-blocking. Note: 9498 battery ~25%.)
+
+### 2026-08-25 — iOS platform added to the Capacitor app (MacBook)
+`npx cap add ios` run on the MacBook (iOS scaffolding is macOS-only, so this machine owns it).
+Platform added cleanly. **Capacitor 8 uses Swift Package Manager, so CocoaPods is NOT required** —
+the plugin (`@capacitor-community/bluetooth-le@8.3.0`) is wired via `Package.swift`.
+
+**Toolchain note:** this Mac had **no node at all** (`~/.nvm` empty, `pnpm` installed but broken
+without it) — installed via `brew install node` (v26.7.0). `@capacitor/ios` was not a dependency;
+added at `^8.5.0` to match `@capacitor/android`.
+
+**Two gaps found and fixed — both would have shipped a broken app:**
+1. **No Bluetooth usage strings in `Info.plist`.** iOS **terminates** an app that touches
+   CoreBluetooth without `NSBluetoothAlwaysUsageDescription`, with no useful diagnostic. Since
+   `ios/` is git-ignored (generated, like `android/`), a hand-edit there is lost on regeneration —
+   so the keys are applied by a committed, idempotent script: **`app/scripts/ios-setup.sh`**
+   (`npm run ios:setup`). Anything iOS-side we depend on belongs in that script, not in Xcode.
+2. **`www/app.js` did not exist**, yet `www/index.html` loads it — the bundle is git-ignored and the
+   esbuild command was never recorded, so it lived only in the previous session's shell. The app
+   would have booted to a dead page on *both* platforms. Reconstructed and recorded as npm scripts:
+   `build` / `sync` / `ios:setup` / `ios:open` / `android:setup`.
+
+**BLOCKED on hardware:** building or running the iOS app needs **full Xcode** — this Mac has only
+Command Line Tools (`/Library/Developer/CommandLineTools`, no `/Applications/Xcode.app`). Xcode is a
+~15 GB App Store install, plus a signing identity (a free Apple ID gives 7-day on-device builds).
+Everything up to "open it in Xcode" is done and reproducible.

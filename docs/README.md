@@ -27,6 +27,12 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 | Open work (all items) | `FOLLOWUPS.md` |
 | QUERY/SETUP serial console + PlayerID | `../protocol/brx-protocol.md` §7c |
 
+## Building the software
+- **[../app/README.md](../app/README.md)** — the **native phone app** (Capacitor → Android + iOS):
+  prerequisites, commands, signing, and what's generated vs committed. Web Bluetooth is a dev-only
+  harness; the player path is native (ADR-0001).
+- **[../README.md](../README.md)** — `brx-mcp` quickstart (the CLI/MCP server that drives taggers).
+
 ## Vision & strategy
 - **[VISION.md](VISION.md)** — can we supersede Edge? BRX capability ceiling, BRP/Edge gaps, open-source + business analysis, naming guidance.
 - **[tier0-plan.md](tier0-plan.md)** — **the maximized Tier-0 plan & milestone roadmap** (device functions → modes → CLI→MC-UI→phone-apps milestones → the **gating tests that set dev priority**). Start here for *what to build in what order*.
