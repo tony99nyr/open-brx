@@ -15,6 +15,7 @@ BLE ConnectionManager.
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from typing import Awaitable, Callable, Optional
 
@@ -199,7 +200,8 @@ class GameDriver:
 # --------------------------------------------------------------------------- #
 async def run_live(config: GameConfig, addresses: list[str],
                    callsigns: Optional[dict[str, str]] = None,
-                   manager=None, tick_s: float = 0.5) -> dict:
+                   manager=None, tick_s: float = 0.5,
+                   max_s: Optional[float] = None) -> dict:
     """Connect the given taggers, run the configured mode to completion, return
     the final snapshot. `players` are keyed by address; team from config.teams or
     round-robin (FFA gives each its own team). `callsigns` maps address → gamertag
@@ -214,22 +216,42 @@ async def run_live(config: GameConfig, addresses: list[str],
         from ..ble import ConnectionManager
         manager = ConnectionManager()
     mgr = manager
-    players = assign_teams(config.mode, addresses, config.teams or None)
 
     async def sender(pid: str, frame: str) -> None:
         await mgr.send(pid, frame, reply_window_ms=250)
 
+    # Connect-grace: BLE establishment is flaky (~1 in 3, §7e). Connect each gun and
+    # play with whoever comes up rather than aborting the whole game on one failure.
+    connected: list[str] = []
+    for addr in addresses:
+        try:
+            await mgr.connect(addr, addr)
+            connected.append(addr)
+        except Exception as e:  # noqa: BLE001 — a gun that won't connect is skipped, not fatal
+            print(f"(could not connect {addr}: {type(e).__name__}: {e} — skipping)",
+                  file=sys.stderr)
+    if not connected:
+        return {"over": False, "error": "no taggers connected", "requested": addresses}
+    if len(connected) < len(addresses):
+        print(f"(playing with {len(connected)}/{len(addresses)} taggers: {connected})",
+              file=sys.stderr)
+
+    players = assign_teams(config.mode, connected, config.teams or None)
     driver = GameDriver(config, players, sender, now=time.monotonic(),
                         callsigns=callsigns)
     try:
-        for addr in addresses:                       # connect inside try → always torn down
-            await mgr.connect(addr, addr)
-        last_seq = {addr: mgr.sessions[addr].seq for addr in addresses}
+        last_seq = {addr: mgr.sessions[addr].seq for addr in connected}
         await driver.setup()
+        # Wall-clock safety: a game with no clock (frag/objective) whose events
+        # stall (e.g. a gun dropped) must never loop forever. Default = the game
+        # clock + 1 min, else a 1-hour hard cap.
+        deadline = (config.game_time_s + 60) if config.game_time_s else 3600.0
+        limit = max_s if max_s is not None else deadline
+        game_start = time.monotonic()
         while not driver.over:
             await asyncio.sleep(tick_s)
             now = time.monotonic()
-            for addr in addresses:
+            for addr in connected:
                 for ev in mgr.get_events(addr, since_seq=last_seq[addr])["events"]:
                     last_seq[addr] = ev["seq"]
                     if ev["direction"] != "rx":
@@ -238,14 +260,20 @@ async def run_live(config: GameConfig, addresses: list[str],
                     parsed["raw"] = ev["raw"]
                     await driver.execute(driver.feed(addr, parsed, now))
             await driver.execute(driver.tick(now))
+            if now - game_start > limit:
+                print(f"(game exceeded {limit:.0f}s with no end — force-stopping)",
+                      file=sys.stderr)
+                snap = driver.snapshot()
+                snap["force_stopped"] = True
+                return snap
         return driver.snapshot()
     finally:
         try:
             await driver.teardown()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
-        for addr in addresses:
+        for addr in connected:
             try:
-                await mgr.disconnect(addr)     # guarded: some may never have connected
-            except Exception:
+                await mgr.disconnect(addr)
+            except Exception:  # noqa: BLE001
                 pass

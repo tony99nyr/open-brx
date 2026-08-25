@@ -122,6 +122,53 @@ def test_fake_run_live_survives_mid_game_drop():
     assert snap["over"] is True                      # game still completed despite the drop
 
 
+def test_fake_run_live_connect_grace_one_gun_fails():
+    # BLE establishment is flaky — a gun that won't connect must NOT abort the game;
+    # run_live plays with whoever came up.
+    A = FakeTagger("AA:1"); B = FakeTagger("BB:2"); C = FakeTagger("CC:3")
+    mgr = FakeConnectionManager([A, B, C])
+    mgr.fail_connect.add("BB:2")                     # B refuses to connect
+    cfg = GameConfig(mode="ffa", frag_limit=1, respawn_s=1, game_time_s=0)
+
+    async def play():
+        task = asyncio.ensure_future(
+            run_live(cfg, ["AA:1", "BB:2", "CC:3"], manager=mgr, tick_s=0.01))
+        await asyncio.sleep(0.08)
+        mgr.inject_kill("CC:3", shooter_team=A.team)
+        return await asyncio.wait_for(task, timeout=5)
+
+    snap = _run(play())
+    assert snap["over"] and snap["winner"] == "AA:1"
+    assert "BB:2" not in snap["players"]             # the unconnected gun isn't in the game
+
+
+def test_fake_run_live_force_stops_on_stall():
+    # a frag game (no clock) where the opponent drops so no more kills happen must
+    # NOT hang — the wall-clock safety force-stops it.
+    A = FakeTagger("AA:1"); B = FakeTagger("BB:2")
+    mgr = FakeConnectionManager([A, B])
+    cfg = GameConfig(mode="tdm", frag_limit=5, game_time_s=0, respawn_s=1)
+
+    async def play():
+        task = asyncio.ensure_future(
+            run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.02, max_s=0.3))
+        await asyncio.sleep(0.05)
+        mgr.drop("BB:2")                             # opponent gone; frag_limit=5 unreachable
+        return await asyncio.wait_for(task, timeout=5)
+
+    snap = _run(play())
+    assert snap.get("force_stopped") is True and snap["over"] is False
+
+
+def test_fake_run_live_no_taggers_connect_returns_error():
+    A = FakeTagger("AA:1"); B = FakeTagger("BB:2")
+    mgr = FakeConnectionManager([A, B])
+    mgr.fail_connect.update(["AA:1", "BB:2"])        # nobody connects
+    cfg = GameConfig(mode="tdm", frag_limit=1)
+    snap = _run(run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
+    assert snap.get("error") == "no taggers connected" and snap["over"] is False
+
+
 def test_fake_run_live_ffa_credits_specific_gun():
     A = FakeTagger("AA:1"); B = FakeTagger("BB:2"); C = FakeTagger("CC:3")
     mgr = FakeConnectionManager([A, B, C])

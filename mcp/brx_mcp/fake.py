@@ -129,13 +129,16 @@ class FakeConnectionManager:
     def __init__(self, taggers: list[FakeTagger]):
         self.taggers = {t.address: t for t in taggers}
         self.sessions: dict[str, _FakeSession] = {}
-        self.dropped: set[str] = set()     # aliases whose BLE link has "dropped"
+        self.dropped: set[str] = set()          # aliases whose BLE link has "dropped"
+        self.fail_connect: set[str] = set()     # addresses whose connect() will fail
 
     async def scan(self, duration_s: int = 8) -> list[dict]:
         return [{"name": t.name, "address": a, "rssi": -50, "has_uart_service": True}
                 for a, t in self.taggers.items()]
 
     async def connect(self, address: str, alias: str, **_) -> dict:
+        if address in self.fail_connect:            # simulate a gun that won't come up
+            raise ConnectionError(f"could not connect to {address}")
         self.sessions[alias] = _FakeSession(alias=alias, address=address)
         return {"alias": alias, "address": address, "connected": True}
 
