@@ -89,7 +89,9 @@ parsing already exists for the USB path.
   readiness (from §1) and block start on any that isn't game-ready (dead battery, no headset, wrong
   firmware).
 - **Gamertag / callsign (built).** Each player picks a **gamertag** which binds to a tagger. It's pushed
-  to the gun at setup via **`$NAME,<gamertag>,*`** (so the gun shows the player's name) and echoed in the
+  to the gun via **`$NAME,<gamertag>,*`** — **confirmed 2026-08-24 to PERSIST** (survives a
+  power-cycle; the BLE advert becomes `<name>-<MACtail>` on next boot), so this is a real cable-free
+  rename, not just a session label (CLI `rename <addr> <name>`) and echoed in the
   live snapshot (`snapshot()["callsigns"]`) so the **scoreboard labels players by gamertag, not MAC**.
   Data contract (backend done — `GameDriver(callsigns=…)` / `run_live(config, addrs, callsigns)`; CLI
   `play … <addr>@<Gamertag>`): `callsigns: {address → gamertag}`. Gamertags are sanitized
