@@ -1031,6 +1031,55 @@ This matters for us in two ways:
   phones disappears and every gun's feedback is driven directly. Fewer moving parts than the
   official system, not more.
 
+## 7p. STRONG LEAD — `$PSET` token 1 looks like the PLAYER ID (P2, settable over BLE)
+
+**Capture:** `cap10` (2026-08-25). Single device, Callsign **Start Offline Game**, with the app's
+**player id set to 69**.
+
+The whole arm sequence is identical to every previous capture except **one token**:
+
+```
+cap10:              $PSET,63,0,45,70,70,50,,H44,JAD,V33,…
+every other capture: $PSET,0,0,45,70,70,50,,H44,JAD,V33,…
+                           ^
+```
+
+**The operator entered 69; the wire carries 63.** That is not a mismatch — **63 is the 6-bit
+maximum**, and the BRX IR shot payload's player field is **exactly 6 bits (0–63)**, decoded
+independently from LaserTagMods' NRFL-Bases source (`brx-ir-protocol.md`). An out-of-range 69
+clamped to 63 is precisely what a 6-bit field does.
+
+Two independent sources agreeing — a wire capture and a decompiled IR encoder — is what makes this
+more than a coincidence.
+
+### Why this matters
+
+**Per-player identity has been the single remaining stock-feel gap over pure BLE.** `$HIR` names the
+shooter's *team*, not the shooter, so BLE scoring is team-granular and FFA can't credit a specific
+killer. The assumed fix was either the USB `SETUP` console (cable per gun at Armory Setup) or an IR
+receiver decoding the 6-bit field out of the air. If `$PSET` token 1 sets it, **identity is
+assignable over BLE at arm time, per game, with no cable and no extra hardware** — Mission Control
+can just number the fleet.
+
+### NOT yet confirmed — the one test that settles it
+
+The inference rests on a single data point that happened to land on a boundary value. Before
+anything is built on it:
+
+1. Set the app's player id to a **small in-range value (e.g. 7)** and capture. Expect
+   `$PSET,7,0,45,…`. That distinguishes "token 1 is the player id" from "token 1 saturated for some
+   other reason".
+2. Check **off-by-one**: is app-id 1 wire-value 1, or 0?
+3. Then prove it end-to-end: set two guns to distinct ids, have one shoot the other, and see whether
+   the id surfaces — in `$HIR` (BLE) and/or in the IR payload via the VS1838B bench.
+
+Until (1) is done this is a **lead, not a fact**. Note the APK's source-derived `$PSET` field list
+(`protocol-classes.md`) starts at `maxHP, maxShields, criticalDamageBonus…` and does **not** name
+tokens 1–2 at all, so it neither confirms nor contradicts this — those two leading tokens are
+simply absent from the decompiled map.
+
+**Token 2 remains `0` in every capture, including this one — still unknown.**
+
 ## 8. Safe testing notes
 
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
