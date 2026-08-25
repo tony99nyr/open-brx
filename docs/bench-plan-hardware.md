@@ -104,28 +104,34 @@ channel 76 (RF24 default), CE/CSN as wired.**
 - **PASS:** ping/pong round-trips. Brownout/no-link → the adapter power (5V) and antenna seating are the
   usual causes. This proves our nRF24 stack works before we chase the gun's mesh.
 
-**Goal (step 2 — exploratory, tap the BRX mesh):** the BRX gun's native `NRFhost/NRFslave` kill-confirm
-mesh params are **unknown** (NRFL-Bases uses IR→gun + nRF only base-to-base, so its params are NOT the
-gun's). Try: scan channels for gun-to-gun traffic during a native 2-gun game, or use nRF24 promiscuous
-tricks (address `0x00AA`/`0x0055`, CRC off) to catch preambles. **Time-box to 30 min** — if nothing, log it;
-this likely needs the Callsign BLE capture (below) or a proper 2.4 GHz sniffer. Don't over-invest.
+**Goal (step 2 — exploratory, tap the BRX mesh — now ONLY for per-player attribution P2):** feedback no
+longer needs this (it's BLE-drivable via `$SFLASH`, §7o) — the only remaining reason to tap the mesh is to
+learn **who** shot (the shot's 6-bit player id), which BLE `$HIR` gives only at team granularity. The gun's
+native `NRFhost/NRFslave` params are **unknown** (NRFL-Bases uses IR→gun + nRF only base-to-base). Try:
+scan channels during a native 2-gun game, or nRF24 promiscuous tricks (address `0x00AA`/`0x0055`, CRC off)
+to catch preambles. **Time-box to 30 min** — and note the IR shot *also* carries the player id (Session 1),
+a cheaper P2 path. Don't over-invest.
 
 ---
 
-## Parallel track (Mac + iPhone, no bench hardware): Callsign BLE capture
+## ✅ Callsign BLE capture — RESOLVED 2026-08-25 (was a parallel Mac/iPhone track)
 
-Independent of the above and higher-leverage for the nRF question: **does Callsign enable native nRF
-peering over BLE?** Full procedure in `docs/handoff-callsign-nrf-capture.md` (iOS PacketLogger → diff the
-app's game-start frames vs our `arm_test.py` sequence, hunting a channel/session/`$PB*` frame). If it does,
-our BLE game could light up native feedback for free — settle this before committing to the nRF24 tap.
+Done — see `docs/handoff-callsign-nrf-capture-RESULTS.md` + protocol §7o. **There is no nRF-enable
+frame** (the app's arm is byte-identical to ours). Instead the app **scores on the phone and drives the
+feedback over plain BLE**: per kill it sends **`$SFLASH,*`** (green-sight flash) + **`$PLAY,,4,6,V3A,,,,*`**
+(kill line, token-4 announcer slot) + a lead-change score line. So **BLE reaches the whole feedback layer
+— visual included** — and MC (which connects to *every* gun) is structurally better placed than the app
+(one phone per gun). `KillAnnouncer` (B18) emits these. The nRF24 tap is **no longer needed for feedback**
+— only for per-player attribution (P2).
 
 ---
 
 ## Order of leverage (if bench time is short)
-1. **Session 1 (IR capture + field decode)** — unlocks B13 + P2, uses only the IR kit. Highest value.
-2. **Callsign BLE capture** (Mac/iPhone) — decides the whole nRF-over-BLE question, no hardware.
-3. **Session 2 (IR emit)** — unlocks the Utility Box (B4).
-4. **Session 4 (nRF)** — prove the radios; the gun-mesh tap is exploratory.
+1. **Session 1 (IR capture + field decode)** — unlocks B13 + P2 (the shot's player id), uses only the IR
+   kit. Highest value, especially now that P2 is the last stock-feel gap.
+2. **Session 2 (IR emit)** — unlocks the Utility Box (B4).
+3. **Session 4 (nRF)** — prove the radios; the gun-mesh tap is exploratory and now **only** a P2 route.
+   *(The Callsign BLE capture that used to sit here is done — §7o / RESULTS.)*
 
 ## What's already hardened & ready
 - `ir_capture.ino` / `ir_emit.ino` — reviewed + fixed (sync strip + field decode; emit sync; no frame-long

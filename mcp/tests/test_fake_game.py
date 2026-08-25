@@ -235,3 +235,35 @@ def test_fake_run_live_ffa_credits_specific_gun():
 
     snap = _run(play())
     assert snap["over"] and snap["winner"] == "AA:1"   # the specific killer, not a team
+
+
+def test_fake_run_live_ffa_drives_sflash_and_kill_line_to_the_shooter():
+    """A scored FFA kill must drive the app's per-kill feedback — $SFLASH (green
+    flash) + the V3A kill line on the token-4 slot — to the SHOOTER's gun, all the
+    way through run_live -> engine -> driver (§7o). Guards against the engine
+    silently ceasing to call the announcer, which every Action-level test misses."""
+    A = FakeTagger("AA:1"); B = FakeTagger("BB:2"); C = FakeTagger("CC:3")
+    mgr = FakeConnectionManager([A, B, C])
+    cfg = GameConfig(mode="ffa", frag_limit=1, respawn_s=1, game_time_s=0)
+
+    sent: list[tuple[str, str]] = []
+    _orig_send = mgr.send
+
+    async def _rec(alias, command, reply_window_ms=0):
+        sent.append((alias, command))
+        return await _orig_send(alias, command, reply_window_ms)
+    mgr.send = _rec
+
+    async def play():
+        task = asyncio.ensure_future(
+            run_live(cfg, ["AA:1", "BB:2", "CC:3"], manager=mgr, tick_s=0.01))
+        await asyncio.sleep(0.08)
+        mgr.inject_kill("CC:3", shooter_team=A.team)   # A (team1) kills C
+        return await asyncio.wait_for(task, timeout=5)
+
+    _run(play())
+    to_shooter = [f for (p, f) in sent if p == "AA:1"]
+    assert "$SFLASH,*" in to_shooter                    # green-sight kill-confirm flash
+    assert "$PLAY,,4,6,V3A,,,,*" in to_shooter          # kill line on the token-4 slot
+    # feedback goes to the SHOOTER, never the victim
+    assert "$SFLASH,*" not in [f for (p, f) in sent if p == "CC:3"]

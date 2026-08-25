@@ -2,9 +2,13 @@
 
 Built for one question (docs/handoff-callsign-nrf-capture.md): does the iOS app
 send a frame we don't — something that flips the guns into their native
-**nRF-peered** game (green sight + "double kill" announcer)? If it does, our
-BLE-only Mission Control gets native feedback for free. If the app's arm is
-byte-identical to ours, that feedback is not BLE-reachable at all.
+**nRF-peered** game (green sight + "double kill" announcer)?
+
+RESOLVED (§7o, 2026-08-25): there is NO such frame — the app's arm is byte-identical
+to ours. But the feedback IS BLE-reachable anyway: the phone scores the game itself
+and sends `$SFLASH,*` + a token-4 `$PLAY` per kill. So this tool's original either/or
+("byte-identical => feedback not BLE-reachable") is retired; it now serves as a
+general capture-vs-arm diff (still handy for future protocol work).
 
 What it reports:
   1. connections found (one per gun) and each one's chronological host->gun writes
@@ -65,6 +69,9 @@ def main() -> None:
         argv.remove("--rx")
     if "--mode" in argv:
         i = argv.index("--mode")
+        if i + 1 >= len(argv):
+            print("--mode needs a value (e.g. --mode ffa)", file=sys.stderr)
+            sys.exit(2)
         mode = argv[i + 1]
         del argv[i:i + 2]
     if not argv:

@@ -17,7 +17,7 @@ harness) — so the bench only needs to confirm what the sim CAN'T model. Do the
    mid-game** → confirm it reconnects and rejoins (`reconnected …`); confirm a game never hangs.
 3. ⬜ **Teardown** — after a game, the loser isn't stuck (revived, headset dark, pulses last team). (✅ once.)
 4. ⬜ **Config knobs on-gun** (Session C): night mode LEDs-off (P17), outdoor, kid_mode FF-off, volume, weapons.
-5. ✅ **Native multikill audio** (D4) — RESOLVED 2026-08-25: **nRF-only, does NOT fire under our BLE config**; MC rebuilds the announcer via `$PLAY` (FOLLOWUPS B18).
+5. ✅ **Native kill feedback** (D4) — RESOLVED 2026-08-25: **fully BLE-drivable** — the host sends `$SFLASH` (green flash) + token-4 `$PLAY` (announcer) per kill, exactly as Callsign does (§7o / B18). Only per-player attribution (P2) remains.
 6. ⬜ **Health variants** (Session B): syphon/regen `$LIFE` behaviour on real guns.
 7. ⬜ **Objective modes** — need a station (grenade/Utility Box) to emit the IR events; gated on the IR bench
    (Session E/F). Engines + station-event handling are sim-proven; only the IR source is missing.
@@ -81,15 +81,16 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ⬜ **Armory inventory** — cable each tagger, `usb-query`, and record which headset (sticker/serial) pairs to which gun. Build the tagger↔headset map for match-day gear tracking.
 - ⬜ **`SETUP` (writes)** — the factory-provisioning side (set tagger id / re-pair headset → P2). NOT built; verify carefully on a throwaway tagger before trusting it.
 
-## Session D — native multikills + nRF — ✅ RESOLVED 2026-08-25 (D4); D1 still open
-- ✅ **Native multikill under our config** — **NO.** Sight stays red / no "double kill" under our BLE
-  game; native feedback is nRF-only and BLE-invisible (a passive tap caught **zero** frames). MC rebuilds
-  the announcer via `$PLAY` (FOLLOWUPS B18).
-- ✅ **Shooter-side kill event** — **none** on BLE beyond the victim's `$HIR`/`$HP,0` (team-granular only).
-- ⬜ **nRF radio** (D1) — still open: tap the nRF24 mesh with our own radio (needs the nRF24 kit,
-  arriving). Cheaper attribution path found: the IR shot carries a **6-bit player id** (P2 via VS1838B) —
-  see `protocol/brx-ir-protocol.md`. And whether native nRF peering can be *enabled over BLE* →
-  `docs/handoff-callsign-nrf-capture.md`.
+## Session D — native kill feedback + nRF — ✅ RESOLVED 2026-08-25 (D4); D1 re-scoped
+- ✅ **Native feedback over BLE** — the **host drives the identical feedback over plain BLE**: `cap8`
+  caught the app sending **`$SFLASH,*`** (green-sight flash) + **`$PLAY,,4,6,V3A,,,,*`** (kill line) per
+  kill (§7o). MC does the same via `KillAnnouncer` (B18) — **the visual is ours too**; the old "nRF-only"
+  call was a wrong-command (`$GLED`) probe. (In a phoneless native game the gun self-fires it over nRF.)
+- ✅ **Shooter-side kill event** — **none** on BLE beyond the victim's `$HIR`/`$HP,0` (team-granular) —
+  which is *why the host must decide the kill* and send the feedback (D4 stands, not contradicted).
+- ⬜ **nRF radio** (D1) — re-scoped: **no longer needed for feedback**; its only remaining value is
+  **per-player attribution (P2)** (`$HIR` names the shooter's team, not the gun). The IR shot also
+  carries a 6-bit player id (P2 via VS1838B, `protocol/brx-ir-protocol.md`).
 
 ## Session E — the IR bench (when the ESP32 arrives ~Aug 26) — B13
 `hardware/esp32-ir-bridge/` + `hardware/ir-prototype-plan.md`.

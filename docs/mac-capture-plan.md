@@ -168,7 +168,8 @@ sitting undocumented in §7d.
   match-day reliability hazard and a likely explanation for future "gun won't fire" states.
 - **`$HIR` protocol per weapon** — two frames arrived as `$HIR,0,...` rather than `4`. Fire
   each slot deliberately and watch token 1.
-- **`$SFLASH,*`** — the app sends it periodically, no arguments, never near a hit. Send it
-  in isolation and watch the gun.
+- ~~**`$SFLASH,*`** — send it in isolation~~ **RESOLVED (§7o):** it's the shooter's green-sight
+  kill-confirm flash, one per kill scored (the "periodic / never near a hit" reading was a
+  victim-side capture — a kill you score is invisible in your own gun's stream).
 - **`$HIR` `45,0,0` / `70,0,0` variants** — recur across matches; those numbers are exactly
   the configured starting HP and armor. Correlate against what the operator was doing.

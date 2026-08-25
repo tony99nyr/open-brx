@@ -245,7 +245,7 @@ we may get the countdown for free.
 | `$TID,0,*` | neutral LED for FFA (§7i) | one-line test |
 | `$HIR` `45,0,0` / `70,0,0` | recur across matches, unexplained; the numbers equal starting HP/armor | correlate against what the operator was doing |
 | `$HIR` IR protocol per weapon | two frames came as `$HIR,0,...` not `4` | fire each slot deliberately, watch token 1 |
-| `$SFLASH,*` | sent periodically by the app, no args, never near a hit | try it in isolation and watch the gun |
+| `$SFLASH,*` | **RESOLVED §7o:** shooter's green-sight kill-confirm flash, 1/kill (old "periodic" note was a victim-side capture) | — |
 | `$SP` / `$UP` | central to A3. **`$UP,*` probed — no reply (§7l)**; LaserTagMods' arg form looks like a write. `$SP` must NOT be probed on hardware ($SP,99 is half the panic sequence) | learn both from a full end-of-game capture instead |
 | Headset lockout | manual says a headset lost mid-game locks the gun (§7h). **Never controlled for in any experiment** | run one match headset-paired, one headset-off-from-boot |
 
@@ -1072,6 +1072,12 @@ deferred** — it needs 3 reliably-armed guns, which direct BLE can't deliver to
 (no shooter-side kill event on BLE) stands from the 2-gun probe.
 
 ### 2026-08-25 — LANDMARK: the feedback fork resolved — MC rebuilds native AUDIO over BLE
+> **⚠ PARTIALLY SUPERSEDED — see the later "SOLVED: native kill feedback IS BLE-drivable (`$SFLASH`)"
+> entry below.** This entry's finding #3/#4 ("green-sight is nRF-only, not BLE-drivable; audio
+> compensates") is **wrong**: it probed `$GLED` (the wrong, team-derived command). The Callsign capture
+> (§7o) proved the **visual is BLE-drivable too** via `$SFLASH`. The rest of this entry (headset gate,
+> HW-proven 3-gun arm, MC-as-scorekeeper) stands. Kept for the record.
+
 Big session, 3 guns (R0BAS/FE30 shooter, R0BP1/9498, R0BQT/E20D). Multiple prior conclusions
 overturned. Order of discovery:
 

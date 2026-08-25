@@ -43,23 +43,29 @@ In our engines these are the `Callout` / `PlaySound` actions the driver turns in
 
 ## Native multikills — the firmware does its own killstreak audio (D4)
 
-> **✅ RESOLVED 2026-08-25 (exp-log "feedback fork resolved" / FOLLOWUPS B18).** The native
-> killstreak/green-sight feedback rides the guns' **nRF24 peer mesh and is INVISIBLE to BLE** — and it
-> does **NOT** fire under our BLE-config'd game (the shooter's sight stays RED, no "double kill"). So it
-> is **not** "free" for us. **`$PLAY` audio DOES work over BLE**, so Mission Control rebuilds the
-> announcer/killstreak/medal audio itself as scorekeeper (watch `$HP,0`, attribute team-granular, 4 s
-> double-kill window, `$PLAY` back to the shooter). The green-sight VISUAL is nRF-only, not BLE-drivable.
+> **✅ RESOLVED then UPGRADED 2026-08-25 (exp-log "$SFLASH" entry · protocol §7o · FOLLOWUPS B18).**
+> Native kill feedback — **including the green-sight flash** — is fully **BLE-drivable**. `cap8` caught
+> the official Callsign app (which has **no nRF radio** either) driving it over plain BLE, so Mission
+> Control drives it the same way, as scorekeeper. Per scored kill the host sends: **`$SFLASH,*`**
+> (green-sight kill-confirm flash) + **`$PLAY,,4,6,V3A,,,,*`** ("kill" on the **token-4 announcer
+> slot**) + a score/lead line (`VB17`) on a lead change. The earlier *"green-sight is nRF-only, not
+> BLE-drivable, audio compensates"* reading was **WRONG** — it probed `$GLED` (team-derived, §7i), the
+> wrong command. MC reconstructs the **whole** native feel (visual **and** audio) over BLE; the only
+> remaining pure-BLE gap is **per-player attribution** (P2). `KillAnnouncer` (B18) emits these frames.
 
 Hardware fact (Tony): a BRX gun **natively says "double kill"** when you tag two different enemies
 back-to-back in a **native (gun-menu) game** — and other streaks. So **multikill/streak/first-blood
 callouts are firmware-native**, computed on the gun over nRF. Implications:
 - The gun tracks **ephemeral local kill state** for audio (doesn't contradict §7n — that's no
   host-*readable* score, not no local state).
-- The shooter's kill confirmation rides the **nRF24 mesh** (proven: a passive BLE tap during a native
-  game captured zero frames). BLE gives only the victim's `$HP,0` (team-granular attribution).
-- **We do NOT get these free** under a BLE-config game — MC drives them via `$PLAY` (B18). Native-mode
-  feedback would need the nRF tap (D1) to observe. Whether native nRF peering can be *enabled* over BLE
-  is the open Callsign-capture probe (`docs/handoff-callsign-nrf-capture.md`).
+- In a **phoneless native (gun-menu) game** the confirmation rides the gun's **nRF mesh** (a passive
+  BLE tap during one captured zero frames). But that is *not the only path*:
+- **A host drives the identical feedback over plain BLE** — the Callsign-capture probe is **RESOLVED**
+  (`handoff-callsign-nrf-capture-RESULTS.md`, §7o): on each scored kill the host (the app, and now MC)
+  sends **`$SFLASH,*`** (green flash) + **`$PLAY,,4,6,V3A,,,,*`** (kill line) + a lead-change score
+  line. Not "free" — the host computes the kill (from the victim's `$HP,0` + `$HIR` shooter team) and
+  sends it. `KillAnnouncer` (B18) does exactly this. The nRF tap (D1) is now needed only for per-player
+  attribution (P2), not for feedback.
 
 ## What this means for building
 

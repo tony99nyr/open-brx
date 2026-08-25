@@ -127,7 +127,7 @@ id — P2, F, D1…). Summary below is a snapshot only:
 | Per-player identity | ⬜ `$HIR` names shooter's **team**, not player. FFA scoring needs per-player; `QUERY` shows a device `PlayerID` we've never set |
 | Results read-back | ⬜ likely doesn't exist — gun keeps no score (§7n) |
 | `$HIR` `45,0,0`/`70,0,0` variants | ⬜ recur; equal starting HP/armor |
-| `$SFLASH,*` | ⬜ app sends periodically, no args |
+| `$SFLASH,*` | ✅ shooter's green-sight kill-confirm flash, 1 per kill scored — host-driven over BLE (§7o / P7) |
 | `$AS` / `$UP` semantics | ⬜ open |
 | Headset lockout | ⬜ manual says headset lost mid-game locks the gun; **never controlled for** |
 
