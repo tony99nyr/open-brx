@@ -143,7 +143,27 @@ class ConnectionManager:
             client = BleakClient(address, timeout=20.0)
             try:
                 await client.connect()
-                break
+                if pair:
+                    # CoreBluetooth has no explicit pairing API — it bonds
+                    # implicitly when a characteristic demands encryption.
+                    try:
+                        await client.pair()
+                    except NotImplementedError:
+                        pass
+                session = Session(alias=alias, address=address, client=client)
+
+                def on_notify(_char: Any, data: bytearray, _s=session) -> None:
+                    # Frames can arrive split across notifications; reassemble on ',*'
+                    _s.rx_partial += data.decode("utf-8", errors="replace")
+                    while ",*" in _s.rx_partial:
+                        frame, _s.rx_partial = _s.rx_partial.split(",*", 1)
+                        _s.record("rx", frame + ",*")
+
+                # start_notify is part of a working link — a drop here (the
+                # ~6.6 s client bug, §7e) must retry the whole connect, not crash.
+                await client.start_notify(NUS_TX_CHAR_UUID, on_notify)
+                self.sessions[alias] = session
+                return {"alias": alias, "address": address, "connected": True}
             except Exception as e:  # noqa: BLE001 — any failure is retryable
                 last_error = e
                 try:
@@ -152,30 +172,10 @@ class ConnectionManager:
                     pass
                 if attempt < attempts:
                     await asyncio.sleep(1.5)
-        else:
-            raise BleakError(
-                f"could not connect to {address} after {attempts} attempts; "
-                f"last error: {type(last_error).__name__}: {last_error}"
-            ) from last_error
-        if pair:
-            # CoreBluetooth has no explicit pairing API — it bonds implicitly
-            # when a characteristic demands encryption. Don't die on macOS.
-            try:
-                await client.pair()
-            except NotImplementedError:
-                pass
-        session = Session(alias=alias, address=address, client=client)
-
-        def on_notify(_char: Any, data: bytearray) -> None:
-            # Frames can arrive split across notifications; reassemble on ',*'
-            session.rx_partial += data.decode("utf-8", errors="replace")
-            while ",*" in session.rx_partial:
-                frame, session.rx_partial = session.rx_partial.split(",*", 1)
-                session.record("rx", frame + ",*")
-
-        await client.start_notify(NUS_TX_CHAR_UUID, on_notify)
-        self.sessions[alias] = session
-        return {"alias": alias, "address": address, "connected": True}
+        raise BleakError(
+            f"could not connect to {address} after {attempts} attempts; "
+            f"last error: {type(last_error).__name__}: {last_error}"
+        ) from last_error
 
     async def disconnect(self, alias: str) -> dict[str, Any]:
         session = self._get(alias)
@@ -276,7 +276,7 @@ class ConnectionManager:
 
     # -- diagnostics -------------------------------------------------------
 
-    async def diagnose(self, address: str, volts_wait_s: int = 6) -> dict[str, Any]:
+    async def diagnose(self, address: str, volts_wait_s: int = 34) -> dict[str, Any]:
         """One-shot BLE health sweep of a single tagger: connect, read firmware
         (`$VERSION`), ping latency (`$PING`→`$PONG`), and battery (`$VOLTS`,
         which streams ~30 s in app mode), then disconnect. Returns one record.
@@ -295,6 +295,15 @@ class ConnectionManager:
             await self.connect(address, alias)
             rec["reachable"] = True
 
+            # Handshake — a cold $VERSION/$VOLTS gets no reply. The gun answers
+            # $VERSION only after the app's ritual preamble, and $VOLTS telemetry
+            # only STARTS once $PHONE,* opens the event tap (protocol §7a). So:
+            #   $STOP (clean) → $PHONE (open tap → VOLTS streams) → $VERSION.
+            await self.send(alias, "$STOP,*", reply_window_ms=80)
+            await self.send(alias, "$PHONE,*", reply_window_ms=250)
+            # $PHONE replies $BUT,3,0 + "phone connected"; give the tap a moment
+            await self.wait_for(alias, "$BUT", timeout_s=2)
+
             # firmware
             await self.send(alias, "$VERSION,*", reply_window_ms=100)
             vr = await self.wait_for(alias, "$VERSION", timeout_s=3)
@@ -304,14 +313,14 @@ class ConnectionManager:
                 rec["host_image"] = p.get("host_image")
                 rec["is_devhost"] = p.get("is_devhost")
 
-            # ping latency
+            # ping latency (best-effort; may not be supported on this firmware)
             t0 = time.monotonic()
             await self.send(alias, "$PING,*", reply_window_ms=100)
-            pr = await self.wait_for(alias, "$PONG", timeout_s=3)
+            pr = await self.wait_for(alias, "$PONG", timeout_s=2)
             if pr.get("matched"):
                 rec["pong_latency_ms"] = int((time.monotonic() - t0) * 1000)
 
-            # battery — VOLTS streams periodically; wait a little for one
+            # battery — $VOLTS streams after $PHONE (first sample can lag; wait)
             br = await self.wait_for(alias, "$VOLTS", timeout_s=volts_wait_s)
             if br.get("matched"):
                 p = br["event"]["parsed"]
@@ -321,6 +330,11 @@ class ConnectionManager:
         except Exception as e:  # noqa: BLE001 — report, don't crash a fleet sweep
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
+            # $PHONE locks the on-gun menu until configured/power-cycled — release it
+            try:
+                await self.send(alias, "$STOP,*", reply_window_ms=80)
+            except Exception:  # noqa: BLE001
+                pass
             try:
                 await self.disconnect(alias)
             except Exception:  # noqa: BLE001

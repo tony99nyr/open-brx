@@ -622,10 +622,10 @@ async def _fieldresults(addresses: list[str], listen_s: int = 12) -> None:
         await mgr.disconnect(alias)
 
 
-async def _diagnose(address: str) -> None:
+async def _diagnose(address: str, volts_wait_s: int = 10) -> None:
     """Print a one-shot BLE diagnostic record for one tagger."""
     from .ble import ConnectionManager
-    rec = await ConnectionManager().diagnose(address)
+    rec = await ConnectionManager().diagnose(address, volts_wait_s=volts_wait_s)
     _print(rec)
 
 
@@ -1054,7 +1054,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
     elif cmd == "diag" and len(args) > 1:
         asyncio.run(_diag(args[1]))
     elif cmd == "diagnose" and len(args) > 1:
-        asyncio.run(_diagnose(args[1]))
+        wait = int(args[2]) if len(args) > 2 and args[2].isdigit() else 10
+        asyncio.run(_diagnose(args[1], wait))
     elif cmd == "fleet":
         asyncio.run(_fleet(_split_addrs(args[1:])[0]))
     elif cmd == "extraction-sim":

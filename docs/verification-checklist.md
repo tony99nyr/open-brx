@@ -29,6 +29,14 @@ The whole M0 engine is tested in software but never driven on real guns.
 - ⬜ **HP/armor start values** — `hp=`/`armor=` land correctly (watch the `$LCD`/`$HP` spawn echo).
 - ⬜ **Unverified weapons** — `primary=charge` / `primary=ar` actually fire (marked provisional; the `ar`/`charge` `$WEAP` tails are §6 doc examples we've never fired). Confirm ammo (charge mag=20).
 
+## Session C½ — fleet diagnostics (BLE, verified 2026-08-24)
+- ✅ **Firmware read** — `diagnose`/`fleet` return `v4.32` / `devhost.03` (after the `$STOP`→`$PHONE`→`$VERSION` handshake fix).
+- ✅ **Battery read** — live `$VOLTS` (pack/cell V + charge %); token3 = state-of-charge (tracked 43→44% charging). ~30 s cadence.
+- ✅ **Resilient connect** — connect+`start_notify` now retried as a unit (held 35 s, caught VOLTS).
+- ⬜ **`$VOLTS` token4** — the 4th token (76) meaning still TBC; grab samples at high vs low charge to disambiguate.
+- ⬜ **Headset presence heuristic** — confirm the "silently drops with no frames = no headset" rule by testing with the headset OFF (does `diagnose` come back reachable-but-empty / drop?).
+- ⬜ **Multi-tagger fleet** — run `fleet` with 2+ taggers on; confirm serial diagnose + the dashboard line per tagger.
+
 ## Session D — native multikills + nRF (2 taggers, ~15 min) — high upside (D4/D1)
 - ⬜ **Native multikill under our config** — does the gun still say "double kill" on two back-to-back enemy kills in a `play tdm` game? (If yes → free announcer sounds.)
 - ⬜ **Shooter-side kill event** — watch the *killer's* BLE stream on a kill; is there any event beyond the victim's `$HIR`/`$HP,0`? (Cleaner attribution if so.)

@@ -53,11 +53,11 @@ macOS gives UUIDs, Windows/BlueZ MACs — never assume format.
 **Firmware + live diagnostics (BLE, per tagger, no cable):** connect briefly and pull:
 | Field | Source |
 |---|---|
-| **Firmware version** + host image (e.g. `v4.32` / `devhost.03`) | `$VERSION` → `$VERSION,v4.32,?,4,,devhost.03,*` |
-| **Battery** — pack mV, cell mV, charge % | `$VOLTS,<pack>,<cell>,<pct>,<pct>,*` (streams ~30 s in app mode) |
+| **Firmware version** + host image (e.g. `v4.32` / `devhost.03`) | `$VERSION` → `$VERSION,v4.32,?,4,,devhost.03,*` — **needs the ritual first** (`$STOP`→`$PHONE`→`$VERSION`); a cold `$VERSION` gets no reply (verified 2026-08-24) |
+| **Battery** — pack V, cell V, charge % | `$VOLTS,<pack_mV>,<cell_mV>,<charge%>,<n4>,*` (verified live: `7521,3955,43,76` = 7.52 V / **43%**; token3 = state-of-charge, tracked 43→44% while charging). **Streams only after `$PHONE`, ~30 s cadence** → cold read waits ~34 s; over a held MC connection it updates live every 30 s |
 | **Reachability + latency** | `$PING` → `$PONG` (ms) |
 | Generation, advertised name, RSSI | scan/advertisement |
-| **Headset linked?** (blocks firing if not — `community-notes.md`) | infer from game-ready probe; recovery = Gen-3 re-pair procedure |
+| **Headset linked?** (blocks firing if not — `community-notes.md`) | **BLE-inferable**: no-headset = tagger accepts the link then silently drops with zero frames; linked = holds + streams, so a stable connection that returns `$VERSION`/`$VOLTS` ⇒ headset present (verified 2026-08-24). USB `QUERY` is explicit (`Headset Version`, `Head: <V>`) and is the only path to **headset battery**. |
 | Connection health — buffer depth, drops, last-seen | `list_connections` |
 | Live sensor test — trigger/buttons, IR hits | `$BUT` / `$HIR` event stream (fire the trigger, tap the headset, watch events) |
 

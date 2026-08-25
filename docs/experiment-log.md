@@ -791,3 +791,33 @@ D1 nRF): (a) do our BLE-configured games get multikill/streak callouts free? (b)
 kill event over BLE (cleaner attribution than victim `$HP,0`)? (c) nRF vs IR-ack mechanism. Also means
 some "announcer" sounds (multikill/streak/first-blood) are **native**, not host-`$PLAY` — we add custom
 ones on top, but the base multikills come from the firmware.
+
+### 2026-08-24 — LIVE diagnostics confirmed (firmware + battery) on Tactix-3D4F ✅
+First live run of the `diagnose`/`fleet` BLE health sweep against a real tagger (FE:AD:FD:10:3D:4F,
+"Tactix-3D4F") via the Windows venv. Confirmed what Mission Control can read per tagger, no cable:
+
+- **Firmware:** `$VERSION` → `v4.32`, host image `devhost.03`, `is_devhost=true`. **Cold `$VERSION`
+  gets NO reply** — the gun answers only after the ritual preamble. Fix: `diagnose()` now sends
+  `$STOP,*` → `$PHONE,*` → (`$VERSION,*`) and releases with `$STOP,*` on exit ($PHONE locks the on-gun
+  menu). With the handshake, firmware read is reliable.
+- **Battery:** caught a live `$VOLTS,7521,3955,43,76,*` → **7.52 V pack, 3.96 V cell, token3=43, token4=76**;
+  a second sample `7533,3951,44,…` = 7.53 V / **44%**. **token3 rose 43→44% as the charger was plugged in
+  → token3 IS the state-of-charge %.** token4 (76) unchanged — a separate metric (health/level?), still
+  TBC. `$VOLTS` **streams only after `$PHONE`** and on a **~30 s cadence** (samples landed at ~29 s), so a
+  cold one-shot battery read needs a ~34 s listen (`diagnose` default bumped 10→34); over a *held* MC
+  connection it updates live every 30 s for free.
+- **Ping:** `$PING`→`$PONG` **never answered** on this firmware — `pong_latency_ms` stays null. Don't rely
+  on `$PING` for liveness; use the VOLTS/notification stream as the heartbeat.
+- **Headset detection:** no dedicated BLE query, but §7 shows **no-headset = tagger accepts the connection
+  then silently drops it with zero frames; headset-linked = holds and streams.** So **a stable link that
+  returns data ⇒ headset present** (getting `v4.32` + `$VOLTS` back = headset was linked). USB `QUERY` is
+  explicit (`Headset Version`, `Head: <V>`) and is the only path to **headset battery**.
+- **BLE hold bug (§7e) — client fix:** the ~6.6 s client-side drop struck during `start_notify` (probe
+  crashed twice with WinError before any data). `connect()` now wraps connect+pair+`start_notify` as ONE
+  retryable unit (was: only `client.connect()` retried) → the resilient connect held a 35 s session and
+  caught the 29 s `$VOLTS`. Low battery made the link markedly flakier (first sweeps returned nulls until
+  charging + the retry fix).
+
+**Net:** Mission Control CAN show, per tagger over BLE: **firmware/host-image, battery pack/cell voltage +
+charge %, connection health**. Headset presence is inferable (link-hold); headset battery + serial/PIN are
+USB-only. Data contract for the fleet dashboard is confirmed real.
