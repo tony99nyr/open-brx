@@ -290,65 +290,8 @@ class ConnectionManager:
         which streams ~30 s in app mode), then disconnect. Returns one record.
         Never raises for an unreachable tagger — reports it in the record.
         """
-        rec: dict[str, Any] = {"address": address, "reachable": False,
-                               "firmware": None, "battery": None,
-                               "pong_latency_ms": None}
-        alias = f"__diag_{address}"
-        if alias in self.sessions:  # stale from a prior aborted sweep
-            try:
-                await self.disconnect(alias)
-            except Exception:  # noqa: BLE001
-                self.sessions.pop(alias, None)
-        try:
-            await self.connect(address, alias)
-            rec["reachable"] = True
-
-            # Handshake — a cold $VERSION/$VOLTS gets no reply. The gun answers
-            # $VERSION only after the app's ritual preamble, and $VOLTS telemetry
-            # only STARTS once $PHONE,* opens the event tap (protocol §7a). So:
-            #   $STOP (clean) → $PHONE (open tap → VOLTS streams) → $VERSION.
-            await self.send(alias, "$STOP,*", reply_window_ms=80)
-            await self.send(alias, "$PHONE,*", reply_window_ms=250)
-            # $PHONE replies $BUT,3,0 + "phone connected"; give the tap a moment
-            await self.wait_for(alias, "$BUT", timeout_s=2)
-
-            # firmware
-            await self.send(alias, "$VERSION,*", reply_window_ms=100)
-            vr = await self.wait_for(alias, "$VERSION", timeout_s=3)
-            if vr.get("matched"):
-                p = vr["event"]["parsed"]
-                rec["firmware"] = p.get("firmware")
-                rec["host_image"] = p.get("host_image")
-                rec["is_devhost"] = p.get("is_devhost")
-
-            # ping latency (best-effort; may not be supported on this firmware)
-            t0 = time.monotonic()
-            await self.send(alias, "$PING,*", reply_window_ms=100)
-            pr = await self.wait_for(alias, "$PONG", timeout_s=2)
-            if pr.get("matched"):
-                rec["pong_latency_ms"] = int((time.monotonic() - t0) * 1000)
-
-            # battery — $VOLTS streams after $PHONE (first sample can lag; wait)
-            br = await self.wait_for(alias, "$VOLTS", timeout_s=volts_wait_s)
-            if br.get("matched"):
-                p = br["event"]["parsed"]
-                rec["battery"] = {"pack_v": p.get("pack_v"),
-                                  "cell_v": p.get("cell_v"),
-                                  "charge_pct": p.get("charge_pct"),
-                                  "level_pct": p.get("level_pct")}  # token4 (TBC)
-        except Exception as e:  # noqa: BLE001 — report, don't crash a fleet sweep
-            rec["error"] = f"{type(e).__name__}: {e}"
-        finally:
-            # $PHONE locks the on-gun menu until configured/power-cycled — release it
-            try:
-                await self.send(alias, "$STOP,*", reply_window_ms=80)
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                await self.disconnect(alias)
-            except Exception:  # noqa: BLE001
-                self.sessions.pop(alias, None)
-        return rec
+        from .diagnostics import run_diagnose
+        return await run_diagnose(self, address, volts_wait_s)
 
     async def fleet_status(self, addresses: list[str] | None = None,
                            scan_s: int = 8) -> dict[str, Any]:

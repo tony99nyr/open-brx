@@ -146,6 +146,18 @@ class FakeConnectionManager:
     def is_connected(self, alias: str) -> bool:
         return alias in self.sessions and alias not in self.dropped
 
+    async def wait_for(self, alias: str, prefix: str, timeout_s: int = 0) -> dict:
+        """Scan the session buffer for an rx frame starting with `prefix`. The fake
+        delivers replies synchronously on send(), so the frame is already buffered —
+        return the latest match (or unmatched). Mirrors ConnectionManager.wait_for's
+        result shape for the shared diagnostics flow."""
+        s = self.sessions.get(alias)
+        if s is not None:
+            for e in reversed(s.buffer):
+                if e.direction == "rx" and e.raw.startswith(prefix):
+                    return {"matched": True, "event": e.to_dict()}
+        return {"matched": False}
+
     async def send(self, alias: str, command: str, reply_window_ms: int = 0) -> dict:
         if alias in self.dropped:            # writing to a dropped link fails (real BLE raises)
             raise ConnectionError(f"link dropped: {alias}")
