@@ -53,6 +53,7 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "pull_log": (),
     "ack": ("seq_hi",),
     "apply": ("frames",),   # A6: best-effort "write these frames now" (coverage-zone runtime effects)
+    "score": ("player_id",), # A7: MC pushes a player's current ScoreRow to its node (coverage-zone live K/A/ACC)
 }
 
 _EVENT_REQUIRED: dict[str, tuple[str, ...]] = {

@@ -241,6 +241,7 @@ for idempotent replay. `status` carries no `seq`.
 | `feedback` | `{ player_id, kind:"kill"|"multi"|"medal", t, cue?:string }` | MC scored you a kill → node `$SFLASH` + `$PLAY` (`cue` if present, else `frames.cues[kind]`; missing → flash only). `t` = the death time; node ignores it if older than `FEEDBACK_MAX_AGE_MS` (A4.3) |
 | `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`panic`\|`abort_start`\|`recall` | **one meaning each (A5.9)**: `abort_start`=cancel a *pending* schedule (by `seq`) while ARMED → LOBBY (gun still holds `head`); if the node is already LIVE for that `seq`, it behaves as `recall`. `recall`=stop a *live/armed* game → node writes `frames.end` (+ `cues.game_over`) → **KITTED**; `end`=normal match end → same → KITTED; `panic`=`frames.panic` → KITTED. In KITTED/LOBBY an `end`/`recall` writes `frames.end` iff a bundle is held, then → KITTED. **`pause` is removed** (A4.6). |
 | `apply` | `{ frames: string[], reason?: string }` | A6.4: best-effort "write these frames now" — coverage-zone runtime effects only (syphon heal, regen refill, extraction boost). Node writes verbatim, never persists, ignores if not LIVE. |
+| `score` | `ScoreRow` + `{ shots_total }` | A7: MC pushes a player's current row to its node whenever it changes (best-effort, coverage-zone). The HUD shows K/A/ACC with a ✓MC tick; still "—" until the first push or `welcome.node.score`. |
 | `time_res` | `{ t_node, server_t }` | clock-sync reply |
 | `pull_log` | `{}` | request the offered log |
 | `ack` | `{ seq_hi }` | MC has durably ingested this node's events up to `seq_hi` (store-and-forward ring-prune signal) |
@@ -450,3 +451,6 @@ inaudible). BLE writes chunk at 20 bytes (§app).
   - **A6.7 Doc fixes:** `gun_echo` is "the gun answered", not "headset present" (unverified, NEXT #10); `$START`
     audibility at lobby unverified (NEXT #11); node lifecycle arrows → KITTED; runway text = `DEFAULT_RUNWAY_S`;
     first blood from a re-based never-synced batch is flagged provisional; module headers → A6.
+- **A7 (2026-08-25, HUD v2 integration; additive):** MC→node **`score{ScoreRow, shots_total}`** — pushed on every change while
+  the node is in coverage, so the HUD's K/A/ACC ("✓MC") update mid-match instead of only on rejoin (`welcome.node.score`).
+  Node treats it as display-only truth; never derives kills locally.

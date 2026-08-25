@@ -84,6 +84,7 @@ class Session:
         self.start_info: dict | None = None
         self.start_seq = 0
         self.scorer: Scorer | None = None
+        self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
         self.last_recap: dict | None = None
         self.feed: list[dict] = []
         self._listeners: list[Callable[[], None]] = []
@@ -345,6 +346,7 @@ class Session:
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if self.scorer:
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
+            self._push_scores()
             self._changed()
 
     def ingest_batch(self, nid: str, events: list[dict], t_recv: int):
@@ -354,7 +356,24 @@ class Session:
         if self.scorer:
             self.scorer.ingest_batch(nid, events, t_recv)
             self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
+            self._push_scores()
             self._changed()
+
+    def _push_scores(self):
+        """A7: push each player's ScoreRow to its node when it changed (best-effort; only reaches nodes in coverage)."""
+        if not self.scorer:
+            return
+        plist = self.players.values() if isinstance(self.players, dict) else self.players
+        by_pid = {p["player_id"]: p for p in plist}
+        for row in self.scorer.rows():
+            pid = row["player_id"]; p = by_pid.get(pid)
+            if not p or not p.get("node_id"):
+                continue
+            body = dict(row); body["shots_total"] = self.scorer.shots_total(pid)
+            if self._score_pushed.get(pid) == body:
+                continue
+            self._score_pushed[pid] = body
+            self.net.push(p["node_id"], "score", body)
 
     def _on_node_message(self, nid: str, kind: str, body: dict, t_recv: int):
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv

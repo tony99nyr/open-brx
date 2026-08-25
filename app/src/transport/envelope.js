@@ -17,7 +17,7 @@ export const PERSISTED_EVENT_TYPES = new Set(['hit_taken', 'death', 'respawn', '
 export const NODE_KINDS = new Set(['hello', 'bind', 'event', 'event_batch', 'status', 'ack_config',
   'time_req', 'log_offer', 'log_data', 'ready']);
 export const MC_KINDS = new Set(['welcome', 'assign', 'tutorial', 'config', 'start', 'feedback',
-  'control', 'time_res', 'pull_log', 'ack', 'apply']);
+  'control', 'time_res', 'pull_log', 'ack', 'apply', 'score']);
 export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
 
 const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
@@ -34,7 +34,7 @@ const REQUIRED = {
   tutorial: ['weapon', 'frames'], config: ['config', 'frames', 'roster'],
   start: ['match_id', 'go_live_t', 'config_id', 'seq', 'countdown_s'],
   feedback: ['player_id', 'kind', 't'], control: ['cmd'], time_res: ['t_node', 'server_t'],
-  pull_log: [], ack: ['seq_hi'], apply: ['frames'],
+  pull_log: [], ack: ['seq_hi'], apply: ['frames'], score: ['player_id'],
 };
 const EVENT_REQUIRED = { hit_taken: ['shooter_num', 'shooter_team', 'dmg'], death: ['shooter_num', 'shooter_team'], respawn: [], team_change: ['tid'] };
 
