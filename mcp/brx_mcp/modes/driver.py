@@ -97,8 +97,9 @@ class GameDriver:
                  announce: Optional[Callable[[str], None]] = None,
                  callsigns: Optional[dict[str, str]] = None):
         """`players` maps player_id → team. `sender(pid, frame)` does the write.
-        `callsigns` maps player_id → gamertag; pushed to the gun via `$NAME` at
-        setup and echoed in `snapshot()` so a scoreboard can label by gamertag."""
+        `callsigns` maps player_id → vanity gamertag; a DISPLAY layer only — echoed
+        in `snapshot()` so a scoreboard can label by gamertag. NOT pushed to the gun
+        (the gun's `$NAME` is its permanent sticker-id hardware identity)."""
         self.config = config
         self.players = players
         self.sender = sender
@@ -154,14 +155,16 @@ class GameDriver:
         config all, THEN spawn all back-to-back — B10)."""
         setup_frames = self.config.setup_frames()
         spawn_frames = self.config.spawn_frames()   # loadout-correct $AMMO
-        # config every gun fully first (incl. team + gamertag) ...
+        # config every gun fully first (incl. team) ...
+        # NOTE: callsigns are a DISPLAY layer only (echoed in snapshot for the
+        # scoreboard) — we deliberately do NOT push $NAME here. The gun's $NAME is
+        # its permanent hardware identity (the headset sticker id, set at Armory
+        # Setup); a per-game vanity gamertag must never clobber it. See
+        # docs/field-process.md + the tagger-naming architecture.
         for pid in self.players:
             for f in setup_frames:
                 await self._send(pid, f)
             await self._send(pid, f"$TID,{self.players[pid]},*")
-            tag = self.callsigns.get(pid)
-            if tag:
-                await self._send(pid, f"$NAME,{tag},*")
         # ... THEN spawn all guns back-to-back so they start ~together (B10 barrier)
         for f in spawn_frames:
             for pid in self.players:

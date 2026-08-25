@@ -88,17 +88,19 @@ parsing already exists for the USB path.
 - Bind a **player** (name, optional persistent id) to a tagger for the match. Show each tagger's
   readiness (from §1) and block start on any that isn't game-ready (dead battery, no headset, wrong
   firmware).
-- **Gamertag / callsign (built).** Each player picks a **gamertag** which binds to a tagger. It's pushed
-  to the gun via **`$NAME,<gamertag>,*`** — **confirmed 2026-08-24 to PERSIST** (survives a
-  power-cycle; the BLE advert becomes `<name>-<MACtail>` on next boot), so this is a real cable-free
-  rename, not just a session label (CLI `rename <addr> <name>`) and echoed in the
-  live snapshot (`snapshot()["callsigns"]`) so the **scoreboard labels players by gamertag, not MAC**.
-  Data contract (backend done — `GameDriver(callsigns=…)` / `run_live(config, addrs, callsigns)`; CLI
-  `play … <addr>@<Gamertag>`): `callsigns: {address → gamertag}`. Gamertags are sanitized
-  (`clean_callsign`: drop `,`/`$`/`*`, cap 12 chars — the gun name field is short). The **UI picker**
-  (players choose/claim a tag, assign to a gun) is the design-tool surface; the binding + `$NAME` push +
-  snapshot echo are the contract it drives. A persistent gamertag registry (tag ↔ address, reused across
-  matches) is the natural next step; ties into **P2** if/when a true per-player PlayerID lands.
+- **Two-layer identity (built).** Keep the *hardware* name and the *player* name separate:
+  - **Gun `$NAME` = the tagger's sticker id** (its headset Serial/Head PIN), set ONCE at **Armory Setup**
+    (`rename`/`enroll`). Confirmed 2026-08-24 to **persist** over BLE (survives a power-cycle; the advert
+    becomes `<stickerid>-<MACtail>` on next boot). This is the permanent hardware label — a BLE scan
+    self-identifies every gun. See `docs/field-process.md`.
+  - **Vanity gamertag = a DISPLAY layer only.** Each player picks a gamertag bound to a tagger for the
+    match; it's echoed in the live snapshot (`snapshot()["callsigns"]`) so the **scoreboard labels players
+    by gamertag, not MAC** — but it is **NOT** pushed to the gun (that would clobber the sticker-id
+    hardware label). Data contract (backend done — `GameDriver(callsigns=…)` /
+    `run_live(config, addrs, callsigns)`; CLI `play … <addr>@<Gamertag>`): `callsigns: {address →
+    gamertag}`, sanitized via `clean_callsign`. The **UI picker** is the design-tool surface; the
+    binding + snapshot echo are the contract it drives. A persistent gamertag registry (tag ↔ address,
+    reused across matches) is the natural next step; ties into **P2** if a true per-player PlayerID lands.
 
 ### 2. Assign teams
 - Assign each player a **team** via `$TID,<n>,*`. Team drives the gun's LED colour automatically

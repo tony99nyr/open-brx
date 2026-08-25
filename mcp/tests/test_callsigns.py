@@ -19,7 +19,7 @@ def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
-def test_driver_pushes_name_frame_and_echoes_snapshot():
+def test_callsigns_are_display_only_never_pushed_as_name():
     sent = []
 
     async def sender(pid, frame):
@@ -29,10 +29,9 @@ def test_driver_pushes_name_frame_and_echoes_snapshot():
     drv = GameDriver(cfg, {"AA": 1, "BB": 2}, sender,
                      callsigns={"AA": "Reaper", "BB": "Gh,ost"})
     _run(drv.setup())
-    names = [f for (_, f) in sent if f.startswith("$NAME")]
-    assert "$NAME,Reaper,*" in names
-    assert "$NAME,Ghost,*" in names                         # sanitized (comma dropped)
-    # snapshot echoes callsigns so a scoreboard can label by gamertag
+    # the vanity gamertag must NOT clobber the gun's sticker-id $NAME
+    assert not [f for (_, f) in sent if f.startswith("$NAME")]
+    # but it IS echoed in the snapshot for the scoreboard (sanitized)
     assert drv.snapshot()["callsigns"] == {"AA": "Reaper", "BB": "Ghost"}
 
 
@@ -58,4 +57,5 @@ def test_blank_callsign_is_dropped_not_pushed():
                      callsigns={"AA": "Nova", "BB": "   "})
     _run(drv.setup())
     assert drv.callsigns == {"AA": "Nova"}                  # blank BB dropped
-    assert "$NAME,Nova,*" in [f for (_, f) in sent if f.startswith("$NAME")]
+    assert drv.snapshot()["callsigns"] == {"AA": "Nova"}    # display only, no $NAME
+    assert not [f for (_, f) in sent if f.startswith("$NAME")]
