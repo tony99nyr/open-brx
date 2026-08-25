@@ -1053,6 +1053,12 @@ STILL OPEN (needs 3 guns + listening): does the "double kill" AUDIO fire under O
 sounds, D4 #1). And the nRF tap itself (can a Companion read the mesh?).
 
 ### 2026-08-25 — direct-BLE 3-gun sync arm is UNRELIABLE (repeatable): only 2 of 3 enter the game
+> **⚠️ SUPERSEDED / WRONG — see the "headset gate" entry below (same day).** The 3rd gun's
+> **headset was off**, which silently blocks a tagger from joining a game (§7m). With all three
+> headsets on, the exact same synced-arm code (`arm_test.py`) armed all 3 **first-try, zero
+> retries**. Direct-BLE 3-gun synced arm **works**. The diagnosis below (marginal BLE link / config
+> burst) was a misread of a headset lockout. Kept for the record.
+
 Tried the 3-gun multikill test (shooter + 2 targets) three times. Every time all 3 **connect** ("phone
 connected") but **only 2 actually enter the game** (get the 3-2-1 countdown + "get some" spawn + LEDs) — a
 marginal 3rd link drops during the ~25-frame config burst, so that gun stays half-configured and never
@@ -1064,3 +1070,70 @@ config locally, not a central host fanning out over one flaky radio. Also note t
 serial wants ~5 ms/char) — our fast burst may overrun a marginal link. **Multikill-AUDIO test (D4 #1)
 deferred** — it needs 3 reliably-armed guns, which direct BLE can't deliver today. The pivotal D4 finding
 (no shooter-side kill event on BLE) stands from the 2-gun probe.
+
+### 2026-08-25 — LANDMARK: the feedback fork resolved — MC rebuilds native AUDIO over BLE
+Big session, 3 guns (R0BAS/FE30 shooter, R0BP1/9498, R0BQT/E20D). Multiple prior conclusions
+overturned. Order of discovery:
+
+**1. Headset gate (overturns "3-gun BLE arm unreliable").** E20D failed to join twice — root cause
+was its **headset was OFF**, not BLE/config. §7m ("no headset → connects then silently drops, no game")
+confirmed live. Once its headset was on, `arm_test.py` (connect-all → config-each → hold-all-live →
+synced `$SPAWN` burst) armed **all 3 first-try, zero reconnect retries**, repeatably (4×).
+→ **Direct-BLE 3-gun synced arm WORKS.** The earlier "unreliable/pilot-only" entry is wrong (banner added).
+→ **REQUIREMENT: MC must detect headset-present as a pre-game gate.** A dark headset = a player who
+  stands there dead all round, and it silently blocks join. Detectors: (a) cabled muster — `QUERY` →
+  `Headset Version:` present & not `?`; (b) field/BLE — send spawn, require the `$LCD,45,70,…` echo
+  within ~500 ms; silence = not ready. Behavioral detector proven live (headset-less gun = 100% silent).
+
+**2. Damage model + clocks.** ~10 tags to kill: armor absorbs first (`$HP,45,61→52→…` armor ~9/hit)
+then HP bleeds to `$HP,0,0,0` + `$LCD,0,0,0,0,36,108`. Double-kill window = **4 s** (`game-medals-config.json`
+Key 14). Each gun stamps events in its **own boot-local clock** (9498 vs E20D baselines differed ~5 s) —
+**MC must host-stamp arrival, never trust gun `t_ms`.**
+
+**3. THE FORK — native feedback is nRF, BLE-invisible.** Under our BLE-config game: clean kills, both
+victims → `$HP,0`, but the shooter's sight stayed **RED** and no "double kill" (re-tested with Tony's
+eyes locked on the sight — confirmed red on kill under our config). Then a **native offline FFA** (gun
+menu, no phone) with a PASSIVE BLE tap on FE30 (`passive_listen.py`, zero game-altering sends): green
+sight each kill, "all clear", "double kill" all fired — and the BLE tap captured **ZERO frames the entire
+game**. → Native kill-confirm / green-sight / killstreak is **100% nRF peer-to-peer, invisible to a BLE
+central**. Our BLE `$GSET/$PSET/$TID/$SPAWN` config does **not** engage that nRF peer layer (sight stays
+red); the gun-menu native game does. `$DD,<killer>,<killerTeam>,<victim>,<nonce>` is a **JEDGE host-side
+convention, NOT a stock-tagger BLE command** (brx-protocol.md:90).
+
+**4. THE RESOLUTION — MC reconstructs the AUDIO layer over pure BLE.** `play_probe.py` → FE30:
+`$PLAY,VA20,4,6,,,,,*` ("connection established") then `$PLAY,VAA,4,6,,,,,*` (a kill voice line) —
+**both played on command over pure BLE** (Tony: "yes va20, then kill"). So **MC as BLE scorekeeper can
+drive the full announcer/killstreak/medal audio**: watch every gun's `$HP,0`, attribute (team-granular
+over BLE; per-player needs P2/nRF), check the 4 s window, `$PLAY` the right line to the shooter. The
+green-SIGHT visual flash is **NOT BLE-drivable** — three `$GLED` effect variants produced no flash
+(Tony: "didn't notice the led or the sight flash"), consistent with §7i (GLED colour is team-derived
+from `$TID`). Audio compensates for the lost visual.
+
+**Net verdict:** "direct-BLE = pilot-tier only" is **DEAD**. A BLE-only Mission Control delivers
+**authoritative scoring + native-feeling AUDIO feedback** for real multi-gun games. Sole stock-feel
+sacrifices over pure BLE: the green-sight visual flash (nRF-internal) and true per-player kill
+attribution (team-granular without P2/nRF). The nRF tap (D1/Companion) is the upgrade for per-player
+attribution + observing native-mode games — **no longer required for a good game.** OPEN: can the native
+nRF-peer mode (which gives green-sight + native audio for free) be triggered over BLE, or is it an
+nRF-radio handshake never exposed on BLE? Bench tools in `mcp/`: `arm_test.py`, `passive_listen.py`,
+`play_probe.py` (throwaway; arm + scorekeeper-audio logic should migrate into the driver).
+
+### 2026-08-25 — NRFL-Bases source pull: BRX IR protocol DECODED; gun-nRF still separate
+Pulled LaserTagMods `NRFL-Bases` to try to get the BRX gun's native nRF mesh params (for the nRF tap,
+FOLLOWUPS B18). **Result: the bases don't tap the gun's nRF at all — they receive the gun's IR** and use
+nRF24 only *base-to-base*. So this source does **not** reveal the gun's `NRFhost/NRFslave` kill-confirm
+mesh params (still unknown). **But it handed us two bigger wins:**
+- **BRX IR shot protocol decoded** (`Nodes/node1.ino`) → wrote `protocol/brx-ir-protocol.md`: ~25-bit
+  word after a **2 ms sync**, pulse-width bits (**~1000µs=1 / ~500µs=0**, split 750µs), fields
+  **B4 bullet · P6 player-id · T2 team · D8 damage · C1 crit · U2 · Z parity** (valid if `Z1≠Z0 && Z2<250`).
+  **This largely answers B13** — verify on our VS1838B (arriving 2026-08-26) before emitting.
+- **Per-player attribution (P2) is solvable over IR, no nRF needed:** every shot carries a **6-bit player
+  id**. An IR receiver (VS1838B + ESP32-S3) decodes WHO fired. Prereq unchanged: guns need **distinct ids
+  set via `SETUP`** (QUERY PlayerID reads 0), else `P` is identical for all.
+- Reference nRF24 design for **our own** mesh (Companion/bases): CE/CSN=9/10, **1Mbps**, ackPayload,
+  5-byte addrs `0xB3B4B5B6E0..F5`, channel 76 (RF24 default). Useful for B1/B4, not for tapping the gun.
+
+**Hardware ordered (arriving 2026-08-26):** ELEGOO 235-pc kit + CHANZON 940nm IR (emitters + VS1838B) +
+2× ESP32-S3-DevKitC-1 = the **IR bench** (B13 verify, B4, range). **nRF24 kit chosen** (Aideepen 3×
+PA/LNA + 3× AMS1117 adapters, overnight). Full BOM + power + wiring in `hardware/bench-shopping-list.md`;
+IR wiring diagram `hardware/ir-breadboard.svg` (RX GPIO4, TX GPIO5, status LED GPIO6).
