@@ -108,6 +108,16 @@ class GameDriver:
         self.announce = announce or (lambda s: print(s, flush=True))
         self.callsigns = {pid: clean_callsign(n) for pid, n in (callsigns or {}).items()
                           if clean_callsign(n)}
+        # Per-gun PLAYER ID -> $PSET token 1 (protocol §7p). Distinct ids are what make
+        # per-player attribution possible at all; with every gun on the default id the
+        # shooter field is a constant. Auto-number the fleet 0,1,2… unless the operator
+        # pinned ids in config.player_ids. Assignment is computed ONCE here so a
+        # mid-game resetup re-sends the SAME id (a changed id mid-game would re-identify
+        # the player and orphan their kills).
+        pinned = dict(getattr(config, "player_ids", {}) or {})
+        self.player_ids: dict[str, int] = {}
+        for idx, pid in enumerate(players):
+            self.player_ids[pid] = int(pinned.get(pid, idx))
         for pid, team in players.items():
             self.engine.add_player(pid, team)
 
@@ -158,7 +168,6 @@ class GameDriver:
     async def setup(self) -> None:
         """Push per-game config to every gun, then per-gun team + spawn (synchronised:
         config all, THEN spawn all back-to-back — B10)."""
-        setup_frames = self.config.setup_frames()
         spawn_frames = self.config.spawn_frames()   # loadout-correct $AMMO
         # config every gun fully first (incl. team) ...
         # NOTE: callsigns are a DISPLAY layer only (echoed in snapshot for the
@@ -167,7 +176,7 @@ class GameDriver:
         # Setup); a per-game vanity gamertag must never clobber it. See
         # docs/field-process.md + the tagger-naming architecture.
         for pid in self.players:
-            for f in setup_frames:
+            for f in self.config.setup_frames(self.player_ids[pid]):
                 await self._send(pid, f)
             await self._send(pid, f"$TID,{self.players[pid]},*")
         # ... THEN spawn all guns back-to-back so they start ~together (B10 barrier)
@@ -192,7 +201,7 @@ class GameDriver:
         config + team always, but only SPAWNS it live if the engine still considers
         it alive — a gun that dropped while dead stays dead (the engine's own Respawn
         action brings it back on schedule), avoiding a gun-alive/engine-dead desync."""
-        for f in self.config.setup_frames():
+        for f in self.config.setup_frames(self.player_ids[pid]):
             await self._send(pid, f)
         await self._send(pid, f"$TID,{self.players[pid]},*")
         if self._player_alive(pid):

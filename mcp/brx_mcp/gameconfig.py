@@ -41,7 +41,9 @@ WEAPON_AMMO: dict[str, tuple[int, int]] = {
 
 # $PSET template — the app's voice-pack tail; tokens 3–5 (HP,armor,shield) are ours.
 # tokenize: PSET,0,0,<HP>,<armor>,<shield>,50,,H44,...,A10
-_PSET_HEAD = ["PSET", "0", "0"]  # then HP, armor, shield, then the tail:
+# $PSET token 1 = player id (§7p): 6 bits, 0-based on the wire (0–63); the Callsign
+# UI shows 1–64, so subtract one from anything an operator types.
+MAX_PLAYER_ID = 63
 _PSET_TAIL = ["50", "", "H44", "JAD", "V33", "V3I", "V3C", "V3G", "V3E", "V37",
               "H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]
 
@@ -139,6 +141,11 @@ class GameConfig:
     # -- teams (player_id → team) ; the driver also assigns $TID per gun ------ #
     teams: dict = field(default_factory=dict)
 
+    # -- per-gun PLAYER ID (§7p) — {player_id: wire_id}, 0-based 0–63 ---------- #
+    # Empty = the driver auto-numbers the fleet 0,1,2…. Pin ids only when they must
+    # match something external (a printed roster, a previous game's scoreboard).
+    player_ids: dict = field(default_factory=dict)
+
     # --------------------------------------------------------------------- #
     def apply_presets(self) -> "GameConfig":
         """Return a copy with class then kid_mode presets applied.
@@ -175,8 +182,16 @@ class GameConfig:
             bmap[1] = "$BMAP,1,97,,,,,*"
         return bmap
 
-    def _pset(self) -> str:
-        toks = _PSET_HEAD + [str(self.hp), str(self.armor), str(self.shield)] + _PSET_TAIL
+    def _pset(self, player_id: int = 0) -> str:
+        """`$PSET,<playerId>,0,<hp>,<armor>,<shield>,…`
+
+        Token 1 is the PLAYER ID (protocol §7p, confirmed by cap10+cap11): 6 bits,
+        **0-based, 0–63** on the wire, while the Callsign UI shows 1–64. Out-of-range
+        values are clamped rather than silently wrapped — a wrapped id would collide
+        with another player's and mis-attribute kills."""
+        pid = max(0, min(int(player_id), MAX_PLAYER_ID))
+        toks = ["PSET", str(pid), "0",
+                str(self.hp), str(self.armor), str(self.shield)] + _PSET_TAIL
         return "$" + ",".join(toks) + ",*"
 
     def _gset(self) -> str:
@@ -197,11 +212,13 @@ class GameConfig:
             return []
         return ["$GLED,0,4,0,0,0,,*"]  # ⚠ UNCONFIRMED "off" attempt — see FOLLOWUPS P17
 
-    def setup_frames(self) -> list[str]:
-        """Ordered per-GAME config frames (sent once, before per-player spawn)."""
+    def setup_frames(self, player_id: int = 0) -> list[str]:
+        """Ordered config frames for ONE gun. `player_id` is that gun's identity
+        (0-based, 0–63) and rides in `$PSET` token 1 — see `_pset`. Everything else
+        is per-game and identical across guns."""
         cfg = self.apply_presets()
         frames = [f"$VOL,{cfg.volume},0,*", "$CLEAR,*", "$START,*", cfg._gset(),
-                  cfg._pset(), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
+                  cfg._pset(player_id), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
                   cfg._weap(4, "melee")]              # the app always loads a melee slot
         frames += list(_SIR_TABLE) + cfg._bmap()
         frames += cfg._led_frames()
