@@ -6,6 +6,22 @@ the observed behaviour. **This is the to-do list for your next hardware session(
 
 Legend: ⬜ unverified · ✅ verified · ⚠ verified-with-caveat · ❌ failed (→ FOLLOWUPS)
 
+## ⭐ EFFICIENT BENCH PLAN (post sim-hardening, 2026-08-25)
+All game LOGIC for every mode is now exhaustively verified in software (156 sim scenarios + the SimGame
+harness) — so the bench only needs to confirm what the sim CAN'T model. Do these in order; each is fast:
+1. ⬜ **Combat modes on real guns** (tdm/ffa/infection/lms, 2–3 taggers): `play <mode> …` — confirm the
+   on-gun reality the sim can't see: LED team colours, hit/death/respawn SOUNDS, health behaves, and the
+   scoreboard matches. Logic is sim-proven, so this is a hardware-behaviour check, not a logic check.
+2. ⬜ **Live-path resilience** (the point of the resilience work): start a game with **one tagger off**
+   → confirm connect-grace plays with the rest (`playing with N/M taggers`); **power-cycle a tagger
+   mid-game** → confirm it reconnects and rejoins (`reconnected …`); confirm a game never hangs.
+3. ⬜ **Teardown** — after a game, the loser isn't stuck (revived, headset dark, pulses last team). (✅ once.)
+4. ⬜ **Config knobs on-gun** (Session C): night mode LEDs-off (P17), outdoor, kid_mode FF-off, volume, weapons.
+5. ⬜ **Native multikill audio** (D4): does the gun still say "double kill" under our config?
+6. ⬜ **Health variants** (Session B): syphon/regen `$LIFE` behaviour on real guns.
+7. ⬜ **Objective modes** — need a station (grenade/Utility Box) to emit the IR events; gated on the IR bench
+   (Session E/F). Engines + station-event handling are sim-proven; only the IR source is missing.
+
 ## ⭐ TOMORROW (2026-08-25) — armory/correlation loop (all 4 taggers on)
 The newest, least-verified work. Do these first while the taggers are out.
 - ⬜ **MAC auto-binding** — power on all 4, run `armory`; the uniquely-named guns should bind:
