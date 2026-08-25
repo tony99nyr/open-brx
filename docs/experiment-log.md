@@ -900,3 +900,35 @@ back as `Alpha-9498`.** So:
 a **unique** name over BLE at bench prep → the two stock "Tactix" guns become distinguishable AND
 correlate across the USB-armory and BLE tiers by name. `SETUP` (USB) is still needed only for the
 headset-pairing PIN + PlayerID (P2), NOT for the display name.
+
+### 2026-08-25 — Grenade video tidbits (Jay) + process naming: Armory Setup & Muster
+No hardware this pass — Tony relaying facts from **Jay's grenade video** (Extreme Laser Tag And More! /
+@extremelasertag3602) and naming two operator processes. Credit Jay for the grenade/respawn framing.
+
+**Grenade tidbits (Jay):**
+- **Respawn-station arming is a PRE-GAME configuration.** The grenade is button-set to Respawn mode and its
+  **respawn-station IR must be delivered to each tagger BEFORE the game starts**. Once a tagger has received
+  it, that tagger **knows during the game to respawn at the station instead of automatically** (self-respawn
+  disabled). ⚠️ **Reconcile:** exp-log #37 (Tony, hardware) framed the same arming as **signal each gun just
+  AFTER `$SPAWN`** (guns inert until live; two-horn start buys ~5 s). **Likely the same arming action** —
+  pre-game arming is the natural config step; the "after start" wording reflects that a timed match can't arm
+  until guns are live. **Did NOT silently overwrite** grenade.md's note — both accounts are now presented
+  there with the likely resolution, and a hardware item (verification-checklist) will pin the exact
+  before-vs-after-`$SPAWN` timing and whether the per-player button-press is separate from the passive beacon.
+- **Physical labeling.** Stock BRX taggers ship **unlabeled** and are easy to mix up (can't tell which gun
+  pairs to which headset). **Recommended Open BRX practice (Tony):** use a **sticker/label printer** to print
+  the **headset's 5-char code (Serial / Head PIN)** onto the **tagger** — the physical gun↔headset pairing
+  then reads at a glance, complementing the digital armory map (same headset PIN ↔ gun ↔ MAC).
+
+**Process naming (Tony, current):** documented two recommended processes in the new **`docs/field-process.md`**:
+- **Armory Setup** — one-time, per-tagger enrollment: isolate (one gun on), `enroll` (USB headset-PIN read +
+  isolation-bind of its BLE MAC), `rename`/`$NAME` the gun to its **sticker id** (BLE advert self-identifies),
+  physically label it with the headset code. Output: the permanent gun↔headset↔MAC map (`~/.brx-mcp/armory.json`)
+  Mission Control reads. Gun `$NAME` = hardware sticker id; a player's vanity **gamertag is a separate MC display
+  layer** (do not conflate).
+- **Muster** — per-game pre-game arming: config-all-then-spawn barrier (B10), assign teams/loadouts, and — for
+  objective modes — **Station Arming** (deliver station IR to each tagger before kickoff, per the tidbit above).
+
+**Docs touched:** `reference/grenade.md` (§Respawn Station reconciliation + Muster pointer), new
+`field-process.md`, `verification-checklist.md` (Station-Arming timing + Armory/Muster end-to-end),
+`FOLLOWUPS.md` B12, `README.md` index. No code changes.

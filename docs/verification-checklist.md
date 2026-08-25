@@ -18,6 +18,13 @@ The newest, least-verified work. Do these first while the taggers are out.
 - ⬜ **Rename the rest** — `rename <addr> Bravo` / `Charlie` / `Delta` on the remaining stock guns,
   power-cycle each, re-run `armory` to reconfirm → all 4 uniquely mapped. (Renaming an *unbound* gun now
   warns it won't update the map until USB-enrolled — enroll after.)
+- ⬜ **Armory Setup end-to-end** (`field-process.md` §Armory Setup) — for each tagger: isolate (only this one on),
+  `enroll <StickerID>`, confirm the USB **headset PIN** matches the headset sticker, power-cycle, `armory` → row flips
+  to `MAP=ok` with the bound MAC. Do the whole fleet; the map (`~/.brx-mcp/armory.json`) should hold one confirmed row
+  per tagger. Also sanity-check the **physical sticker** practice (headset code printed on the gun) at the bench.
+- ⬜ **Muster end-to-end** (`field-process.md` §Muster) — roster from the armory map, `play <mode> <addr…>` with the
+  config-all-then-spawn barrier → all guns live ~together (B10); teams/loadouts land; for an objective mode, run
+  **Station Arming** before kickoff. Confirms the two processes work as one flow.
 - ⬜ **`$VOLTS` token 4** — sample at high vs low charge to decode the 4th number (token 3 = charge %, confirmed).
 - ⬜ **Fleet battery reliability** — weak-signal taggers missed `$VOLTS`; decide persistent-connection vs RSSI-dependent.
 - ⬜ **Headset-OFF heuristic** — power a headset off, connect: confirm "reachable but drops with zero frames".
@@ -89,6 +96,12 @@ The whole M0 engine is tested in software but never driven on real guns.
   host respawn, loud channel alarm). Needs the station to feed `ZONE`/`LEAVE`/`LOOT`/`PICKUP`; the combat
   half (kill drops loot, killer gains kill-loot) runs off the gun stream today.
 - ⬜ **Grenade G9/G10** — CTF flag team-assign (turned red not team colour); `$GREN` thrown-blast on a paired grenade.
+- ⬜ **Station-Arming timing (respawn)** — resolve the before-vs-after-`$SPAWN` question (`reference/grenade.md`
+  §Respawn Station; `field-process.md` §Muster→Station Arming). Set the grenade to Respawn, then test: (a) arm a
+  tagger with the station IR **BEFORE** starting the game — does its self-respawn stay disabled through the match
+  (Jay's account)? (b) arm **AFTER** `$SPAWN` — does that also stick? (c) is the **per-player grenade-button press**
+  a distinct step from the grenade's **passive beacon** (does a tagger that only saw the passive beacon get armed)?
+  A tagger that was never armed should just self-respawn. Record which timing is reliable → update grenade.md/B12.
 
 ## Session G — phones (Android phone + tagger, ~30 min) — G4, gates M2
 - ⬜ **Android BLE hold** — `webapp/ble-test.html` (Chrome) vs nRF Connect: does Android Chrome hold a BRX NUS link? (Gates the whole phone/PWA branch; also decides web-vs-hybrid.)

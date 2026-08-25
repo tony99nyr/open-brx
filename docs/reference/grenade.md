@@ -109,6 +109,8 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
 ## Respawn Station mode
 
 *(All below **hardware-confirmed** by Tony, exp-log #37, matching the videos.)*
+*(Operational setup — arming each tagger to a station before kickoff — is the **Station Arming** sub-step
+of the per-game **Muster** process: `../field-process.md`.)*
 - Starts **white/neutral**; **shoot it with a team's gun to claim it that team's colour** (blue gun →
   blue → respawns only blue). Over BLE the claim flips the beacon's team field (`$HIR,0,15,0,<team>,6`).
 - **Once the guns know a respawn station is configured, their auto/self-respawn is DISABLED** — a dead
@@ -117,13 +119,29 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
   2. **Face the respawn station with the FRONT of your headset and pull the trigger** → signals the
      grenade to emit a respawn signal (the hands-free / at-range method; ~18–20 ft, range scales with
      indoor/outdoor mode's forward IR projection).
-- **The critical gotcha (root of the "grenade is confusing/buggy" reputation):** setting a gun to
-  respawn-station mode via the beacon is **not enough** — you must **signal the respawn action to each
-  gun AFTER the game starts** (press the grenade button on each player at the base pre-game). A gun
-  that was *not* hit by the station signal post-start will just **self-respawn normally**; once hit by
-  the station beacon it's locked to needing the station. Practical flow: everyone starts at base, a
-  leader presses the grenade on each player, *then* the game starts (use a two-horn start to buy the
-  ~5 s), **or** run unlimited-time and pre-set everyone to respawn mode before the match.
+- **The critical gotcha (root of the "grenade is confusing/buggy" reputation) — arming each tagger to
+  the station.** Setting the *grenade* to Respawn mode is **not enough**: each **tagger** must also
+  **receive the respawn-station IR** to switch from auto-respawn to station-respawn. This is a per-game
+  **arming** step (Open BRX calls it **"Station Arming"** — see `../field-process.md` §Muster). A tagger
+  that never got the station signal just **self-respawns normally**; once it has received the station
+  beacon it's locked to needing the station.
+
+  **⚠️ Two accounts of the timing — reconcile on hardware (do not treat as settled):**
+  - *Earlier note here (Tony, exp-log #37):* signal the respawn action to each gun **AFTER the game
+    starts** — everyone at base, a leader presses the grenade button on each player *after* `$SPAWN`,
+    using a two-horn start (or unlimited-time) to buy the ~5 s.
+  - *Jay's grenade video (2026-08-25, Tony relaying — Extreme Laser Tag And More! / @extremelasertag3602):*
+    the respawn-station IR is delivered to each tagger **BEFORE the game starts**. Once a tagger has
+    received it, that tagger **knows during the game to respawn at the station instead of automatically**
+    (its self-respawn is disabled). Framed this way it is a **pre-game configuration/arming** step, not a
+    mid-game one.
+  - **Likely resolution:** these are the *same* arming action described at two moments — the point is
+    that every tagger must be hit by the station signal, and **pre-game arming is the natural config
+    step** (deliver station IR at base as part of Muster, before kickoff). The "after start" wording may
+    just reflect that on a *timed* match you can't arm until the guns are live (they're inert pre-`$SPAWN`),
+    so the two-horn trick arms in the first seconds. **Unconfirmed** — see the verification-checklist item
+    for the exact before-vs-after-`$SPAWN` timing and whether the per-player button-press is a separate
+    step from the grenade's passive beacon. Credit Jay (Extreme Laser Tag And More!) for the pre-game-arming framing.
 - Respawn stations **can be overtaken** by another team (shoot/grenade it) — "not always consistent"
   (a real reliability quirk the community also reports).
 

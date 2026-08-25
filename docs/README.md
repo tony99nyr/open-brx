@@ -9,6 +9,7 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 - **[HANDOFF.md](HANDOFF.md)** — current cross-machine state; read before a hardware session.
 - **[experiment-log.md](experiment-log.md)** — the shared lab notebook. **Append after every session.**
 - **[verification-checklist.md](verification-checklist.md)** — **what needs YOU + a tagger to confirm**: the running hardware-verification to-do list (M0 live run, health variants, night mode, native multikills, the IR bench, Android BLE), grouped by session.
+- **[field-process.md](field-process.md)** — the two recommended operator processes: **Armory Setup** (one-time per-tagger `enroll`/`rename` + physical labeling → the permanent gun↔headset↔MAC map) and **Muster** (per-game config-all-then-spawn + team/loadout assign + **Station Arming**). References the `enroll`/`armory`/`rename`/`play` CLI.
 
 ## Canonical sources (avoid restating — link to these)
 To keep facts from drifting, each fact has one home; other docs should link, not re-argue:
