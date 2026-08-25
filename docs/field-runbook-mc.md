@@ -46,6 +46,12 @@ pip install -e ./mcp websockets starlette uvicorn zeroconf
 `/` when it exists; if there's no committed `dist`, build it once at home (`cd webapp/mc && npm install
 && npm run build`) or run the Vite dev server, which proxies `/api` + `/ui-ws` to the Python server.
 
+**Phone app (each player's phone) — install at home, with internet.** The player node is the **BRX
+Combat HUD** in `app/` (Capacitor → Android + iOS, one codebase; HUD v2). Build/sign/sync per
+**`app/README.md`** — Android via the hosted APK or `adb install`, iOS via Xcode. Each player needs it
+installed and BLE-paired to their tagger **before** match day; on the field the app only needs the game
+Wi-Fi and the MC `ws://` URL (from the join QR). `[UNVERIFIED]` end-to-end on real hardware.
+
 Verify the install with no hardware and no phones:
 
 ```bash
