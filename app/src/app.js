@@ -69,7 +69,7 @@ async function sendFrame(id, frame){ for(let o=0;o<frame.length;o+=20){
   await BleClient.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o,20))); if(frame.length>20) await sleep(8);} }
 async function sendMany(id, frames){ for(const f of frames){ await sendFrame(id,f); await sleep(18);} }
 
-async function ensureInit(){ await BleClient.initialize({ androidNeverForLocation:false }); }
+async function ensureInit(){ await BleClient.initialize({ androidNeverForLocation:true }); }
 async function setGun(key){
   const p = players[key];
   try{

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Add + configure the Android platform. Safe to re-run.
+#
+# `android/` is git-ignored (generated, like `ios/`), so anything hand-edited in
+# there is lost the next time the platform is regenerated. Every Android setting
+# we depend on therefore lives HERE, in a committed script, not in the generated
+# Gradle project.
+#
+#   npm run android:setup   # add the platform if missing, then apply our config
+#
+# Requires JDK 21 + the Android SDK (Capacitor 8).
+#
+# --- What this patches, and why ---------------------------------------------
+# The BLE plugin's manifest declares a plain BLUETOOTH_SCAN + ACCESS_FINE_LOCATION.
+# On Android 12+ that makes every BLE scan "location-deriving", so it returns
+# ZERO results whenever the system Location toggle is off — even though we never
+# use location. iOS has no such rule, which is why the app scanned fine there and
+# came up empty on Android. We flag the scan `neverForLocation` (so no location is
+# needed on Android 12+) and cap the legacy location perms at API 30 (they are
+# only required to scan on Android 11 and below). Paired with
+# `BleClient.initialize({ androidNeverForLocation: true })` in src/app.js.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [ ! -d android ]; then
+  echo "==> adding Android platform"
+  npx cap add android
+else
+  echo "==> Android platform present; syncing web assets + plugins"
+  npx cap sync android
+fi
+
+MANIFEST="android/app/src/main/AndroidManifest.xml"
+echo "==> patching $MANIFEST (BLE-without-location)"
+
+python3 - "$MANIFEST" <<'PY'
+import re, sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+
+# 1) ensure the tools: namespace on the <manifest> root (needed for tools:node)
+if "xmlns:tools=" not in s:
+    s = s.replace(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    xmlns:tools="http://schemas.android.com/tools">',
+        1,
+    )
+
+# 2) inject our permission overrides once (idempotent via the marker comment)
+MARKER = "<!-- Open BRX: BLE without location -->"
+BLOCK = (
+    f"\n    {MARKER}\n"
+    '    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"\n'
+    '        android:usesPermissionFlags="neverForLocation" tools:node="replace" />\n'
+    '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\n'
+    '        android:maxSdkVersion="30" tools:node="replace" />\n'
+    '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\n'
+    '        android:maxSdkVersion="30" tools:node="replace" />\n'
+)
+if MARKER not in s:
+    # place right before the closing </manifest>
+    s = s.replace("</manifest>", BLOCK + "</manifest>", 1)
+
+open(p, "w", encoding="utf-8").write(s)
+print("   ok")
+PY
+
+echo "==> resulting BLE/location permissions:"
+grep -A1 -E "BLUETOOTH_SCAN|ACCESS_(FINE|COARSE)_LOCATION" "$MANIFEST" || true
+echo "==> done. Build with: (cd android && ./gradlew assembleDebug)"
