@@ -127,6 +127,43 @@ class UsbConsole:
         return {"port": self.port, "raw": text, **parse_query(text)}
 
 
+INVENTORY_FIELDS = ("serial_head_pin", "gun_name", "gun_version", "headset_version",
+                    "headset_linked", "player_id", "field_id", "pcb", "bt_central_v",
+                    "gun_volts", "head_volts", "grenade_pin", "laser")
+
+
+def inventory_path() -> Path:
+    from .storage import BASE_DIR
+    return BASE_DIR / "armory.json"
+
+
+def load_inventory() -> dict:
+    import json
+    p = inventory_path()
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def add_to_inventory(record: dict) -> dict:
+    """Merge one QUERY record into the armory inventory (keyed by Serial/Head PIN).
+    The inventory holds identity fields only — it's kept under ~/.brx-mcp (it carries
+    the headset PIN), never the repo. Returns the full inventory."""
+    import json
+    key = record.get("serial_head_pin")
+    if not key:
+        return load_inventory()
+    inv = load_inventory()
+    inv[key] = {f: record.get(f) for f in INVENTORY_FIELDS}
+    p = inventory_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(inv, indent=2), encoding="utf-8")
+    return inv
+
+
 def backup_dir() -> Path:
     from .storage import BASE_DIR
     d = BASE_DIR / "device-backups"

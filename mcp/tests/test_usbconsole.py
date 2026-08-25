@@ -75,3 +75,39 @@ def test_empty_and_garbage_dont_crash():
     assert parse_query("")["gun_version"] is None
     assert parse_query("random noise\nno fields here")["serial_head_pin"] is None
     assert parse_query("")["headset_linked"] is False
+
+
+# ---- armory inventory accumulator (temp BASE_DIR, no hardware) ------------- #
+import tempfile, pathlib
+import brx_mcp.storage as _storage
+from brx_mcp import usbconsole as _uc
+
+
+def _with_tmp_base(fn):
+    old = _storage.BASE_DIR
+    _storage.BASE_DIR = pathlib.Path(tempfile.mkdtemp())
+    try:
+        fn()
+    finally:
+        _storage.BASE_DIR = old
+
+
+def test_inventory_add_and_merge_keyed_by_pin():
+    def body():
+        assert _uc.load_inventory() == {}
+        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "R0BQT"})
+        inv = _uc.load_inventory()
+        assert "R0BQT" in inv and inv["R0BQT"]["headset_linked"] is True
+        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "R0BQT", "player_id": 5})
+        inv = _uc.load_inventory()
+        assert len(inv) == 1 and inv["R0BQT"]["player_id"] == 5
+        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "Z9XYZ"})
+        assert set(_uc.load_inventory()) == {"R0BQT", "Z9XYZ"}
+    _with_tmp_base(body)
+
+
+def test_inventory_ignores_record_without_pin():
+    def body():
+        _uc.add_to_inventory({"gun_name": "Tactix"})
+        assert _uc.load_inventory() == {}
+    _with_tmp_base(body)

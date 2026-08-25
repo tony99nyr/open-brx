@@ -22,6 +22,7 @@
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
   python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
   python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
+  python -m brx_mcp armory                              # QUERY the cabled tagger + print the accumulated gun<->headset inventory
 """
 
 from __future__ import annotations
@@ -858,7 +859,7 @@ def _ir_capture(port: str | None, seconds: float) -> None:
 
 def _usb_query(port: str | None) -> None:
     """Read a cabled tagger's device record over USB (B7) + save a local backup."""
-    from .usbconsole import UsbConsole, save_backup
+    from .usbconsole import UsbConsole, save_backup, add_to_inventory
     con = UsbConsole(port)
     print(f"# QUERY on {con.port} ...", file=sys.stderr)
     rec = con.query()
@@ -871,6 +872,41 @@ def _usb_query(port: str | None) -> None:
     path = save_backup(rec)
     if path:
         print(f"\n# backup saved: {path}", file=sys.stderr)
+    add_to_inventory(rec)          # accumulate into the armory inventory
+
+
+def _armory() -> None:
+    """Armory inventory sweep: QUERY the cabled tagger (if one is), then print the
+    accumulated tagger↔headset identity table. Cable each tagger in turn + re-run."""
+    from .usbconsole import find_tagger_port, UsbConsole, save_backup, add_to_inventory, load_inventory
+    port = find_tagger_port()
+    if port:
+        try:
+            con = UsbConsole(port)
+            rec = con.query()
+            con.close()
+            if rec.get("raw"):
+                save_backup(rec)
+                add_to_inventory(rec)
+                print(f"# added {rec.get('serial_head_pin')} (from {port})", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"# QUERY on {port} failed: {type(e).__name__}: {e}", file=sys.stderr)
+    else:
+        print("# no tagger cabled (USB Teensy VID 16C0) — plug one in to add its "
+              "identity record; showing what's already in the inventory.", file=sys.stderr)
+
+    inv = load_inventory()
+    if not inv:
+        print("armory inventory empty — cable a tagger and re-run `armory`.")
+        return
+    print(f"\n=== ARMORY INVENTORY ({len(inv)} tagger(s)) ===")
+    hdr = f"{'HEADSET PIN':12} {'GUN NAME':10} {'PID':>3} {'HEADSET':8} {'HEAD V':>6} {'GUN V':>6} {'PCB':>3} link"
+    print(hdr); print("-" * len(hdr))
+    for pin, r in sorted(inv.items()):
+        print(f"{pin:12} {str(r.get('gun_name') or '?'):10} {str(r.get('player_id')):>3} "
+              f"{str(r.get('headset_version') or '?'):8} {str(r.get('head_volts') or '?'):>6} "
+              f"{str(r.get('gun_volts') or '?'):>6} {str(r.get('pcb') or '?'):>3} "
+              f"{'✓' if r.get('headset_linked') else '·'}")
 
 
 def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
@@ -1098,6 +1134,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _ir_emit(bits, port, repeat)
     elif cmd == "usb-query":
         _usb_query(args[1] if len(args) > 1 else None)
+    elif cmd == "armory":
+        _armory()
     elif cmd == "ir-range":
         port = args[1] if len(args) > 1 and not args[1].isdigit() else None
         nums = [float(a) for a in args[1:] if a.replace(".", "").isdigit()]
