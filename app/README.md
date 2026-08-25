@@ -1,13 +1,57 @@
-# BRX Companion — native phone app
+# BRX Combat HUD — the per-player node app
 
-One codebase → **Android + iOS**, talking to a BRX tagger over **native BLE**
-([Capacitor](https://capacitorjs.com/) + [`@capacitor-community/bluetooth-le`](https://github.com/capacitor-community/bluetooth-le)).
+One codebase → **Android + iOS**, one phone driving **one** BRX tagger over native BLE
+([Capacitor](https://capacitorjs.com/) + [`@capacitor-community/bluetooth-le`](https://github.com/capacitor-community/bluetooth-le))
+and reporting to **Mission Control** over the field Wi‑Fi. This is the *node* from
+[`docs/spec/node.md`](../docs/spec/node.md) (contracts A6): the game engine, the **Phone HUD v2**
+(landscape, rail-mounted), and the M‑NET wire.
 
-**Why native and not a web app:** Web Bluetooth is a dead end for this. iOS has no Web Bluetooth at
-all, and on the Android we tested Chrome reported *"Web Bluetooth globally disabled"* and needed
-`chrome://flags` wrangling that never stuck — unusable for players. The browser build
-(`../webapp/ble-test.html`) is kept as a **dev/test harness only**. See
-[`../docs/adr/0001-companion-rider-architecture.md`](../docs/adr/0001-companion-rider-architecture.md).
+**Why native, not a web app:** iOS has no Web Bluetooth, and Android Chrome needs `chrome://flags`
+that never stick. See [`../docs/adr/0001-companion-rider-architecture.md`](../docs/adr/0001-companion-rider-architecture.md).
+
+## Shape
+
+```
+src/engine.js        DOM/BLE-free state machine (node.md §3): lifecycle, frames→facts, §3.10 resync
+src/brxlink.js       the seed's hardware-proven BLE plumbing behind a thin interface
+src/transport/       the M-NET client (Transport) — owned by a separate lane; see its README
+src/hud/hud.js       the Phone HUD v2 renderer (a pure function of engine state)
+src/app.js           composition: engine + brxlink + transport + hud + Capacitor plugins
+src/demo.js          ?demo — a scripted fake gun + fake MC for desktop-browser development
+www/index.html       the holo-theme CSS + #frame stage (design: docs/spec/design/hud-export/)
+```
+
+## Run it
+
+```bash
+npm ci && npm run build                 # bundle src/app.js -> www/app.js (esbuild)
+# desktop browser, no hardware, no server: open www/index.html?demo (scripted match)
+python3 -m http.server -d www 8080      # then http://localhost:8080/?demo
+```
+
+Against a **real Mission Control** (see `mcp/brx_mcp/mc`): run `python -m brx_mcp.mc --demo`, note the
+`ws://<ip>:8766/ws` it prints, connect a gun in the app, then type/scan that address on the CONNECTED
+screen. The MC screen also shows a QR of the same URL. The Python reference node is
+`mcp/brx_mcp/mc/mock_node.py`; a real `FrameBundle` to develop against is
+`mcp/brx_mcp/mc/golden_bundle.json`.
+
+## Tests
+
+```bash
+node --test test/engine.test.mjs        # engine (node.md §3, A6) — 15 tests
+node --test test/transport.test.mjs     # the wire (needs ../.venv for the integration test)
+```
+
+(Run the two files separately — each integration test spins up a server, so a single
+`node --test test/` can clash on resources.)
+
+## Field-LAN gates (net.md §8b)
+
+`scripts/ios-setup.sh` / `scripts/android-setup.sh` apply the settings the LAN path needs and that a
+regenerated platform would wipe: iOS Local-Network + Bonjour + ATS local networking + `bluetooth-central`
+background mode + landscape; Android cleartext + Wi‑Fi/network-state + foreground-service + landscape.
+The BLE-without-location fix is there too. **These are not optional** — without them `ws://` to a
+private IP silently never opens, or a BLE scan returns nothing.
 
 ## Prerequisites
 

@@ -57,7 +57,22 @@ BLOCK = (
     '        android:maxSdkVersion="30" tools:node="replace" />\n'
     '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\n'
     '        android:maxSdkVersion="30" tools:node="replace" />\n'
+    # --- field LAN gates (net.md §8b): ws:// to a private IP + bind to the game Wi-Fi ---
+    '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
+    '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'
+    '    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />\n'
+    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+    '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
 )
+
+# 2b) allow cleartext ws:// to the private LAN (API 28+ blocks it by default). Capacitor's
+#     `allowMixedContent` is about mixed HTTPS pages, NOT this. Set it on <application>.
+if 'android:usesCleartextTraffic' not in s:
+    s = re.sub(r'(<application\b)', r'\1 android:usesCleartextTraffic="true"', s, count=1)
+
+# 2c) landscape-only, rail-mounted: force it on the main activity.
+if 'android:screenOrientation' not in s:
+    s = re.sub(r'(<activity\b)', r'\1 android:screenOrientation="landscape"', s, count=1)
 if MARKER not in s:
     # place right before the closing </manifest>
     s = s.replace("</manifest>", BLOCK + "</manifest>", 1)

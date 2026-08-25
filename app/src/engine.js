@@ -1,0 +1,520 @@
+// BRX node engine — docs/spec/node.md (contracts A6). DOM-free, BLE-free, transport-free.
+//
+// Inputs:  BRX frames (feedFrame), MC messages (onMcMessage), hydration (hydrate), clock ticks (tick),
+//          BLE link events (onBleConnected / onBleDropped), app-lifecycle (resume).
+// Outputs: frames to write (writer(frames[])), persisted facts (emit(fact)), non-fact reports
+//          (report(kind, body)), and a render-able snapshot (state()) with a change callback.
+//
+// Every write to the gun goes through `writer`; the engine never composes a frame except the two
+// literal templates (`$SFLASH,*`, `$PLAYX,0,*`) and the pre-config probe set (contracts §3/§8).
+
+export const C = {
+  STATUS_HEARTBEAT_MS: 2000, SYNC_FRESH_MS: 10000, FEEDBACK_MAX_AGE_MS: 3000, LATE_ARM_GRACE_MS: 8000,
+  DEATH_LATCH_MS: 2000, RESYNC_PROBE_S: 10, CONFIG_TTL_MS: 1_800_000,
+};
+export const SFLASH = '$SFLASH,*';
+export const PLAYX = '$PLAYX,0,*';
+export const PROBE_VOLTS = ['$PHONE,*'];
+export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
+
+const PHASES = ['idle', 'connected', 'kitted', 'lobby', 'armed', 'live'];
+const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
+const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+
+export function toks(f) {
+  let s = String(f).trim();
+  if (s[0] === '$') s = s.slice(1);
+  if (s.endsWith('*')) s = s.slice(0, -1);
+  if (s.endsWith(',')) s = s.slice(0, -1);
+  return s.split(',');
+}
+
+/** Persisted context keys (localStorage-like `storage`). */
+const KEY = 'brx.engine';
+
+export class Engine {
+  /**
+   * @param {object} o
+   * @param {(frames:string[]) => (void|Promise<void>)} o.writer   write frames verbatim to the gun
+   * @param {(fact:object) => void} [o.emit]                        persisted fact sink (Transport.send)
+   * @param {(kind:string, body:object) => void} [o.report]         non-fact uplink (Transport.report)
+   * @param {() => number} [o.now]                                  synced clock (Transport.syncedNow)
+   * @param {() => boolean} [o.synced]
+   * @param {object} [o.storage]                                    localStorage-like
+   * @param {(line:string, cls?:string) => void} [o.log]
+   */
+  constructor({ writer, emit = () => {}, report = () => {}, now = () => Date.now(), synced = () => false,
+                storage = null, log = () => {}, onChange = () => {} } = {}) {
+    this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
+    this.storage = storage; this.log = log; this.onChange = onChange;
+    this.reset();
+    this._load();
+  }
+
+  reset() {
+    this.phase = 'idle';            // idle|connected|kitted|lobby|armed|live
+    this.gun = null;                // {name, tail, fw?}
+    this.bleUp = false; this.wsState = 'offline';
+    this.player = null; this.team = null; this.roster = []; this.config = null; this.frames = null;
+    this.start = null;              // {match_id, go_live_t, seq, countdown_s}
+    this.matchId = null;
+    this.hp = 0; this.armor = 0; this.ammo = 0; this.reserve = null; this.mag = null;
+    this.alive = false; this.deaths = 0; this.shots = 0; this.battery = null; this.fw = null;
+    this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
+    this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
+    this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
+    this.scoreAt = 0;
+    this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
+    this.spawned = false; this.ended = false;
+    this.cuesFired = new Set();
+    this.tutorial = false;
+    this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
+    this.moment = null;             // transient HUD moment: {kind, at, data}
+    this.probeSent = false;
+    this.night = false;
+    this.lastVoltsAt = 0;
+    this._prevAmmo = null;
+  }
+
+  // ---------- persistence (§3.7) ----------
+  _save() {
+    if (!this.storage) return;
+    try {
+      this.storage.setItem(KEY, JSON.stringify({
+        phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
+        config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
+        deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: this.now(),
+      }));
+    } catch (_) { /* ignore */ }
+  }
+  _load() {
+    if (!this.storage) return;
+    try {
+      const raw = this.storage.getItem(KEY); if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
+      Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
+        frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
+        spawned: !!s.spawned, ended: !!s.ended });
+      // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
+      this._pendingPhase = s.phase;
+    } catch (_) { /* ignore */ }
+  }
+  clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
+
+  // ---------- helpers ----------
+  _set(phase) {
+    if (this.phase === phase) return;
+    this.log(`phase ${this.phase} → ${phase}`, 'lk');
+    this.phase = phase; this._changed();
+  }
+  _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
+  _write(frames, why) {
+    if (!frames || !frames.length) return;
+    this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
+    try { return this.writer(frames); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
+  }
+  teamOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.team_id : null; }
+  nameOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.display : null; }
+  get teamTid() { return this.team ? this.team.tid : null; }
+  get teamKey() { return this.team ? (TEAM_KEY[this.team.tid] || String(this.team.color || 'blue')) : 'blue'; }
+  get maxHp() { return (this.config && this.config.health && this.config.health.max_hp) || 45; }
+  get maxArmor() { return (this.config && this.config.health && this.config.health.max_armor) || 70; }
+  get respawnDelayMs() { return ((this.config && this.config.respawn && this.config.respawn.delay_s) || 10) * 1000; }
+  get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
+  get timeLimitMs() { const s = this.config && this.config.time_limit_s; return s ? s * 1000 : null; }
+  get goLiveT() { return this.start ? this.start.go_live_t : null; }
+  get endT() { return (this.goLiveT && this.timeLimitMs) ? this.goLiveT + this.timeLimitMs : null; }
+  get weaponName() {
+    const w = this.player && this.player.loadout && this.player.loadout.weapons && this.player.loadout.weapons[0];
+    return w ? String(w.weapon_id).replace(/_/g, ' ').toUpperCase() : 'PRIMARY';
+  }
+  armState() { return this.phase; }
+
+  // ---------- BLE link ----------
+  onBleConnected(gun) {
+    const first = !this.bleUp && !this.gun;
+    this.gun = gun || this.gun; this.bleUp = true;
+    if (this.phase === 'idle') {
+      // Re-derive the phase from persisted context (§3.7 / §3.11).
+      const p = this._pendingPhase; this._pendingPhase = null;
+      if (p && p !== 'idle' && this.player) { this.phase = p; this.log(`restored phase ${p} from storage`, 'li'); }
+      else this.phase = 'connected';
+    }
+    if (this.phase === 'connected' || this.phase === 'kitted') this._probe();
+    if (this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live') this._beginResync('ble-reconnect');
+    if (first) this.log(`gun ${this.gun ? this.gun.name : '?'} linked`, 'lk');
+    this._changed();
+  }
+  onBleDropped() { this.bleUp = false; this.log('gun link lost', 'le'); this._changed(); }
+  setWsState(s) { this.wsState = s; this._changed(); }
+
+  /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
+  _probe() {
+    if (this.probeSent || !(this.phase === 'connected' || this.phase === 'kitted')) return;
+    this.probeSent = true;
+    this._write([...PROBE_FW], 'probe');
+  }
+
+  // ---------- MC context ----------
+  hydrate(node) {
+    if (!node) return;
+    if (node.player) this.player = node.player;
+    if (node.team) this.team = node.team;
+    if (node.roster) this.roster = node.roster;
+    if (node.config) this.config = node.config;
+    if (node.frames) this.frames = node.frames;
+    if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
+    if (node.match_id) this.matchId = node.match_id;
+    if (node.config && node.config.night != null) this.night = !!node.config.night;
+    if (this.player && this.phase === 'connected') this._set('kitted');
+    if (node.frames && node.config && (this.phase === 'kitted')) {
+      // A rejoining node that missed the push: apply the head like a fresh `config`.
+      this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
+    }
+    if (node.start) this.startAt(node.start);
+    this._changed();
+  }
+
+  onMcMessage({ kind, body, t }) {
+    switch (kind) {
+      case 'assign': return this._assign(body);
+      case 'config': return this._applyConfig(body, 'config');
+      case 'tutorial': return this._tutorial(body);
+      case 'start': return this.startAt(body);
+      case 'feedback': return this.feedback(body, t);
+      case 'control': return this.control(body);
+      case 'apply': return this.phase === 'live' ? this._write(body.frames || [], 'apply') : undefined;
+      case 'score': if (body && typeof body === 'object') { this.score = body; this.scoreAt = this.now(); this._changed(); } return;
+      default: return;
+    }
+  }
+
+  _assign({ player, team, roster }) {
+    this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
+    if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
+    this._changed();
+  }
+
+  _applyConfig({ config, frames, roster }, why) {
+    this.config = config || this.config; this.frames = frames || this.frames; if (roster) this.roster = roster;
+    if (config && config.night != null) this.night = !!config.night;
+    this.tutorial = false;
+    if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
+    if (!this.bleUp) { this.log('config stored; gun not linked yet', 'li'); this._changed(); return; }
+    this.headEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
+    this._write(this.frames.head, why === 'hydrate' ? 'head (rehydrate)' : 'head');
+    this.spawned = false; this.ended = false;
+    if (this.phase !== 'armed' && this.phase !== 'live') this._set('lobby');
+    this._changed();
+  }
+  /** Called by tick(): 1.5 s after the head write, report the echo (or its absence). */
+  _checkEcho() {
+    if (!this.awaitingEcho || this.now() - this.headWrittenAt < 1500) return;
+    this.awaitingEcho = false;
+    const cid = this.config && this.config.config_id;
+    if (this.headEcho) this.report('ack_config', { config_id: cid, ok: true, gun_echo: this.headEcho });
+    else this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' });
+  }
+
+  _tutorial({ frames }) {
+    if (this.phase !== 'kitted' || !frames) return;
+    this.tutorial = true;
+    this._write(frames, 'tutorial');
+    this._changed();
+  }
+
+  setReady(ready) {
+    if (this.phase !== 'kitted') return false;
+    if (ready && !this.isSynced()) { this.log('cannot ready: clock not synced', 'le'); return false; }
+    this.ready = !!ready;
+    this.report('ready', { player_id: this.player && this.player.player_id, ready: this.ready });
+    this._changed(); return true;
+  }
+
+  // ---------- start (M-START) ----------
+  startAt(body) {
+    if (!body || !body.go_live_t) return { ok: false, reason: 'bad_start' };
+    if (this.start && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
+    if (this.start && body.seq === this.start.seq && body.match_id === this.start.match_id) return { ok: true, state: this.phase, reason: 'noop' };
+    if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
+    this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
+    this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false;
+    if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed') this._set('armed');
+    this._save();
+    return this.resumeSchedule();
+  }
+
+  /** E1/E5/E9: reconcile the persisted schedule against synced time (never spawn a possibly-live gun blindly). */
+  resumeSchedule() {
+    if (!this.start) return { ok: false, reason: 'no_schedule' };
+    const now = this.now(), T = this.goLiveT;
+    if (this.phase === 'live') return { ok: true, state: 'live' };
+    if (now < T) { if (this.phase !== 'armed') this._set('armed'); return { ok: true, state: 'armed' }; }
+    if (this.endT && now >= this.endT) { this.log('match already over on resume', 'li'); this._endLocal('expired-on-resume'); return { ok: false, reason: 'match_over' }; }
+    if (this.spawned) { this._set('live'); return { ok: true, state: 'live' }; }
+    // T-0 passed and we never spawned: grace / hot-join (E5). Only when the gun is linked.
+    if (!this.bleUp) { if (this.phase !== 'armed') this._set('armed'); return { ok: true, state: 'armed', reason: 'gun_not_linked' }; }
+    const late = now - T;
+    this.log(late <= C.LATE_ARM_GRACE_MS ? `late spawn (+${late} ms, grace)` : `hot-join (+${Math.round(late / 1000)} s)`, 'lk');
+    this._spawn(late <= C.LATE_ARM_GRACE_MS);
+    return { ok: true, state: 'live', reason: late <= C.LATE_ARM_GRACE_MS ? 'grace' : 'hot_join' };
+  }
+
+  _cue(key) {
+    const f = this.frames && this.frames.cues && this.frames.cues[key];
+    if (f && !this.cuesFired.has(key)) { this.cuesFired.add(key); this._write([f], `cue ${key}`); }
+  }
+  _spawn(withCountdown) {
+    if (!this.frames) return;
+    if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
+    this._write([...this.frames.spawn, SFLASH], 'spawn');
+    this._cue('klaxon');
+    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.killedBy = null; this.deadAt = 0;
+    this.moment = { kind: 'go', at: this.now() };
+    this._set('live');
+  }
+
+  // ---------- clock tick (call every ~250 ms) ----------
+  tick() {
+    const now = this.now();
+    this._checkEcho();
+    if (this.phase === 'armed' && this.start) {
+      const rem = this.goLiveT - now;
+      if (rem <= 30000) this._cue('runway_30');
+      if (rem <= 20000) this._cue('runway_20');
+      if (rem <= 10000) this._cue('runway_10');
+      if (rem <= 9000 && rem > 3000) { const s = Math.ceil(rem / 1000); const k = `tick${s}`; if (!this.cuesFired.has(k) && this.frames && this.frames.cues && this.frames.cues.tick) { this.cuesFired.add(k); this._write([this.frames.cues.tick], 'tick'); } }
+      if (rem <= 3000) this._cue('countdown');
+      if (rem <= 0 && this.bleUp && !this.resync) this._spawn(false);
+      this._changed();
+    }
+    if (this.phase === 'live') {
+      if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
+      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync) this._revive(false);
+      if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
+      this._changed();
+    }
+    if (this.resync) this._resyncTick();
+  }
+
+  _revive(resync) {
+    if (!this.frames) return;
+    this._write(this.frames.revive, 'revive');
+    this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.deadAt = 0; this.killedBy = null;
+    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}) });
+    this.moment = { kind: 'redeploy', at: this.now() };
+    this.log(resync ? 'resync respawn' : 'respawned', 'lk');
+    this._changed();
+  }
+
+  _endLocal(why) {
+    if (this.ended) return;
+    this.ended = true;
+    if (this.frames) { this._write(this.frames.end, `end (${why})`); this._cue('game_over'); }
+    this.spawned = false; this.alive = false; this.resync = null; this.start = null;
+    this.moment = { kind: 'match_over', at: this.now() };
+    this._set('kitted');
+    this.log(`match ended: ${why}`, 'lk');
+  }
+
+  // ---------- control ----------
+  control({ cmd, seq }) {
+    switch (cmd) {
+      case 'end': case 'recall':
+        if (this.phase === 'live' || this.phase === 'armed' || this.phase === 'lobby') this._endLocal(cmd);
+        return;
+      case 'abort_start':
+        if (this.phase === 'armed' && (seq == null || (this.start && this.start.seq === seq))) { this.start = null; this.cuesFired = new Set(); this._write([PLAYX], 'abort'); this._set('lobby'); }
+        else if (this.phase === 'live' && this.start && this.start.seq === seq) this._endLocal('abort_start(live)=recall');
+        return;
+      case 'panic':
+        if (this.frames && this.frames.panic) this._write(this.frames.panic, 'panic'); else this._write(['$CLEAR,*', '$SP,99,*'], 'panic');
+        this.spawned = false; this.alive = false; this.start = null; this.resync = null;
+        if (this.phase !== 'idle' && this.phase !== 'connected') this._set('kitted');
+        return;
+      default: return;
+    }
+  }
+
+  // ---------- feedback (§3.6) ----------
+  feedback(body, envT) {
+    const t = body.t != null ? body.t : envT;
+    if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
+    const cue = body.cue || (this.frames && this.frames.cues && this.frames.cues[body.kind]);
+    this._write(cue ? [SFLASH, cue] : [SFLASH], `feedback ${body.kind}`);
+    if (body.kind === 'kill') {
+      if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
+      else this.score = { kills: 1 };
+      this.scoreAt = this.now();
+      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: body.victim } };
+    }
+    this._changed();
+  }
+
+  // ---------- BRX frames (§3.2) ----------
+  feedFrame(f) {
+    const t = toks(f), cmd = t[0];
+    switch (cmd) {
+      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0); break;
+      case 'LCD': {
+        this.hp = +t[1] || 0; this.armor = +t[2] || 0;
+        if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null);
+        if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
+        if (this.resync) this._resyncEvidence('lcd');
+        if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(true);
+        break;
+      }
+      case 'ALCD': {
+        if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
+        this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null);
+        break;
+      }
+      case 'HIR': {
+        if (t[2] === '15') break; // grenade / station beacon
+        const num = parseInt(t[3], 10), team = parseInt(t[4], 10);
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[1], 10) }; this.lastHitAt = this.now(); }
+        break;
+      }
+      case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
+      case 'VERSION': { if (t[1]) this.fw = t[1]; break; }
+      case 'BUT': { if (this.resync) this._resyncButton(+t[1], +t[2]); break; }
+      default: break;
+    }
+    this._changed();
+  }
+
+  _onAmmo(mag, reserve) {
+    const prev = this._prevAmmo;
+    if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
+    if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
+    if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
+    this._prevAmmo = mag; this.ammo = mag; this.mag = Math.max(this.mag || 0, mag);
+    if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
+  }
+
+  _onHp(hp, armor) {
+    const before = this.hp + this.armor;
+    this.hp = hp; this.armor = armor;
+    const dmg = Math.max(0, before - (hp + armor));
+    if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
+      this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num, shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto });
+      this.lastHitAt = this.now();
+    }
+    if (this.resync) this._resyncEvidence('hp');
+    if (hp === 0 && this.alive && this.phase === 'live') this._death(!!this.resync);
+  }
+
+  _death(desync) {
+    const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
+    const shooter_num = fresh ? this.latch.shooter_num : 0;
+    const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
+    this.alive = false; this.deaths++; this.deadAt = this.now();
+    this.killedBy = { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
+    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
+    if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {
+      const tids = Object.keys(this.frames.team_flip).filter(k => Number(k) !== this.teamTid);
+      if (tids.length) { const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid }); this.team = { ...(this.team || {}), tid, team_id: this.teamOf(-1) || `tid-${tid}` }; }
+    }
+    this.moment = { kind: 'down', at: this.now() };
+    this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
+    this._changed();
+  }
+
+  // ---------- §3.10 resync: trigger first, then reload, then trigger ----------
+  _beginResync(why) {
+    if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) return;
+    if (this.phase === 'lobby') { this.log(`resync (${why}): LOBBY → re-write head`, 'li'); this._applyConfig({ config: this.config, frames: this.frames, roster: this.roster }, 'hydrate'); return; }
+    this.resync = { step: 1, since: this.now(), prompt: 'pull the trigger', reserve: this.reserve, probes: 0 };
+    this.log(`resync (${why}): evidence protocol started`, 'li');
+    this._changed();
+  }
+  _resyncEvidence(kind) {
+    const r = this.resync; if (!r) return;
+    if (kind === 'hp' || kind === 'lcd') { this._resyncDone('state line'); return; }
+    if (kind === 'alcd-dec') { this._resyncDone('alive (shot went out)'); if (!this.alive) { this.alive = true; } return; }
+    if (kind === 'alcd-inc' && r.step === 2) { r.step = 3; r.since = this.now(); r.prompt = 'pull the trigger'; this._changed(); }
+  }
+  _resyncButton(id, state) {
+    const r = this.resync; if (!r || state !== 1) return;
+    if (id === 0 && r.step === 1) { r.step = 2; r.since = this.now(); r.prompt = 'now the reload handle'; r.trigNoAlcd = true; this._changed(); return; }
+    if (id === 2 && r.step === 2) { r.reloadAt = this.now(); return; }
+    if (id === 0 && r.step === 3) { r.trig3At = this.now(); return; }
+  }
+  _resyncTick() {
+    const r = this.resync, now = this.now();
+    // step 2: a reload pull happened but no $ALCD followed within 1.5 s
+    if (r.step === 2 && r.reloadAt && now - r.reloadAt > 1500) {
+      const reserveKnown = r.reserve != null ? r.reserve : (this.reserve != null ? this.reserve : 1);
+      if (reserveKnown > 0 || r.probes >= 1) return this._resyncNotLive('reload silent');
+      r.probes++; r.reloadAt = null; r.since = now; r.prompt = 'out of reserve? wait…'; this._changed(); return;
+    }
+    // step 3: trigger pulled after a good reload, no $ALCD within 1.5 s → dead
+    if (r.step === 3 && r.trig3At && now - r.trig3At > 1500) {
+      this.resync = null;
+      if (this.alive) { this.log('resync: dead (trigger after reload, no fire)', 'le'); this._death(true); }
+      this._changed(); return;
+    }
+    if (now - r.since > C.RESYNC_PROBE_S * 1000) { r.since = now; /* keep prompting; never write */ this._changed(); }
+  }
+  _resyncNotLive(why) {
+    const lms = this.respawnType === 'none';
+    this.log(`resync: not a live configured gun (${why})${lms ? ' — LMS: marked dead, nothing written' : ''}`, 'le');
+    this.resync = null;
+    if (lms) { if (this.alive) this._death(true); this._changed(); return; }
+    if (this.phase === 'live') {
+      if (this.alive) this._death(true);
+      if (this.frames) this._write(this.frames.head, 'resync head');
+      // normal respawn timer then revive (flagged resync)
+      this._resyncRevive = true;
+      this._changed(); return;
+    }
+    if (this.phase === 'armed' && this.frames) this._write(this.frames.head, 'resync head (armed)');
+    this._changed();
+  }
+  _resyncDone(why) { this.log(`resync: ${why}`, 'lk'); this.resync = null; this._changed(); }
+
+  // ---------- app lifecycle (§3.11) ----------
+  resume() {
+    this.log('app resumed — reconciling', 'li');
+    if (this.start) this.resumeSchedule();
+    if (this.phase === 'live') {
+      if (this.endT && this.now() >= this.endT) { this._endLocal('expired-while-suspended'); return; }
+      if (this.bleUp) this._beginResync('resume');
+    }
+    this._changed();
+  }
+
+  // ---------- status body (contracts §4) ----------
+  statusBody(preflight = {}) {
+    const now = this.now();
+    return {
+      hp: this.hp, armor: this.armor, ammo: this.ammo, alive: this.alive, shots: this.shots,
+      ...(this.phase === 'live' && !this.alive && this.deadAt ? { deadline_s: Math.max(0, Math.ceil((this.respawnDelayMs - (now - this.deadAt)) / 1000)) } : {}),
+      ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
+      arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),
+      synced: this.isSynced(), ...(this.matchId ? { match_id: this.matchId } : {}),
+      preflight: { gun_linked: this.bleUp, headset_ok: !!this.headEcho, ...preflight },
+    };
+  }
+
+  // ---------- render snapshot ----------
+  state() {
+    const now = this.now();
+    const r = this.respawnDelayMs;
+    return {
+      phase: this.phase, bleUp: this.bleUp, wsState: this.wsState, gun: this.gun, night: this.night,
+      player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
+      callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
+      mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
+      hp: this.hp, armor: this.armor, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: this.mag,
+      alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
+      kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
+      killedBy: this.killedBy, respawnIn: (!this.alive && this.deadAt) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
+      tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
+      clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
+      ready: !!this.ready, tutorial: this.tutorial, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
+      moment: this.moment, ended: this.ended, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
+    };
+  }
+}
