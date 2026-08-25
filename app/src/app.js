@@ -149,8 +149,12 @@ async function pickDevice(forKey){
     BleClient.requestLEScan({ allowDuplicates:true, scanMode:2 }, res=>{
       const d=res.device||{}; if(!d.deviceId) return;
       const name = d.name || res.localName || '';
-      if(!/^Tactix/i.test(name)) return;             // BRX taggers advertise "Tactix…"
-      found.set(d.deviceId, {deviceId:d.deviceId, name, rssi:res.rssi});
+      // Only require a name (drops unnamed BLE noise). We DON'T filter on "Tactix"
+      // because an enrolled gun advertises its sticker label ($NAME, e.g. "R0BAT")
+      // and a name filter would hide it. Guns are obvious: strong RSSI + known suffix.
+      if(!name) return;
+      const brx = /^Tactix/i.test(name) || (res.uuids||[]).includes(NUS);
+      found.set(d.deviceId, {deviceId:d.deviceId, name, rssi:res.rssi, brx});
       paint();
     }).catch(e=>finish(null, e));
   });
