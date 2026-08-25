@@ -900,13 +900,14 @@ def _armory() -> None:
         print("armory inventory empty — cable a tagger and re-run `armory`.")
         return
     print(f"\n=== ARMORY INVENTORY ({len(inv)} tagger(s)) ===")
-    hdr = f"{'HEADSET PIN':12} {'GUN NAME':10} {'PID':>3} {'HEADSET':8} {'HEAD V':>6} {'GUN V':>6} {'PCB':>3} link"
+    hdr = f"{'HEADSET PIN':12} {'GUN NAME':10} {'PID':>3} {'HEADSET':8} {'HEAD V':>6} {'GUN V':>6} {'PCB':>3} {'LINK':4}"
     print(hdr); print("-" * len(hdr))
     for pin, r in sorted(inv.items()):
+        # ASCII-only (Windows console is cp1252 — no unicode ticks)
         print(f"{pin:12} {str(r.get('gun_name') or '?'):10} {str(r.get('player_id')):>3} "
               f"{str(r.get('headset_version') or '?'):8} {str(r.get('head_volts') or '?'):>6} "
               f"{str(r.get('gun_volts') or '?'):>6} {str(r.get('pcb') or '?'):>3} "
-              f"{'✓' if r.get('headset_linked') else '·'}")
+              f"{'yes' if r.get('headset_linked') else 'no':4}")
 
 
 def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:

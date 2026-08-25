@@ -876,3 +876,13 @@ reply lost). **Fix for a robust fleet dashboard: hold PERSISTENT connections** (
 taggers subscribed; collect VOLTS as they stream every 30 s + retry VERSION) instead of serial
 connect-diagnose-disconnect. Filed as a followup. **The reliable armory data is USB `usb-query`** (exact
 gun+head voltage, headset PIN) — cable each tagger; BLE battery % is a rough live gauge, best for near guns.
+
+### 2026-08-24 — armory USB↔BLE correlation via gun name; cp1252 console fix
+Cabled tagger 3 → `armory`: **Gun Name `RocTheLegend`, headset PIN `R0BAS`** (hds.59, head 3.91 V, gun
+7.80 V, PCB-5, PID 0, linked). Its BLE advert was **`RocTheLegend-FE30`** — so **the BLE name =
+`<GunName>-<MAC tail>`**, and a *custom* gun name lets us **correlate a USB identity record to its BLE
+address** (stock "Tactix" names collide; custom/`$NAME` gamertags don't). Ties the gamertag feature to the
+armory: name each gun uniquely → the two diagnostic tiers link up.
+Serials are sequential across the fleet (tagger 1 = `R0BAT`, tagger 3 = `R0BAS`).
+**Bug fixed:** the armory table used `✓`/`·`; the Windows console is cp1252 and threw `UnicodeEncodeError`
+mid-row (which bubbled up as a usage dump). Table is now ASCII (`yes`/`no`).
