@@ -1219,4 +1219,13 @@ USB; installed Windows platform-tools via winget, `adb -s … install` → Succe
   >20-byte `$WEAP`/`$PSET` frames, 20-byte writes) and the gun **counted down 3-2-1 and went live**.
 **Net:** the native phone/Companion path is hardware-proven end-to-end — connect, drive feedback
 (speak + green flash), and configure+arm a game, all over native BLE. The same `app/` codebase produces
-the iOS build (`npx cap add ios`). Remaining/optional: G2 (trigger→frames stream) and G6 (3-min soak).
+the iOS build (`npx cap add ios`).
+**FULL SWEEP — all 6 gates PASSED:** G2 (trigger → `$BUT`/`$ALCD` frames stream) ✓ and **G6 stability ✓
+— 5+ minutes continuous uptime, no drops** (native BLE held solid, notably better than the ~6.6 s
+client-drop over the raw stack). Complete hardware validation of the native-BLE per-player node.
+**Wire proof (bench log, gun Tactix-9498):** arm burst → gun echoed **`$LCD,45,70,0,0,36,216`**
+(spawned live: HP45/armor70/ammo 36+216, matching config); trigger pulls streamed `$BUT,0,1`/`$BUT,0,0`
+and **`$ALCD` ammo counted 36→0** as it fired (re-armed and repeated); `$SFLASH`, `$PLAY,VA20` speak,
+and panic (`$CLEAR`/`$SP,99`) all sent fine; `$VOLTS` telemetry every ~60 s; no drops. A fully
+functioning live weapon driven end-to-end by our native app. (Minor: one notify showed two frames
+merged — `$ALCD,…$BUT,0,1,*` — a rare reassembly boundary quirk, non-blocking. Note: 9498 battery ~25%.)
