@@ -97,6 +97,9 @@ class GameConfig:
     # -- combat rules -------------------------------------------------------- #
     friendly_fire: bool = True        # $GSET friendlyFire
     crit_modifier: int = 50           # $GSET criticalShotModifier (%)
+    alt_reload: bool = False          # remap the orange ALT button → RELOAD ($BMAP,1,97)
+                                      # for kids who can't work the lever; also removes the
+                                      # secondary weapon-switch. Per-tagger pre-game option.
 
     # -- starting pools (tunable — Tony's ask) ------------------------------- #
     hp: int = 45
@@ -163,6 +166,15 @@ class GameConfig:
         return self.outdoor and not self.leds
 
     # -- frame builders ------------------------------------------------------ #
+    def _bmap(self) -> list[str]:
+        """Button map. With `alt_reload`, the orange alt-fire button (id 1) is remapped
+        from weapon-cycle (fn 100) to RELOAD (fn 97) — a kid-friendly reload that also
+        drops the secondary weapon-switch. The reload handle (id 2) stays reload too."""
+        bmap = list(_BMAP)
+        if self.alt_reload:
+            bmap[1] = "$BMAP,1,97,,,,,*"
+        return bmap
+
     def _pset(self) -> str:
         toks = _PSET_HEAD + [str(self.hp), str(self.armor), str(self.shield)] + _PSET_TAIL
         return "$" + ",".join(toks) + ",*"
@@ -191,7 +203,7 @@ class GameConfig:
         frames = [f"$VOL,{cfg.volume},0,*", "$CLEAR,*", "$START,*", cfg._gset(),
                   cfg._pset(), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
                   cfg._weap(4, "melee")]              # the app always loads a melee slot
-        frames += list(_SIR_TABLE) + list(_BMAP)
+        frames += list(_SIR_TABLE) + cfg._bmap()
         frames += cfg._led_frames()
         frames += ["$PLAYX,0,*", "$PLAY,VA81,4,6,,,,,*"]  # game-start sound
         return frames

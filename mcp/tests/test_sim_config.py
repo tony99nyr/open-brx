@@ -308,3 +308,19 @@ def test_summary_shape_and_preset_reflection():
 def test_summary_lives_from_respawns():
     assert GameConfig(respawns=3).summary()["lives"] == 4
     assert GameConfig().summary()["lives"] is None      # unlimited
+
+
+def test_alt_reload_remaps_orange_button_to_reload():
+    # default: orange alt button (id 1) = weapon-cycle (fn 100)
+    off = GameConfig(mode="tdm").setup_frames()
+    assert any(f.startswith("$BMAP,1,100") for f in off)
+    assert not any(f.startswith("$BMAP,1,97") for f in off)
+    # alt_reload: id 1 → reload (fn 97); reload handle (id 2) stays reload
+    on = GameConfig(mode="tdm", alt_reload=True).setup_frames()
+    assert "$BMAP,1,97,,,,,*" in on
+    assert not any(f.startswith("$BMAP,1,100") for f in on)
+    assert "$BMAP,2,97,,,,,*" in on                 # the lever still reloads too
+    # and it reaches the guns through the driver
+    from brx_mcp.sim import SimGame
+    g = SimGame(GameConfig(mode="tdm", alt_reload=True)).setup()
+    assert "$BMAP,1,97,,,,,*" in g.frames_to("G1")
