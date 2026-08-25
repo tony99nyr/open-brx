@@ -39,6 +39,17 @@
     padding:8px;font:11.5px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;margin-top:8px}
   .li{color:var(--dim)} .lk{color:var(--ok);font-weight:700} .le{color:var(--bad)} .lr{color:#7aa2c0}
   .note{font-size:12px;color:var(--dim)}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:flex-end;z-index:50}
+  .modal[hidden]{display:none}
+  .sheet{background:var(--panel);border-top:1px solid var(--line);border-radius:14px 14px 0 0;
+    width:100%;max-height:82vh;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .sheet-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16px}
+  #pickList{display:flex;flex-direction:column;gap:8px}
+  button.pick{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;
+    min-height:54px;padding:8px 12px}
+  button.pick .sfx{color:var(--accent);font-variant-numeric:tabular-nums;font-size:13px}
+  button.pick .rssi{color:var(--dim);font-size:12px;min-width:40px;text-align:right}
+  button.pick .used{color:var(--warn);font-size:11px}
 </style>
 </head>
 <body>
@@ -81,6 +92,17 @@
 
   <div class="row"><button id="clearLog" style="min-height:38px">Clear log</button></div>
   <div id="log"></div>
+
+  <div id="picker" class="modal" hidden>
+    <div class="sheet">
+      <div class="sheet-h"><span id="pickTitle">Select a tagger</span>
+        <button id="pickCancel" style="flex:0 0 auto;min-width:76px;min-height:40px">Cancel</button></div>
+      <div id="pickStatus" class="note">scanning…</div>
+      <div id="pickList"></div>
+      <div class="note">A tagger only appears while it's awake and not already connected to something
+        else. If yours isn't here, power-cycle it and it'll pop up within a couple seconds.</div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

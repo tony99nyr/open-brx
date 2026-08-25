@@ -69,25 +69,118 @@ async function sendFrame(id, frame){ for(let o=0;o<frame.length;o+=20){
   await BleClient.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o,20))); if(frame.length>20) await sleep(8);} }
 async function sendMany(id, frames){ for(const f of frames){ await sendFrame(id,f); await sleep(18);} }
 
-async function ensureInit(){ await BleClient.initialize({ androidNeverForLocation:true }); }
+// Initialize EXACTLY ONCE. The iOS plugin's initialize() does
+// `self.deviceManager = DeviceManager(...)` — it REPLACES the manager that owns the
+// CBCentralManager and every connected peripheral, so calling it again deallocates
+// the old one and drops every live gun (cap9: notifications disabled, then HCI
+// disconnect reason 0x16 "Terminated By Local Host"). Calling it per-setGun meant
+// connecting Gun B disconnected Gun A.
+// androidNeverForLocation:true — we never derive location from the scan, so this
+// (paired with the neverForLocation manifest flag from scripts/android-setup.sh)
+// lets Android 12+ scan WITHOUT the system Location toggle on. Without it the scan
+// returns zero devices when Location is off (empty chooser on Android, fine on iOS).
+let _init = null;
+function ensureInit(){ return (_init ||= BleClient.initialize({ androidNeverForLocation:true })); }
+
+// BRX BLE establishment succeeds roughly 1 attempt in 3 — holding a link is fine,
+// getting one is flaky (brx-protocol.md / HANDOFF "connecting is flaky, holding is not").
+// Retrying was the ENTIRE fix on the Python side (ble.py, 5 attempts); without it here
+// the user is the retry loop, tapping Set Gun until it takes.
+async function connectWithRetry(key, deviceId, attempts, guard){
+  let last;
+  for(let i=1; i<=attempts; i++){
+    if(guard && !guard()) return false;
+    try{
+      await BleClient.connect(deviceId, ()=>onDrop(key));
+      await BleClient.startNotifications(deviceId, NUS, TX, v=>onNotify(key,v));
+      return true;
+    }catch(e){
+      last = e;
+      if(i < attempts){ log(`${key} connect ${i}/${attempts} failed — retrying…`); await sleep(1200); }
+    }
+  }
+  throw last;
+}
+
+// ---- device picker: continuous low-latency scan + in-app list -------------- //
+// requestDevice() runs a single SHORT scan, so a BRX that advertises intermittently
+// (they sleep/quiet down between bursts) gets missed and the chooser is empty. A
+// continuous LOW_LATENCY scan samples aggressively and accumulates devices until you
+// pick — far more reliable for flaky advertisers. It also lets us label each hit with
+// its MAC suffix so you can tell the guns apart before enrolling proper $NAMEs.
+let _scanning = false;
+const suffixOf = id => String(id||'').replace(/[^0-9a-fA-F]/g,'').slice(-4).toUpperCase();
+
+async function pickDevice(forKey){
+  if(_scanning) throw new Error('a scan is already open');
+  await ensureInit();
+  const modal=$('picker'), listEl=$('pickList'), statusEl=$('pickStatus');
+  $('pickTitle').textContent = `Select Gun ${forKey}`;
+  const found = new Map();
+  const otherId = players[forKey==='A'?'B':'A'].deviceId;
+
+  return new Promise((resolve, reject)=>{
+    let done=false;
+    const finish = async (val, err)=>{
+      if(done) return; done=true;
+      try{ await BleClient.stopLEScan(); }catch(_){}
+      _scanning=false; modal.hidden=true; listEl.innerHTML=''; $('pickCancel').onclick=null;
+      err ? reject(err) : resolve(val);
+    };
+    const paint = ()=>{
+      const arr=[...found.values()].sort((a,b)=>(b.rssi??-999)-(a.rssi??-999));
+      listEl.innerHTML='';
+      for(const d of arr){
+        const b=document.createElement('button'); b.className='pick';
+        const used = d.deviceId===otherId;
+        b.innerHTML = `<span><b>${d.name||'(unnamed)'}</b>${used?' <span class="used">· in use</span>':''}</span>`
+          + `<span class="sfx">${suffixOf(d.deviceId)}</span><span class="rssi">${d.rssi??''}</span>`;
+        if(used) b.disabled=true; else b.onclick=()=>finish(d);
+        listEl.appendChild(b);
+      }
+      statusEl.textContent = arr.length
+        ? `${arr.length} tagger(s) found — tap to connect`
+        : 'scanning… power-cycle a gun if it doesn’t appear';
+    };
+    $('pickCancel').onclick = ()=>finish(null);
+    modal.hidden=false; paint(); _scanning=true;
+    // No service/name filter passed to the plugin (some adv only carry the name in the
+    // scan response); we filter to BRX by name in the callback instead.
+    BleClient.requestLEScan({ allowDuplicates:true, scanMode:2 }, res=>{
+      const d=res.device||{}; if(!d.deviceId) return;
+      const name = d.name || res.localName || '';
+      if(!/^Tactix/i.test(name)) return;             // BRX taggers advertise "Tactix…"
+      found.set(d.deviceId, {deviceId:d.deviceId, name, rssi:res.rssi});
+      paint();
+    }).catch(e=>finish(null, e));
+  });
+}
+
 async function setGun(key){
   const p = players[key];
   try{
-    await ensureInit();
-    const dev = await BleClient.requestDevice({ namePrefix:'Tactix', optionalServices:[NUS] });
-    p.deviceId = dev.deviceId; p.name = dev.name || dev.deviceId;
-    await BleClient.connect(p.deviceId, ()=>onDrop(key));
-    await BleClient.startNotifications(p.deviceId, NUS, TX, v=>onNotify(key,v));
+    const dev = await pickDevice(key);
+    if(!dev) return;                    // cancelled
+    const label = dev.name || dev.deviceId;
+    log(`${key} connecting to ${label}…`);
+    // Only commit deviceId AFTER the link is up: it gates updateStart(), so setting it
+    // on a failed connect would enable "Start game" for a gun that isn't there.
+    await connectWithRetry(key, dev.deviceId, 5);
+    p.deviceId = dev.deviceId; p.name = label;
     log(`${key} = ${p.name} connected`,'lk'); renderPlayer(key); updateStart();
-  }catch(e){ log(`set ${key}: ${e.message||e}`,'le'); }
+  }catch(e){ log(`set ${key}: ${e.message||e}`,'le'); renderPlayer(key); updateStart(); }
 }
+
 function onDrop(key){ const p=players[key]; log(`*** ${key} (${p.name}) disconnected ***`,'le');
   if(p.deviceId) reconnect(key); }
-async function reconnect(key){ const p=players[key];
-  for(let i=1;i<=6 && p.deviceId;i++){ log(`${key} reconnect ${i}…`);
-    try{ await BleClient.connect(p.deviceId, ()=>onDrop(key));
-      await BleClient.startNotifications(p.deviceId, NUS, TX, v=>onNotify(key,v)); log(`${key} reconnected`,'lk'); return; }
-    catch(e){ await sleep(1200); } } }
+
+async function reconnect(key){
+  const p = players[key];
+  try{
+    const ok = await connectWithRetry(key, p.deviceId, 6, ()=>!!players[key].deviceId);
+    if(ok) log(`${key} reconnected`,'lk');
+  }catch(e){ log(`${key} reconnect failed — tap Set Gun ${key}`,'le'); }
+}
 
 function onNotify(key, value){ for(const f of pump(players[key], dataViewToText(value))) handleFrame(key, f); }
 

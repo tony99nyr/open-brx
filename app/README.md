@@ -41,7 +41,27 @@ npm run android:setup   # build, add the Android platform if missing, sync
 npm run sync            # build + sync every platform already added
 ```
 
-Then in Xcode: pick your device, set a signing team under **Signing & Capabilities**, and Run.
+### Running on a real iPhone
+
+Xcode's own error messages don't explain most of these, so in order:
+
+1. **Xcode ▸ Settings ▸ Accounts** → **+** → add your Apple ID.
+2. Select the **App** *target* (under TARGETS — the blue project row above it has no signing
+   editor), **Signing & Capabilities** → tick **Automatically manage signing** → pick your team.
+   *"Signing for App requires a development team"* persists until you explicitly choose it.
+3. If the **bundle identifier** is rejected as unavailable, change `appId` in
+   `capacitor.config.json` and re-run `npm run ios:setup` — free accounts need a globally unique
+   id, and editing it in Xcode alone is wiped when the platform regenerates.
+4. **macOS asks for a keychain password** during signing. It wants your **Mac login password**
+   (not your Apple ID) — `codesign` is reading the private key Xcode just created. Choose
+   **Always Allow** or it re-prompts on every build.
+5. **iOS 16+ needs Developer Mode**, or the install fails with *"Developer Mode disabled"*. On the
+   phone: **Settings ▸ Privacy & Security ▸ Developer Mode** → on → restart → confirm after reboot.
+   The item only appears once an install has been attempted.
+6. **First launch fails as an untrusted developer.** On the phone:
+   **Settings ▸ General ▸ VPN & Device Management** → your Apple ID → **Trust**. Then Run again.
+
+With a free Apple ID the build **expires after 7 days** and must be re-run from Xcode.
 
 ## What's generated vs. committed
 
