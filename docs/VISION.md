@@ -98,6 +98,34 @@ Viable models, compatible with open-source:
 - **Legal** — reverse-engineering for interoperability is generally defensible (esp. US), but a
   *commercial* product invites more scrutiny; keep the clean-room, facts-not-code discipline.
 
+### The Companion as the flagship product (post-`$SFLASH`, 2026-08-25)
+
+The `$SFLASH` capture (protocol §7o, ADR-0001) **upgrades the Companion's product case.** It now
+reconstructs the gun's **own** native feedback over BLE — the **green-sight kill flash** (`$SFLASH`)
+*and* the kill/killstreak/multikill audio (`$PLAY`, token-4 slot) — so it delivers the **full native
+feel at a ~$15 BOM, with no speaker or screen** (the gun is the speaker + display). That's **cheaper
+and more capable** than the existing DIY riders (JEDGE doesn't reconstruct the native flash/audio), and
+it makes the Companion a concrete flagship SKU rather than a spec.
+
+**Sell tiers (open design, paid convenience — the OSHW playbook):**
+1. **Assembled unit** — pay-not-to-solder; the mass-market SKU (~$15 BOM → sell assembled at a healthy
+   margin; people already asked "how much soldering?").
+2. **Kit** — parts + PCB + printed shell, self-assemble, cheaper.
+3. **Files-only** — PCB gerbers + STLs + firmware, BYO parts; free/near-free, feeds the modder community.
+4. **Fleet bundle** — Companions + **Mission Control** (the operator console) = "buy the kit, run games,"
+   the club / small-operator offer.
+
+**The gate — reliability, exactly as Tony framed it ("if it REALLY works well"):** in a small,
+word-of-mouth community a flaky unit is fatal. Before selling anything, nail the **BLE-drop / "SCREAMERS"
+re-pair problem**, a **durable mount**, and solid **OTA + pairing** — and pass the two **ADR-0001
+confirmations** ($SFLASH from our own stack; host-mode behavior) plus real multi-session field play.
+And price/plan for the **support burden** — selling hardware means returns, firmware bugs, and "it won't
+pair" tickets (OTA + stateless/interchangeable + a readiness board make it bearable, not free).
+
+**Sequencing:** **prove → open-source → let demand pull.** Build the 4 you need, harden it in real games,
+open-source it (free community QA + credibility), and only scale into assembled units/kits when people
+ask *and* it's proven. Don't build a business plan ahead of a reliable product.
+
 ## Naming
 
 - **Project (OSS):** **"Open BRX"** is good — descriptive, references the hardware it serves
