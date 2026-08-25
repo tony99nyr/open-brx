@@ -58,6 +58,27 @@ CHANZON 940nm/VS1838B + 2× ESP32-S3 build the **entire functional Companion on 
 the gun, run modes, ESP-NOW mesh between the two boards, IR player-id decode). Only a **LiPo+TP4056**
 (bench runs on USB) and the **printed enclosure** (needs calipers) are missing for a wearable unit.
 
+## Sourcing: off-the-shelf vs custom, and how much soldering
+
+**Off-the-shelf:** no single product is a drop-in Companion, but the **M5Stack family (M5StickC
+Plus2, ~$20)** is the closest — an ESP32 already in a small rugged case with battery, buttons,
+screen, LED, and IR **TX**. Add a Grove **IR RX** unit (~$5) + a battery base (~$10) → a
+pocketable Companion with **no fabrication**, ~$30–35/unit. Good for a fast prototype / small fleet.
+**Raspberry Pi is the wrong tool** — overkill, power-hungry, ~20–30 s boot, no ESP-NOW, and it still
+needs IR wiring + a mount; avoid.
+
+**Custom (the fleet route, ~$12–15):** bare ESP32-S3 + LiPo + printed clip. Soldering is
+**beginner-level** — all through-hole, big pads, no SMD:
+- **Prototype (the 2026-08-26 kit): ZERO soldering** — everything plugs into the ELEGOO breadboard.
+- **Wearable unit: ~a dozen simple joints**, and most are avoidable. **The key solder-saver: pick an
+  ESP32-S3 board with onboard LiPo charging + a JST battery jack** (**Adafruit Feather ESP32-S3**
+  ~$18, or **Seeed XIAO ESP32-S3** ~$7 + battery) → battery = plug-in, charging = built-in, killing
+  the TP4056 wiring. That leaves only IR RX (3) + button (2) + LED (2) ≈ **7 easy joints**, or zero
+  if jumpered. *(The DevKitC-1 we have has no onboard charging — great on USB for the bench; use a
+  Feather/XIAO for the battery build, or add a TP4056.)*
+- **At ~15–20+ units:** spin a **~$2 custom PCB** (JLCPCB) so parts drop in, no hand-wiring. Later
+  problem, not for the first 4.
+
 ## Pairing — bind to THE gun, not the neighbor (open, important)
 
 A Companion must reliably connect to the gun it's clipped to, not an identical tagger 30 cm away on
