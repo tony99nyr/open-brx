@@ -26,6 +26,9 @@ token positions, 2166-id sound bank, game modes, grenade). System specs: `missio
 
 ## Environment (important)
 
+- WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
+  system python3 has no pip — bootstrap via get-pip if recreating). `python3 run_tests.py` must stay green
+  under system python (tests needing extras skip cleanly).
 - Development happens in **WSL2, which has no Bluetooth**. The `brx-mcp` server runs on
   **Windows Python** via WSL interop:
   - Windows venv: `C:\Users\Tony\.brx-mcp\venv` (from WSL: `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`)
@@ -40,10 +43,9 @@ token positions, 2166-id sound bank, game modes, grenade). System specs: `missio
 
 ## Layout
 
-`mcp/` Python MCP server (M1–M3 lab instrument, later game-master backend) ·
+`mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; run `python -m brx_mcp.mc`) ·
 `app/` native phone app (Capacitor → Android + iOS; see `app/README.md`) ·
-`firmware/` PlatformIO ESP32 flavors · `server/` game engine + MQTT · `webapp/` static site
-(Mission Control + the Web-Bluetooth **test harness** — Web BT is not the player path) ·
+`firmware/` PlatformIO ESP32 flavors · `server/` game engine + MQTT · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design source `docs/spec/design/mc-export/`) · `webapp/` legacy static harness (Web BT is not the player path) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference.
 
 **Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and

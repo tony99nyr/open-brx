@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#07090d;color:#e8eef5;font-family:"Chakra Petch",system-ui,sans-serif;
+    background-image:linear-gradient(rgba(57,180,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(57,180,255,.028) 1px,transparent 1px);
+    background-size:36px 36px}
+  a{color:#39b4ff}a:hover{color:#7fd0ff}
+  ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#25313f}::-webkit-scrollbar-track{background:transparent}
+  @keyframes tryPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,176,32,.5)}50%{box-shadow:0 0 0 6px rgba(255,176,32,0)}}
+  @keyframes linkBlink{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes scanIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <!-- ============ COMMAND BAR ============ -->
+  <header style="background:#05070a;border-bottom:1px solid #25313f">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px 26px;padding:12px 20px 10px">
+      <div style="display:flex;align-items:center;gap:12px;min-width:230px">
+        <div style="width:26px;height:26px;background:#39b4ff;clip-path:polygon(0 0,100% 0,100% 65%,65% 100%,0 100%);display:flex;align-items:center;justify-content:center;font:700 12px 'Chakra Petch';color:#04121e">B</div>
+        <div>
+          <div style="font:700 11px 'Chakra Petch';letter-spacing:.34em;color:#39b4ff">OPEN BRX</div>
+          <div style="font:600 18px 'Oswald';letter-spacing:.12em">MISSION CONTROL</div>
+        </div>
+      </div>
+      <nav style="display:flex;gap:2px;flex-wrap:wrap;flex:1;min-width:340px">
+        <sc-for list="{{ phases }}" as="p" hint-placeholder-count="6">
+          <button onClick="{{ p.go }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;font-family:'Chakra Petch';background:{{ p.bg }};border:none;border-bottom:2px solid {{ p.ul }};padding:8px 16px 7px;cursor:{{ p.cursor }};color:{{ p.color }}">
+            <span style="font:600 9px ui-monospace,monospace;letter-spacing:.2em;color:{{ p.numColor }}">{{ p.num }}</span>
+            <span style="font-size:12px;font-weight:700;letter-spacing:.22em">{{ p.label }}</span>
+          </button>
+        </sc-for>
+      </nav>
+      <div style="display:flex;align-items:center;gap:14px">
+        <button style="display:flex;align-items:stretch;background:#0c0507;border:1px solid #ff5252;cursor:pointer;padding:0" style-hover="background:rgba(255,82,82,.18)">
+          <span style="width:12px;background:repeating-linear-gradient(135deg,#ff5252 0 5px,#0c0507 5px 10px);display:block"></span>
+          <span style="font:700 12px 'Chakra Petch';letter-spacing:.26em;color:#ff5252;padding:9px 16px 9px 14px">PANIC</span>
+        </button>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px 30px;padding:6px 20px;background:#090d12;border-top:1px solid #141b24;font:500 10px ui-monospace,monospace;letter-spacing:.16em;color:#5c7186">
+      <span>NET ▸ <span style="color:#8aa0b4">BRX-FIELD</span> · <span style="color:#2ecc71">8 NODES LINKED</span></span>
+      <span>PHASE ▸ <span style="color:#8aa0b4">{{ phaseReadout }}</span></span>
+      <span>UPLINK ▸ <span style="color:#2ecc71">OK</span> · SYNC 0.4s</span>
+      <span style="margin-left:auto">SESSION 26-08-25 // T 20:41:07</span>
+    </div>
+  </header>
+
+  <main style="flex:1;padding:22px 24px 48px;overflow:auto">
+
+    <!-- ============ A1 · ARMORY (readiness) ============ -->
+    <sc-if value="{{ showMuster }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="A1 Armory readiness" style="animation:scanIn .25s ease-out">
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px;margin-bottom:20px">
+          <div>
+            <div style="font:600 10px ui-monospace,monospace;letter-spacing:.3em;color:#39b4ff">[ A1 // GEAR CHECK ]</div>
+            <div style="font:700 30px 'Oswald';letter-spacing:.1em;text-transform:uppercase;margin-top:2px">Readiness Board</div>
+          </div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:22px;flex-wrap:wrap">
+            <div style="display:flex;gap:2px">
+              <span style="display:flex;flex-direction:column;align-items:center;gap:1px;background:#0c1016;border:1px solid #25313f;padding:7px 16px"><span style="font:700 24px 'Oswald';font-variant-numeric:tabular-nums;color:#2ecc71">{{ nGreen }}</span><span style="font:600 9px 'Chakra Petch';letter-spacing:.22em;color:#5c7186">GREEN</span></span>
+              <span style="display:flex;flex-direction:column;align-items:center;gap:1px;background:#0c1016;border:1px solid #25313f;padding:7px 16px"><span style="font:700 24px 'Oswald';font-variant-numeric:tabular-nums;color:#ffb020">{{ nAmber }}</span><span style="font:600 9px 'Chakra Petch';letter-spacing:.22em;color:#5c7186">AMBER</span></span>
+              <span style="display:flex;flex-direction:column;align-items:center;gap:1px;background:#0c1016;border:1px solid #25313f;padding:7px 16px"><span style="font:700 24px 'Oswald';font-variant-numeric:tabular-nums;color:{{ redInk }}">{{ nRed }}</span><span style="font:600 9px 'Chakra Petch';letter-spacing:.22em;color:#5c7186">RED</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+              <div style="font:700 22px 'Oswald';letter-spacing:.3em;padding:8px 26px 8px 32px;background:{{ gateBg }};color:#04121e;clip-path:polygon(14px 0,100% 0,100% 100%,0 100%,0 14px)">{{ gateWord }}</div>
+              <div style="font:500 10px ui-monospace,monospace;letter-spacing:.14em;color:#5c7186">{{ gateNote }}</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax({{ musterMin }},1fr));gap:{{ musterGap }}">
+          <sc-for list="{{ guns }}" as="g" hint-placeholder-count="8">
+            <div style="background:#0c1016;border:1px solid #1c2733;border-left:3px solid {{ g.color }};padding:{{ musterPad }};display:flex;flex-direction:column;gap:11px;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                <div style="display:flex;align-items:baseline;gap:6px">
+                  <span style="font:700 20px 'Oswald';letter-spacing:.1em">{{ g.name }}</span>
+                  <span style="font:500 11px ui-monospace,monospace;color:#5c7186">-{{ g.tail }}</span>
+                </div>
+                <span style="font:700 10px 'Chakra Petch';letter-spacing:.18em;color:#04121e;background:{{ g.color }};padding:2px 8px">{{ g.word }}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:82px 1fr;gap:6px 10px;align-items:center">
+                <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">POWER</span><span style="font:600 12px 'Chakra Petch';letter-spacing:.08em;color:{{ g.pwrColor }}">{{ g.pwr }}</span>
+                <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">HEADSET</span><span style="font:600 12px 'Chakra Petch';letter-spacing:.08em;color:{{ g.hsColor }}">{{ g.hs }}</span>
+                <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">BATTERY</span>
+                <span style="display:flex;align-items:center;gap:8px">
+                  <span style="font:600 14px 'Oswald';font-variant-numeric:tabular-nums;min-width:38px;color:{{ g.battColor }}">{{ g.batt }}</span>
+                  <span style="flex:1;max-width:96px;height:8px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:{{ g.battW }};background:{{ g.battColor }}"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 7px,#07090d 7px 9px)"></span></span>
+                </span>
+                <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">LINK</span><span style="font:600 12px 'Chakra Petch';letter-spacing:.08em;color:{{ g.linkColor }}">{{ g.link }}</span>
+                <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">COMPANION</span><span style="font:600 12px 'Chakra Petch';color:#5c7186">—</span>
+              </div>
+              <sc-if value="{{ g.reason }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:8px;font:600 11px 'Chakra Petch';letter-spacing:.06em;padding:6px 10px;background:{{ g.reasonBg }};color:{{ g.color }};border-left:2px solid {{ g.color }}">▲ {{ g.reason }}</div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ A2 · BUILD ============ -->
+    <sc-if value="{{ showBuild }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="A2 Build" style="animation:scanIn .25s ease-out">
+        <div style="margin-bottom:20px">
+          <div style="font:600 10px ui-monospace,monospace;letter-spacing:.3em;color:#39b4ff">[ A2 // GAME AUTHORING ]</div>
+          <div style="font:700 30px 'Oswald';letter-spacing:.1em;text-transform:uppercase;margin-top:2px">Build the Game</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+          <div style="flex:2 1 480px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+              <span style="font:700 11px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">SELECT MODE</span>
+              <span style="flex:1;height:1px;background:#1c2733"></span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
+              <sc-for list="{{ modes }}" as="m" hint-placeholder-count="5">
+                <div onClick="{{ m.pick }}" style="background:{{ m.bg }};border:1px solid {{ m.bd }};border-top:2px solid {{ m.top }};padding:10px;display:flex;flex-direction:column;gap:10px;cursor:pointer;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)" style-hover="border-color:#39b4ff">
+                  <div style="height:76px;background:repeating-linear-gradient(45deg,#141c26 0 8px,#0c1016 8px 16px);border:1px solid #141c26;position:relative">
+                    <span style="position:absolute;top:6px;left:6px;font:700 12px 'Oswald';letter-spacing:.12em;background:{{ m.tileBg }};color:{{ m.tileInk }};padding:2px 9px">{{ m.abbr }}</span>
+                    <sc-if value="{{ m.active }}" hint-placeholder-val="{{ false }}">
+                      <span style="position:absolute;top:6px;right:6px;font:700 9px 'Chakra Petch';letter-spacing:.22em;color:#04121e;background:#39b4ff;padding:2px 8px">ACTIVE</span>
+                    </sc-if>
+                    <span style="position:absolute;bottom:4px;right:6px;font:500 8px ui-monospace,monospace;letter-spacing:.16em;color:#5c7186">mode art</span>
+                  </div>
+                  <div>
+                    <div style="font:600 15px 'Oswald';letter-spacing:.08em">{{ m.name }}</div>
+                    <div style="font:500 12px 'Chakra Petch';color:#8aa0b4;margin-top:3px">{{ m.desc }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:14px;background:linear-gradient(180deg,#0e141b,#0a0e13);border:1px solid #1c2733;border-left:3px solid #39b4ff;padding:14px 18px;display:flex;flex-wrap:wrap;gap:16px 44px;animation:scanIn .2s ease-out">
+              <div style="flex:1 1 320px;min-width:0">
+                <div style="font:600 9px ui-monospace,monospace;letter-spacing:.26em;color:#39b4ff;margin-bottom:6px">MODE BRIEFING // {{ selMode.name }}</div>
+                <div style="font:500 13px 'Chakra Petch';line-height:1.55;color:#c7d3de;max-width:60ch">{{ selMode.brief }}</div>
+              </div>
+              <div style="display:flex;gap:2px;flex-wrap:wrap;align-content:flex-start">
+                <span style="background:#0c1016;border:1px solid #1c2733;padding:7px 14px"><span style="display:block;font:500 8.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">TEAMS</span><span style="font:700 13px 'Chakra Petch';letter-spacing:.08em">{{ selMode.teams }}</span></span>
+                <span style="background:#0c1016;border:1px solid #1c2733;padding:7px 14px"><span style="display:block;font:500 8.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">WIN CONDITION</span><span style="font:700 13px 'Chakra Petch';letter-spacing:.08em">{{ selMode.win }}</span></span>
+                <span style="background:#0c1016;border:1px solid #1c2733;padding:7px 14px"><span style="display:block;font:500 8.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">RESPAWN</span><span style="font:700 13px 'Chakra Petch';letter-spacing:.08em">{{ selMode.respawn }}</span></span>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1 1 330px;max-width:460px;background:#0c1016;border:1px solid #1c2733;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)">
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:#090d12;border-bottom:1px solid #1c2733">
+              <span style="width:8px;height:8px;background:#39b4ff;clip-path:polygon(0 0,100% 0,100% 100%)"></span>
+              <span style="font:700 11px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">GLOBAL SETTINGS</span>
+            </div>
+            <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font:600 13px 'Chakra Petch';letter-spacing:.1em">ENVIRONMENT</span>
+                <span style="display:flex;border:1px solid #1c2733">
+                  <span style="font:600 11px 'Chakra Petch';letter-spacing:.14em;padding:5px 14px;color:#5c7186;cursor:pointer">INDOOR</span>
+                  <span style="font:700 11px 'Chakra Petch';letter-spacing:.14em;padding:5px 14px;background:#39b4ff;color:#04121e">OUTDOOR</span>
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font:600 13px 'Chakra Petch';letter-spacing:.1em">NIGHT OPS <span style="font:500 10px ui-monospace,monospace;color:#5c7186">// BLACKOUT HUD</span></span>
+                <span style="width:40px;height:20px;background:#05070a;border:1px solid #25313f;position:relative;display:inline-block;cursor:pointer"><span style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#5c7186"></span></span>
+              </div>
+              <div style="height:1px;background:#1c2733"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font:600 13px 'Chakra Petch';letter-spacing:.1em">RESPAWN TYPE</span>
+                <span style="display:flex;border:1px solid #1c2733">
+                  <span style="font:600 11px 'Chakra Petch';letter-spacing:.14em;padding:5px 14px;color:#5c7186;cursor:pointer">SCANNER</span>
+                  <span style="font:700 11px 'Chakra Petch';letter-spacing:.14em;padding:5px 14px;background:#39b4ff;color:#04121e">AUTO</span>
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font:600 13px 'Chakra Petch';letter-spacing:.1em">RESPAWN DELAY</span>
+                <span style="font:700 17px 'Oswald';font-variant-numeric:tabular-nums;background:#05070a;border:1px solid #25313f;padding:4px 14px">15 <span style="font:600 10px 'Chakra Petch';letter-spacing:.14em;color:#5c7186">S</span></span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font:600 13px 'Chakra Petch';letter-spacing:.1em">TIME LIMIT</span>
+                <span style="font:700 17px 'Oswald';font-variant-numeric:tabular-nums;background:#05070a;border:1px solid #25313f;padding:4px 14px">10 <span style="font:600 10px 'Chakra Petch';letter-spacing:.14em;color:#5c7186">MIN</span></span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font:600 13px 'Chakra Petch';letter-spacing:.1em">SCORE TO WIN</span>
+                <span style="font:700 17px 'Oswald';font-variant-numeric:tabular-nums;background:#05070a;border:1px solid #25313f;padding:4px 14px">25</span>
+              </div>
+              <div style="height:1px;background:#1c2733"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:#5c7186" style-hover="color:#39b4ff">
+                <span style="font:600 10px ui-monospace,monospace;letter-spacing:.22em">LED &amp; ENVIRONMENT EXTRAS</span>
+                <span>▸</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ A3 · KIT ============ -->
+    <sc-if value="{{ showKit }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="A3 Kit-out" style="animation:scanIn .25s ease-out">
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px;margin-bottom:20px">
+          <div>
+            <div style="font:600 10px ui-monospace,monospace;letter-spacing:.3em;color:#39b4ff">[ A3 // KIT-OUT ]</div>
+            <div style="font:700 30px 'Oswald';letter-spacing:.1em;text-transform:uppercase;margin-top:2px">Kit Each Player</div>
+          </div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:12px">
+            <span style="font:700 20px 'Oswald';font-variant-numeric:tabular-nums">3<span style="color:#5c7186">/8 KITTED</span></span>
+            <span style="width:130px;height:9px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:37.5%;background:#39b4ff"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 14px,#07090d 14px 16px)"></span></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+          <!-- roster -->
+          <div style="flex:1 1 250px;max-width:330px;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#090d12;border:1px solid #1c2733;border-bottom:none">
+              <span style="width:8px;height:8px;background:#39b4ff;clip-path:polygon(0 0,100% 0,100% 100%)"></span>
+              <span style="font:700 10px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">SQUAD ROSTER</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;border:1px solid #1c2733;padding:6px;background:#0a0e13">
+              <sc-for list="{{ players }}" as="pl" hint-placeholder-count="8">
+                <div onClick="{{ pl.sel }}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;background:{{ pl.bg }};border:1px solid {{ pl.bd }};cursor:pointer" style-hover="border-color:#39b4ff">
+                  <span style="width:4px;align-self:stretch;background:{{ pl.teamColor }}"></span>
+                  <span style="flex:1;min-width:0">
+                    <span style="display:block;font:700 14px 'Chakra Petch';letter-spacing:.14em">{{ pl.name }}</span>
+                    <span style="display:block;font:500 10px ui-monospace,monospace;letter-spacing:.08em;color:#5c7186">{{ pl.gun }}</span>
+                  </span>
+                  <sc-if value="{{ pl.trying }}" hint-placeholder-val="{{ false }}">
+                    <span style="font:700 9px 'Chakra Petch';letter-spacing:.14em;color:#04121e;background:#ffb020;padding:2px 7px;animation:tryPulse 1.6s infinite">TRYING SMG</span>
+                  </sc-if>
+                  <span style="font:700 10px 'Chakra Petch';letter-spacing:.14em;color:{{ pl.stColor }}">{{ pl.st }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <!-- loadout -->
+          <div style="flex:3 1 560px;display:flex;flex-direction:column;gap:16px;min-width:0">
+            <div style="background:#0c1016;border:1px solid #1c2733;padding:16px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:14px 28px;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)">
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="width:6px;height:46px;background:{{ selPlayer.teamColor }}"></span>
+                <div>
+                  <div style="font:500 9px ui-monospace,monospace;letter-spacing:.26em;color:#5c7186">OPERATOR</div>
+                  <span style="font:700 32px 'Oswald';letter-spacing:.1em">{{ selPlayer.name }}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font:500 9px ui-monospace,monospace;letter-spacing:.22em;color:#5c7186">TEAM</span>
+                <span style="display:flex;gap:3px;flex-wrap:wrap">
+                  <sc-for list="{{ teamChips }}" as="t" hint-placeholder-count="5">
+                    <span onClick="{{ t.set }}" style="font:700 11px 'Chakra Petch';letter-spacing:.14em;padding:5px 12px;background:{{ t.bg }};color:{{ t.ink }};border:1px solid {{ t.bd }};cursor:pointer">{{ t.label }}</span>
+                  </sc-for>
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font:500 9px ui-monospace,monospace;letter-spacing:.22em;color:#5c7186">VOICE</span>
+                <span style="display:flex;border:1px solid #1c2733">
+                  <span style="font:700 11px 'Chakra Petch';letter-spacing:.14em;padding:4px 12px;background:#39b4ff;color:#04121e">MALE</span>
+                  <span style="font:600 11px 'Chakra Petch';letter-spacing:.14em;padding:4px 12px;color:#5c7186;cursor:pointer">FEMALE</span>
+                </span>
+              </div>
+              <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding:6px 12px;background:#05070a;border:1px solid #1c2733">
+                <span style="width:7px;height:7px;background:#2ecc71;animation:linkBlink 2.4s infinite;display:inline-block"></span>
+                <span style="font:500 11px ui-monospace,monospace;letter-spacing:.06em;color:#5c7186">{{ selPlayer.gun }} · <span style="color:#2ecc71">LINKED 1s</span></span>
+              </div>
+            </div>
+            <!-- weapon hero -->
+            <div style="background:linear-gradient(180deg,#0e141b,#0a0e13);border:1px solid #1c2733;padding:20px;display:flex;flex-wrap:wrap;gap:24px;position:relative"
+                 style-before="content:'';position:absolute;top:6px;left:6px;width:16px;height:16px;border-top:2px solid #39b4ff;border-left:2px solid #39b4ff"
+                 style-after="content:'';position:absolute;bottom:6px;right:6px;width:16px;height:16px;border-bottom:2px solid #39b4ff;border-right:2px solid #39b4ff">
+              <div style="flex:1 1 260px;max-width:340px;min-height:150px;background:repeating-linear-gradient(45deg,#141c26 0 8px,#0c1016 8px 16px);border:1px solid #1c2733;display:flex;align-items:center;justify-content:center;position:relative">
+                <span style="position:absolute;top:8px;left:10px;font:500 9px ui-monospace,monospace;letter-spacing:.22em;color:#5c7186">VISUAL // PENDING</span>
+                <span style="font:500 11px ui-monospace,monospace;color:#8aa0b4;background:#07090d;padding:4px 10px;border:1px solid #25313f">weapon art — {{ selWeapon.name }}</span>
+              </div>
+              <div style="flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+                  <span style="font:700 30px 'Oswald';letter-spacing:.08em;text-transform:uppercase">{{ selWeapon.name }}</span>
+                  <span style="font:700 10px 'Chakra Petch';letter-spacing:.22em;color:#04121e;background:{{ selWeapon.clsColor }};padding:3px 10px">{{ selWeapon.cls }}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:80px 1fr;gap:8px 14px;align-items:center;max-width:440px">
+                  <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">DAMAGE</span><span style="height:10px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:block"><span style="display:block;height:100%;width:{{ selWeapon.dmgW }};background:#e8eef5"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 10px,#07090d 10px 12px)"></span></span>
+                  <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">FIRE RATE</span><span style="height:10px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:block"><span style="display:block;height:100%;width:{{ selWeapon.rpmW }};background:#e8eef5"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 10px,#07090d 10px 12px)"></span></span>
+                  <span style="font:500 9.5px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">RANGE</span><span style="height:10px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:block"><span style="display:block;height:100%;width:{{ selWeapon.rngW }};background:#e8eef5"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 10px,#07090d 10px 12px)"></span></span>
+                </div>
+                <div style="display:flex;gap:2px;flex-wrap:wrap">
+                  <span style="background:#0c1016;border:1px solid #1c2733;padding:8px 18px"><span style="display:block;font:500 9px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">MAGAZINE</span><span style="font:700 24px 'Oswald';font-variant-numeric:tabular-nums">{{ selWeapon.clip }}</span></span>
+                  <span style="background:#0c1016;border:1px solid #1c2733;padding:8px 18px"><span style="display:block;font:500 9px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">RESERVE</span><span style="font:700 24px 'Oswald';font-variant-numeric:tabular-nums">{{ selWeapon.reserve }}</span></span>
+                  <span style="background:#0c1016;border:1px solid #1c2733;padding:8px 18px"><span style="display:block;font:500 9px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">RELOAD</span><span style="font:700 24px 'Oswald';font-variant-numeric:tabular-nums">{{ selWeapon.reload }}<span style="font:600 12px 'Chakra Petch';color:#5c7186">s</span></span></span>
+                </div>
+              </div>
+            </div>
+            <!-- arsenal gallery -->
+            <div>
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                <span style="font:700 11px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">ARSENAL // 18 WEAPONS</span>
+                <span style="flex:1;height:1px;background:#1c2733"></span>
+                <span style="font:500 9px ui-monospace,monospace;letter-spacing:.18em;color:#5c7186">SELECT TO ARM</span>
+              </div>
+              <sc-if value="{{ galleryTiles }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(152px,1fr));gap:8px">
+                  <sc-for list="{{ weapons }}" as="w" hint-placeholder-count="18">
+                    <div onClick="{{ w.pick }}" style="background:{{ w.bg }};border:1px solid {{ w.bd }};padding:8px;cursor:pointer;display:flex;flex-direction:column;gap:7px;clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)" style-hover="border-color:#39b4ff">
+                      <div style="height:50px;background:repeating-linear-gradient(45deg,#141c26 0 6px,#0c1016 6px 12px);border:1px solid #141c26;position:relative"><span style="position:absolute;top:3px;right:5px;font:600 8px ui-monospace,monospace;letter-spacing:.14em;color:{{ w.clsColor }}">{{ w.cls }}</span></div>
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+                        <span style="font:700 12px 'Chakra Petch';letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.name }}</span>
+                        <span style="font:600 11px 'Oswald';font-variant-numeric:tabular-nums;color:#5c7186">{{ w.clip }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ galleryList }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <sc-for list="{{ weapons }}" as="w" hint-placeholder-count="18">
+                    <div onClick="{{ w.pick }}" style="display:flex;align-items:center;gap:14px;background:{{ w.bg }};border:1px solid {{ w.bd }};padding:7px 12px;cursor:pointer" style-hover="border-color:#39b4ff">
+                      <span style="flex:1 1 150px;font:700 13px 'Chakra Petch';letter-spacing:.05em">{{ w.name }}</span>
+                      <span style="flex:0 0 70px;font:600 9px ui-monospace,monospace;letter-spacing:.14em;color:{{ w.clsColor }}">{{ w.cls }}</span>
+                      <span style="flex:0 0 130px;height:8px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:{{ w.dmgW }};background:#e8eef5"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 8px,#07090d 8px 10px)"></span></span>
+                      <span style="font:600 12px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ w.clip }} / {{ w.reserve }} · {{ w.reload }}s</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ A5 · LOBBY ============ -->
+    <sc-if value="{{ showLobby }}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{ lobbyAssign }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="A5 Lobby" style="animation:scanIn .25s ease-out">
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px;margin-bottom:20px">
+            <div>
+              <div style="font:600 10px ui-monospace,monospace;letter-spacing:.3em;color:#39b4ff">[ A5 // LOBBY ]</div>
+              <div style="font:700 30px 'Oswald';letter-spacing:.1em;text-transform:uppercase;margin-top:2px">Team Assignment</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap">
+              <span style="font:700 9px 'Chakra Petch';letter-spacing:.2em;color:#04121e;background:#2ecc71;padding:3px 10px">4 V 4 — BALANCED</span>
+              <span style="font:700 20px 'Oswald';font-variant-numeric:tabular-nums">6<span style="color:#5c7186">/8 READY</span></span>
+              <span style="width:130px;height:9px;background:#05070a;border:1px solid #1c2733;position:relative;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:75%;background:#2ecc71"></span><span style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 14px,#07090d 14px 16px)"></span></span>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+            <sc-for list="{{ lobbyCols }}" as="col" hint-placeholder-count="2">
+              <div style="flex:1 1 300px;display:flex;flex-direction:column">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#090d12;border:1px solid #1c2733;border-bottom:none;border-top:2px solid {{ col.color }}">
+                  <span style="font:700 13px 'Chakra Petch';letter-spacing:.24em;color:{{ col.color }}">{{ col.name }}</span>
+                  <span style="flex:1"></span>
+                  <span style="font:600 12px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ col.count }} OPERATORS</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px;border:1px solid #1c2733;padding:6px;background:#0a0e13;min-height:200px">
+                  <sc-for list="{{ col.members }}" as="mb" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0c1016;border:1px solid #1c2733;cursor:grab" style-hover="border-color:#39b4ff">
+                      <span style="font:600 12px ui-monospace,monospace;color:#3a4a5c;letter-spacing:-.1em">⠿</span>
+                      <span style="flex:1;min-width:0">
+                        <span style="display:block;font:700 14px 'Chakra Petch';letter-spacing:.14em">{{ mb.name }}</span>
+                        <span style="display:block;font:500 10px ui-monospace,monospace;color:#5c7186">{{ mb.gun }}</span>
+                      </span>
+                      <span style="font:700 10px 'Chakra Petch';letter-spacing:.16em;color:{{ mb.rdColor }};border:1px solid {{ mb.rdBd }};padding:3px 9px">{{ mb.rdWord }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:16px;background:linear-gradient(180deg,#0e141b,#0a0e13);border:1px solid #1c2733;padding:14px 18px;display:flex;flex-wrap:wrap;align-items:center;gap:14px 34px">
+            <div style="display:flex;gap:26px;flex-wrap:wrap">
+              <span style="display:flex;align-items:center;gap:8px"><span style="font:700 11px 'Oswald';background:#2ecc71;color:#04121e;padding:1px 7px">1</span><span style="font:600 11px 'Chakra Petch';letter-spacing:.14em;color:#8aa0b4">ALL READY <span style="color:#ffb020">6/8</span></span></span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font:700 11px 'Oswald';background:#1c2733;color:#8aa0b4;padding:1px 7px">2</span><span style="font:600 11px 'Chakra Petch';letter-spacing:.14em;color:#5c7186">PUSH CONFIG</span></span>
+              <span style="display:flex;align-items:center;gap:8px"><span style="font:700 11px 'Oswald';background:#1c2733;color:#8aa0b4;padding:1px 7px">3</span><span style="font:600 11px 'Chakra Petch';letter-spacing:.14em;color:#5c7186">ARM COUNTDOWN</span></span>
+            </div>
+            <span style="flex:1"></span>
+            <span style="font:500 10px ui-monospace,monospace;letter-spacing:.12em;color:#ffb020">▲ SABLE + DRIFT NOT READY — LAST MOMENT ALL NODES ARE IN RANGE</span>
+            <button onClick="{{ arm }}" style="font:700 13px 'Chakra Petch';letter-spacing:.2em;padding:12px 26px;background:#39b4ff;color:#04121e;border:none;cursor:pointer;clip-path:polygon(10px 0,100% 0,100% 100%,0 100%,0 10px)" style-hover="background:#7fd0ff">PUSH CONFIG &amp; ARM ▸</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- A6 · dispersed countdown -->
+      <sc-if value="{{ lobbyArmed }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="A6 Dispersed start" style="animation:scanIn .25s ease-out">
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px;margin-bottom:20px">
+            <div>
+              <div style="font:600 10px ui-monospace,monospace;letter-spacing:.3em;color:#39b4ff">[ A6 // DISPERSED START ]</div>
+              <div style="font:700 30px 'Oswald';letter-spacing:.1em;text-transform:uppercase;margin-top:2px">Match Arming</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap">
+              <button onClick="{{ disarm }}" style="font:600 11px 'Chakra Petch';letter-spacing:.16em;padding:9px 16px;background:transparent;color:#8aa0b4;border:1px solid #1c2733;cursor:pointer" style-hover="border-color:#39b4ff">◂ BACK TO LOBBY</button>
+              <button style="font:600 11px 'Chakra Petch';letter-spacing:.16em;padding:9px 16px;background:transparent;color:#ffb020;border:1px solid #ffb020;cursor:pointer" style-hover="background:rgba(255,176,32,.12)">RESCHEDULE</button>
+              <button style="display:flex;align-items:stretch;background:#0c0507;border:1px solid #ff5252;cursor:pointer;padding:0" style-hover="background:rgba(255,82,82,.18)">
+                <span style="width:10px;background:repeating-linear-gradient(135deg,#ff5252 0 5px,#0c0507 5px 10px);display:block"></span>
+                <span style="font:700 11px 'Chakra Petch';letter-spacing:.2em;color:#ff5252;padding:9px 14px 9px 12px">ABORT</span>
+              </button>
+            </div>
+          </div>
+          <div style="background:linear-gradient(180deg,#0e141b,#0a0e13);border:1px solid #1c2733;padding:18px 22px;display:flex;flex-wrap:wrap;align-items:center;gap:16px 44px;margin-bottom:16px;position:relative"
+               style-before="content:'';position:absolute;top:6px;left:6px;width:16px;height:16px;border-top:2px solid #39b4ff;border-left:2px solid #39b4ff"
+               style-after="content:'';position:absolute;bottom:6px;right:6px;width:16px;height:16px;border-bottom:2px solid #39b4ff;border-right:2px solid #39b4ff">
+            <div>
+              <div style="font:500 9px ui-monospace,monospace;letter-spacing:.26em;color:#5c7186">SYNCED GO-LIVE IN</div>
+              <div style="font:700 56px 'Oswald';font-variant-numeric:tabular-nums;letter-spacing:.04em;line-height:1">T-02:41</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font:500 9px ui-monospace,monospace;letter-spacing:.22em;color:#5c7186">COUNTDOWN</span>
+              <span style="display:flex;border:1px solid #1c2733">
+                <span style="font:600 11px 'Chakra Petch';letter-spacing:.1em;padding:5px 12px;color:#5c7186;cursor:pointer">01:00</span>
+                <span style="font:700 11px 'Chakra Petch';letter-spacing:.1em;padding:5px 12px;background:#39b4ff;color:#04121e">03:00</span>
+                <span style="font:600 11px 'Chakra Petch';letter-spacing:.1em;padding:5px 12px;color:#5c7186;cursor:pointer">05:00</span>
+              </span>
+            </div>
+            <div style="flex:1;min-width:220px">
+              <div style="font:600 12px 'Chakra Petch';letter-spacing:.08em;color:#c7d3de">7/8 NODES ARMED · 1 AWAITING ACK</div>
+              <div style="font:500 10px ui-monospace,monospace;letter-spacing:.1em;color:#5c7186;margin-top:4px">GUNS COUNT DOWN ON THEIR OWN — PLAYERS MAY SCATTER OUT OF RANGE. ALL GO LIVE AT T-0.</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+            <sc-for list="{{ nodes }}" as="nd" hint-placeholder-count="8">
+              <div style="background:#0c1016;border:1px solid #1c2733;border-left:3px solid {{ nd.color }};padding:12px 14px;display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                  <span style="font:700 15px 'Oswald';letter-spacing:.08em">{{ nd.gun }}</span>
+                  <span style="font:700 9px 'Chakra Petch';letter-spacing:.16em;color:#04121e;background:{{ nd.color }};padding:2px 7px">{{ nd.word }}</span>
+                </div>
+                <div style="font:500 10px ui-monospace,monospace;letter-spacing:.1em;color:#5c7186">{{ nd.player }}</div>
+                <div style="font:700 22px 'Oswald';font-variant-numeric:tabular-nums;color:{{ nd.tColor }}">{{ nd.t }}</div>
+                <div style="font:500 9px ui-monospace,monospace;letter-spacing:.12em;color:{{ nd.subColor }}">{{ nd.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <!-- ============ A7 · LIVE ============ -->
+    <sc-if value="{{ showLive }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="A7 Live scoreboard" style="animation:scanIn .25s ease-out">
+        <div style="display:flex;flex-wrap:wrap;align-items:stretch;gap:2px;margin-bottom:16px">
+          <div style="flex:1 1 220px;background:linear-gradient(90deg,rgba(58,134,255,.16),transparent);border:1px solid #1c2733;border-left:4px solid #3a86ff;padding:14px 20px;display:flex;align-items:center;gap:18px">
+            <span style="font:700 15px 'Chakra Petch';letter-spacing:.3em;color:#3a86ff">BLUE</span>
+            <span style="font:700 64px 'Oswald';font-variant-numeric:tabular-nums;line-height:1">{{ blueScore }}</span>
+          </div>
+          <div style="flex:0 1 240px;background:#0c1016;border:1px solid #1c2733;padding:14px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+            <span style="font:500 9px ui-monospace,monospace;letter-spacing:.26em;color:#5c7186">TIME REMAINING</span>
+            <span style="font:700 40px 'Oswald';font-variant-numeric:tabular-nums;line-height:1">04:12</span>
+            <span style="font:500 9px ui-monospace,monospace;letter-spacing:.2em;color:#5c7186">TDM · CAP 25</span>
+          </div>
+          <div style="flex:1 1 220px;background:linear-gradient(270deg,rgba(255,210,63,.14),transparent);border:1px solid #1c2733;border-right:4px solid #ffd23f;padding:14px 20px;display:flex;align-items:center;justify-content:flex-end;gap:18px">
+            <span style="font:700 64px 'Oswald';font-variant-numeric:tabular-nums;line-height:1">{{ yellowScore }}</span>
+            <span style="font:700 15px 'Chakra Petch';letter-spacing:.3em;color:#ffd23f">YELLOW</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+          <div style="flex:2 1 560px;min-width:0;overflow-x:auto">
+            <div style="min-width:640px">
+              <div style="display:grid;grid-template-columns:minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr) 84px;gap:0 10px;padding:8px 14px;background:#090d12;border:1px solid #1c2733;font:500 9px ui-monospace,monospace;letter-spacing:.18em;color:#5c7186">
+                <span>OPERATOR</span><span style="text-align:right">K</span><span style="text-align:right">D</span><span style="text-align:right">A</span><span style="text-align:right">K/D</span><span style="text-align:right">ACC</span><span style="text-align:right">STK</span><span>STATUS</span><span style="text-align:right">SYNC</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">
+                <sc-for list="{{ liveRows }}" as="r" hint-placeholder-count="8">
+                  <div style="display:grid;grid-template-columns:minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr) 84px;gap:0 10px;align-items:center;padding:9px 14px;background:{{ r.bg }};border:1px solid #131c26;border-left:3px solid {{ r.teamColor }}">
+                    <span style="font:700 14px 'Chakra Petch';letter-spacing:.1em">{{ r.name }}</span>
+                    <span style="text-align:right;font:700 16px 'Oswald';font-variant-numeric:tabular-nums">{{ r.k }}</span>
+                    <span style="text-align:right;font:600 15px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.d }}</span>
+                    <span style="text-align:right;font:600 15px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.a }}</span>
+                    <span style="text-align:right;font:600 14px 'Oswald';font-variant-numeric:tabular-nums">{{ r.kd }}</span>
+                    <span style="text-align:right;font:600 14px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.acc }}</span>
+                    <span style="text-align:right;font:600 14px 'Oswald';font-variant-numeric:tabular-nums;color:{{ r.stkColor }}">{{ r.stk }}</span>
+                    <span style="font:700 10px 'Chakra Petch';letter-spacing:.14em;color:{{ r.stColor }}">{{ r.status }}</span>
+                    <span style="text-align:right;font:500 10px ui-monospace,monospace;letter-spacing:.06em;color:{{ r.syncColor }}">{{ r.sync }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font:500 9px ui-monospace,monospace;letter-spacing:.14em;color:#5c7186;margin-top:8px">K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE".</div>
+            </div>
+          </div>
+          <div style="flex:1 1 280px;max-width:400px">
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#090d12;border:1px solid #1c2733;border-bottom:none">
+              <span style="width:8px;height:8px;background:#ff5252;animation:linkBlink 1.6s infinite"></span>
+              <span style="font:700 10px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">EVENT FEED // LIVE</span>
+            </div>
+            <div style="border:1px solid #1c2733;background:#0a0e13;padding:8px;display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{ feed }}" as="ev" hint-placeholder-count="7">
+                <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:#0c1016;border-left:2px solid {{ ev.color }}">
+                  <span style="font:500 9px ui-monospace,monospace;color:#5c7186;font-variant-numeric:tabular-nums">{{ ev.t }}</span>
+                  <span style="flex:1;font:600 12px 'Chakra Petch';letter-spacing:.04em;color:#c7d3de">{{ ev.txt }}</span>
+                  <sc-if value="{{ ev.tag }}" hint-placeholder-val="{{ false }}">
+                    <span style="font:700 8px 'Chakra Petch';letter-spacing:.16em;color:#04121e;background:{{ ev.color }};padding:2px 6px">{{ ev.tag }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ A8 · RECAP ============ -->
+    <sc-if value="{{ showRecap }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="A8 Recap" style="animation:scanIn .25s ease-out">
+        <div style="background:linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,#0e141b,#0a0e13);border:1px solid #1c2733;padding:22px 26px;display:flex;flex-wrap:wrap;align-items:center;gap:18px 44px;margin-bottom:18px;position:relative"
+             style-before="content:'';position:absolute;top:6px;left:6px;width:18px;height:18px;border-top:2px solid #ffd23f;border-left:2px solid #ffd23f"
+             style-after="content:'';position:absolute;bottom:6px;right:6px;width:18px;height:18px;border-bottom:2px solid #ffd23f;border-right:2px solid #ffd23f">
+          <div>
+            <div style="font:500 9px ui-monospace,monospace;letter-spacing:.28em;color:#5c7186">[ A8 // MATCH COMPLETE · TDM · 10:00 ]</div>
+            <div style="font:700 46px 'Oswald';letter-spacing:.08em;line-height:1.15;margin-top:6px"><span style="background:#ffd23f;color:#04121e;padding:0 12px">YELLOW</span> WINS</div>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:12px">
+            <span style="font:700 44px 'Oswald';font-variant-numeric:tabular-nums;color:#ffd23f">25</span>
+            <span style="font:600 20px 'Oswald';color:#5c7186">—</span>
+            <span style="font:700 44px 'Oswald';font-variant-numeric:tabular-nums;color:#3a86ff">21</span>
+          </div>
+          <span style="flex:1"></span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button style="font:700 12px 'Chakra Petch';letter-spacing:.18em;padding:11px 22px;background:#39b4ff;color:#04121e;border:none;cursor:pointer;clip-path:polygon(8px 0,100% 0,100% 100%,0 100%,0 8px)" style-hover="background:#7fd0ff">⬇ EXPORT CSV</button>
+            <button style="font:600 12px 'Chakra Petch';letter-spacing:.18em;padding:11px 22px;background:transparent;color:#8aa0b4;border:1px solid #1c2733;cursor:pointer" style-hover="border-color:#39b4ff">NEW MATCH</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span style="font:700 11px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">HONORS</span>
+          <span style="flex:1;height:1px;background:#1c2733"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px;margin-bottom:22px">
+          <sc-for list="{{ medals }}" as="md" hint-placeholder-count="7">
+            <div style="background:#0c1016;border:1px solid #1c2733;border-top:2px solid {{ md.color }};padding:12px 14px;display:flex;flex-direction:column;gap:4px;clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)">
+              <span style="font:500 9px ui-monospace,monospace;letter-spacing:.22em;color:{{ md.color }}">{{ md.award }}</span>
+              <span style="font:700 19px 'Oswald';letter-spacing:.08em">{{ md.player }}</span>
+              <span style="font:500 10px ui-monospace,monospace;letter-spacing:.1em;color:#5c7186">{{ md.stat }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span style="font:700 11px 'Chakra Petch';letter-spacing:.28em;color:#8aa0b4">FULL STATS</span>
+          <span style="flex:1;height:1px;background:#1c2733"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <div style="min-width:640px">
+            <div style="display:grid;grid-template-columns:minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(120px,1fr);gap:0 10px;padding:8px 14px;background:#090d12;border:1px solid #1c2733;font:500 9px ui-monospace,monospace;letter-spacing:.18em;color:#5c7186">
+              <span>OPERATOR</span><span style="text-align:right">K</span><span style="text-align:right">D</span><span style="text-align:right">A</span><span style="text-align:right">K/D</span><span style="text-align:right">ACC</span><span style="text-align:right">STK</span><span>MEDALS</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">
+              <sc-for list="{{ recapRows }}" as="r" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(120px,1fr);gap:0 10px;align-items:center;padding:9px 14px;background:{{ r.bg }};border:1px solid #131c26;border-left:3px solid {{ r.teamColor }}">
+                  <span style="font:700 14px 'Chakra Petch';letter-spacing:.1em">{{ r.name }}</span>
+                  <span style="text-align:right;font:700 16px 'Oswald';font-variant-numeric:tabular-nums">{{ r.k }}</span>
+                  <span style="text-align:right;font:600 15px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.d }}</span>
+                  <span style="text-align:right;font:600 15px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.a }}</span>
+                  <span style="text-align:right;font:600 14px 'Oswald';font-variant-numeric:tabular-nums">{{ r.kd }}</span>
+                  <span style="text-align:right;font:600 14px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.acc }}</span>
+                  <span style="text-align:right;font:600 14px 'Oswald';font-variant-numeric:tabular-nums;color:#8aa0b4">{{ r.stk }}</span>
+                  <span style="font:500 10px ui-monospace,monospace;letter-spacing:.1em;color:#ffd23f">{{ r.medals }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;gateDemo&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;HOLD&quot;, &quot;GO&quot;], &quot;default&quot;: &quot;HOLD&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Demo state&quot;},
+  &quot;musterDensity&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;roomy&quot;, &quot;dense&quot;], &quot;default&quot;: &quot;roomy&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Layout variants&quot;},
+  &quot;weaponGallery&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;tiles&quot;, &quot;list&quot;], &quot;default&quot;: &quot;tiles&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Layout variants&quot;}
+}">
+class Component extends DCLogic {
+  state = { phase: 'muster', selPlayer: 1, selWeapon: 1, selMode: 0, teams: {}, armed: false };
+
+  renderVals() {
+    const acc = '#39b4ff', ok = '#2ecc71', warn = '#ffb020', bad = '#ff5252',
+      dim = '#5c7186', line = '#1c2733', panel = '#0c1016',
+      TEAM = { blue: '#3a86ff', yellow: '#ffd23f', red: '#ff5252', green: '#2ecc71', ffa: '#e8eef5' };
+    const go = this.props.gateDemo === 'GO';
+    const dense = this.props.musterDensity === 'dense';
+    const listMode = this.props.weaponGallery === 'list';
+
+    const PH = [['muster','ARMORY'],['build','BUILD'],['kit','KIT'],['lobby','LOBBY'],['live','LIVE'],['recap','RECAP']];
+    const curIdx = PH.findIndex(p => p[0] === this.state.phase);
+    const phases = PH.map(([id, label], i) => {
+      const active = this.state.phase === id, enabled = true;
+      return {
+        label,
+        num: '0' + (i + 1),
+        go: enabled ? () => this.setState({ phase: id }) : () => {},
+        bg: active ? '#0c1420' : 'transparent',
+        ul: active ? acc : 'transparent',
+        color: active ? '#e8eef5' : enabled ? '#8aa0b4' : 'rgba(92,113,134,.45)',
+        numColor: active ? acc : 'rgba(92,113,134,.7)',
+        cursor: enabled ? 'pointer' : 'default',
+      };
+    });
+    const phaseReadout = '0' + (curIdx + 1) + '/06 ' + PH[curIdx][1];
+
+    const GUNS = [
+      { name:'GUN-A', tail:'3D4F', s:'g', batt:87, link:'2s' },
+      { name:'GUN-B', tail:'91C2', s:'g', batt:92, link:'1s' },
+      { name:'GUN-C', tail:'7A10', s:'g', batt:64, link:'3s' },
+      { name:'GUN-D', tail:'22E8', s: go?'g':'r', batt: go?78:null, link: go?'3s':'4m' },
+      { name:'GUN-E', tail:'5D77', s:'g', batt:71, link:'2s' },
+      { name:'GUN-F', tail:'A0B3', s:'a1', batt:null, link:'8s' },
+      { name:'GUN-G', tail:'4F19', s:'g', batt:88, link:'1s' },
+      { name:'GUN-H', tail:'C3E5', s:'a2', batt:59, link:'52s' },
+    ];
+    const guns = GUNS.map(g => {
+      const red = g.s === 'r', amber = g.s === 'a1' || g.s === 'a2';
+      const color = red ? bad : amber ? warn : ok;
+      return {
+        name: g.name, tail: g.tail, color,
+        word: red ? 'BLOCKED' : amber ? 'CHECK' : 'READY',
+        pwr: red ? 'OFF' : 'ON', pwrColor: red ? bad : '#e8eef5',
+        hs: red ? '—' : 'CONNECTED', hsColor: red ? dim : '#e8eef5',
+        batt: g.batt == null ? '—' : g.batt + '%',
+        battW: (g.batt || 0) + '%',
+        battColor: g.batt == null ? dim : g.batt < 30 ? bad : g.batt < 60 ? warn : ok,
+        link: red ? 'LAST SEEN ' + g.link : g.link + ' AGO',
+        linkColor: red ? bad : g.s === 'a2' ? warn : '#8aa0b4',
+        reason: red ? 'NOT POWERED — BLOCKS START'
+          : g.s === 'a1' ? 'BATTERY UNREAD — DOES NOT BLOCK'
+          : g.s === 'a2' ? 'STALE LINK (52s) — DOES NOT BLOCK' : null,
+        reasonBg: red ? 'rgba(255,82,82,.1)' : 'rgba(255,176,32,.08)',
+      };
+    });
+    const nGreen = guns.filter(g => g.word === 'READY').length;
+    const nAmber = guns.filter(g => g.word === 'CHECK').length;
+    const nRed = guns.filter(g => g.word === 'BLOCKED').length;
+
+    const MODES = [
+      ['TEAM DEATHMATCH','TDM','Teams score per elimination',
+       'Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.',
+       '2–4 TEAMS','SCORE CAP / TIME','ON · TIMED'],
+      ['FREE-FOR-ALL','FFA','Every operator for themselves',
+       'No teams — everyone is a target. Each elimination scores a point. First to the frag limit, or the top score when time expires, wins.',
+       'NONE · ALL VS ALL','FRAG LIMIT / TIME','ON · TIMED'],
+      ['INFECTION','INF','One infected; survive the spread',
+       'One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.',
+       'SURVIVORS VS INFECTED','SURVIVE THE CLOCK','INFECTED ONLY'],
+      ['LAST MAN STANDING','LMS','Limited lives, last alive wins',
+       'Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.',
+       'SOLO OR SQUADS','LAST ALIVE','OFF · LIVES'],
+      ['EXTRACTION','EXT','Reach the objective and hold it',
+       'Attackers push to the extraction point and hold it through the capture timer. Defenders deny until time expires. Sides swap between rounds.',
+       '2 TEAMS','HOLD TO CAPTURE','ON · TIMED'],
+    ];
+    const modes = MODES.map(([name, abbr, desc], i) => {
+      const sel = this.state.selMode === i;
+      return {
+        name, abbr, desc, active: sel,
+        pick: () => this.setState({ selMode: i }),
+        bg: sel ? 'rgba(57,180,255,.06)' : panel,
+        bd: sel ? acc : line,
+        top: sel ? acc : 'transparent',
+        tileBg: sel ? acc : '#090d12',
+        tileInk: sel ? '#04121e' : '#8aa0b4',
+      };
+    });
+    const sm = MODES[this.state.selMode];
+    const selMode = { name: sm[0], brief: sm[3], teams: sm[4], win: sm[5], respawn: sm[6] };
+
+    const W = [
+      ['Assault Rifle','AR',32,12,1.4,55,85,55],['Burst Rifle','AR',36,6,1.7,65,70,80],
+      ['Sniper Rifle','SNIPER',4,6,1.7,90,20,100],['Shotgun','SHOTGUN',6,4,0.4,85,25,25],
+      ['SMG','SMG',72,4,2.5,35,95,40],['AMR','SNIPER',14,4,1.4,85,55,85],
+      ['Energy Launcher','HEAVY',1,6,1.4,100,10,55],['Rail Gun','HEAVY',1,6,2.4,100,10,85],
+      ['Rocket Launcher','HEAVY',2,4,1.2,100,12,60],['Laser Cannon','HEAVY',4,2,2.0,95,18,85],
+      ['Charge Rifle','LMG',100,2,2.5,80,60,60],['Bolt Rifle','AR',18,10,2.0,60,50,65],
+      ['Plasma Sniper','SNIPER',10,8,2.0,85,30,90],['Force Rifle','AR',36,4,1.7,55,75,60],
+      ['Stinger','AR',18,4,1.7,80,45,70],['Energy Rifle','LMG',300,2,2.4,40,90,50],
+      ['Suppressor','SMG',48,6,2.0,75,65,55],['Ion Sniper','SNIPER',2,6,2.0,85,15,90],
+    ];
+    const CLS_COLOR = { AR:'#39b4ff', SMG:'#7fd0ff', SNIPER:'#ffd23f', SHOTGUN:'#ff8c42', HEAVY:'#ff5252', LMG:'#2ecc71' };
+    const weapons = W.map(([name, cls, clip, mags, reload, dmg, rpm, rng], i) => {
+      const sel = this.state.selWeapon === i;
+      return {
+        name, cls, clip, reload,
+        reserve: clip * mags,
+        dmgW: dmg + '%', rpmW: rpm + '%', rngW: rng + '%',
+        clsColor: CLS_COLOR[cls],
+        pick: () => this.setState({ selWeapon: i }),
+        bg: sel ? 'rgba(57,180,255,.08)' : panel,
+        bd: sel ? acc : line,
+      };
+    });
+    const selWeapon = weapons[this.state.selWeapon];
+
+    const PLAYERS = [
+      ['REAPER','blue','GUN-A-3D4F','kitted'],['VIPER','yellow','GUN-B-91C2','fitting'],
+      ['NOMAD','blue','GUN-C-7A10','kitted'],['GHOST','yellow','GUN-E-5D77','trying'],
+      ['HAVOC','blue','GUN-G-4F19','kitted'],['SABLE','yellow','GUN-F-A0B3','waiting'],
+      ['ONYX','blue','GUN-H-C3E5','waiting'],['DRIFT','yellow','GUN-D-22E8','waiting'],
+    ];
+    const players = PLAYERS.map(([name, team0, gun, st], i) => {
+      const sel = this.state.selPlayer === i;
+      const team = this.state.teams[i] || team0;
+      return {
+        name, gun,
+        teamColor: TEAM[team], team,
+        trying: st === 'trying',
+        st: st === 'kitted' ? 'KITTED' : st === 'fitting' ? 'FITTING' : st === 'waiting' ? '—' : '',
+        stColor: st === 'kitted' ? ok : st === 'fitting' ? acc : dim,
+        sel: () => this.setState({ selPlayer: i }),
+        bg: sel ? 'rgba(57,180,255,.06)' : 'transparent',
+        bd: sel ? acc : 'transparent',
+      };
+    });
+    const sp = players[this.state.selPlayer];
+    const selPlayer = { name: sp.name, gun: sp.gun, teamColor: sp.teamColor };
+    const spIdx = this.state.selPlayer;
+    const teamChips = ['blue', 'yellow', 'red', 'green', 'ffa'].map(t => {
+      const on = sp.team === t;
+      return {
+        label: t === 'ffa' ? 'FFA' : t.toUpperCase(),
+        bg: on ? TEAM[t] : 'transparent',
+        ink: on ? '#04121e' : TEAM[t],
+        bd: on ? TEAM[t] : '#1c2733',
+        set: () => this.setState({ teams: { ...this.state.teams, [spIdx]: t } }),
+      };
+    });
+
+    // ---- A5 lobby ----
+    const READY = { REAPER:1, VIPER:1, NOMAD:1, GHOST:1, HAVOC:1, SABLE:0, ONYX:1, DRIFT:0 };
+    const lobbyCols = ['blue', 'yellow'].map(t => {
+      const members = players.filter(p => p.team === t).map(p => ({
+        name: p.name, gun: p.gun,
+        rdWord: READY[p.name] ? 'READY' : 'WAIT',
+        rdColor: READY[p.name] ? ok : dim,
+        rdBd: READY[p.name] ? 'rgba(46,204,113,.5)' : line,
+      }));
+      return { name: t.toUpperCase() + ' TEAM', color: TEAM[t], members, count: members.length };
+    });
+    // ---- A6 nodes ----
+    const nodes = players.map(p => {
+      const ack = p.name !== 'DRIFT';
+      return {
+        gun: p.gun.split('-')[0], player: p.name,
+        color: ack ? ok : warn,
+        word: ack ? 'ARMED' : 'NO ACK',
+        t: ack ? 'T-02:41' : '——:——',
+        tColor: ack ? '#e8eef5' : warn,
+        sub: ack ? 'COUNTING · AUTONOMOUS' : 'RETRYING · LAST SEEN 40s',
+        subColor: ack ? '#5c7186' : warn,
+      };
+    });
+    // ---- A7 live ----
+    const LIVE = [
+      ['VIPER','yellow',8,2,3,42,5,'alive','2s'],
+      ['REAPER','blue',5,3,2,35,1,'alive','2s'],
+      ['GHOST','yellow',4,4,0,33,0,'alive','40s'],
+      ['NOMAD','blue',4,4,1,41,2,'alive','3s'],
+      ['HAVOC','blue',3,4,2,31,0,'dead','1s'],
+      ['SABLE','yellow',3,3,2,29,1,'alive','5s'],
+      ['ONYX','blue',2,5,1,24,0,'alive','2s'],
+      ['DRIFT','yellow',1,5,1,22,0,'stale','1m12s'],
+    ];
+    const liveRows = LIVE.map(([name, team, k, d, a, acc, stk, st, sync]) => ({
+      name, k, d, a,
+      kd: (k / Math.max(d, 1)).toFixed(1),
+      acc: acc + '%', stk,
+      stkColor: stk >= 3 ? warn : '#8aa0b4',
+      teamColor: TEAM[team],
+      bg: st === 'dead' ? 'rgba(255,82,82,.05)' : '#0c1016',
+      status: st === 'alive' ? 'ALIVE' : st === 'dead' ? 'RESPAWN 0:07' : 'LAST KNOWN',
+      stColor: st === 'alive' ? ok : st === 'dead' ? bad : warn,
+      sync: st === 'stale' ? sync + ' AGO' : sync,
+      syncColor: sync === '40s' ? warn : st === 'stale' ? warn : '#3a4a5c',
+    }));
+    const blueScore = LIVE.filter(r => r[1] === 'blue').reduce((s, r) => s + r[2], 0);
+    const yellowScore = LIVE.filter(r => r[1] === 'yellow').reduce((s, r) => s + r[2], 0);
+    const feed = [
+      { t:'05:48', txt:'VIPER eliminated HAVOC', tag:'DOUBLE KILL', color: warn },
+      { t:'05:41', txt:'REAPER eliminated DRIFT', tag:null, color: line },
+      { t:'05:22', txt:'GHOST eliminated ONYX', tag:null, color: line },
+      { t:'05:03', txt:'NOMAD eliminated SABLE', tag:null, color: line },
+      { t:'04:47', txt:'VIPER eliminated REAPER', tag:'STREAK ×5', color: warn },
+      { t:'04:12', txt:'SYNC POINT — 7/8 NODES RECONCILED', tag:null, color: acc },
+      { t:'00:14', txt:'GHOST drew FIRST BLOOD on ONYX', tag:'FIRST BLOOD', color: bad },
+    ];
+    // ---- A8 recap ----
+    const RECAP = [
+      ['VIPER','yellow',12,4,5,38,5,'MVP · MOST KILLS · MULTIKILL'],
+      ['REAPER','blue',8,5,2,35,3,'BEST K/D'],
+      ['GHOST','yellow',7,6,2,33,2,'FIRST BLOOD'],
+      ['NOMAD','blue',6,5,2,41,2,'SHARPSHOOTER'],
+      ['HAVOC','blue',5,6,3,31,1,''],
+      ['SABLE','yellow',4,5,3,29,1,'SURVIVOR'],
+      ['ONYX','blue',2,8,1,24,0,''],
+      ['DRIFT','yellow',2,7,1,22,0,''],
+    ];
+    const recapRows = RECAP.map(([name, team, k, d, a, acc, stk, medals]) => ({
+      name, k, d, a,
+      kd: (k / Math.max(d, 1)).toFixed(1),
+      acc: acc + '%', stk, medals: medals || '—',
+      teamColor: TEAM[team],
+      bg: medals.indexOf('MVP') === 0 ? 'rgba(255,210,63,.05)' : '#0c1016',
+    }));
+    const medals = [
+      { award:'MVP', player:'VIPER', stat:'12 K · 3.0 K/D · ×5 STREAK', color:'#ffd23f' },
+      { award:'MOST KILLS', player:'VIPER', stat:'12 ELIMINATIONS', color: acc },
+      { award:'BEST K/D · NON-MVP', player:'REAPER', stat:'K/D 1.6 · 8 K', color: acc },
+      { award:'SHARPSHOOTER', player:'NOMAD', stat:'41% ACCURACY', color: acc },
+      { award:'SURVIVOR', player:'SABLE', stat:'LONGEST TIME ALIVE', color: acc },
+      { award:'FIRST BLOOD', player:'GHOST', stat:'AT 00:14', color: bad },
+      { award:'MULTIKILL', player:'VIPER', stat:'DOUBLE KILL ×2', color: warn },
+    ];
+
+    return {
+      phases, phaseReadout, guns, nGreen, nAmber, nRed,
+      showLobby: this.state.phase === 'lobby',
+      lobbyAssign: !this.state.armed,
+      lobbyArmed: this.state.armed,
+      arm: () => this.setState({ armed: true }),
+      disarm: () => this.setState({ armed: false }),
+      lobbyCols, nodes,
+      showLive: this.state.phase === 'live',
+      blueScore, yellowScore, liveRows, feed,
+      showRecap: this.state.phase === 'recap',
+      medals, recapRows,
+      redInk: nRed ? bad : dim,
+      gateWord: nRed ? 'HOLD' : 'GO',
+      gateBg: nRed ? bad : ok,
+      gateNote: nRed ? 'GUN-D BLOCKS START — POWER IT ON' : 'NO REDS — START WHEN READY',
+      musterMin: dense ? '198px' : '248px',
+      musterGap: dense ? '8px' : '12px',
+      musterPad: dense ? '10px 12px' : '14px',
+      showMuster: this.state.phase === 'muster',
+      showBuild: this.state.phase === 'build',
+      showKit: this.state.phase === 'kit',
+      modes, selMode, weapons, selWeapon, players, selPlayer, teamChips,
+      galleryTiles: !listMode, galleryList: listMode,
+    };
+  }
+}
+</script>
+</body>
+</html>
