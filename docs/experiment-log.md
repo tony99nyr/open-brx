@@ -1186,6 +1186,8 @@ command). **`btsnoop.py` now keys streams on the ACL connection handle** — it 
 merged both streams and reassembled into garbage *silently*; pinned by `test_btsnoop_multigun.py`.
 All 8 raw traces committed to `protocol/captures/raw/` with an index (scanned clean of headset PINs).
 
-**OPEN:** only **one** BLE connection is in `cap8`, yet **both** taggers announced the score line.
-Either the second gun had its own phone (Callsign's normal model — §7g used two phones on 08-23) or
-guns share score state over nRF. Unconfirmed; assume MC must drive every gun until tested.
+**RESOLVED same session:** only one BLE connection is in `cap8`, yet both taggers announced — the
+second tagger was on **its own phone** (operator-confirmed). Callsign is one-phone-per-player; each
+phone scored independently and sent `VB17` to its own gun. **No gun-to-gun state sharing exists**, so
+there is no nRF score channel to chase. MC driving every gun individually is the *correct* design,
+and it does so from one host rather than a phone per player.

@@ -104,10 +104,10 @@ capture at 295 s and 325 s. Two independent captures, two days apart.
 
 ## Still open from this capture
 
-- **How did the *second* tagger announce?** Only **one** BLE connection is in the trace, yet both
-  taggers spoke the score line. Either the second gun had its own phone (Callsign's normal
-  one-phone-per-player model, and §7g says a two-phone setup was used on 2026-08-23), or guns
-  propagate score state to each other over nRF. **Unconfirmed — do not design around either
-  answer yet.** If it's the latter, some announcements are free; if not, MC must drive every gun
-  individually (which it can, and which is the safe assumption).
+- ~~How did the *second* tagger announce?~~ **RESOLVED (Tony, same session):** the second tagger
+  was connected to **its own phone** — Callsign's normal one-phone-per-player model. So each phone
+  independently tracked the score and sent `VB17` to *its own* gun. **Nothing propagates between
+  guns; there is no nRF score sharing to chase.** This confirms the MC design directly: driving
+  every gun individually is correct, not a workaround — and MC does it from one host instead of
+  needing a phone per player.
 - `VB17`'s exact wording, and the rest of the `VB*` announcer family → the voice-pack mapping (P3).

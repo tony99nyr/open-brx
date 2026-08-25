@@ -987,6 +987,15 @@ Corroboration: the identical `$SFLASH → $PLAY,,4,6,V3A → VB17` pattern is pr
 **2026-08-23** two-tagger capture (lines 99–101, 172–173). We had the evidence for two days and
 misread it.
 
+### Each phone drives only its own gun
+
+`cap8` contains exactly **one** BLE connection, yet **both** taggers announced the score line. The
+second tagger was on **its own phone** (confirmed by the operator) — Callsign is one-phone-per-player,
+and each phone independently tracked the score and sent `VB17` to the gun it owns. **No state
+propagates gun-to-gun**, over nRF or anything else. A host that wants every player to hear a score
+line must send it to every gun — which is exactly what Mission Control, connected to the whole
+fleet from one machine, is positioned to do.
+
 ## 8. Safe testing notes
 
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
