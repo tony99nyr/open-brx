@@ -886,3 +886,17 @@ armory: name each gun uniquely → the two diagnostic tiers link up.
 Serials are sequential across the fleet (values redacted — real PINs live only in `~/.brx-mcp/armory.json`, never the repo).
 **Bug fixed:** the armory table used `✓`/`·`; the Windows console is cp1252 and threw `UnicodeEncodeError`
 mid-row (which bubbled up as a usage dump). Table is now ASCII (`yes`/`no`).
+
+### 2026-08-24 — CONFIRMED: `$NAME` persists over BLE (cable-free rename)
+Open question resolved. Sent `$STOP,* → $PLAYX,0,* → $NAME,Alpha,*` over BLE to a stock gun
+(DF:F5:DA:08:94:98, was `Tactix-9498`). The advert did NOT change live; **after a power-cycle it came
+back as `Alpha-9498`.** So:
+- **`$NAME` writes the PERSISTENT gun name over BLE** — no USB/`SETUP` needed to rename a gun.
+- **The BLE advertised name is `<GunName>-<MACtail>` and only refreshes on boot** (set from the stored
+  name at power-on). To verify a rename, power-cycle then re-scan.
+- New CLI `rename <address> <name>` (mirrors the app ritual, no `$PHONE` so the on-gun menu isn't locked).
+
+**Impact:** the gamertag/`$NAME` feature genuinely renames guns for good. Mission Control can give each gun
+a **unique** name over BLE at bench prep → the two stock "Tactix" guns become distinguishable AND
+correlate across the USB-armory and BLE tiers by name. `SETUP` (USB) is still needed only for the
+headset-pairing PIN + PlayerID (P2), NOT for the display name.

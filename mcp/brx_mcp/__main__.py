@@ -21,6 +21,7 @@
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
   python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
+  python -m brx_mcp rename <address> <name>             # set a tagger's persistent name over BLE ($NAME); power-cycle to see the advert update
   python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
   python -m brx_mcp armory                              # QUERY the cabled tagger + print the accumulated gun<->headset inventory
 """
@@ -1049,6 +1050,30 @@ def _game_sim(mode: str) -> None:
     return asyncio.run(run())
 
 
+async def _rename(address: str, name: str) -> None:
+    """Set a tagger's persistent name over BLE via `$NAME` (the app's rename path).
+    Mirrors the app ritual ($STOP → $PLAYX,0 → $NAME) — no $PHONE, so the on-gun
+    menu isn't locked. Verify with a re-scan / USB QUERY afterwards."""
+    from .ble import ConnectionManager
+    from .modes.driver import clean_callsign
+    nm = clean_callsign(name)
+    if not nm:
+        print("empty/invalid name after sanitize", file=sys.stderr); return
+    mgr = ConnectionManager()
+    await mgr.connect(address, "rn")
+    try:
+        for cmd in ("$STOP,*", "$PLAYX,0,*", f"$NAME,{nm},*"):
+            r = await mgr.send("rn", cmd, reply_window_ms=200)
+            print(f">> {cmd}"
+                  + ("".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', []))))
+        await asyncio.sleep(0.4)
+    finally:
+        await mgr.disconnect("rn")
+    print(f"\n# sent $NAME,{nm},* to {address}. Power-cycle the gun, then re-scan "
+          f"(advert should read '{nm}-<MACtail>') or USB QUERY to confirm it persisted.",
+          file=sys.stderr)
+
+
 async def _play(mode: str, addresses: list[str], kvs: list[str]) -> None:
     from .modes import run_live
     # a gun token may carry a gamertag as ADDR@Gamertag → push it via $NAME
@@ -1133,6 +1158,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         port = args[2] if len(args) > 2 and not args[2].isdigit() else None
         repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
         _ir_emit(bits, port, repeat)
+    elif cmd == "rename" and len(args) > 2:
+        asyncio.run(_rename(args[1], args[2]))
     elif cmd == "usb-query":
         _usb_query(args[1] if len(args) > 1 else None)
     elif cmd == "armory":
