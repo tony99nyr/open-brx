@@ -862,3 +862,17 @@ identity. The BLE `$QUERY` status array is a separate decode target (possible li
 **Unlocks:** an **armory inventory** — cable each tagger, `usb-query`, map tagger↔headset-sticker↔serial for
 match-day gear tracking (Mission Control bench-prep tier). **Not built:** `SETUP` (writes tagger id / re-pairs
 the headset → feeds P2 per-player identity) — deliberately deferred; it's factory provisioning, gate on confirm.
+
+### 2026-08-24 — 4-tagger BLE fleet: battery reliability tracks RSSI (persistent-connection fleet needed)
+Swept 4 powered taggers over BLE: **RocTheLegend-FE30** (D9:50:2F:98:FE:30, custom-named), **Tactix-9498**,
+**Tactix2-E20D** (D8:AE:5F:60:E2:0D), **Tactix-3D4F** (FE:AD:FD:10:3D:4F). All 4 discovered + reachable.
+**But only the strongest-signal one returned a battery** (RocTheLegend, rssi −62 → 68%); the three at
+−73…−77 dropped before their `$VOLTS` arrived (E20D read 48% on an earlier closer pass).
+
+**Root cause / design finding:** the serial one-shot `diagnose` (connect → wait ≤34 s for the 30 s-cadence
+`$VOLTS` → disconnect) is **unreliable on marginal links** — the ~6.6 s client drop (§7e) often kills the
+session before the first VOLTS on weaker-signal taggers. Firmware also missed on all 4 this pass (VERSION
+reply lost). **Fix for a robust fleet dashboard: hold PERSISTENT connections** (ConnectionManager keeps all
+taggers subscribed; collect VOLTS as they stream every 30 s + retry VERSION) instead of serial
+connect-diagnose-disconnect. Filed as a followup. **The reliable armory data is USB `usb-query`** (exact
+gun+head voltage, headset PIN) — cable each tagger; BLE battery % is a rough live gauge, best for near guns.
