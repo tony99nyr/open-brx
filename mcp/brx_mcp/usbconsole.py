@@ -234,6 +234,21 @@ def correlate(scan_entries: list) -> list:
     return bound
 
 
+def bind_address(serial: str, address: str, name: Optional[str] = None) -> bool:
+    """Bind a BLE MAC to an inventory record with certainty (isolation enroll: the
+    gun was the only one powered, so this address IS this serial). Optionally set the
+    name too. Marks name_confirmed=True (we know both facts). Returns True if bound."""
+    inv = load_inventory()
+    if serial not in inv:
+        return False
+    inv[serial]["ble_address"] = address
+    if name:
+        inv[serial]["gun_name"] = name
+    inv[serial]["name_confirmed"] = True
+    _save_inventory(inv)
+    return True
+
+
 def mark_rename(new_name: str, serial: Optional[str] = None,
                 address: Optional[str] = None) -> Optional[str]:
     """Record a just-sent rename: set the target record's gun_name to `new_name` and

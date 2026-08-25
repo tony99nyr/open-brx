@@ -185,3 +185,14 @@ def test_usb_requery_with_changed_name_clears_confirmation():
         _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Alpha"})
         assert _uc.load_inventory()["S1"]["name_confirmed"] is True
     _with_tmp_base(body)
+
+
+def test_bind_address_isolation():
+    def body():
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Tactix"})
+        assert _uc.bind_address("S1", "AA:98", name="Charlie") is True
+        r = _uc.load_inventory()["S1"]
+        assert r["ble_address"] == "AA:98" and r["gun_name"] == "Charlie"
+        assert r["name_confirmed"] is True                 # isolation → certain
+        assert _uc.bind_address("NOPE", "BB:00") is False  # unknown serial
+    _with_tmp_base(body)

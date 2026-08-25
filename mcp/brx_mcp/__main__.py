@@ -1068,6 +1068,47 @@ def _game_sim(mode: str) -> None:
     return asyncio.run(run())
 
 
+async def _enroll(name: str | None) -> None:
+    """Isolation enroll (for identical guns): power ON only the gun being enrolled,
+    cable it. Reads its serial over USB, scans BLE — the single tagger visible IS this
+    gun — binds serial↔address with certainty, and (optionally) renames it. No
+    name-matching needed, so it works even for indistinguishable stock guns."""
+    from .usbconsole import UsbConsole, save_backup, add_to_inventory, bind_address
+    from .ble import ConnectionManager
+    from .modes.driver import clean_callsign
+    nm = clean_callsign(name) if name else None
+    # 1. USB identity
+    try:
+        con = UsbConsole()
+    except Exception as e:  # noqa: BLE001
+        print(f"# no cabled tagger (Teensy VID 16C0): {e}", file=sys.stderr); return
+    rec = con.query(); con.close()
+    serial = rec.get("serial_head_pin")
+    if not serial:
+        print("# no serial over USB — recable and retry", file=sys.stderr); return
+    save_backup(rec); add_to_inventory(rec)
+    print(f"# USB identity: {serial}  (headset sticker should read {serial})", file=sys.stderr)
+    # 2. isolate on BLE — exactly one tagger must be powered
+    scan = await ConnectionManager().scan(8)
+    brx = [d for d in scan if d.get("has_uart_service")]
+    if len(brx) != 1:
+        names = ", ".join(f"{d['name'] or '?'}" for d in brx)
+        print(f"# found {len(brx)} tagger(s) on BLE [{names}] — power ON ONLY the gun you're "
+              f"enrolling (all others OFF), then re-run. {serial}'s USB identity is saved.",
+              file=sys.stderr)
+        return
+    address = brx[0]["address"]
+    print(f"# BLE isolated: {serial} <-> {address} (advert {brx[0]['name']!r})", file=sys.stderr)
+    # 3. rename over BLE (optional) — mark pending; the bind below confirms it
+    if nm:
+        await _rename(address, nm)
+    # 4. bind with certainty (isolation)
+    bind_address(serial, address, name=nm)
+    final = nm or rec.get("gun_name")
+    print(f"\n# ENROLLED {serial} as '{final}' @ {address}."
+          + ("  Power-cycle to refresh its BLE advert." if nm else ""), file=sys.stderr)
+
+
 async def _rename(address: str, name: str) -> None:
     """Set a tagger's persistent name over BLE via `$NAME` (the app's rename path).
     Mirrors the app ritual ($STOP → $PLAYX,0 → $NAME) — no $PHONE, so the on-gun
@@ -1201,6 +1242,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _ir_emit(bits, port, repeat)
     elif cmd == "rename" and len(args) > 2:
         asyncio.run(_rename(args[1], " ".join(args[2:])))   # keep multi-word names
+    elif cmd == "enroll":
+        asyncio.run(_enroll(" ".join(args[1:]) if len(args) > 1 else None))
     elif cmd == "usb-query":
         _usb_query(args[1] if len(args) > 1 else None)
     elif cmd == "armory":
