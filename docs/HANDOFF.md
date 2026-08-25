@@ -4,6 +4,16 @@
 then `docs/experiment-log.md` (shared lab notebook — **append after every session**).
 Protocol ground truth: `protocol/brx-protocol.md`.
 
+> **⚡ LATEST (2026-08-25) — read the two newest `experiment-log.md` entries before hardware work.**
+> Big shifts since this doc was written: (1) **the "feedback fork" is resolved** — BLE-only Mission
+> Control = authoritative scoring + `$PLAY`-driven native-feel *audio*; green-sight is nRF-only
+> (FOLLOWUPS **B18**). (2) **Headset-present is a hard pre-game join-gate** (**B18b**) — a dark headset
+> silently blocks a gun (was the real cause of "only 2 of 3 armed"). (3) **Direct-BLE 3-gun synced arm
+> is HW-proven** (**B10**) — the old "pilot-only" call is dead. (4) **The BRX IR shot protocol is
+> decoded** (`protocol/brx-ir-protocol.md`) — per-player id is in the IR (**P2** solvable via VS1838B).
+> Next probe: the Callsign 2-gun BLE capture (`docs/handoff-callsign-nrf-capture.md`). Bench plan for
+> the incoming IR/nRF kit: `docs/bench-plan-hardware.md`.
+
 ## Machine roles (NEW — this changed today)
 
 | Machine | Role | Notes |

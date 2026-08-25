@@ -37,8 +37,8 @@ static const uint32_t LED_HOLD_MS = 40;  // keep the visible LED on this long (s
 static uint32_t MARK_ONE   = 1000;  // logic 1 mark (us)
 static uint32_t MARK_ZERO  = 500;   // logic 0 mark (us)
 static uint32_t BIT_SPACE  = 500;   // inter-bit space (us)
-static uint32_t START_MARK = 0;     // set from capture if there's a distinct start bit
-static uint32_t START_SPACE = 0;
+static uint32_t START_MARK = 2000;  // ~2 ms sync mark — REQUIRED: a stock gun drops a
+static uint32_t START_SPACE = 500;  // sync-less frame (decoders gate on pulseIn(LOW)>1500us).
 
 inline void carrierOn()  { ledcWrite(IR_TX_PIN, CARRIER_DUTY); }
 inline void carrierOff() { ledcWrite(IR_TX_PIN, 0); }
@@ -48,13 +48,15 @@ void space(uint32_t us) { delayMicroseconds(us); }
 
 void sendFrame(const String& bits) {
   digitalWrite(STATUS_LED, HIGH);  // visible "transmitting" indicator
-  noInterrupts();                  // keep the µs timing tight
+  // NB: no frame-long noInterrupts() — the 38 kHz carrier is hardware (LEDC) and
+  // delayMicroseconds() is a cycle-count busy-wait, so both work with interrupts
+  // enabled; holding them off for a whole ~37 ms frame starves the other core /
+  // risks the interrupt WDT on TXN bursts. VS1838B tolerates the small jitter.
   if (START_MARK) { mark(START_MARK); if (START_SPACE) space(START_SPACE); }
   for (size_t i = 0; i < bits.length(); i++) {
     mark(bits[i] == '1' ? MARK_ONE : MARK_ZERO);
     space(BIT_SPACE);
   }
-  interrupts();
   delay(LED_HOLD_MS);              // hold the LED so a single frame is clearly visible
   digitalWrite(STATUS_LED, LOW);
 }
@@ -98,6 +100,7 @@ void loop() {
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') { if (buf.length()) { handleLine(buf); buf = ""; } }
-    else buf += c;
+    else if (buf.length() < 128) buf += c;   // cap: never grow unbounded on a line with no newline
+    else buf = "";
   }
 }

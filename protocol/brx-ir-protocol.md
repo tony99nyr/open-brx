@@ -28,9 +28,10 @@ tag. Credit LaserTagMods (JEDGE/JBOX) for the protocol discovery. **Status:** hi
 | **D** | 8 | damage amount |
 | **C** | 1 | critical-hit flag |
 | **U** | 2 | unknown / reserved (node1 reads but doesn't use) |
-| **Z** | 2–3 | parity / check |
+| **Z** | 2 | parity (Z0 ≠ Z1); a trailing short pulse (<250 µs) then marks end-of-frame |
 
-4+6+2+8+1+2+2 = **25 bits**.
+4+6+2+8+1+2+2 = **25 bits** (node1 reads a 26th "Z2" pulse only to confirm it is short — the
+end-of-frame check, not a data bit).
 
 - **Team decode (T[0],T[1] vs 750 µs):** node1 maps the 2 team bits to red=1 / blue=2 / green=3 /
   yellow=4 (its own base-side numbering; e.g. Yellow = `T[0] > 750 && T[1] < 750`). Note this is the

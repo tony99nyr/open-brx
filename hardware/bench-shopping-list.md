@@ -41,8 +41,8 @@ should serve.
 
 | Item | Why | Notes / gotchas | Status |
 |---|---|---|---|
-| **nRF24L01+ PA/LNA** module (w/ external antenna) | The mesh radio the guns use; PA/LNA = arena range | Get 2–3 (need ≥2 to test a link). **The one thing still to buy.** ~$7–10 multipack | ⬜ **order** |
-| **nRF24L01 breakout/adapter board** w/ onboard **3.3V reg + decoupling cap** | nRF24 browns out on TX from a bare 3.3V pin | The #1 nRF24 failure mode. Or substitute a **10µF cap** across the module's VCC/GND (ELEGOO kit ✅) | ⬜ opt |
+| **nRF24L01+ PA/LNA** module (w/ external antenna) | The mesh radio the guns use; PA/LNA = arena range | **CHOSEN: Aideepen 3-pack** (see the CHOSEN block above) | ✅ chosen |
+| **nRF24L01 breakout/adapter board** w/ onboard **3.3V reg + decoupling cap** | nRF24 browns out on TX from a bare 3.3V pin | **Bundled in the Aideepen kit** (3 adapters). The #1 nRF24 failure mode, solved | ✅ chosen |
 | **ESP32-S3** dev board | Drives the nRF24 over SPI; the Companion brain (JEDGE uses ESP32) | 3.3V logic — matches nRF24 | ✅ 2-pack arriving |
 | **Dupont jumpers** (F-F) + **breadboard** + caps | SPI wiring + power smoothing | ELEGOO kit | ✅ arriving |
 

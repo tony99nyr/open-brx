@@ -12,6 +12,11 @@ import time
 
 from brx_mcp.ble import ConnectionManager
 
+try:  # Windows cp1252 consoles crash on a stray non-ASCII byte in an RX frame
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except Exception:
+    pass
+
 
 def _t(a):
     return a.replace(":", "")[-4:]
@@ -22,6 +27,9 @@ async def main():
     secs = 180
     if args and args[-1].isdigit():
         secs = int(args[-1]); args = args[:-1]
+    if not args:
+        print("usage: python passive_listen.py <address> [seconds]", file=sys.stderr)
+        return
     addr = args[0]
     mgr = ConnectionManager()
     tag = _t(addr)

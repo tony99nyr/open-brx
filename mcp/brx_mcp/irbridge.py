@@ -34,6 +34,13 @@ class IRFrame:
             "overflow": self.overflow,
         }
 
+    def shot(self) -> dict:
+        """Field-decode this frame (protocol/brx-ir-protocol.md). Prefers the
+        firmware's decoded `bits`; falls back to decoding the raw pulses itself,
+        so we don't depend on the ESP32's DECODE line being correct."""
+        bits = self.bits or pulses_to_bits(self.durations_us)
+        return decode_word(bits)
+
 
 # Tolerant: `edges=` is optional; the us=[...] list is what matters.
 _RAW = re.compile(r"^RAW\s+(\d+).*?us=\[([0-9,]*)\]")
@@ -100,6 +107,74 @@ def diff_bits(a: str, b: str) -> str:
     out = "".join("." if a[i] == b[i] else "X" for i in range(n))
     if len(a) != len(b):
         out += f"  (len {len(a)} vs {len(b)})"
+    return out
+
+
+# --- BRX IR word: pulses -> bits -> fields (protocol/brx-ir-protocol.md) ------ #
+# Pure + hardware-free, so captures decode/validate offline and the field layout
+# is available host-side (per-player attribution, FOLLOWUPS P2).
+SYNC_MIN_US = 1500   # a mark >= this is the ~2 ms sync (matches ir_capture.ino)
+MARK_ONE_US = 750    # a payload mark > this is a 1, else 0
+MARK_MIN_US = 200    # ignore glitches shorter than this
+PAYLOAD_BITS = 25
+_IR_FIELDS = {
+    "bullet": (0, 4), "player": (4, 10), "team": (10, 12), "damage": (12, 20),
+    "crit": (20, 21), "unknown": (21, 23), "parity": (23, 25),
+}
+
+
+def pulses_to_bits(durations_us) -> str:
+    """Decode the alternating mark/space duration list (ir_capture's `us=[...]`)
+    into the payload bits — sync-gated, independent of the firmware's DECODE line.
+    Marks are the even indices; the first mark (~2 ms) is the sync and is stripped.
+    Returns "" if there is no leading sync (not a decodable BRX frame start)."""
+    marks = [d for i, d in enumerate(durations_us) if i % 2 == 0]
+    if not marks or marks[0] < SYNC_MIN_US:
+        return ""
+    bits = []
+    for m in marks[1:]:
+        if m < MARK_MIN_US or m >= SYNC_MIN_US:
+            continue                       # glitch or stray long pulse — not a bit
+        bits.append("1" if m > MARK_ONE_US else "0")
+    return "".join(bits)
+
+
+def decode_word(bits: str) -> dict:
+    """Slice a (>=25-bit) BRX payload into fields + parity (brx-ir-protocol.md).
+    parity_valid = the two parity bits are present and differ (Z0 != Z1)."""
+    b = bits[:PAYLOAD_BITS]
+
+    def seg(name):
+        lo, hi = _IR_FIELDS[name]
+        s = b[lo:hi]
+        return int(s, 2) if s else 0
+
+    z0 = b[23] if len(b) > 23 else ""
+    z1 = b[24] if len(b) > 24 else ""
+    return {
+        "bullet": seg("bullet"), "player": seg("player"), "team": seg("team"),
+        "damage": seg("damage"), "crit": seg("crit"), "unknown": seg("unknown"),
+        "parity_bits": z0 + z1,
+        "parity_valid": bool(z0) and bool(z1) and z0 != z1,
+        "nbits": len(bits), "complete": len(bits) >= PAYLOAD_BITS,
+    }
+
+
+def encode_word(player=0, team=0, damage=0, bullet=0, crit=0, unknown=0) -> str:
+    """Build a valid 25-bit payload (parity bits set to differ). For emit + tests.
+    Field endianness is not yet bench-verified; encode/decode share the convention."""
+    def f(v, n):
+        return format(v & ((1 << n) - 1), f"0{n}b")
+    return (f(bullet, 4) + f(player, 6) + f(team, 2) + f(damage, 8)
+            + f(crit, 1) + f(unknown, 2) + "01")
+
+
+def bits_to_pulses(bits, sync_us=2000, one_us=1000, zero_us=500, space_us=500) -> list[int]:
+    """Synthesize the alternating mark/space list a receiver sees (emit model / tests)."""
+    out = [sync_us, space_us]
+    for ch in bits:
+        out.append(one_us if ch == "1" else zero_us)
+        out.append(space_us)
     return out
 
 

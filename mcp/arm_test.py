@@ -11,6 +11,11 @@ import time
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.ble import ConnectionManager
 
+try:  # Windows cp1252 consoles crash on a stray non-ASCII byte in an RX frame
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except Exception:
+    pass
+
 
 def _t(a):
     return a.replace(":", "")[-4:]
@@ -21,6 +26,10 @@ async def main():
     secs = 140
     if args and args[-1].isdigit():
         secs = int(args[-1]); args = args[:-1]
+    if len(args) < 2:
+        print("usage: python arm_test.py <shooter> <target> [<target>...] [seconds]",
+              file=sys.stderr)
+        return
     shooter, targets = args[0], args[1:]
     guns = args
     cfg = GameConfig(mode="tdm", volume=69, respawn_s=8)
@@ -28,8 +37,10 @@ async def main():
     mgr = ConnectionManager()
 
     async def ensure_connected(a):
+        """Return 'up' (already connected), 'reconnected' (fresh session — must
+        reconfigure), or 'failed'."""
         if mgr.is_connected(a):
-            return True
+            return "up"
         try:
             await mgr.disconnect(a)
         except Exception:
@@ -37,10 +48,10 @@ async def main():
         try:
             await mgr.connect(a, a, attempts=3)
             print(f"# (re)connected {_t(a)}", file=sys.stderr)
-            return True
+            return "reconnected"
         except Exception as e:
             print(f"# connect {_t(a)} failed: {type(e).__name__}", file=sys.stderr)
-            return False
+            return "failed"
 
     async def configure(a):
         for f in setup:
@@ -59,13 +70,15 @@ async def main():
     print(f"# arming {[_t(g) for g in guns]} — config each, hold all live, then synced start")
     for attempt in range(12):
         for a in guns:
-            ok = await ensure_connected(a)
-            if ok and a not in configured:
+            st = await ensure_connected(a)
+            if st != "up":
+                configured.discard(a)      # dropped or fresh session → must reconfigure
+            if st == "failed":
+                continue
+            if a not in configured:
                 if await configure(a):
                     configured.add(a)
                     print(f"# configured {_t(a)}", file=sys.stderr)
-            elif not ok:
-                configured.discard(a)      # dropped → must reconfig after reconnect
         live_now = [a for a in guns if mgr.is_connected(a)]
         if len(live_now) == len(guns) and configured.issuperset(guns):
             print(f"# ALL {len(guns)} live + configured — firing synced start", file=sys.stderr)
@@ -76,16 +89,17 @@ async def main():
     else:
         print("# could not get all guns live+configured together", file=sys.stderr)
 
-    # 2. SYNCED start: $SPAWN + ammo + bmap to all, back-to-back, fast
+    # 2. SYNCED start: $SPAWN + ammo + bmap — ONLY to guns that are both configured
+    #    AND still connected (never spawn a half-configured gun: wrong HP/weapon/team).
     for f in spawn:
         for a in guns:
-            if mgr.is_connected(a):
+            if a in configured and mgr.is_connected(a):
                 try:
                     await mgr.send(a, f, reply_window_ms=15)
                 except Exception:
                     pass
     await asyncio.sleep(0.4)
-    armed = [a for a in guns if mgr.is_connected(a)]
+    armed = [a for a in guns if a in configured and mgr.is_connected(a)]
     print(f"\n# STARTED {[_t(a) for a in armed]}. shooter={_t(shooter)}(t1) "
           f"targets={[_t(t) for t in targets if t in armed]}(t2)")
     print("# All should have counted down together. KILL t1 then t2 (listen for 'double kill').\n")

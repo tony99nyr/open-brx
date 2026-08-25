@@ -12,6 +12,11 @@ import sys
 
 from brx_mcp.ble import ConnectionManager
 
+try:  # Windows cp1252 consoles crash on a stray non-ASCII byte in an RX frame
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except Exception:
+    pass
+
 
 def _t(a):
     return a.replace(":", "")[-4:]
@@ -26,9 +31,16 @@ async def say(mgr, a, frame, note):
 
 
 async def main():
+    if len(sys.argv) < 2:
+        print("usage: python play_probe.py <address>", file=sys.stderr)
+        return
     addr = sys.argv[1]
     mgr = ConnectionManager()
-    await mgr.connect(addr, addr, attempts=3)
+    try:
+        await mgr.connect(addr, addr, attempts=3)
+    except Exception as e:
+        print(f"# connect {_t(addr)} failed: {type(e).__name__}", file=sys.stderr)
+        return
     print(f"# connected {_t(addr)} — driving audio/LED over BLE", flush=True)
     await asyncio.sleep(0.5)
 

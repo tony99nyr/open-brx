@@ -43,17 +43,23 @@ In our engines these are the `Callout` / `PlaySound` actions the driver turns in
 
 ## Native multikills — the firmware does its own killstreak audio (D4)
 
+> **✅ RESOLVED 2026-08-25 (exp-log "feedback fork resolved" / FOLLOWUPS B18).** The native
+> killstreak/green-sight feedback rides the guns' **nRF24 peer mesh and is INVISIBLE to BLE** — and it
+> does **NOT** fire under our BLE-config'd game (the shooter's sight stays RED, no "double kill"). So it
+> is **not** "free" for us. **`$PLAY` audio DOES work over BLE**, so Mission Control rebuilds the
+> announcer/killstreak/medal audio itself as scorekeeper (watch `$HP,0`, attribute team-granular, 4 s
+> double-kill window, `$PLAY` back to the shooter). The green-sight VISUAL is nRF-only, not BLE-drivable.
+
 Hardware fact (Tony): a BRX gun **natively says "double kill"** when you tag two different enemies
-back-to-back in TDM — and presumably other streaks. So **multikill/streak/first-blood callouts are
-firmware-native**, NOT host-computed. Implications (followup **D4**, tied to the nRF probe D1):
+back-to-back in a **native (gun-menu) game** — and other streaks. So **multikill/streak/first-blood
+callouts are firmware-native**, computed on the gun over nRF. Implications:
 - The gun tracks **ephemeral local kill state** for audio (doesn't contradict §7n — that's no
   host-*readable* score, not no local state).
-- For the shooter's gun to know it got a **kill**, it receives a kill confirmation — likely over the
-  **nRF radio** (guns meshing) or a return IR ack. Untested; a shooter-side BLE kill event (if it
-  exists) would also give cleaner attribution than the victim's `$HP,0`.
-- **We may get multikill/streak sounds free** in configured games — verify they still fire under our
-  config. Our host `$PLAY` announcers then *layer on top* (mode-specific callouts, custom lines) rather
-  than replacing the native ones.
+- The shooter's kill confirmation rides the **nRF24 mesh** (proven: a passive BLE tap during a native
+  game captured zero frames). BLE gives only the victim's `$HP,0` (team-granular attribution).
+- **We do NOT get these free** under a BLE-config game — MC drives them via `$PLAY` (B18). Native-mode
+  feedback would need the nRF tap (D1) to observe. Whether native nRF peering can be *enabled* over BLE
+  is the open Callsign-capture probe (`docs/handoff-callsign-nrf-capture.md`).
 
 ## What this means for building
 

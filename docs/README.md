@@ -52,6 +52,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 
 ## Protocol & reference (ground truth)
 - **[../protocol/brx-protocol.md](../protocol/brx-protocol.md)** — the serial command reference (transport, framing, command tables, session findings).
+- **[../protocol/brx-ir-protocol.md](../protocol/brx-ir-protocol.md)** — the **IR shot protocol** (optical): ~25-bit word (B4/P6/T2/D8/C1/parity), decoded from NRFL-Bases; the payload carries a per-player id.
 - **[../protocol/callsign-extract/](../protocol/callsign-extract/)** — APK teardown:
   - `protocol-classes.md` — command/field maps, **$WEAP token positions**, enums.
   - `apk-harvest.md` — game modes, QR stations, weapon spawns, **grenade**.

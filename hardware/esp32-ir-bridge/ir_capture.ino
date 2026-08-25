@@ -28,6 +28,9 @@
 static const int IR_RX_PIN = 4;          // VS1838B OUT
 static const int STATUS_LED = 6;          // visible LED — blinks when a frame is RECEIVED
 static const uint32_t IDLE_GAP_US = 8000; // frame ends after this much silence
+                                          // (shots closer than this fuse into one
+                                          //  capture — fine for single shots; watch
+                                          //  on burst-fire, lower it if two merge)
 static const size_t MAX_EDGES = 256;      // plenty for a 25-bit frame (~51 edges)
 
 // ---- edge capture (ISR-filled ring) ---------------------------------------- //
@@ -51,11 +54,18 @@ void IRAM_ATTR onEdge() {
 // carrier-present. long(~1000us)=1, short(~500us)=0. Tunable thresholds.
 static const uint32_t MARK_THRESH_US = 750;   // > this = logic 1
 static const uint32_t MARK_MIN_US    = 200;   // ignore glitches below this
-static const uint32_t MARK_MAX_US    = 3000;  // and above this (start/gap)
+static const uint32_t SYNC_MIN_US    = 1500;  // a mark >= this is the ~2ms frame sync — strip it
 
 uint32_t frameCount = 0;
 uint32_t ledOffAtMs = 0;                 // non-blocking status-LED hold
 static const uint32_t LED_HOLD_MS = 40;  // visible blink length per received frame
+
+// slice a big-endian bit range out of the decoded string (per brx-ir-protocol.md)
+static int bitsVal(const String& s, int lo, int hi) {
+  int v = 0;
+  for (int i = lo; i < hi && i < (int)s.length(); i++) v = (v << 1) | (s[i] == '1' ? 1 : 0);
+  return v;
+}
 
 void printFrame() {
   size_t n;
@@ -89,12 +99,14 @@ void printFrame() {
   }
   Serial.println("]");
 
-  // decode: take the LOW durations (marks) = every other gap starting at index 0->1
+  // decode: marks are the 1st,3rd,5th... gaps. The FIRST mark is the ~2 ms sync —
+  // strip it (>= SYNC_MIN_US), then long(>750)=1 / short=0 for the 25 payload bits.
   String bits = "";
   int nbits = 0;
-  for (size_t i = 1; i < n; i += 2) {           // marks are the 1st,3rd,5th... gaps
+  for (size_t i = 1; i < n; i += 2) {
     uint32_t mark = buf[i] - buf[i - 1];
-    if (mark < MARK_MIN_US || mark > MARK_MAX_US) continue;  // skip start/glitch
+    if (mark >= SYNC_MIN_US) continue;          // sync or stray long pulse — not a bit
+    if (mark < MARK_MIN_US) continue;           // glitch
     bits += (mark > MARK_THRESH_US) ? '1' : '0';
     nbits++;
   }
@@ -102,6 +114,16 @@ void printFrame() {
   Serial.print(nbits);
   Serial.print(" val=");
   Serial.println(bits);
+  // field decode per protocol/brx-ir-protocol.md: B4 P6 T2 D8 C1 U2 Z2 (25 bits)
+  if (nbits >= 25) {
+    char z0 = bits[23], z1 = bits[24];
+    Serial.print("SHOT player="); Serial.print(bitsVal(bits, 4, 10));
+    Serial.print(" team=");       Serial.print(bitsVal(bits, 10, 12));
+    Serial.print(" dmg=");        Serial.print(bitsVal(bits, 12, 20));
+    Serial.print(" bullet=");     Serial.print(bitsVal(bits, 0, 4));
+    Serial.print(" crit=");       Serial.print(bitsVal(bits, 20, 21));
+    Serial.print(" parityOK=");   Serial.println(z0 != z1 ? 1 : 0);
+  }
   // LED is turned off by the non-blocking timer in loop() (LED_HOLD_MS later)
 }
 

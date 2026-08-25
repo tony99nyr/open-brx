@@ -108,3 +108,51 @@ def test_range_stats_detect_rate_caps_at_one():
 def test_range_stats_counts_overflow():
     frames = [_f(0, bits="0" * 25), _f(1, overflow=True)]
     assert range_stats(frames)["overflow"] == 1
+
+
+# ---- BRX IR word decode (pulses -> bits -> fields) ------------------------- #
+from brx_mcp.irbridge import pulses_to_bits, decode_word, encode_word, bits_to_pulses
+
+
+def test_encode_decode_word_roundtrip():
+    bits = encode_word(player=42, team=2, damage=9, bullet=3, crit=1)
+    assert len(bits) == 25
+    d = decode_word(bits)
+    assert d["player"] == 42 and d["team"] == 2 and d["damage"] == 9
+    assert d["bullet"] == 3 and d["crit"] == 1
+    assert d["parity_valid"] and d["complete"]
+
+
+def test_pulses_to_bits_strips_sync_and_decodes():
+    bits = encode_word(player=7, team=1, damage=25)
+    pulses = bits_to_pulses(bits)            # prepends a 2 ms sync + per-bit marks
+    assert pulses_to_bits(pulses) == bits    # sync stripped, 25 bits recovered
+    assert decode_word(pulses_to_bits(pulses))["player"] == 7
+
+
+def test_pulses_without_sync_return_empty():
+    # a train that does NOT start with a >=1500us sync mark is not a BRX frame
+    assert pulses_to_bits([500, 500, 1000, 500, 500, 500]) == ""
+
+
+def test_decode_word_parity_detects_bad_frame():
+    good = encode_word(player=1)
+    bad = good[:23] + "00"                    # Z0 == Z1 -> parity invalid
+    assert decode_word(good)["parity_valid"] is True
+    assert decode_word(bad)["parity_valid"] is False
+
+
+def test_decode_word_incomplete_is_flagged():
+    d = decode_word("0101")                   # far short of 25 bits
+    assert d["complete"] is False and d["nbits"] == 4
+
+
+def test_frame_shot_prefers_bits_then_falls_back_to_pulses():
+    bits = encode_word(player=63, team=3, damage=100, crit=1)
+    # (a) firmware already gave us bits
+    f1 = IRFrame(index=1, durations_us=[], bits=bits)
+    assert f1.shot()["player"] == 63 and f1.shot()["parity_valid"]
+    # (b) no bits — decode straight from the raw pulses
+    f2 = IRFrame(index=2, durations_us=bits_to_pulses(bits), bits="")
+    s = f2.shot()
+    assert s["player"] == 63 and s["team"] == 3 and s["damage"] == 100 and s["crit"] == 1
