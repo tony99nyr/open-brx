@@ -1254,3 +1254,25 @@ added at `^8.5.0` to match `@capacitor/android`.
 Command Line Tools (`/Library/Developer/CommandLineTools`, no `/Applications/Xcode.app`). Xcode is a
 ~15 GB App Store install, plus a signing identity (a free Apple ID gives 7-day on-device builds).
 Everything up to "open it in Xcode" is done and reproducible.
+
+### 2026-08-25 — CONFIRMED: two independent phone nodes run a 2-player game (ADR-0002 proven)
+
+Ran the single-gun **Companion/HUD node** on two phones at once — **Pixel → R0BAT** and
+**iPhone/mac build → R0BQT** — each phone driving **only its own gun** over BLE (no one-phone-two-gun
+bench rig). Result: **it worked.** Damage registered, **ammo + life totals tracked live**, death
+fired, and **local respawn** re-armed — independently on each phone. This is the ADR-0002
+autonomous-node model validated on hardware: a node owns one gun and runs its full loop with no
+server in the loop.
+
+**Also confirmed (by absence): the green-sight kill flash did NOT fire — as designed.** In the
+single-gun node each phone sees only its own gun, and the gun is **host-blind about its own kills**
+(ADR-0001) — it emits no shooter-side "you scored" event over BLE. So the node has nothing to trigger
+`$SFLASH` on; kills read `— MC`. The flash returns only when **Mission Control** tells the shooter's
+node it scored (the `feedback` message, `docs/spec/contracts.md` §5). This is the exact
+capability boundary the new end-to-end spec is built around — observed empirically, not just inferred.
+
+**Spec kicked off:** `docs/spec/` — `README.md` (architecture, the armory→recap experience spine,
+module map, parallel-workstream plan) + `contracts.md` (shared data models, node↔MC protocol, event
+model, clock sync). Three design calls locked: field LAN = travel router (macOS AP is weak), dispersed
+start = **time-synced local countdown played through the gun speaker**, attribution = team-level on
+phones / player-level needs Companion IR decode (P2).
