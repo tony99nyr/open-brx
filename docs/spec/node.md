@@ -294,24 +294,30 @@ dry-fires the same way (protocol §7a), and so does an **unconfigured** gun (pre
 `$BUT` but does not fire). (3) Reading silence as "unconfigured": a quiet live gun would get a free heal.
 So the node **writes nothing first**, and **no branch below writes `spawn` without positive evidence**.
 
-**The evidence protocol (`RESYNC_PROBE_S = 10` per step, contracts §9).** On BLE reconnect in
-**ARMED/LIVE** (and on app resume after a suspension, §3.11) the HUD shows **"GUN RELINKED — pull the
-RELOAD handle, then the trigger"** and the node classifies from what it *sees*:
+**The evidence protocol (`RESYNC_PROBE_S = 10` per step, contracts §9) — trigger first, then reload.**
+On BLE reconnect in **ARMED/LIVE** (and on app resume after a suspension, §3.11) the HUD shows
+**"GUN RELINKED — pull the trigger"** and the node classifies from what it *sees*. Trigger-first matters:
+a reload on an already-full magazine emits nothing, so reload-first could misread a live gun as
+unconfigured — and trigger-first is what players do anyway.
 
 | step | observation | conclusion | action |
 |---|---|---|---|
-| any time | an `$HP` / `$LCD` line arrives (a hit, a periodic state line) | trust it verbatim | update hp/armor/ammo/alive; `$HP,0` → DOWN + `death{desync:true, shooter_num:0}` if the engine thought alive |
-| 1 · reload (`$BUT,2`) | `$ALCD` refill (mag ↑, reserve ↓) | **configured** (and reserve was > 0) | go to step 2 |
-| 1 · reload | no `$ALCD`, last-known reserve > 0 | **unconfigured** (power-cycled) | re-write `frames.head`; in **LIVE** the reboot costs a death: emit `death{desync:true, shooter_num:0}`, run the normal respawn timer, then `frames.revive` → emit `respawn{resync:true}`; in ARMED wait for T-0; LOBBY: head only |
-| 1 · reload | no `$ALCD`, last-known reserve == 0 | ambiguous (out of reserve *or* unconfigured) | HUD "out of reserve — keep playing"; stay in last-known state; re-run on the next `$HP`/`$LCD` |
-| 2 · trigger | `$ALCD` decrement (a shot went out) | **alive** and configured | nothing; HUD back to ALIVE |
-| 2 · trigger | `$BUT,0,1` with **no** `$ALCD` (after a good reload) | **dead** (a dead gun can't fire — §7q) | HUD DOWN, emit `death{desync:true, shooter_num:0}`, respawn timer from now → `frames.revive` as normal |
-| 1–2 | nothing within `RESYNC_PROBE_S` | player didn't do it | keep the prompt up; **stay in last-known state**; never write |
-| LMS (`respawn.type:"none"`) | any "dead" / "unconfigured" outcome | never grant a life | mark dead; re-write head only; no revive |
+| any time | an `$HP` / `$LCD` line arrives (a hit, a periodic state line) | trust it verbatim | update hp/armor/ammo/alive. `$HP,0` while the engine thought alive → DOWN + `death{desync:true}` **credited to the latched `$HIR` if it is within `DEATH_LATCH_MS`, else `shooter_num:0`** |
+| 1 · trigger | `$ALCD` decrement (a shot went out) | **alive** and configured | nothing; HUD back to ALIVE |
+| 1 · trigger | `$BUT,0,1` with **no** `$ALCD` | ambiguous: dead / empty mag / unconfigured | HUD "now pull the RELOAD handle" → step 2 |
+| 2 · reload (`$BUT,2`) | `$ALCD` refill | configured, mag was empty | HUD "pull the trigger" → step 3 |
+| 2 · reload | no `$ALCD`, last-known reserve > 0 | **not a live configured gun**: unconfigured (power-cycled) *or* dead-and-reload-inert (unknown, bench) — both cost a life | non-LMS: emit `death{desync:true, shooter_num: latched-if-fresh else 0}`, re-write `frames.head`, normal respawn timer, `frames.revive`, emit `respawn{resync:true}`. **LMS: mark dead, write NOTHING** (a wrong write is elimination; the host can `recall`) |
+| 2 · reload | no `$ALCD`, last-known reserve == 0 | ambiguous: out of ammo *or* the above | wait one more `RESYNC_PROBE_S` for any `$HP`/`$LCD`; if still nothing, **escalate** to the row above (a wrongly-judged out-of-ammo player loses a life instead of standing inert forever). LMS: stay last-known |
+| 3 · trigger | `$ALCD` decrement | **alive** (was just out of ammo) | HUD ALIVE |
+| 3 · trigger | `$BUT,0,1` with **no** `$ALCD` (after a good reload) | **dead** (a dead gun can't fire — §7q) | HUD DOWN, `death{desync:true, shooter_num: latched-if-fresh else 0}`, respawn timer from now → `frames.revive` as normal (LMS: dead, no revive) |
+| 1–3 | nothing within `RESYNC_PROBE_S` | player didn't do it | keep the prompt up; **stay in last-known state**; never write |
 
-The prompt costs the player a reload + a trigger pull; that is the price of never guessing. Every resync
-action is logged (`resync_*`) and surfaces in recap. **Known limitation:** a station revive
-(`respawn.type:"scanner"`) that happened *inside* the gap hides the death that preceded it.
+Rules that fall out: **no branch writes `spawn`/`head` on silence**, and in **LMS no branch writes at
+all** unless the gun is provably dead. A desync death is flagged (`desync:true`) so MC's recap can show
+"N deaths uncredited/desync" rather than silently undercounting the killer. The prompt costs the player a
+trigger pull (and sometimes a reload); that is the price of never guessing. Every resync action is logged
+(`resync_*`). **Known limitation:** a station revive (`respawn.type:"scanner"`) that happened *inside*
+the gap hides the death that preceded it.
 
 **Bench item (blocking for M4): a side-effect-free gun state probe.** After a reconnect, what does the
 gun emit unprompted? Does `$PHONE` (which triggers `$VOLTS`) or anything else re-elicit `$LCD`/`$HP`

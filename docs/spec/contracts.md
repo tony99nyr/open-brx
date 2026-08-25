@@ -440,12 +440,13 @@ inaudible). BLE writes chunk at 20 bytes (§app).
   - **A6.5 `GameConfig.player_num_base?`** so two concurrent games on one field use disjoint id ranges.
   - **A6.6 BLE resync classifier redesigned (node.md §3.10): positive evidence only.** A `$BUT`-without-`$ALCD` is
     *also* an empty-mag dry-fire (protocol §7a) or an **unconfigured** gun (pre-game trigger emits `$BUT` but does
-    not fire) — so it never means "dead" on its own, and silence never means "unconfigured". New protocol: HUD asks
-    for **reload handle, then trigger**: `$BUT,2` → `$ALCD` refill ⇒ configured (with last-known reserve > 0);
+    not fire) — so it never means "dead" on its own, and silence never means "unconfigured". New protocol (peer review r2: **trigger first, then reload** — a full-mag reload is silent): HUD asks
+    for trigger, then reload handle, then trigger: `$BUT,2` → `$ALCD` refill ⇒ configured (with last-known reserve > 0);
     then trigger → `$ALCD` decrement ⇒ alive; trigger → `$BUT`-only after a good reload ⇒ dead (`death{desync}`);
     reload silent with reserve > 0 ⇒ unconfigured ⇒ re-write `head` and — in LIVE — the reboot costs a
-    `death{desync:true}` before `respawn{resync:true}` (no free heal). **No branch writes `spawn` without positive
-    evidence.** Known limitation: a station revive (`respawn.type: scanner`) inside a gap can hide a death.
+    `death{desync:true}` before `respawn{resync:true}` (no free heal); a gap-death is credited to a latched `$HIR`
+    within `DEATH_LATCH_MS`. **No branch writes `spawn` without positive evidence; in LMS nothing is written unless
+    the gun is provably dead.** Recap counts desync deaths. Known limitation: a station revive (`respawn.type: scanner`) inside a gap can hide a death.
   - **A6.7 Doc fixes:** `gun_echo` is "the gun answered", not "headset present" (unverified, NEXT #10); `$START`
     audibility at lobby unverified (NEXT #11); node lifecycle arrows → KITTED; runway text = `DEFAULT_RUNWAY_S`;
     first blood from a re-based never-synced batch is flagged provisional; module headers → A6.
