@@ -375,25 +375,35 @@ def test_takeover_by_node_id_and_by_gun():
         return _skip("takeover")
 
     async def go():
-        async with _Harness() as h:
+        async with _Harness(stale_after_ms=250) as h:
             a = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
             await a.start()
             await a.wait_connected()
-            # same node_id from a "restarted app": newest wins, old socket closed
+            key = a.node_key                       # A8: the per-node secret from welcome
+            assert key
+            # (1) legit restart: same node_id + the correct key → takeover, old socket closed
             b = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
-            a._paused = True                    # don't let the old one fight back
+            b.node_key = key
+            a._paused = True                       # don't let the old one fight back
             await b.start()
             await b.wait_connected()
             assert await _until(lambda: a._ws is None, timeout=3)
             assert h.net.stats["takeovers"] >= 1 and h.net.nodes["n1"].ws is not None
-            # hot-swap: a NEW node_id binds the same gun → the previous holder is closed
-            c = MockNode(h.url, node_id="n2", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
+            # (2) rogue: same node_id, WRONG/absent key, old still fresh → refused (can't kick a player)
+            rogue = MockNode(h.url, node_id="n1", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
+            rogue.node_key = "not-the-key"
+            await rogue.start()
+            await asyncio.sleep(0.5)
+            assert not rogue.connected and h.net.stats["rejected"] >= 1
+            assert h.net.nodes["n1"].ws is not None    # b still holds it; rogue was refused
+            await rogue.close()
+            # (3) hot-swap: a NEW node_id binds the same gun after the old holder goes STALE → succeeds
             b._paused = True
+            await asyncio.sleep(0.4)                  # let b's server record age past stale_after_ms
+            c = MockNode(h.url, node_id="n2", gun_name="GUN-A", gun_tail="3D4F", heartbeat_ms=100)
             await c.start()
             await c.wait_connected()
-            assert await _until(lambda: b._ws is None, timeout=3)
-            assert h.net.nodes["n2"].gun_name == "GUN-A" and h.net.nodes["n2"].connected
-            assert h.net.stats["takeovers"] >= 2
+            assert await _until(lambda: h.net.nodes["n2"].gun_name == "GUN-A" and h.net.nodes["n2"].connected, 3)
             for n in (a, b, c):
                 await n.close()
     _run(go())

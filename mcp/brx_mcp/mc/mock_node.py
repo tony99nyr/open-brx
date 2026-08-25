@@ -52,11 +52,13 @@ class MockNode:
         self.player_num: int = 0
         self.match_id: str | None = None
         self.go_live_t: int | None = None
+        self._start_seq = None
         self.time_limit_s: int | None = None
         self.offset_ms = 0.0
         self.synced = False
         self.session_id: str | None = None
         self.seq_hi_seen = 0
+        self.node_key: str | None = None      # A8: per-node secret to re-claim a live node_id/gun
 
         # gun state
         self.arm_state = "connected"
@@ -241,6 +243,8 @@ class MockNode:
         hello = {"node_id": self.node_id, "node_type": self.node_type, "app_ver": self.app_ver,
                  "gun": {"name": self.gun_name, "tail": self.gun_tail, "fw": self.gun_fw},
                  "seq_next": self.seq_next}
+        if self.node_key:
+            hello["node_key"] = self.node_key
         await ws.send(E.encode(E.make_envelope("hello", hello)))
         raw = await asyncio.wait_for(ws.recv(), 5)
         env = E.decode(raw, direction="mc")
@@ -275,6 +279,8 @@ class MockNode:
 
     def _apply_welcome(self, body: dict) -> None:
         self.session_id = body.get("session_id")
+        if body.get("node_key"):
+            self.node_key = body["node_key"]
         seq_hi = int(body.get("seq_hi", 0))
         self.seq_hi_seen = seq_hi
         self.seq_next = max(self.seq_next, seq_hi + 1)
@@ -310,6 +316,10 @@ class MockNode:
             self._apply_start(start)
 
     def _apply_start(self, body: dict) -> None:
+        seq = body.get("seq")
+        if self.match_id == body.get("match_id") and self._start_seq == seq:
+            return                        # A5.6: a same-seq re-push is a no-op — don't zero shots
+        self._start_seq = seq
         self.match_id = body.get("match_id")
         self.go_live_t = int(body.get("go_live_t", 0))
         self.shots = 0

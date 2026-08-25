@@ -32,7 +32,7 @@ export function Armory() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
             <div style={{ font: F.osw(700, 22), letterSpacing: '.3em', padding: '8px 26px 8px 32px', background: nRed ? T.bad : T.ok, color: T.accInk, clipPath: CHAMFER.tl14 }}>{nRed ? 'HOLD' : 'GO'}</div>
-            <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>{gateNote}</div>
+            <div role="status" aria-live="polite" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim }}>{gateNote}</div>
           </div>
         </>
       } />

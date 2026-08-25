@@ -48,7 +48,8 @@ export class Hud {
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
-      st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.wsState, st.bleUp, st.ended].join('|');
+      st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.wsState, st.bleUp, st.ended,
+      !!st.headEcho, st.synced, st.rejoin, !!st.pendingTeardown].join('|');
     if (sig !== this.sig) { this.sig = sig; this.hudEl.innerHTML = this._structure(st); }
     this._patch(st);
     this._chips(st);
@@ -68,7 +69,7 @@ export class Hud {
     }
   }
 
-  _idle() {
+  _idle(st = {}) {
     const rows = this.scan.map(d => {
       const [nm, tail] = splitGun(d);
       const bars = [-85, -75, -65, -55].map((thr, i) => `<i style="height:${6 + i * 4}px" class="${d.rssi != null && d.rssi >= thr ? 'on' : ''}"></i>`).join('');
@@ -77,6 +78,7 @@ export class Hud {
     }).join('');
     return `<div class="idle"><div class="scan"></div>
       <div class="l"><span class="wm">BRX<b>/</b></span><span class="sub">COMBAT HUD</span>
+        ${st.rejoin ? '<span class="note" style="color:var(--warn)">MATCH IN PROGRESS — SET YOUR GUN TO REJOIN</span>' : ''}
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button></div>
       <div class="r"><div class="sc"><i></i>SCANNING FOR TAGGERS</div><div class="list">${rows || '<div class="small">no taggers yet…</div>'}</div>

@@ -122,6 +122,7 @@ export interface State {
   readiness: ReadinessSnapshot;
   config: GameConfig;
   config_errors: string[];
+  config_warnings?: string[];
   players: Player[];
   teams: Team[];
   kit: { kitted: number; total: number; trying: Record<string, string> };
@@ -144,7 +145,7 @@ export interface WeaponView {
 /** The surface both the real client and the in-browser mock implement. */
 export interface Api {
   getState(): Promise<State>;
-  subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry) => void): () => void;
+  subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry) => void, onLink?: (connected: boolean) => void): () => void;
   scan(duration_s?: number): Promise<ScanRow[]>;
   getModes(): Promise<ModeInfo[]>;
   getWeapons(): Promise<WeaponView[]>;

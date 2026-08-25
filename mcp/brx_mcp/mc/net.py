@@ -20,6 +20,7 @@ import contextlib
 import logging
 import socket
 import time
+import secrets
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
@@ -38,6 +39,7 @@ WS_PING_TIMEOUT_S = STALE_AFTER_MS / 1000.0
 _CLOSE_POLICY = 1008
 _CLOSE_TAKEOVER = 4000
 _CLOSE_VERSION = 4001
+_CLOSE_INUSE = 4003     # A8: another live node holds this node_id/gun and the key did not match
 
 
 def lan_ip() -> str:
@@ -68,6 +70,7 @@ class NodeRecord:
     last_seen: float = field(default_factory=time.monotonic)   # monotonic seconds
     stale: bool = False
     seq_hi: int = 0                    # highest persisted seq applied
+    node_key: str = ""                # A8: secret to re-claim this node_id / its gun
     applied: deque = field(default_factory=lambda: deque(maxlen=REORDER_WINDOW))
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
 
@@ -84,6 +87,10 @@ class NodeRecord:
         }
 
 
+class _Rejected(Exception):
+    """Raised inside _on_hello when a takeover is refused (A8); the handler returns quietly."""
+
+
 class NetServer:
     """Implements `interfaces.NetServer` (sync callback registration; async start/stop)."""
 
@@ -97,6 +104,7 @@ class NetServer:
         self._hydrate: Callable[[dict], dict | None] | None = None
         self._on_node: list[Callable[[dict], None]] = []
         self._on_event: list[Callable[[str, dict, int], None]] = []
+        self._on_batch: list[Callable[[str, list, int], None]] = []
         self._on_status: list[Callable[[str, dict, int], None]] = []
         self._on_node_message: list[Callable[[str, str, dict, int], None]] = []
         self._on_stale: list[Callable[[str, int], None]] = []
@@ -109,7 +117,7 @@ class NetServer:
         self._port = 0
         self._ws_path = "/ws"
         self._zeroconf = None
-        self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0}
+        self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0}
 
     # ---------------- registration (interfaces.NetServer) ----------------
     def hydrate(self, cb: Callable[[dict], dict | None]) -> None:
@@ -120,6 +128,10 @@ class NetServer:
 
     def on_event(self, cb: Callable[[str, dict, int], None]) -> None:
         self._on_event.append(cb)
+
+    def on_batch(self, cb: Callable[[str, list, int], None]) -> None:
+        """Fired once per event_batch with the post-dedup items (A5.7 re-base runs here)."""
+        self._on_batch.append(cb)
 
     def on_status(self, cb: Callable[[str, dict, int], None]) -> None:
         self._on_status.append(cb)
@@ -268,7 +280,10 @@ class NetServer:
                 self.stats["quarantined"] += 1
                 await ws.close(_CLOSE_POLICY, "first frame must be hello")
                 return
-            rec = await self._on_hello(ws, env)
+            try:
+                rec = await self._on_hello(ws, env)
+            except _Rejected:
+                return
             counter = rec.malformed
 
             # --- main loop ---
@@ -315,10 +330,17 @@ class NetServer:
         node_id = str(body["node_id"])
         rec = self.nodes.get(node_id)
         if rec is None:
-            rec = NodeRecord(node_id=node_id)
+            rec = NodeRecord(node_id=node_id, node_key=secrets.token_urlsafe(9))
             self.nodes[node_id] = rec
         elif rec.ws is not None and rec.ws is not ws:
-            # takeover: app restart / hot-swap re-using the same node_id — newest wins
+            # A8: a live node_id is only handed over if the newcomer proves the key, or the old
+            # socket has gone unresponsive (stale). Otherwise a rogue hello can't kick a player.
+            fresh = (time.monotonic() - rec.last_seen) * 1000 < self.stale_after_ms
+            if fresh and str(body.get("node_key") or "") != rec.node_key:
+                self.stats["rejected"] += 1
+                log.warning("rejected hello for live node %s (bad/absent key)", node_id)
+                await ws.close(_CLOSE_INUSE, "node in use")
+                raise _Rejected()
             self.stats["takeovers"] += 1
             log.warning("takeover of node %s by a new socket", node_id)
             old = rec.ws
@@ -349,7 +371,7 @@ class NetServer:
             pid = node_ctx.get("player", {}).get("player_id") if isinstance(node_ctx.get("player"), dict) else None
             if pid:
                 rec.player_id = pid
-        welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi}
+        welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi, "node_key": rec.node_key}
         if node_ctx:
             welcome["node"] = node_ctx
         await ws.send(E.encode(E.make_envelope("welcome", welcome)))
@@ -381,8 +403,14 @@ class NetServer:
             self._send(rec, "ack", {"seq_hi": rec.seq_hi})
             return
         if kind == "event_batch":
+            applied = []
             for item in body["events"]:
-                self._ingest(rec, item["seq"], item, t_recv)
+                ev = self._ingest(rec, item["seq"], item, t_recv, fire=not self._on_batch)
+                if ev is not None:
+                    applied.append(ev)
+            if self._on_batch and applied:
+                for cb in self._on_batch:
+                    self._call(cb, rec.node_id, applied, t_recv)
             self._send(rec, "ack", {"seq_hi": rec.seq_hi})
             return
         if kind == "status":
@@ -401,14 +429,20 @@ class NetServer:
     def _on_bind(self, rec: NodeRecord, body: dict) -> None:
         gun_name = str(body.get("gun_name") or "")
         gun_tail = str(body.get("gun_tail") or "")
-        # takeover by gun: another live node claiming this gun is the stale one (hot-swap)
+        # A8 takeover by gun: only a fresh live holder blocks; a stale one is displaced (hot-swap).
         for other in list(self.nodes.values()):
             if other is rec or other.ws is None:
                 continue
             if gun_name and other.gun_name == gun_name:
+                fresh = (time.monotonic() - other.last_seen) * 1000 < self.stale_after_ms
+                if fresh:
+                    self.stats["rejected"] += 1
+                    log.warning("bind for gun %s refused — node %s holds it (fresh)", gun_name, other.node_id)
+                    self._loop.create_task(self._close_quiet(rec.ws, _CLOSE_INUSE, "gun in use"))
+                    rec.ws = None
+                    return
                 self.stats["takeovers"] += 1
-                log.warning("gun %s re-bound from node %s to %s — closing the old socket",
-                            gun_name, other.node_id, rec.node_id)
+                log.warning("gun %s re-bound from stale node %s to %s", gun_name, other.node_id, rec.node_id)
                 old = other.ws
                 other.ws = None
                 self._loop.create_task(self._close_quiet(old, _CLOSE_TAKEOVER, "gun taken over"))
@@ -421,11 +455,13 @@ class NetServer:
         with contextlib.suppress(Exception):
             await ws.close(code, reason)
 
-    def _ingest(self, rec: NodeRecord, seq: int, ev: dict, t_recv: int) -> None:
-        """Per-node dedup (net.md §4): apply iff not seen and within the reorder window."""
+    def _ingest(self, rec: NodeRecord, seq: int, ev: dict, t_recv: int, fire: bool = True):
+        """Per-node dedup (net.md §4): apply iff not seen and within the reorder window.
+        Returns the applied ev (seq-stamped) or None on a replay. `fire=False` skips on_event
+        (the batch path fires on_batch with the whole applied list instead)."""
         if seq in rec.applied or (seq <= rec.seq_hi and rec.seq_hi - seq > REORDER_WINDOW):
             self.stats["replays"] += 1
-            return
+            return None
         if seq <= rec.seq_hi and seq not in rec.applied and rec.seq_hi - seq <= REORDER_WINDOW:
             # late out-of-order fact inside the window: apply once
             pass
@@ -436,8 +472,10 @@ class NetServer:
         ev = dict(ev)
         ev["seq"] = seq                      # facts carry their seq on both the single and batch paths
         ev.setdefault("node_id", rec.node_id)
-        for cb in self._on_event:
-            self._call(cb, rec.node_id, ev, t_recv)
+        if fire:
+            for cb in self._on_event:
+                self._call(cb, rec.node_id, ev, t_recv)
+        return ev
 
     def _touch(self, rec: NodeRecord) -> None:
         rec.last_seen = time.monotonic()

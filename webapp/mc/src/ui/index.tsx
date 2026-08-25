@@ -1,9 +1,14 @@
 // Primitives that encode the "military armory" design language (see design README).
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
 
 type Sx = CSSProperties;
 const merge = (a: Sx, b?: Sx): Sx => (b ? { ...a, ...b } : a);
+
+/** Reset for `<button>`s that look like the design's clickable spans/divs (keeps keyboard reachability). */
+export const BTN_RESET: Sx = { background: 'transparent', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', textAlign: 'inherit', cursor: 'pointer', letterSpacing: 'inherit' };
+/** Enter/Space activation for non-button interactive elements. */
+export const onKey = (fn: () => void) => (e: { key: string; preventDefault(): void }) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** Screen header: mono accent kicker over a 30px Oswald title, with optional right-side content. */
 export function ScreenHeader({ kicker, title, right }: { kicker: string; title: string; right?: ReactNode }) {
@@ -33,7 +38,7 @@ export function SectionRule({ label, hint, style }: { label: string; hint?: Reac
 export function Chamfer({ clip = CHAMFER.tr14, style, children, className, onClick }:
   { clip?: string; style?: Sx; children?: ReactNode; className?: string; onClick?: () => void }) {
   return (
-    <div className={className} onClick={onClick}
+    <div className={className} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? onKey(onClick) : undefined}
       style={merge({ background: T.panel, border: `1px solid ${T.line}`, clipPath: clip }, style)}>
       {children}
     </div>
@@ -87,15 +92,15 @@ export function OutlineTag({ children, color, border }: { children: ReactNode; c
 export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px' }:
   { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; size?: number; pad?: string }) {
   return (
-    <span style={{ display: 'flex', border: `1px solid ${T.line}` }}>
+    <span role="group" style={{ display: 'flex', border: `1px solid ${T.line}` }}>
       {options.map(o => {
         const on = o.value === value;
         return (
-          <span key={o.value} onClick={() => onChange(o.value)} role="button"
-            style={{ font: F.chk(on ? 700 : 600, size), letterSpacing: '.14em', padding: pad, background: on ? T.acc : 'transparent',
+          <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on}
+            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, size), letterSpacing: '.14em', padding: pad, background: on ? T.acc : 'transparent',
               color: on ? T.accInk : T.micro, cursor: on ? 'default' : 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
             {o.label}
-          </span>
+          </button>
         );
       })}
     </span>
@@ -105,10 +110,10 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
 /** Square toggle. */
 export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <span onClick={() => onChange(!on)} role="switch" aria-checked={on}
-      style={{ width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
+    <button type="button" className="hit44" onClick={() => onChange(!on)} role="switch" aria-checked={on}
+      style={{ ...BTN_RESET, width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
       <span style={{ position: 'absolute', top: 2, left: on ? 22 : 2, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
-    </span>
+    </button>
   );
 }
 
@@ -179,15 +184,44 @@ export function CountBlock({ value, label, color }: { value: number; label: stri
   );
 }
 
-/** Inset value box with an Oswald number + dim unit; editable numeric input. */
-export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1 }:
-  { value: number; unit?: string; onChange: (v: number) => void; min?: number; max?: number; step?: number }) {
+/** Inset value box with an Oswald number + dim unit; editable numeric input.
+ *  Draft-then-commit: the server value is only written back while the field is NOT focused, and the
+ *  edit is committed on blur / Enter (a PUT per keystroke raced the ≤4 Hz snapshot and ate keystrokes). */
+export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1, label }:
+  { value: number; unit?: string; onChange: (v: number) => void; min?: number; max?: number; step?: number; label?: string }) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDraft(String(value)); }, [value, focused]);
+  const commit = () => {
+    const v = Number(draft);
+    if (Number.isNaN(v) || draft.trim() === '') { setDraft(String(value)); return; }
+    const c = Math.max(min, Math.min(max, v));
+    setDraft(String(c));
+    if (c !== value) onChange(c);
+  };
   return (
-    <span style={{ font: F.osw(700, 17), ...TAB, background: T.inset, border: `1px solid ${T.line2}`, padding: '4px 14px', display: 'inline-flex', alignItems: 'baseline', gap: 6, minHeight: 32 }}>
-      <input className="numbox" type="number" value={value} min={min} max={max} step={step}
-        onChange={e => { const v = Number(e.target.value); if (!Number.isNaN(v)) onChange(Math.max(min, Math.min(max, v))); }} />
+    <span style={{ font: F.osw(700, 17), ...TAB, background: T.inset, border: `1px solid ${T.line2}`, padding: '4px 14px', display: 'inline-flex', alignItems: 'baseline', gap: 6, minHeight: 44 }}>
+      <input className="numbox" type="number" value={draft} min={min} max={max} step={step} aria-label={label ?? unit ?? 'value'}
+        onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
+        onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
+        onChange={e => setDraft(e.target.value)} />
       {unit && <span style={{ font: F.chk(600, 10), letterSpacing: '.14em', color: T.micro }}>{unit}</span>}
     </span>
+  );
+}
+
+/** Text input that drafts locally and commits on blur / Enter (see ValueBox). */
+export function DraftText({ value, onCommit, className = 'textbox', style, transform, ariaLabel, maxLength = 24 }:
+  { value: string; onCommit: (v: string) => void; className?: string; style?: Sx; transform?: (s: string) => string; ariaLabel?: string; maxLength?: number }) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDraft(value); }, [value, focused]);
+  const commit = () => { const v = (transform ? transform(draft) : draft).trim(); if (v && v !== value) onCommit(v); else setDraft(value); };
+  return (
+    <input className={className} value={draft} maxLength={maxLength} aria-label={ariaLabel} style={style}
+      onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      onChange={e => setDraft(transform ? transform(e.target.value) : e.target.value)} />
   );
 }
 

@@ -7,7 +7,7 @@ import { Blink, GhostButton, Tag } from '../ui';
 const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr) 84px';
 
 export function Live() {
-  const { state, feed, run, api, serverNow } = useStore();
+  const { state, feed, run, api, serverNow, connected } = useStore();
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   if (!state) return null;
@@ -27,7 +27,7 @@ export function Live() {
         {teamIds.length >= 2 ? (
           <>
             <TeamScore id={teamIds[0]} score={lv.score[teamIds[0]] ?? 0} side="left" />
-            <TimeCell remaining={remaining} sub={`${state.config.mode.toUpperCase()}${cap ? ` · CAP ${cap}` : ''}`} />
+            <TimeCell remaining={remaining} sub={`${state.config.mode.toUpperCase()}${cap ? ` · CAP ${cap}` : ''}`} dim={!connected} />
             <TeamScore id={teamIds[1]} score={lv.score[teamIds[1]] ?? 0} side="right" />
             {teamIds.slice(2).map(id => <TeamScore key={id} id={id} score={lv.score[id] ?? 0} side="left" />)}
           </>
@@ -38,7 +38,7 @@ export function Live() {
               <span style={{ font: F.osw(700, 40), ...TAB, lineHeight: 1 }}>{rows[0]?.display ?? '—'}</span>
               <span style={{ font: F.osw(700, 64), ...TAB, lineHeight: 1 }}>{rows[0]?.kills ?? 0}</span>
             </div>
-            <TimeCell remaining={remaining} sub={`FFA${cap ? ` · CAP ${cap}` : ''}`} />
+            <TimeCell remaining={remaining} sub={`FFA${cap ? ` · CAP ${cap}` : ''}`} dim={!connected} />
           </>
         )}
       </div>
@@ -51,7 +51,7 @@ export function Live() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
               {rows.map(r => <Row key={r.player_id} r={r} />)}
             </div>
-            <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginTop: 8 }}>K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE".</div>
+            <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim, marginTop: 8 }}>K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE".</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <GhostButton onClick={() => run(() => api.control('end'))} title="Early end: reaches only nodes in range; the rest end at the time limit">END MATCH EARLY</GhostButton>
               <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => run(() => api.control('recall'))}>RECALL</GhostButton>
@@ -64,7 +64,7 @@ export function Live() {
             <Blink color={T.bad} period={1.6} size={8} />
             <span style={{ font: F.chk(700, 10), letterSpacing: '.28em', color: T.dim }}>EVENT FEED // LIVE</span>
           </div>
-          <div style={{ border: `1px solid ${T.line}`, background: T.panelDeep, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div role="status" aria-live="polite" aria-relevant="additions" style={{ border: `1px solid ${T.line}`, background: T.panelDeep, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {feed.length === 0 && <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.faint, padding: 6 }}>WAITING FOR THE FIRST SYNC POINT…</div>}
             {feed.map((ev, i) => {
               const color = ev.tag === 'FIRST BLOOD' || ev.tag === 'TEAM KILL' ? T.bad : ev.tag ? T.warn : ev.kind === 'sync' ? T.acc : T.line;
@@ -94,10 +94,11 @@ function TeamScore({ id, score, side }: { id: string; score: number; side: 'left
     </div>
   );
 }
-function TimeCell({ remaining, sub }: { remaining: number; sub: string }) {
+function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim?: boolean }) {
   return (
-    <div style={{ flex: '0 1 240px', background: T.panel, border: `1px solid ${T.line}`, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-      <span style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>TIME REMAINING</span>
+    <div role="status" aria-live="off" title={dim ? 'MC offline — clock frozen at the last snapshot' : undefined}
+      style={{ flex: '0 1 240px', background: T.panel, border: `1px solid ${dim ? T.bad : T.line}`, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, opacity: dim ? .45 : 1 }}>
+      <span style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>{dim ? 'TIME REMAINING · OFFLINE' : 'TIME REMAINING'}</span>
       <span style={{ font: F.osw(700, 40), ...TAB, lineHeight: 1 }}>{fmtClock(remaining)}</span>
       <span style={{ font: F.mono(500, 9), letterSpacing: '.2em', color: T.micro }}>{sub}</span>
     </div>

@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, CLS_COLOR, F, T, TAB, TEAM, fmtAge, teamColor } from '../tokens';
-import { Blink, Brackets, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag } from '../ui';
+import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag, onKey } from '../ui';
 
 export function Kit() {
   const { state, weapons, selPlayer, setSelPlayer, run, api } = useStore();
@@ -36,7 +36,7 @@ export function Kit() {
               const st = tw ? '' : pl.loadout.weapons.length && pl.team_id ? 'KITTED' : pl.team_id ? 'FITTING' : '—';
               const stColor = st === 'KITTED' ? T.ok : st === 'FITTING' ? T.acc : T.micro;
               return (
-                <div key={pl.player_id} className="hov-acc" onClick={() => setSelPlayer(pl.player_id)}
+                <div key={pl.player_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', background: on ? 'rgba(57,180,255,.06)' : 'transparent', border: `1px solid ${on ? T.acc : 'transparent'}`, cursor: 'pointer', minHeight: 44 }}>
                   <span style={{ width: 4, alignSelf: 'stretch', background: teamColor(pl.team_id) }} />
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -50,8 +50,8 @@ export function Kit() {
             })}
             <form onSubmit={e => { e.preventDefault(); if (newName.trim()) { run(() => api.addPlayer({ display: newName.trim() })); setNewName(''); } }}
               style={{ display: 'flex', gap: 6, padding: '6px 4px 2px' }}>
-              <input className="textbox" value={newName} onChange={e => setNewName(e.target.value)} placeholder="+ ADD OPERATOR"
-                style={{ flex: 1, font: F.chk(600, 12), letterSpacing: '.12em', color: T.dim, borderBottom: `1px solid ${T.line}`, minHeight: 32 }} />
+              <input className="textbox" value={newName} onChange={e => setNewName(e.target.value)} placeholder="+ ADD OPERATOR" aria-label="new operator callsign" maxLength={24}
+                style={{ flex: 1, font: F.chk(600, 12), letterSpacing: '.12em', color: T.dim, borderBottom: `1px solid ${T.line}`, minHeight: 44 }} />
               <GhostButton size={10} pad="4px 10px">ADD</GhostButton>
             </form>
           </div>
@@ -64,11 +64,10 @@ export function Kit() {
                 <span style={{ width: 6, height: 46, background: teamColor(sp.team_id) }} />
                 <div>
                   <div style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>OPERATOR
-                    <span style={{ marginLeft: 10, color: T.acc }}>#<input className="numbox" type="number" min={1} max={63} value={sp.player_num} style={{ width: '2.4em', font: F.mono(600, 10), color: T.acc, textAlign: 'left' }}
-                      onChange={e => { const n = Number(e.target.value); if (n >= 1 && n <= 63) patch({ player_num: n }); }} /></span>
+                    <span style={{ marginLeft: 10, color: T.acc }}>#<PlayerNum key={sp.player_id} value={sp.player_num} onCommit={n => patch({ player_num: n })} /></span>
                   </div>
-                  <input className="textbox" value={sp.display} onChange={e => patch({ display: e.target.value.toUpperCase() })}
-                    style={{ font: F.osw(700, 32), letterSpacing: '.1em', width: `${Math.max(6, sp.display.length + 1)}ch` }} />
+                  <DraftText key={sp.player_id} value={sp.display} ariaLabel="operator callsign" transform={s => s.toUpperCase()} onCommit={v => patch({ display: v })}
+                    style={{ font: F.osw(700, 32), letterSpacing: '.1em', width: `${Math.max(6, sp.display.length + 1)}ch`, minHeight: 44 }} />
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -77,10 +76,10 @@ export function Kit() {
                   {(state.config.mode === 'ffa' ? ['ffa'] : ['blue', 'yellow', 'red', 'green']).map(t => {
                     const on = sp.team_id === t;
                     return (
-                      <span key={t} onClick={() => patch({ team_id: t })} role="button"
-                        style={{ font: F.chk(700, 11), letterSpacing: '.14em', padding: '5px 12px', background: on ? TEAM[t] : 'transparent', color: on ? T.accInk : TEAM[t], border: `1px solid ${on ? TEAM[t] : T.line}`, cursor: 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+                      <button key={t} type="button" className="hit44" onClick={() => patch({ team_id: t })} aria-pressed={on}
+                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '5px 12px', background: on ? TEAM[t] : 'transparent', color: on ? T.accInk : TEAM[t], border: `1px solid ${on ? TEAM[t] : T.line}`, cursor: 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
                         {t.toUpperCase()}
-                      </span>
+                      </button>
                     );
                   })}
                 </span>
@@ -134,7 +133,7 @@ export function Kit() {
                 {weapons.map(w => {
                   const on = w.weapon_id === selWeapon?.weapon_id;
                   return (
-                    <div key={w.weapon_id} className="hov-acc" onClick={() => pickWeapon(w)}
+                    <div key={w.weapon_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => pickWeapon(w)} onKeyDown={onKey(() => pickWeapon(w))}
                       style={{ background: on ? 'rgba(57,180,255,.08)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, padding: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7, clipPath: CHAMFER.br8, minHeight: 44 }}>
                       <StripedSlot height={50} style={{ background: `repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)` }}
                         corner={<span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: CLS_COLOR[w.cls] ?? T.acc }}>{w.cls}</span>} />
@@ -151,6 +150,19 @@ export function Kit() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Player number 1–63, draft-then-commit (see ValueBox). */
+function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDraft(String(value)); }, [value, focused]);
+  const commit = () => { const n = Number(draft); if (Number.isInteger(n) && n >= 1 && n <= 63 && n !== value) onCommit(n); else setDraft(String(value)); };
+  return (
+    <input className="numbox" type="number" min={1} max={63} value={draft} aria-label="player number (1–63)" style={{ width: '2.6em', font: F.mono(600, 10), color: T.acc, textAlign: 'left', minHeight: 32 }}
+      onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      onChange={e => setDraft(e.target.value)} />
   );
 }
 

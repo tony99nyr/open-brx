@@ -23,7 +23,7 @@ export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
 const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
 
 const REQUIRED = {
-  hello: ['node_id', 'node_type', 'app_ver', 'seq_next'],
+  hello: ['node_id', 'node_type', 'app_ver', 'seq_next'],   // optional: gun{name,tail,fw}, node_key (A8 takeover key)
   bind: ['node_id', 'gun_name', 'gun_tail'],
   event: [], event_batch: ['events'],
   status: ['node_id', 'arm_state', 'synced'],

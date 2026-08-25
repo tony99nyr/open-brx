@@ -8,9 +8,11 @@
 // Every write to the gun goes through `writer`; the engine never composes a frame except the two
 // literal templates (`$SFLASH,*`, `$PLAYX,0,*`) and the pre-config probe set (contracts §3/§8).
 
+import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 export const C = {
-  STATUS_HEARTBEAT_MS: 2000, SYNC_FRESH_MS: 10000, FEEDBACK_MAX_AGE_MS: 3000, LATE_ARM_GRACE_MS: 8000,
-  DEATH_LATCH_MS: 2000, RESYNC_PROBE_S: 10, CONFIG_TTL_MS: 1_800_000,
+  STATUS_HEARTBEAT_MS: W.STATUS_HEARTBEAT_MS, SYNC_FRESH_MS: W.SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS: W.FEEDBACK_MAX_AGE_MS,
+  LATE_ARM_GRACE_MS: W.LATE_ARM_GRACE_MS, DEATH_LATCH_MS: W.DEATH_LATCH_MS, RESYNC_PROBE_S: W.RESYNC_PROBE_S,
+  CONFIG_TTL_MS: 1_800_000,
 };
 export const SFLASH = '$SFLASH,*';
 export const PLAYX = '$PLAYX,0,*';
@@ -44,9 +46,9 @@ export class Engine {
    * @param {(line:string, cls?:string) => void} [o.log]
    */
   constructor({ writer, emit = () => {}, report = () => {}, now = () => Date.now(), synced = () => false,
-                storage = null, log = () => {}, onChange = () => {} } = {}) {
+                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms) } = {}) {
     this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
-    this.storage = storage; this.log = log; this.onChange = onChange;
+    this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay;
     this.reset();
     this._load();
   }
@@ -69,11 +71,18 @@ export class Engine {
     this.cuesFired = new Set();
     this.tutorial = false;
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
+    this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
+    this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
     this.probeSent = false;
     this.night = false;
     this.lastVoltsAt = 0;
-    this._prevAmmo = null;
+    this._prevAmmo = {};            // per weapon slot ($ALCD token 3): last mag seen
+    this.activeSlot = 0;
+    this.magBySlot = {};
+    this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
+    this.configPending = false;     // config arrived while the gun was unlinked → write head on relink
+    this.pendingTeardown = null;    // 'end' | 'panic' owed to the gun once it relinks
   }
 
   // ---------- persistence (§3.7) ----------
@@ -84,6 +93,7 @@ export class Engine {
         phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: this.now(),
+        endedMatches: this.endedMatches.slice(-8), configPending: this.configPending, pendingTeardown: this.pendingTeardown,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -95,7 +105,7 @@ export class Engine {
       if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
       Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
-        spawned: !!s.spawned, ended: !!s.ended });
+        spawned: !!s.spawned, ended: !!s.ended, endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null });
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (_) { /* ignore */ }
@@ -141,8 +151,11 @@ export class Engine {
       if (p && p !== 'idle' && this.player) { this.phase = p; this.log(`restored phase ${p} from storage`, 'li'); }
       else this.phase = 'connected';
     }
+    if (this.pendingTeardown) { this._writeTeardown(this.pendingTeardown, 'relink'); this.pendingTeardown = null; }
     if (this.phase === 'connected' || this.phase === 'kitted') this._probe();
-    if (this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live') this._beginResync('ble-reconnect');
+    if (this.configPending && this.frames && this.frames.head && (this.phase === 'kitted' || (this.phase === 'lobby' && !this.headEcho))) {
+      this.configPending = false; this._applyConfig({ config: this.config, frames: this.frames, roster: this.roster }, 'relink');
+    } else if (this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live') this._beginResync('ble-reconnect');
     if (first) this.log(`gun ${this.gun ? this.gun.name : '?'} linked`, 'lk');
     this._changed();
   }
@@ -172,7 +185,7 @@ export class Engine {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
       this._applyConfig({ config: node.config, frames: node.frames, roster: node.roster || this.roster }, 'hydrate');
     }
-    if (node.start) this.startAt(node.start);
+    if (node.start && !(node.start.match_id && this.endedMatches.includes(node.start.match_id))) this.startAt(node.start);
     this._changed();
   }
 
@@ -201,7 +214,8 @@ export class Engine {
     if (config && config.night != null) this.night = !!config.night;
     this.tutorial = false;
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
-    if (!this.bleUp) { this.log('config stored; gun not linked yet', 'li'); this._changed(); return; }
+    if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
+    this.configPending = false;
     this.headEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
     this._write(this.frames.head, why === 'hydrate' ? 'head (rehydrate)' : 'head');
     this.spawned = false; this.ended = false;
@@ -235,6 +249,7 @@ export class Engine {
   // ---------- start (M-START) ----------
   startAt(body) {
     if (!body || !body.go_live_t) return { ok: false, reason: 'bad_start' };
+    if (body.match_id && this.endedMatches.includes(body.match_id)) { this.log('start for an already-ended match — ignored', 'li'); return { ok: false, reason: 'match_ended' }; }
     if (this.start && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
     if (this.start && body.seq === this.start.seq && body.match_id === this.start.match_id) return { ok: true, state: this.phase, reason: 'noop' };
     if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
@@ -248,13 +263,14 @@ export class Engine {
   /** E1/E5/E9: reconcile the persisted schedule against synced time (never spawn a possibly-live gun blindly). */
   resumeSchedule() {
     if (!this.start) return { ok: false, reason: 'no_schedule' };
+    // No gun linked: leave the phase alone (IDLE keeps its SET MY GUN screen); onBleConnected re-derives it.
+    if (!this.bleUp) return { ok: false, reason: 'gun_not_linked' };
     const now = this.now(), T = this.goLiveT;
     if (this.phase === 'live') return { ok: true, state: 'live' };
     if (now < T) { if (this.phase !== 'armed') this._set('armed'); return { ok: true, state: 'armed' }; }
     if (this.endT && now >= this.endT) { this.log('match already over on resume', 'li'); this._endLocal('expired-on-resume'); return { ok: false, reason: 'match_over' }; }
     if (this.spawned) { this._set('live'); return { ok: true, state: 'live' }; }
-    // T-0 passed and we never spawned: grace / hot-join (E5). Only when the gun is linked.
-    if (!this.bleUp) { if (this.phase !== 'armed') this._set('armed'); return { ok: true, state: 'armed', reason: 'gun_not_linked' }; }
+    // T-0 passed and we never spawned: grace / hot-join (E5).
     const late = now - T;
     this.log(late <= C.LATE_ARM_GRACE_MS ? `late spawn (+${late} ms, grace)` : `hot-join (+${Math.round(late / 1000)} s)`, 'lk');
     this._spawn(late <= C.LATE_ARM_GRACE_MS);
@@ -286,12 +302,17 @@ export class Engine {
       if (rem <= 10000) this._cue('runway_10');
       if (rem <= 9000 && rem > 3000) { const s = Math.ceil(rem / 1000); const k = `tick${s}`; if (!this.cuesFired.has(k) && this.frames && this.frames.cues && this.frames.cues.tick) { this.cuesFired.add(k); this._write([this.frames.cues.tick], 'tick'); } }
       if (rem <= 3000) this._cue('countdown');
+      // Hold-across-disperse is bench-UNVERIFIED (start-sequence §3 / checklist NEXT #1): if the gun drops its
+      // config while parked unspawned, enable rewriteHeadAtT10 to re-write frames.head at T-10 s.
+      if (this.rewriteHeadAtT10 && rem <= 10000 && !this._headRewritten && this.frames && this.bleUp) { this._headRewritten = true; this._write(this.frames.head, 'T-10 head re-write'); }
       if (rem <= 0 && this.bleUp && !this.resync) this._spawn(false);
       this._changed();
     }
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
-      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync) this._revive(false);
+      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync) {
+        const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
+      }
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       this._changed();
     }
@@ -311,11 +332,17 @@ export class Engine {
   _endLocal(why) {
     if (this.ended) return;
     this.ended = true;
-    if (this.frames) { this._write(this.frames.end, `end (${why})`); this._cue('game_over'); }
+    if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
+    if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.resync = null; this.start = null;
     this.moment = { kind: 'match_over', at: this.now() };
     this._set('kitted');
     this.log(`match ended: ${why}`, 'lk');
+  }
+
+  _writeTeardown(kind, why) {
+    if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
+    if (this.frames) { this._write(this.frames.end, `end (${why})`); const f = this.frames.cues && this.frames.cues.game_over; if (f) this._write([f], 'cue game_over'); }
   }
 
   // ---------- control ----------
@@ -329,7 +356,8 @@ export class Engine {
         else if (this.phase === 'live' && this.start && this.start.seq === seq) this._endLocal('abort_start(live)=recall');
         return;
       case 'panic':
-        if (this.frames && this.frames.panic) this._write(this.frames.panic, 'panic'); else this._write(['$CLEAR,*', '$SP,99,*'], 'panic');
+        if (this.bleUp) this._writeTeardown('panic', 'control'); else { this.pendingTeardown = 'panic'; this.log('panic owed to the gun — link down', 'le'); }
+        if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
         this.spawned = false; this.alive = false; this.start = null; this.resync = null;
         if (this.phase !== 'idle' && this.phase !== 'connected') this._set('kitted');
         return;
@@ -342,7 +370,8 @@ export class Engine {
     const t = body.t != null ? body.t : envT;
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
     const cue = body.cue || (this.frames && this.frames.cues && this.frames.cues[body.kind]);
-    this._write(cue ? [SFLASH, cue] : [SFLASH], `feedback ${body.kind}`);
+    this._write([SFLASH], `feedback ${body.kind}`);
+    if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}`));   // hardware-proven gap (seed): flash, then the line
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };
@@ -359,15 +388,16 @@ export class Engine {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
-        if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null);
+        if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
+        const wasResync = !!this.resync;
         if (this.resync) this._resyncEvidence('lcd');
-        if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(true);
+        if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(wasResync);
         break;
       }
       case 'ALCD': {
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
-        this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null);
+        this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
         break;
       }
       case 'HIR': {
@@ -384,12 +414,16 @@ export class Engine {
     this._changed();
   }
 
-  _onAmmo(mag, reserve) {
-    const prev = this._prevAmmo;
+  /** $ALCD,<mag>,100,<slot>,<reserve>,0 — counts are per weapon SLOT; a weapon swap is never a shot. */
+  _onAmmo(mag, reserve, slot = 0) {
+    slot = Number.isFinite(slot) ? slot : 0;
+    const prev = this._prevAmmo[slot];
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
-    this._prevAmmo = mag; this.ammo = mag; this.mag = Math.max(this.mag || 0, mag);
+    this._prevAmmo[slot] = mag; this.activeSlot = slot;
+    this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
+    this.ammo = mag; this.mag = this.magBySlot[slot];
     if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
   }
 
@@ -401,8 +435,9 @@ export class Engine {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num, shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto });
       this.lastHitAt = this.now();
     }
+    const wasResync = !!this.resync;
     if (this.resync) this._resyncEvidence('hp');
-    if (hp === 0 && this.alive && this.phase === 'live') this._death(!!this.resync);
+    if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync is a desync death
   }
 
   _death(desync) {
@@ -414,7 +449,12 @@ export class Engine {
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
     if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {
       const tids = Object.keys(this.frames.team_flip).filter(k => Number(k) !== this.teamTid);
-      if (tids.length) { const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid }); this.team = { ...(this.team || {}), tid, team_id: this.teamOf(-1) || `tid-${tid}` }; }
+      // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
+      if (tids.length) {
+        const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
+        const tm = ((this.config && this.config.teams) || []).find(x => Number(x.tid) === tid);
+        this.team = tm ? { ...tm } : { ...(this.team || {}), tid, team_id: `tid-${tid}`, name: TEAM_NAME[tid] || `TEAM ${tid}` };
+      }
     }
     this.moment = { kind: 'down', at: this.now() };
     this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
@@ -425,6 +465,7 @@ export class Engine {
   _beginResync(why) {
     if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) return;
     if (this.phase === 'lobby') { this.log(`resync (${why}): LOBBY → re-write head`, 'li'); this._applyConfig({ config: this.config, frames: this.frames, roster: this.roster }, 'hydrate'); return; }
+    if (this.phase === 'armed') { this.log(`resync (${why}): ARMED → re-write head, T-0 spawns as scheduled`, 'li'); if (this.frames) this._write(this.frames.head, 'resync head (armed)'); return; }
     this.resync = { step: 1, since: this.now(), prompt: 'pull the trigger', reserve: this.reserve, probes: 0 };
     this.log(`resync (${why}): evidence protocol started`, 'li');
     this._changed();
@@ -447,7 +488,12 @@ export class Engine {
     if (r.step === 2 && r.reloadAt && now - r.reloadAt > 1500) {
       const reserveKnown = r.reserve != null ? r.reserve : (this.reserve != null ? this.reserve : 1);
       if (reserveKnown > 0 || r.probes >= 1) return this._resyncNotLive('reload silent');
-      r.probes++; r.reloadAt = null; r.since = now; r.prompt = 'out of reserve? wait…'; this._changed(); return;
+      // reserve == 0: ambiguous (out of ammo vs unconfigured) — wait one more probe window, then escalate (non-LMS)
+      r.probes++; r.reloadAt = null; r.since = now; r.escalateAt = now + C.RESYNC_PROBE_S * 1000; r.prompt = 'out of reserve? wait…'; this._changed(); return;
+    }
+    if (r.step === 2 && r.escalateAt && now >= r.escalateAt) {
+      if (this.respawnType === 'none') { r.escalateAt = null; r.prompt = 'out of reserve — stay put'; this._changed(); return; }   // LMS: stay last-known
+      return this._resyncNotLive('reserve 0 timeout');
     }
     // step 3: trigger pulled after a good reload, no $ALCD within 1.5 s → dead
     if (r.step === 3 && r.trig3At && now - r.trig3At > 1500) {
@@ -477,11 +523,11 @@ export class Engine {
   // ---------- app lifecycle (§3.11) ----------
   resume() {
     this.log('app resumed — reconciling', 'li');
-    if (this.start) this.resumeSchedule();
     if (this.phase === 'live') {
       if (this.endT && this.now() >= this.endT) { this._endLocal('expired-while-suspended'); return; }
-      if (this.bleUp) this._beginResync('resume');
+      if (this.bleUp) this._beginResync('resume');   // §3.10/§3.11: observe BEFORE any schedule-driven write
     }
+    if (this.start) this.resumeSchedule();
     this._changed();
   }
 
@@ -515,6 +561,7 @@ export class Engine {
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       moment: this.moment, ended: this.ended, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
+      rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
     };
   }
 }

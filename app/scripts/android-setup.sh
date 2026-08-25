@@ -62,6 +62,8 @@ BLOCK = (
     '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'
     '    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />\n'
     '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />\n'
+    '    <!-- TODO node.md §3.11: the keep-alive foreground service (foregroundServiceType="connectedDevice") is not built yet; keep-awake covers screen-on only -->\n'
     '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
 )
 

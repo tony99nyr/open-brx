@@ -78,6 +78,13 @@ class WeaponCatalog:
                 p[_W_CLIPSTART] = str(w["mag"])
                 p[_W_RESERVE] = str(w["reserve"])
                 p[_W_RELOAD] = str(w["reload_ms"])
+                # NOTE: damage (tok 5) + rate-of-fire (tok 15) are deliberately NOT substituted. The
+                # catalog dmg/rof are 0-100 UI bars, while the frame holds literal firmware rates
+                # (e.g. tok15=850) on an unknown scale — so a provisional weapon shares its base
+                # template's damage/rof until a one-field Callsign capture pins the real values
+                # (verified:false). modes §3's "substitute 5/15" is scale-unsafe as written; when the
+                # capture lands, add a dmg/rof→frame map here (and amend §3). Mag/reserve/reload are
+                # literal and safe to substitute now.
                 full = ",".join(p)
         return full
 
@@ -93,11 +100,12 @@ class Compiler:
         self.catalog = catalog or WeaponCatalog()
 
     # -- helpers -----------------------------------------------------------
-    def _to_gc(self, config: GameConfig) -> _GC:
+    def _to_gc(self, config: GameConfig, player: Player | None = None) -> _GC:
         """Map the contracts §3 GameConfig (TypedDict) onto the gameconfig.py dataclass — only the
         fields whose frames we reuse (_gset/_pset/_bmap/_led_frames). Weapons + ammo come from the
         catalog, not the dataclass, so primary/secondary are left at their defaults."""
         led = config.get("led") or {}
+        ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor (modes §1.1)
         return _GC(
             mode=config["mode"],
             game_time_s=config["time_limit_s"] or 0,
@@ -106,10 +114,11 @@ class Compiler:
             frag_limit=config["scoring"].get("frag_limit") or 0,
             volume=VOL_PLAY,
             outdoor=config["environment"] == "outdoor",
-            leds=(led.get("mode", "team") != "off"),
+            # blackout LED-off on night OR an explicit led.mode=="off" (modes §6)
+            leds=(led.get("mode", "team") != "off") and not config.get("night", False),
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
-            hp=config["health"]["max_hp"],
-            armor=config["health"]["max_armor"],
+            hp=int(ov.get("max_hp", config["health"]["max_hp"])),
+            armor=int(ov.get("max_armor", config["health"]["max_armor"])),
         )
 
     @staticmethod
@@ -126,7 +135,7 @@ class Compiler:
 
     # -- Compiler Protocol -------------------------------------------------
     def compile(self, config: GameConfig, player: Player, teams: list[Team]) -> FrameBundle:
-        gc = self._to_gc(config)
+        gc = self._to_gc(config, player)
         pnum = int(player["player_num"])
         if not 1 <= pnum <= MAX_PLAYERS:
             raise ValueError(f"player_num {pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
@@ -237,6 +246,10 @@ class Compiler:
         # lms ⇔ no auto-respawn (none / finite lives)
         if mode == "lms" and config.get("respawn", {}).get("type") == "auto":
             errors.append("lms cannot use respawn.type=='auto'")
+
+        # station-gated objective modes need a Tier-1 station/objective source (modes §7)
+        if mode in {"domination", "koth", "ctf", "cs", "bomb"} and not opts.get("station_source"):
+            errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set opts.station_source")
 
         # unknown weapon ids
         for p in roster:

@@ -71,7 +71,7 @@ export class MockBackend implements Api {
     return {
       session_id: this.session_id, phase: this.phase, t,
       lan: { mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws', qr: 'ws://192.168.8.10:8765/ws' },
-      nodes, readiness, config: clone(this.config), config_errors: [],
+      nodes, readiness, config: clone(this.config), config_errors: [], config_warnings: [],
       players: clone(this.players), teams: clone(TEAMS),
       kit: { kitted, total: this.players.length, trying: { ...this.trying } },
       lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed, acks: clone(this.acks) },

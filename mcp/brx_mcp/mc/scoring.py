@@ -41,7 +41,7 @@ class Scorer:
                  players: dict[str, Player], teams: list[Team],
                  node_player: dict[str, str], synced_at_lobby: dict[str, bool],
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
-                 now_ms: Callable[[], int] | None = None):
+                 now_ms: Callable[[], int] | None = None, win_by: str | None = None):
         self.match_id = match_id
         self.go_live_t = go_live_t
         self.time_limit_s = time_limit_s
@@ -50,6 +50,7 @@ class Scorer:
         self.teams = {t["team_id"]: t for t in teams}
         self.node_player = node_player            # node_id -> player_id (Session keeps it current)
         self.synced_at_lobby = synced_at_lobby    # node_id -> bool
+        self.win_by = win_by
         self.on_feedback = on_feedback or (lambda pid, body: None)
         self.on_feed = on_feed or (lambda e: None)
         self.now_ms = now_ms or (lambda: 0)
@@ -73,6 +74,14 @@ class Scorer:
     def shots_total(self, pid: str) -> int:
         st = self.stats[pid]
         return st.shots_baseline + st.shots
+
+    def register_player(self, pid: str, player: Player) -> None:
+        """A5.6 late joiner: make a mid-match arrival scorable (stats + num map + players)."""
+        if pid in self.stats:
+            return
+        self.players[pid] = player
+        self.stats[pid] = _P(player.get("team_id"))
+        self.num_to_pid[player["player_num"]] = pid
 
     def rebind_node(self, pid: str) -> None:
         """A NEW node_id bound this player (hot-swap): fold the old session's shots into the baseline (A6.2)."""
@@ -154,6 +163,8 @@ class Scorer:
         st = self.stats[pid]
         st.flushed = True
         t = self._eff_t(node_id, ev, t_recv, rebase)
+        if not self.synced_at_lobby.get(node_id, False):
+            suppress_awards = True                  # A5.7: never-synced node → no window awards on the live path either
         if self.end_t is not None and t > self.end_t:
             self.post_end.append((node_id, ev, t_recv))
             return "post_end"
@@ -203,7 +214,10 @@ class Scorer:
                 ks.best_streak = max(ks.best_streak, ks.streak)
                 if not suppress:
                     if ks.last_kill_t is not None and t - ks.last_kill_t <= MULTI_KILL_MS:
-                        ks.multis[-1] = ks.multis[-1] + 1 if ks.multis else 2
+                        if ks.multis:
+                            ks.multis[-1] += 1
+                        else:
+                            ks.multis.append(2)
                         kill["multi"] = ks.multis[-1]
                     else:
                         ks.multis.append(1)
@@ -219,22 +233,19 @@ class Scorer:
                         tag = f"STREAK ×{ks.streak}"
                 ks.last_kill_t = t
                 # assists: other players who damaged the victim inside the window
+                # assists: each OTHER player who damaged the victim inside the window gets exactly one
+                assisters: list[str] = []
                 for ht, shooter, v, _dmg in self.hits_log:
-                    if v == victim and shooter not in (killer, victim) and t - ASSIST_WINDOW_MS <= ht <= t:
-                        self.stats[shooter].assists += 1
-                        kill.setdefault("assists", []).append(shooter)
-                # de-dup assists per kill
-                if "assists" in kill:
-                    seen = set(); uniq = []
-                    for a in kill["assists"]:
-                        if a not in seen:
-                            seen.add(a); uniq.append(a)
-                    for a in kill["assists"][len(uniq):]:
-                        self.stats[a].assists -= 1
-                    kill["assists"] = uniq
+                    if v == victim and shooter not in (killer, victim) and t - ASSIST_WINDOW_MS <= ht <= t and shooter not in assisters:
+                        assisters.append(shooter)
+                for a in assisters:
+                    self.stats[a].assists += 1
+                if assisters:
+                    kill["assists"] = assisters
                 # feedback to the killer only if fresh
                 if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress:
-                    body = {"player_id": killer, "kind": "multi" if kill["multi"] >= 2 else "kill", "t": t}
+                    body = {"player_id": killer, "kind": "multi" if kill["multi"] >= 2 else "kill", "t": t,
+                            "victim": victim, "victim_team": self.stats[victim].team_id}
                     self.on_feedback(killer, body)
         self.kills.append(kill)
         if killer:
@@ -305,6 +316,9 @@ class Scorer:
         if self.mode == "ffa":
             rows = self.rows()
             return {"player_id": rows[0]["player_id"]} if rows else {}
+        if self.win_by not in (None, "", "kills"):
+            # survival / objective ends are decided by the host or an objective source, not by kills (A5.9/A6.1)
+            return {"team_id": None, "undecided": self.win_by}
         scores = self.team_scores()
         if not scores:
             return {}
@@ -360,12 +374,17 @@ class Scorer:
                 "provisional": bool(missing) if provisional_override is None else provisional_override,
                 "missing": missing, "post_end": len(self.post_end), "parked": len(self.parked)}
 
+    @staticmethod
+    def _csv_safe(v):
+        # neutralise spreadsheet formula injection (=,+,-,@ leading a cell)
+        return ("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") else v
+
     def csv(self) -> str:
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["operator", "team", "kills", "deaths", "assists", "kd", "accuracy", "streak", "shots", "hits", "medals"])
         for r in self.rows():
-            w.writerow([r["display"], r["team_id"] or "", r["kills"], r["deaths"], r["assists"], r["kd"],
-                        "" if r["accuracy"] is None else r["accuracy"], r["streak"], r["shots"], r["hits"],
-                        " · ".join(r["medals"])])
+            w.writerow([self._csv_safe(r["display"]), self._csv_safe(r["team_id"] or ""), r["kills"], r["deaths"],
+                        r["assists"], r["kd"], "" if r["accuracy"] is None else r["accuracy"], r["streak"],
+                        r["shots"], r["hits"], self._csv_safe(" · ".join(r["medals"]))])
         return buf.getvalue()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import secrets
 import socket
 
 log = logging.getLogger("brx.mc")
@@ -96,15 +97,25 @@ def main(argv=None):
     ap.add_argument("--fake-net", action="store_true", help="in-memory node transport (no phones)")
     ap.add_argument("--demo", action="store_true", help="seed 8 demo players/guns; with --fake-net, simulate nodes")
     ap.add_argument("--demo-speed", type=float, default=1.0)
+    ap.add_argument("--token", default=None, help="operator token (default: random per launch)")
+    ap.add_argument("--no-auth", action="store_true", help="disable the operator token (open API — trusted LAN only)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     session, net, extra = build(args)
+    token = None if args.no_auth else (args.token or secrets.token_urlsafe(6))
     from .api import create_app
-    app = create_app(session, extra_tasks=extra)
+    app = create_app(session, extra_tasks=extra, token=token)
     import uvicorn
-    print(f"Mission Control  http://{session.lan['ip']}:{args.port}/   nodes: {session.lan.get('ws_url') or 'ws://'+session.lan['ip']+':'+str(args.ws_port)+'/ws'}")
+    ip = session.lan["ip"]
+    url = f"http://{ip}:{args.port}/" + (f"#tok={token}" if token else "")
+    print(f"Mission Control  {url}")
+    print(f"  nodes: {session.lan.get('ws_url') or 'ws://'+ip+':'+str(args.ws_port)+'/ws'}")
+    if token:
+        print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)")
+    else:
+        print("  auth DISABLED (--no-auth): any device on this LAN can control the match")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

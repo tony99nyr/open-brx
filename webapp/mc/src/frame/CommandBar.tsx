@@ -9,14 +9,23 @@ const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'BUILD'], ['kit',
 const viewIdx = (p: Phase) => (p === 'armed' ? 3 : PH.findIndex(x => x[0] === p));
 
 export function CommandBar() {
-  const { state, view, setView, run, api, error, clearError, mock } = useStore();
+  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, hasToken, setToken } = useStore();
   const [panic, setPanic] = useState(false);
+  const [tokDraft, setTokDraft] = useState('');
+  const offline = !mock && !connected;
   const cur = viewIdx(view);
   const linked = state?.nodes.filter(n => n.last_seen_ms < 8000).length ?? 0;
   const sync = state?.nodes.length ? (state.nodes.every(n => n.synced) ? 'OK' : 'PARTIAL') : '—';
 
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
+      {offline && (
+        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.22em', color: T.bad }}>
+          <span style={{ width: 8, height: 8, background: T.bad, animation: 'linkBlink 1.2s infinite' }} />
+          MC OFFLINE — RECONNECTING
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state ? 'SHOWING THE LAST SNAPSHOT — CLOCKS ARE FROZEN' : 'NO SNAPSHOT YET — IS THE SERVER RUNNING?'}</span>
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 26px', padding: '12px 20px 10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 230 }}>
           <div style={{ width: 26, height: 26, background: T.acc, clipPath: 'polygon(0 0,100% 0,100% 65%,65% 100%,0 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: F.chk(700, 12), color: T.accInk }}>B</div>
@@ -53,9 +62,18 @@ export function CommandBar() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 30px', padding: '6px 20px', background: T.panelAlt, borderTop: `1px solid ${T.slot}`, font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro, alignItems: 'center' }}>
         <span>NET ▸ <span style={{ color: T.dim }}>{state?.lan.ssid ?? state?.lan.mode?.toUpperCase() ?? '—'}</span> · <span style={{ color: linked ? T.ok : T.warn }}>{linked} NODES LINKED</span></span>
         <span>PHASE ▸ <span style={{ color: T.dim }}>0{cur + 1}/06 {PH[cur][1]}{state?.phase === 'armed' && view === 'armed' ? ' · ARMED' : ''}</span></span>
-        <span>UPLINK ▸ <span style={{ color: state ? T.ok : T.bad }}>{state ? 'OK' : 'NO SERVER'}</span> · SYNC {sync}</span>
+        <span>UPLINK ▸ <span style={{ color: offline ? T.bad : state ? T.ok : T.bad }}>{offline ? 'DOWN' : state ? 'OK' : 'NO SERVER'}</span> · SYNC {sync}</span>
         <JoinQr />
-        {error && <span onClick={clearError} style={{ color: T.bad, cursor: 'pointer' }} title="dismiss">▲ {error.toUpperCase()}</span>}
+        {error && <button type="button" role="alert" onClick={clearError} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: T.bad, cursor: 'pointer', padding: 0, minHeight: 44 }} title="dismiss">▲ {error.toUpperCase()}</button>}
+        {(authRequired || (!mock && !hasToken)) && (
+          <form onSubmit={e => { e.preventDefault(); if (tokDraft.trim()) { setToken(tokDraft); setTokDraft(''); } }} role="alert"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: T.warn }}>
+            <label htmlFor="mc-tok">▲ {authRequired ? 'OPERATOR TOKEN REQUIRED' : 'OPERATOR TOKEN'}</label>
+            <input id="mc-tok" className="textbox" value={tokDraft} onChange={e => setTokDraft(e.target.value)} placeholder="paste from the MC console"
+              autoComplete="off" spellCheck={false} style={{ width: '14ch', borderBottom: `1px solid ${T.warn}`, color: T.ink, minHeight: 32 }} />
+            <button type="submit" style={{ background: T.warn, color: T.accInk, border: 'none', font: F.chk(700, 10), letterSpacing: '.16em', padding: '6px 10px', cursor: 'pointer', minHeight: 32 }}>APPLY</button>
+          </form>
+        )}
         <span style={{ marginLeft: 'auto' }}>{mock ? 'MOCK // ' : ''}SESSION {state?.session_id?.slice(-6).toUpperCase() ?? '——'} // T {state ? new Date(state.t).toLocaleTimeString([], { hour12: false }) : '——:——:——'}</span>
       </div>
     </header>
@@ -75,7 +93,7 @@ function JoinQr() {
   if (!qr) return null;
   return (
     <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <span className="hov-acc-ink" style={{ cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>JOIN ▸ <span style={{ color: T.dim }}>{state?.lan.ws_url}</span> ▦</span>
+      <button type="button" className="hov-acc-ink" aria-expanded={open} onClick={() => setOpen(o => !o)} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0, minHeight: 44 }}>JOIN ▸ <span style={{ color: T.dim }}>{state?.lan.ws_url}</span> ▦</button>
       {open && url && (
         <span style={{ position: 'absolute', top: 22, left: 0, zIndex: 20, background: T.page, border: `1px solid ${T.acc}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <img src={url} width={220} height={220} alt="join QR" style={{ display: 'block' }} />

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
-import { OutlineTag, PrimaryButton, Progress, ScreenHeader, Seg, Tag } from '../ui';
+import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Seg, Tag } from '../ui';
 
 const RUNWAYS = [60, 120, 180, 300];
 
@@ -49,7 +49,7 @@ export function Lobby() {
               <span style={{ font: F.osw(600, 12), ...TAB, color: T.dim }}>{col.members.length} OPERATORS</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${drag ? T.acc : T.line}`, padding: 6, background: T.panelDeep, minHeight: 200 }}>
-              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} onDragStart={() => setDrag(mb.player_id)} />)}
+              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         ))}
@@ -57,7 +57,7 @@ export function Lobby() {
           <div style={{ flex: '1 1 240px' }}>
             <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.warn}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.warn }}>UNASSIGNED</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
-              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} onDragStart={() => setDrag(mb.player_id)} />)}
+              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         )}
@@ -82,9 +82,9 @@ export function Lobby() {
         </PrimaryButton>
       </div>
       {!allReady && players.length > 0 && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>
+        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>
           HOST OVERRIDE ▸ {players.filter(p => !p.ready).map(p => (
-            <span key={p.player_id} className="hov-acc-ink" style={{ cursor: 'pointer', color: T.dim }} onClick={() => run(() => api.setReady(p.player_id, true))}>[ READY {p.display} ]</span>
+            <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>[ READY {p.display} ]</button>
           ))}
         </div>
       )}
@@ -92,14 +92,24 @@ export function Lobby() {
   );
 }
 
-function MemberRow({ p, onDragStart }: { p: Player; onDragStart: () => void }) {
+function MemberRow({ p, teamIds, onDragStart, onMove }: { p: Player; teamIds: string[]; onDragStart: () => void; onMove: (team_id: string) => void }) {
+  const others = teamIds.filter(t => t !== p.team_id);
   return (
     <div className="hov-acc" draggable onDragStart={onDragStart}
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44 }}>
-      <span style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em' }}>⠿</span>
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, flexWrap: 'wrap' }}>
+      <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em' }}>⠿</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
         <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
+      </span>
+      {/* tap-to-move (tablets have no HTML5 drag): one chip per other team */}
+      <span style={{ display: 'inline-flex', gap: 3 }} aria-label={`move ${p.display} to`}>
+        {others.map(t => (
+          <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
+            style={{ ...BTN_RESET, font: F.chk(700, 9), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+            ▸ {t.toUpperCase()}
+          </button>
+        ))}
       </span>
       {p.ready ? <OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag> : <OutlineTag color={T.micro} border={T.line}>WAIT</OutlineTag>}
     </div>
@@ -110,7 +120,7 @@ function Step({ n, done, label }: { n: number; done: boolean; label: React.React
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ font: F.osw(700, 11), background: done ? T.ok : T.line, color: done ? T.accInk : T.dim, padding: '1px 7px' }}>{n}</span>
-      <span style={{ font: F.chk(600, 11), letterSpacing: '.14em', color: done ? T.dim : T.micro, display: 'inline-flex', alignItems: 'center', gap: 8 }}>{label}</span>
+      <span style={{ font: F.chk(600, 11), letterSpacing: '.14em', color: T.dim, display: 'inline-flex', alignItems: 'center', gap: 8 }}>{label}</span>
     </span>
   );
 }

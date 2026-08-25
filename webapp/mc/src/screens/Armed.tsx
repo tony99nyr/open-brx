@@ -6,7 +6,7 @@ import { Brackets, GhostButton, HazardButton, ScreenHeader, Seg, Tag } from '../
 const RUNWAYS = [60, 120, 180, 300];
 
 export function Armed() {
-  const { state, run, api, setView, serverNow } = useStore();
+  const { state, run, api, setView, serverNow, connected } = useStore();
   const [, tick] = useState(0);
   const [runway, setRunway] = useState(state?.start?.countdown_s ?? 120);
   const [confirmAbort, setConfirmAbort] = useState(false);
@@ -45,8 +45,8 @@ export function Armed() {
         </>
       } />
       <Brackets style={{ padding: '18px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 44px', marginBottom: 16 }}>
-        <div>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>SYNCED GO-LIVE IN</div>
+        <div role="status" aria-live="polite" aria-atomic style={{ opacity: connected ? 1 : .45 }} title={connected ? undefined : 'MC offline — countdown shown from the last snapshot'}>
+          <div style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>{connected ? 'SYNCED GO-LIVE IN' : 'SYNCED GO-LIVE IN · OFFLINE'}</div>
           <div style={{ font: F.osw(700, 56), ...TAB, letterSpacing: '.04em', lineHeight: 1 }}>T-{fmtClock(tMinus / 1000)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -73,7 +73,7 @@ export function Armed() {
               </div>
               <div style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>#{p.player_num} {p.display}</div>
               <div style={{ font: F.osw(700, 22), ...TAB, color: ack ? T.ink : T.warn }}>{ack ? (live ? 'LIVE' : `T-${fmtClock(tMinus / 1000)}`) : '——:——'}</div>
-              <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: ack && !stale ? T.micro : T.warn }}>
+              <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: ack && !stale ? T.dim : T.warn }}>
                 {ack ? (stale ? `COUNTING · AUTONOMOUS · LAST SEEN ${fmtAge(n!.last_seen_ms)}` : 'COUNTING · AUTONOMOUS') : `RETRYING · LAST SEEN ${fmtAge(n?.last_seen_ms ?? 0)}`}
                 {n && !n.synced && ' · UNSYNCED'}
               </div>

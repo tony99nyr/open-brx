@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { GameConfig } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T } from '../tokens';
-import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox } from '../ui';
+import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox, onKey } from '../ui';
 
 export function Build() {
   const { state, modes, run, api } = useStore();
@@ -22,7 +22,7 @@ export function Build() {
             {modes.map(m => {
               const on = m.mode === cfg.mode;
               return (
-                <div key={m.mode} className="hov-acc" onClick={() => put({ ...m.defaults, config_id: cfg.config_id })}
+                <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => put({ ...m.defaults, config_id: cfg.config_id })} onKeyDown={onKey(() => put({ ...m.defaults, config_id: cfg.config_id }))}
                   style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : 'transparent'}`,
                     padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer', clipPath: CHAMFER.br10 }}>
                   <StripedSlot height={76} caption="mode art"
@@ -54,6 +54,9 @@ export function Build() {
               </div>
             </div>
           )}
+          {(state.config_warnings?.length ?? 0) > 0 && (
+            <div style={{ marginTop: 10, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {state.config_warnings!.join(' · ').toUpperCase()}</div>
+          )}
           {state.config_errors.length > 0 && (
             <div style={{ marginTop: 10, font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>
           )}
@@ -73,19 +76,20 @@ export function Build() {
                 onChange={v => put({ respawn: { ...cfg.respawn, type: v } })} />
             </Row>
             <Row label="RESPAWN DELAY">
-              <ValueBox value={cfg.respawn.delay_s} unit="S" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: v } })} />
+              <ValueBox value={cfg.respawn.delay_s} unit="S" label="respawn delay seconds" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: v } })} />
             </Row>
             <Row label={<>TIME LIMIT <span style={{ font: F.mono(500, 10), color: T.micro }}>// REQUIRED</span></>}>
-              <ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} />
+              <ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" label="time limit minutes" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} />
             </Row>
             <Row label={<>SCORE TO WIN <span style={{ font: F.mono(500, 10), color: T.micro }}>// IN-COVERAGE ONLY</span></>}>
-              <ValueBox value={cfg.scoring.frag_limit ?? 0} min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} />
+              <ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} />
             </Row>
             <div style={{ height: 1, background: T.line }} />
-            <div className="hov-acc-ink" onClick={() => setExtras(e => !e)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: T.micro, minHeight: 28 }}>
+            <button type="button" className="hov-acc-ink" aria-expanded={extras} onClick={() => setExtras(e => !e)}
+              style={{ background: 'transparent', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', cursor: 'pointer', color: T.micro, minHeight: 44, font: 'inherit' }}>
               <span style={{ font: F.mono(600, 10), letterSpacing: '.22em' }}>LED &amp; ENVIRONMENT EXTRAS</span>
               <span>{extras ? '▾' : '▸'}</span>
-            </div>
+            </button>
             {extras && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>

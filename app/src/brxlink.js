@@ -95,8 +95,11 @@ export class BrxLink {
     if (this.deviceId) this._reconnect();
   }
   async _reconnect() {
+    if (this._reconnecting) return;                   // one reconnect loop at a time — a second one would double-subscribe notifications
+    this._reconnecting = true;
     try { await this._connectWithRetry(this.deviceId, 6); this.connected = true; this._log('reconnected', 'lk'); this.onUp(this.advert); }
     catch (e) { this._log('reconnect failed — tap Set my gun', 'le'); }
+    finally { this._reconnecting = false; }
   }
   async disconnect() {
     const id = this.deviceId; this.deviceId = null; this.connected = false;

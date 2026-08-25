@@ -19,10 +19,13 @@ export class Transport {
   constructor({ storage = defaultStorage(), wsFactory = url => new WebSocket(url), node = {}, gun = null,
                 heartbeatMs = E.STATUS_HEARTBEAT_MS, now = () => Date.now(), timers = globalThis,
                 random = Math.random, backoff = { baseMs: 500, capMs: 10000, jitter: 0.2 }, helloTimeoutMs = 5000,
-                keyPrefix = 'brx' } = {}) {
+                welcomeTimeoutMs = 10000, keyPrefix = 'brx' } = {}) {
     this.storage = storage; this.wsFactory = wsFactory; this.now = now; this.timers = timers; this.random = random;
-    this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs;
+    this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
+    this.syncIntervalMs = Math.min(5000, Math.floor(E.SYNC_FRESH_MS / 2));   // keep synced() fresh (SYNC_FRESH_MS = 10 s)
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
+    this._keyKey = `${keyPrefix}.node_key`;
+    this.nodeKey = this._persisted(this._keyKey);        // contracts A8: takeover key issued in welcome
     this.nodeType = node.node_type || 'phone'; this.appVer = node.app_ver || 'app';
     this.gun = gun; this.playerId = null; this.playerNum = 0; this.matchId = null; this.sessionId = null;
     this.context = {};                       // last welcome.node / assign / config / start
@@ -46,6 +49,8 @@ export class Transport {
     return new Promise((resolve, reject) => {
       this._firstWelcome = { resolve, reject };
       this._open();
+      // Reject the connect() promise if no welcome ever arrives; the reconnect loop keeps running regardless.
+      this._connectTimer = this.timers.setTimeout(() => { this._connectTimer = null; if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + this.welcomeTimeoutMs + ' ms')); } }, this.welcomeTimeoutMs);
     });
   }
   bind({ player_id } = {}) {
@@ -97,6 +102,8 @@ export class Transport {
   dropLink() { const ws = this._ws; if (ws) { try { ws.close(4002, 'drop'); } catch (_) { /* ignore */ } } }
 
   // ---------- internals ----------
+  _persisted(key) { try { return this.storage.getItem(key) || null; } catch (_) { return null; } }
+  _store(key, v) { try { this.storage.setItem(key, v); } catch (_) { /* ignore */ } }
   _persistedNodeId(key) {
     try { const v = this.storage.getItem(key); if (v) return v; const id = `node-${E.uid(10)}`; this.storage.setItem(key, id); return id; }
     catch (_) { return `node-${E.uid(10)}`; }
@@ -104,7 +111,7 @@ export class Transport {
   _log(...a) { if (globalThis.__BRX_TRANSPORT_DEBUG) console.log('[transport]', ...a); }
   _setState(s) { if (this.state === s) return; this.state = s; for (const cb of this._onState) { try { cb(s); } catch (e) { this._log('onState cb', e); } } }
   _clearTimers() {
-    for (const k of ['_hbTimer', '_rcTimer', '_helloTimer', '_syncTimer']) { if (this[k]) { this.timers.clearTimeout(this[k]); this[k] = null; } }
+    for (const k of ['_hbTimer', '_rcTimer', '_helloTimer', '_syncTimer', '_connectTimer']) { if (this[k]) { this.timers.clearTimeout(this[k]); this[k] = null; } }
   }
   _open() {
     if (this.closed) return;
@@ -117,12 +124,12 @@ export class Transport {
       this.attempt = 0;
       this._sendRaw(E.makeEnvelope('hello', { node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer,
         gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
-        seq_next: this.ring.seqNext }), ws);
+        seq_next: this.ring.seqNext, ...(this.nodeKey ? { node_key: this.nodeKey } : {}) }), ws);
       this._helloTimer = this.timers.setTimeout(() => { if (this._ws === ws && this.state === 'connecting') { this._log('welcome timeout'); this.dropLink(); } }, this.helloTimeoutMs);
     };
     ws.onmessage = evt => { if (ws === this._ws) this._onFrame(typeof evt.data === 'string' ? evt.data : String(evt.data)); };
     ws.onerror = () => { /* onclose follows */ };
-    ws.onclose = () => { if (ws !== this._ws) return; this._ws = null; this._clearTimers(); this._setState('offline'); this._scheduleReconnect(); };
+    ws.onclose = () => { if (ws !== this._ws) return; this._ws = null; const ct = this._connectTimer; this._connectTimer = null; this._clearTimers(); this._connectTimer = ct; this._setState('offline'); this._scheduleReconnect(); };
   }
   _scheduleReconnect() {
     if (this.closed || this._rcTimer) return;
@@ -152,7 +159,9 @@ export class Transport {
   }
   _onWelcome(body) {
     if (this._helloTimer) { this.timers.clearTimeout(this._helloTimer); this._helloTimer = null; }
+    if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
     this.sessionId = body.session_id;
+    if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }
     this.ring.adoptSeqHi(Number(body.seq_hi));
     this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
     if (body.node && typeof body.node === 'object') this._absorb(body.node);
@@ -162,7 +171,7 @@ export class Transport {
     for (let i = 0; i < 5; i++) this._sendKind('time_req', { t_node: this.now() });
     this._flush();
     this._startHeartbeat();
-    this._syncTimer = this.timers.setTimeout(() => this._periodicSync(), 30000);
+    this._syncTimer = this.timers.setTimeout(() => this._periodicSync(), this.syncIntervalMs);
     for (const cb of this._onHydrate) { try { cb(body.node || null, body); } catch (e) { this._log('onHydrate cb', e); } }
     if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.resolve(body); }
   }
@@ -196,6 +205,6 @@ export class Transport {
     this._syncTimer = null;
     if (this.state !== 'bound') return;
     this._sendKind('time_req', { t_node: this.now() });
-    this._syncTimer = this.timers.setTimeout(() => this._periodicSync(), 30000);
+    this._syncTimer = this.timers.setTimeout(() => this._periodicSync(), this.syncIntervalMs);
   }
 }

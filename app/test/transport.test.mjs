@@ -111,6 +111,27 @@ test('transport: hello→welcome→bind, queue offline, flush on reconnect, prun
   t.close(); assert.deepEqual(states.slice(0, 3), ['connecting', 'open', 'bound']);
 });
 
+test('transport: node_key from welcome is persisted and re-sent on every hello (A8)', async () => {
+  const sockets = []; const store = memoryStorage();
+  const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
+  assert.equal('node_key' in sockets[0].sent[0].body, false, 'first hello has no key yet');
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0, node_key: 'k-123' })); await p;
+  sockets[0].close(); await sleep(10); sockets[1].open();
+  assert.equal(sockets[1].sent[0].body.node_key, 'k-123', 're-hello carries the key');
+  const t2 = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' } });
+  assert.equal(t2.nodeKey, 'k-123', 'persisted across app restarts'); t.close(); t2.close();
+  assert.equal(t.syncIntervalMs <= E.SYNC_FRESH_MS / 2, true, 'periodic sync keeps synced() fresh');
+});
+
+test('transport: connect() rejects when no welcome arrives (loop keeps reconnecting)', async () => {
+  const sockets = []; const store = memoryStorage();
+  const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' }, welcomeTimeoutMs: 30, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
+  await assert.rejects(p, /no welcome/);
+  assert.equal(t.closed, false, 'still trying'); t.close();
+});
+
 // ---------------- integration: the real Python NetServer ----------------
 const haveServer = existsSync(PY) && spawnSync(PY, ['-c', 'import websockets, brx_mcp.mc.net'], { stdio: 'ignore' }).status === 0;
 test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, offline flush + ack, sync, pushes)', { skip: !haveServer && 'needs .venv python with websockets' }, async () => {

@@ -219,7 +219,7 @@ for idempotent replay. `status` carries no `seq`.
 **Node → MC** (`kind`):
 | kind | body | when |
 |---|---|---|
-| `hello` | `{ node_id, node_type:"phone"|"companion", app_ver, gun?: {name, tail, fw?}, seq_next }` | on connect. `gun.name` = the full **advert name** (`<sticker>-<tail>`); `tail` is parsed from it, **never from the platform deviceId** (iOS gives UUIDs, A5.5). `seq_next` = the node's next event seq (so MC can spot a wiped install) |
+| `hello` | `{ node_id, node_type:"phone"|"companion", app_ver, gun?: {name, tail, fw?}, seq_next, node_key? }` | on connect. `gun.name` = the full **advert name** (`<sticker>-<tail>`); `tail` is parsed from it, **never from the platform deviceId** (iOS gives UUIDs, A5.5). `seq_next` = the node's next event seq (so MC can spot a wiped install). `node_key` = the secret from a prior `welcome` (A8) — proves a re-claim of a still-live node_id/gun. |
 | `bind` | `{ node_id, player_id?, gun_name, gun_tail }` | node claims/confirms its gun & player. `gun_name`/`gun_tail` come from the advert name (A5.5) |
 | `event` | one persisted `Event` (§4) | as they happen (queued if offline) |
 | `event_batch` | `{ events: Event[] }` | store-and-forward flush on reconnect |
@@ -233,7 +233,7 @@ for idempotent replay. `status` carries no `seq`.
 **MC → Node** (`kind`):
 | kind | body | when |
 |---|---|---|
-| `welcome` | `{ session_id, server_t, seq_hi, node?: { player, team, roster, config, frames, start?, match_id?, score? } }` | reply to hello. **Full re-hydration (A4.5, A5.5): MC resolves the context by `hello.gun` (sticker/tail → the player bound to that gun) first, then by `node_id`** — so a hot-swapped phone with a brand-new `node_id` is hydrated on its first `hello`, before `bind`. `score?` = that player's current `ScoreRow` (so a swapped phone's D/K/A start right). `seq_hi` = highest event seq MC has from this `node_id`; node sets `next_seq = max(own, seq_hi+1)`. |
+| `welcome` | `{ session_id, server_t, seq_hi, node_key, node?: { player, team, roster, config, frames, start?, match_id?, score? } }` | reply to hello. **Full re-hydration (A4.5, A5.5): MC resolves the context by `hello.gun` (sticker/tail → the player bound to that gun) first, then by `node_id`** — so a hot-swapped phone with a brand-new `node_id` is hydrated on its first `hello`, before `bind`. `score?` = that player's current `ScoreRow` (so a swapped phone's D/K/A start right). `seq_hi` = highest event seq MC has from this `node_id`; node sets `next_seq = max(own, seq_hi+1)`. |
 | `assign` | `{ player: Player, team: Team, roster: RosterEntry[] }` | kit-out: set player+team → **KITTED**. Carries **no config**. **Re-sent on any change to the player** (loadout, name, team, player_num); the node's latest `player` is authoritative. |
 | `tutorial` | `{ weapon: Weapon, frames: string[] }` | silent try-out arming (phase 3a; requires KITTED). Frames compiled by MC. |
 | `config` | `{ config: GameConfig, frames: FrameBundle, roster: RosterEntry[] }` | pushed on **all-ready** (phase 4) → node writes `frames.head` (no `$SPAWN`), replies `ack_config` → **LOBBY**. Re-pushed (new `frames`) if a player's loadout/num changes after the push. |
@@ -454,3 +454,16 @@ inaudible). BLE writes chunk at 20 bytes (§app).
 - **A7 (2026-08-25, HUD v2 integration; additive):** MC→node **`score{ScoreRow, shots_total}`** — pushed on every change while
   the node is in coverage, so the HUD's K/A/ACC ("✓MC") update mid-match instead of only on rejoin (`welcome.node.score`).
   Node treats it as display-only truth; never derives kills locally.
+- **A8 (2026-08-25, polish-loop iteration 1 — security + robustness; additive except the takeover rule):**
+  - **A8.1 Operator auth.** The MC HTTP API + `/ui-ws` gate mutating requests behind a per-launch operator
+    token (`Authorization: Bearer` or `?tok=`); read-only GETs stay open for a spectator board. `State.lan`
+    gains `auth_required`. (On a shared field LAN any phone could otherwise `panic`/`end`/edit the roster.)
+  - **A8.2 Node re-claim key.** `welcome.node_key` is a per-node secret; a `hello`/`bind` that takes over a
+    **still-live** node_id or gun must present the matching `node_key`, else it is refused (`4003 in_use`).
+    A stale holder (no frame for `STALE_AFTER_MS`) is still displaced without a key — legitimate hot-swap of
+    a dead phone. Stops a rogue client kicking a live player by echoing their id.
+  - **A8.3 Hardening (no wire change):** config/roster/start inputs are whitelisted + range-checked (a bad
+    value is a 4xx, never a 500 or a crashed tick loop); CSV export neutralises spreadsheet-formula
+    injection; `ready`/`ack_config` trust the server's node↔player binding, not a client-supplied id;
+    pulled-log bytes and unbound hello-only node records are capped; the `event_batch` re-base path (A5.7)
+    is now actually invoked on the real stack (it was dead — batches fell through the single-event path).

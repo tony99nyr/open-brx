@@ -62,32 +62,81 @@ class Broadcaster:
         while True:
             await self._dirty.wait()
             self._dirty.clear()
-            await self._send_all({"kind": "snapshot", "state": self.s.snapshot()})
+            try:
+                await self._send_all({"kind": "snapshot", "state": self.s.snapshot()})
+            except Exception:
+                log.exception("snapshot broadcast failed — continuing")
             await asyncio.sleep(0.25)
 
     async def ticker(self):
         while True:
-            self.s.tick()
+            try:
+                self.s.tick()
+            except Exception:
+                log.exception("tick failed — continuing")   # a bad tick must not stop armed→live / timed-end
             await asyncio.sleep(0.5)
 
 
-def create_app(session: Session, extra_tasks: list | None = None) -> Starlette:
+class _AuthMiddleware:
+    """Operator token gate (contracts/threat model: any phone on the field LAN can reach the API).
+    Non-GET /api/* needs `Authorization: Bearer <token>` or `?tok=`; /ui-ws needs `?tok=`.
+    Read-only GETs stay open so a spectator board / phone can watch. token=None disables auth."""
+
+    def __init__(self, app, token: str | None):
+        self.app, self.token = app, token
+
+    async def __call__(self, scope, receive, send):
+        if self.token and scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            method = scope.get("method", "GET")
+            need = (scope["type"] == "websocket" and path == "/ui-ws") or \
+                   (scope["type"] == "http" and path.startswith("/api/") and method not in ("GET", "HEAD", "OPTIONS"))
+            if need and not self._ok(scope):
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 4401})
+                else:
+                    await send({"type": "http.response.start", "status": 401,
+                                "headers": [(b"content-type", b"application/json")]})
+                    await send({"type": "http.response.body", "body": b'{"error":"operator token required"}'})
+                return
+        await self.app(scope, receive, send)
+
+    def _ok(self, scope) -> bool:
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        auth = headers.get("authorization", "")
+        if auth.startswith("Bearer ") and auth[7:] == self.token:
+            return True
+        from urllib.parse import parse_qs
+        qs = parse_qs(scope.get("query_string", b"").decode())
+        return qs.get("tok", [None])[0] == self.token
+
+
+def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
     bc = Broadcaster(session)
     s = session
+    session.lan["auth_required"] = bool(token)
 
     async def body(req: Request) -> dict:
         try:
             raw = await req.body()
-            return json.loads(raw) if raw else {}
+            b = json.loads(raw) if raw else {}
         except Exception:
             return {}
+        return b if isinstance(b, dict) else {}
+
+    def _int(v, default, lo, hi):
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return default
+        return max(lo, min(hi, n))
 
     async def state(_):
         return JSONResponse(s.snapshot())
 
     async def armory_scan(req):
         b = await body(req)
-        rows = await s.scan(int(b.get("duration_s", 6)))
+        rows = await s.scan(_int(b.get("duration_s"), 6, 1, 30))
         return JSONResponse(rows)
 
     async def armory_list(_):
@@ -106,20 +155,24 @@ def create_app(session: Session, extra_tasks: list | None = None) -> Starlette:
                 views.append({"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""),
                               "clip": st.get("mag"), "mags": (st.get("reserve", 0) // max(st.get("mag", 1), 1)),
                               "reserve": st.get("reserve"), "reload_s": round(st.get("reload_ms", 0) / 1000, 1),
-                              "dmg": st.get("damage"), "rpm": st.get("rof"), "rng": st.get("range_pct", st.get("rng", 50)),
+                              "dmg": st.get("dmg", st.get("damage", 50)), "rpm": st.get("rof", st.get("rpm", 50)), "rng": st.get("rng", st.get("range_pct", 50)),
                               "verified": bool(w.get("verified"))})
             return JSONResponse(views if views else weapon_views())
         except Exception:
             return JSONResponse(weapon_views())
 
     async def put_config(req):
-        return JSONResponse(s.set_config(await body(req)))
+        try:
+            return JSONResponse(s.set_config(await body(req)))
+        except ValueError as e:
+            return _err(str(e))
 
     async def post_player(req):
         b = await body(req)
         try:
-            p = s.add_player(b.get("display", ""), b.get("team_id"), b.get("gun_id"), b.get("voice", "male"), b.get("loadout"))
-        except ValueError as e:
+            p = s.add_player(str(b.get("display", ""))[:24], b.get("team_id"), b.get("gun_id"),
+                             str(b.get("voice", "male"))[:16], b.get("loadout") if isinstance(b.get("loadout"), dict) else None)
+        except (ValueError, TypeError) as e:
             return _err(str(e))
         return JSONResponse(p)
 
@@ -127,16 +180,21 @@ def create_app(session: Session, extra_tasks: list | None = None) -> Starlette:
         pid = req.path_params["pid"]
         if pid not in s.players:
             return _err("no such player", 404)
+        b = await body(req)
+        allowed = {k: b[k] for k in ("display", "team_id", "voice", "loadout", "player_num", "gun_id", "ready") if k in b}
         try:
-            return JSONResponse(s.patch_player(pid, **(await body(req))))
-        except ValueError as e:
+            return JSONResponse(s.patch_player(pid, **allowed))
+        except (ValueError, TypeError, KeyError) as e:
             return _err(str(e))
 
     async def delete_player(req):
         pid = req.path_params["pid"]
         if pid not in s.players:
             return _err("no such player", 404)
-        s.remove_player(pid)
+        try:
+            s.remove_player(pid)
+        except ValueError as e:
+            return _err(str(e))
         return JSONResponse({"ok": True})
 
     async def tryout(req):
@@ -169,15 +227,16 @@ def create_app(session: Session, extra_tasks: list | None = None) -> Starlette:
 
     async def start(req):
         b = await body(req)
+        rw = _int(b.get("runway_s"), None, 5, 900) if b.get("runway_s") is not None else None
         try:
-            return JSONResponse(s.start(b.get("runway_s"), force=bool(b.get("force"))))
+            return JSONResponse(s.start(rw, force=bool(b.get("force"))))
         except ValueError as e:
             return _err(str(e))
 
     async def reschedule(req):
         b = await body(req)
         try:
-            return JSONResponse(s.reschedule(int(b.get("runway_s", 120))))
+            return JSONResponse(s.reschedule(_int(b.get("runway_s"), 120, 5, 900)))
         except ValueError as e:
             return _err(str(e))
 
@@ -275,7 +334,8 @@ def create_app(session: Session, extra_tasks: list | None = None) -> Starlette:
                 t.cancel()
 
     app = Starlette(routes=routes, lifespan=lifespan,
-                    middleware=[Middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+                    middleware=[Middleware(_AuthMiddleware, token=token),
+                                Middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                                            allow_methods=["*"], allow_headers=["*"])])
     app.state.session = s
     app.state.broadcaster = bc

@@ -154,14 +154,19 @@ setInterval(() => { engine.tick(); scheduleRender(); }, 250);
 setInterval(refreshPreflight, 5000);
 
 // ---------- app lifecycle (§3.11) ----------
-document.addEventListener('visibilitychange', () => { preflight.foreground = document.visibilityState !== 'hidden'; if (preflight.foreground) engine.resume(); });
+function onForeground(fg) {
+  preflight.foreground = fg; preflight.screen_on = fg;
+  if (transport) { transport.setPreflight(preflight); if (!fg) transport.status(engine.statusBody(preflight)); }   // one immediate status on background (§3.11)
+  if (fg) engine.resume();
+}
+document.addEventListener('visibilitychange', () => onForeground(document.visibilityState !== 'hidden'));
 window.addEventListener('pageshow', () => engine.resume());
 
 // ---------- boot ----------
 (async () => {
   await loadPlugins();
   await lockLandscape(); await keepAwake(true);
-  try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => { preflight.foreground = !!isActive; if (isActive) engine.resume(); }); } catch (_) { /* ignore */ }
+  try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => onForeground(!!isActive)); } catch (_) { /* ignore */ }
   const params = new URLSearchParams(location.search);
   if (params.has('demo')) {
     const { startDemo } = await import('./demo.js');

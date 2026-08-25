@@ -33,7 +33,13 @@ input { font-family: inherit; }
 .brackets::before, .brackets::after { content: ''; position: absolute; width: var(--bk, 16px); height: var(--bk, 16px); }
 .brackets::before { top: 6px; left: 6px; border-top: 2px solid var(--bkc, #39b4ff); border-left: 2px solid var(--bkc, #39b4ff); }
 .brackets::after { bottom: 6px; right: 6px; border-bottom: 2px solid var(--bkc, #39b4ff); border-right: 2px solid var(--bkc, #39b4ff); }
-.numbox { background: transparent; border: none; color: inherit; font: inherit; width: 3.2em; text-align: right; outline: none; }
+.numbox { background: transparent; border: none; color: inherit; font: inherit; width: 3.2em; text-align: right; }
 .numbox:focus { color: #39b4ff; }
-.textbox { background: transparent; border: none; border-bottom: 1px solid transparent; color: inherit; font: inherit; letter-spacing: inherit; outline: none; padding: 0; min-width: 6ch; }
+.textbox { background: transparent; border: none; border-bottom: 1px solid transparent; color: inherit; font: inherit; letter-spacing: inherit; padding: 0; min-width: 6ch; }
 .textbox:focus { border-bottom-color: #39b4ff; }
+/* keyboard focus is always visible; mouse/touch focus stays quiet */
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, .numbox:focus-visible, .textbox:focus-visible { outline: 2px solid #39b4ff; outline-offset: 2px; }
+button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: none; }
+/* ≥44px touch target without changing the visual size: extend the hit box vertically */
+.hit44 { position: relative; }
+.hit44::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }

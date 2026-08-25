@@ -85,6 +85,7 @@ class Session:
         self.start_seq = 0
         self.scorer: Scorer | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
+        self._log_bytes: dict[str, int] = {}       # per-node pulled-log byte budget
         self.last_recap: dict | None = None
         self.feed: list[dict] = []
         self._listeners: list[Callable[[], None]] = []
@@ -99,9 +100,13 @@ class Session:
         for cb in self._listeners:
             cb()
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False):
-        if self.store:
+        if not self.store:
+            return
+        try:
             mid = body.get("match_id") if isinstance(body, dict) else None
             self.store.log(node_id, kind, seq, body.get("t") if isinstance(body, dict) else None, t_recv, mid, parked, body)
+        except Exception:   # a store error must never lose a fact the node has already pruned
+            import logging; logging.getLogger("brx.mc").exception("store.log failed (fact still scored in memory)")
 
     def _gun_index(self):
         self.guns: dict[str, dict] = {}
@@ -117,6 +122,8 @@ class Session:
         n.on_node(self._on_node)
         n.on_status(self._on_status)
         n.on_event(self._on_event)
+        if hasattr(n, "on_batch"):
+            n.on_batch(self.ingest_batch)      # real NetServer routes batches here (A5.7)
         n.on_node_message(self._on_node_message)
         n.on_stale(lambda nid, age: self._touch(nid, stale=True))
         n.on_return(lambda nid: self._touch(nid, stale=False))
@@ -134,6 +141,8 @@ class Session:
                 return n
         raise ValueError("roster full")
 
+    ROSTER_PHASES = ("muster", "build", "kit", "lobby")
+
     def add_player(self, display: str, team_id: str | None = None, gun_id: str | None = None,
                    voice: str = "male", loadout: dict | None = None) -> Player:
         if len(self.players) >= MAX_PLAYERS:
@@ -149,16 +158,18 @@ class Session:
                      "team_id": team_id, "node_id": None, "gun_id": gun_id,
                      "loadout": loadout or {"weapons": [{"weapon_id": "assault_rifle"}]}, "voice": voice, "ready": False}
         self.players[pid] = p
+        if self.scorer:
+            self.scorer.register_player(pid, p)      # A5.6 late joiner: scorable in the running match
         if gun_id:
             self._adopt_node_for_gun(p)
-        if self.phase == "muster" and self.players:
-            pass
         self._after_player_change(p, new=True)
         return p
 
     def patch_player(self, pid: str, **fields) -> Player:
         p = self.players[pid]
-        if "player_num" in fields:
+        if "player_num" in fields and fields["player_num"] is not None:
+            if self.lobby_pushed:
+                raise ValueError("player_num is fixed once config has been pushed")
             n = int(fields["player_num"])
             if not 1 <= n <= MAX_PLAYERS:
                 raise ValueError(f"player_num must be 1..{MAX_PLAYERS} (0 is reserved)")
@@ -173,6 +184,8 @@ class Session:
         return p
 
     def remove_player(self, pid: str) -> None:
+        if self.phase not in self.ROSTER_PHASES:
+            raise ValueError("cannot remove a player after the match has started")
         p = self.players.pop(pid)
         if p.get("node_id"):
             self.node_player.pop(p["node_id"], None)
@@ -215,14 +228,60 @@ class Session:
     def modes(self) -> list[dict]:
         return [{**m, "defaults": default_config(m["mode"])} for m in MODES]
 
+    _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
+                    "health", "teams", "led", "player_num_base"}
+
     def set_config(self, patch: dict) -> dict:
-        cfg = copy.deepcopy(self.config)
-        if "mode" in patch and patch["mode"] != cfg["mode"]:
-            cfg = default_config(patch["mode"])
+        if not isinstance(patch, dict):
+            raise ValueError("config must be an object")
+        if self.phase not in ("muster", "build", "kit", "lobby"):
+            raise ValueError("cannot change config after the match has started")
+        mode = patch.get("mode", self.config["mode"])
+        if mode not in {m["mode"] for m in MODES}:
+            raise ValueError(f"unknown mode {mode!r}")
+        cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
         for k, v in patch.items():
-            if k in ("respawn", "scoring", "health") and isinstance(v, dict):
-                cfg[k] = {**cfg[k], **v}
-            elif k != "config_id":
+            if k not in self._CONFIG_KEYS:
+                continue                         # ignore unknown / client-injected keys
+            if k == "time_limit_s":
+                if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 7200):
+                    raise ValueError("time_limit_s must be an integer 1..7200 or null")
+                cfg[k] = v
+            elif k == "environment":
+                if v not in ("indoor", "outdoor"):
+                    raise ValueError("environment must be indoor|outdoor")
+                cfg[k] = v
+            elif k == "night":
+                cfg[k] = bool(v)
+            elif k in ("respawn", "scoring", "health"):
+                if not isinstance(v, dict):
+                    raise ValueError(f"{k} must be an object")
+                merged = {**cfg[k], **v}
+                if k == "respawn":
+                    if merged.get("type") not in ("auto", "scanner", "none"):
+                        raise ValueError("respawn.type must be auto|scanner|none")
+                    d = merged.get("delay_s", 0)
+                    if not (isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 600):
+                        raise ValueError("respawn.delay_s must be 0..600")
+                if k == "scoring":
+                    fl = merged.get("frag_limit")
+                    if fl is not None and not (isinstance(fl, int) and not isinstance(fl, bool) and fl > 0):
+                        raise ValueError("scoring.frag_limit must be a positive integer or null")
+                if k == "health":
+                    for hk in ("max_hp", "max_armor"):
+                        hv = merged.get(hk, 0)
+                        if not (isinstance(hv, int) and not isinstance(hv, bool) and 0 <= hv <= 255):
+                            raise ValueError(f"health.{hk} must be 0..255")
+                cfg[k] = merged
+            elif k == "teams":
+                if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t for t in v)):
+                    raise ValueError("teams must be a list of team objects")
+                cfg[k] = v
+            elif k == "player_num_base":
+                if not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= MAX_PLAYERS):
+                    raise ValueError("player_num_base must be 1..63")
+                cfg[k] = v
+            else:
                 cfg[k] = v
         cfg["config_id"] = uuid.uuid4().hex[:8]
         self.config = cfg
@@ -288,11 +347,22 @@ class Session:
         self.node_player[nid] = p["player_id"]
         p["node_id"] = nid
         self.nodes.setdefault(nid, {"node_id": nid})["player_id"] = p["player_id"]
+        if self.nodes.get(nid, {}).get("synced"):
+            self.synced_at_lobby[nid] = True
         # A5.6 late joiner: a node binding a player after the lobby push gets its bundle (+ the running start) now.
         if self.lobby_pushed and p["player_id"] not in self.bundles:
             self._push_config_to(p)
             if self.start_info:
                 self.net.push(nid, "start", self._start_body())
+
+    def _prune_unbound_nodes(self):
+        """Cap hello-only node records that never bound a player (net.md §8 memory)."""
+        unbound = [nid for nid, nv in self.nodes.items() if nid not in self.node_player]
+        if len(unbound) > 256:
+            now = self.now_ms()
+            for nid in sorted(unbound, key=lambda x: self.nodes[x].get("last_seen_ms", 0))[:len(unbound) - 256]:
+                if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
+                    self.nodes.pop(nid, None)
 
     def _on_node(self, n: dict):
         nid = n["node_id"]
@@ -306,6 +376,7 @@ class Session:
             p = self._find_player_for_gun(n.get("gun_name"), n.get("gun_tail"))
         if p:
             self._bind(nid, p)
+        self._prune_unbound_nodes()
         self._changed()
 
     def _hydrate(self, hello: dict) -> dict | None:
@@ -340,15 +411,15 @@ class Session:
         nv["stale"] = False
         if body.get("player_id") in self.players and self.node_player.get(nid) != body["player_id"]:
             self._bind(nid, self.players[body["player_id"]])
-        if self.phase in ("kit", "lobby") and body.get("synced"):
-            self.synced_at_lobby[nid] = True
+        if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
+            self.synced_at_lobby[nid] = True   # any node synced before it goes live keeps its own t (A5.7)
         self._log(nid, "status", body, t_recv)
         if self.scorer:
             self.scorer.ingest_status(nid, body, t_recv)
         self._changed()
 
     def _on_event(self, nid: str, ev: dict, t_recv: int):
-        seq = ev.pop("_seq", None) if isinstance(ev, dict) else None
+        seq = (ev.pop("_seq", None) if isinstance(ev, dict) else None) or (ev.get("seq") if isinstance(ev, dict) else None)
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
@@ -385,7 +456,7 @@ class Session:
 
     def _on_node_message(self, nid: str, kind: str, body: dict, t_recv: int):
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
-        pid = body.get("player_id") or self.node_player.get(nid)
+        pid = self.node_player.get(nid)   # authoritative binding, not a client-supplied player_id
         if kind == "ready" and pid in self.players:
             self.players[pid]["ready"] = bool(body.get("ready"))
             if self.phase == "kit" and body.get("ready"):
@@ -398,7 +469,11 @@ class Session:
             self.ingest_batch(nid, body.get("events", []), t_recv)
             return
         elif kind == "log_offer":
-            self.net.push(nid, "pull_log", {})
+            got = self._log_bytes.get(nid, 0)
+            if got < 1_000_000:            # cap total pulled log per node at ~1 MB
+                self.net.push(nid, "pull_log", {})
+        elif kind == "log_data":
+            self._log_bytes[nid] = self._log_bytes.get(nid, 0) + len(str(body.get("chunk", "")))
         self._log(nid, kind, body, t_recv)
         self._changed()
 
@@ -535,9 +610,15 @@ class Session:
                            "seq": self.start_seq, "countdown_s": runway_s}
         self.scorer = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
                              self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
-                             on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms)
+                             on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
+                             win_by=(self.config.get("scoring") or {}).get("win_by"))
         self.feed = []
         self.last_recap = None
+        if self.store:
+            try:
+                self.store.match_started(self.start_info["match_id"], self.config, self.start_info["go_live_t"])
+            except Exception:
+                pass
         self.net.broadcast("start", self._start_body())
         self.phase = "armed"
         self._changed()
@@ -584,10 +665,9 @@ class Session:
         if cmd == "end" and self.scorer:
             self.scorer.set_end(self.now_ms())           # A6.1 end freeze
             self._finish()
-        else:
+        else:                                            # recall/panic stop a live game → KITTED (A5.9)
             self.start_info = None
-            if cmd != "end":
-                self.scorer = None
+            self.scorer = None
             self.lobby_pushed = False
             self.acks = {}
             self.phase = "kit"
@@ -596,6 +676,12 @@ class Session:
 
     def _finish(self):
         self.last_recap = self.scorer.recap() if self.scorer else None
+        if self.store and self.start_info and self.last_recap:
+            try:
+                self.store.match_ended(self.start_info["match_id"], self.last_recap)
+            except Exception:
+                pass
+        self.start_info = None            # no re-hydrating a finished match's `start`
         self.phase = "recap"
         self.lobby_pushed = False
         self.acks = {}
