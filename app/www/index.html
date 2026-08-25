@@ -3,99 +3,84 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BRX Companion — BLE test</title>
+<title>BRX — 2-Tagger Deathmatch</title>
 <style>
-  :root{
-    --bg:#0c1016; --panel:#141b24; --line:#25313f; --ink:#e8eef5; --dim:#8aa0b4;
-    --accent:#39b4ff; --ok:#2ecc71; --bad:#ff5252; --warn:#ffb020; --tx:#7fd1ff; --rx:#a6e3a1;
-  }
+  :root{ --bg:#0c1016; --panel:#141b24; --line:#25313f; --ink:#e8eef5; --dim:#8aa0b4;
+    --accent:#39b4ff; --ok:#2ecc71; --bad:#ff5252; --warn:#ffb020;
+    --blue:#3a86ff; --yellow:#ffd23f; }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font:15px/1.45 -apple-system,Roboto,Segoe UI,sans-serif;padding:14px;padding-bottom:40px}
-  h1{font-size:18px;margin:0 0 2px}
-  .sub{color:var(--dim);font-size:12.5px;margin:0 0 12px}
-  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
-  .pill.off{background:#3a2530;color:var(--bad)} .pill.on{background:#153a26;color:var(--ok)}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
-  .row{display:flex;gap:8px;flex-wrap:wrap}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,Roboto,sans-serif;
+    padding:12px;padding-bottom:36px}
+  h1{font-size:17px;margin:0 0 8px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
   button{flex:1 1 auto;min-width:120px;min-height:50px;border:1px solid var(--line);border-radius:10px;
     background:#1b2531;color:var(--ink);font-size:15px;font-weight:600}
-  button:active{transform:translateY(1px)}
+  button:active{transform:translateY(1px)} button:disabled{opacity:.4}
   button.primary{background:var(--accent);color:#04121e;border-color:var(--accent)}
-  button.green{background:#1f7a45;border-color:#1f7a45}
   button.danger{background:#7a1f2b;border-color:#7a1f2b}
-  button:disabled{opacity:.4}
-  input[type=text]{flex:2 1 180px;min-height:50px;background:#0e141b;border:1px solid var(--line);
-    border-radius:10px;color:var(--ink);padding:0 12px;font:14px ui-monospace,monospace}
-  .gates{display:grid;gap:6px}
-  .gate{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);
-    border-radius:9px;background:#0f1620}
-  .dot{width:14px;height:14px;border-radius:50%;flex:0 0 14px;background:#33414f}
-  .dot.pass{background:var(--ok)} .dot.fail{background:var(--bad)} .dot.pend{background:var(--warn)}
-  .gate .g{font-weight:700;flex:0 0 26px;color:var(--accent)}
-  .gate .t{flex:1;font-size:13px}
-  .gate .t small{color:var(--dim);display:block;font-size:11.5px}
-  .gate button{flex:0 0 auto;min-width:0;min-height:36px;padding:0 12px;font-size:13px}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:8px;text-align:center}
-  .stat b{display:block;font-size:20px;color:var(--accent);font-variant-numeric:tabular-nums}
-  .stat span{font-size:11px;color:var(--dim)}
-  #log{background:#080c11;border:1px solid var(--line);border-radius:10px;height:220px;overflow:auto;
-    padding:8px;font:12px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all}
-  .lt{color:var(--tx)} .lr{color:var(--rx)} .li{color:var(--dim)} .le{color:var(--bad)}
-  .note{color:var(--dim);font-size:12px}
-  label.lbl{font-size:12px;color:var(--dim);display:block;margin:2px 0 4px}
-  textarea{width:100%;height:110px;background:#0e141b;border:1px solid var(--line);border-radius:10px;
-    color:var(--ink);padding:8px;font:12px ui-monospace,monospace}
+  label{font-size:12px;color:var(--dim)} input{width:64px;min-height:44px;background:#0e141b;
+    border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:0 8px;font-size:15px;text-align:center}
+  .players{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .p{border:2px solid var(--line);border-radius:12px;padding:10px;background:var(--panel)}
+  .p.A{border-color:var(--blue)} .p.B{border-color:var(--yellow)}
+  .p .nm{font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+  .p .batt{font-size:11px;color:var(--dim)}
+  .p .badge{font-size:11px;padding:1px 8px;border-radius:999px;font-weight:700}
+  .badge.alive{background:#153a26;color:var(--ok)} .badge.dead{background:#3a2530;color:var(--bad)}
+  .bar{height:10px;background:#0e141b;border-radius:6px;overflow:hidden;margin:6px 0 2px}
+  .bar > i{display:block;height:100%;background:var(--ok);transition:width .15s}
+  .bar.armor > i{background:var(--warn)}
+  .kv{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:4px}
+  .kv b{color:var(--ink);font-size:15px;font-variant-numeric:tabular-nums}
+  .score{text-align:center;font-size:13px;color:var(--dim);margin:8px 0}
+  .score b{font-size:26px;font-variant-numeric:tabular-nums}
+  .score .a{color:var(--blue)} .score .b{color:var(--yellow)}
+  #log{background:#080c11;border:1px solid var(--line);border-radius:10px;height:170px;overflow:auto;
+    padding:8px;font:11.5px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;margin-top:8px}
+  .li{color:var(--dim)} .lk{color:var(--ok);font-weight:700} .le{color:var(--bad)} .lr{color:#7aa2c0}
+  .note{font-size:12px;color:var(--dim)}
 </style>
 </head>
 <body>
-  <h1>BRX Companion — native BLE test</h1>
-  <p class="sub">Native Android/iOS Bluetooth (no Web Bluetooth, no flags).
-    Status: <span id="status" class="pill off">disconnected</span></p>
+  <h1>BRX — 2-Tagger Deathmatch <span id="status" class="note">(idle)</span></h1>
 
-  <div class="card">
-    <div class="row">
-      <button id="connect" class="primary">Connect (Tactix…)</button>
-      <button id="scan">Scan (any BLE)</button>
-      <button id="disconnect" disabled>Disconnect</button>
+  <div class="row">
+    <button id="setA">Set Gun A (blue)</button>
+    <button id="setB">Set Gun B (yellow)</button>
+  </div>
+  <div class="row" style="align-items:center">
+    <label>Respawn s <input id="respawn" type="number" value="8" min="1"></label>
+    <label>Frag limit <input id="frag" type="number" value="0" min="0"></label>
+    <button id="start" class="primary" disabled>Start game</button>
+    <button id="end" class="danger" disabled>End</button>
+  </div>
+
+  <div class="score"><span class="a" id="scoreA">0</span> <b>—</b> <span class="b" id="scoreB">0</span>
+    <span id="winner"></span></div>
+
+  <div class="players">
+    <div class="p A" id="cardA">
+      <div class="nm"><span id="nameA">Gun A —</span><span class="badge dead" id="stA">—</span></div>
+      <div class="batt" id="battA"></div>
+      <div class="bar"><i id="hpA" style="width:0%"></i></div>
+      <div class="bar armor"><i id="arA" style="width:0%"></i></div>
+      <div class="kv"><span>HP <b id="hpvA">0</b></span><span>AR <b id="arvA">0</b></span>
+        <span>AMMO <b id="amA">0</b></span></div>
+      <div class="kv"><span>K <b id="kA">0</b></span><span>D <b id="dA">0</b></span></div>
     </div>
-    <p class="note" id="hint"></p>
-  </div>
-
-  <div class="card"><div class="gates" id="gates"></div></div>
-
-  <div class="card">
-    <div class="row">
-      <button id="speak" disabled>G3 · Make gun speak</button>
-      <button id="flash" class="green" disabled>G4 · Green flash ($SFLASH)</button>
-      <button id="panic" class="danger" disabled>Panic</button>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <input id="frame" type="text" placeholder="$PLAY,VA20,4,6,,,,,*" autocapitalize="off" autocomplete="off" spellcheck="false">
-      <button id="send" disabled>Send</button>
+    <div class="p B" id="cardB">
+      <div class="nm"><span id="nameB">Gun B —</span><span class="badge dead" id="stB">—</span></div>
+      <div class="batt" id="battB"></div>
+      <div class="bar"><i id="hpB" style="width:0%"></i></div>
+      <div class="bar armor"><i id="arB" style="width:0%"></i></div>
+      <div class="kv"><span>HP <b id="hpvB">0</b></span><span>AR <b id="arvB">0</b></span>
+        <span>AMMO <b id="amB">0</b></span></div>
+      <div class="kv"><span>K <b id="kB">0</b></span><span>D <b id="dB">0</b></span></div>
     </div>
   </div>
 
-  <div class="card">
-    <label class="lbl">G5 · Arm a real TDM game (chunked — the $PSET/$WEAP frames are &gt;20 bytes)</label>
-    <textarea id="arm" spellcheck="false"></textarea>
-    <div class="row" style="margin-top:8px"><button id="armBtn" disabled>Arm TDM</button></div>
-  </div>
-
-  <div class="card">
-    <div class="stats">
-      <div class="stat"><b id="upt">0s</b><span>uptime</span></div>
-      <div class="stat"><b id="rxc">0</b><span>rx frames</span></div>
-      <div class="stat"><b id="txc">0</b><span>tx frames</span></div>
-      <div class="stat"><b id="rec">0</b><span>reconnects</span></div>
-    </div>
-    <p class="note">G6: keep connected ~3 min while walking; auto-reconnect should recover the ~6.6 s drop.</p>
-  </div>
-
-  <div class="card">
-    <div class="row" style="margin-bottom:8px"><button id="clearLog" style="min-height:38px">Clear log</button></div>
-    <div id="log"></div>
-  </div>
+  <div class="row"><button id="clearLog" style="min-height:38px">Clear log</button></div>
+  <div id="log"></div>
 
   <script src="app.js"></script>
 </body>

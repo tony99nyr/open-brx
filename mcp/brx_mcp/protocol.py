@@ -195,3 +195,33 @@ class BufferedEvent:
             "raw": self.raw,
             "parsed": self.parsed,
         }
+
+
+def extract_frames(buf: str) -> tuple[list[str], str]:
+    """Split a notify-reassembly buffer into complete BRX frames + the remainder.
+
+    A frame starts with ``$`` and ends with ``*``; a *new* ``$`` also delimits, so a
+    frame that arrives without its trailing ``*`` (the rare merged-notify case seen on
+    the bench, e.g. ``$ALCD,…$BUT,0,1,*``) still splits correctly instead of swallowing
+    the next one. Bytes before the first ``$`` are dropped. Returns ``(frames,
+    remainder)`` where remainder is an as-yet-incomplete tail for the next notification.
+    """
+    frames: list[str] = []
+    while True:
+        s = buf.find("$")
+        if s < 0:
+            return frames, ""
+        if s > 0:
+            buf = buf[s:]
+        star = buf.find("*", 1)
+        nd = buf.find("$", 1)
+        if star >= 0 and (nd < 0 or star < nd):
+            end = star + 1              # complete frame ending in '*'
+        elif nd >= 0:
+            end = nd                    # truncated -> the next '$' is the boundary
+        else:
+            return frames, buf          # incomplete -> keep as remainder
+        frame = buf[:end].strip()
+        buf = buf[end:]
+        if frame:
+            frames.append(frame)

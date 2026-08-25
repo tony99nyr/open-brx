@@ -1,15 +1,18 @@
-// BRX Companion — native BLE test (Capacitor). Same UI/gates as ble-test.html,
-// but BLE goes through the NATIVE plugin (Android BLE / iOS CoreBluetooth) — no
-// Web Bluetooth, no flags. One codebase → Android APK + iOS app.
+// BRX — 2-tagger deathmatch. Connects TWO guns from one phone, arms them, and runs
+// the host-driven game: damage tracking (from $HP/$LCD/$ALCD), death + kill
+// attribution (victim's last $HIR shooter team), host respawn, and kill feedback
+// ($SFLASH + $PLAY V3A). Native BLE via @capacitor-community/bluetooth-le.
 import { BleClient, textToDataView, dataViewToText } from '@capacitor-community/bluetooth-le';
 
 const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const RX  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // phone -> gun
-const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // gun -> phone (notify)
+const RX  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const KILL_LINE = 'V3A';           // "kill" (confirmed, sound-bank)
+const ATTRIB_FUSE = 6000, MULTI_WIN = 4000, MAX_HP = 45, MAX_AR = 70;
 
-const ARM_FRAMES = [
-  "$VOL,69,0,*","$CLEAR,*","$START,*",
-  "$GSET,1,0,1,0,1,0,50,1,*",
+// team-independent config, then per-team spawn (from gameconfig TDM, vol 69)
+const SETUP = [
+  "$VOL,69,0,*","$CLEAR,*","$START,*","$GSET,1,0,1,0,1,0,50,1,*",
   "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
   "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
   "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
@@ -18,113 +21,157 @@ const ARM_FRAMES = [
   "$SIR,9,3,,24,10,0,,,*","$SIR,10,0,X13,1,0,100,2,60,*","$SIR,6,0,H02,1,0,90,1,40,*",
   "$SIR,13,1,H57,1,0,0,1,,*","$SIR,13,0,H50,1,0,0,1,,*","$SIR,13,3,H49,1,0,100,0,60,*",
   "$BMAP,0,0,,,,,*","$BMAP,1,100,0,1,99,99,*","$BMAP,2,97,,,,,*","$BMAP,3,98,,,,,*",
-  "$BMAP,4,98,,,,,*","$BMAP,5,98,,,,,*","$BMAP,8,4,,,,,*",
-  "$PLAYX,0,*","$PLAY,VA81,4,6,,,,,*",
-  "$TID,1,*","$SPAWN,,*","$AMMO,0,36,108,1,*","$AMMO,1,6,12,1,*","$BMAP,0,0,,,,,*"
+  "$BMAP,4,98,,,,,*","$BMAP,5,98,,,,,*","$BMAP,8,4,,,,,*","$PLAYX,0,*","$PLAY,VA81,4,6,,,,,*"
 ];
+const spawnFrames = team => [`$TID,${team},*`,"$SPAWN,,*","$AMMO,0,36,108,1,*","$AMMO,1,6,12,1,*","$BMAP,0,0,,,,,*"];
+const reviveFrames = () => ["$SPAWN,,*","$AMMO,0,36,108,1,*","$AMMO,1,6,12,1,*"];
 
-const GATES = [
-  ['G1','Connect','native requestDevice → connect'],
-  ['G2','Notify','pull trigger / take a hit → frames stream'],
-  ['G3','Write','$VOL + $PLAY → the gun speaks'],
-  ['G4','Feedback','$SFLASH → the sight goes GREEN'],
-  ['G5','Arm','config burst → gun counts down / goes live'],
-  ['G6','Stability','hold ~3 min; survive the ~6.6 s drop'],
-];
-const gstate = {};
+const now = () => Date.now();
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const $ = id => document.getElementById(id);
 
-function renderGates(){
-  const el = $('gates'); el.innerHTML = '';
-  for(const [g,name,desc] of GATES){
-    const d = document.createElement('div'); d.className='gate';
-    d.innerHTML = `<span class="dot ${gstate[g]||''}"></span><span class="g">${g}</span>
-      <span class="t">${name}<small>${desc}</small></span>`;
-    if(['G2','G3','G4','G5'].includes(g)){
-      const p=document.createElement('button'); p.textContent='✓'; p.onclick=()=>setGate(g,'pass');
-      const f=document.createElement('button'); f.textContent='✗'; f.className='danger'; f.onclick=()=>setGate(g,'fail');
-      d.append(p,f);
-    }
-    el.append(d);
-  }
-}
-function setGate(g,s){ gstate[g]=s; renderGates(); }
+const players = {
+  A: { key:'A', team:1, deviceId:null, name:'Gun A', rxBuf:'', hp:0, armor:0, ammo:0,
+       alive:false, kills:0, deaths:0, lastShooterTeam:null, lastShooterAt:0, deadAt:0, lastKillAt:0, battery:null },
+  B: { key:'B', team:2, deviceId:null, name:'Gun B', rxBuf:'', hp:0, armor:0, ammo:0,
+       alive:false, kills:0, deaths:0, lastShooterTeam:null, lastShooterAt:0, deadAt:0, lastKillAt:0, battery:null },
+};
+let running=false, respawnMs=8000, fragLimit=0;
 
-let deviceId=null, rxBuf='', rxCount=0, txCount=0, reconnects=0, connectedAt=0, wantConnected=false;
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
-
-function log(msg,cls='li'){ const el=$('log'); const t=new Date().toISOString().substr(11,12);
+function log(msg,cls='li'){ const el=$('log'); const t=new Date().toISOString().substr(11,8);
   el.innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`; el.scrollTop=el.scrollHeight; }
-function setStatus(on){ const s=$('status'); s.textContent=on?'connected':'disconnected'; s.className='pill '+(on?'on':'off'); }
-function setControls(on){ for(const id of ['speak','flash','panic','send','armBtn']) $(id).disabled=!on;
-  $('disconnect').disabled=!on; $('connect').disabled=on; $('scan').disabled=on; }
+
+// ---- HARDENED frame reassembler: split on '*' AND on '$' boundaries -------- //
+// (fixes the rare merged-notify case, e.g. "$ALCD,..$BUT,0,1,*")
+function pump(p, text){
+  p.rxBuf += text; const out=[];
+  while(true){
+    const s = p.rxBuf.indexOf('$');
+    if(s<0){ p.rxBuf=''; break; }
+    if(s>0) p.rxBuf = p.rxBuf.slice(s);
+    const star = p.rxBuf.indexOf('*',1), nd = p.rxBuf.indexOf('$',1);
+    let end;
+    if(star>=0 && (nd<0 || star<nd)) end = star+1;   // complete frame ending in *
+    else if(nd>=0) end = nd;                          // truncated -> next $ is the boundary
+    else break;                                       // incomplete -> wait for more bytes
+    const f = p.rxBuf.slice(0,end).trim(); p.rxBuf = p.rxBuf.slice(end);
+    if(f) out.push(f);
+  }
+  return out;
+}
+function toks(f){ let s=f.trim(); if(s[0]==='$') s=s.slice(1);
+  if(s.endsWith('*')) s=s.slice(0,-1); if(s.endsWith(',')) s=s.slice(0,-1); return s.split(','); }
+
+// ---- BLE ------------------------------------------------------------------- //
+const wq={};
+function enqueue(id, fn){ wq[id]=(wq[id]||Promise.resolve()).then(fn).catch(e=>log('write err: '+(e.message||e),'le')); return wq[id]; }
+async function sendFrame(id, frame){ for(let o=0;o<frame.length;o+=20){
+  await BleClient.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o,20))); if(frame.length>20) await sleep(8);} }
+async function sendMany(id, frames){ for(const f of frames){ await sendFrame(id,f); await sleep(18);} }
 
 async function ensureInit(){ await BleClient.initialize({ androidNeverForLocation:false }); }
-
-async function connect(filterByName){
+async function setGun(key){
+  const p = players[key];
   try{
     await ensureInit();
-    const opts = filterByName ? { namePrefix:'Tactix', optionalServices:[NUS] }
-                              : { optionalServices:[NUS] };
-    const dev = await BleClient.requestDevice(opts);
-    deviceId = dev.deviceId; wantConnected = true;
-    await openLink();
-    log('connected '+(dev.name||deviceId));
-  }catch(e){ log('connect: '+(e.message||e),'le'); setGate('G1','fail'); }
+    const dev = await BleClient.requestDevice({ namePrefix:'Tactix', optionalServices:[NUS] });
+    p.deviceId = dev.deviceId; p.name = dev.name || dev.deviceId;
+    await BleClient.connect(p.deviceId, ()=>onDrop(key));
+    await BleClient.startNotifications(p.deviceId, NUS, TX, v=>onNotify(key,v));
+    log(`${key} = ${p.name} connected`,'lk'); renderPlayer(key); updateStart();
+  }catch(e){ log(`set ${key}: ${e.message||e}`,'le'); }
 }
-async function openLink(){
-  await BleClient.connect(deviceId, onDisconnect);
-  await BleClient.startNotifications(deviceId, NUS, TX, onNotify);
-  connectedAt = Date.now(); setStatus(true); setControls(true); setGate('G1','pass');
-}
-function onNotify(value){
-  rxBuf += dataViewToText(value);
-  let i;
-  while((i = rxBuf.indexOf('*')) >= 0){
-    const f = rxBuf.slice(0, i+1).trim(); rxBuf = rxBuf.slice(i+1);
-    if(f){ rxCount++; $('rxc').textContent=rxCount; if(gstate.G2!=='pass') setGate('G2','pass'); log('>> '+f,'lr'); }
-  }
-}
-function onDisconnect(){
-  setStatus(false); setControls(false); connectedAt=0; log('*** disconnected ***','le');
-  if(wantConnected){ reconnects++; $('rec').textContent=reconnects; retry(); }
-}
-async function retry(){
-  for(let i=1;i<=8 && wantConnected;i++){
-    log('reconnect attempt '+i+'…');
-    try{ await openLink(); log('reconnected'); return; } catch(e){ await sleep(1000); }
-  }
-  if(wantConnected) log('reconnect gave up after 8 tries','le');
-}
-async function disconnect(){ wantConnected=false; try{ await BleClient.disconnect(deviceId); }catch(e){}
-  setStatus(false); setControls(false); }
+function onDrop(key){ const p=players[key]; log(`*** ${key} (${p.name}) disconnected ***`,'le');
+  if(p.deviceId) reconnect(key); }
+async function reconnect(key){ const p=players[key];
+  for(let i=1;i<=6 && p.deviceId;i++){ log(`${key} reconnect ${i}…`);
+    try{ await BleClient.connect(p.deviceId, ()=>onDrop(key));
+      await BleClient.startNotifications(p.deviceId, NUS, TX, v=>onNotify(key,v)); log(`${key} reconnected`,'lk'); return; }
+    catch(e){ await sleep(1200); } } }
 
-async function sendFrame(frame){
-  if(!deviceId){ log('not connected','le'); return false; }
-  for(let o=0;o<frame.length;o+=20){
-    const dv = textToDataView(frame.substr(o,20));
-    try{ await BleClient.writeWithoutResponse(deviceId, NUS, RX, dv); }
-    catch(e){ log('write failed: '+(e.message||e),'le'); return false; }
-    if(frame.length>20) await sleep(8);
-  }
-  txCount++; $('txc').textContent=txCount; log('<< '+frame,'lt'); return true;
-}
-async function sendMany(frames){ for(const f of frames){ if(!(await sendFrame(f))) break; await sleep(20); } }
+function onNotify(key, value){ for(const f of pump(players[key], dataViewToText(value))) handleFrame(key, f); }
 
-// wiring
-$('connect').onclick = ()=>connect(true);
-$('scan').onclick    = ()=>connect(false);
-$('disconnect').onclick = disconnect;
-$('speak').onclick = async ()=>{ await sendFrame('$VOL,69,0,*'); await sleep(150); await sendFrame('$PLAY,VA20,4,6,,,,,*'); };
-$('flash').onclick = ()=> sendFrame('$SFLASH,*');
-$('panic').onclick = async ()=>{ await sendFrame('$CLEAR,*'); await sleep(100); await sendFrame('$SP,99,*'); };
-$('send').onclick  = ()=>{ const v=$('frame').value.trim(); if(v) sendFrame(v); };
-$('armBtn').onclick= ()=> sendMany($('arm').value.split('\n').map(s=>s.trim()).filter(Boolean));
+function handleFrame(key, f){
+  const p = players[key], t = toks(f), cmd = t[0];
+  if(cmd==='HP'){ p.hp=+t[1]||0; p.armor=+t[2]||0; renderPlayer(key);
+    if(p.hp===0 && p.alive && running) death(key); }
+  else if(cmd==='LCD'){ p.hp=+t[1]||0; p.armor=+t[2]||0; if(t[5]!==undefined) p.ammo=+t[5]||0; renderPlayer(key); }
+  else if(cmd==='ALCD'){ p.ammo=+t[1]||0; renderPlayer(key); }
+  else if(cmd==='HIR'){ if(t[2]!=='15'){ const st=parseInt(t[4],10); if(!isNaN(st)){ p.lastShooterTeam=st; p.lastShooterAt=now(); } } }
+  else if(cmd==='VOLTS'){ p.battery=parseInt(t[3],10); renderBatt(key); }
+}
+
+function death(key){
+  const p = players[key]; p.alive=false; p.deaths++; p.deadAt=now();
+  log(`☠ ${p.name} down`,'le'); renderPlayer(key);
+  const kt = (now()-p.lastShooterAt <= ATTRIB_FUSE) ? p.lastShooterTeam : null;
+  const killer = kt!=null ? Object.values(players).find(q=>q.deviceId && q.team===kt) : null;
+  if(killer && killer.key!==key){
+    killer.kills++;
+    const multi = (now()-killer.lastKillAt <= MULTI_WIN); killer.lastKillAt=now();
+    log(`${multi?'‼ DOUBLE KILL — ':'✚ '}${killer.name} killed ${p.name}  (${killer.kills})`,'lk');
+    renderPlayer(killer.key); renderScore();
+    feedback(killer.deviceId);
+    if(fragLimit>0 && killer.kills>=fragLimit){ endGame(`${killer.name} WINS`); }
+  } else {
+    log(`  (uncredited death — no fresh enemy hit)`,'li');
+  }
+}
+function feedback(id){ enqueue(id, async ()=>{ await sendFrame(id,'$SFLASH,*'); await sleep(120);
+  await sendFrame(id, `$PLAY,,4,6,${KILL_LINE},,,,*`); }); }
+
+// ---- game control ---------------------------------------------------------- //
+async function startGame(){
+  respawnMs = (+$('respawn').value||8)*1000; fragLimit = +$('frag').value||0;
+  $('winner').textContent='';
+  for(const p of Object.values(players)){
+    if(!p.deviceId) continue;
+    p.kills=0; p.deaths=0; p.alive=true; p.hp=MAX_HP; p.armor=MAX_AR; p.ammo=36; p.lastShooterTeam=null; p.deadAt=0;
+    enqueue(p.deviceId, ()=>sendMany(p.deviceId, SETUP.concat(spawnFrames(p.team))));
+    log(`arming ${p.name} (team ${p.team})…`);
+  }
+  running=true; renderAll(); renderScore();
+  $('start').disabled=true; $('end').disabled=false;
+  log('▶ GAME LIVE — respawn '+ (respawnMs/1000) +'s'+(fragLimit?`, frag limit ${fragLimit}`:''),'lk');
+}
+function endGame(reason){
+  running=false; $('start').disabled=false; $('end').disabled=true;
+  for(const p of Object.values(players)) if(p.deviceId) enqueue(p.deviceId, ()=>sendMany(p.deviceId, ["$SPAWN,,*","$PLAYX,0,*","$STOP,*","$CLEAR,*"]));
+  if(reason) $('winner').textContent=' — '+reason;
+  log('■ GAME OVER'+(reason?` — ${reason}`:''),'lk');
+}
+setInterval(()=>{ if(!running) return;
+  for(const p of Object.values(players)){
+    if(p.deviceId && !p.alive && p.deadAt && now()-p.deadAt >= respawnMs){
+      p.alive=true; p.hp=MAX_HP; p.armor=MAX_AR; p.ammo=36; p.deadAt=0;
+      enqueue(p.deviceId, ()=>sendMany(p.deviceId, reviveFrames()));
+      log(`↻ ${p.name} respawned`); renderPlayer(p.key);
+    }
+  }
+}, 500);
+
+// ---- render ---------------------------------------------------------------- //
+function renderPlayer(key){ const p=players[key];
+  $('name'+key).textContent = p.name;
+  const st=$('st'+key); st.textContent = p.deviceId ? (p.alive?'ALIVE':'DOWN') : '—';
+  st.className = 'badge '+(p.alive?'alive':'dead');
+  $('hp'+key).style.width = Math.max(0,Math.min(100, p.hp/MAX_HP*100))+'%';
+  $('ar'+key).style.width = Math.max(0,Math.min(100, p.armor/MAX_AR*100))+'%';
+  $('hpv'+key).textContent=p.hp; $('arv'+key).textContent=p.armor; $('am'+key).textContent=p.ammo;
+  $('k'+key).textContent=p.kills; $('d'+key).textContent=p.deaths;
+}
+function renderBatt(key){ const p=players[key];
+  $('batt'+key).textContent = p.battery==null ? '' : ('battery '+p.battery+'%'+(p.battery<=20?' ⚠ LOW':'')); }
+function renderScore(){ $('scoreA').textContent=players.A.kills; $('scoreB').textContent=players.B.kills; }
+function renderAll(){ renderPlayer('A'); renderPlayer('B'); renderBatt('A'); renderBatt('B'); }
+function updateStart(){ $('start').disabled = !(players.A.deviceId && players.B.deviceId) || running; }
+
+// ---- wiring ---------------------------------------------------------------- //
+$('setA').onclick=()=>setGun('A');
+$('setB').onclick=()=>setGun('B');
+$('start').onclick=startGame;
+$('end').onclick=()=>endGame('');
 $('clearLog').onclick=()=>{ $('log').innerHTML=''; };
-
-$('arm').value = ARM_FRAMES.join('\n');
-$('hint').textContent = 'Native BLE — tap Connect. Grant Bluetooth/Location if prompted.';
-renderGates();
-ensureInit().then(()=>log('BLE ready')).catch(e=>log('init: '+(e.message||e),'le'));
-setInterval(()=>{ if(connectedAt){ const s=Math.floor((Date.now()-connectedAt)/1000);
-  $('upt').textContent = s<60? s+'s' : Math.floor(s/60)+'m'+(s%60)+'s'; } else $('upt').textContent='0s'; }, 1000);
+renderAll();
+ensureInit().then(()=>{ log('BLE ready — Set Gun A then Gun B, then Start','lk'); $('status').textContent='(ready)'; })
+  .catch(e=>log('init: '+(e.message||e),'le'));

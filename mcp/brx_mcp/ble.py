@@ -26,6 +26,7 @@ from .protocol import (
     NUS_SERVICE_UUID,
     NUS_TX_CHAR_UUID,
     BufferedEvent,
+    extract_frames,
     parse_event,
 )
 
@@ -153,11 +154,12 @@ class ConnectionManager:
                 session = Session(alias=alias, address=address, client=client)
 
                 def on_notify(_char: Any, data: bytearray, _s=session) -> None:
-                    # Frames can arrive split across notifications; reassemble on ',*'
+                    # Frames can arrive split across notifications AND occasionally
+                    # merged (a frame missing its '*'); reassemble on '$'/'*' boundaries.
                     _s.rx_partial += data.decode("utf-8", errors="replace")
-                    while ",*" in _s.rx_partial:
-                        frame, _s.rx_partial = _s.rx_partial.split(",*", 1)
-                        _s.record("rx", frame + ",*")
+                    new_frames, _s.rx_partial = extract_frames(_s.rx_partial)
+                    for frame in new_frames:
+                        _s.record("rx", frame)
 
                 # start_notify is part of a working link — a drop here (the
                 # ~6.6 s client bug, §7e) must retry the whole connect, not crash.
