@@ -103,7 +103,7 @@ The nRF Connect check above proves **native** Android BLE reaches the gun. It do
 whole browser-PWA path collapses and we go native (Capacitor) or lean on the Companion. So spend **one
 afternoon** on a throwaway spike that answers it decisively, before any PWA investment.
 
-**Deliverable:** a single-file **`webapp/ble-test.html`** — no framework, no build — served over
+**Deliverable (✅ BUILT — `webapp/ble-test.html`):** a single-file page — no framework, no build — served over
 **HTTPS or `localhost`**, run on an **Android Chrome** phone with a BRX (headset on). The frames are
 already known-good (mirror `mcp/brx_mcp/gameconfig.py` `setup_frames()`/`spawn_frames()`); the *only*
 question is whether the **browser** can send/receive them reliably.
