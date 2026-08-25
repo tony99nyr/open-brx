@@ -58,6 +58,16 @@ class SimGame:
     def _r(self, coro):
         return self.loop.run_until_complete(coro)
 
+    def close(self) -> None:
+        """Close the held event loop (silences the __del__ fd noise at shutdown)."""
+        try:
+            self.loop.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def __del__(self):
+        self.close()
+
     def _feed(self, pid: str, frame: str, now: float) -> None:
         ev = parse_event(frame)
         ev["raw"] = frame

@@ -80,10 +80,10 @@ class DominationEngine(GameEngine):
         if self.over:
             return []
         if ev.get("command") == "CAPTURE":
-            try:
-                return self.capture(_ev(ev, 1), int(_ev(ev, 2)), now)
-            except (TypeError, ValueError):
+            team = _team(ev, 2, self.roster, player_id)   # guards garbage/zero/missing → None
+            if team is None:
                 return []
+            return self.capture(_ev(ev, 1), team, now)
         return []
 
     def tick(self, now: float) -> list[Action]:
