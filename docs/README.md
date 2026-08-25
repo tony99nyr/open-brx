@@ -40,7 +40,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[sound-architecture.md](sound-architecture.md)** — how BRX audio works: auto-mapped reactive sounds (`$SIR`/`$PSET`/`$WEAP`) vs host-`$PLAY` announcements; what's forced/re-skinnable/ours; the **native multikill** finding (D4).
 
 ## Plans & architecture
-- **[adr/](adr/)** — **Architecture Decision Records** (the load-bearing, expensive-to-reverse calls + their rationale). Start: **[ADR-0001 — the per-player Companion](adr/0001-companion-rider-architecture.md)** (why stock firmware + an offline dispersed field force a per-player BLE rider for live feedback/scoring).
+- **[adr/](adr/)** — **Architecture Decision Records** (the load-bearing, expensive-to-reverse calls + their rationale). Start: **[ADR-0001 — the per-player Companion](adr/0001-companion-rider-architecture.md)** (why stock firmware + an offline dispersed field force a per-player BLE rider for live feedback/scoring), then **[ADR-0002 — laptop Mission Control + local host](adr/0002-laptop-mission-control-host.md)** (laptop authors/hosts/coordinates on a local field LAN — no cloud, no SIM; phones are one-gun companion/HUD nodes; phone-as-MC deferred).
 - **[brx-architecture-v0.2.md](brx-architecture-v0.2.md)** — the master plan (server, nodes, MQTT, roadmap).
 - **[field-architecture.md](field-architecture.md)** — why field play needs a device per player (the range constraint).
 - **[build-tiers.md](build-tiers.md)** — what you can build at each investment level (starting from 4 BRX + 2 grenades + a laptop).
