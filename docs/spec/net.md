@@ -1,6 +1,6 @@
 # M-NET — field LAN transport (node ↔ Mission Control)
 
-- **Status:** Draft (Wave 1), updated to contracts **A4 + A5**. Binds to [`contracts.md`](contracts.md) §4/§5
+- **Status:** Draft (Wave 1), updated to contracts **A4–A6**. Binds to [`contracts.md`](contracts.md) §4/§5
   (events + protocol), §7 (clock sync), §9 (versioning/constants); realizes [ADR-0002](../adr/0002-laptop-mission-control-host.md)
   (local-first, store-and-forward, no cloud). Module role: [`README.md`](README.md) §4 (M-NET).
 - **Owns:** the wire between each player node (phone now, Companion later) and the MC server — discovery,

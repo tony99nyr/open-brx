@@ -1,6 +1,6 @@
 # M-MODES — mode catalog, config authoring, weapon catalog, the frame compiler, tutorial arming
 
-- **Status:** Draft (Wave 1, parallel), **bound to contracts A4**. Binds to `contracts.md` §3
+- **Status:** Draft (Wave 1, parallel), **bound to contracts A6**. Binds to `contracts.md` §3
   (GameConfig + `FrameBundle` + WeaponCatalog), §8 (frame contract), A4.2 (frames compiled by MC).
   Owner of the `M-MODES` lane in `README.md` §4 (phases 2 / 3a / 4).
 - **Runs in MC (Python).** M-MODES is the **frame compiler**: it wraps `mcp/brx_mcp/gameconfig.py`
@@ -61,7 +61,7 @@ There is **no team-invariant setup any more**: `$PSET` token 1 is the player's `
 | `end` | `END_SEQUENCE` | `$SPAWN,,` → `$PLAYX,0` → `$STOP` → `$CLEAR` → `$HLOOP,0,0` → `$HLED,0,0,0,0,0,0` (revives a dead gun so it isn't stuck in death-glow, silences the spawn voice, blanks the headset; `$TID` deliberately untouched — exp-log 2026-08-25). The node then plays **`cues.game_over`** so the match audibly ends (A5.10). |
 | `panic` | `PANIC_SEQUENCE` | `$CLEAR,*` → `$SP,99,*` |
 | `team_flip?` | `$TID,<tid>` (+ `revive`) per other team | **infection** only: the frames that move *this* gun to the infected team on death. Node writes `team_flip[<tid>]` then `revive` and emits a **`team_change{tid}`** fact (contracts §4, A5.8) so MC's roster follows the gun. |
-| `cues` | `sounds.py` `Cue`s, voice-family aware (§5) | `countdown: "VA81"` (**confirmed**), `kill` (`VAA`/`V3A` family kill line, **confirmed**), **`game_over`** (Callsign's end: `$PLAY,VSF,4,6,JAY,,,,*` — `VSF` sting on slot 1 + `JAY` outro on slot 4, §7o; **provisional until pinned by ear**), `tick`/`klaxon`/`multi`/`medal` **provisional** (real bank ids, meaning by-ear). The node composes the `$PLAY` template from these and nothing else. |
+| `cues` | `sounds.py` `Cue`s, voice-family aware (§5) | `countdown: "VA81"` (**confirmed**), `kill` (`VAA`/`V3A` family kill line, **confirmed**), **`game_over`** (Callsign's end: `$PLAY,VSF,4,6,JAY,,,,*` — `VSF` sting on slot 1 + `JAY` outro on slot 4, §7o; **provisional until pinned by ear**), `tick`/`klaxon`/`multi`/`medal` **provisional** (real bank ids, meaning by-ear). **A6.3: every value is a pre-composed `$PLAY,…,*` frame** (the compiler decides token-1 SFX vs token-4 announcer); the node writes it verbatim. |
 
 - `_PSET_HEAD` becomes `["PSET", str(player_num), "0"]` with `player_num ∈ 1..63` — **token 2 stays `0`**; it
   has read `0` in every capture and its meaning is unknown (§9). Token 1 = `0` is written **only** by
@@ -117,7 +117,8 @@ Notes that shape the schema:
   event source (Tier 1). They are **out of M-MODES' arming scope** here — the engines exist; M-MODES
   only guarantees the *combat* bundle. List them as valid `mode` strings, mark station-gated.
 - **Health variants** (syphon/regen) are `GameConfig` booleans that add **host-driven** `$LIFE`
-  writes at runtime (additive, clamped — exp-log #33); they are not arm-time frames. Syphon now
+  writes at runtime (additive, clamped — exp-log #33); they are not arm-time frames. They reach a node only via
+  the MC→node **`apply{frames}`** kind (contracts A6.4) — i.e. **coverage-zone only** on the phone path. Syphon now
   routes the heal to the **exact killer** (`$HIR` tok3) — but only when that killer's node is in
   coverage to receive it.
 
@@ -279,7 +280,7 @@ stay out until then.
 
 **Feedback cues — shipped in the bundle, not looked up on the node.** `cues(voice)` produces the
 `FrameBundle.cues` block (contracts §3); the node turns MC's `feedback{kind, t, cue?}` into `$SFLASH,*` +
-`$PLAY,,4,6,<cue>,,,,*` using only ids from that block:
+the pre-composed `cues[kind]` frame (or the frame carried in `cue`) — A6.3, no id lookup on the node:
 
 | cue | id | source / status |
 |---|---|---|
@@ -339,7 +340,7 @@ GameConfig.validate(roster, opts?) -> {ok, errors[]}
 // Frames (pure; no clock, no BLE) — the compiler
 compile(config, player)   -> FrameBundle       // §1.1: head | spawn | revive | end | panic | team_flip? | cues
 tutorialFrames(weapon, environment) -> string[] // §4 single-weapon try-out (carried in `tutorial{frames}`)
-cues(voice)               -> Cues              // §5b sound-id block (countdown/kill confirmed; game_over + rest provisional)
+cues(voice)               -> Cues              // §5b {key: pre-composed $PLAY frame} (countdown/kill confirmed; game_over + rest provisional) — A6.3
 
 // Data
 WeaponCatalog.all()       -> Weapon[]          // §3 roster (for M-MC visual select)

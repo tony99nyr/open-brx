@@ -1,6 +1,6 @@
 # M-MC — Mission Control (the host app)
 
-- **Status:** Draft (Wave 3 integrator), updated to contracts **A4**. Binds to [`contracts.md`](contracts.md) — **read it first**.
+- **Status:** Draft (Wave 3 integrator), updated to contracts **A6**. Binds to [`contracts.md`](contracts.md) — **read it first**.
 - **Owner:** M-MC session. **Extends** `docs/mission-control-spec.md` (feature catalog) and matches/beats
   the operator surface in `docs/reference/callsign-ui.md`. Anchored by ADR-0002 (laptop = author + host +
   coordinator, BLE only at the bench).
@@ -253,6 +253,9 @@ coverage-zone** data — never a real-time assumption (§1).
   For a **never-synced** node MC uses `t_recv` for live `event`s, re-bases an `event_batch` once per flush
   (`offset = t_recv − t_newest`, order preserved), and **suppresses window awards** (multi-kill, first blood)
   derived from that node's facts.
+- **End freeze (A6.1):** MC records `end_t` at `control{end}` (or the timed end); facts after it are parked
+  `post_end` and never scored — the winner shown at the end is final. **Hot-swap (A6.2):** accuracy uses
+  `shots_total` (baseline + the new phone's counter).
 - **`match_id` parking (A4.3):** events whose `match_id` is not the current match are **parked** (stored,
   visible in that match's recap, never scored into this one). This is what makes a phone that flushes
   last match's deaths during this match harmless.

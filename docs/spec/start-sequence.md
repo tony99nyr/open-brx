@@ -1,6 +1,6 @@
 # M-START — the dispersed, time-synced match start (and its symmetric timed end)
 
-- **Status:** Draft at contracts **A5** (Wave 2 module; layers on M-NODE + M-NET). Owner: M-START lane.
+- **Status:** Draft at contracts **A6** (Wave 2 module; layers on M-NODE + M-NET). Owner: M-START lane.
 - **Binds to:** `contracts.md` §3 (`FrameBundle`), §5 (`start` message, `welcome` re-hydration), §6
   (lifecycle `ARMED`), **§7 (clock sync — this module's spine)**, §8 (frame contract), §9 A4/A5. Phase 5 of
   `README.md` §3.
@@ -58,12 +58,9 @@ no signal, no MC at either moment of truth.
 All of this is played **by the node onto its own gun over BLE** as its local clock crosses each mark —
 it is `sound-architecture.md` Cut 1B (`$PLAY` on a rule), except the "host" computing the rule is the
 node's own countdown timer, not MC. **Volume 69** was baked into `frames.head` (house rule; 30 is
-inaudible). The node composes exactly one template here — the two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`
-(contracts §8; **token 1** = local/effect SFX, **token 4** = announcer/voice) — and **every id comes from
-`frames.cues`** (contracts §3). The node never carries a sound id of its own; `sounds.py` is the MC-side
-source that fills `cues`.
+inaudible). The node writes **`frames.cues` frames verbatim** — they arrive pre-composed by the compiler (contracts A6.3: slot placement is the compiler's job); the node carries no sound id and no `$PLAY` template of its own; `sounds.py` is the MC-side source that fills `cues`.
 
-**Default 30-second runway** (host-configurable length, §6).
+**Default runway = `DEFAULT_RUNWAY_S` (120 s, "walk time"; host-set, §6).**
 
 | Mark | Cue | Frame (illustrative) | `cues` key / confidence |
 |---|---|---|---|

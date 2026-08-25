@@ -1,6 +1,6 @@
 # M-ARMORY — USB armory setup + scan-only BLE presence/identity
 
-- **Status:** Draft (Wave 1 module), updated to contracts **A4**. Binds to `contracts.md` §1 (ArmoryRecord).
+- **Status:** Draft (Wave 1 module), updated to contracts **A6**. Binds to `contracts.md` §1 (ArmoryRecord).
   Do not restate the backbone — this is the *how* for spec README §3 phase 0 and the armory half of phase 1.
 - **Owns:** the permanent gun↔headset↔MAC↔name map (bench, over USB) + a **scan-only** BLE
   presence/identity sweep of whatever guns are advertising. **Reuses `mcp/brx_mcp`** — this module is a thin

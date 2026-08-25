@@ -18,7 +18,7 @@ State {
   nodes: NodeView[],                          // every node that ever said hello this session
   readiness: ReadinessSnapshot,
   config: GameConfig,                         // current draft (validated on PUT)
-  config_errors: string[],
+  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1)
   players: Player[], teams: Team[],
   kit: { kitted: number, total: number, trying: { [player_id]: weapon_id } },
   lobby: { ready: number, total: number, pushed: boolean, acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string } } },
@@ -30,7 +30,8 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[] }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s?: number, sync_age_ms: number }
 RecapView { winner: { team_id?: string, player_id?: string }, score: { [team_id]: number }, rows: ScoreRow[],
-            honors: { award: string, player_id: string, stat: string }[], provisional: boolean, missing: string[] }
+            honors: { award: string, player_id: string, stat: string }[], provisional: boolean, missing: string[],
+            post_end_facts: number }   // A6.1: facts after end_t, recorded but not scored
 FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"STREAK ×N"|"FIRST BLOOD"|"TEAM KILL"|"SYNC POINT", kind: "kill"|"sync"|"info" }
 ```
 

@@ -116,6 +116,7 @@ class GameConfig(TypedDict):
     health: Health
     teams: list[Team]
     led: NotRequired[dict]
+    player_num_base: NotRequired[int]   # A6.5
 
 
 class FrameBundle(TypedDict):
@@ -127,7 +128,7 @@ class FrameBundle(TypedDict):
     end: list[str]
     panic: list[str]
     team_flip: NotRequired[dict[str, list[str]]]
-    cues: dict[str, str]  # countdown (VA81), kill, game_over?, tick?, klaxon?, multi?, medal?, runway_*?
+    cues: dict[str, str]  # A6.3: key -> PRE-COMPOSED $PLAY frame; countdown, kill, game_over?, tick?, klaxon?, multi?, medal?, runway_*?
 
 
 class Weapon(TypedDict):
@@ -246,5 +247,5 @@ class Envelope(TypedDict):
 NODE_KINDS = {"hello", "bind", "event", "event_batch", "status", "ack_config", "time_req",
               "log_offer", "log_data", "ready"}
 MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "control",
-            "time_res", "pull_log", "ack"}
+            "time_res", "pull_log", "ack", "apply"}
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall"}

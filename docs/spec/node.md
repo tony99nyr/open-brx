@@ -1,6 +1,6 @@
 # M-NODE — the phone node: per-gun engine + video-game HUD
 
-- **Status:** Draft (Wave 2), updated to contracts **A4 + A5**. Binds to the frozen backbone:
+- **Status:** Draft (Wave 2), updated to contracts **A4–A6**. Binds to the frozen backbone:
   [`README.md`](README.md) §2/§3/§7, [`contracts.md`](contracts.md) §3 (`FrameBundle`), §4 (events),
   §5 (protocol), §6 (lifecycle), §7 (clock).
 - **Owner interface (from README §4):** *the node app; consumes `Transport` (M-NET) + the per-player
@@ -91,9 +91,9 @@ never after a head is written** — the node sends `$PHONE,*` once (starts the ~
 battery exists at muster) and runs the `$STOP,*` → `$PHONE,*` → `$VERSION,*` ritual once (firmware →
 `hello.gun.fw` / `status.fw`). These are the *only* frames the node sends before it holds a bundle.
 
-The node **owns exactly three literal frame templates** and nothing else (contracts §3/§8):
-`$PLAY,<fx>,<vol?>,<pri?>,<voice>,,,,*` (two-slot; a token-1-only SFX is `$PLAY,<fx>,,,,,,,*`; ids only
-from `frames.cues`), `$SFLASH,*`, `$PLAYX,0,*` — plus the pre-config probe set above. Everything else —
+The node **owns exactly two literal frame templates** and nothing else (contracts §3/§8, A6.3):
+`$SFLASH,*` and `$PLAYX,0,*` — plus the pre-config probe set above. `frames.cues` values are **pre-composed
+`$PLAY` frames** (the compiler decides slot placement); the node writes them verbatim like any bundle frame. Everything else —
 `head`, `spawn`, `revive`, `end`, `panic`, `team_flip` from the bundle, and the `tutorial{frames}`
 *message* (not a bundle field) — is written verbatim. Volume is MC's concern: the head carries `$VOL,69,…` (house rule — 30 is inaudible); the node
 merely **checks it is present** and logs a warning if not. It never rewrites a frame.
@@ -193,7 +193,7 @@ A4 MC knows *exactly* who the killer is (victim's `shooter_num`), `feedback{play
 targeted, never guessed (contracts §5):
 
 ```
-feedback(kind):  $SFLASH,*   → sleep 120ms → $PLAY,,4,6,<cues.kill|cues.multi|cues.medal>,,,,*   (vol from head)
+feedback(kind):  $SFLASH,*   → sleep 120ms → write cues[kind] verbatim (a pre-composed $PLAY frame, A6.3)
 ```
 
 This is the seed's `feedback()` — keep it; the ids come from `frames.cues` (or the message's `cue`).
@@ -236,8 +236,8 @@ The node **never blocks** on the LAN. Start uses the pre-shared `go_live_t`, end
 
 ```
 IDLE ─setGun─► CONNECTED ─assign─► KITTED ─[ready-up; all-ready → config(bundle)]─► LOBBY ─start(seq,go_live_t)─► ARMED(countdown)
-                    ▲                                                                                                 │
-                    └──── end / recall / panic / local time-expiry ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T = go_live_t ──────┘
+                                      ▲                                                                                │
+                                      └──── end / recall / panic / local time-expiry ◄──── LIVE{ALIVE ⇄ DOWN} ◄──── T = go_live_t ────┘
 ```
 
 The seed collapses this to IDLE/READY/ALIVE/DOWN; **promote it** to the full set so the HUD and MC
@@ -279,38 +279,45 @@ the degraded `received-start + duration` count (§7). Frag-limit / survival ends
 and only reach nodes in coverage. `time_limit_s == null` (legal only for a fully-covered venue,
 contracts §3) means **no local expiry** — the match ends only by `end`/`recall`.
 
-### 3.10 BLE resync after a drop — observe before you write
+### 3.10 BLE resync after a drop — positive evidence only (A6.6)
 
 The node's whole loop keys off frames it *observes*. After a BLE drop it **cannot tell a radio blip from
 a gun power-cycle**, and it may have **missed `$HP,0,0,0`** (player is dead, HUD says ALIVE) or the gun
 may have **lost its config** (power-cycled: boots to idle). The lab hit this class once already
 (`resetup` respawning regardless of engine state — exp-log 2026-08-25 "live-path resilience").
 
-**Why the obvious fix is wrong.** Re-writing `head` + `spawn` on every reconnect looks safe but is not:
-the head starts with `$CLEAR`, so its echo is `$LCD,0,0,0,0,0,0` on a healthy gun (bench 2026-08-25) —
-it **cannot** reveal a missed death — and the `$SPAWN` that follows is a **full heal + refill**. A player
-could toggle Bluetooth to heal, and a death that happened during the gap would be **erased** (the killer
-loses the kill). So the node **writes nothing first** (contracts A5.3).
+**Why the obvious fixes are wrong.** (1) Re-writing `head` + `spawn` on every reconnect: the head starts
+with `$CLEAR`, so its echo is `$LCD,0,0,0,0,0,0` on a healthy gun (bench 2026-08-25) — it **cannot** reveal a
+missed death — and the `$SPAWN` that follows is a **full heal + refill**: toggle Bluetooth to heal, and a
+death inside the gap is erased. (2) Reading `$BUT,0,1`-without-`$ALCD` as "dead": an **empty magazine**
+dry-fires the same way (protocol §7a), and so does an **unconfigured** gun (pre-game the trigger emits
+`$BUT` but does not fire). (3) Reading silence as "unconfigured": a quiet live gun would get a free heal.
+So the node **writes nothing first**, and **no branch below writes `spawn` without positive evidence**.
 
-**Observe first (`RESYNC_PROBE_S = 10`, contracts §9).** On BLE reconnect in **ARMED/LIVE** the HUD shows
-**"GUN RELINKED — pull the trigger"** and the node classifies the gun from what it *sees*:
+**The evidence protocol (`RESYNC_PROBE_S = 10` per step, contracts §9).** On BLE reconnect in
+**ARMED/LIVE** (and on app resume after a suspension, §3.11) the HUD shows **"GUN RELINKED — pull the
+RELOAD handle, then the trigger"** and the node classifies from what it *sees*:
 
-| observation within the window | conclusion | action |
-|---|---|---|
-| `$ALCD` decrement (a shot went out) | alive **and** configured | nothing; HUD back to ALIVE |
-| `$BUT,0,1` with **no** `$ALCD` | the gun is **dead** (a dead gun can't fire — protocol §7q) | HUD DOWN, emit `death{desync:true, shooter_num:0}`, respawn timer from now → `frames.revive` as normal |
-| any `$HP` / `$LCD` line (a hit, a periodic state line) | trust it verbatim | update hp/armor/ammo/alive from it |
-| nothing for `RESYNC_PROBE_S` after the prompt | **unconfigured** (power-cycled / never armed) | re-write `frames.head`; if LIVE also `frames.spawn` and emit `respawn{resync:true}`; if ARMED wait for T-0 |
-| LOBBY (unspawned by design): silence | possibly power-cycled | re-write `frames.head`; expect the (`0,0,…`) echo |
-| `respawn.type:"none"` (LMS) | never grant a life | a "dead" classification stays dead; silence → head only, no spawn |
+| step | observation | conclusion | action |
+|---|---|---|---|
+| any time | an `$HP` / `$LCD` line arrives (a hit, a periodic state line) | trust it verbatim | update hp/armor/ammo/alive; `$HP,0` → DOWN + `death{desync:true, shooter_num:0}` if the engine thought alive |
+| 1 · reload (`$BUT,2`) | `$ALCD` refill (mag ↑, reserve ↓) | **configured** (and reserve was > 0) | go to step 2 |
+| 1 · reload | no `$ALCD`, last-known reserve > 0 | **unconfigured** (power-cycled) | re-write `frames.head`; in **LIVE** the reboot costs a death: emit `death{desync:true, shooter_num:0}`, run the normal respawn timer, then `frames.revive` → emit `respawn{resync:true}`; in ARMED wait for T-0; LOBBY: head only |
+| 1 · reload | no `$ALCD`, last-known reserve == 0 | ambiguous (out of reserve *or* unconfigured) | HUD "out of reserve — keep playing"; stay in last-known state; re-run on the next `$HP`/`$LCD` |
+| 2 · trigger | `$ALCD` decrement (a shot went out) | **alive** and configured | nothing; HUD back to ALIVE |
+| 2 · trigger | `$BUT,0,1` with **no** `$ALCD` (after a good reload) | **dead** (a dead gun can't fire — §7q) | HUD DOWN, emit `death{desync:true, shooter_num:0}`, respawn timer from now → `frames.revive` as normal |
+| 1–2 | nothing within `RESYNC_PROBE_S` | player didn't do it | keep the prompt up; **stay in last-known state**; never write |
+| LMS (`respawn.type:"none"`) | any "dead" / "unconfigured" outcome | never grant a life | mark dead; re-write head only; no revive |
 
-The prompt costs the player a trigger pull; that is the price of never guessing. Every resync action is
-logged (`resync_*`) and surfaces in recap.
+The prompt costs the player a reload + a trigger pull; that is the price of never guessing. Every resync
+action is logged (`resync_*`) and surfaces in recap. **Known limitation:** a station revive
+(`respawn.type:"scanner"`) that happened *inside* the gap hides the death that preceded it.
 
 **Bench item (blocking for M4): a side-effect-free gun state probe.** After a reconnect, what does the
 gun emit unprompted? Does `$PHONE` (which triggers `$VOLTS`) or anything else re-elicit `$LCD`/`$HP`
-*without* `$SPAWN`? Does config survive a BLE reconnect vs a power-cycle (M-START E1 assumes yes)? A
-probe that answers "alive? HP? configured?" would replace the trigger prompt with an automatic step.
+*without* `$SPAWN`? Does config survive a BLE reconnect vs a power-cycle (M-START E1 assumes yes)? Does a
+dead gun's reload handle still refill (`$ALCD`) — the protocol above assumes yes? A probe that answers
+"alive? HP? configured?" would replace the prompts with an automatic step.
 
 ### 3.11 App lifecycle: foreground, screen-on, mount
 
@@ -588,7 +595,7 @@ its native ESP32 stack.
 12. **Clock sync** (contracts §7): `time_req`/`time_res`, smoothed offset, `synced_now()` used by all
     event `t`, respawn, countdown and expiry math.
 13. **Local time-expiry end** (§3.9): while LIVE, watch `synced_now() ≥ go_live_t + time_limit_s`; on
-    expiry write `frames.end` + LIVE→CONNECTED with no MC command, idempotent with a `recall`/`end`
+    expiry write `frames.end` + LIVE→KITTED with no MC command, idempotent with a `recall`/`end`
     that arrives first.
 
 Ships with its own fakes (a scripted BRX frame emitter + a mock Transport + a sample `FrameBundle`) so

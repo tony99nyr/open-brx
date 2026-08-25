@@ -1,8 +1,8 @@
 # Shared contracts (M-CONTRACTS) — freeze before building anything
 
-- **Status:** Ratified (Wave 0) + amendments A1–A5. Changes are **amendments** (§9), not edits.
+- **Status:** Ratified (Wave 0) + amendments A1–A6. Changes are **amendments** (§9), not edits.
 - **A4/A5 (2026-08-25) are coherence passes** — P2 closed over BLE, frames compiled by MC, `match_id`,
-  `status` counters, `welcome` re-hydration, lifecycle fixes. Read §9 A4 + A5 first if you knew the pre-A4 shape.
+  `status` counters, `welcome` re-hydration, lifecycle fixes. Read §9 A4–A6 first if you knew the pre-A4 shape.
 - **Consumers:** every module. Bind to *these shapes*, never another module's internals.
 
 Transport-agnostic where possible. JSON on the wire. All ids are opaque strings. Times are
@@ -82,6 +82,8 @@ GameConfig {
   health:      { max_hp: number, max_armor: number },   // mode defaults; Loadout may override
   teams:       Team[],
   led?:        object,                // indoor/outdoor/night LED customization (M-MODES defines shape)
+  player_num_base?: number,           // A6.5: first player_num this session hands out (default 1). Two concurrent games on one
+                                      // field use disjoint ranges (e.g. 1 and 32) — $HIR carries no match id.
 }
 ```
 
@@ -94,18 +96,19 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   config_id, player_id,
   head:    string[],   // config head: $VOL,69 → $CLEAR → $START → $GSET → $PSET,<player_num>,… → $WEAP×n → $SIR×n → $BMAP×n → LED frames → $TID,<tid> (last).
                        //   NO $SPAWN, NO countdown/start sound — written at lobby, the gun then sits unspawned (M-START).
+                       //   Whether `$START` itself is audible at the lobby write is UNVERIFIED (checklist NEXT #11).
   spawn:   string[],   // go-live tail at T-0: $PLAYX,0 → $SPAWN,, → $AMMO per slot → $BMAP,0,0
   revive:  string[],   // respawn re-arm: $SPAWN,, (+ loadout-correct $AMMO)
   end:     string[],   // game-over teardown (END_SEQUENCE)
   panic:   string[],   // ["$CLEAR,*", "$SP,99,*"]
   team_flip?: { [tid: string]: string[] }, // infection: frames to move THIS gun to another team mid-match
-  cues: { countdown: "VA81", kill: string, game_over?, tick?, klaxon?, multi?, medal?, runway_30?, runway_20?, runway_10?, [k: string]?: string }
-                       // open map of sound ids the node may play; unknown keys are allowed, a missing key is skipped, never guessed
+  cues: { countdown: string, kill: string, game_over?, tick?, klaxon?, multi?, medal?, runway_30?, runway_20?, runway_10?, [k: string]?: string }
+                       // A6.3: values are PRE-COMPOSED `$PLAY,…,*` FRAMES (slot placement decided by the compiler), e.g.
+                       //   countdown: "$PLAY,VA81,4,6,,,,,*", kill: "$PLAY,,4,6,VAA,,,,*". Open map; a missing key is skipped, never guessed.
 }
 ```
-- The node owns exactly **three literal templates** and nothing else: `$PLAY,<fx>,<vol?>,<pri?>,<voice>,,,,*` (two-slot;
-  a token-1-only SFX uses `$PLAY,<fx>,,,,,,,*`; ids only from `cues`), `$SFLASH,*`, and `$PLAYX,0,*`. Everything else is
-  written verbatim from the bundle. **Plus one pre-config probe set** (A5.4), allowed **only in CONNECTED/KITTED** (never
+- The node owns exactly **two literal templates** and nothing else: `$SFLASH,*` and `$PLAYX,0,*` (A6.3 — `cues` are
+  frames, so no `$PLAY` template on the node). Everything else is written verbatim from the bundle. **Plus one pre-config probe set** (A5.4), allowed **only in CONNECTED/KITTED** (never
   after a head is written): `$PHONE,*` (starts `$VOLTS` telemetry) and the `$STOP,*`→`$PHONE,*`→`$VERSION,*` ritual (firmware).
 - `tutorial` carries its own `frames: string[]` (M-MODES `tutorialFrames(weapon, environment)`).
 
@@ -180,6 +183,13 @@ ScoreRow { player_id, display, team_id, kills, deaths, assists, shots, hits, acc
   order preserved) and **window awards (multi-kill, first blood) are suppressed** for facts from such nodes.
 - **Feedback freshness (A4.3):** MC sends `feedback{kill}` only when `now − death.t ≤ FEEDBACK_MAX_AGE_MS`;
   a late-flushed kill scores but never flashes a sight minutes later.
+- **End freeze (A6.1):** MC records `end_t` when it broadcasts `control{end}` (frag-limit / survival / objective /
+  host end) or, for the timed end, `end_t = go_live_t + time_limit_s·1000`. Facts whose effective `t` is `> end_t`
+  are **recorded but not scored** (`parked_reason: "post_end"`) — the announced winner never mutates as out-of-range
+  nodes flush kills they scored after the in-coverage end. Recap shows the count.
+- **Hot-swap shots (A6.2):** `status.shots` is per node-session; MC keeps `shots_total = baseline + status.shots`,
+  re-basing when a new `node_id` binds the player. Accuracy uses `shots_total`; `welcome.node.score.shots_total`
+  seeds the swapped phone's display.
 - **Recap is provisional until every rostered node has flushed** (kills exist only in victims' reports): the
   recap shows "N victims missing — kills provisional" and export is marked provisional until finalized.
 
@@ -214,7 +224,7 @@ for idempotent replay. `status` carries no `seq`.
 | `event` | one persisted `Event` (§4) | as they happen (queued if offline) |
 | `event_batch` | `{ events: Event[] }` | store-and-forward flush on reconnect |
 | `status` | one `status` body (§4) | every `STATUS_HEARTBEAT_MS` while connected; live-only, no seq |
-| `ack_config` | `{ config_id, ok:boolean, err?, gun_echo?: string }` | after writing `FrameBundle.head`; `gun_echo` = the `$LCD`/`$ALCD` line the gun answered with (proof of headset + config) |
+| `ack_config` | `{ config_id, ok:boolean, err?, gun_echo?: string }` | after writing `FrameBundle.head`; `gun_echo` = the `$LCD`/`$ALCD` line the gun answered with — proof the gun **answered the head** (it reads `$LCD,0,0,0,0,0,0`). Whether a headset-less gun stays silent here is **UNVERIFIED** (checklist NEXT #10); the proven headset detector is the `$LCD,45,70` echo on `$SPAWN` |
 | `time_req` | `{ t_node }` | clock-sync ping (§7) |
 | `log_offer` | `{ node_id, bytes, lines }` | node has a diagnostic log MC can pull |
 | `log_data` | `{ node_id, seq, chunk, last:boolean }` | the log itself, chunked (≤ 48 KB/chunk), in reply to `pull_log` |
@@ -230,6 +240,7 @@ for idempotent replay. `status` carries no `seq`.
 | `start` | `{ match_id, go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START). MC mints `match_id` and stamps a **monotonic `seq` per session**. **Rules (A5.6):** re-push of the *same* schedule (straggler, grace re-arm) = **same `seq` + same `match_id`** (no-op on a node that holds it); a **reschedule** = **new `seq` + new `match_id`** (supersedes). A late-joining player mid-match: `assign` → `config` → the same `start` re-pushed → hot-join (M-START E5). |
 | `feedback` | `{ player_id, kind:"kill"|"multi"|"medal", t, cue?:string }` | MC scored you a kill → node `$SFLASH` + `$PLAY` (`cue` if present, else `frames.cues[kind]`; missing → flash only). `t` = the death time; node ignores it if older than `FEEDBACK_MAX_AGE_MS` (A4.3) |
 | `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`panic`\|`abort_start`\|`recall` | **one meaning each (A5.9)**: `abort_start`=cancel a *pending* schedule (by `seq`) while ARMED → LOBBY (gun still holds `head`); if the node is already LIVE for that `seq`, it behaves as `recall`. `recall`=stop a *live/armed* game → node writes `frames.end` (+ `cues.game_over`) → **KITTED**; `end`=normal match end → same → KITTED; `panic`=`frames.panic` → KITTED. In KITTED/LOBBY an `end`/`recall` writes `frames.end` iff a bundle is held, then → KITTED. **`pause` is removed** (A4.6). |
+| `apply` | `{ frames: string[], reason?: string }` | A6.4: best-effort "write these frames now" — coverage-zone runtime effects only (syphon heal, regen refill, extraction boost). Node writes verbatim, never persists, ignores if not LIVE. |
 | `time_res` | `{ t_node, server_t }` | clock-sync reply |
 | `pull_log` | `{}` | request the offered log |
 | `ack` | `{ seq_hi }` | MC has durably ingested this node's events up to `seq_hi` (store-and-forward ring-prune signal) |
@@ -345,7 +356,7 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     Node→MC messages (`ready`/`ack_config`/`log_offer`/`log_data`) and `bind.gun_tail`. *(consistency)*
 - **A4 (2026-08-25, P2 closure + field-reliability review; pre-deployment so `v` stays 1 — but NOT
   purely additive: `shot` and `pause` are removed, `shooter_id?` becomes mandatory `shooter_num`):**
-  - **A4.1 Identity is BLE-native.** `Player.player_num` (0–63) is written as `$PSET` token 1 and read back
+  - **A4.1 Identity is BLE-native.** `Player.player_num` (0–63; narrowed to 1–63 by A5.1) is written as `$PSET` token 1 and read back
     as `$HIR` token 3 on every hit (protocol §7p/§7q, bench-verified both directions). `hit_taken`/`death`
     carry mandatory `shooter_num` + `shooter_team`; attribution is exact; **`approx` attribution and
     `ATTRIB_FUSE_MS` are deleted**; FFA = one `$TID` + FF on + distinct `player_num`s; the unique-`$TID`
@@ -417,3 +428,24 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     until all victims flushed; accuracy "—" when the shooter's `status` is stale; `death.desync?`,
     `respawn.resync?`; `status.match_id?`/`fw?`; `$START` audio at the lobby head write is UNVERIFIED (bench);
     design packages realigned (READY-UP is a KITTED action; no team self-select; labels; killer name; #num).
+- **A6 (2026-08-25, peer four-lens review of 0aa90d7 — sim + feasibility; pre-deployment, `v` stays 1):**
+  - **A6.1 End freeze.** `end_t` recorded at `control{end}` / timed end; later facts are parked `post_end`, never
+    scored. (FFA "first to N" on a park was otherwise re-decided by out-of-range players' later kills.) `validate()`
+    WARNS when `frag_limit` is set without `opts.coverage == "full"`.
+  - **A6.2 Hot-swap shots.** `shots_total` baseline per player; `welcome.node.score.shots_total`.
+  - **A6.3 `cues` are pre-composed `$PLAY` frames.** Slot placement (token 1 SFX vs token 4 announcer) lives in the
+    compiler, not on the node; the node keeps two templates (`$SFLASH,*`, `$PLAYX,0,*`) + the probe set.
+  - **A6.4 `apply{frames}`** MC→node kind for coverage-zone runtime effects (syphon/regen/extraction boosts), which
+    otherwise had no downlink. Marked coverage-only in modes.md.
+  - **A6.5 `GameConfig.player_num_base?`** so two concurrent games on one field use disjoint id ranges.
+  - **A6.6 BLE resync classifier redesigned (node.md §3.10): positive evidence only.** A `$BUT`-without-`$ALCD` is
+    *also* an empty-mag dry-fire (protocol §7a) or an **unconfigured** gun (pre-game trigger emits `$BUT` but does
+    not fire) — so it never means "dead" on its own, and silence never means "unconfigured". New protocol: HUD asks
+    for **reload handle, then trigger**: `$BUT,2` → `$ALCD` refill ⇒ configured (with last-known reserve > 0);
+    then trigger → `$ALCD` decrement ⇒ alive; trigger → `$BUT`-only after a good reload ⇒ dead (`death{desync}`);
+    reload silent with reserve > 0 ⇒ unconfigured ⇒ re-write `head` and — in LIVE — the reboot costs a
+    `death{desync:true}` before `respawn{resync:true}` (no free heal). **No branch writes `spawn` without positive
+    evidence.** Known limitation: a station revive (`respawn.type: scanner`) inside a gap can hide a death.
+  - **A6.7 Doc fixes:** `gun_echo` is "the gun answered", not "headset present" (unverified, NEXT #10); `$START`
+    audibility at lobby unverified (NEXT #11); node lifecycle arrows → KITTED; runway text = `DEFAULT_RUNWAY_S`;
+    first blood from a re-based never-synced batch is flagged provisional; module headers → A6.
