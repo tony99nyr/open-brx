@@ -849,6 +849,8 @@ identity. The BLE `$QUERY` status array is a separate decode target (possible li
 
 - **Serial Number/Head PIN = the paired headset's sticker id** (read live; value kept in the local backup
   only, NOT the repo). **This is the answer to "which headset is it paired to"** — USB-only; BLE can't.
+  **CONFIRMED (Tony, 2026-08-24): the PIN read over USB physically matches the unique-ID sticker on the
+  paired headset.** So `usb-query` is a reliable tagger↔headset identity source for the armory inventory.
 - `headset_linked=true`, **Headset Version `hds.59`, Head 4.0 V** (headset battery), Gun 7.28 V, PlayerID 0,
   FieldID 1, NRFhost/NRFslave/devHost = 1, **Grenade Pin 7052**, Laser `UNTESTED`, PCB-5, BTchip 4,
   BT central `devhost.03`, Tested by `JB`.
