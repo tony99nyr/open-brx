@@ -279,3 +279,84 @@ def test_hot_swap_preserves_shots_total():
             if row.get("accuracy") is not None:
                 assert row["accuracy"] <= 1.0, f"accuracy must stay ≤100%, got {row['accuracy']}"
     run(go())
+
+
+# ------------------------------------------------ (b) wiped install resumes seq (no silent drop)
+def test_wiped_install_resumes_seq_and_scores():
+    if not HAVE_WS:
+        return skip("wiped")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            match = s.session.scorer.match_id
+            await _kill(s, a, nb)
+            assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) == 1)
+            hi = s.net.nodes[nb.node_id].seq_hi
+            bid = nb.node_id
+            await nb.close()
+
+            # reinstalled app: SAME node_id, storage wiped (seq_next back to 1)
+            fresh = await s.connect_node("GUN-B", node_id=bid)
+            assert await until(lambda: fresh.seq_hi_seen == hi and fresh.seq_next == hi + 1, 5.0), \
+                f"reinstalled node must resume seq from MC high-water {hi} (welcome), got {fresh.seq_next}"
+            # a new death from the fresh install is scored, not dropped as a replay
+            fresh.arm_state, fresh.alive, fresh.match_id = "live", True, match
+            fresh.emit({"type": "death", "shooter_num": _num(a), "shooter_team": _tid(s, a)})
+            assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) == 2, 5.0), \
+                "post-reinstall fact scored (not silently dropped by the dedup high-water)"
+    run(go())
+
+
+# ------------------------------------------------ (d) late joiner — CHARACTERIZATION of a KNOWN GAP
+# FINDING (reported to the state lane): a player added AFTER the lobby push is NOT in `self.bundles`,
+# so its `welcome` carries the `start` (from hydrate's start_info) but NO config/frames — it reaches
+# arm_state "live" yet its gun was never configured (no loadout/health written). `add_player` after a
+# push should compile + push that player's bundle (add to `bundles`, push `config`) so it truly arms.
+# This test pins the CURRENT behavior; when the fix lands, strengthen it to assert has-config + alive.
+def test_late_joiner_gets_bundle_and_start():
+    if not HAVE_WS:
+        return skip("late_join")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            c = s.add_player("LATE", "GUN-C", team_id="yellow")
+            nc = await s.connect_node("GUN-C")
+            assert await until(lambda: nc.player_id == c["player_id"], 6.0), "late joiner binds to its player"
+            assert await until(lambda: nc.go_live_t is not None, 6.0), "late joiner receives the running start"
+            # A5.6 late joiner: hydrated with a compiled bundle on its first hello (fixed 2026-08-25)
+            assert c["player_id"] in s.session.bundles, "late joiner has a compiled bundle"
+            assert await until(lambda: bool(nc.context.get("frames") or nc.context.get("config")), 6.0), "welcome carried config + frames for the late joiner"
+    run(go())
+
+
+# ------------------------------------------------ (f) abort lists a disconnected node as unreachable
+def test_abort_start_lists_unreachable_node():
+    if not HAVE_WS:
+        return skip("abort")
+
+    import brx_mcp.mc.state as _st
+    old_stale = _st.STALE_AFTER_MS
+    _st.STALE_AFTER_MS = 300  # so a disconnected node counts as unreachable within the test
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a = s.add_player("A", "GUN-A", team_id="blue")
+            b = s.add_player("B", "GUN-B", team_id="yellow")
+            na = await s.connect_node("GUN-A")
+            nb = await s.connect_node("GUN-B")
+            assert await s.wait_ready()
+            s.session.push_config()
+            assert await until(s.session.all_acked, 6.0)
+            s.session.start(runway_s=30)                 # long runway → stays ARMED
+            assert s.session.phase == "armed"
+            await nb.disconnect()
+            await until(lambda: False, timeout=0.6)       # let B go stale (>300ms)
+            res = s.session.abort_start()
+            assert b["player_id"] in res.get("unreachable", []), f"disconnected B must be unreachable: {res}"
+            assert a["player_id"] not in res.get("unreachable", []), "A is still reachable"
+    try:
+        run(go())
+    finally:
+        _st.STALE_AFTER_MS = old_stale

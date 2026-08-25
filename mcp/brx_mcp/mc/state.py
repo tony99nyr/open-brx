@@ -288,6 +288,11 @@ class Session:
         self.node_player[nid] = p["player_id"]
         p["node_id"] = nid
         self.nodes.setdefault(nid, {"node_id": nid})["player_id"] = p["player_id"]
+        # A5.6 late joiner: a node binding a player after the lobby push gets its bundle (+ the running start) now.
+        if self.lobby_pushed and p["player_id"] not in self.bundles:
+            self._push_config_to(p)
+            if self.start_info:
+                self.net.push(nid, "start", self._start_body())
 
     def _on_node(self, n: dict):
         nid = n["node_id"]
@@ -313,7 +318,10 @@ class Session:
             return None
         self._bind(hello["node_id"], p)
         node = {"player": p, "team": self.team(p["team_id"]), "roster": self.roster()}
-        if self.lobby_pushed and p["player_id"] in self.bundles:
+        if self.lobby_pushed:
+            if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
+                self.bundles[p["player_id"]] = self.compiler.compile(self.config, p, self.teams)
+                self.acks.pop(p["player_id"], None)
             node["config"] = self.config
             node["frames"] = self.bundles[p["player_id"]]
         if self.start_info:
