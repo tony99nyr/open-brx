@@ -117,3 +117,71 @@ def test_inventory_ignores_record_without_pin():
         _uc.add_to_inventory({"gun_name": "Tactix"})
         assert _uc.load_inventory() == {}
     _with_tmp_base(body)
+
+
+# ---- MAC correlation + rename lifecycle ------------------------------------ #
+def test_advert_basename_strips_mactail():
+    from brx_mcp.usbconsole import advert_basename
+    assert advert_basename("Alpha-9498") == "Alpha"
+    assert advert_basename("RocTheLegend-FE30") == "RocTheLegend"
+    assert advert_basename("Tactix2-E20D") == "Tactix2"
+    assert advert_basename("NoTail") == "NoTail"          # no hex4 suffix
+    assert advert_basename("Multi-Word-3D4F") == "Multi-Word"  # only the tail stripped
+
+
+def test_correlate_binds_unique_names_only():
+    def body():
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Alpha"})
+        _uc.add_to_inventory({"serial_head_pin": "S2", "gun_name": "Tactix"})
+        _uc.add_to_inventory({"serial_head_pin": "S3", "gun_name": "Tactix"})  # dup name
+        scan = [{"name": "Alpha-9498", "address": "AA:98"},
+                {"name": "Tactix-3D4F", "address": "BB:4F"},   # ambiguous → skip
+                {"name": "Tactix-1234", "address": "CC:34"}]
+        bound = _uc.correlate(scan)
+        inv = _uc.load_inventory()
+        assert ("S1", "AA:98") in bound and inv["S1"]["name_confirmed"] is True
+        assert inv["S1"]["ble_address"] == "AA:98"
+        # the two duplicate "Tactix" records can't bind
+        assert inv["S2"].get("ble_address") is None and not inv["S2"].get("name_confirmed")
+    _with_tmp_base(body)
+
+
+def test_mark_rename_clears_confirmed_and_targets_by_address():
+    def body():
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Tactix",
+                              "ble_address": "AA:98", "name_confirmed": True})
+        key = _uc.mark_rename("Bravo", address="AA:98")
+        assert key == "S1"
+        r = _uc.load_inventory()["S1"]
+        assert r["gun_name"] == "Bravo" and r["name_confirmed"] is False   # pending reboot
+        assert r["ble_address"] == "AA:98"                                  # address kept
+    _with_tmp_base(body)
+
+
+def test_usb_requery_preserves_ble_binding():
+    def body():
+        # confirmed under the SAME name the SAMPLE reports (Tactix2) → a re-QUERY
+        # (which carries no ble fields) must NOT wipe the binding or confirmation.
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Tactix2",
+                              "ble_address": "AA:98", "name_confirmed": True})
+        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "S1"})
+        r = _uc.load_inventory()["S1"]
+        assert r["ble_address"] == "AA:98" and r["name_confirmed"] is True
+    _with_tmp_base(body)
+
+
+def test_usb_requery_with_changed_name_clears_confirmation():
+    def body():
+        # confirmed as "Bravo" ↔ a MAC
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Bravo",
+                              "ble_address": "AA:98", "name_confirmed": True})
+        # a later USB QUERY reports a STALE/different name → confirmation must drop
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Alpha"})
+        r = _uc.load_inventory()["S1"]
+        assert r["gun_name"] == "Alpha" and r["name_confirmed"] is False
+        assert r["ble_address"] == "AA:98"     # address retained; just re-checked
+        # a re-QUERY with the SAME name leaves confirmation intact
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Alpha", "name_confirmed": True})
+        _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Alpha"})
+        assert _uc.load_inventory()["S1"]["name_confirmed"] is True
+    _with_tmp_base(body)

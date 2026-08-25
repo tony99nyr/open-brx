@@ -144,9 +144,11 @@ class UsbConsole:
         return {"port": self.port, "raw": text, **parse_query(text)}
 
 
+# identity fields from USB QUERY + the BLE-side binding (ble_address / name_confirmed)
 INVENTORY_FIELDS = ("serial_head_pin", "gun_name", "gun_version", "headset_version",
                     "headset_linked", "player_id", "field_id", "pcb", "bt_central_v",
-                    "gun_volts", "head_volts", "grenade_pin", "laser")
+                    "gun_volts", "head_volts", "grenade_pin", "laser",
+                    "ble_address", "name_confirmed")
 
 
 def inventory_path() -> Path:
@@ -165,20 +167,88 @@ def load_inventory() -> dict:
     return {}
 
 
+def _save_inventory(inv: dict) -> None:
+    import json
+    p = inventory_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(inv, indent=2), encoding="utf-8")
+
+
 def add_to_inventory(record: dict) -> dict:
     """Merge one QUERY record into the armory inventory (keyed by Serial/Head PIN).
-    The inventory holds identity fields only — it's kept under ~/.brx-mcp (it carries
-    the headset PIN), never the repo. Returns the full inventory."""
-    import json
+    Only non-None fields overwrite, so a USB re-query preserves the BLE binding
+    (ble_address / name_confirmed). Kept under ~/.brx-mcp (holds the headset PIN),
+    never the repo. Returns the full inventory."""
     key = record.get("serial_head_pin")
     if not key:
         return load_inventory()
     inv = load_inventory()
-    inv[key] = {f: record.get(f) for f in INVENTORY_FIELDS}
-    p = inventory_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(inv, indent=2), encoding="utf-8")
+    entry = inv.get(key, {})
+    old_name = entry.get("gun_name")
+    for f in INVENTORY_FIELDS:
+        v = record.get(f)
+        if v is not None:
+            entry[f] = v
+    # if this QUERY reports a DIFFERENT gun_name than a previously-confirmed one,
+    # the old BLE binding is now stale → drop the confirmation so correlate re-checks
+    # it against the live advert (prevents a confidently-wrong name↔MAC mapping).
+    new_name = record.get("gun_name")
+    if new_name is not None and old_name is not None and new_name != old_name:
+        entry["name_confirmed"] = False
+    inv[key] = entry
+    _save_inventory(inv)
     return inv
+
+
+def advert_basename(advert: str) -> str:
+    """BLE advert `<GunName>-<MACtail>` → the GunName. The tail is the last 2 MAC
+    bytes (4 hex). Names may contain '-', so strip only a trailing '-XXXX' hex4."""
+    return re.sub(r"-[0-9A-Fa-f]{4}$", "", advert or "").strip() or (advert or "")
+
+
+def correlate(scan_entries: list) -> list:
+    """Bind `ble_address` + set `name_confirmed` for inventory records whose gun_name
+    matches exactly one BLE advert basename — and only when that name is UNIQUE in the
+    inventory (duplicate names can't be told apart). This is both the initial MAC bind
+    and the post-rename reconfirm. `scan_entries`: [{'name','address'}, ...].
+    Returns [(serial, address), ...] newly confirmed."""
+    from collections import Counter
+    inv = load_inventory()
+    name_counts = Counter((r.get("gun_name") or "").strip().lower() for r in inv.values())
+    adv: dict[str, list] = {}
+    for e in scan_entries:
+        bn = advert_basename(e.get("name", "")).lower()
+        if bn:
+            adv.setdefault(bn, []).append(e.get("address"))
+    bound = []
+    for serial, r in inv.items():
+        gn = (r.get("gun_name") or "").strip().lower()
+        addrs = adv.get(gn, [])
+        if gn and name_counts[gn] == 1 and len(addrs) == 1:
+            if r.get("ble_address") != addrs[0] or not r.get("name_confirmed"):
+                bound.append((serial, addrs[0]))
+            r["ble_address"] = addrs[0]
+            r["name_confirmed"] = True
+    if bound:                       # only rewrite armory.json when something changed
+        _save_inventory(inv)
+    return bound
+
+
+def mark_rename(new_name: str, serial: Optional[str] = None,
+                address: Optional[str] = None) -> Optional[str]:
+    """Record a just-sent rename: set the target record's gun_name to `new_name` and
+    clear `name_confirmed` (the advert won't match until the gun reboots). Target by
+    serial, else by bound ble_address. Returns the serial updated, or None."""
+    inv = load_inventory()
+    key = serial
+    if key is None and address is not None:
+        key = next((s for s, r in inv.items() if r.get("ble_address") == address), None)
+    if key is None or key not in inv:
+        return None
+    inv[key]["gun_name"] = new_name
+    inv[key]["name_confirmed"] = False
+    _save_inventory(inv)
+    return key
 
 
 def backup_dir() -> Path:

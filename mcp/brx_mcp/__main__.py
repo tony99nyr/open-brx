@@ -771,7 +771,7 @@ def _extraction_sim() -> None:
             elif isinstance(a, Bank):
                 print(f"      🏦 {a.player_id} banked {a.value} (total {a.total})")
             elif isinstance(a, SendFrame):
-                print(f"      →  boost to {a.player_id}: {a.frame}")
+                print(f"      ->  boost to {a.player_id}: {a.frame}")
             elif isinstance(a, GameOver):
                 print(f"      🏆 GAME OVER — {a.winner} wins with {a.total}")
 
@@ -800,7 +800,7 @@ def _extraction_sim() -> None:
     print("t=40  red respawns (empty-handed)")
     render(g.respawn("red"))
 
-    print("t=75  blue holds Bravo for the full 45s → extracts")
+    print("t=75  blue holds Bravo for the full 45s -> extracts")
     render(g.tick(now=75.0))
 
     print(f"\nFinal: red banked {g.banked('red')}, blue banked {g.banked('blue')}, "
@@ -843,7 +843,7 @@ def _ir_capture(port: str | None, seconds: float) -> None:
     frames = br.capture(seconds)
     br.close()
     if not frames:
-        print("no frames — check wiring (VS1838B OUT→GPIO4), aim, and that a gun fired.")
+        print("no frames — check wiring (VS1838B OUT->GPIO4), aim, and that a gun fired.")
         return
     for f in frames:
         print(f"frame {f.index}: {f.to_dict()['nbits']} bits  {f.bits}"
@@ -893,22 +893,40 @@ def _armory() -> None:
         except Exception as e:  # noqa: BLE001
             print(f"# QUERY on {port} failed: {type(e).__name__}: {e}", file=sys.stderr)
     else:
-        print("# no tagger cabled (USB Teensy VID 16C0) — plug one in to add its "
-              "identity record; showing what's already in the inventory.", file=sys.stderr)
+        print("# no tagger cabled (USB Teensy VID 16C0) — showing the inventory; "
+              "scanning BLE to bind/reconfirm addresses.", file=sys.stderr)
+
+    # BLE scan → correlate: bind ble_address + confirm names (also the post-rename
+    # reconfirm step). Uniquely-named guns bind automatically.
+    try:
+        from .usbconsole import correlate
+        from .ble import ConnectionManager
+        scan = asyncio.run(ConnectionManager().scan(8))
+        named = [d for d in scan if d.get("name")]
+        bound = correlate([{"name": d["name"], "address": d["address"]} for d in named])
+        print(f"# BLE correlate: {len(named)} named device(s) seen, {len(bound)} newly bound",
+              file=sys.stderr)
+        for serial, addr in bound:
+            print(f"# confirmed {serial} <-> {addr}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001 — no BLE here is fine; just skip correlation
+        print(f"# (skipped BLE correlate: {type(e).__name__})", file=sys.stderr)
 
     inv = load_inventory()
     if not inv:
         print("armory inventory empty — cable a tagger and re-run `armory`.")
         return
     print(f"\n=== ARMORY INVENTORY ({len(inv)} tagger(s)) ===")
-    hdr = f"{'HEADSET PIN':12} {'GUN NAME':10} {'PID':>3} {'HEADSET':8} {'HEAD V':>6} {'GUN V':>6} {'PCB':>3} {'LINK':4}"
+    hdr = (f"{'HEADSET PIN':12} {'GUN NAME':12} {'PID':>3} {'HEADSET':8} {'HEAD V':>6} "
+           f"{'GUN V':>6} {'PCB':>3} {'LINK':4} {'BLE ADDRESS':18} {'MAP':4}")
     print(hdr); print("-" * len(hdr))
     for pin, r in sorted(inv.items()):
         # ASCII-only (Windows console is cp1252 — no unicode ticks)
-        print(f"{pin:12} {str(r.get('gun_name') or '?'):10} {str(r.get('player_id')):>3} "
+        print(f"{pin:12} {str(r.get('gun_name') or '?'):12} {str(r.get('player_id')):>3} "
               f"{str(r.get('headset_version') or '?'):8} {str(r.get('head_volts') or '?'):>6} "
               f"{str(r.get('gun_volts') or '?'):>6} {str(r.get('pcb') or '?'):>3} "
-              f"{'yes' if r.get('headset_linked') else 'no':4}")
+              f"{'yes' if r.get('headset_linked') else 'no':4} "
+              f"{str(r.get('ble_address') or '-'):18} "
+              f"{'ok' if r.get('name_confirmed') else 'pend':4}")
 
 
 def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
@@ -929,9 +947,9 @@ def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
         line += f"  |  {s['detected']}/{expected} shots reached ({s['detect_rate']*100:.0f}%)"
     print(line)
     if s["detected"] == 0:
-        print("→ nothing received — past effective range, mis-aimed, or wiring/aim off.")
+        print("-> nothing received — past effective range, mis-aimed, or wiring/aim off.")
     elif s["decode_rate"] < 0.5:
-        print("→ marginal: bursts arrive but rarely decode clean — near the edge of range.")
+        print("-> marginal: bursts arrive but rarely decode clean — near the edge of range.")
 
 
 def _ir_emit(bits: str, port: str | None, repeat: int) -> None:
@@ -1056,21 +1074,44 @@ async def _rename(address: str, name: str) -> None:
     menu isn't locked. Verify with a re-scan / USB QUERY afterwards."""
     from .ble import ConnectionManager
     from .modes.driver import clean_callsign
+    from .usbconsole import mark_rename, load_inventory
     nm = clean_callsign(name)
     if not nm:
         print("empty/invalid name after sanitize", file=sys.stderr); return
+    # a duplicate name can't be mapped — correlate refuses to bind two guns that
+    # share a name. Warn before renaming into a collision.
+    dupes = [s for s, r in load_inventory().items()
+             if (r.get("gun_name") or "").strip().lower() == nm.lower()
+             and r.get("ble_address") != address]
+    if dupes:
+        print(f"# WARNING: '{nm}' already names armory record(s) {dupes} — duplicate names "
+              f"can't be auto-mapped. Pick a unique name.", file=sys.stderr)
     mgr = ConnectionManager()
-    await mgr.connect(address, "rn")
     try:
-        for cmd in ("$STOP,*", "$PLAYX,0,*", f"$NAME,{nm},*"):
-            r = await mgr.send("rn", cmd, reply_window_ms=200)
-            print(f">> {cmd}"
-                  + ("".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', []))))
-        await asyncio.sleep(0.4)
-    finally:
-        await mgr.disconnect("rn")
-    print(f"\n# sent $NAME,{nm},* to {address}. Power-cycle the gun, then re-scan "
-          f"(advert should read '{nm}-<MACtail>') or USB QUERY to confirm it persisted.",
+        await mgr.connect(address, "rn")
+        try:
+            for cmd in ("$STOP,*", "$PLAYX,0,*", f"$NAME,{nm},*"):
+                r = await mgr.send("rn", cmd, reply_window_ms=200)
+                print(">> " + cmd
+                      + "".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', [])))
+            await asyncio.sleep(0.4)
+        finally:
+            await mgr.disconnect("rn")
+    except Exception as e:  # noqa: BLE001 — a raw traceback here is useless to the operator
+        print(f"# rename FAILED to reach {address}: {type(e).__name__}: {e}", file=sys.stderr)
+        return
+    # update the armory map (only if this address is already bound to a record) and
+    # mark it unconfirmed — the advert won't match until the gun reboots.
+    updated = mark_rename(nm, address=address)
+    if updated:
+        print(f"\n# RENAMED {address} -> '{nm}'  (armory record {updated}: name pending).",
+              file=sys.stderr)
+    else:
+        print(f"\n# RENAMED {address} -> '{nm}'.  NOTE: no armory record is bound to this "
+              f"address yet, so this rename does NOT update the map. USB-QUERY this gun "
+              f"(`armory`) after it reboots to enroll it under the new name.", file=sys.stderr)
+    print("# NEXT: 1) power-cycle that gun.  2) run `armory` to RECONFIRM -- the advert\n"
+          f"#       should come back '{nm}-<MACtail>' and the map is then confirmed.",
           file=sys.stderr)
 
 
@@ -1159,7 +1200,7 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
         _ir_emit(bits, port, repeat)
     elif cmd == "rename" and len(args) > 2:
-        asyncio.run(_rename(args[1], args[2]))
+        asyncio.run(_rename(args[1], " ".join(args[2:])))   # keep multi-word names
     elif cmd == "usb-query":
         _usb_query(args[1] if len(args) > 1 else None)
     elif cmd == "armory":

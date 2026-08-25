@@ -6,6 +6,22 @@ the observed behaviour. **This is the to-do list for your next hardware session(
 
 Legend: ⬜ unverified · ✅ verified · ⚠ verified-with-caveat · ❌ failed (→ FOLLOWUPS)
 
+## ⭐ TOMORROW (2026-08-25) — armory/correlation loop (all 4 taggers on)
+The newest, least-verified work. Do these first while the taggers are out.
+- ⬜ **MAC auto-binding** — power on all 4, run `armory`; the uniquely-named guns should bind:
+  `RocTheLegend ↔ …FE30` and `Tactix2 ↔ …E20D` flip to `MAP=ok` with an address. (Last night bound
+  nothing, but the taggers were powering off mid-scan — the new `# BLE correlate: N seen, M bound` line
+  now distinguishes "no guns seen" from a logic bug. Watch for it.)
+- ⬜ **Rename → re-enroll → map-update loop** — cable the gun renamed **Alpha** (was `Tactix-9498`,
+  `DF:F5:DA:08:94:98`); run `armory`. Its USB `gun_name` should update `Tactix → Alpha` (and, per the
+  new fix, drop `name_confirmed` so correlate re-checks), then bind `Alpha ↔ …9498`. Proves the loop.
+- ⬜ **Rename the rest** — `rename <addr> Bravo` / `Charlie` / `Delta` on the remaining stock guns,
+  power-cycle each, re-run `armory` to reconfirm → all 4 uniquely mapped. (Renaming an *unbound* gun now
+  warns it won't update the map until USB-enrolled — enroll after.)
+- ⬜ **`$VOLTS` token 4** — sample at high vs low charge to decode the 4th number (token 3 = charge %, confirmed).
+- ⬜ **Fleet battery reliability** — weak-signal taggers missed `$VOLTS`; decide persistent-connection vs RSSI-dependent.
+- ⬜ **Headset-OFF heuristic** — power a headset off, connect: confirm "reachable but drops with zero frames".
+
 ## Session A — M0 live run (2 taggers, ~20 min) — highest priority
 The whole M0 engine is tested in software but never driven on real guns.
 - ⬜ **`play tdm <A> <B>`** — config-all-then-spawn barrier works; both guns go live ~together (B10).
