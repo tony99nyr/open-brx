@@ -1,14 +1,17 @@
-// BRX — 2-tagger deathmatch. Connects TWO guns from one phone, arms them, and runs
-// the host-driven game: damage tracking (from $HP/$LCD/$ALCD), death + kill
-// attribution (victim's last $HIR shooter team), host respawn, and kill feedback
-// ($SFLASH + $PLAY V3A). Native BLE via @capacitor-community/bluetooth-le.
+// BRX Companion — single-gun HUD node (ADR-0002). One phone drives ONE gun over
+// BLE: arms it, tracks health/damage/ammo from $HP/$LCD/$ALCD, detects the player's
+// own death (+ who shot them, from $HIR shooter team), and respawns locally. Runs
+// fully autonomously — no server needed for your own gun's loop. Cross-player KILL
+// scoring + kill feedback ($SFLASH green sight) come from Mission Control over the
+// field LAN (the gun is host-blind about its own kills, ADR-0001), wired later.
 import { BleClient, textToDataView, dataViewToText } from '@capacitor-community/bluetooth-le';
 
 const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const RX  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const KILL_LINE = 'V3A';           // "kill" (confirmed, sound-bank)
-const ATTRIB_FUSE = 6000, MULTI_WIN = 4000, MAX_HP = 45, MAX_AR = 70;
+const KILL_LINE = 'V3A';           // "kill" (confirmed, sound-bank) — for MC-driven feedback
+const MAX_HP = 45, MAX_AR = 70, START_AMMO = 36;
+const TEAM_NAME = { 1:'BLUE', 2:'YELLOW' }, TEAM_CLASS = { 1:'blue', 2:'yellow' };
 
 // team-independent config, then per-team spawn (from gameconfig TDM, vol 69)
 const SETUP = [
@@ -30,31 +33,30 @@ const now = () => Date.now();
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const $ = id => document.getElementById(id);
 
-const players = {
-  A: { key:'A', team:1, deviceId:null, name:'Gun A', rxBuf:'', hp:0, armor:0, ammo:0,
-       alive:false, kills:0, deaths:0, lastShooterTeam:null, lastShooterAt:0, deadAt:0, lastKillAt:0, battery:null },
-  B: { key:'B', team:2, deviceId:null, name:'Gun B', rxBuf:'', hp:0, armor:0, ammo:0,
-       alive:false, kills:0, deaths:0, lastShooterTeam:null, lastShooterAt:0, deadAt:0, lastKillAt:0, battery:null },
+const me = {
+  team:1, deviceId:null, name:'— no gun —', rxBuf:'',
+  hp:0, armor:0, ammo:0, alive:false, deaths:0, kills:0,
+  lastShooterTeam:null, lastShooterAt:0, deadAt:0, battery:null,
 };
-let running=false, respawnMs=8000, fragLimit=0;
+let running=false, respawnMs=8000;
 
 function log(msg,cls='li'){ const el=$('log'); const t=new Date().toISOString().substr(11,8);
   el.innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`; el.scrollTop=el.scrollHeight; }
 
 // ---- HARDENED frame reassembler: split on '*' AND on '$' boundaries -------- //
 // (fixes the rare merged-notify case, e.g. "$ALCD,..$BUT,0,1,*")
-function pump(p, text){
-  p.rxBuf += text; const out=[];
+function pump(text){
+  me.rxBuf += text; const out=[];
   while(true){
-    const s = p.rxBuf.indexOf('$');
-    if(s<0){ p.rxBuf=''; break; }
-    if(s>0) p.rxBuf = p.rxBuf.slice(s);
-    const star = p.rxBuf.indexOf('*',1), nd = p.rxBuf.indexOf('$',1);
+    const s = me.rxBuf.indexOf('$');
+    if(s<0){ me.rxBuf=''; break; }
+    if(s>0) me.rxBuf = me.rxBuf.slice(s);
+    const star = me.rxBuf.indexOf('*',1), nd = me.rxBuf.indexOf('$',1);
     let end;
     if(star>=0 && (nd<0 || star<nd)) end = star+1;   // complete frame ending in *
     else if(nd>=0) end = nd;                          // truncated -> next $ is the boundary
     else break;                                       // incomplete -> wait for more bytes
-    const f = p.rxBuf.slice(0,end).trim(); p.rxBuf = p.rxBuf.slice(end);
+    const f = me.rxBuf.slice(0,end).trim(); me.rxBuf = me.rxBuf.slice(end);
     if(f) out.push(f);
   }
   return out;
@@ -69,56 +71,41 @@ async function sendFrame(id, frame){ for(let o=0;o<frame.length;o+=20){
   await BleClient.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o,20))); if(frame.length>20) await sleep(8);} }
 async function sendMany(id, frames){ for(const f of frames){ await sendFrame(id,f); await sleep(18);} }
 
-// Initialize EXACTLY ONCE. The iOS plugin's initialize() does
-// `self.deviceManager = DeviceManager(...)` — it REPLACES the manager that owns the
-// CBCentralManager and every connected peripheral, so calling it again deallocates
-// the old one and drops every live gun (cap9: notifications disabled, then HCI
-// disconnect reason 0x16 "Terminated By Local Host"). Calling it per-setGun meant
-// connecting Gun B disconnected Gun A.
-// androidNeverForLocation:true — we never derive location from the scan, so this
-// (paired with the neverForLocation manifest flag from scripts/android-setup.sh)
-// lets Android 12+ scan WITHOUT the system Location toggle on. Without it the scan
-// returns zero devices when Location is off (empty chooser on Android, fine on iOS).
+// Initialize EXACTLY ONCE. The iOS plugin's initialize() REPLACES the manager that
+// owns the CBCentralManager + every connected peripheral, so a second call drops the
+// live gun (cap9). androidNeverForLocation:true — we never derive location, so this
+// (with the neverForLocation manifest flag from scripts/android-setup.sh) lets
+// Android 12+ scan WITHOUT the system Location toggle on.
 let _init = null;
 function ensureInit(){ return (_init ||= BleClient.initialize({ androidNeverForLocation:true })); }
 
-// BRX BLE establishment succeeds roughly 1 attempt in 3 — holding a link is fine,
-// getting one is flaky (brx-protocol.md / HANDOFF "connecting is flaky, holding is not").
-// Retrying was the ENTIRE fix on the Python side (ble.py, 5 attempts); without it here
-// the user is the retry loop, tapping Set Gun until it takes.
-async function connectWithRetry(key, deviceId, attempts, guard){
+// BRX establishment succeeds ~1 attempt in 3 (holding a link is fine, getting one is
+// flaky). Retrying was the entire fix on the Python side; without it the user is the loop.
+async function connectWithRetry(id, attempts, guard){
   let last;
-  for(let i=1; i<=attempts; i++){
+  for(let i=1;i<=attempts;i++){
     if(guard && !guard()) return false;
     try{
-      await BleClient.connect(deviceId, ()=>onDrop(key));
-      await BleClient.startNotifications(deviceId, NUS, TX, v=>onNotify(key,v));
+      await BleClient.connect(id, ()=>onDrop());
+      await BleClient.startNotifications(id, NUS, TX, v=>onNotify(v));
       return true;
-    }catch(e){
-      last = e;
-      if(i < attempts){ log(`${key} connect ${i}/${attempts} failed — retrying…`); await sleep(1200); }
-    }
+    }catch(e){ last=e; if(i<attempts){ log(`connect ${i}/${attempts} failed — retrying…`); await sleep(1200); } }
   }
   throw last;
 }
 
 // ---- device picker: continuous low-latency scan + in-app list -------------- //
-// requestDevice() runs a single SHORT scan, so a BRX that advertises intermittently
-// (they sleep/quiet down between bursts) gets missed and the chooser is empty. A
-// continuous LOW_LATENCY scan samples aggressively and accumulates devices until you
-// pick — far more reliable for flaky advertisers. It also lets us label each hit with
-// its MAC suffix so you can tell the guns apart before enrolling proper $NAMEs.
+// requestDevice() runs a single SHORT scan, so an intermittently-advertising BRX gets
+// missed (empty chooser). A continuous LOW_LATENCY scan accumulates devices until you
+// pick — far more reliable. Labels each hit with its MAC suffix + signal.
 let _scanning = false;
 const suffixOf = id => String(id||'').replace(/[^0-9a-fA-F]/g,'').slice(-4).toUpperCase();
 
-async function pickDevice(forKey){
+async function pickDevice(){
   if(_scanning) throw new Error('a scan is already open');
   await ensureInit();
   const modal=$('picker'), listEl=$('pickList'), statusEl=$('pickStatus');
-  $('pickTitle').textContent = `Select Gun ${forKey}`;
   const found = new Map();
-  const otherId = players[forKey==='A'?'B':'A'].deviceId;
-
   return new Promise((resolve, reject)=>{
     let done=false;
     const finish = async (val, err)=>{
@@ -132,143 +119,124 @@ async function pickDevice(forKey){
       listEl.innerHTML='';
       for(const d of arr){
         const b=document.createElement('button'); b.className='pick';
-        const used = d.deviceId===otherId;
-        b.innerHTML = `<span><b>${d.name||'(unnamed)'}</b>${used?' <span class="used">· in use</span>':''}</span>`
+        b.innerHTML = `<span><b>${d.name||'(unnamed)'}</b></span>`
           + `<span class="sfx">${suffixOf(d.deviceId)}</span><span class="rssi">${d.rssi??''}</span>`;
-        if(used) b.disabled=true; else b.onclick=()=>finish(d);
+        b.onclick=()=>finish(d);
         listEl.appendChild(b);
       }
-      statusEl.textContent = arr.length
-        ? `${arr.length} tagger(s) found — tap to connect`
+      statusEl.textContent = arr.length ? `${arr.length} tagger(s) found — tap to connect`
         : 'scanning… power-cycle a gun if it doesn’t appear';
     };
     $('pickCancel').onclick = ()=>finish(null);
     modal.hidden=false; paint(); _scanning=true;
-    // No service/name filter passed to the plugin (some adv only carry the name in the
-    // scan response); we filter to BRX by name in the callback instead.
     BleClient.requestLEScan({ allowDuplicates:true, scanMode:2 }, res=>{
       const d=res.device||{}; if(!d.deviceId) return;
       const name = d.name || res.localName || '';
-      // Only require a name (drops unnamed BLE noise). We DON'T filter on "Tactix"
-      // because an enrolled gun advertises its sticker label ($NAME, e.g. "R0BAT")
-      // and a name filter would hide it. Guns are obvious: strong RSSI + known suffix.
-      if(!name) return;
-      const brx = /^Tactix/i.test(name) || (res.uuids||[]).includes(NUS);
-      found.set(d.deviceId, {deviceId:d.deviceId, name, rssi:res.rssi, brx});
+      if(!name) return;                      // drop unnamed BLE noise; enrolled guns advertise their name
+      found.set(d.deviceId, {deviceId:d.deviceId, name, rssi:res.rssi});
       paint();
     }).catch(e=>finish(null, e));
   });
 }
 
-async function setGun(key){
-  const p = players[key];
+async function setGun(){
   try{
-    const dev = await pickDevice(key);
+    const dev = await pickDevice();
     if(!dev) return;                    // cancelled
     const label = dev.name || dev.deviceId;
-    log(`${key} connecting to ${label}…`);
-    // Only commit deviceId AFTER the link is up: it gates updateStart(), so setting it
-    // on a failed connect would enable "Start game" for a gun that isn't there.
-    await connectWithRetry(key, dev.deviceId, 5);
-    p.deviceId = dev.deviceId; p.name = label;
-    log(`${key} = ${p.name} connected`,'lk'); renderPlayer(key); updateStart();
-  }catch(e){ log(`set ${key}: ${e.message||e}`,'le'); renderPlayer(key); updateStart(); }
+    log(`connecting to ${label}…`);
+    await connectWithRetry(dev.deviceId, 5);
+    me.deviceId = dev.deviceId; me.name = label;
+    log(`${me.name} connected`,'lk'); render(); updateStart();
+  }catch(e){ log(`set gun: ${e.message||e}`,'le'); render(); updateStart(); }
+}
+function onDrop(){ log(`*** ${me.name} disconnected ***`,'le'); if(me.deviceId) reconnect(); }
+async function reconnect(){
+  try{ const ok = await connectWithRetry(me.deviceId, 6, ()=>!!me.deviceId);
+    if(ok) log('reconnected','lk'); }
+  catch(e){ log('reconnect failed — tap Set my gun','le'); }
 }
 
-function onDrop(key){ const p=players[key]; log(`*** ${key} (${p.name}) disconnected ***`,'le');
-  if(p.deviceId) reconnect(key); }
+function onNotify(value){ for(const f of pump(dataViewToText(value))) handleFrame(f); }
 
-async function reconnect(key){
-  const p = players[key];
-  try{
-    const ok = await connectWithRetry(key, p.deviceId, 6, ()=>!!players[key].deviceId);
-    if(ok) log(`${key} reconnected`,'lk');
-  }catch(e){ log(`${key} reconnect failed — tap Set Gun ${key}`,'le'); }
+function handleFrame(f){
+  const t = toks(f), cmd = t[0];
+  if(cmd==='HP'){ me.hp=+t[1]||0; me.armor=+t[2]||0; render();
+    if(me.hp===0 && me.alive && running) death(); }
+  else if(cmd==='LCD'){ me.hp=+t[1]||0; me.armor=+t[2]||0; if(t[5]!==undefined) me.ammo=+t[5]||0; render(); }
+  else if(cmd==='ALCD'){ me.ammo=+t[1]||0; render(); }
+  else if(cmd==='HIR'){ if(t[2]!=='15'){ const st=parseInt(t[4],10); if(!isNaN(st)){ me.lastShooterTeam=st; me.lastShooterAt=now(); } } }
+  else if(cmd==='VOLTS'){ me.battery=parseInt(t[3],10); renderBatt(); }
 }
 
-function onNotify(key, value){ for(const f of pump(players[key], dataViewToText(value))) handleFrame(key, f); }
-
-function handleFrame(key, f){
-  const p = players[key], t = toks(f), cmd = t[0];
-  if(cmd==='HP'){ p.hp=+t[1]||0; p.armor=+t[2]||0; renderPlayer(key);
-    if(p.hp===0 && p.alive && running) death(key); }
-  else if(cmd==='LCD'){ p.hp=+t[1]||0; p.armor=+t[2]||0; if(t[5]!==undefined) p.ammo=+t[5]||0; renderPlayer(key); }
-  else if(cmd==='ALCD'){ p.ammo=+t[1]||0; renderPlayer(key); }
-  else if(cmd==='HIR'){ if(t[2]!=='15'){ const st=parseInt(t[4],10); if(!isNaN(st)){ p.lastShooterTeam=st; p.lastShooterAt=now(); } } }
-  else if(cmd==='VOLTS'){ p.battery=parseInt(t[3],10); renderBatt(key); }
+function death(){
+  me.alive=false; me.deaths++; me.deadAt=now();
+  const by = me.lastShooterTeam!=null ? (TEAM_NAME[me.lastShooterTeam]||`team ${me.lastShooterTeam}`) : '?';
+  log(`☠ you were killed by ${by} — respawn in ${respawnMs/1000}s`,'le');
+  $('killedby').textContent = `☠ killed by ${by}`;
+  render();
+  // NOTE: your kill of an enemy is scored by Mission Control (the gun doesn't report
+  // its own kills over BLE) — feedback() below is what MC will call to green your sight.
 }
-
-function death(key){
-  const p = players[key]; p.alive=false; p.deaths++; p.deadAt=now();
-  log(`☠ ${p.name} down`,'le'); renderPlayer(key);
-  const kt = (now()-p.lastShooterAt <= ATTRIB_FUSE) ? p.lastShooterTeam : null;
-  const killer = kt!=null ? Object.values(players).find(q=>q.deviceId && q.team===kt) : null;
-  if(killer && killer.key!==key){
-    killer.kills++;
-    const multi = (now()-killer.lastKillAt <= MULTI_WIN); killer.lastKillAt=now();
-    log(`${multi?'‼ DOUBLE KILL — ':'✚ '}${killer.name} killed ${p.name}  (${killer.kills})`,'lk');
-    renderPlayer(killer.key); renderScore();
-    feedback(killer.deviceId);
-    if(fragLimit>0 && killer.kills>=fragLimit){ endGame(`${killer.name} WINS`); }
-  } else {
-    log(`  (uncredited death — no fresh enemy hit)`,'li');
-  }
-}
-function feedback(id){ enqueue(id, async ()=>{ await sendFrame(id,'$SFLASH,*'); await sleep(120);
-  await sendFrame(id, `$PLAY,,4,6,${KILL_LINE},,,,*`); }); }
+// Called by Mission Control when you score a kill (wired with the LAN layer). Drives
+// the native feel over stock BLE: green sight ($SFLASH) + "kill" voice line.
+function feedback(){ if(!me.deviceId) return; enqueue(me.deviceId, async ()=>{
+  await sendFrame(me.deviceId,'$SFLASH,*'); await sleep(120);
+  await sendFrame(me.deviceId, `$PLAY,,4,6,${KILL_LINE},,,,*`); }); }
 
 // ---- game control ---------------------------------------------------------- //
 async function startGame(){
-  respawnMs = (+$('respawn').value||8)*1000; fragLimit = +$('frag').value||0;
-  $('winner').textContent='';
-  for(const p of Object.values(players)){
-    if(!p.deviceId) continue;
-    p.kills=0; p.deaths=0; p.alive=true; p.hp=MAX_HP; p.armor=MAX_AR; p.ammo=36; p.lastShooterTeam=null; p.deadAt=0;
-    enqueue(p.deviceId, ()=>sendMany(p.deviceId, SETUP.concat(spawnFrames(p.team))));
-    log(`arming ${p.name} (team ${p.team})…`);
-  }
-  running=true; renderAll(); renderScore();
-  $('start').disabled=true; $('end').disabled=false;
-  log('▶ GAME LIVE — respawn '+ (respawnMs/1000) +'s'+(fragLimit?`, frag limit ${fragLimit}`:''),'lk');
+  if(!me.deviceId) return;
+  respawnMs = (+$('respawn').value||8)*1000;
+  me.deaths=0; me.kills=0; me.alive=true; me.hp=MAX_HP; me.armor=MAX_AR; me.ammo=START_AMMO;
+  me.lastShooterTeam=null; me.deadAt=0; $('killedby').textContent='';
+  enqueue(me.deviceId, ()=>sendMany(me.deviceId, SETUP.concat(spawnFrames(me.team))));
+  log(`arming ${me.name} (team ${TEAM_NAME[me.team]})…`);
+  running=true; render();
+  $('start').disabled=true; $('end').disabled=false; $('setGun').disabled=true; teamButtons(true);
+  log(`▶ LIVE — respawn ${respawnMs/1000}s`,'lk');
 }
-function endGame(reason){
-  running=false; $('start').disabled=false; $('end').disabled=true;
-  for(const p of Object.values(players)) if(p.deviceId) enqueue(p.deviceId, ()=>sendMany(p.deviceId, ["$SPAWN,,*","$PLAYX,0,*","$STOP,*","$CLEAR,*"]));
-  if(reason) $('winner').textContent=' — '+reason;
-  log('■ GAME OVER'+(reason?` — ${reason}`:''),'lk');
+function endGame(){
+  running=false; $('start').disabled=false; $('end').disabled=true; $('setGun').disabled=false; teamButtons(false);
+  if(me.deviceId) enqueue(me.deviceId, ()=>sendMany(me.deviceId, ["$SPAWN,,*","$PLAYX,0,*","$STOP,*","$CLEAR,*"]));
+  me.alive=false; $('killedby').textContent=''; render();
+  log('■ game ended','lk');
 }
 setInterval(()=>{ if(!running) return;
-  for(const p of Object.values(players)){
-    if(p.deviceId && !p.alive && p.deadAt && now()-p.deadAt >= respawnMs){
-      p.alive=true; p.hp=MAX_HP; p.armor=MAX_AR; p.ammo=36; p.deadAt=0;
-      enqueue(p.deviceId, ()=>sendMany(p.deviceId, reviveFrames()));
-      log(`↻ ${p.name} respawned`); renderPlayer(p.key);
-    }
+  if(me.deviceId && !me.alive && me.deadAt && now()-me.deadAt >= respawnMs){
+    me.alive=true; me.hp=MAX_HP; me.armor=MAX_AR; me.ammo=START_AMMO; me.deadAt=0;
+    $('killedby').textContent='';
+    enqueue(me.deviceId, ()=>sendMany(me.deviceId, reviveFrames()));
+    log('↻ respawned'); render();
   }
 }, 500);
 
 // ---- render ---------------------------------------------------------------- //
-function renderPlayer(key){ const p=players[key];
-  $('name'+key).textContent = p.name;
-  const st=$('st'+key); st.textContent = p.deviceId ? (p.alive?'ALIVE':'DOWN') : '—';
-  st.className = 'badge '+(p.alive?'alive':'dead');
-  $('hp'+key).style.width = Math.max(0,Math.min(100, p.hp/MAX_HP*100))+'%';
-  $('ar'+key).style.width = Math.max(0,Math.min(100, p.armor/MAX_AR*100))+'%';
-  $('hpv'+key).textContent=p.hp; $('arv'+key).textContent=p.armor; $('am'+key).textContent=p.ammo;
-  $('k'+key).textContent=p.kills; $('d'+key).textContent=p.deaths;
+function render(){
+  $('gunName').textContent = me.name;
+  const st=$('state');
+  st.textContent = !me.deviceId ? 'IDLE' : (!running ? 'READY' : (me.alive?'ALIVE':'DOWN'));
+  st.className = 'badge '+(!me.deviceId||!running ? 'idle' : (me.alive?'alive':'dead'));
+  $('hud').className = 'hud '+TEAM_CLASS[me.team];
+  $('hp').style.width = Math.max(0,Math.min(100, me.hp/MAX_HP*100))+'%';
+  $('ar').style.width = Math.max(0,Math.min(100, me.armor/MAX_AR*100))+'%';
+  $('hpv').textContent=me.hp; $('arv').textContent=me.armor;
+  $('ammo').textContent=me.ammo; $('deaths').textContent=me.deaths;
 }
-function renderBatt(key){ const p=players[key];
-  $('batt'+key).textContent = p.battery==null ? '' : ('battery '+p.battery+'%'+(p.battery<=20?' ⚠ LOW':'')); }
-function renderScore(){ $('scoreA').textContent=players.A.kills; $('scoreB').textContent=players.B.kills; }
-function renderAll(){ renderPlayer('A'); renderPlayer('B'); renderBatt('A'); renderBatt('B'); }
-function updateStart(){ $('start').disabled = !(players.A.deviceId && players.B.deviceId) || running; }
+function renderBatt(){ $('batt').textContent = me.battery==null ? '' : ('battery '+me.battery+'%'+(me.battery<=20?' ⚠ LOW':'')); }
+function updateStart(){ $('start').disabled = !me.deviceId || running; }
+function teamButtons(lock){ for(const b of $('teamSeg').children) b.disabled = lock; }
 
 // ---- wiring ---------------------------------------------------------------- //
-$('setA').onclick=()=>setGun('A');
-$('setB').onclick=()=>setGun('B');
+$('setGun').onclick=setGun;
 $('start').onclick=startGame;
-$('end').onclick=()=>endGame('');
+$('end').onclick=endGame;
 $('clearLog').onclick=()=>{ $('log').innerHTML=''; };
-renderAll();
-ensureInit().then(()=>{ log('BLE ready — Set Gun A then Gun B, then Start','lk'); $('status').textContent='(ready)'; })
+for(const b of $('teamSeg').children){
+  b.onclick=()=>{ if(running) return; me.team=+b.dataset.team;
+    for(const x of $('teamSeg').children) x.classList.toggle('on', x===b);
+    render(); };
+}
+render();
+ensureInit().then(()=>{ log('BLE ready — Set my gun, pick your team, then Start','lk'); $('status').textContent='(ready)'; })
   .catch(e=>log('init: '+(e.message||e),'le'));

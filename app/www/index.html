@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BRX — 2-Tagger Deathmatch</title>
+<title>BRX Companion</title>
 <style>
   :root{ --bg:#0c1016; --panel:#141b24; --line:#25313f; --ink:#e8eef5; --dim:#8aa0b4;
     --accent:#39b4ff; --ok:#2ecc71; --bad:#ff5252; --warn:#ffb020;
@@ -13,32 +13,39 @@
     padding:12px;padding-bottom:36px}
   h1{font-size:17px;margin:0 0 8px}
   .row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-  button{flex:1 1 auto;min-width:120px;min-height:50px;border:1px solid var(--line);border-radius:10px;
+  button{flex:1 1 auto;min-width:110px;min-height:50px;border:1px solid var(--line);border-radius:10px;
     background:#1b2531;color:var(--ink);font-size:15px;font-weight:600}
   button:active{transform:translateY(1px)} button:disabled{opacity:.4}
   button.primary{background:var(--accent);color:#04121e;border-color:var(--accent)}
   button.danger{background:#7a1f2b;border-color:#7a1f2b}
+  .seg{display:flex;gap:0;flex:1 1 auto;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:0;border-radius:0;min-width:0;background:#0e141b;color:var(--dim);font-weight:700}
+  .seg button.on.blue{background:var(--blue);color:#04121e} .seg button.on.yellow{background:var(--yellow);color:#1a1400}
   label{font-size:12px;color:var(--dim)} input{width:64px;min-height:44px;background:#0e141b;
     border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:0 8px;font-size:15px;text-align:center}
-  .players{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .p{border:2px solid var(--line);border-radius:12px;padding:10px;background:var(--panel)}
-  .p.A{border-color:var(--blue)} .p.B{border-color:var(--yellow)}
-  .p .nm{font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center}
-  .p .batt{font-size:11px;color:var(--dim)}
-  .p .badge{font-size:11px;padding:1px 8px;border-radius:999px;font-weight:700}
+  /* single-gun HUD */
+  .hud{border:2px solid var(--line);border-radius:14px;padding:14px;background:var(--panel);margin-top:6px}
+  .hud.blue{border-color:var(--blue)} .hud.yellow{border-color:var(--yellow)}
+  .hud .top{display:flex;justify-content:space-between;align-items:center}
+  .hud .nm{font-weight:700;font-size:18px} .hud .batt{font-size:12px;color:var(--dim)}
+  .badge{font-size:12px;padding:2px 10px;border-radius:999px;font-weight:700}
   .badge.alive{background:#153a26;color:var(--ok)} .badge.dead{background:#3a2530;color:var(--bad)}
-  .bar{height:10px;background:#0e141b;border-radius:6px;overflow:hidden;margin:6px 0 2px}
+  .badge.idle{background:#22303c;color:var(--dim)}
+  .barlab{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin:10px 0 2px}
+  .barlab b{color:var(--ink);font-size:16px;font-variant-numeric:tabular-nums}
+  .bar{height:16px;background:#0e141b;border-radius:8px;overflow:hidden}
   .bar > i{display:block;height:100%;background:var(--ok);transition:width .15s}
   .bar.armor > i{background:var(--warn)}
-  .kv{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:4px}
-  .kv b{color:var(--ink);font-size:15px;font-variant-numeric:tabular-nums}
-  .score{text-align:center;font-size:13px;color:var(--dim);margin:8px 0}
-  .score b{font-size:26px;font-variant-numeric:tabular-nums}
-  .score .a{color:var(--blue)} .score .b{color:var(--yellow)}
-  #log{background:#080c11;border:1px solid var(--line);border-radius:10px;height:170px;overflow:auto;
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;text-align:center}
+  .stats .s{background:#0e141b;border-radius:10px;padding:8px 4px}
+  .stats .s .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stats .s .l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+  .stats .s .v.pend{font-size:15px;color:var(--dim);font-weight:600}
+  .killedby{font-size:12px;color:var(--bad);min-height:16px;margin-top:8px;text-align:center}
+  .note{font-size:12px;color:var(--dim)}
+  #log{background:#080c11;border:1px solid var(--line);border-radius:10px;height:150px;overflow:auto;
     padding:8px;font:11.5px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;margin-top:8px}
   .li{color:var(--dim)} .lk{color:var(--ok);font-weight:700} .le{color:var(--bad)} .lr{color:#7aa2c0}
-  .note{font-size:12px;color:var(--dim)}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:flex-end;z-index:50}
   .modal[hidden]{display:none}
   .sheet{background:var(--panel);border-top:1px solid var(--line);border-radius:14px 14px 0 0;
@@ -53,41 +60,39 @@
 </style>
 </head>
 <body>
-  <h1>BRX — 2-Tagger Deathmatch <span id="status" class="note">(idle)</span></h1>
+  <h1>BRX Companion <span id="status" class="note">(idle)</span></h1>
 
   <div class="row">
-    <button id="setA">Set Gun A (blue)</button>
-    <button id="setB">Set Gun B (yellow)</button>
+    <button id="setGun">Set my gun</button>
+    <div class="seg" id="teamSeg">
+      <button data-team="1" class="blue on">Blue</button>
+      <button data-team="2" class="yellow">Yellow</button>
+    </div>
   </div>
   <div class="row" style="align-items:center">
     <label>Respawn s <input id="respawn" type="number" value="8" min="1"></label>
-    <label>Frag limit <input id="frag" type="number" value="0" min="0"></label>
-    <button id="start" class="primary" disabled>Start game</button>
+    <button id="start" class="primary" disabled>Start</button>
     <button id="end" class="danger" disabled>End</button>
   </div>
 
-  <div class="score"><span class="a" id="scoreA">0</span> <b>—</b> <span class="b" id="scoreB">0</span>
-    <span id="winner"></span></div>
+  <div class="hud blue" id="hud">
+    <div class="top">
+      <span class="nm" id="gunName">— no gun —</span>
+      <span class="badge idle" id="state">IDLE</span>
+    </div>
+    <div class="batt" id="batt"></div>
 
-  <div class="players">
-    <div class="p A" id="cardA">
-      <div class="nm"><span id="nameA">Gun A —</span><span class="badge dead" id="stA">—</span></div>
-      <div class="batt" id="battA"></div>
-      <div class="bar"><i id="hpA" style="width:0%"></i></div>
-      <div class="bar armor"><i id="arA" style="width:0%"></i></div>
-      <div class="kv"><span>HP <b id="hpvA">0</b></span><span>AR <b id="arvA">0</b></span>
-        <span>AMMO <b id="amA">0</b></span></div>
-      <div class="kv"><span>K <b id="kA">0</b></span><span>D <b id="dA">0</b></span></div>
+    <div class="barlab"><span>HEALTH</span><b id="hpv">0</b></div>
+    <div class="bar"><i id="hp" style="width:0%"></i></div>
+    <div class="barlab"><span>ARMOR</span><b id="arv">0</b></div>
+    <div class="bar armor"><i id="ar" style="width:0%"></i></div>
+
+    <div class="stats">
+      <div class="s"><div class="v" id="ammo">0</div><div class="l">Ammo</div></div>
+      <div class="s"><div class="v" id="deaths">0</div><div class="l">Deaths</div></div>
+      <div class="s"><div class="v pend" id="kills">— MC</div><div class="l">Kills</div></div>
     </div>
-    <div class="p B" id="cardB">
-      <div class="nm"><span id="nameB">Gun B —</span><span class="badge dead" id="stB">—</span></div>
-      <div class="batt" id="battB"></div>
-      <div class="bar"><i id="hpB" style="width:0%"></i></div>
-      <div class="bar armor"><i id="arB" style="width:0%"></i></div>
-      <div class="kv"><span>HP <b id="hpvB">0</b></span><span>AR <b id="arvB">0</b></span>
-        <span>AMMO <b id="amB">0</b></span></div>
-      <div class="kv"><span>K <b id="kB">0</b></span><span>D <b id="dB">0</b></span></div>
-    </div>
+    <div class="killedby" id="killedby"></div>
   </div>
 
   <div class="row"><button id="clearLog" style="min-height:38px">Clear log</button></div>
@@ -95,7 +100,7 @@
 
   <div id="picker" class="modal" hidden>
     <div class="sheet">
-      <div class="sheet-h"><span id="pickTitle">Select a tagger</span>
+      <div class="sheet-h"><span id="pickTitle">Select your tagger</span>
         <button id="pickCancel" style="flex:0 0 auto;min-width:76px;min-height:40px">Cancel</button></div>
       <div id="pickStatus" class="note">scanning…</div>
       <div id="pickList"></div>
