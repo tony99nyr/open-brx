@@ -1,5 +1,17 @@
 # Handoff — Callsign BLE capture: is native nRF feedback enabled over BLE?
 
+> ## ✅ DONE — 2026-08-25, MacBook. **Do not re-run this capture.**
+> **Answer: neither branch you planned for.** There is **no BLE frame that enables nRF peering** —
+> Callsign's arm is byte-identical to ours. But Route 2 isn't forced either, because **the app has no
+> nRF radio and never used one**: it scores on the phone and drives the feedback over plain BLE with
+> **`$SFLASH,*`** (the green-sight kill-confirm, one per kill) and **`$PLAY,,4,6,<id>,,,,*`** (the
+> announcer slot). Step 0 confirmed: **the sight went green, 3/3 kills.**
+>
+> Full results → **[`handoff-callsign-nrf-capture-RESULTS.md`](handoff-callsign-nrf-capture-RESULTS.md)** ·
+> protocol → **`brx-protocol.md` §7o** · trace → `protocol/captures/raw/2026-08-25-two-gun-3-kills-sflash.btsnoop`.
+>
+> The steps below are kept for method (they're a good capture recipe), not as pending work.
+
 **For:** the Claude Code session on Tony's MacBook (with the iPhone running iOS Callsign).
 **Author:** the WSL session, 2026-08-25, right after the "feedback fork" bench session.
 **Read first:** `docs/experiment-log.md` → the entry **"LANDMARK: the feedback fork resolved"**
