@@ -64,6 +64,7 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 - **[reference/edge-brp.md](reference/edge-brp.md)** — competitive study of Battle Company EDGE software + Battle Rifle Pro: features, UBox/Animatronics environmental effects, hardware, pricing, and parity targets for our platform.
 - **[reference/lasertagmods.md](reference/lasertagmods.md)** — JEDGE/JBOX facts: protocol, IR encoding, stations, radios, hardware.
 - **[reference/community-notes.md](reference/community-notes.md)** — repairs, headset re-pair, battery, game-mode ideas, cautions.
+- **[reference/callsign-ui.md](reference/callsign-ui.md)** — the official Callsign app's operator surface (screens, ~18-weapon roster + ammo stats, game-settings enums, create-game flow) — what Mission Control must expose. Restated facts; raw screenshots kept local.
 - **[reference/grenade.md](reference/grenade.md)** — the de-facto Smart Grenade manual (modes, on-grenade programming, respawn/KotH mechanics, pairing) — from the 2019 grenade videos.
 - **[reference/jay-ecosystem.md](reference/jay-ecosystem.md)** — **Jay's DIY BRX ecosystem** (Extreme Laser Tag And More!): JBOX/JCUBE/JBOX Mini/JTOWER/JHALO/JEDGE devices, measured ESP-NOW/LoRa ranges, the game-mode mechanics he actually runs, and the **feasibility map to our tiers + the "what can an old phone do" answer**. Synthesized from ~30 of his videos.
 - **[../protocol/captures/](../protocol/captures/)** — decoded BLE/HCI capture transcripts behind the findings (see its README).
