@@ -13,6 +13,7 @@ from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, Respawn, Roster, Score,
     hp_values, is_hit, shooter_team,
 )
+from .announcer import KillAnnouncer
 
 # A kill is credited to the last enemy who hit the victim WITHIN this window.
 # Past it (suicide / environmental / expiry with no fresh $HIR), the death is
@@ -32,6 +33,9 @@ class DeathmatchEngine(GameEngine):
         self._ffa = (config.mode == "ffa")
         self._last_damage: dict[str, float] = {}   # player_id → time last hit (for regen)
         self._regenerated: set[str] = set()        # players already refilled this idle
+        # B18 killstreak/multikill announcer — fires only where a SPECIFIC killer gun
+        # is resolved (FFA / unique team). Sound ids come from config if present.
+        self.announcer = KillAnnouncer(sounds=getattr(config, "announcer_sounds", None))
 
     def add_player(self, player_id: str, team: int) -> None:
         self.roster.add(player_id, team, lives=self.config.lives())
@@ -62,6 +66,7 @@ class DeathmatchEngine(GameEngine):
         v.alive = False
         v.deaths += 1
         v.dead_since = now
+        self.announcer.on_death(victim_id)             # streak ends at death
         # clear regen state so a respawn (which already refills) doesn't trigger a
         # stale full-heal on the next idle tick.
         self._last_damage.pop(victim_id, None)
@@ -79,6 +84,8 @@ class DeathmatchEngine(GameEngine):
             who = (killer.player_id if (self._ffa and killer) else f"team{killer_team}")
             actions.append(Score(who, +1, self.team_score[killer_team]))
             actions.append(Callout(f"{who} scored (→ {self.team_score[killer_team]})"))
+            if killer and killer.alive:   # per-shooter announcer — skip a dead trade-killer
+                actions += self.announcer.on_kill(killer.player_id, victim_id, now)
             # Syphon: heal the killer on the kill. Needs the SPECIFIC killer — works in
             # FFA (team→player 1:1); in TDM it wants per-player id (P2), so skip there.
             if self.config.syphon and killer and killer.alive:
@@ -157,4 +164,5 @@ class DeathmatchEngine(GameEngine):
             "players": {pid: {"team": p.team, "alive": p.alive, "kills": p.kills,
                               "deaths": p.deaths, "lives": p.lives}
                         for pid, p in self.roster.players.items()},
+            "announcer": self.announcer.snapshot(),
         }

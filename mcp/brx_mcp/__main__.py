@@ -856,8 +856,14 @@ def _ir_capture(port: str | None, seconds: float) -> None:
         print("no frames — check wiring (VS1838B OUT->GPIO4), aim, and that a gun fired.")
         return
     for f in frames:
-        print(f"frame {f.index}: {f.to_dict()['nbits']} bits  {f.bits}"
-              f"{'  [OVERFLOW]' if f.overflow else ''}")
+        line = (f"frame {f.index}: {f.to_dict()['nbits']} bits  {f.bits}"
+                f"{'  [OVERFLOW]' if f.overflow else ''}")
+        s = f.shot()                      # field-decode (brx-ir-protocol.md)
+        if s["complete"]:
+            line += (f"  ->  player={s['player']} team={s['team']} dmg={s['damage']}"
+                     f" bullet={s['bullet']} crit={s['crit']}"
+                     f" parity={'ok' if s['parity_valid'] else 'BAD'}")
+        print(line)
     # diff consecutive distinct bit strings — surfaces type/team/mode fields
     seen = [f.bits for f in frames if f.bits]
     uniq = sorted(set(seen))
