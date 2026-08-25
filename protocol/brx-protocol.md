@@ -965,6 +965,29 @@ to do, using two commands we had misread.
 Why the bench `$GLED` probes failed: right observation, wrong command. `$GLED` is team-derived
 (§7i) and never drives this flash; `$SFLASH` does.
 
+### Game end is host-driven, and uses both `$PLAY` slots
+
+The operator ended the match by hand (**Settings ▸ End Game** on the host phone) after the third
+kill — the game did not end on a limit. The tail is therefore the app's deliberate end-game
+sequence:
+
+```
+[252.223s] >> $VOL,69,0,*
+[252.424s] >> $HLED,,6,,,,,*
+[252.624s] >> $STOP,*
+[252.824s] >> $CLEAR,*
+[256.709s] >> $PLAY,VSF,4,6,JAY,,,,*   # both slots: VSF sting + JAY (5.69 s) outro
+```
+
+Same shape as the solo capture's ending (`$VOL → $HLED → $STOP → $CLEAR → $PLAY`), but the solo
+game closed with a single-slot `$PLAY,VS6` — here the two-slot form carries a short sting **and** a
+long announcer clip. Note the ~3.9 s gap before the final `$PLAY`: the app lets `$CLEAR` settle
+before speaking.
+
+**`cap8` is operator-annotated end to end** — connect → arm → 3 kills scored → manual end — with
+every step confirmed against what the operator did and heard. That makes it the reference trace for
+what a complete hosted game looks like on the wire.
+
 ### The enabler frame does not exist — and is not needed
 
 Callsign's arm is otherwise **byte-identical to ours** (`$CLEAR → $START → $GSET → $PSET →
