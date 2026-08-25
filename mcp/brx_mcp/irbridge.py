@@ -160,17 +160,21 @@ def decode_word(bits: str) -> dict:
     }
 
 
-def encode_word(player=0, team=0, damage=0, bullet=0, crit=0, unknown=0) -> str:
-    """Build a valid 25-bit payload (parity bits set to differ). For emit + tests.
-    Field endianness is not yet bench-verified; encode/decode share the convention."""
+def encode_word(player=0, team=0, damage=0, bullet=0, crit=0, unknown=0, parity="01") -> str:
+    """Build a 25-bit payload. `parity` defaults to a valid differing pair ('01' →
+    parity_valid); pass explicit 2-bit Z if the bench shows parity is computed from
+    the payload. Field endianness is not yet bench-verified; encode/decode share it."""
     def f(v, n):
         return format(v & ((1 << n) - 1), f"0{n}b")
+    parity = (parity + "01")[:2]        # tolerate a short/empty parity arg
     return (f(bullet, 4) + f(player, 6) + f(team, 2) + f(damage, 8)
-            + f(crit, 1) + f(unknown, 2) + "01")
+            + f(crit, 1) + f(unknown, 2) + parity)
 
 
 def bits_to_pulses(bits, sync_us=2000, one_us=1000, zero_us=500, space_us=500) -> list[int]:
-    """Synthesize the alternating mark/space list a receiver sees (emit model / tests)."""
+    """Synthesize the alternating mark/space list a receiver sees (emit model / tests).
+    No explicit end-of-frame pulse is appended: after the last bit the line goes idle,
+    so a receiver's pulseIn(LOW) times out to 0, satisfying node1's `<250us` end check."""
     out = [sync_us, space_us]
     for ch in bits:
         out.append(one_us if ch == "1" else zero_us)

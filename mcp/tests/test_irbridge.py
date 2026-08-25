@@ -147,6 +147,15 @@ def test_decode_word_incomplete_is_flagged():
     assert d["complete"] is False and d["nbits"] == 4
 
 
+def test_encode_word_explicit_parity():
+    # an explicit/computed parity can be supplied and round-trips through the slice
+    bits = encode_word(player=5, parity="10")
+    assert len(bits) == 25 and bits[23:25] == "10"
+    d = decode_word(bits)
+    assert d["player"] == 5 and d["parity_valid"] is True     # 1 != 0
+    assert decode_word(encode_word(parity="11"))["parity_valid"] is False  # equal → invalid
+
+
 def test_frame_shot_prefers_bits_then_falls_back_to_pulses():
     bits = encode_word(player=63, team=3, damage=100, crit=1)
     # (a) firmware already gave us bits

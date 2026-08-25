@@ -99,21 +99,26 @@ void printFrame() {
   }
   Serial.println("]");
 
-  // decode: marks are the 1st,3rd,5th... gaps. The FIRST mark is the ~2 ms sync —
-  // strip it (>= SYNC_MIN_US), then long(>750)=1 / short=0 for the 25 payload bits.
+  // decode: marks are the 1st,3rd,5th... gaps. REQUIRE a leading ~2 ms sync (matches
+  // the host pulses_to_bits) — without it this isn't a BRX frame. The sync mark at i=1
+  // is then skipped by the >= SYNC_MIN_US test; long(>750)=1 / short=0.
+  bool syncSeen = (n >= 2) && ((buf[1] - buf[0]) >= SYNC_MIN_US);
   String bits = "";
   int nbits = 0;
-  for (size_t i = 1; i < n; i += 2) {
-    uint32_t mark = buf[i] - buf[i - 1];
-    if (mark >= SYNC_MIN_US) continue;          // sync or stray long pulse — not a bit
-    if (mark < MARK_MIN_US) continue;           // glitch
-    bits += (mark > MARK_THRESH_US) ? '1' : '0';
-    nbits++;
+  if (syncSeen) {
+    for (size_t i = 1; i < n; i += 2) {
+      uint32_t mark = buf[i] - buf[i - 1];
+      if (mark >= SYNC_MIN_US) continue;        // sync (i=1) or stray long pulse — not a bit
+      if (mark < MARK_MIN_US) continue;         // glitch
+      bits += (mark > MARK_THRESH_US) ? '1' : '0';
+      nbits++;
+    }
   }
   Serial.print("DECODE bits=");
   Serial.print(nbits);
   Serial.print(" val=");
   Serial.println(bits);
+  if (!syncSeen) Serial.println("# no 2ms sync (leading mark too short) — not a BRX frame");
   // field decode per protocol/brx-ir-protocol.md: B4 P6 T2 D8 C1 U2 Z2 (25 bits)
   if (nbits >= 25) {
     char z0 = bits[23], z1 = bits[24];

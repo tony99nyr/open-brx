@@ -57,6 +57,8 @@ void sendFrame(const String& bits) {
     mark(bits[i] == '1' ? MARK_ONE : MARK_ZERO);
     space(BIT_SPACE);
   }
+  // no explicit end-of-frame marker: after the last bit the carrier stays off, so the
+  // receiver's pulseIn(LOW) times out to 0 — satisfying a decoder's "<250us" end check.
   delay(LED_HOLD_MS);              // hold the LED so a single frame is clearly visible
   digitalWrite(STATUS_LED, LOW);
 }
