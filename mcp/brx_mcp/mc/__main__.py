@@ -1,0 +1,112 @@
+"""python -m brx_mcp.mc — run Mission Control (HTTP API + UI + node WebSocket server)."""
+from __future__ import annotations
+
+import argparse
+import logging
+import socket
+
+log = logging.getLogger("brx.mc")
+
+
+def _lan_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def build(args):
+    from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
+    from .state import Session
+    from .store import Store
+
+    compiler = FakeCompiler()
+    try:
+        from .compile import Compiler as RealCompiler  # M-MODES lane
+        compiler = RealCompiler()
+        log.info("compiler: real M-MODES compiler")
+    except Exception as e:
+        log.warning("compiler: FAKE (M-MODES compile.py not available: %s)", e)
+
+    net = None
+    if not args.fake_net:
+        try:
+            from .net import NetServer as RealNet  # M-NET lane
+            net = RealNet()
+            log.info("net: real M-NET WebSocket server")
+        except Exception as e:
+            log.warning("net: FAKE in-memory (M-NET net.py not available: %s)", e)
+    fake_net = net is None
+    if fake_net:
+        net = FakeNet()
+
+    armory = FakeArmory(demo_armory()) if args.demo else None
+    if armory is None:
+        try:
+            from .armory import LocalArmory
+            armory = LocalArmory()
+        except Exception as e:
+            log.warning("armory: FAKE (%s)", e)
+            armory = FakeArmory(demo_armory())
+
+    ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
+    ws_url = f"ws://{ip}:{args.ws_port}/ws"
+    session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
+    extra = []
+    import inspect
+    if inspect.iscoroutinefunction(getattr(net, "start", None)):
+        # Real M-NET: an asyncio server — start it inside the app's event loop (lifespan task).
+        async def _start_net():
+            await net.start(ip, args.ws_port, "/ws")
+            try:
+                ji = net.join_info()
+                session.lan.update({"ws_url": ji.get("url") or ws_url, "qr": ji.get("qr") or ji.get("url") or ws_url,
+                                    "session_id": ji.get("session_id")})
+            except Exception as e:  # pragma: no cover
+                log.warning("join_info: %s", e)
+            log.info("net: listening on %s", session.lan["ws_url"])
+        extra.append(_start_net)
+    else:
+        net.start(ip, args.ws_port, "/ws")
+    try:
+        session.store = Store(session.session_id)
+    except Exception as e:
+        log.warning("store disabled: %s", e)
+
+    if args.demo:
+        session.set_config({"mode": "tdm"})
+        for i, name in enumerate(DEMO_NAMES):
+            session.add_player(name, team_id="blue" if i % 2 == 0 else "yellow", gun_id=f"GUN-{chr(65 + i)}")
+        if fake_net:
+            driver = DemoDriver(session, net, n=len(DEMO_NAMES), speed=args.demo_speed)
+            extra.append(driver.run)
+            log.info("demo: %d fake nodes driving the board", len(DEMO_NAMES))
+    return session, net, extra
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="brx_mcp.mc")
+    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--ws-port", type=int, default=8766)
+    ap.add_argument("--fake-net", action="store_true", help="in-memory node transport (no phones)")
+    ap.add_argument("--demo", action="store_true", help="seed 8 demo players/guns; with --fake-net, simulate nodes")
+    ap.add_argument("--demo-speed", type=float, default=1.0)
+    ap.add_argument("-v", "--verbose", action="store_true")
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+    session, net, extra = build(args)
+    from .api import create_app
+    app = create_app(session, extra_tasks=extra)
+    import uvicorn
+    print(f"Mission Control  http://{session.lan['ip']}:{args.port}/   nodes: {session.lan.get('ws_url') or 'ws://'+session.lan['ip']+':'+str(args.ws_port)+'/ws'}")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+
+
+if __name__ == "__main__":
+    main()

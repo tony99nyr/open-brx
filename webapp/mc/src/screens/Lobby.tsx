@@ -1,0 +1,116 @@
+import { useState } from 'react';
+import type { Player } from '../api/types';
+import { useStore } from '../store';
+import { F, T, TAB, teamColor } from '../tokens';
+import { OutlineTag, PrimaryButton, Progress, ScreenHeader, Seg, Tag } from '../ui';
+
+const RUNWAYS = [60, 120, 180, 300];
+
+export function Lobby() {
+  const { state, run, api, setView } = useStore();
+  const [runway, setRunway] = useState(120);
+  const [drag, setDrag] = useState<string | null>(null);
+  if (!state) return null;
+  const { players, lobby, readiness, teams } = state;
+  const teamIds = state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(t => t.team_id);
+  const cols = teamIds.map(id => ({ id, name: teams.find(t => t.team_id === id)?.name ?? `${id.toUpperCase()} TEAM`, color: teamColor(id), members: players.filter(p => p.team_id === id) }));
+  const unassigned = players.filter(p => !teamIds.includes(p.team_id ?? ''));
+  const counts = cols.map(c => c.members.length);
+  const balanced = Math.max(...counts) - Math.min(...counts) <= 1 && unassigned.length === 0;
+  const nReady = players.filter(p => p.ready).length;
+  const notReady = players.filter(p => !p.ready).map(p => p.display);
+  const allReady = nReady === players.length && players.length > 0;
+  const acked = Object.values(lobby.acks).filter(a => a.ok).length;
+  const allAcked = lobby.pushed && acked === players.length;
+  const reds = readiness.board.filter(b => b.status === 'red').map(b => b.sticker);
+
+  const pushAndArm = async () => {
+    if (!lobby.pushed) { const r = await run(() => api.pushLobby()); if (!r) return; }
+    const s = await run(() => api.start(runway));
+    if (s) setView('armed');
+  };
+  const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
+
+  return (
+    <div className="screen">
+      <ScreenHeader kicker="[ A5 // LOBBY ]" title="Team Assignment" right={
+        <>
+          <Tag color={balanced ? T.ok : T.warn} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>
+          <Progress n={nReady} total={players.length} label="READY" color={T.ok} />
+        </>
+      } />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        {cols.map(col => (
+          <div key={col.id} style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column' }}
+            onDragOver={e => e.preventDefault()} onDrop={() => { const p = players.find(x => x.player_id === drag); if (p) reteam(p, col.id); setDrag(null); }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${col.color}` }}>
+              <span style={{ font: F.chk(700, 13), letterSpacing: '.24em', color: col.color }}>{col.name}</span>
+              <span style={{ flex: 1 }} />
+              <span style={{ font: F.osw(600, 12), ...TAB, color: T.dim }}>{col.members.length} OPERATORS</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${drag ? T.acc : T.line}`, padding: 6, background: T.panelDeep, minHeight: 200 }}>
+              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} onDragStart={() => setDrag(mb.player_id)} />)}
+            </div>
+          </div>
+        ))}
+        {unassigned.length > 0 && (
+          <div style={{ flex: '1 1 240px' }}>
+            <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.warn}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.warn }}>UNASSIGNED</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
+              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} onDragStart={() => setDrag(mb.player_id)} />)}
+            </div>
+          </div>
+        )}
+      </div>
+      {/* action rail */}
+      <div style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 34px' }}>
+        <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
+          <Step n={1} done={allReady} label={<>ALL READY <span style={{ color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</span></>} />
+          <Step n={2} done={allAcked} label={<>PUSH CONFIG {lobby.pushed && <span style={{ color: allAcked ? T.ok : T.warn }}>{acked}/{players.length} ACKED</span>}</>} />
+          <Step n={3} done={false} label={<>ARM COUNTDOWN <Seg value={String(runway) as '60'} options={RUNWAYS.map(r => ({ value: String(r) as '60', label: `${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}` }))} onChange={v => setRunway(Number(v))} size={10} pad="3px 9px" /></>} />
+        </div>
+        <span style={{ flex: 1 }} />
+        {reds.length > 0
+          ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {reds.join(' + ')} RED ON THE BOARD — CLEAR BEFORE PUSHING</span>
+          : notReady.length > 0
+            ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {notReady.join(' + ')} NOT READY — LAST MOMENT ALL NODES ARE IN RANGE</span>
+            : lobby.pushed && !allAcked
+              ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(' + ')} DID NOT ECHO — HEADSET? GUN ASLEEP?</span>
+              : <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.ok }}>ALL NODES READY &amp; IN RANGE — PUSH, THEN WALK</span>}
+        <PrimaryButton onClick={pushAndArm} disabled={reds.length > 0 || players.length === 0} title={allReady ? '' : 'Host override: pushing with players not ready'}>
+          {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
+        </PrimaryButton>
+      </div>
+      {!allReady && players.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>
+          HOST OVERRIDE ▸ {players.filter(p => !p.ready).map(p => (
+            <span key={p.player_id} className="hov-acc-ink" style={{ cursor: 'pointer', color: T.dim }} onClick={() => run(() => api.setReady(p.player_id, true))}>[ READY {p.display} ]</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemberRow({ p, onDragStart }: { p: Player; onDragStart: () => void }) {
+  return (
+    <div className="hov-acc" draggable onDragStart={onDragStart}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44 }}>
+      <span style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em' }}>⠿</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
+        <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
+      </span>
+      {p.ready ? <OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag> : <OutlineTag color={T.micro} border={T.line}>WAIT</OutlineTag>}
+    </div>
+  );
+}
+
+function Step({ n, done, label }: { n: number; done: boolean; label: React.ReactNode }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ font: F.osw(700, 11), background: done ? T.ok : T.line, color: done ? T.accInk : T.dim, padding: '1px 7px' }}>{n}</span>
+      <span style={{ font: F.chk(600, 11), letterSpacing: '.14em', color: done ? T.dim : T.micro, display: 'inline-flex', alignItems: 'center', gap: 8 }}>{label}</span>
+    </span>
+  );
+}

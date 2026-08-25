@@ -1,0 +1,24 @@
+{
+  "_note": "M-MODES WeaponCatalog (docs/spec/modes.md §3). stats: dmg/rof/rng are 0-100 UI bars; mag/reserve/reload_ms are literal. 'base' names the WEAPON_TAILS template in gameconfig.py the $WEAP tail is built from; only assault_rifle(ar)/charge_rifle(charge) are hardware-fired -> verified:true, the rest are templated -> verified:false (pin by a one-field Callsign capture, protocol-classes Method). 'melee' is hidden (slot 4, never in the picker).",
+  "weapons": [
+    {"weapon_id": "assault_rifle",   "name": "Assault Rifle",   "cls": 0, "mag": 32,  "reserve": 384, "reload_ms": 1400, "dmg": 55, "rof": 80, "rng": 55, "base": "ar",       "verified": true},
+    {"weapon_id": "burst_rifle",     "name": "Burst Rifle",     "cls": 0, "mag": 36,  "reserve": 216, "reload_ms": 1700, "dmg": 68, "rof": 55, "rng": 80, "base": "primary",  "verified": false},
+    {"weapon_id": "sniper_rifle",    "name": "Sniper Rifle",    "cls": 2, "mag": 4,   "reserve": 24,  "reload_ms": 1700, "dmg": 85, "rof": 25, "rng": 100, "base": "ar",      "verified": false},
+    {"weapon_id": "shotgun",         "name": "Shotgun",         "cls": 3, "mag": 6,   "reserve": 24,  "reload_ms": 400,  "dmg": 85, "rof": 30, "rng": 20, "base": "secondary","verified": false},
+    {"weapon_id": "smg",             "name": "SMG",             "cls": 1, "mag": 72,  "reserve": 288, "reload_ms": 2500, "dmg": 30, "rof": 95, "rng": 40, "base": "ar",       "verified": false},
+    {"weapon_id": "amr",             "name": "AMR",             "cls": 4, "mag": 14,  "reserve": 56,  "reload_ms": 1400, "dmg": 85, "rof": 80, "rng": 80, "base": "ar",       "verified": false},
+    {"weapon_id": "energy_launcher", "name": "Energy Launcher", "cls": 9, "mag": 1,   "reserve": 6,   "reload_ms": 1400, "dmg": 95, "rof": 25, "rng": 55, "base": "charge",   "verified": false},
+    {"weapon_id": "rail_gun",        "name": "Rail Gun",        "cls": 7, "mag": 1,   "reserve": 6,   "reload_ms": 2400, "dmg": 95, "rof": 25, "rng": 80, "base": "charge",   "verified": false},
+    {"weapon_id": "rocket_launcher", "name": "Rocket Launcher", "cls": 9, "mag": 2,   "reserve": 8,   "reload_ms": 1200, "dmg": 95, "rof": 25, "rng": 60, "base": "charge",   "verified": false},
+    {"weapon_id": "laser_cannon",    "name": "Laser Cannon",    "cls": 4, "mag": 4,   "reserve": 8,   "reload_ms": 2000, "dmg": 95, "rof": 25, "rng": 80, "base": "charge",   "verified": false},
+    {"weapon_id": "charge_rifle",    "name": "Charge Rifle",    "cls": 5, "mag": 100, "reserve": 200, "reload_ms": 2500, "dmg": 80, "rof": 80, "rng": 60, "base": "charge",   "verified": true},
+    {"weapon_id": "bolt_rifle",      "name": "Bolt Rifle",      "cls": 0, "mag": 18,  "reserve": 180, "reload_ms": 2000, "dmg": 55, "rof": 55, "rng": 60, "base": "primary",  "verified": false},
+    {"weapon_id": "plasma_sniper",   "name": "Plasma Sniper",   "cls": 2, "mag": 10,  "reserve": 80,  "reload_ms": 2000, "dmg": 80, "rof": 55, "rng": 80, "base": "ar",       "verified": false},
+    {"weapon_id": "force_rifle",     "name": "Force Rifle",     "cls": 0, "mag": 36,  "reserve": 144, "reload_ms": 1700, "dmg": 55, "rof": 55, "rng": 60, "base": "primary",  "verified": false},
+    {"weapon_id": "stinger",         "name": "Stinger",         "cls": 6, "mag": 18,  "reserve": 72,  "reload_ms": 1700, "dmg": 80, "rof": 55, "rng": 60, "base": "ar",       "verified": false},
+    {"weapon_id": "energy_rifle",    "name": "Energy Rifle",    "cls": 5, "mag": 300, "reserve": 600, "reload_ms": 2400, "dmg": 45, "rof": 80, "rng": 60, "base": "charge",   "verified": false},
+    {"weapon_id": "suppressor",      "name": "Suppressor",      "cls": 1, "mag": 48,  "reserve": 288, "reload_ms": 2000, "dmg": 80, "rof": 80, "rng": 60, "base": "ar",       "verified": false},
+    {"weapon_id": "ion_sniper",      "name": "Ion Sniper",      "cls": 2, "mag": 2,   "reserve": 12,  "reload_ms": 2000, "dmg": 80, "rof": 25, "rng": 80, "base": "ar",       "verified": false},
+    {"weapon_id": "melee",           "name": "Melee",           "cls": 8, "mag": 1,   "reserve": 0,   "reload_ms": 0,    "dmg": 90, "rof": 30, "rng": 5,  "base": "melee",    "verified": true, "hidden": true}
+  ]
+}

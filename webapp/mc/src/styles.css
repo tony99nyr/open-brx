@@ -1,0 +1,39 @@
+/* Global ground + keyframes from the design prototype. Everything else is inline (per the handoff). */
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100vh; }
+body {
+  margin: 0;
+  background: #07090d;
+  color: #e8eef5;
+  font-family: "Chakra Petch", system-ui, sans-serif;
+  background-image:
+    linear-gradient(rgba(57,180,255,.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57,180,255,.028) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+a { color: #39b4ff; }
+a:hover { color: #7fd0ff; }
+button { font-family: inherit; }
+input { font-family: inherit; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #25313f; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes tryPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,176,32,.5); } 50% { box-shadow: 0 0 0 6px rgba(255,176,32,0); } }
+@keyframes linkBlink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes scanIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.screen { animation: scanIn .25s ease-out; }
+.hov-acc:hover { border-color: #39b4ff !important; }
+.hov-acc-ink:hover { color: #39b4ff !important; }
+.hov-accbg:hover { background: #7fd0ff !important; }
+.hov-warnbg:hover { background: rgba(255,176,32,.12) !important; }
+.hov-badbg:hover { background: rgba(255,82,82,.18) !important; }
+.brackets { position: relative; }
+.brackets::before, .brackets::after { content: ''; position: absolute; width: var(--bk, 16px); height: var(--bk, 16px); }
+.brackets::before { top: 6px; left: 6px; border-top: 2px solid var(--bkc, #39b4ff); border-left: 2px solid var(--bkc, #39b4ff); }
+.brackets::after { bottom: 6px; right: 6px; border-bottom: 2px solid var(--bkc, #39b4ff); border-right: 2px solid var(--bkc, #39b4ff); }
+.numbox { background: transparent; border: none; color: inherit; font: inherit; width: 3.2em; text-align: right; outline: none; }
+.numbox:focus { color: #39b4ff; }
+.textbox { background: transparent; border: none; border-bottom: 1px solid transparent; color: inherit; font: inherit; letter-spacing: inherit; outline: none; padding: 0; min-width: 6ch; }
+.textbox:focus { border-bottom-color: #39b4ff; }

@@ -41,8 +41,9 @@ WEAPON_AMMO: dict[str, tuple[int, int]] = {
 
 # $PSET template — the app's voice-pack tail; tokens 3–5 (HP,armor,shield) are ours.
 # tokenize: PSET,0,0,<HP>,<armor>,<shield>,50,,H44,...,A10
-# $PSET token 1 = player id (§7p): 6 bits, 0-based on the wire (0–63); the Callsign
-# UI shows 1–64, so subtract one from anything an operator types.
+# $PSET token 1 = player id (§7p): a 6-bit wire value. The BRX hardware accepts 0–63; the
+# platform reserves wire 0 for "no identity" (tutorial / unknown shooter) and assigns real
+# players 1–63 (contracts A5.1). The MC compiler passes `player_num` (1–63) straight through.
 MAX_PLAYER_ID = 63
 _PSET_TAIL = ["50", "", "H44", "JAD", "V33", "V3I", "V3C", "V3G", "V3E", "V37",
               "H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]
@@ -214,7 +215,8 @@ class GameConfig:
 
     def setup_frames(self, player_id: int = 0) -> list[str]:
         """Ordered config frames for ONE gun. `player_id` is that gun's identity
-        (0-based, 0–63) and rides in `$PSET` token 1 — see `_pset`. Everything else
+        (wire 0–63; the platform uses 1–63, reserving 0 — contracts A5.1) and rides in
+        `$PSET` token 1 — see `_pset`. Everything else
         is per-game and identical across guns."""
         cfg = self.apply_presets()
         frames = [f"$VOL,{cfg.volume},0,*", "$CLEAR,*", "$START,*", cfg._gset(),
