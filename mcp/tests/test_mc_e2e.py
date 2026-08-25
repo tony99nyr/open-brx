@@ -147,3 +147,135 @@ def test_headset_off_blocks_start():
             except ValueError:
                 pass
     run(go())
+
+
+async def _live_two(s, mode="tdm"):
+    """Bring two bound, ready, LIVE nodes up. Returns (a, b, na, nb)."""
+    a = s.add_player("A", "GUN-A", team_id=("ffa" if mode == "ffa" else "blue"))
+    b = s.add_player("B", "GUN-B", team_id=("ffa" if mode == "ffa" else "yellow"))
+    na = await s.connect_node("GUN-A")
+    nb = await s.connect_node("GUN-B")
+    assert await s.wait_ready(), s.session.readiness()["board"]
+    await s.push_and_start(runway_s=1)
+    assert await s.wait_live()
+    return a, b, na, nb
+
+
+async def _kill(s, killer, victim_node):
+    while victim_node.alive:
+        victim_node.take_hit(_num(killer), _tid(s, killer), dmg=40)
+
+
+# ------------------------------------------------ (e) post-end parking (validates C1 end-freeze)
+def test_post_end_parking_does_not_move_the_winner():
+    if not HAVE_WS:
+        return skip("post_end")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            await _kill(s, a, nb)
+            assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) == 1)
+            k0 = _rows(s)[a["player_id"]]["kills"]
+
+            s.session.control("end")                     # freezes scoring at end_t (A6.1)
+            end_t = s.session.scorer.end_t
+            # a late kill (same match) that lands AFTER end_t must PARK, not score
+            nb.emit({"type": "death", "shooter_num": _num(a), "shooter_team": _tid(s, a),
+                     "t": (end_t or 0) + 5000})
+            assert await until(lambda: len(s.session.scorer.post_end) >= 1, 4.0), "late fact parked as post_end"
+            assert _rows(s)[a["player_id"]]["kills"] == k0, "post-end fact must not move the score"
+    run(go())
+
+
+# ------------------------------------------------ (i) stale match_id parks, never scores
+def test_stale_match_id_is_parked():
+    if not HAVE_WS:
+        return skip("match_id")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            await _kill(s, a, nb)
+            assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) == 1)
+            before = _rows(s)[a["player_id"]]["kills"]
+            # a death stamped with a DIFFERENT match_id (e.g. a stray from a prior/other match)
+            nb.emit({"type": "death", "shooter_num": _num(a), "shooter_team": _tid(s, a),
+                     "match_id": "stale-match-xyz"})
+            assert await until(lambda: any(ev.get("match_id") == "stale-match-xyz"
+                                           for _, ev, _ in s.session.scorer.parked), 4.0), "stale fact parked"
+            assert _rows(s)[a["player_id"]]["kills"] == before, "foreign-match fact must not score"
+    run(go())
+
+
+# ------------------------------------------------ (k) score push to the killer's node after a kill
+def test_score_push_reaches_killer_node():
+    if not HAVE_WS:
+        return skip("score_push")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            await _kill(s, a, nb)
+
+            def scored_push():
+                for e in na.received:
+                    if e.get("kind") == "score":
+                        body = e.get("body", {})
+                        row = body.get("row", body)
+                        if (row.get("kills") or 0) >= 1:
+                            return True
+                return False
+            assert await until(scored_push, 5.0), \
+                f"killer node should receive a score push with kills>=1; got kinds {[e.get('kind') for e in na.received]}"
+    run(go())
+
+
+# ------------------------------------------------ (j) timed-end mirror flips MC to recap
+def test_timed_end_flips_mc_to_recap():
+    if not HAVE_WS:
+        return skip("timed_end")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=2) as s:      # 2s match
+            a, b, na, nb = await _live_two(s)
+            await _kill(s, a, nb)
+            # drive the MC tick loop; at go_live_t + time_limit the mirror should end the match
+            ok = False
+            for _ in range(120):
+                s.session.tick()
+                if s.session.phase == "recap":
+                    ok = True
+                    break
+                await until(lambda: False, timeout=0.1)
+            assert ok, f"MC never mirrored the timed end to recap (phase={s.session.phase})"
+            # the mirror flipping MC to recap is the point of (j); provisional stays True until every
+            # victim's facts flush (A5.11) — correct, not a failure.
+            r = s.session.recap()
+            assert r and r.get("rows") is not None, "recap available after the timed end"
+    run(go())
+
+
+# ------------------------------------------------ (c) hot-swap keeps shots_total (accuracy ≤ 100%)
+def test_hot_swap_preserves_shots_total():
+    if not HAVE_WS:
+        return skip("hot_swap")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            na.fire(10)                                    # A fires 10 → reported via status.shots
+            assert await until(lambda: s.session.scorer.shots_total(a["player_id"]) >= 10, 5.0), \
+                "A's shots reached the scorer"
+            na._paused = True                              # A's phone dies
+            # hot-swap: a NEW node_id binds the SAME gun → old shots fold into the baseline (A6.2)
+            na2 = await s.connect_node("GUN-A", node_id="GUN-A-swap")
+            assert await until(lambda: na2.player_id == a["player_id"], 5.0), "swapped phone hydrated by gun"
+            na2.arm_state, na2.alive, na2.match_id = "live", True, na.match_id
+            na2.fire(5)                                    # 5 more shots on the new session
+            assert await until(lambda: s.session.scorer.shots_total(a["player_id"]) >= 15, 5.0), \
+                f"shots_total must fold baseline+new (10+5), got {s.session.scorer.shots_total(a['player_id'])}"
+            row = _rows(s).get(a["player_id"], {})
+            if row.get("accuracy") is not None:
+                assert row["accuracy"] <= 1.0, f"accuracy must stay ≤100%, got {row['accuracy']}"
+    run(go())
