@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Zero-dependency test runner — discovers and runs every tests/test_*.py.
+
+The system Python here has no pytest/pip, so this is the suite entry point:
+    python3 run_tests.py            # run all
+    python3 run_tests.py modes cs   # run only files matching these substrings
+
+Each test is a top-level `test_*` function; a raised assertion/exception = fail.
+Exits non-zero if anything fails (CI-friendly).
+"""
+import importlib
+import pathlib
+import sys
+import traceback
+
+ROOT = pathlib.Path(__file__).resolve().parent
+sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
+
+filters = sys.argv[1:]
+files = sorted((ROOT / "tests").glob("test_*.py"))
+if filters:
+    files = [f for f in files if any(s in f.stem for s in filters)]
+
+total_pass = total_fail = 0
+failures: list[str] = []
+for f in files:
+    mod = importlib.import_module(f.stem)
+    fns = [n for n in dir(mod) if n.startswith("test_")]
+    p = fl = 0
+    for name in fns:
+        try:
+            getattr(mod, name)()
+            p += 1
+        except Exception:
+            fl += 1
+            failures.append(f"{f.stem}::{name}")
+            print(f"FAIL {f.stem}::{name}")
+            traceback.print_exc()
+    total_pass += p
+    total_fail += fl
+    print(f"  {f.stem}: {p}/{p + fl}")
+
+print(f"\n=== {total_pass} passed, {total_fail} failed "
+      f"across {len(files)} file(s) ===")
+if failures:
+    print("failed:\n  " + "\n  ".join(failures))
+sys.exit(1 if total_fail else 0)

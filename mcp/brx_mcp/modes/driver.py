@@ -198,15 +198,22 @@ class GameDriver:
 # Live wiring — the only Bluetooth-touching part                              #
 # --------------------------------------------------------------------------- #
 async def run_live(config: GameConfig, addresses: list[str],
-                   callsigns: Optional[dict[str, str]] = None) -> dict:
+                   callsigns: Optional[dict[str, str]] = None,
+                   manager=None, tick_s: float = 0.5) -> dict:
     """Connect the given taggers, run the configured mode to completion, return
     the final snapshot. `players` are keyed by address; team from config.teams or
     round-robin (FFA gives each its own team). `callsigns` maps address → gamertag
-    (pushed to the gun via `$NAME`, echoed in the snapshot)."""
-    from ..ble import ConnectionManager
+    (echoed in the snapshot; display-only, not written to the gun).
+
+    `manager` injects a connection manager (a `FakeConnectionManager` for
+    hardware-free tests); default is the real BLE `ConnectionManager`. `tick_s` is
+    the game-loop poll interval (tiny in tests to run fast)."""
     from ..protocol import parse_event
 
-    mgr = ConnectionManager()
+    if manager is None:
+        from ..ble import ConnectionManager
+        manager = ConnectionManager()
+    mgr = manager
     players = assign_teams(config.mode, addresses, config.teams or None)
 
     async def sender(pid: str, frame: str) -> None:
@@ -220,7 +227,7 @@ async def run_live(config: GameConfig, addresses: list[str],
         last_seq = {addr: mgr.sessions[addr].seq for addr in addresses}
         await driver.setup()
         while not driver.over:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(tick_s)
             now = time.monotonic()
             for addr in addresses:
                 for ev in mgr.get_events(addr, since_seq=last_seq[addr])["events"]:
