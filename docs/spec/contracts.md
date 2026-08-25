@@ -96,7 +96,7 @@ Event =
  | { type:"hit_taken",   t, node_id, player_id, shooter_team, shooter_id?, dmg } // from $HIR (+ $HP delta)
  | { type:"death",       t, node_id, player_id, shooter_team, shooter_id? }      // $HP→0; shooter_id only if IR-decoded (P2)
  | { type:"respawn",     t, node_id, player_id }
- | { type:"status",      t, node_id, player_id, hp, armor, ammo, alive, deadline_s?, battery? } // periodic heartbeat
+ | { type:"status",      t, node_id, player_id, hp, armor, ammo, alive, deadline_s?, battery?, arm_state? } // heartbeat; arm_state: idle|kitted|lobby|armed|live
 ```
 - `shooter_team` is **always available** (from `$HIR` token 4). `shooter_id` (individual) is **optional**
   and present only when a Companion IR-decodes the shot's player-id (P2). MC must handle its absence.
@@ -136,6 +136,7 @@ Envelope { v:1, kind:string, id:string, seq?:number, t:number, body:object }
 | `ack_config` | `{ config_id, ok:boolean, err? }` | after applying a pushed GameConfig |
 | `time_req` | `{ t_node }` | clock-sync ping (§7) |
 | `log_offer` | `{ node_id, bytes, lines }` | node has a diagnostic log MC can pull |
+| `ready` | `{ node_id, player_id, ready:boolean }` | lobby ready-up toggle (phase 4) |
 
 **MC → Node** (`kind`):
 | kind | body | when |
@@ -143,11 +144,12 @@ Envelope { v:1, kind:string, id:string, seq?:number, t:number, body:object }
 | `welcome` | `{ session_id, server_t, config?: GameConfig }` | reply to hello |
 | `assign` | `{ player: Player, team: Team, config: GameConfig }` | kit-out / lobby push |
 | `tutorial` | `{ weapon: Weapon }` | silent try-out arming (phase 3a) |
-| `start` | `{ go_live_t, config_id }` | schedule the dispersed start (§M-START) |
+| `start` | `{ go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START); a higher `seq` supersedes a prior schedule |
 | `feedback` | `{ player_id, kind:"kill"|"multi"|"medal", sound?:string }` | MC scored you a kill → node greens sight + audio |
-| `control` | `{ cmd:"end"|"pause"|"panic"|"recall", ... }` | host controls |
+| `control` | `{ cmd:"end"|"pause"|"panic"|"recall"|"abort_start", seq?, ... }` | host controls (`abort_start` cancels a pending start by `seq`) |
 | `time_res` | `{ t_node, server_t }` | clock-sync reply |
 | `pull_log` | `{}` | request the offered log |
+| `ack` | `{ seq_hi }` | MC has durably ingested this node's events up to `seq_hi` (store-and-forward ring-prune signal) |
 
 **Store-and-forward semantics (mandatory):**
 - A node **runs its own gun with the WS down.** Events queue locally (bounded ring, persisted) and flush
@@ -189,3 +191,16 @@ Volume **69** for real games (30 is inaudible). BLE writes chunk at 20 bytes (§
   wire-breaking changes. Additive fields are non-breaking; consumers ignore unknown fields.
 - **Constants** (single source): `ASSIST_WINDOW_MS = 4000`, `MULTI_KILL_MS = 4000`, `ATTRIB_FUSE_MS =
   6000`, `STATUS_HEARTBEAT_MS = 2000`, `STALE_AFTER_MS = 8000`, `MAX_HP`/`MAX_AR` from GameConfig.
+
+### Amendments
+- **A1 (2026-08-25, additive, non-breaking, no `v` bump):** module drafts surfaced four missing
+  shapes, all additive (unknown fields are ignored by older consumers):
+  - Node→MC **`ready`** — lobby ready-up toggle (was implied by phase 4, unspecified). *(M-MC)*
+  - MC→Node **`ack {seq_hi}`** — lets a node prune its store-and-forward ring once MC has durably
+    ingested events, instead of holding them forever. *(M-NET)*
+  - **`start`** gains **`seq`** + **`countdown_s`**, and **`control`** gains **`abort_start`** — a
+    scheduled dispersed start must be reschedulable/abortable, keyed by `seq`. *(M-START)*
+  - **`status`** event gains **`arm_state`** (`idle|kitted|lobby|armed|live`) so MC's board can show
+    per-node lifecycle (contracts §6) without inferring it. *(M-START/M-MC)*
+  - Policy: readiness battery is **amber, not red**, on a missed `$VOLTS` — a missing reading is not a
+    flat pack. *(M-ARMORY)*
