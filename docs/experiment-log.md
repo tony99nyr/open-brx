@@ -1186,8 +1186,10 @@ command). **`btsnoop.py` now keys streams on the ACL connection handle** — it 
 merged both streams and reassembled into garbage *silently*; pinned by `test_btsnoop_multigun.py`.
 All 8 raw traces committed to `protocol/captures/raw/` with an index (scanned clean of headset PINs).
 
-**RESOLVED same session:** only one BLE connection is in `cap8`, yet both taggers announced — the
-second tagger was on **its own phone** (operator-confirmed). Callsign is one-phone-per-player; each
-phone scored independently and sent `VB17` to its own gun. **No gun-to-gun state sharing exists**, so
-there is no nRF score channel to chase. MC driving every gun individually is the *correct* design,
-and it does so from one host rather than a phone per player.
+**RESOLVED same session:** only one BLE connection is in `cap8`, yet both taggers announced. The
+**captured iPhone HOSTED the game**; a second phone **joined through Callsign** (§7g lobby) with its
+own tagger. Game state syncs **phone-to-phone over the network**; each phone drives only its own gun
+over BLE. **No gun-to-gun sharing exists** — no nRF score channel to chase. Two things follow:
+`cap8` is the **host's** traffic, i.e. exactly the role MC plays (the kill burst is the authority
+acting, not a client echoing); and **MC collapses the topology** — one machine drives the whole
+fleet, so the phone-to-phone sync layer Callsign needs disappears.

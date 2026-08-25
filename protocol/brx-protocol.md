@@ -987,14 +987,26 @@ Corroboration: the identical `$SFLASH → $PLAY,,4,6,V3A → VB17` pattern is pr
 **2026-08-23** two-tagger capture (lines 99–101, 172–173). We had the evidence for two days and
 misread it.
 
-### Each phone drives only its own gun
+### The capture is the HOST phone's view — the role MC plays
 
 `cap8` contains exactly **one** BLE connection, yet **both** taggers announced the score line. The
-second tagger was on **its own phone** (confirmed by the operator) — Callsign is one-phone-per-player,
-and each phone independently tracked the score and sent `VB17` to the gun it owns. **No state
-propagates gun-to-gun**, over nRF or anything else. A host that wants every player to hear a score
-line must send it to every gun — which is exactly what Mission Control, connected to the whole
-fleet from one machine, is positioned to do.
+setup (operator-confirmed): the **captured iPhone hosted the game** and a second phone **joined it
+through Callsign** (§7g's host/client lobby), each phone bonded to its own tagger.
+
+So the architecture is: **game state is shared phone-to-phone over the network, and each phone
+drives only the one gun it owns over BLE.** Nothing propagates gun-to-gun — there is no nRF score
+channel, and none is needed. The score line reached the second tagger because the *client phone*
+sent it there.
+
+This matters for us in two ways:
+
+- **What we captured is the host's own traffic** — the same role Mission Control occupies. The kill
+  burst above is not a client echoing someone else's decision; it is the authority acting on a kill
+  it scored.
+- **MC collapses the topology.** Callsign needs one phone per player because a phone can hold one
+  gun; MC connects to the whole fleet from a single machine, so the network sync layer between
+  phones disappears and every gun's feedback is driven directly. Fewer moving parts than the
+  official system, not more.
 
 ## 8. Safe testing notes
 

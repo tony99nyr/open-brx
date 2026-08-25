@@ -104,10 +104,13 @@ capture at 295 s and 325 s. Two independent captures, two days apart.
 
 ## Still open from this capture
 
-- ~~How did the *second* tagger announce?~~ **RESOLVED (Tony, same session):** the second tagger
-  was connected to **its own phone** — Callsign's normal one-phone-per-player model. So each phone
-  independently tracked the score and sent `VB17` to *its own* gun. **Nothing propagates between
-  guns; there is no nRF score sharing to chase.** This confirms the MC design directly: driving
-  every gun individually is correct, not a workaround — and MC does it from one host instead of
-  needing a phone per player.
+- ~~How did the *second* tagger announce?~~ **RESOLVED (operator-confirmed, same session):** the
+  **captured iPhone was the game HOST**; a second phone **joined through Callsign** (§7g lobby) with
+  its own tagger. Game state syncs **phone-to-phone over the network**; each phone drives only the
+  one gun it owns over BLE. **Nothing propagates gun-to-gun — there is no nRF score channel to
+  chase.** Two consequences worth carrying into the design: (a) what `cap8` captured is the **host's
+  own traffic**, i.e. the exact role MC plays — the kill burst is the authority acting, not a client
+  echoing; (b) **MC collapses the topology** — Callsign needs a phone per player because a phone
+  holds one gun, while MC drives the whole fleet from one machine and the phone-to-phone sync layer
+  disappears entirely.
 - `VB17`'s exact wording, and the rest of the `VB*` announcer family → the voice-pack mapping (P3).
