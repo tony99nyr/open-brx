@@ -995,3 +995,22 @@ gun always shows some team colour; true LEDs-off needs the unconfirmed `$GLED`/P
 New `END_SEQUENCE` = `$SPAWN,,* → $PLAYX,0,* → $STOP,* → $CLEAR,* → $HLOOP,0,0,* → $HLED,0,0,0,0,0,0,*`.
 Exposed as a manual **`reset <address>`** CLI (same sequence). Open: whether `$LIFE` alone revives a dead
 gun (would avoid the SPAWN→GET-SOME→silence dance) — untested (needs a dead gun on the bench).
+
+### 2026-08-25 — sim-hardening: 7-agent team, ~156 scenarios across all 9 modes; 1 real bug found+fixed
+Built `SimGame` (brx_mcp/sim.py) — a deterministic harness driving the real GameDriver + FakeTaggers for
+ANY mode (gun hits + station objective events + timers), then ran a **7-agent team** to write exhaustive
+scenario suites (`tests/test_sim_*.py`), each asserting CORRECT behavior so a failure = a real bug:
+deathmatch(24), survival/lms(20), cs(19), domination(22), ctf(20), extraction(20), config→frames(31).
+**Suite 151 → 307 green.**
+- **REAL BUG found + fixed:** `DominationEngine.on_event` used a raw `int()` for the CAPTURE team,
+  bypassing the `_team()` zero/garbage guard `CtfEngine` uses → `$CAPTURE,A,0` fabricated + scored a
+  phantom "team0". Fixed (route through `_team()`); regression test added. Same class as the CTF phantom
+  fixed earlier — the sim caught the one that was missed.
+- **Confirmed correct end-to-end (through the driver, not just the engine):** every config→frame mapping
+  ($GSET/$PSET/$WEAP/$VOL/$AMMO/$TID), setup config-all-then-spawn ordering (B10), class+kid presets,
+  respawn ramp/lives, attribution fuse, syphon/regen numerics, kid_mode FF-off, CS round rules incl. the
+  late-plant guard, CTF possession + malformed-token guards, extraction drop policies + respawn-clock guard
+  + dead-killer anti-double-credit, teardown revive.
+**Payoff for bench time:** game *logic* for all modes is now exhaustively verified in software, so a
+hardware session confirms only what the sim CAN'T model (BLE reliability/timing, physical LED/headset/
+audio state, real IR) — not logic. That's the efficient-bench goal.
