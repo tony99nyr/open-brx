@@ -311,7 +311,7 @@ export class Engine {
     if (!this.frames) return;
     if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
     this._write([...this.frames.spawn, SFLASH], 'spawn');
-    this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.killedBy = null; this.deadAt = 0;
     this.moment = { kind: 'go', at: this.now() };
@@ -376,6 +376,15 @@ export class Engine {
     this.moment = { kind: 'match_over', at: this.now() };
     this._set('kitted');
     this.log(`match ended: ${why}`, 'lk');
+  }
+
+  /** True per-slot mags from the bundle's spawn $AMMO frames — the display/warn denominator. */
+  _ammoBySlot() {
+    const out = {};
+    for (const f of (this.frames && this.frames.spawn) || []) {
+      if (f.startsWith('$AMMO,')) { const t = f.split(','); out[+t[1]] = +t[2] || null; }
+    }
+    return out;
   }
 
   /** Loadout ammo for slot 0 straight from the bundle's spawn frames (display truth for the lobby plate). */
@@ -609,7 +618,7 @@ export class Engine {
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
-      hp: this.hp, armor: this.armor, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: this.mag,
+      hp: this.hp, armor: this.armor, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,

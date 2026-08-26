@@ -445,3 +445,15 @@ test('apply.preview plays sound-only frames at the bench; non-preview stays live
   h.eng.onMcMessage({ kind: 'apply', body: { preview: true, frames: ['$CLEAR,*'] } });
   assert.equal(h.writes.length, 0, 'a preview may never smuggle non-sound frames');
 });
+
+
+test('config-echo $ALCD cannot poison the mag denominator (real-gun reload/pips bug)', () => {
+  const h = harness().kit().config_();
+  h.frame('$ALCD,24,100,1,12,0,*');            // config-time echo: WEAP clip cap 24 on slot 1
+  h.adv(1600); h.echo(); h.eng.tick();
+  h.start(0); h.eng.tick();                     // spawn
+  h.frame('$ALCD,6,100,1,24,0,*');              // player switches to slot 1: real mag is 6
+  const st = h.eng.state();
+  assert.equal(st.mag, 6, 'denominator comes from the bundle $AMMO, not the config echo (got ' + st.mag + ')');
+  assert.equal(st.ammo, 6);
+});

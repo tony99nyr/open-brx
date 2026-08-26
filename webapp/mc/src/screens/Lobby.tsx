@@ -4,7 +4,7 @@ import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Seg, Tag } from '../ui';
 
-const RUNWAYS = [60, 120, 180, 300];
+const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];   // quick bench starts through full walk-outs (Tony 2026-08-26)
 
 export function Lobby() {
   const { state, run, api, setView } = useStore();

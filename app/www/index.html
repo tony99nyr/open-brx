@@ -32,9 +32,10 @@
 html,body{margin:0;height:100%;background:#030407;color:var(--num);font-family:var(--fl);overflow:hidden;overscroll-behavior:none}
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030407}
 #frame{position:relative;width:844px;height:390px;transform-origin:center center;overflow:hidden;background:var(--bg)}
-#frame.cam{background:#000}
+html.cam-on,html.cam-on body{background:transparent!important}
+#frame.cam{background:transparent}
 #hud,#overlay,#chips,#cam{position:absolute;inset:0}
-#cam{z-index:0;background:#000;display:none}
+#cam{z-index:0;background:transparent;display:none}
 #frame.cam #cam{display:block}
 #hud{z-index:1}#overlay{z-index:3;pointer-events:none}#chips{z-index:4;pointer-events:none}
 #diag{z-index:6}

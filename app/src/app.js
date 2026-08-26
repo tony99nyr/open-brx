@@ -142,8 +142,8 @@ Object.assign(hud.h, {
   onToggleCam: async () => {
     if (!plugins.cam || !isNative()) { hud.setCam(false); log('CAM unavailable on this platform', 'li'); return; }
     try {
-      if (hud.cam) { await plugins.cam.stop(); hud.setCam(false); }
-      else { await plugins.cam.start({ parent: 'cam', position: 'rear', toBack: true, disableAudio: true }); hud.setCam(true); }
+      if (hud.cam) { await plugins.cam.stop(); hud.setCam(false); document.documentElement.classList.remove('cam-on'); }
+      else { await plugins.cam.start({ parent: 'cam', position: 'rear', toBack: true, disableAudio: true }); hud.setCam(true); document.documentElement.classList.add('cam-on'); }   // toBack puts the preview BEHIND the webview — the page must go transparent or it paints black over it
     } catch (e) { log('CAM: ' + (e && e.message || e), 'le'); hud.setCam(false); }
     hud.sig = null; scheduleRender();
   },

@@ -4,7 +4,7 @@ import { EvictButton } from '../ui/EvictButton';
 import { F, T, TAB, fmtAge, fmtClock } from '../tokens';
 import { Brackets, GhostButton, HazardButton, ScreenHeader, Seg, Tag } from '../ui';
 
-const RUNWAYS = [60, 120, 180, 300];
+const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];   // quick bench starts through full walk-outs (Tony 2026-08-26)
 
 export function Armed() {
   const { state, run, api, setView, serverNow, connected } = useStore();
