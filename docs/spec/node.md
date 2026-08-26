@@ -319,11 +319,14 @@ trigger pull (and sometimes a reload); that is the price of never guessing. Ever
 (`resync_*`). **Known limitation:** a station revive (`respawn.type:"scanner"`) that happened *inside*
 the gap hides the death that preceded it.
 
-**Bench item (blocking for M4): a side-effect-free gun state probe.** After a reconnect, what does the
-gun emit unprompted? Does `$PHONE` (which triggers `$VOLTS`) or anything else re-elicit `$LCD`/`$HP`
-*without* `$SPAWN`? Does config survive a BLE reconnect vs a power-cycle (M-START E1 assumes yes)? Does a
-dead gun's reload handle still refill (`$ALCD`) — the protocol above assumes yes? A probe that answers
-"alive? HP? configured?" would replace the prompts with an automatic step.
+**Bench result 2026-08-25 (protocol §7r) — there is NO side-effect-free probe; the table above stands.** On a
+fresh link a dead gun emits nothing unprompted and `$PHONE` reads nothing back (`$VERSION` still answers, so the
+link is fine). Dead trigger → `$BUT,0,1/0` only; dead reload handle → `$BUT,2,1/0` only (no refill). Config
+**survives a BLE drop** (a `$SPAWN` on the fresh link revived with `$LCD,45,70,…`) and is **wiped by a
+power-cycle**. Two positive tells the engine must use: (a) headset off/unlinked = the gun will not hold a link at
+all (`$DISCONNECT`, then drops within seconds) — that is a link problem, not a resync case; (b) **after any
+`head`/`spawn` write, a `$SPAWN` echo of `$LCD,0,0,0,0,0,0` means the config was wiped** — re-write
+`frames.head` then `frames.spawn` (the "unconfigured" branch gets a proof instead of an inference).
 
 ### 3.11 App lifecycle: foreground, screen-on, mount
 

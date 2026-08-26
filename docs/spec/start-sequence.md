@@ -119,9 +119,9 @@ $SFLASH,*                  # node's own template: "you are live" (PROVISIONAL as
 - **⚠ PENDING HARDWARE TEST — hold-across-disperse.** The confirmed live arm (`protocol/brx-protocol.md`
   §7e) writes `$START`→config→`$SPAWN` **within seconds on one held link**. M-START instead holds the gun
   in `$START`+config-but-**UNSPAWNED** across the walk-to-base (**minutes**) and only fires the T-0 `$SPAWN`
-  at the end. That long-hold-then-spawn path is **UNTESTED** on hardware — does the gun keep the pushed
-  config/loadout while parked unspawned for minutes, or does it time out / need a re-push before `$SPAWN`?
-  Bench-verify before relying on it (task §8). **Fallback if config is lost: the node re-writes
+  at the end. That long-hold-then-spawn path is **bench-verified for a ~2-min hold** (2026-08-25, protocol §7r: `$SPAWN`
+  after the hold went live with `$LCD,45,70,…` and full ammo); the 5-min run is still owed (checklist NEXT 1).
+  The head write is **silent** (no voice, no cock — those belong to `$SPAWN`), so the T-10 re-write costs nothing audible. **Fallback if config is lost: the node re-writes
   `frames.head` at T-10 s** — it holds the whole bundle locally, the write takes ~3 s over BLE, and it
   needs no LAN. This is cheap enough that it may become the **default** regardless of the bench outcome
   (it also covers a gun that was power-cycled during the walk, E1); the only cost is the `$START`
@@ -167,8 +167,8 @@ schedule is gone and there's no LAN to re-fetch it. **Primary mitigation: the no
 `FrameBundle` it already stored at the lobby push** (step 3). On relaunch the node reads it back,
 re-verifies `synced_now()` (RTC survives reboot so a recent offset is still valid for the minutes involved),
 and **resumes the countdown from where the clock now is** — if `go_live_t` is still future, it re-enters
-`ARMED` and continues; if already passed, see E5. The gun keeps its config across a *BLE* reconnect only if
-it wasn't power-cycled; if the **gun** was power-cycled the node follows the M-NODE §3.10 **observe-before-write** policy (contracts A5.3): observe for
+`ARMED` and continues; if already passed, see E5. The gun keeps its config across a *BLE* reconnect (bench-verified §7r) but a **power-cycle wipes it** —
+the tell is a `$SPAWN` that echoes `$LCD,0,0,0,0,0,0`; if the **gun** was power-cycled the node follows the M-NODE §3.10 **observe-before-write** policy (contracts A5.3): observe for
 `RESYNC_PROBE_S`; only if the gun is silent (unconfigured) **re-write `frames.head`, then `frames.spawn`**
 (immediately if T-0 has passed, else at T-0); a gun that answers `$ALCD`/`$HP` is left alone. This is why the
 node caches the full bundle, not just the go-live time.
