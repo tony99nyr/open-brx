@@ -474,13 +474,13 @@ class Session:
         return known
 
     def _prune_unbound_nodes(self):
-        """Cap hello-only node records that never bound a player (net.md §8 memory)."""
-        unbound = [nid for nid, nv in self.nodes.items() if nid not in self.node_player]
-        if len(unbound) > 256:
-            now = self.now_ms()
-            for nid in sorted(unbound, key=lambda x: self.nodes[x].get("last_seen_ms", 0))[:len(unbound) - 256]:
-                if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
-                    self.nodes.pop(nid, None)
+        """Drop hello-only node records that never bound a player (net.md §8 memory). Any unbound record
+        silent for >10 min goes — the old count-gated rule let phantom phones pile up on the Armory board
+        for hours (15 of them on the bench, 2026-08-26)."""
+        now = self.now_ms()
+        for nid in [n for n, _ in self.nodes.items() if n not in self.node_player]:
+            if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
+                self.nodes.pop(nid, None)
 
     def _on_node(self, n: dict):
         nid = n["node_id"]

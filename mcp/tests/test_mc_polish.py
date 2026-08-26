@@ -676,3 +676,15 @@ def test_honors_gated_for_tiny_rosters():
          "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True}
     sc = Scorer("m1", 0, 60, "tdm", {"a": p}, teams, {}, {})
     assert sc.honors() == [], "one scored player must yield no honors"
+
+
+def test_unbound_stale_nodes_prune_without_a_count_gate():
+    """2026-08-26: phantom phones piled up on the Armory board — any unbound node silent >10 min must go."""
+    s = _sess()
+    s.net.simulate_hello("ghost", "")
+    s._on_node({"node_id": "ghost", "node_type": "phone"})
+    assert "ghost" in s.nodes
+    s.nodes["ghost"]["last_seen_ms"] = s.now_ms() - 601_000
+    s._on_node({"node_id": "fresh", "node_type": "phone"})   # any node event triggers the prune
+    assert "ghost" not in s.nodes, "stale unbound record must be pruned"
+    assert "fresh" in s.nodes
