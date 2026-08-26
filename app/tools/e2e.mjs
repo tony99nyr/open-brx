@@ -59,7 +59,14 @@ const mcLog = fs.openSync(path.join(OUT, 'mc-server.log'), 'w');
 const mcProc = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', '8865', '--ws-port', '8866', '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', mcLog, mcLog] });
 process.on('exit', () => { try { mcProc.kill(); } catch {} });   // the watchdog/timeout path must not leak the server
 await until(async () => (await fetch(MC + '/api/state')).ok, 30000, 'MC server');
-WS = (await (await fetch(MC + '/api/state')).json()).lan.ws_url;
+// ws_url races startup: until the socket binds it can read ':0' (typed verbatim into hudA once —
+// the whole suite then dialed a dead port). Wait for a REAL port.
+for (let i = 0; i < 40; i++) {
+  WS = (await (await fetch(MC + '/api/state')).json()).lan.ws_url;
+  if (/:[1-9]\d*\/ws$/.test(WS)) break;
+  await new Promise(r => setTimeout(r, 250));
+}
+if (!/:[1-9]\d*\/ws$/.test(WS)) { console.error('FATAL: lan.ws_url never got a real port:', WS); process.exit(2); }
 console.log('node ws:', WS);
 
 // ---------- pages + UX collectors ----------

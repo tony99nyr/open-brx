@@ -73,18 +73,22 @@ def build(args):
         # Real M-NET: an asyncio server — start it inside the app's event loop (lifespan task).
         async def _start_net():
             await net.start(ip, args.ws_port, "/ws")
-            try:
-                # sync zeroconf blocks if called from inside the running loop (EventLoopBlocked) — thread it
-                if await asyncio.get_running_loop().run_in_executor(None, net.advertise_mdns):
-                    print("  mDNS: advertising _openbrx._tcp (phones auto-discover)")
-            except Exception as e:
-                print(f"  mDNS advertising failed ({type(e).__name__}: {e!r}) — QR/manual join still work")
+            # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
+            # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
+            # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
             try:
                 ji = net.join_info()
                 session.lan.update({"ws_url": ji.get("url") or ws_url, "qr": ji.get("qr") or ji.get("url") or ws_url,
                                     "session_id": ji.get("session_id")})
             except Exception as e:  # pragma: no cover
                 log.warning("join_info: %s", e)
+            try:
+                # sync zeroconf blocks if called from inside the running loop (EventLoopBlocked) — thread it,
+                # and cap it: a wedged multicast stack must never stall startup.
+                if await asyncio.wait_for(asyncio.get_running_loop().run_in_executor(None, net.advertise_mdns), timeout=6):
+                    print("  mDNS: advertising _openbrx._tcp (phones auto-discover)")
+            except Exception as e:
+                print(f"  mDNS advertising failed ({type(e).__name__}: {e!r}) — QR/manual join still work")
             log.info("net: listening on %s", session.lan["ws_url"])
             # print the nodes line HERE (not in the pre-loop banner) so the REAL bound port shows —
             # the banner renders before this async bind, when the port is still 0/unbound.
