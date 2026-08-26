@@ -95,6 +95,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `E17` | **Plasma Sniper** | single shot, **overheats** if fired fast; shell reload |
 | `R23` | **Force Rifle** | 3-shot burst; standard "pull back, let go" reload |
 | `E11` | **Stinger** | full auto |
+| `E12` | **Energy Rifle** | full auto, **overheats**; 300-round clip |
+| `Q06` | **Suppressor** | full auto, standard reload — **makes no sound** |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -128,20 +130,32 @@ action**, not its name or its single-shot-ness.
 
 ### `t24` overheat + `t35` overheat-sound: three weapons, three matches
 
-`t24` is non-zero on **exactly the three weapons the operator described as overheating**, and `0`
-on the other thirteen:
+`t24` is non-zero on **exactly the four weapons the operator described as overheating**, and `0`
+on the other fifteen:
 
 | weapon | `t24` | `t35` (sound) |
 |---|---|---|
 | SMG (`G03`) | 5 | `D11` |
 | Charge Rifle (`E03`) | 14 | `C19` |
 | Plasma Sniper (`E17`) | 30 | `D122` |
+| Energy Rifle (`E12`) | 6 | `D122` |
 
-`t35` (`weaponFeatureA`) is populated on those same three and nothing else — so for these weapons it
+`t35` (`weaponFeatureA`) is populated on those same four and nothing else — so for these weapons it
 is specifically the **overheat sound**. Pairs with the live heat telemetry in `$ALCD` token 5 (§7j).
 
 `t23` (burst) likewise has exactly two holders, both burst weapons: Burst Rifle `275`, Force Rifle
 `250`.
+
+### `t25`/`t26` — only the Suppressor populates them
+
+The **Suppressor** (`Q06`) is the sole weapon of nineteen to carry **`t25` = 2** (`muzzleFlash`) and
+**`t26` = 50**; both are empty on every other weapon (melee has `t25`=0). It is also the only weapon
+whose fire sound uses the **`Q`** prefix.
+
+A suppressor's defining traits are no report and no flash, and the operator confirms *"it doesn't
+make a sound"*. So `t25` plausibly selects a suppressed muzzle-flash variant and `t26` a loudness
+scale (50 = half?). **One sample — correlation only, not confirmed.** A second quiet weapon, or any
+weapon with a visible muzzle flash, would settle both.
 
 ### `t1` = 2 marks the weapons carrying an extra-headset payload
 
