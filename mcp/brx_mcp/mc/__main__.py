@@ -59,6 +59,11 @@ def build(args):
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
     session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
+    from pathlib import Path as _P
+    session._persist_path = _P.home() / ".brx-mcp" / "session.json"
+    restored = session.restore_snapshot()
+    if restored:
+        print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")
     extra = []
     import inspect
     if inspect.iscoroutinefunction(getattr(net, "start", None)):

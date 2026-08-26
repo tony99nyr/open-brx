@@ -7,6 +7,7 @@ and the Scorer for the current match. Everything the UI sees is `snapshot()` (AP
 from __future__ import annotations
 
 import copy
+import json
 import time
 import uuid
 from typing import Any, Callable
@@ -99,6 +100,47 @@ class Session:
     def _changed(self):
         for cb in self._listeners:
             cb()
+        self._persist()
+
+    # An MC restart must not dump the roster: 3x on 2026-08-26 a restart mid-setup left connected
+    # phones on "WAITING FOR KIT-OUT" with every gun ghosted NOT SEEN. Snapshot the human work
+    # (players/teams/config) — never live link state (node_id, phase, acks).
+    _persist_path = None            # set by __main__; None = persistence off (tests)
+    _persist_last = 0.0
+
+    def _persist(self):
+        if not self._persist_path:
+            return
+        now = time.monotonic()
+        if now - self._persist_last < 2.0:
+            return
+        self._persist_last = now
+        try:
+            snap = {"v": 1, "saved_ms": self.now_ms(),
+                    "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
+                    "teams": self.teams, "config": self.config}
+            tmp = self._persist_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(snap))
+            tmp.replace(self._persist_path)
+        except Exception:
+            import logging; logging.getLogger("brx.mc").exception("session snapshot failed (play continues)")
+
+    def restore_snapshot(self) -> int:
+        """Load a prior session.json (if any). Returns the number of players restored."""
+        if not self._persist_path or not self._persist_path.exists():
+            return 0
+        try:
+            snap = json.loads(self._persist_path.read_text())
+            self.players = {p["player_id"]: p for p in snap.get("players", [])}
+            if snap.get("teams"):
+                self.teams = snap["teams"]
+            if snap.get("config"):
+                self.config = snap["config"]
+            self._gun_index()
+            return len(self.players)
+        except Exception:
+            import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
+            return 0
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False):
         if not self.store:
             return
@@ -891,6 +933,9 @@ class Session:
                 st.flushed = True
 
     def new_session(self, keep_roster: bool = True) -> None:
+        if not keep_roster and self._persist_path:
+            try: self._persist_path.unlink(missing_ok=True)
+            except Exception: pass
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None
