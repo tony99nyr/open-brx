@@ -1584,3 +1584,17 @@ The re-based catalog (f85b725) ships each weapon's own t20/t23 verbatim.
 
 With t20 ∈ {0 auto, 7 single, 9 burst(+t23), 2/3/14 charge variants, 13 melee} and t24 heat all
 trigger-confirmed, the fire-behavior matrix is fully mapped.
+
+## 2026-08-26 (bench) — rebalanced arsenal field pass, 18/18 weapons
+
+Full range on the re-based catalog (f85b725): **fire modes all correct in the field** — bursts burst
+(Burst + Force), snipers bolt, charges charge, power tier one-shots from 2-round mags, SMG sound
+FIXED (G03 — C3 closed as predicted). TTK pacing reads right by ear. Findings (all in
+~/.brx-mcp/weapon-verdicts.jsonl):
+- **D21 "disable chirp"** in the sniper/AMR (+shared bolt) reload chains — stock Callsign sound,
+  reproduced twice; swap for a clean cock (sound-override task dispatched).
+- **Energy Launcher fire sound J15 is a MUSIC sting** (J family) — stock; swap to O-family ordnance.
+- **Overheat only ever triggers on the Charge Rifle** — SMG (t24=5) and Energy Rifle (t24=6) never
+  overheated under sustained fire. CR is the ONLY frame carrying tail extras C19,C04,20,150 →
+  working theory: the overheat mechanism requires the tail block, not just t24. Bench followup:
+  transplant the block onto energy_rifle and re-test.

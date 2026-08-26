@@ -279,3 +279,7 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   burst (+t23 cycle) / 2-3-14 charge variants / 13 melee. Sniper flipped 7→0 changed single-shot to
   full-auto on the bench; captured Burst Rifle fired true 3-round bursts. The re-based catalog ships
   native modes.
+
+- **Overheat mechanism: t24 alone does not trigger it** (range pass 2026-08-26) — only the Charge
+  Rifle (unique tail extras C19,C04,20,150) overheats; SMG/Energy Rifle with nonzero t24 never did.
+  Probe: CR tail block transplanted onto energy_rifle → sustained fire → watch $ALCD heat.
