@@ -477,6 +477,8 @@ class Session:
                 return p
             if gid in {x for x in (base, full) if x}:
                 return p
+            if tail and gid == tail:          # device-first claim: gun_id may be just the tail
+                return p
         return None
 
     def _adopt_node_for_gun(self, p: Player):

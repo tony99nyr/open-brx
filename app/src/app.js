@@ -1,8 +1,6 @@
 import jsQR from 'jsqr';
 // OS-level landscape lock: the HUD is a fixed 844x390 landscape stage — in portrait it scales to a
 // postage stamp (Tony, 2026-08-26: 'the label wraps on my screen'). Boxed import (thenable trap).
-let screenOrientation = null;
-try { screenOrientation = { v: (await import('@capacitor/screen-orientation')).ScreenOrientation }; } catch (_) { /* web rig */ }
 
 // BRX Combat HUD — the per-player node (docs/spec/node.md, contracts A6).
 // One phone, one gun, one player. Composition of: Engine (state machine) + BrxLink (BLE) +
@@ -180,7 +178,6 @@ Object.assign(hud.h, {
     try { if (plugins.share) await plugins.share.share({ title: 'BRX node log', text }); else await navigator.clipboard.writeText(text); log('log shared/copied', 'lk'); }
     catch (e) { log('share: ' + (e && e.message || e), 'le'); }
   },
-  onCloseDiag: () => hud.toggleDiag(),
   onDemo: () => { location.search = '?demo'; },
   onHaptic: k => haptic(k),
 });
@@ -336,7 +333,7 @@ async function sweepForMc() {
     // remembered address: CONNECT now — a gunless hello is fine (late-bind), and waiting for a gun left
     // mc_reachable=false with MC right there (Tony, 2026-08-26)
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
-    if (screenOrientation) screenOrientation.v.lock({ orientation: 'landscape' }).catch(() => {});
+    lockLandscape();
     startDiscovery();
     setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback if mDNS is quiet and we're not bound
   }

@@ -51,7 +51,7 @@ export function Armory() {
         <div style={{ marginTop: 20 }}>
           <SectionRule label={`PHONES ON THE NET // ${state!.nodes.length}`} hint="WITH OR WITHOUT A GUN" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
-            {(state?.nodes ?? []).map(n => <NodeCard key={n.node_id} n={n} />)}
+            {(state?.nodes ?? []).map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
           </div>
         </div>
       )}
@@ -131,8 +131,20 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
 
 
 /** A connected companion phone — with or without a gun. Same card language as GunCard. */
-function NodeCard({ n }: { n: { node_id: string; gun_name?: string | null; arm_state: string; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; preflight?: { phone_batt?: number | null } | null } }) {
+function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id: string; gun_tail?: string | null; gun_name?: string | null; arm_state: string; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; preflight?: { phone_batt?: number | null } | null } }) {
+  const { run, api } = useStore();
+  const [name, setName] = useState('');
   const hasGun = !!n.gun_name;
+
+  // device-first claim (Tony 2026-08-26: "first assign roster/gamers with phones/taggers" — naming
+  // players then hunting guns in a tiny dropdown is backwards). The gun resolves via the registry
+  // tail; an unregistered gun falls back to its tail, which the server matcher also accepts.
+  const gunId = n.gun_tail ? (registry.find((r: { gun_id: string; ble?: { tail?: string } }) => (r.ble?.tail || '').toUpperCase() === n.gun_tail!.toUpperCase())?.gun_id ?? n.gun_tail) : null;
+  const claim = (team: string) => {
+    if (!name.trim() || !gunId) return;
+    run(() => api.addPlayer({ display: name.trim(), team_id: team, gun_id: gunId }));
+    setName('');
+  };
   const accent = hasGun ? T.acc : T.warn;
   const age = n.last_seen_ms ?? 0;
   return (
@@ -149,7 +161,19 @@ function NodeCard({ n }: { n: { node_id: string; gun_name?: string | null; arm_s
         {n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
       </div>
       {!hasGun && <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
-      {hasGun && !n.player_id && <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>UNASSIGNED — BIND A PLAYER IN KIT</div>}
+      {hasGun && !n.player_id && (
+        <form onSubmit={e => { e.preventDefault(); claim('blue'); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
+          <div style={{ font: F.chk(700, 10), letterSpacing: '.24em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
+            style={{ background: T.panelDeep, border: `1px solid ${T.line2}`, color: T.ink, font: F.osw(600, 15), letterSpacing: '.06em', padding: '9px 12px', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => claim('blue')} disabled={!name.trim()}
+              style={{ flex: 1, padding: '10px 0', background: name.trim() ? '#0f2438' : T.panelDeep, color: name.trim() ? '#7cc4ff' : T.micro, border: '1px solid #24486b', font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>JOIN BLUE</button>
+            <button type="button" onClick={() => claim('yellow')} disabled={!name.trim()}
+              style={{ flex: 1, padding: '10px 0', background: name.trim() ? '#2e2408' : T.panelDeep, color: name.trim() ? T.warn : T.micro, border: '1px solid #6b5824', font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>JOIN YELLOW</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
