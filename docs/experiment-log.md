@@ -1631,9 +1631,10 @@ t3 = 0 / 6 / 10:
 - **A MAPPED type changes the victim's hit presentation**: type 10 played a distinct (subtle,
   non-explosion) hit SFX before the standard pain voice; unmapped type 6 sounded identical to baseline.
 - Also re-verified: front-dome sensor id, per-shooter id/team attribution, 2-shot mag accounting.
-- **A/B VERIFIED under careful listening** (back-to-back runs, same gun/damage, only the type flipped):
-  type 0 reads "armor-ish", type 10 reads "fleshier" — subtly but consistently different victim hit
-  sounds. Presentation difference confirmed, not imagined.
+- **A/B VERIFIED, wire-confirmed in-window** (re-run: 3 shots, all $HIR tok2=10): type-10 hits play a
+  DISTINCT victim sound described as explosion-flavored — consistent with the $SIR,10 row's X13
+  assignment. **The SIR table's per-type sound mapping is honored** — custom per-type victim audio is
+  a fully working mechanism (the heal/EMP audio path).
 
 **Special-weapons recipe, fully proven**: custom IR type + victim $SIR row (chosen sound; damage
 via t5, incl. 0 for heals) + Companion/MC logic keyed on the tok2 echo with full attribution.
