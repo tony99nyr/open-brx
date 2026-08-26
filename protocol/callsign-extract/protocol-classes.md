@@ -69,6 +69,44 @@ Anchor check: manual's M-4 damage 24 ↔ `primaryDamage`; rate-of-fire, clip, re
 This is the field map that was the "highest reverse-engineering priority" — recovered without
 per-token capture diffing.
 
+### WEAP — hardware-confirmed positions and weapon identities (2026-08-26, cap14)
+
+Captured with the operator **naming the weapon in each slot**, which is what turns a frame into
+evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token × weapon table.
+
+**Weapon signatures on the wire** (token 27, `primaryFire_SoundName`):
+
+| sound | weapon | behaviour |
+|---|---|---|
+| `R01` | **Assault Rifle** | full auto |
+| `R18` | **Burst Rifle** | 3-round burst, one trigger pull per burst |
+| `T01` | (secondary/pistol-class) | only weapon so far with `extraHeadset*` populated |
+| `J15` | Launcher-class | clip 1 / reserve 3 |
+| `M92` | Melee | gyro swing |
+
+**`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
+and on every other weapon captured**. A field that is populated on exactly the weapon whose named
+behaviour it describes, and empty elsewhere, is about as clean as a positional decode gets.
+
+**`t17` is NOT independent of `t40`.** Across all six weapon frames we hold, **`t17 == 2 × t40`**
+without exception:
+
+| weapon | t16 clip | t17 | t39 start | t40 reserve |
+|---|---|---|---|---|
+| R01 (AR) | 32 | 384 | 32 | 192 |
+| R18 (Burst) | 36 | 216 | 36 | 108 |
+| T01 | 6 | 24 | 6 | 12 |
+| J15 | 1 | 6 | 1 | 3 |
+| M92 (melee) | 1 | 0 | 1 | 0 |
+
+So `t17`/`t40` are the same quantity in different units (or one is derived on send) — **do not treat
+them as two independent knobs.** Likewise `t39 == t16` in every frame (clip starts full).
+
+⚠ **`t5` (`primaryDamage`) does not match the earlier 2-frame derivation.** That table read the AR's
+`t5` as **24** (anchored to the manual's M-4 damage); cap14's `R01` carries **9**, as does `R18`.
+Either the app now sends a server-fetched value, the earlier alignment was off, or `t5` is not
+damage. Treat `t5` as **unresolved** rather than ✓.
+
 ### WEAP exact token positions (metadata field names × 2 live frames)
 
 Cross-validated: the 38-member metadata field list aligned against the two known-good frames

@@ -23,6 +23,11 @@ from typing import Optional
 
 # --- weapon library (frame TAIL after "$WEAP,<slot>") ----------------------- #
 # Mirrors mcp/brx_mcp/__main__.py WEAPON_TAILS (verified ones from the iOS capture).
+# ⚠ NAMES vs REALITY (cap14, 2026-08-26): these keys are our own labels, and one is
+# misleading — **"primary" (R18) is the BURST RIFLE** (3-round burst, one pull per
+# burst), not a plain rifle. The actual full-auto Assault Rifle is **"ar" (R01)**.
+# Every game we have run with the default loadout used a burst rifle. Keys are kept
+# stable because the CLI takes them as arguments; prefer "ar" for a standard rifle.
 WEAPON_TAILS: dict[str, str] = {
     "primary":   ",,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     "secondary": ",2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
