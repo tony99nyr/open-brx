@@ -24,6 +24,12 @@ join (§7m). Volume **69** for real audio. Never modify firmware.
 
 ## 1. Does `$HIR` carry the shooter's PLAYER ID? 🔴 highest value
 
+> ✅ **ALREADY CLOSED — 2026-08-25, before this handoff (WSL/Windows session).** `$HIR` tok3 IS the
+> shooter's player id, bench-verified both directions on two guns with ids 6 and 19 (`brx-protocol.md`
+> §7q; FOLLOWUPS P2). Every earlier capture had all guns at id 0, exactly as this experiment suspected.
+> Per-player attribution is BLE-native and shipping in the MC scorer; the VS1838B IR bench is an
+> optimisation. Do not re-run.
+
 **Question.** `$HIR` was decoded as naming the shooter's **team** (§7k). But `protocol.py` has always
 parsed it as `tok3 = shooter player id, tok4 = team`, and **every capture behind the team-only
 reading was taken with all guns on the default id** — so a player-id field would have been
