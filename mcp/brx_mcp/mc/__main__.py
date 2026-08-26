@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import inspect
 import logging
 import secrets
@@ -65,10 +66,11 @@ def build(args):
         async def _start_net():
             await net.start(ip, args.ws_port, "/ws")
             try:
-                if net.advertise_mdns():
+                # sync zeroconf blocks if called from inside the running loop (EventLoopBlocked) — thread it
+                if await asyncio.get_running_loop().run_in_executor(None, net.advertise_mdns):
                     print("  mDNS: advertising _openbrx._tcp (phones auto-discover)")
             except Exception as e:
-                print(f"  mDNS advertising failed ({e}) — QR/manual join still work")
+                print(f"  mDNS advertising failed ({type(e).__name__}: {e!r}) — QR/manual join still work")
             try:
                 ji = net.join_info()
                 session.lan.update({"ws_url": ji.get("url") or ws_url, "qr": ji.get("qr") or ji.get("url") or ws_url,
