@@ -1,18 +1,20 @@
 # Weapon Test Protocol
 
+**GENERATED from weapons.json — do not hand-edit the table** (regenerate: see git log for the script).
+
 Bench-verify every weapon on a real tagger. One gun, one operator, MC on Kit.
 
 ## Procedure (per weapon)
 
-1. Kit screen → select the operator whose gun is on the bench → tap the weapon card (try-out pushes it to the gun).
-2. Fire a full mag: listen for the FIRE sound, count the rate, note charge-up if any.
-3. Shoot the second gun/headset: verify hit damage feels right (HP 45 / armor 70 baseline → expected hits-to-kill below).
-4. Reload: verify the reload sound chain and time.
-5. On MC: **SOUNDS RIGHT ✓** or **LOG ISSUE ✗** (say what's wrong). Verdicts persist to `~/.brx-mcp/weapon-verdicts.jsonl` and badge the weapon cards.
+1. Kit screen: select the bench operator, tap the weapon card (try-out pushes it to the gun).
+2. Fire a full mag: FIRE sound, rate, charge-up if any. 3. Hit the second gun: damage feel (default pool 115 = 45 HP + 70 armor).
+4. Reload: sound chain + time. 5. On MC: **SOUNDS RIGHT ✓** / **LOG ISSUE ✗** — verdicts persist to `~/.brx-mcp/weapon-verdicts.jsonl` and badge the cards.
+
+Design + rebalance: see **docs/weapon-design.md**.
 
 ## Expected wire behavior
 
-| weapon | verified | sample | dmg | fire ms | charge ms | fire snd | hits-to-kill (115hp) |
+| weapon | verified | sample | dmg | fire ms | charge ms | fire snd | hits-to-kill (115) |
 |---|---|---|---|---|---|---|---|
 | Assault Rifle (`assault_rifle`) | ✓ | — | — | — | — | — | — |
 | Burst Rifle (`burst_rifle`) | prov | ar | 14 | 180 | — | R07 | 9 |
@@ -34,7 +36,8 @@ Bench-verify every weapon on a real tagger. One gun, one operator, MC on Kit.
 | Ion Sniper (`ion_sniper`) | prov | ar | 80 | 2000 | — | E20 | 2 |
 | Melee (`melee`) | ✓ | — | — | — | — | — | — |
 
-## Known gaps
+## Known gaps (field-confirmed 2026-08-26)
 
-- Burst Rifle: native burst token not yet captured — currently fast tap-fire (see FOLLOWUPS).
-- Damage model: tagger-side armor interaction unverified; hits-to-kill above is naive dmg math.
+- **Fire mode is uncontrolled** — sniper/shotgun fire full-auto on hold; semi/bolt flag = uncaptured token (probing live).
+- Burst Rifle: no native burst with our frames.
+- tok41 gun-range % is never written (all 75) — range identity unused.
