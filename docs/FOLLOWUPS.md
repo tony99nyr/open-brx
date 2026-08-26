@@ -242,3 +242,8 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - **Persist the session (roster/kits) across MC restarts.** 2026-08-26: an MC restart mid-setup wiped the
   in-memory roster; a connected phone then sat on "WAITING FOR KIT-OUT" with no hint why. Snapshot
   roster+kits to `~/.brx-mcp/session.json` and restore on boot (phase resets to muster, players survive).
+
+- **Capture the burst-fire token.** 2026-08-26 field: Burst Rifle fired single heavy shots (no burst) —
+  our 4 captured $WEAP samples (ar/charge/laser/rocket) never exercise burst. Capture Callsign's Burst
+  Rifle frame (extract names `burstWeaponTime`; likely near tok16-20) and wire real burst; until then
+  the weapon is tuned as fast tap-fire (14 dmg / 180 ms).

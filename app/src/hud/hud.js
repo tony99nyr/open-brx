@@ -123,7 +123,7 @@ export class Hud {
       foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'over') {
-      foot = `<button class="ready wait" data-act="onReady"><span class="unskew">MATCH COMPLETE — READY FOR NEXT</span></button><div class="note">Scores reconcile at Mission Control. Tap when you're set for the next match.</div>`;
+      foot = `<button class="ready wait ${st.ready ? 'on' : ''}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓ — HOST SEES YOU' : 'MATCH COMPLETE — READY FOR NEXT'}</span></button><div class="note">${st.ready ? 'Standing by — the next match kits you automatically.' : "Scores reconcile at Mission Control. Tap when you're set for the next match."}</div>`;
       status = `<div class="status">D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>`;
     } else {
       foot = `<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">Loadout is on the gun. Waiting for the host to start the countdown.</div>`;
