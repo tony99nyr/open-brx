@@ -23,7 +23,7 @@ export function Armory() {
     : nGreen ? 'NO REDS — START WHEN READY' : 'NOTHING READY YET — POWER GUNS, OPEN THE APP ON EACH PHONE';
 
   return (
-    <div className="screen">
+    <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
           <GhostButton onClick={async () => { setScanning(true); await run(() => api.scan(6)); setScanning(false); }}>{scanning ? 'SCANNING…' : '⟳ SCAN ARMORY'}</GhostButton>
@@ -42,25 +42,18 @@ export function Armory() {
         {board.map(g => <GunCard key={g.sticker} g={g} />)}
       </div>
       {(state?.nodes?.length ?? 0) > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <SectionRule label={`PHONES ON THE NET // ${state.nodes.length}`} hint="EVERY CONNECTED COMPANION — WITH OR WITHOUT A GUN" />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {(state?.nodes ?? []).map(n => (
-              <span key={n.node_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, background: T.panel, border: `1px solid ${n.gun_name ? T.line : T.warn}`, padding: '8px 14px' }}>
-                <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{n.gun_name ?? 'NO GUN YET'}</span>
-                <span style={{ font: F.mono(500, 10), color: T.micro }}>{n.node_id.slice(0, 10)} · {n.arm_state.toUpperCase()} · {fmtAge(n.last_seen_ms ?? 0)}</span>
-              </span>
-            ))}
+        <div style={{ marginTop: 20 }}>
+          <SectionRule label={`PHONES ON THE NET // ${state!.nodes.length}`} hint="WITH OR WITHOUT A GUN" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
+            {(state?.nodes ?? []).map(n => <NodeCard key={n.node_id} n={n} />)}
           </div>
         </div>
       )}
       {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id)).length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <SectionRule label="KNOWN GUNS — NOT SEEN" hint="IN THE ARMORY REGISTRY BUT NOT ADVERTISING — POWERED OFF OR OUT OF RANGE" />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id)).map(r => (
-              <span key={r.gun_id} style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.micro, background: T.panelAlt, border: `1px dashed ${T.line2}`, padding: '8px 14px' }}>{r.sticker}{r.ble?.tail ? `-${r.ble.tail}` : ''} · OFFLINE</span>
-            ))}
+        <div style={{ marginTop: 20 }}>
+          <SectionRule label="KNOWN GUNS — NOT SEEN" hint="POWERED OFF OR OUT OF RANGE" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
+            {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id)).map(r => <GhostCard key={r.gun_id} r={r} />)}
           </div>
         </div>
       )}
@@ -128,4 +121,42 @@ function GunCard({ g }: { g: ReadinessRow }) {
 
 function Val({ children, color }: { children: React.ReactNode; color: string }) {
   return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
+}
+
+
+/** A connected companion phone — with or without a gun. Same card language as GunCard. */
+function NodeCard({ n }: { n: { node_id: string; gun_name?: string | null; arm_state: string; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; preflight?: { phone_batt?: number | null } | null } }) {
+  const hasGun = !!n.gun_name;
+  const accent = hasGun ? T.acc : T.warn;
+  const age = n.last_seen_ms ?? 0;
+  return (
+    <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${accent}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hasGun ? n.gun_name : 'NO GUN SET'}</span>
+        <Tag color={accent}>{n.arm_state.toUpperCase()}</Tag>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
+        <Micro>PHONE</Micro><Val color={T.dim}>{n.node_id.slice(0, 12)}</Val>
+        <Micro>LINK</Micro><Val color={age > 8000 ? T.warn : T.dim}>{fmtAge(age)} AGO</Val>
+        {n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={n.preflight.phone_batt < 20 ? T.bad : T.dim}>{n.preflight.phone_batt}%</Val></>)}
+        {n.battery != null && (<><Micro>GUN BATT</Micro><Val color={T.dim}>{n.battery}%</Val></>)}
+        {n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
+      </div>
+      {!hasGun && <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
+      {hasGun && !n.player_id && <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>UNASSIGNED — BIND A PLAYER IN KIT</div>}
+    </div>
+  );
+}
+
+/** A registry gun nobody can see right now. */
+function GhostCard({ r }: { r: { gun_id: string; sticker: string; ble: { tail?: string } } }) {
+  return (
+    <div style={{ background: T.panelAlt, border: `1px dashed ${T.line2}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, opacity: .75 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', color: T.dim }}>{r.sticker}{r.ble?.tail ? <span style={{ font: F.mono(500, 11), color: T.micro }}>-{r.ble.tail}</span> : null}</span>
+        <Tag color={T.micro}>OFFLINE</Tag>
+      </div>
+      <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>IN THE REGISTRY — POWER IT UP AND SCAN</div>
+    </div>
+  );
 }

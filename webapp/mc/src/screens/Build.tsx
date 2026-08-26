@@ -42,19 +42,26 @@ export function Build() {
             })}
           </div>
           {sel && (
-            <div className="screen" style={{ marginTop: 14, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: '16px 44px' }}>
-              <div style={{ flex: '1 1 320px', minWidth: 0 }}>
-                {MODE_ART.has(sel.mode) && <div style={{ height: 220, background: `url(assets/modes/${sel.mode}.jpg) center/cover no-repeat`, border: `1px solid ${T.line2}`, marginBottom: 14 }} />}
-                <div style={{ font: F.mono(600, 9), letterSpacing: '.26em', color: T.acc, marginBottom: 6 }}>MODE BRIEFING // {sel.name}</div>
-                <div style={{ font: F.chk(500, 13), lineHeight: 1.55, color: T.body, maxWidth: '60ch' }}>{sel.brief}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignContent: 'flex-start' }}>
-                {[['TEAMS', sel.teams_text], ['WIN CONDITION', sel.win_text], ['RESPAWN', sel.respawn_text]].map(([l, v]) => (
-                  <span key={l} style={{ background: T.panel, border: `1px solid ${T.line}`, padding: '7px 14px' }}>
-                    <span style={{ display: 'block', font: F.mono(500, 8.5), letterSpacing: '.2em', color: T.micro }}>{l}</span>
-                    <span style={{ font: F.chk(700, 13), letterSpacing: '.08em' }}>{v}</span>
-                  </span>
-                ))}
+            <div className="screen" style={{ marginTop: 14, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '16px 18px', display: 'flex', flexWrap: 'wrap', gap: '18px 28px', alignItems: 'stretch' }}>
+              {MODE_ART.has(sel.mode) && (
+                <div style={{ flex: '1 1 560px', minWidth: 320, maxWidth: 980 }}>
+                  {/* the briefing boards carry baked-in text — NEVER crop: native 2816x1536 aspect, contain */}
+                  <div style={{ width: '100%', aspectRatio: '2816 / 1536', background: `url(assets/modes/${sel.mode}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line2}` }} />
+                </div>
+              )}
+              <div style={{ flex: '1 1 300px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center' }}>
+                <div>
+                  <div style={{ font: F.mono(600, 9), letterSpacing: '.26em', color: T.acc, marginBottom: 6 }}>MODE BRIEFING // {sel.name}</div>
+                  <div style={{ font: F.chk(500, 13), lineHeight: 1.55, color: T.body, maxWidth: '58ch' }}>{sel.brief}</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6, maxWidth: 380 }}>
+                  {[['TEAMS', sel.teams_text], ['WIN CONDITION', sel.win_text], ['RESPAWN', sel.respawn_text]].map(([l, v]) => (
+                    <div key={l} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `2px solid ${T.line2}`, padding: '8px 14px' }}>
+                      <span style={{ font: F.mono(500, 9), letterSpacing: '.2em', color: T.dim }}>{l}</span>
+                      <span style={{ font: F.chk(700, 13), letterSpacing: '.06em', textAlign: 'right' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
