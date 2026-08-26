@@ -161,6 +161,8 @@ export interface Api {
   deletePlayer(id: string): Promise<void>;
   evictNode(node_id: string): Promise<void>;   // DELETE /api/nodes/{id} — operator kick (closes 4000, unbinds, rotates key)
   tryout(id: string, weapon_id: string): Promise<void>;
+  rangeVerdicts(): Promise<Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }>>;
+  rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
   pushLobby(): Promise<{ ok: boolean; acks: State['lobby']['acks'] }>;

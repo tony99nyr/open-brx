@@ -223,7 +223,7 @@ function startDiscovery() {
         const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
         const url = `ws://${ip}:${svc.port}${path}`;
         log(`Mission Control discovered: ${url}`, 'lk');
-        if (!transport || transport.state !== 'bound') connectMc(url);
+        if (!settings.mcUrl && (!transport || transport.state !== 'bound')) connectMc(url);   // never override an explicit target
       } catch (e) { log('discovery: ' + (e && e.message || e), 'li'); }
     }).catch(e => log('discovery watch: ' + (e && e.message || e), 'li'));
   } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
@@ -336,7 +336,7 @@ async function sweepForMc() {
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
     lockLandscape();
     startDiscovery();
-    setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback if mDNS is quiet and we're not bound
+    if (!settings.mcUrl) setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback only when NO explicit target (typed/QR wins — e2e hijack 2026-08-26)
   }
   await refreshPreflight(); scheduleRender();
 })();

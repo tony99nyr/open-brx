@@ -328,6 +328,37 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return PlainTextResponse("Mission Control API is up. UI not built — run `npm run build` in webapp/mc "
                                  "(or `npm run dev` and open http://localhost:5173). API: /api/state")
 
+    def _range_path():
+        from pathlib import Path as _P
+        return _P.home() / ".brx-mcp" / "weapon-verdicts.jsonl"
+
+    async def range_verdicts(_):
+        """Latest verdict per weapon from the bench log."""
+        out = {}
+        try:
+            for line in _range_path().read_text().splitlines():
+                if line.strip():
+                    r = json.loads(line)
+                    out[r["weapon_id"]] = r
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+        return JSONResponse(out)
+
+    async def range_verdict(request):
+        """Append a bench verdict: {weapon_id, verdict: pass|issue, note?}."""
+        body = await request.json()
+        wid, verdict = body.get("weapon_id"), body.get("verdict")
+        if not isinstance(wid, str) or verdict not in ("pass", "issue"):
+            return JSONResponse({"error": "weapon_id + verdict (pass|issue) required"}, status_code=400)
+        import time as _t
+        rec = {"weapon_id": wid, "verdict": verdict, "note": str(body.get("note") or "")[:400], "t": int(_t.time() * 1000)}
+        pth = _range_path(); pth.parent.mkdir(parents=True, exist_ok=True)
+        with pth.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+        return JSONResponse(rec)
+
     async def apk(_):
         """The companion APK, served from a stable path (webapp rebuilds wipe dist copies)."""
         from pathlib import Path as _P
@@ -340,6 +371,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     routes = [
         Route("/api/state", state),
         Route("/openbrx.apk", apk),
+        Route("/api/range/verdicts", range_verdicts),
+        Route("/api/range/verdict", range_verdict, methods=["POST"]),
         Route("/api/armory/scan", armory_scan, methods=["POST"]),
         Route("/api/armory", armory_list),
         Route("/api/modes", modes),

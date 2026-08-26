@@ -86,6 +86,8 @@ export function createHttpApi(): Api {
     deletePlayer: async id => { await j(`/api/players/${id}`, { method: 'DELETE' }); },
     evictNode: async id => { await j(`/api/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     tryout: async (id, weapon_id) => { await post(`/api/players/${id}/tryout`, { weapon_id }); },
+    rangeVerdicts: () => j('/api/range/verdicts'),
+    rangeVerdict: (weapon_id, verdict, note) => post('/api/range/verdict', { weapon_id, verdict, note }),
     endTryout: async id => { await j(`/api/players/${id}/tryout`, { method: 'DELETE' }); },
     setReady: (id, ready) => post(`/api/players/${id}/ready`, { ready }),
     pushLobby: () => post('/api/lobby/push'),

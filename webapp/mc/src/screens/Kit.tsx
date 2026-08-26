@@ -9,6 +9,8 @@ export function Kit() {
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
   useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, []);
   const { state, weapons, selPlayer, setSelPlayer, run, api, setView } = useStore();
+  const [verdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
+  useEffect(() => { api.rangeVerdicts().then(v => setVerdicts(v as never)).catch(() => {}); }, [api]);
   const [newName, setNewName] = useState('');
   if (!state) return null;
   const players = state.players;
@@ -134,6 +136,10 @@ export function Kit() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
                       ▲ TRYING OUT ON {sp.display}'S GUN — HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
                       <GhostButton size={10} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
+                      <span style={{ display: 'inline-flex', gap: 6, marginLeft: 10 }}>
+                        <GhostButton size={10} pad="4px 10px" onClick={async () => { const twid = trying[sp.player_id]; if (twid) { await run(() => api.rangeVerdict(twid, 'pass')); setVerdicts(v => ({ ...v, [twid]: { verdict: 'pass', note: '' } })); } }}>SOUNDS RIGHT ✓</GhostButton>
+                        <GhostButton size={10} pad="4px 10px" onClick={async () => { const twid = trying[sp.player_id]; if (twid) { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)') || ''; await run(() => api.rangeVerdict(twid, 'issue', note)); setVerdicts(v => ({ ...v, [twid]: { verdict: 'issue', note } })); } }}>LOG ISSUE ✗</GhostButton>
+                      </span>
                     </div>
                   )}
                   {state.lobby.pushed && <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>TRY-OUTS DISABLED — A CONFIG HEAD HAS BEEN PUSHED (MODES §4)</div>}
@@ -154,6 +160,7 @@ export function Kit() {
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
                         <span style={{ font: F.chk(700, 12), letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
                         <span style={{ font: F.osw(600, 11), ...TAB, color: T.micro }} title={`magazine ${w.clip}`}>MAG {w.clip}</span>
+                        {verdicts[w.weapon_id] && <span title={verdicts[w.weapon_id].note || undefined} style={{ font: F.chk(700, 10), color: verdicts[w.weapon_id].verdict === 'pass' ? T.ok : T.bad }}>{verdicts[w.weapon_id].verdict === 'pass' ? '✓' : '✗'}</span>}
                       </div>
                     </div>
                   );

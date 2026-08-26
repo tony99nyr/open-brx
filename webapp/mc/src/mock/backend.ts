@@ -224,6 +224,10 @@ export class MockBackend implements Api {
   }
   async deletePlayer(id: string) { this.players = this.players.filter(p => p.player_id !== id); this.emit(); }
   async evictNode(id: string) { this.evicted.add(id); this.emit(); }
+  private verdicts: Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }> = {};
+  async rangeVerdicts() { return { ...this.verdicts }; }
+  async rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note = '') { const r = { weapon_id, verdict, note, t: Date.now() }; this.verdicts[weapon_id] = r; return r; }
+
   async tryout(id: string, weapon_id: string) {
     if (this.pushed) throw new Error('try-outs are disabled once a config head has been pushed (modes.md §4)');
     this.trying[id] = weapon_id; this.emit();
