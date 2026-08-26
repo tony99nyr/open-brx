@@ -69,6 +69,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { un(); unAuth(); };
   }, [api, mock, tokenVersion]);
 
+  // While the operator token is missing/wrong, seed the board read-only from the open GET so the host
+  // sees the console (not a blank CONNECTING page) behind the token prompt.
+  useEffect(() => {
+    if (!authRequired || mock) return;
+    api.getState().then(s => setState(prev => prev ?? s)).catch(() => {});
+  }, [authRequired, api, mock]);
+
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, view, setView: setViewRaw, selPlayer, setSelPlayer, error, mock,
     connected: mock ? true : connected, authRequired, hasToken: !!getToken(),

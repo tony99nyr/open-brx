@@ -110,12 +110,12 @@ def main(argv=None):
     import uvicorn
     ip = session.lan["ip"]
     url = f"http://{ip}:{args.port}/" + (f"#tok={token}" if token else "")
-    print(f"Mission Control  {url}")
-    print(f"  nodes: {session.lan.get('ws_url') or 'ws://'+ip+':'+str(args.ws_port)+'/ws'}")
+    print(f"Mission Control  {url}", flush=True)
+    print(f"  nodes: {session.lan.get('ws_url') or 'ws://'+ip+':'+str(args.ws_port)+'/ws'}", flush=True)
     if token:
-        print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)")
+        print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)", flush=True)
     else:
-        print("  auth DISABLED (--no-auth): any device on this LAN can control the match")
+        print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

@@ -96,7 +96,7 @@ function connectMc(url) {
   transport.setStatusProvider(() => engine.statusBody(preflight));
   transport.onHydrate(node => engine.hydrate(node));
   transport.onMessage(m => { engine.onMcMessage(m); if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill'); });
-  transport.onState(s => { engine.setWsState(s); log(`MC link ${s}`, s === 'bound' ? 'lk' : 'li'); });
+  transport.onState(s => { engine.setWsState(s, transport.rejected); log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li'); });
   transport.connect({ url }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 

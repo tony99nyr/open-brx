@@ -34,6 +34,7 @@ def test_scorer_multikill_after_suppressed_death_does_not_crash():
     a = s.add_player("A", gun_id="GUN-A"); b = s.add_player("B", gun_id="GUN-B"); c = s.add_player("C", gun_id="GUN-C")
     sc = Scorer("m", 1000, 120, "ffa", s.players, s.teams, {}, {}, now_ms=lambda: 2000)
     # a's first kill is suppressed (never-synced node → suppress path sets last_kill_t but not multis)
+    sc.node_player["nx"] = b["player_id"]     # facts are attributed by the node's binding only (CRITICAL-2)
     sc.ingest("nx", {"type": "death", "match_id": "m", "player_id": b["player_id"],
                      "shooter_num": a["player_num"], "shooter_team": 1}, 1500)   # nx never synced → suppressed
     # a fresh (synced) kill ≤ MULTI_KILL_MS later must not IndexError on the empty multis list
@@ -192,4 +193,266 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
             assert st.session.players[p["player_id"]]["node_id"] == legit_nid
             assert st.session.scorer.shots_total(p["player_id"]) == before
             assert st.net.stats["rejected"] >= 1
+    asyncio.run(asyncio.wait_for(go(), 40))
+
+
+# ---------------------------------------------------------------- iteration 3 regressions
+def test_non_ascii_token_is_401_not_500():
+    if not HAVE:
+        return
+    import asyncio
+    from brx_mcp.mc.api import create_app
+    app = create_app(_sess(), token="secret")
+    # raw ASGI: the test client refuses to encode a non-ASCII header, so drive the app directly
+    async def call(headers):
+        scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST", "scheme": "http",
+                 "path": "/api/players", "raw_path": b"/api/players", "query_string": b"", "headers": headers,
+                 "client": ("127.0.0.1", 1), "server": ("127.0.0.1", 80)}
+        sent = []
+        async def receive():
+            return {"type": "http.request", "body": b'{"display": "X"}', "more_body": False}
+        async def send(msg):
+            sent.append(msg)
+        await app(scope, receive, send)
+        return next(m["status"] for m in sent if m["type"] == "http.response.start")
+    assert asyncio.run(call([(b"content-type", b"application/json"), (b"authorization", "Bearer é’".encode("utf-8"))])) == 401
+    assert asyncio.run(call([(b"content-type", b"application/json"), (b"authorization", b"Bearer \xff\xfe")])) == 401
+    c = TestClient(app, raise_server_exceptions=False)
+    assert c.post("/api/players?tok=%C3%A9", json={"display": "X"}).status_code == 401
+    assert c.post("/api/players?tok=%FF", json={"display": "X"}).status_code == 401
+    # WS handshake with a bad token must be a clean auth close, not a 500
+    try:
+        with c.websocket_connect("/ui-ws?tok=%C3%A9") as ws:
+            ws.receive()
+            assert False, "should have been closed"
+    except Exception as e:  # WebSocketDisconnect(4401) or a handshake refusal — anything but a 500 traceback
+        assert "500" not in str(e)
+
+
+def test_patch_validates_loadout_voice_ready():
+    s = _sess()
+    p = s.add_player("A", gun_id="GUN-A")
+    for bad in ({"loadout": "junk"}, {"loadout": {}}, {"loadout": {"weapons": []}}, {"loadout": {"weapons": [{"x": 1}]}},
+                {"voice": "robot"}, {"ready": "yes"}, {"loadout": {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"max_hp": "a"}}}):
+        try:
+            s.patch_player(p["player_id"], **bad); assert False, bad
+        except ValueError:
+            pass
+    assert s.players[p["player_id"]]["loadout"]["weapons"][0]["weapon_id"] == "assault_rifle"   # untouched
+    ok = s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "overrides": {"max_hp": 60}}, voice="female", ready=True)
+    assert [w["weapon_id"] for w in ok["loadout"]["weapons"]] == ["smg", "shotgun"] and ok["loadout"]["overrides"] == {"max_hp": 60}
+    assert ok["voice"] == "female" and ok["ready"] is True
+
+
+def test_numeric_bodies_overflow_and_fraction_are_400():
+    if not HAVE:
+        return
+    from brx_mcp.mc.api import create_app
+    c = TestClient(create_app(_sess(), token=None), raise_server_exceptions=False)
+    p = c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).json()
+    J = {"content-type": "application/json"}
+    for bad in (3.7, "abc", True):
+        assert c.patch(f"/api/players/{p['player_id']}", json={"player_num": bad}).status_code == 400, bad
+        assert c.post("/api/start", json={"runway_s": bad}).status_code == 400, bad
+    # 1e999 parses to inf on the server (the client lib refuses to serialise it, so send raw bytes)
+    assert c.patch(f"/api/players/{p['player_id']}", content=b'{"player_num": 1e999}', headers=J).status_code == 400
+    assert c.post("/api/start", content=b'{"runway_s": 1e999}', headers=J).status_code == 400
+    assert c.post("/api/armory/scan", content=b'{"duration_s": 1e999}', headers=J).status_code == 400
+    assert c.put("/api/config", content=b'{"time_limit_s": 1e999}', headers=J).status_code == 400
+    assert c.get("/api/state").status_code == 200   # still alive
+
+
+# ---------------------------------------------------------------- iteration 3: A8 holder checks / identity (net + state + scoring)
+def _ws_stack():
+    try:
+        import websockets  # noqa: F401
+        from websockets.asyncio.client import connect  # noqa: F401
+        import sys, pathlib
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        from e2e_util import Stack, until
+        return Stack, until
+    except Exception:
+        print("SKIP ws stack (no websockets)"); return None, None
+
+
+async def _raw_hello(url, body, wait=1.5):
+    """Returns (welcome_body_or_None, close_code_or_None, ws)"""
+    import asyncio, json, websockets
+    from websockets.asyncio.client import connect
+    from brx_mcp.mc import envelope as E
+    ws = await connect(url)
+    await ws.send(E.encode(E.make_envelope("hello", body)))
+    try:
+        msg = json.loads(await asyncio.wait_for(ws.recv(), wait))
+        return msg.get("body"), None, ws
+    except websockets.exceptions.ConnectionClosed as e:
+        return None, (e.rcvd.code if e.rcvd else None), ws
+
+
+async def _two_live(st):
+    p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+    q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
+    a = await st.connect_node("GUN-A-3D4F", node_id="phone-A"); b = await st.connect_node("GUN-B-4E60", node_id="phone-B")
+    assert await st.wait_ready(), st.session.readiness()
+    a.send_ready(); b.send_ready()
+    await st.push_and_start(runway_s=1)
+    assert await st.wait_live()
+    return p, q, a, b
+
+
+def test_a8_gun_variants_cannot_bypass_holder_check():
+    """CRITICAL-1: hydrate matches guns fuzzily (case / base name / tail); the A8 holder check must use the SAME
+    resolution, so 'gun-a-3d4f', 'GUN-A-0000', 'GUN-A' and a tail-only match are all refused while ALPHA's phone is fresh."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}},
+                               "GUN-B-4E60": {"gun_id": "GUN-B-4E60", "sticker": "GUN-B", "ble": {"tail": "4E60"}}}
+            p, q, a, b = await _two_live(st)
+            legit = st.session.players[p["player_id"]]["node_id"]
+            for name, tail in (("gun-a-3d4f", "3d4f"), ("GUN-A-0000", "0000"), ("GUN-A", ""), ("ZZZ-9999", "3D4F")):
+                body, code, ws = await _raw_hello(st.url, {"node_id": f"rogue-{name}", "node_type": "phone", "app_ver": "x",
+                                                            "seq_next": 1, "gun": {"name": name, "tail": tail}})
+                await asyncio.sleep(0.2)
+                # a variant hydrate would match must be refused; one it would NOT match may connect but stays unbound
+                assert code == 4003 or not (body or {}).get("node"), (name, tail, code, body)
+                assert st.session.players[p["player_id"]]["node_id"] == legit, (name, tail)
+                if code == 4003:
+                    assert f"rogue-{name}" not in st.net.nodes, "a rejected stranger must leave no record"
+                await ws.close()
+            assert a.connected and st.net.stats["rejected"] >= 3
+            # the legit phone still gets pushes
+            n0 = len(a.controls); st.net.push("phone-A", "control", {"cmd": "recall"})
+            assert await until(lambda: len(a.controls) > n0, 2)
+    asyncio.run(asyncio.wait_for(go(), 40))
+
+
+def test_a8_keyless_hello_for_fresh_disconnected_node_id_is_refused():
+    """HIGH-3: a phone that dropped a beat ago still owns its node_id — a keyless hello for it is 4003 and must NOT
+    rotate the key (else the owner's reconnect is locked out). Once STALE the id can be re-claimed keyless (wiped storage)."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+    from brx_mcp.mc import envelope as E
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            p, q, a, b = await _two_live(st)
+            key = a.node_key
+            await a.disconnect(); await asyncio.sleep(0.1)
+            assert st.net.nodes["phone-A"].ws is None
+            body, code, ws = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1})
+            assert code == 4003 and body is None, (code, body)
+            assert st.net.nodes["phone-A"].node_key == key, "key must not rotate on a refused hello"
+            await ws.close()
+            a.reconnect()
+            assert await until(lambda: a.connected, 4), "owner must get back in with its key"
+            assert a.node_key == key and st.session.players[p["player_id"]]["node_id"] == "phone-A"
+            # wiped storage: keyless re-claim works only after the record went stale, and rotates the key
+            await a.close(); await asyncio.sleep(0.1)
+            st.net.stale_after_ms = 300
+            await asyncio.sleep(0.5)
+            a2 = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            assert a2.connected and a2.node_key and a2.node_key != key and a2.player_id == p["player_id"]
+            n0 = len(a2.controls); st.net.push("phone-A", "control", {"cmd": "recall"})
+            assert await until(lambda: len(a2.controls) > n0, 2)
+    asyncio.run(asyncio.wait_for(go(), 40))
+
+
+def test_scorer_ignores_client_player_id_that_disagrees_with_binding():
+    """CRITICAL-2: an event/status body's player_id never overrides the node's server-side binding."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+    from brx_mcp.mc import envelope as E
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            p, q, a, b = await _two_live(st)
+            mid = st.session.start_info["match_id"]
+            body, code, ws = await _raw_hello(st.url, {"node_id": "rogue-nogun", "node_type": "phone", "app_ver": "x", "seq_next": 1})
+            assert code is None and not (body or {}).get("node")
+            t = st.session.now_ms()
+            env = E.make_envelope("event", {"type": "death", "t": t, "match_id": mid, "node_id": "rogue-nogun",
+                                            "player_id": q["player_id"], "shooter_num": p["player_num"], "shooter_team": 1})
+            env["seq"] = 1
+            await ws.send(E.encode(env))
+            await ws.send(E.encode(E.make_envelope("status", {"node_id": "rogue-nogun", "player_id": p["player_id"], "arm_state": "live",
+                                                             "synced": True, "shots": 999, "match_id": mid})))
+            await asyncio.sleep(0.4)
+            sc = st.session.scorer
+            assert sc.stats[p["player_id"]].kills == 0 and sc.stats[q["player_id"]].deaths == 0
+            assert sc.shots_total(p["player_id"]) == 0 and sc.mismatched >= 2
+            # a bound node lying about who it is is dropped too
+            a.emit({"type": "death", "t": st.session.now_ms(), "match_id": mid, "player_id": q["player_id"],
+                    "shooter_num": p["player_num"], "shooter_team": 1})
+            await asyncio.sleep(0.4)
+            assert sc.stats[q["player_id"]].deaths == 0 and sc.stats[p["player_id"]].deaths == 0
+            await ws.close()
+    asyncio.run(asyncio.wait_for(go(), 40))
+
+
+def test_scorer_pid_unit():
+    from brx_mcp.mc.scoring import Scorer
+    s = _sess()
+    a = s.add_player("A", gun_id="GUN-A"); b = s.add_player("B", gun_id="GUN-B")
+    s.node_player["n1"] = a["player_id"]
+    sc = Scorer("m", 0, 60, "ffa", s.players, s.teams, s.node_player, {}, now_ms=lambda: 1)
+    assert sc._pid("n1", {}) == a["player_id"]
+    assert sc._pid("n1", {"player_id": a["player_id"]}) == a["player_id"]
+    assert sc._pid("n1", {"player_id": b["player_id"]}) is None and sc.mismatched == 1
+    assert sc._pid("unknown", {"player_id": b["player_id"]}) is None
+
+
+def test_bind_to_another_gun_moves_the_node_and_frees_the_old_player():
+    """MEDIUM-4 + LOW: a bind that names a different (free) gun rebinds the node to that gun's player; the old player is
+    released and node_player carries no dangling entry."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+    from brx_mcp.mc import envelope as E
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            c = st.add_player("CHARLIE", "GUN-C-7777", team_id="yellow")
+            a = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            assert await until(lambda: a.player_id == p["player_id"], 3)
+            a._send(E.make_envelope("bind", {"node_id": "phone-A", "gun_name": "GUN-C-7777", "gun_tail": "7777"}))
+            assert await until(lambda: st.session.node_player.get("phone-A") == c["player_id"], 3)
+            assert st.session.players[p["player_id"]]["node_id"] is None
+            assert st.session.players[c["player_id"]]["node_id"] == "phone-A"
+            assert list(st.session.node_player.values()).count(p["player_id"]) == 0
+            assert st.net.nodes["phone-A"].player_id == c["player_id"]
+            # ... and a stranger now claiming GUN-C is refused (phone-A is the fresh holder)
+            body, code, ws = await _raw_hello(st.url, {"node_id": "rogue-c", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                        "gun": {"name": "gun-c-7777", "tail": "7777"}})
+            assert code == 4003, code
+            await ws.close()
+    asyncio.run(asyncio.wait_for(go(), 40))
+
+
+def test_second_hello_with_other_node_id_on_live_socket_is_closed():
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+    from brx_mcp.mc import envelope as E
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            body, code, ws = await _raw_hello(st.url, {"node_id": "n-1", "node_type": "phone", "app_ver": "x", "seq_next": 1})
+            assert code is None
+            await ws.send(E.encode(E.make_envelope("hello", {"node_id": "n-2", "node_type": "phone", "app_ver": "x", "seq_next": 1})))
+            await asyncio.sleep(0.3)
+            assert "n-2" not in st.net.nodes and st.net.nodes["n-1"].ws is None
+            await ws.close()
     asyncio.run(asyncio.wait_for(go(), 40))

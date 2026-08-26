@@ -119,6 +119,8 @@ class Session:
     def _attach_net(self):
         n = self.net
         n.hydrate(self._hydrate)
+        if hasattr(n, "resolve_gun"):
+            n.resolve_gun(lambda name, tail: (self._find_player_for_gun(name or None, tail or None) or {}).get("player_id"))
         n.on_node(self._on_node)
         n.on_status(self._on_status)
         n.on_event(self._on_event)
@@ -180,13 +182,29 @@ class Session:
         if "player_num" in fields and fields["player_num"] is not None:
             if self.lobby_pushed:
                 raise ValueError("player_num is fixed once config has been pushed")
-            n = int(fields["player_num"])
+            try:
+                if isinstance(fields["player_num"], bool):
+                    raise ValueError
+                n = int(fields["player_num"])
+                if isinstance(fields["player_num"], float) and fields["player_num"] != n:
+                    raise ValueError
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError("player_num must be an integer")
+            fields["player_num"] = n
             if not 1 <= n <= MAX_PLAYERS:
                 raise ValueError(f"player_num must be 1..{MAX_PLAYERS} (0 is reserved)")
             if any(q["player_num"] == n and q["player_id"] != pid for q in self.players.values()):
                 raise ValueError("player_num already taken")
         if "team_id" in fields:
             fields["team_id"] = self._check_team(fields["team_id"])
+        if "loadout" in fields and fields["loadout"] is not None:
+            fields["loadout"] = self._check_loadout(fields["loadout"])
+        if "voice" in fields and fields["voice"] is not None:
+            v = fields["voice"]
+            if not isinstance(v, str) or v not in self._voice_ids():
+                raise ValueError("unknown voice")
+        if "ready" in fields and fields["ready"] is not None and not isinstance(fields["ready"], bool):
+            raise ValueError("ready must be a boolean")
         if "display" in fields and fields["display"] is not None:
             d = str(fields["display"]).strip().upper()[:24]
             if not d:
@@ -201,6 +219,49 @@ class Session:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
         return p
+
+    def _voice_ids(self) -> set[str]:
+        ids = {"male", "female"}
+        opts = getattr(self.compiler, "voice_options", None)
+        if callable(opts):
+            try:
+                ids |= {o.get("id") for o in opts() if isinstance(o, dict) and o.get("id")}
+            except Exception:
+                pass
+        return ids
+
+    def _check_loadout(self, lo) -> dict:
+        """Loadout must be {weapons: [{weapon_id: str}, …], overrides?: {max_hp?, max_armor?}}; ids from the catalog when known."""
+        if not isinstance(lo, dict) or not isinstance(lo.get("weapons"), list) or not lo["weapons"]:
+            raise ValueError("loadout must be {weapons: [{weapon_id}, ...]}")
+        known: set[str] = set()
+        cat = getattr(self.compiler, "weapon_catalog", None)
+        if callable(cat):
+            try:
+                known = {w.get("weapon_id") for w in cat() if isinstance(w, dict)}
+            except Exception:
+                known = set()
+        weapons = []
+        for w in lo["weapons"]:
+            if not isinstance(w, dict) or not isinstance(w.get("weapon_id"), str) or not w["weapon_id"]:
+                raise ValueError("each loadout weapon needs a weapon_id")
+            if known and w["weapon_id"] not in known:
+                raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
+            weapons.append({"weapon_id": w["weapon_id"]})
+        out: dict = {"weapons": weapons}
+        ov = lo.get("overrides")
+        if ov is not None:
+            if not isinstance(ov, dict):
+                raise ValueError("loadout.overrides must be an object")
+            clean = {}
+            for k in ("max_hp", "max_armor"):
+                if k in ov and ov[k] is not None:
+                    if isinstance(ov[k], bool) or not isinstance(ov[k], int) or not 1 <= ov[k] <= 999:
+                        raise ValueError(f"overrides.{k} must be an integer 1..999")
+                    clean[k] = ov[k]
+            if clean:
+                out["overrides"] = clean
+        return out
 
     def remove_player(self, pid: str) -> None:
         if self.phase not in self.ROSTER_PHASES:
@@ -367,8 +428,13 @@ class Session:
             if q.get("node_id") == nid and q["player_id"] != p["player_id"]:
                 q["node_id"] = None
         prev = p.get("node_id")
-        if prev and prev != nid and self.scorer:
-            self.scorer.rebind_node(p["player_id"])      # A6.2 hot-swap shots baseline
+        if prev and prev != nid:
+            if self.scorer:
+                self.scorer.rebind_node(p["player_id"])      # A6.2 hot-swap shots baseline
+            if self.node_player.get(prev) == p["player_id"]:
+                self.node_player.pop(prev, None)             # the old node no longer speaks for this player
+            if prev in self.nodes:
+                self.nodes[prev].pop("player_id", None)
         self.node_player[nid] = p["player_id"]
         p["node_id"] = nid
         self.nodes.setdefault(nid, {"node_id": nid})["player_id"] = p["player_id"]
@@ -394,15 +460,15 @@ class Session:
         nv = self.nodes.setdefault(nid, {"node_id": nid, "arm_state": "idle", "synced": False})
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw")})
         nv["last_seen_ms"] = self.now_ms()
-        p = None
-        if n.get("player_id") in self.players:
+        # The gun the node reports NOW wins over a hydrate-era player_id (a re-bind to another gun moves the node).
+        p = self._find_player_for_gun(n.get("gun_name"), n.get("gun_tail")) if (n.get("gun_name") or n.get("gun_tail")) else None
+        if p is None and n.get("player_id") in self.players:
             p = self.players[n["player_id"]]
-        else:
-            p = self._find_player_for_gun(n.get("gun_name"), n.get("gun_tail"))
         if p:
             self._bind(nid, p)
         self._prune_unbound_nodes()
         self._changed()
+        return self.node_player.get(nid)
 
     def _hydrate(self, hello: dict) -> dict | None:
         gun = hello.get("gun") or {}

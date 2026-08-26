@@ -34,7 +34,7 @@ export class Transport {
     this.armedOrLive = false;                // app sets true in ARMED/LIVE → reconnect is unbounded
     this.preflight = {};                     // app merges via setPreflight()
     this.statusProvider = null;              // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
-    this.state = 'offline'; this.url = null; this.closed = false; this.attempt = 0; this.reconnects = 0;
+    this.state = 'offline'; this.url = null; this.closed = false; this.attempt = 0; this.reconnects = 0; this.rejected = null;
     this.stats = { sent: 0, received: 0, malformed: 0, batches: 0 };
     this._ws = null; this._hbTimer = null; this._rcTimer = null; this._helloTimer = null; this._syncTimer = null;
     this._onMessage = []; this._onState = []; this._onHydrate = [];
@@ -45,7 +45,7 @@ export class Transport {
   connect({ url, mdns, qr } = {}) {
     this.url = url || qr || this.url;
     if (!this.url) return Promise.reject(new Error('connect: no url (mdns is not implemented on the phone yet — scan the QR or type the address)'));
-    this.closed = false;
+    this.closed = false; this.rejected = null;
     return new Promise((resolve, reject) => {
       this._firstWelcome = { resolve, reject };
       this._open();
@@ -130,7 +130,18 @@ export class Transport {
     };
     ws.onmessage = evt => { if (ws === this._ws) this._onFrame(typeof evt.data === 'string' ? evt.data : String(evt.data)); };
     ws.onerror = () => { /* onclose follows */ };
-    ws.onclose = () => { if (ws !== this._ws) return; this._ws = null; const ct = this._connectTimer; this._connectTimer = null; this._clearTimers(); this._connectTimer = ct; this._setState('offline'); this._scheduleReconnect(); };
+    ws.onclose = evt => {
+      if (ws !== this._ws) return; this._ws = null;
+      const code = evt && evt.code;
+      if (code === 4001 || code === 4003) {
+        // The server REFUSED us (version mismatch / node or gun already in use — contracts A8). Retrying is pointless.
+        this.rejected = { code, reason: (evt && evt.reason) || (code === 4003 ? 'gun or node in use' : 'protocol version') };
+        this.closed = true; this._clearTimers();
+        if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error(`MC refused: ${this.rejected.reason} (${code})`)); }
+        this._log('refused by MC', this.rejected); this._setState('rejected'); return;
+      }
+      const ct = this._connectTimer; this._connectTimer = null; this._clearTimers(); this._connectTimer = ct; this._setState('offline'); this._scheduleReconnect();
+    };
   }
   _scheduleReconnect() {
     if (this.closed || this._rcTimer) return;

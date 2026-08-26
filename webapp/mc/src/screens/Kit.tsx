@@ -10,15 +10,15 @@ export function Kit() {
   if (!state) return null;
   const players = state.players;
   const sp = players.find(p => p.player_id === selPlayer) ?? players[0];
-  const kitted = players.filter(p => p.loadout.weapons.length > 0 && p.team_id).length;
-  const selWeapon = weapons.find(w => w.weapon_id === sp?.loadout.weapons[0]?.weapon_id) ?? weapons[0];
+  const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id).length;
+  const selWeapon = weapons.find(w => w.weapon_id === sp?.loadout?.weapons?.[0]?.weapon_id) ?? weapons[0];
   const trying = state.kit.trying;
   const node = sp ? state.nodes.find(n => n.player_id === sp.player_id) : undefined;
   const patch = (p: Partial<Player>) => sp && run(() => api.patchPlayer(sp.player_id, p));
 
   const pickWeapon = async (w: WeaponView) => {
     if (!sp) return;
-    await patch({ loadout: { ...sp.loadout, weapons: [{ weapon_id: w.weapon_id }, ...sp.loadout.weapons.slice(1)] } });
+    await patch({ loadout: { ...(sp.loadout ?? {}), weapons: [{ weapon_id: w.weapon_id }, ...(sp.loadout?.weapons ?? []).slice(1)] } });
     if (!state.lobby.pushed) await run(() => api.tryout(sp.player_id, w.weapon_id));
   };
 
@@ -33,7 +33,7 @@ export function Kit() {
             {players.map(pl => {
               const on = pl.player_id === sp?.player_id;
               const tw = trying[pl.player_id];
-              const st = tw ? '' : pl.loadout.weapons.length && pl.team_id ? 'KITTED' : pl.team_id ? 'FITTING' : '—';
+              const st = tw ? '' : (pl.loadout?.weapons?.length ?? 0) && pl.team_id ? 'KITTED' : pl.team_id ? 'FITTING' : '—';
               const stColor = st === 'KITTED' ? T.ok : st === 'FITTING' ? T.acc : T.micro;
               return (
                 <div key={pl.player_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}
@@ -72,7 +72,7 @@ export function Kit() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>TEAM</span>
-                <span style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                <span role="group" aria-label="team" style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                   {(state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(tm => tm.team_id)).map(t => {
                     const on = sp.team_id === t;
                     const col = state.teams.find(tm => tm.team_id === t)?.color ?? teamColor(t);
@@ -134,7 +134,7 @@ export function Kit() {
                 {weapons.map(w => {
                   const on = w.weapon_id === selWeapon?.weapon_id;
                   return (
-                    <div key={w.weapon_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => pickWeapon(w)} onKeyDown={onKey(() => pickWeapon(w))}
+                    <div key={w.weapon_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`${w.name}, ${w.cls}, magazine ${w.clip}`} onClick={() => pickWeapon(w)} onKeyDown={onKey(() => pickWeapon(w))}
                       style={{ background: on ? 'rgba(57,180,255,.08)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, padding: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7, clipPath: CHAMFER.br8, minHeight: 44 }}>
                       <StripedSlot height={50} style={{ background: `repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)` }}
                         corner={<span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: CLS_COLOR[w.cls] ?? T.acc }}>{w.cls}</span>} />
@@ -157,19 +157,25 @@ export function Kit() {
 /** Player number 1–63, draft-then-commit (see ValueBox). */
 function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
   const [draft, setDraft] = useState(String(value));
+  const [invalid, setInvalid] = useState(false);
   const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
   latest.current = value;
   useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(String(value)); }, [value]);
   const commit = () => {
     const n = Number(draft);
-    if (Number.isInteger(n) && n >= 1 && n <= 63 && n !== value) { pending.current = n; onCommit(n); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
-    else setDraft(String(value));
+    if (draft.trim() === '' || String(value) === draft.trim()) { setDraft(String(value)); return; }
+    if (Number.isInteger(n) && n >= 1 && n <= 63) { setInvalid(false); pending.current = n; onCommit(n); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(String(latest.current)); } }, 1500); }
+    else { setInvalid(true); setDraft(String(value)); }   // never a silent revert: the hint below explains
   };
   const setFocused = (f: boolean) => { focused.current = f; };
   return (
-    <input className="numbox" type="number" min={1} max={63} value={draft} aria-label="player number (1–63)" style={{ width: '2.6em', font: F.mono(600, 10), color: T.acc, textAlign: 'left', minHeight: 32 }}
-      onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-      onChange={e => setDraft(e.target.value)} />
+    <>
+      <input className="numbox" type="number" min={1} max={63} value={draft} aria-label="player number (1–63)" aria-invalid={invalid || undefined}
+        style={{ width: '2.6em', font: F.mono(600, 10), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 32, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
+        onFocus={() => { setFocused(true); setInvalid(false); }} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        onChange={e => setDraft(e.target.value)} />
+      {invalid && <span role="alert" style={{ marginLeft: 8, font: F.mono(500, 9), letterSpacing: '.12em', color: T.bad }}>PLAYER NUMBER MUST BE 1–63</span>}
+    </>
   );
 }
 

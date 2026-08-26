@@ -102,6 +102,7 @@ class NetServer:
         self.ping_interval_s = ping_interval_s
         self.nodes: dict[str, NodeRecord] = {}
         self._hydrate: Callable[[dict], dict | None] | None = None
+        self._resolve_gun: Callable[[str, str], str | None] | None = None   # (gun_name, gun_tail) -> player_id (A8 by gun)
         self._on_node: list[Callable[[dict], None]] = []
         self._on_event: list[Callable[[str, dict, int], None]] = []
         self._on_batch: list[Callable[[str, list, int], None]] = []
@@ -122,6 +123,11 @@ class NetServer:
     # ---------------- registration (interfaces.NetServer) ----------------
     def hydrate(self, cb: Callable[[dict], dict | None]) -> None:
         self._hydrate = cb
+
+    def resolve_gun(self, cb: Callable[[str, str], str | None]) -> None:
+        """A8: the SAME fuzzy gun→player resolution hydrate uses (case, base name, tail), so the holder check
+        runs against the record actually bound to that player — not just an exact gun_name match."""
+        self._resolve_gun = cb
 
     def on_node(self, cb: Callable[[dict], None]) -> None:
         self._on_node.append(cb)
@@ -325,23 +331,87 @@ class NetServer:
 
         self._loop.create_task(_go())
 
+    def _fresh(self, rec: NodeRecord, now: float | None = None) -> bool:
+        """A8: a record that said hello and was heard from within STALE_AFTER_MS — connected or not."""
+        return rec.hello_ok and ((now if now is not None else time.monotonic()) - rec.last_seen) * 1000 < self.stale_after_ms
+
+    def _gun_holders(self, rec: NodeRecord, gun_name: str, gun_tail: str) -> list[NodeRecord]:
+        """Records other than `rec` that currently hold this gun: an exact gun_name match, or the node bound to
+        the player the gun RESOLVES to (the fuzzy match hydrate would use — lowercase, base name, tail)."""
+        pid = None
+        if self._resolve_gun is not None and (gun_name or gun_tail):
+            try:
+                pid = self._resolve_gun(gun_name, gun_tail)
+            except Exception:
+                log.exception("resolve_gun callback failed")
+        out = []
+        for other in self.nodes.values():
+            if other is rec:
+                continue
+            if (gun_name and other.gun_name == gun_name) or (pid and other.player_id == pid):
+                out.append(other)
+        return out
+
+    def _claim_gun(self, rec: NodeRecord, presented_key: str, gun_name: str, gun_tail: str, where: str) -> NodeRecord | None:
+        """A8 gun rule shared by hello and bind. Returns the fresh holder that BLOCKS the claim (caller closes
+        4003), or None when the claim may proceed — after displacing any stale / keyed holders' sockets."""
+        now = time.monotonic()
+        for other in self._gun_holders(rec, gun_name, gun_tail):
+            fresh = self._fresh(other, now)
+            if fresh and presented_key != other.node_key:
+                self.stats["rejected"] += 1
+                log.warning("%s for gun %s refused — node %s holds it (fresh, key not proven)", where, gun_name or gun_tail, other.node_id)
+                return other
+            if other.ws is None:
+                continue                      # stale (or keyed) and already disconnected: nothing to displace
+            self.stats["takeovers"] += 1
+            log.warning("gun %s re-bound at %s from %s node %s to %s", gun_name or gun_tail, where, "keyed" if fresh else "stale", other.node_id, rec.node_id)
+            old = other.ws
+            other.ws = None
+            self._loop.create_task(self._close_quiet(old, _CLOSE_TAKEOVER, "gun taken over"))
+        return None
+
+    def _set_player(self, rec: NodeRecord, pid: str | None) -> None:
+        """Keep NodeRecord.player_id truthful: one record per player (the holder check keys on it)."""
+        if pid is None:
+            return
+        rec.player_id = pid
+        for other in self.nodes.values():
+            if other is not rec and other.player_id == pid:
+                other.player_id = None
+
     async def _on_hello(self, ws, env: dict) -> NodeRecord:
         body = env["body"]
         node_id = str(body["node_id"])
         rec = self.nodes.get(node_id)
         presented_key = str(body.get("node_key") or "")
+        created = rec is None
         if rec is None:
             rec = NodeRecord(node_id=node_id, node_key=secrets.token_urlsafe(9))
             self.nodes[node_id] = rec
-        elif rec.ws is None and presented_key != rec.node_key:
-            # A8: a hello for a known-but-disconnected node_id that did not prove the key gets a fresh
-            # key — the old one (which a rogue could have missed by a beat) is invalidated.
+        try:
+            return await self._hello_gate(ws, body, rec, presented_key)
+        except _Rejected:
+            if created:
+                self.nodes.pop(node_id, None)     # a rejected stranger leaves no record behind (net.md §8 memory)
+            raise
+
+    async def _hello_gate(self, ws, body: dict, rec: NodeRecord, presented_key: str) -> NodeRecord:
+        node_id = rec.node_id
+        if rec.ws is None and rec.hello_ok and presented_key != rec.node_key:
+            if self._fresh(rec):
+                # A8: a known node_id that dropped a beat ago is still its owner's — a keyless hello must not
+                # take it (the owner's reconnect-with-key would then be locked out). Only a STALE record may
+                # be re-claimed without the key (wiped storage), and then the key rotates.
+                self.stats["rejected"] += 1
+                log.warning("rejected keyless hello for fresh node %s", node_id)
+                await ws.close(_CLOSE_INUSE, "node in use")
+                raise _Rejected()
             rec.node_key = secrets.token_urlsafe(9)
         elif rec.ws is not None and rec.ws is not ws:
             # A8: a live node_id is only handed over if the newcomer proves the key, or the old
             # socket has gone unresponsive (stale). Otherwise a rogue hello can't kick a player.
-            fresh = (time.monotonic() - rec.last_seen) * 1000 < self.stale_after_ms
-            if fresh and str(body.get("node_key") or "") != rec.node_key:
+            if self._fresh(rec) and presented_key != rec.node_key:
                 self.stats["rejected"] += 1
                 log.warning("rejected hello for live node %s (bad/absent key)", node_id)
                 await ws.close(_CLOSE_INUSE, "node in use")
@@ -353,34 +423,21 @@ class NetServer:
             with contextlib.suppress(Exception):
                 await old.close(_CLOSE_TAKEOVER, "taken over")
         # A8 (gun): the same fresh-holder rule as bind, applied BEFORE hydrate — hydrate rebinds the
-        # player to this node, so a keyless hello carrying a copied gun name must never reach it.
+        # player to this node, so a keyless hello carrying a copied (or case/tail-varied) gun name must never reach it.
         gun0 = body.get("gun") if isinstance(body.get("gun"), dict) else {}
-        gun_name_new = str(gun0.get("name") or "")
-        if gun_name_new:
-            for other in list(self.nodes.values()):
-                if other is rec or other.ws is None or other.gun_name != gun_name_new:
-                    continue
-                fresh = (time.monotonic() - other.last_seen) * 1000 < self.stale_after_ms
-                if fresh and presented_key != other.node_key:
-                    self.stats["rejected"] += 1
-                    log.warning("rejected hello for gun %s — node %s holds it (fresh, key not proven)", gun_name_new, other.node_id)
-                    await ws.close(_CLOSE_INUSE, "gun in use")
-                    raise _Rejected()
-                self.stats["takeovers"] += 1
-                log.warning("gun %s re-bound at hello from %s node %s to %s", gun_name_new, "stale" if not fresh else "keyed", other.node_id, node_id)
-                old = other.ws
-                other.ws = None
-                with contextlib.suppress(Exception):
-                    await old.close(_CLOSE_TAKEOVER, "gun taken over")
+        gun_name_new, gun_tail_new = str(gun0.get("name") or ""), str(gun0.get("tail") or "")
+        if gun_name_new or gun_tail_new:
+            if self._claim_gun(rec, presented_key, gun_name_new, gun_tail_new, "hello") is not None:
+                await ws.close(_CLOSE_INUSE, "gun in use")
+                raise _Rejected()
         rec.ws = ws
         rec.hello_ok = True
         rec.node_type = str(body.get("node_type", "phone"))
         rec.app_ver = str(body.get("app_ver", ""))
-        gun = body.get("gun") or {}
-        if isinstance(gun, dict):
-            rec.gun_name = gun.get("name") or rec.gun_name
-            rec.gun_tail = gun.get("tail") or rec.gun_tail
-            rec.gun_fw = gun.get("fw") or rec.gun_fw
+        if gun0:
+            rec.gun_name = gun0.get("name") or rec.gun_name
+            rec.gun_tail = gun0.get("tail") or rec.gun_tail
+            rec.gun_fw = gun0.get("fw") or rec.gun_fw
         seq_next = body.get("seq_next")
         if isinstance(seq_next, int) and seq_next <= rec.seq_hi:
             log.warning("node %s storage reset: seq_next=%d < seq_hi=%d", node_id, seq_next, rec.seq_hi)
@@ -395,7 +452,7 @@ class NetServer:
         if isinstance(node_ctx, dict):
             pid = node_ctx.get("player", {}).get("player_id") if isinstance(node_ctx.get("player"), dict) else None
             if pid:
-                rec.player_id = pid
+                self._set_player(rec, pid)
         welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi, "node_key": rec.node_key}
         if node_ctx:
             welcome["node"] = node_ctx
@@ -412,11 +469,20 @@ class NetServer:
         if rec.player_id:
             info["player_id"] = rec.player_id
         for cb in self._on_node:
-            self._call(cb, info)
+            r = self._call(cb, info)
+            if isinstance(r, str):            # Session returns the player it bound (keeps the record truthful after a bind)
+                self._set_player(rec, r)
 
     def _dispatch(self, rec: NodeRecord, env: dict, t_recv: int) -> None:
         kind, body = env["kind"], env["body"]
         if kind == "hello":
+            if str(body.get("node_id")) != rec.node_id:
+                # one socket, one node_id: a second hello with another id would create a record sharing this socket
+                self.stats["malformed"] += 1
+                log.warning("node %s sent a hello for %r on its live socket — closing", rec.node_id, body.get("node_id"))
+                ws, rec.ws = rec.ws, None
+                self._loop.create_task(self._close_quiet(ws, _CLOSE_POLICY, "node_id changed"))
+                return
             # a second hello on a live socket: treat as a refresh (re-hydrate), not an error
             self._loop.create_task(self._on_hello(rec.ws, env))
             return
@@ -454,23 +520,13 @@ class NetServer:
     def _on_bind(self, rec: NodeRecord, body: dict) -> None:
         gun_name = str(body.get("gun_name") or "")
         gun_tail = str(body.get("gun_tail") or "")
-        # A8 takeover by gun: only a fresh live holder blocks; a stale one is displaced (hot-swap).
-        for other in list(self.nodes.values()):
-            if other is rec or other.ws is None:
-                continue
-            if gun_name and other.gun_name == gun_name:
-                fresh = (time.monotonic() - other.last_seen) * 1000 < self.stale_after_ms
-                if fresh:
-                    self.stats["rejected"] += 1
-                    log.warning("bind for gun %s refused — node %s holds it (fresh)", gun_name, other.node_id)
-                    self._loop.create_task(self._close_quiet(rec.ws, _CLOSE_INUSE, "gun in use"))
-                    rec.ws = None
-                    return
-                self.stats["takeovers"] += 1
-                log.warning("gun %s re-bound from stale node %s to %s", gun_name, other.node_id, rec.node_id)
-                old = other.ws
-                other.ws = None
-                self._loop.create_task(self._close_quiet(old, _CLOSE_TAKEOVER, "gun taken over"))
+        # A8 takeover by gun (exact name OR the player it resolves to): only a fresh holder whose key this node
+        # did not prove blocks; a stale one is displaced (hot-swap).
+        if gun_name or gun_tail:
+            if self._claim_gun(rec, rec.node_key, gun_name, gun_tail, "bind") is not None:
+                ws, rec.ws = rec.ws, None
+                self._loop.create_task(self._close_quiet(ws, _CLOSE_INUSE, "gun in use"))
+                return
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, gun_tail or rec.gun_tail
         # A8: the player binding is the server's (set by hydrate); a client-supplied player_id is never honoured.
         self._fire_node(rec)
@@ -523,8 +579,9 @@ class NetServer:
                         self._call(cb, rec.node_id, age_ms)
 
     @staticmethod
-    def _call(cb: Callable, *args: Any) -> None:
+    def _call(cb: Callable, *args: Any) -> Any:
         try:
-            cb(*args)
+            return cb(*args)
         except Exception:
             log.exception("callback %r raised", getattr(cb, "__name__", cb))
+            return None

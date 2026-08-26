@@ -12,7 +12,7 @@ export function CommandBar() {
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, hasToken, setToken } = useStore();
   const [panic, setPanic] = useState(false);
   const [tokDraft, setTokDraft] = useState('');
-  const offline = !mock && !connected;
+  const offline = !mock && !connected && !authRequired;   // the token prompt owns the copy while auth is pending
   const cur = viewIdx(view);
   const linked = state?.nodes.filter(n => n.last_seen_ms < 8000).length ?? 0;
   const sync = state?.nodes.length ? (state.nodes.every(n => n.synced) ? 'OK' : 'PARTIAL') : '—';
@@ -68,7 +68,7 @@ export function CommandBar() {
         {(authRequired || (!mock && state?.lan.auth_required !== false && !hasToken)) && (
           <form onSubmit={e => { e.preventDefault(); if (tokDraft.trim()) { setToken(tokDraft); setTokDraft(''); } }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: T.warn }}>
-            <label htmlFor="mc-tok" role="alert">▲ {authRequired ? 'OPERATOR TOKEN REQUIRED' : 'OPERATOR TOKEN'}</label>
+            <span role="alert"><label htmlFor="mc-tok">▲ {authRequired ? 'OPERATOR TOKEN REQUIRED' : 'OPERATOR TOKEN'}</label></span>
             <input id="mc-tok" className="textbox" value={tokDraft} onChange={e => setTokDraft(e.target.value)} placeholder="paste from the MC console"
               autoComplete="off" spellCheck={false} style={{ width: '14ch', borderBottom: `1px solid ${T.warn}`, color: T.ink, minHeight: 32 }} />
             <button type="submit" style={{ background: T.warn, color: T.accInk, border: 'none', font: F.chk(700, 10), letterSpacing: '.16em', padding: '6px 10px', cursor: 'pointer', minHeight: 32 }}>APPLY</button>

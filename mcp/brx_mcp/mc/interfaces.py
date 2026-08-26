@@ -20,6 +20,7 @@ class NetServer(Protocol):
     async def start(self, host: str, port: int, ws_path: str = "/ws") -> None: ...   # real server is async; FakeNet may be sync
     def join_info(self) -> dict: ...                       # {url, session_id, qr}
     def hydrate(self, cb: Callable[[Hello], WelcomeNode | None]) -> None: ...
+    def resolve_gun(self, cb: Callable[[str, str], str | None]) -> None: ...   # (gun_name, gun_tail) -> player_id; A8 holder check (optional on fakes)
     def on_node(self, cb: Callable[[dict], None]) -> None: ...
     def on_event(self, cb: Callable[[str, Event, int], None]) -> None: ...        # (node_id, ev, t_recv) — single facts
     def on_batch(self, cb: Callable[[str, list, int], None]) -> None: ...          # (node_id, events, t_recv) — a flushed event_batch (A5.7)

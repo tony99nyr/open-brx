@@ -102,16 +102,23 @@ class _AuthMiddleware:
                 return
         await self.app(scope, receive, send)
 
-    def _ok(self, scope) -> bool:
+    def _eq(self, candidate) -> bool:
+        """Constant-time token compare that never raises (non-ASCII / smart quotes → simply False)."""
         import hmac
+        try:
+            return bool(candidate) and hmac.compare_digest(str(candidate).encode("utf-8"), self.token.encode("utf-8"))
+        except (TypeError, ValueError, UnicodeError):
+            return False
+
+    def _ok(self, scope) -> bool:
         headers = {k.decode(errors="ignore").lower(): v.decode(errors="ignore") for k, v in scope.get("headers", [])}
         auth = headers.get("authorization", "")
-        if auth.startswith("Bearer ") and hmac.compare_digest(auth[7:], self.token):
+        if auth.startswith("Bearer ") and self._eq(auth[7:]):
             return True
         from urllib.parse import parse_qs
         qs = parse_qs(scope.get("query_string", b"").decode(errors="ignore"))
         tok = qs.get("tok", [None])[0]
-        return bool(tok) and hmac.compare_digest(tok, self.token)
+        return self._eq(tok)
 
 
 def create_app(session: Session, extra_tasks: list | None = None, token: str | None = None) -> Starlette:
@@ -128,10 +135,19 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return b if isinstance(b, dict) else {}
 
     def _int(v, default, lo, hi):
-        try:
-            n = int(v)
-        except (TypeError, ValueError):
+        """Strict integer parse: None → default; bool/float-with-fraction/overflow/non-numeric → ValueError (400);
+        an integer outside lo..hi is clamped (the UI controls clamp the same way)."""
+        if v is None:
             return default
+        if isinstance(v, bool):
+            raise ValueError("expected an integer")
+        try:
+            if isinstance(v, float):
+                if v != v or v in (float("inf"), float("-inf")) or v != int(v):
+                    raise ValueError("expected an integer")
+            n = int(v)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("expected an integer")
         return max(lo, min(hi, n))
 
     async def state(_):
@@ -139,7 +155,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def armory_scan(req):
         b = await body(req)
-        rows = await s.scan(_int(b.get("duration_s"), 6, 1, 30))
+        try:
+            dur = _int(b.get("duration_s"), 6, 1, 30)
+        except ValueError as e:
+            return _err(str(e))
+        rows = await s.scan(dur)
         return JSONResponse(rows)
 
     async def armory_list(_):
@@ -230,8 +250,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def start(req):
         b = await body(req)
-        rw = _int(b.get("runway_s"), None, 5, 900) if b.get("runway_s") is not None else None
         try:
+            rw = _int(b.get("runway_s"), None, 5, 900)
             return JSONResponse(s.start(rw, force=bool(b.get("force"))))
         except ValueError as e:
             return _err(str(e))

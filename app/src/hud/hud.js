@@ -126,7 +126,7 @@ export class Hud {
       ${low ? '<div class="firevig"></div>' : ''}
       <div class="clockplate"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
-      <div class="topright"><span class="link"><span class="dot ${st.bleUp ? (st.wsState === 'bound' ? '' : 'ws') : 'off'}"></span>${st.bleUp ? 'LINK' : 'NO GUN'}</span>
+      <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? (st.wsState === 'bound' ? '' : 'ws') : 'off'}"></span>${st.bleUp ? 'LINK' : 'NO GUN'}</span>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span>
         <button class="camchip ${this.cam ? 'on' : ''}" data-act="onToggleCam"><span class="unskew10">◉ CAM${this.cam ? ' ON' : ''}</span></button></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
@@ -177,13 +177,15 @@ export class Hud {
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths);
+      const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? (st.wsState === 'bound' ? '' : 'ws') : 'off'); if (dot.className !== cls) dot.className = cls; }
     }
   }
 
   // ---------- chips (WS / BLE / resync / tutorial) ----------
   _chips(st) {
     const pills = [];
-    if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') pills.push(`<span class="pill warn"><span class="unskew">RECONNECTING TO MISSION CONTROL…</span></span>`);
+    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">MC REFUSED: ${esc(String(st.wsReason || 'refused')).toUpperCase()}</span></span>`);
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') pills.push(`<span class="pill warn"><span class="unskew">RECONNECTING TO MISSION CONTROL…</span></span>`);
     if (st.phase !== 'idle' && !st.bleUp) pills.push(`<span class="pill bad"><span class="unskew">GUN LINK LOST — RECONNECTING</span></span>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live') pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);
     const prompt = st.resync ? `<div class="prompt"><span class="unskew">GUN RELINKED — ${esc(st.resync.prompt).toUpperCase()}</span></div>` : '';

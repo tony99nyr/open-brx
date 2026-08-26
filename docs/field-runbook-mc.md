@@ -56,7 +56,9 @@ Verify the install with no hardware and no phones:
 
 ```bash
 python -m brx_mcp.mc --fake-net        # in-memory node transport + demo nodes
-# open http://127.0.0.1:8765/  → you should see the console reach the muster phase
+# it prints  Mission Control  http://127.0.0.1:8765/#tok=<token> … — open THAT link (the #tok= part is
+# the operator token; without it the console shows an OPERATOR TOKEN REQUIRED prompt — paste the token).
+# On a trusted bench you can skip auth entirely: python -m brx_mcp.mc --fake-net --no-auth
 ```
 
 ---
@@ -87,15 +89,24 @@ already sets the cleartext + Wi-Fi permissions and forces landscape):
 ```bash
 source .venv/bin/activate
 python -m brx_mcp.mc                    # real node server; add --host 0.0.0.0 to bind all interfaces
-# prints:  Mission Control  http://<ip>:8765/   nodes: ws://<ip>:8766/ws
+# prints:  Mission Control  http://<ip>:8765/#tok=<token>   nodes: ws://<ip>:8766/ws
+#          (a new operator token every launch; --token <fixed> to choose it; --no-auth on a trusted bench)
 ```
 
 Flags (`brx_mcp/mc/__main__.py`): `--host` (default `0.0.0.0`), `--port` (UI, default **8765**),
-`--ws-port` (nodes, default **8766**), `--fake-net` (no phones — dry run).
+`--ws-port` (nodes, default **8766**), `--fake-net` (no phones — dry run), `--token <t>` (fixed operator
+token), `--no-auth` (no token — trusted bench only).
 
-Open `http://<ip>:8765/` in the Mac's browser. The UI shows the **join QR** (the `ws://` URL) for
-phones to scan, and steps through the phases below. A tablet/second laptop on the same LAN can open the
-same URL as a roaming console.
+**Operator token.** Every mutating console action (`POST/PUT/PATCH/DELETE /api/*`, and the live `/ui-ws`
+feed) needs the per-launch operator token; read-only GETs are open so a spectator can watch. Open the
+**exact link the server prints** (`…/#tok=<token>`) — the console stores the token and strips it from the
+address bar. A bookmark without `#tok=` (or after a restart, which mints a new token) shows the **OPERATOR
+TOKEN REQUIRED** prompt: paste the token from the server's console line and tap APPLY.
+
+Open the printed `http://<ip>:8765/#tok=<token>` link in the Mac's browser. The UI shows the **join
+QR** (the `ws://` URL) for phones to scan, and steps through the phases below. A tablet/second laptop on
+the same LAN can open the **same `#tok=` link** as a roaming console (a bare `http://<ip>:8765/` gets the
+read-only board plus the token prompt).
 
 ---
 
@@ -188,6 +199,10 @@ Other field issues:
   this. `[UNVERIFIED]` phone auto-reconnect across an MC IP change.
 - **Nothing connects at all** → check the Mac's firewall isn't blocking `8765`/`8766`, and that phones
   and Mac are on the **same** LAN (not the router's guest network).
+- **Console shows OPERATOR TOKEN REQUIRED** → open the `#tok=` link the server printed, or paste the
+  token from that console line. **MC OFFLINE with the server clearly running** → almost always a wrong or
+  stale token (a bookmark without `#tok=`, or the server was restarted and minted a new one) — open the
+  freshly printed link.
 
 ---
 

@@ -6,6 +6,7 @@ run for real: `.venv/bin/python run_tests.py mc_e2e`. Findings go to the M-NET/s
 from __future__ import annotations
 
 from e2e_util import HAVE_WS, Stack, skip, run, until, GUN_ECHO
+import asyncio
 
 
 def _num(p):
@@ -267,8 +268,9 @@ def test_hot_swap_preserves_shots_total():
             na.fire(10)                                    # A fires 10 → reported via status.shots
             assert await until(lambda: s.session.scorer.shots_total(a["player_id"]) >= 10, 5.0), \
                 "A's shots reached the scorer"
-            await na.close()                               # A's phone dies — its socket drops (A8: a live/fresh
-            #   socket would legitimately block a keyless re-claim for STALE_AFTER_MS; a dead phone closes)
+            await na.close()                               # A's phone dies — its socket drops (A8: the record
+            #   stays FRESH for STALE_AFTER_MS and blocks a keyless re-claim; only a stale one is displaced)
+            s.net.stale_after_ms = 300; await asyncio.sleep(0.5)
             # hot-swap: a NEW node_id binds the SAME gun → old shots fold into the baseline (A6.2)
             na2 = await s.connect_node("GUN-A", node_id="GUN-A-swap")
             assert await until(lambda: na2.player_id == a["player_id"], 5.0), "swapped phone hydrated by gun"
@@ -297,7 +299,9 @@ def test_wiped_install_resumes_seq_and_scores():
             bid = nb.node_id
             await nb.close()
 
-            # reinstalled app: SAME node_id, storage wiped (seq_next back to 1)
+            # reinstalled app: SAME node_id, storage wiped (seq_next back to 1, no node_key) — allowed once the
+            # old record is STALE (A8/HIGH-3: a fresh one is still its owner's)
+            s.net.stale_after_ms = 300; await asyncio.sleep(0.5)
             fresh = await s.connect_node("GUN-B", node_id=bid)
             assert await until(lambda: fresh.seq_hi_seen == hi and fresh.seq_next == hi + 1, 5.0), \
                 f"reinstalled node must resume seq from MC high-water {hi} (welcome), got {fresh.seq_next}"

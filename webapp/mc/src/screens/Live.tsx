@@ -8,6 +8,7 @@ const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr
 
 export function Live() {
   const { state, feed, run, api, serverNow, connected } = useStore();
+  const [endConfirm, setEndConfirm] = useState(false);
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   if (!state) return null;
@@ -53,7 +54,15 @@ export function Live() {
             </div>
             <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim, marginTop: 8 }}>K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE".</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <GhostButton onClick={() => run(() => api.control('end'))} title="Early end: reaches only nodes in range; the rest end at the time limit">END MATCH EARLY</GhostButton>
+              {endConfirm ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>FREEZE SCORING NOW? LATER KILLS WON'T COUNT.</span>
+                  <GhostButton color={T.bad} border={T.bad} onClick={() => { setEndConfirm(false); run(() => api.control('end')); }}>CONFIRM END</GhostButton>
+                  <GhostButton onClick={() => setEndConfirm(false)}>CANCEL</GhostButton>
+                </span>
+              ) : (
+                <GhostButton onClick={() => setEndConfirm(true)} title="Early end: reaches only nodes in range; the rest end at the time limit (confirm step)">END MATCH EARLY</GhostButton>
+              )}
               <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => run(() => api.control('recall'))}>RECALL</GhostButton>
               <span style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT {fmtClock(lv.time_limit_s)}.</span>
             </div>

@@ -49,6 +49,7 @@ class Scorer:
         self.players = players
         self.teams = {t["team_id"]: t for t in teams}
         self.node_player = node_player            # node_id -> player_id (Session keeps it current)
+        self.mismatched = 0                       # facts dropped because their player_id != the node's binding
         self.synced_at_lobby = synced_at_lobby    # node_id -> bool
         self.win_by = win_by
         self.on_feedback = on_feedback or (lambda pid, body: None)
@@ -92,8 +93,15 @@ class Scorer:
         st.shots = 0
 
     # ---- helpers ----
-    def _pid(self, node_id: str, ev: Event) -> str | None:
-        return ev.get("player_id") or self.node_player.get(node_id)
+    def _pid(self, node_id: str, body: dict) -> str | None:
+        """The server's binding is the only identity a fact gets. A body whose player_id disagrees with the node's
+        binding is dropped (and counted) — a node can only ever speak for the player MC bound it to."""
+        pid = self.node_player.get(node_id)
+        claimed = body.get("player_id")
+        if claimed and claimed != pid:
+            self.mismatched += 1
+            return None
+        return pid
 
     def _eff_t(self, node_id: str, ev: Event, t_recv: int, rebase: int | None) -> int:
         if rebase is not None:
@@ -123,7 +131,7 @@ class Scorer:
 
     # ---- ingestion ----
     def ingest_status(self, node_id: str, body: dict, t_recv: int) -> None:
-        pid = body.get("player_id") or self.node_player.get(node_id)
+        pid = self._pid(node_id, body)
         if not pid or pid not in self.stats:
             return
         st = self.stats[pid]

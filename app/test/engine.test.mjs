@@ -347,3 +347,56 @@ test('weaponName follows the active slot', () => {
   h.frame('$ALCD,6,100,1,24,0,*');
   assert.equal(h.eng.weaponName, 'SHOTGUN');
 });
+
+// ---------- polish iteration 3 ----------
+test('MC-first late joiner: welcome carries a running start, gun links from LOBBY → ARMED (and LIVE after T-0)', () => {
+  const h = harness();
+  const T = h.eng.now() + 20_000;
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, config: h.config, frames: h.bundle,
+    start: { match_id: 'm1', go_live_t: T, config_id: golden.config_id, seq: 1, countdown_s: 20 } });
+  assert.equal(h.eng.phase, 'idle', 'no gun yet → stays idle');
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(h.eng.phase, 'armed', 'schedule reconciled from LOBBY, not stuck');
+  h.adv(20_000 + 100); h.eng.tick();
+  assert.equal(h.eng.phase, 'live', 'spawned at T-0');
+  assert.ok(h.writes.some(f => f.startsWith('$AMMO,')), 'spawn tail written');
+});
+
+test('resync head with slot 1 active: echo + refill book 0 shots (activeSlot reset to 0)', () => {
+  const h = goLive(harness());
+  h.player.loadout.weapons.push({ weapon_id: 'shotgun' });
+  h.frame('$ALCD,6,100,1,24,0,*'); h.frame('$ALCD,5,100,1,24,0,*');   // shotgun fired once
+  assert.equal(h.eng.activeSlot, 1); assert.equal(h.eng.shots, 1);
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*'); h.frame('$BUT,2,1,*'); h.adv(1600); h.eng.tick();   // → head re-write
+  assert.equal(h.eng.activeSlot, 0, '$CLEAR puts the gun on slot 0');
+  h.frame('$LCD,0,0,0,0,0,0,*');
+  h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  assert.equal(h.eng.shots, 1, 'no phantom shots from the head echo / refill');
+  h.frame('$ALCD,6,100,1,24,0,*');
+  assert.equal(h.eng.shots, 1, 'first slot-1 reading after the head is a baseline, not 30 shots');
+});
+
+test('local panic: the same schedule re-delivered by a welcome is refused; a newer seq re-arms', () => {
+  const h = goLive(harness());
+  h.eng.control({ cmd: 'panic' });
+  assert.equal(h.eng.phase, 'kitted');
+  const same = { match_id: 'm1', go_live_t: h.eng.now() + 5000, config_id: golden.config_id, seq: 1, countdown_s: 5 };
+  h.eng.hydrate({ start: same });
+  assert.notEqual(h.eng.phase, 'armed', 'not re-armed by the stale schedule');
+  const r = h.eng.startAt(same); assert.equal(r.ok, false); assert.equal(r.reason, 'panicked');
+  h.config_(); h.echo();                                     // MC re-pushes config after a panic → back to LOBBY
+  const newer = { ...same, seq: 2 };
+  assert.equal(h.eng.startAt(newer).ok, true, 'a newer schedule is accepted');
+  assert.equal(h.eng.phase, 'armed');
+});
+
+test('KITTED + match over + BLE relink does not re-write the head or clear the match-over screen', () => {
+  const h = goLive(harness({ timeLimit: 60 }));
+  h.adv(61_000); h.eng.tick();
+  assert.ok(h.eng.ended); assert.equal(h.eng.phase, 'kitted');
+  const before = h.writes.length;
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(!h.writes.slice(before).includes('$START,*'), 'no head re-write over the match-over screen');
+  assert.ok(h.eng.ended, 'still ended');
+});

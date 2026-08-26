@@ -146,6 +146,7 @@ def test_hot_swap_shots_baseline():
     sc, _, _ = mk()
     sc.ingest_status("n0", {"player_id": "p0", "shots": 40, "alive": True}, T0 + 1000)
     sc.rebind_node("p0")
+    sc.node_player["n9"] = "p0"          # Session binds the new node first; a body's player_id alone never counts
     sc.ingest_status("n9", {"player_id": "p0", "shots": 5, "alive": True}, T0 + 2000)
     assert sc.shots_total("p0") == 45 and next(r for r in sc.rows() if r["player_id"] == "p0")["shots_total"] == 45
 

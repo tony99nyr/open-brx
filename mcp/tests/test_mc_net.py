@@ -297,7 +297,8 @@ def test_storage_reset_seq_next_resume():
             node.take_hit(19, 2, 9)
             assert await _until(lambda: h.net.nodes["n1"].seq_hi == 3)
             await node.close()
-            # "reinstalled" app: same node_id, seq restarts at 1
+            # "reinstalled" app: same node_id, seq restarts at 1, no key — only once the record is stale (A8)
+            h.net.stale_after_ms = 300; await asyncio.sleep(0.5)
             fresh = MockNode(h.url, node_id="n1", heartbeat_ms=100)
             await fresh.start()
             await fresh.wait_connected()

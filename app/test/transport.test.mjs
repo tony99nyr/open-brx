@@ -179,3 +179,18 @@ test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, 
     t2.close();
   } finally { tell({ quit: 1 }); srv.kill(); }
 });
+
+test('transport: a server refusal (4003 in use / 4001 version) stops the reconnect loop and reports the reason', async () => {
+  const sockets = [];
+  const store = memoryStorage();
+  const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  const states = []; t.onState(s => states.push(s));
+  const p = t.connect({ url: 'ws://x/ws' });
+  sockets[0].open();
+  sockets[0].onclose({ code: 4003, reason: 'gun in use' });
+  await assert.rejects(p, /refused.*gun in use.*4003/);
+  await new Promise(r => setTimeout(r, 15));
+  assert.equal(sockets.length, 1, 'no reconnect after a refusal');
+  assert.equal(t.state, 'rejected'); assert.equal(t.rejected.code, 4003); assert.ok(t.closed);
+  assert.ok(states.includes('rejected'));
+});
