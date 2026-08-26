@@ -767,6 +767,7 @@ class Session:
             cues = (self.bundles.get(pid) or {}).get("cues") or {}
             if cues.get(body.get("kind")):
                 body = {**body, "cue": cues[body["kind"]]}   # A6.3: a full $PLAY frame
+            body.setdefault("player_id", pid)                # envelope requires it; a node silently DROPS a feedback without it
             self.net.push(p["node_id"], "feedback", body)
 
     def _on_feed(self, entry: dict):
