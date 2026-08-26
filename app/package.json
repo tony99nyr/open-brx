@@ -2,7 +2,7 @@
   "name": "brx-companion-app",
   "version": "0.1.0",
   "private": true,
-  "description": "BRX native BLE app (Capacitor) \u2014 Android + iOS from one codebase",
+  "description": "BRX native BLE app (Capacitor) — Android + iOS from one codebase",
   "scripts": {
     "build": "esbuild src/app.js --bundle --format=iife --outfile=www/app.js",
     "sync": "npm run build && npx cap sync",
@@ -29,6 +29,7 @@
     "@capacitor/share": "^8.0.1"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "playwright": "^1.62.1"
   }
 }
