@@ -77,6 +77,7 @@ export function createHttpApi(): Api {
     },
     scan: (duration_s = 6) => post('/api/armory/scan', { duration_s }),
     armory: () => j('/api/armory'),
+    setPhase: (phase: string) => post('/api/phase', { phase }),
     getModes: () => j('/api/modes'),
     getWeapons: () => j('/api/weapons'),
     putConfig: (partial: Partial<GameConfig>) => j('/api/config', { method: 'PUT', body: JSON.stringify(partial) }),

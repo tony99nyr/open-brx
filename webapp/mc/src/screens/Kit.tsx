@@ -3,12 +3,12 @@ import type { Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, CLS_COLOR, F, T, TAB, fmtAge, teamColor } from '../tokens';
-import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag, onKey } from '../ui';
+import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag, onKey, PrimaryButton } from '../ui';
 
 export function Kit() {
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
   useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, []);
-  const { state, weapons, selPlayer, setSelPlayer, run, api } = useStore();
+  const { state, weapons, selPlayer, setSelPlayer, run, api, setView } = useStore();
   const [newName, setNewName] = useState('');
   if (!state) return null;
   const players = state.players;
@@ -27,7 +27,7 @@ export function Kit() {
 
   return (
     <div className="screen">
-      <ScreenHeader kicker="[ A3 // KIT-OUT ]" title="Kit Each Player" right={<Progress n={kitted} total={players.length} label="KITTED" />} />
+      <ScreenHeader kicker="[ A3 // KIT-OUT ]" title="Kit Each Player" right={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 14 }}><Progress n={kitted} total={players.length} label="KITTED" /><PrimaryButton size={12} pad="9px 18px" onClick={async () => { await run(() => api.setPhase('lobby')); setView('lobby'); }}>CONTINUE ▸</PrimaryButton></span>} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
         {/* roster */}
         <div style={{ flex: '1 1 250px', maxWidth: 330, display: 'flex', flexDirection: 'column' }}>
@@ -129,6 +129,7 @@ export function Kit() {
                     <NumberCell label="RESERVE" value={selWeapon.reserve} />
                     <NumberCell label="RELOAD" value={selWeapon.reload_s} unit="s" />
                   </div>
+                  {selWeapon.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.55, color: T.dim, maxWidth: '54ch', marginTop: 10 }}>{selWeapon.desc}</div>}
                   {trying[sp.player_id] && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
                       ▲ TRYING OUT ON {sp.display}'S GUN — HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS

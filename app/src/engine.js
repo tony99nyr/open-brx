@@ -220,6 +220,7 @@ export class Engine {
   }
 
   _assign({ player, team, roster }) {
+    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();

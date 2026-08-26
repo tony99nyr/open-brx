@@ -175,7 +175,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             views = []
             for w in cat:
                 st = w.get("stats", {})
-                views.append({"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""),
+                views.append({"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
                               "clip": st.get("mag"), "mags": (st.get("reserve", 0) // max(st.get("mag", 1), 1)),
                               "reserve": st.get("reserve"), "reload_s": round(st.get("reload_ms", 0) / 1000, 1),
                               "dmg": st.get("dmg", st.get("damage", 50)), "rpm": st.get("rof", st.get("rpm", 50)), "rng": st.get("rng", st.get("range_pct", 50)),

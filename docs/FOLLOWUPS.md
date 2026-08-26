@@ -233,3 +233,8 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - Verify on device next bench: KEEP_SCREEN_ON flag present (`dumpsys window`), cam permission prompt + preview,
   countdown by ear (single count, no stacking), result screen after a real match. Webview devtools now
   enabled in debug builds (`webContentsDebuggingEnabled`) — `adb forward tcp:9224 localabstract:webview_devtools_remote_<pid>`.
+- **$WEAP tok3/tok4 naming** — captured frames all carry the $SIR protocol number at tok3 (charge 8, gas 11,
+  melee 13, rocket 10), so wire.proto lives there; but the metadata order (damageType vs powerType) and the
+  SUBTYPE-at-tok4 guess (sniper 1 / AMR 3) are unpinned — one-field Callsign capture arbitrates (brx-opus2).
+- **Rocket desc couples to default health** — the blurb says 115 beats a default kit (45+70); update if the
+  default health block changes.

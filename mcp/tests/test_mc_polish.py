@@ -783,3 +783,15 @@ def test_zero_event_match_finalizes_when_nodes_are_live_and_empty():
     s.scorer.stats[ps[0]["player_id"]].flushed = False
     r2 = s.recap()
     assert r2["provisional"] is True
+
+
+def test_new_match_reassigns_bound_nodes():
+    """2026-08-26: NEW MATCH left phones on MATCH COMPLETE — new_session must push a fresh assign."""
+    from test_mc_state import mk, online
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    before = len(net.pushes("assign"))
+    s.new_session(keep_roster=True)
+    pushes = net.pushes("assign")
+    assert len(pushes) > before, "no assign pushed on new_session"
+    assert pushes[-1][1] == "assign" and pushes[-1][2]["player"]["player_id"] == ps[0]["player_id"]

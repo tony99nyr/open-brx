@@ -905,6 +905,14 @@ class Session:
         if keep_roster:
             for p in self.players.values():
                 p["ready"] = False
+            # tell every bound node the new session exists — without this the HUD sat on MATCH COMPLETE
+            # forever after NEW MATCH (Tony, 2026-08-26): a fresh assign resets the node to KITTED.
+            for p in self.players.values():
+                if p.get("node_id"):
+                    try:
+                        self.net.push(p["node_id"], "assign", {"player": p, "team": self.team(p["team_id"]), "roster": self.roster()})
+                    except Exception:
+                        pass
         else:
             self.players = {}
             self.node_player = {}

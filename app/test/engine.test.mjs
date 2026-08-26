@@ -457,3 +457,16 @@ test('config-echo $ALCD cannot poison the mag denominator (real-gun reload/pips 
   assert.equal(st.mag, 6, 'denominator comes from the bundle $AMMO, not the config echo (got ' + st.mag + ')');
   assert.equal(st.ammo, 6);
 });
+
+
+test('a fresh assign after match end leaves the MATCH COMPLETE screen (new-match flow)', () => {
+  const h = harness().kit().config_();
+  h.adv(1600); h.echo(); h.eng.tick();
+  h.start(0); h.eng.tick();
+  h.eng._endLocal('test-end');
+  h.eng.ackEnd();
+  assert.equal(h.eng.ended, true);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
+  assert.equal(h.eng.ended, false, 'assign resets the over screen');
+  assert.equal(h.eng.phase, 'kitted');
+});

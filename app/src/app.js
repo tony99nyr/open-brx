@@ -151,12 +151,28 @@ Object.assign(hud.h, {
   onReconnectGun: () => { if (link.deviceId) link._reconnect(); },
   onReconnectMc: () => connectMc(settings.mcUrl),
   onEndOk: () => { engine.ackEnd(); },
-  onPanic: () => { if (confirm('PANIC: clear the gun now?')) engine.control({ cmd: 'panic' }); },
+  // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
+  // re-push — a mishit mid-game ruins their match. Fleet safety = MC's PANIC + the physical power switch.
   onShareLog: async () => {
+    // 1. queue the log to MC over the wire (log_offer + chunked log_data — the contract's log path)
+    try {
+      if (transport && transport.state === 'bound') {
+        const text = logLines.join('\n') + '\n' + JSON.stringify(engine.state());
+        const bytes = new TextEncoder().encode(text);
+        transport.report('log_offer', { bytes: bytes.length, lines: logLines.length });
+        const CHUNK = 40 * 1024;
+        for (let o = 0, seq = 0; o < text.length; o += CHUNK, seq++) {
+          transport.report('log_data', { seq, chunk: text.slice(o, o + CHUNK), last: o + CHUNK >= text.length });
+        }
+        log('log sent to MC', 'lk');
+      }
+    } catch (e) { log('log→MC: ' + (e && e.message || e), 'le'); }
+    // 2. local share/copy still works (field debugging without MC)
     const text = logLines.join('\n') + '\n' + JSON.stringify(engine.state());
     try { if (plugins.share) await plugins.share.share({ title: 'BRX node log', text }); else await navigator.clipboard.writeText(text); log('log shared/copied', 'lk'); }
     catch (e) { log('share: ' + (e && e.message || e), 'le'); }
   },
+  onCloseDiag: () => hud.toggleDiag(),
   onDemo: () => { location.search = '?demo'; },
   onHaptic: k => haptic(k),
 });

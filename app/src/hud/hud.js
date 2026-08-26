@@ -321,6 +321,6 @@ export class Hud {
       <h3>TIMINGS</h3><div class="kv">${kv(d.timings || {})}</div>
       <h3>LAST FRAMES</h3><pre>${esc((d.frames || []).map(f => `${f.dir === 'tx' ? '>>' : '<<'} ${f.f}`).join('\n'))}</pre>
       <h3>LOG</h3><pre>${esc((d.log || []).join('\n'))}</pre>
-      <div class="btns"><button data-act="onReconnectGun">RECONNECT GUN</button><button data-act="onReconnectMc">RECONNECT MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button><button class="danger" data-act="onPanic">PANIC</button></div>`;
+      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE ✕</button><button data-act="onReconnectGun">RECONNECT GUN</button><button data-act="onReconnectMc">RECONNECT MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
   }
 }

@@ -2,12 +2,12 @@ import { useState } from 'react';
 import type { GameConfig } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox, onKey } from '../ui';
+import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox, onKey, PrimaryButton } from '../ui';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
 
 export function Build() {
-  const { state, modes, run, api } = useStore();
+  const { state, modes, run, api, setView } = useStore();
   const [extras, setExtras] = useState(false);
   if (!state) return null;
   const cfg = state.config;
@@ -65,7 +65,10 @@ export function Build() {
               </div>
             </div>
           )}
-          {(state.config_warnings?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <PrimaryButton onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
+      </div>
+      {(state.config_warnings?.length ?? 0) > 0 && (
             <div style={{ marginTop: 10, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {state.config_warnings!.join(' · ').toUpperCase()}</div>
           )}
           {state.config_errors.length > 0 && (

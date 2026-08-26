@@ -8,7 +8,7 @@ import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, SegBar, Tag 
 const statusColor = (s: ReadinessRow['status']) => (s === 'red' ? T.bad : s === 'amber' ? T.warn : T.ok);
 
 export function Armory() {
-  const { state, run, api } = useStore();
+  const { state, run, api, setView } = useStore();
   const [scanning, setScanning] = useState(false);
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
   useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, [state?.readiness?.t]);
@@ -34,7 +34,8 @@ export function Armory() {
             <CountBlock value={nRed} label="RED" color={nRed ? T.bad : T.micro} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-            <div style={{ font: F.osw(700, 22), letterSpacing: '.3em', padding: '8px 26px 8px 32px', background: nRed ? T.bad : nGreen ? T.ok : T.panelAlt, color: nRed || nGreen ? T.accInk : T.dim, border: nRed || nGreen ? 'none' : `1px solid ${T.line2}`, clipPath: CHAMFER.tl14 }}>{nRed ? 'HOLD' : nGreen ? 'GO' : 'STANDBY'}</div>
+            <button type="button" className={nRed ? '' : 'hov-accbg'} disabled={!!nRed} onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
+              style={{ font: F.osw(700, 22), letterSpacing: '.3em', padding: '8px 26px 8px 32px', background: nRed ? T.bad : nGreen ? T.ok : T.panelAlt, color: nRed || nGreen ? T.accInk : T.dim, border: 'none', clipPath: CHAMFER.tl14, cursor: nRed ? 'not-allowed' : 'pointer', minHeight: 44 }}>{nRed ? 'HOLD' : 'CONTINUE ▸'}</button>
             <div role="status" aria-live="polite" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim }}>{gateNote}</div>
           </div>
         </>

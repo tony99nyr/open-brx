@@ -18,10 +18,27 @@ let WS = '';   // read from lan.ws_url — the NetServer binds the LAN IP, NOT l
 // ---------- tiny framework ----------
 const results = []; const findings = [];
 let curFlow = 'boot'; let shotN = 0;
+let failN = 0;
 const step = async (name, fn) => {
   const t0 = Date.now();
   try { await fn(); results.push({ flow: curFlow, name, ok: true, ms: Date.now() - t0 }); console.log(`  ✓ ${name}`); }
-  catch (e) { results.push({ flow: curFlow, name, ok: false, ms: Date.now() - t0, err: String(e.message || e).slice(0, 300) }); console.log(`  ✖ ${name} — ${e.message}`); }
+  catch (e) {
+    results.push({ flow: curFlow, name, ok: false, ms: Date.now() - t0, err: String(e.message || e).slice(0, 900) });
+    console.log(`  ✖ ${name} — ${e.message}`);
+    // forensic capture: the exact screens + clickable inventory at the moment of failure
+    try {
+      const tag = `FAIL${String(++failN).padStart(2, '0')}`;
+      for (const [nm, pg] of [['mc', mc], ['hudA', hudA], ['hudB', hudB]]) {
+        if (pg) await pg.screenshot({ path: path.join(OUT, `${tag}-${nm}.png`) }).catch(() => {});
+      }
+      if (mc) {
+        const btns = await mc.evaluate(() => [...document.querySelectorAll('button')].map(b => ({ t: (b.textContent || '').trim().slice(0, 26), d: b.disabled, v: b.offsetParent !== null })).filter(b => b.t));
+        console.log(`    [forensics] mc buttons: ${JSON.stringify(btns)}`);
+        const stt = await fetch(MC + '/api/state').then(r => r.json()).catch(() => null);
+        if (stt) console.log(`    [forensics] phase=${stt.phase} go=${stt.readiness?.go} board=${JSON.stringify((stt.readiness?.board || []).map(r => [r.sticker, r.status, (r.blockers || [])[0]]))}`);
+      }
+    } catch { /* forensics must never mask the failure */ }
+  }
 };
 const flow = (name) => { curFlow = name; console.log(`\n■ ${name}`); };
 const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
@@ -112,8 +129,12 @@ await step('scan armory from the UI → rows appear', async () => {
   await until(async () => (await mc.locator(`text=${guns[0].gun_id}`).count()) > 0, 8000, 'armory row rendered');
   await shot(mc, 'armory-scanned'); await tapAudit(mc, 'armory'); await textAudit(mc, 'armory');
 });
+await step('CONTINUE ▸ on Armory advances to Build (dead GO chip regression)', async () => {
+  await mc.click('button:has-text("CONTINUE ▸")');
+  await until(async () => (await st()).phase === 'build', 6000, 'server phase build');
+  await until(async () => (await mc.locator('text=BUILD THE GAME').count()) > 0, 6000, 'Build screen visible');
+});
 await step('mode cards switch + briefing follows + art present', async () => {
-  await mc.click('text=BUILD');
   await mc.locator('div[role="button"]:has-text("FREE-FOR-ALL")').first().click();
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa applied');
   await until(async () => /FREE/i.test(await mc.locator('text=/MODE BRIEFING/i').first().textContent().catch(() => '') || ''), 6000, 'briefing follows the mode');
@@ -125,11 +146,15 @@ await step('config: fast respawn + short match for the run', async () => {
   const r = await api('PUT', '/api/config', { time_limit_s: 120, respawn: { type: 'auto', delay_s: 4 } });
   expect(r.ok, 'config PUT failed: ' + JSON.stringify(r.errors));
 });
+await step('CONTINUE ▸ on Build advances to Kit', async () => {
+  await mc.click('button:has-text("CONTINUE ▸")');
+  await until(async () => (await st()).phase === 'kit', 6000, 'server phase kit');
+});
 await step('guard: PUSH disabled with an empty roster', async () => {
   await mc.click('text=LOBBY');
   const dis = await mc.locator('button:has-text("PUSH CONFIG & ARM")').first().isDisabled().catch(() => null);
   expect(dis !== false, 'push button clickable with no players');
-  await mc.click('text=KIT');
+  await mc.click('text=KIT');   // back to kit for the join flow
 });
 
 // ═══ F2 · roster + both HUDs join (typed-URL UX and fast path) ═══
@@ -182,6 +207,22 @@ await step('hudA shows the try-out hero panel (art + stats)', async () => {
   expect(bg.includes('smg.jpg'), 'panel art is not smg.jpg');
   await shot(hudA, 'hudA-tryout'); await shot(mc, 'kit-trying');
 });
+await step('weapon description renders in the hero panel', async () => {
+  await until(async () => (await mc.locator('text=/a hit every/i').count()) > 0, 6000, 'desc text visible');
+});
+await step('voice change makes the TAGGER speak (apply.preview reaches the gun)', async () => {
+  const before = await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length);
+  await mc.click('button:has-text("FEMALE")');
+  await until(async () => (await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length)) > before, 8000, 'a $PLAY frame reached the fake gun');
+});
+await step('diag panel: SHARE LOG ships to MC; PANIC is gone (player-side panic bricks the player)', async () => {
+  await hudA.click('#info');
+  expect((await hudA.locator('button:has-text("PANIC")').count()) === 0, 'HUD diag must not offer PANIC');
+  await hudA.click('button:has-text("SHARE LOG")');
+  await until(async () => (await hudA.evaluate(() => window.brx.log.join(' '))).includes('log sent to MC'), 6000, 'log queued to MC');
+  await hudA.click('button:has-text("CLOSE ✕")');
+  await until(async () => (await hudA.locator('button:has-text("SHARE LOG")').isVisible().catch(() => false)) === false, 4000, 'diag panel closed');
+});
 await step('END TRY-OUT clears the panel', async () => {
   await mc.click('text=END TRY-OUT');
   await until(async () => (await hudA.locator('.tryout').count()) === 0, 6000, 'panel gone');
@@ -197,7 +238,11 @@ await step('both HUDs tap READY UP', async () => {
   await until(async () => (await st()).readiness.go === true, 20000, 'readiness green-light');
 });
 await step('PUSH CONFIG & ARM from the Lobby UI → 2/2 acked', async () => {
-  await mc.click('text=LOBBY');
+  // all-ready AUTO-advances kit→lobby (the view follows) — only click Kit's CONTINUE if that didn't happen
+  if ((await st()).phase !== 'lobby') { await mc.click('button:has-text("CONTINUE ▸")'); }
+  await until(async () => (await st()).phase === 'lobby', 6000, 'server phase lobby');
+  await until(async () => (await mc.locator('button:has-text("PUSH CONFIG & ARM")').count()) > 0, 6000, 'lobby rail visible');
+  expect((await mc.locator('text=00:10').count()) > 0, 'quick 10s runway preset missing');
   await mc.click('button:has-text("PUSH CONFIG & ARM")');
   await until(async () => { const s = await st(); const a = s.lobby.acks || {}; return Object.values(a).filter(x => x.ok).length === 2; }, 20000, '2 acks');
   await until(async () => (await mc.locator('button:has-text("ARM COUNTDOWN")').count()) > 0, 8000, 'arm button');
@@ -247,6 +292,34 @@ await step('BRAVO fires; ALPHA takes hits → TAKING FIRE state', async () => {
   await until(async () => (await hudA.locator('.takingfire').count()) > 0 || (await hudState(hudA)).hp < 45 || true, 3000, 'hit registered');
   await shot(hudA, 'hudA-taking-fire');
 });
+await step('NIGHT OPS live layout: stats must not stack on the ammo corner (regression)', async () => {
+  await hudA.evaluate(() => { window.brx.engine.night = true; window.brx.engine._changed(); });
+  await hudA.waitForTimeout(400);
+  await shot(hudA, 'hudA-night-live');
+  const ov = await overlapAudit(hudA, 'hud-night-live', ['.stats', '.ammo', '.vitals', '.clockplate']);
+  expect(ov.length === 0, 'night live overlaps: ' + ov.join('; '));
+  await hudA.evaluate(() => { window.brx.engine.night = false; window.brx.engine._changed(); });
+  await hudA.waitForTimeout(300);
+});
+await step('RELOAD warns only when actually low; pips track the real mag (loadout-agnostic)', async () => {
+  const M = await hudA.evaluate(() => window.brx.engine.state().mag);
+  expect(M > 0, 'engine must know the mag');
+  const toHalf = M - Math.ceil(M * 0.6);
+  await hudA.evaluate(n => window.fakeGun.fire(n), toHalf);          // ~60% full
+  await hudA.waitForTimeout(400);
+  expect((await hudA.locator('.reload').count()) === 0, `RELOAD must not nag at ~60% of ${M}`);
+  const st1 = await hudA.evaluate(() => window.brx.engine.state());
+  const lit = await hudA.locator('.alive .pips i:not(.spent)').count();
+  const want = Math.round(12 * st1.ammo / st1.mag);
+  expect(Math.abs(lit - want) <= 1, `pips ${lit}/12 should track ${st1.ammo}/${st1.mag} (want ~${want})`);
+  const low = Math.max(0, st1.ammo - Math.max(1, Math.floor(M * 0.1)));
+  await hudA.evaluate(n => window.fakeGun.fire(n), low);             // down to ~10%
+  await hudA.waitForTimeout(400);
+  expect((await hudA.locator('.reload').count()) > 0, `RELOAD must warn at ~10% of ${M}`);
+  await hudA.evaluate(() => window.fakeGun.reload());
+  await hudA.waitForTimeout(400);
+  expect((await hudA.locator('.reload').count()) === 0, 'RELOAD clears on a fresh mag');
+});
 await step('kill → DOWN overlay names the killer; MC live rows score it exactly', async () => {
   await hudA.evaluate(n => window.fakeGun.kill(n, 2), pB.player_num);
   await until(async () => (await hudA.locator('.mo.down').count()) > 0, 6000, 'DOWN overlay');
@@ -292,7 +365,17 @@ await step('HUDs show GAME OVER result with stats; OK → MATCH COMPLETE', async
   await shot(hudA, 'hudA-result'); await shot(hudB, 'hudB-result'); await tapAudit(hudA, 'hud-result');
   const ov = await overlapAudit(hudA, 'hud-result', ['.result .banner', '.result .rstats', '.result .sess', '.result .foot .ready', '.result .syncline']);
   expect(ov.length === 0, 'result-screen elements overlap: ' + ov.join('; '));
-  expect((await hudA.locator('.result .syncline').textContent()).includes('SENT TO THE HOST'), 'result must confirm score delivery');
+  await hudA.setViewportSize({ width: 740, height: 340 });      // shorter real-phone aspect
+  await hudA.waitForTimeout(300);
+  const ov2 = await overlapAudit(hudA, 'hud-result-short', ['.result .banner', '.result .rstats', '.result .foot .ready']);
+  expect(ov2.length === 0, 'result overlaps on a short viewport: ' + ov2.join('; '));
+  await hudA.setViewportSize({ width: 891, height: 411 });
+  try {
+    await until(async () => ((await hudA.locator('.result .syncline').textContent().catch(() => '')) || '').includes('SENT TO THE HOST'), 6000, 'score-delivery confirmation (1s sync poller)');
+  } catch (e) {
+    const ring = await hudA.evaluate(() => { const t = window.brx.transport; return JSON.stringify({ state: t.state, pending: t.ring.pending().map(x => ({ seq: x.seq, type: x.type, match: x.match_id })) }); });
+    throw new Error(e.message + ' — ring ' + ring);
+  }
   await hudA.click('[data-act="onEndOk"]');
   await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) > 0, 6000, 'over screen');
   const hist = await hudA.evaluate(() => JSON.parse(localStorage.getItem('brx.history') || '[]'));
@@ -317,11 +400,12 @@ await step('MC recap: rows + yellow wins + CSV exports', async () => {
   expect(csv.includes('ALPHA') && csv.includes('BRAVO'), 'CSV missing players');
   await shot(mc, 'recap'); await tapAudit(mc, 'recap');
 });
-await step('NEW MATCH → muster, roster kept, HUDs re-kit', async () => {
+await step('NEW MATCH → muster; the HUD LEAVES MATCH COMPLETE and shows READY UP (screen truth, not engine state)', async () => {
   await mc.click('text=NEW MATCH');
   await until(async () => (await st()).phase === 'muster', 8000, 'muster');
   expect((await st()).players.length === 2, 'roster not kept');
-  await until(async () => (await hudState(hudA)).phase === 'kitted', 10000, 'hudA re-kitted');
+  await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) === 0, 10000, 'over screen must clear on new match');
+  await until(async () => (await hudA.locator('[data-act="onReady"]').count()) > 0, 8000, 'READY UP visible for the next match');
 });
 
 // ═══ F8 · guards: panic + evict ═══

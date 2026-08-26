@@ -143,6 +143,7 @@ export interface ModeInfo {
 export interface WeaponView {
   weapon_id: string; name: string; cls: string; clip: number; mags: number; reserve: number;
   reload_s: number; dmg: number; rpm: number; rng: number; verified: boolean;
+  desc?: string;
 }
 
 /** The surface both the real client and the in-browser mock implement. */
@@ -151,6 +152,7 @@ export interface Api {
   subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry) => void, onLink?: (connected: boolean) => void): () => void;
   scan(duration_s?: number): Promise<ScanRow[]>;
   armory(): Promise<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>;
+  setPhase(phase: string): Promise<unknown>;
   getModes(): Promise<ModeInfo[]>;
   getWeapons(): Promise<WeaponView[]>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
