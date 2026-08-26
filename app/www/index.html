@@ -71,12 +71,14 @@ button:active{filter:brightness(1.15)}
 .batt{display:flex;align-items:center;gap:5px}
 .batt .shell{width:24px;height:11px;border:1.5px solid var(--mut);border-radius:2px;position:relative;display:inline-block}
 .batt .fill{position:absolute;inset:2px;background:var(--ok)}
-.camchip{border:1px solid var(--edge);color:var(--mut);font-size:12px;font-weight:700;letter-spacing:.16em;padding:5px 14px;transform:skewX(-10deg);pointer-events:auto;min-height:32px}
+.camchip{border:1px solid var(--edge);color:var(--mut);font-size:12px;font-weight:700;letter-spacing:.16em;padding:5px 14px;transform:skewX(-10deg);pointer-events:auto;min-height:32px;position:relative}
+/* ≥44px glove-tap hit area without growing the 32px visual (in-element pseudo extends the click box) */
+.camchip::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px;min-width:44px}
 .camchip.on{background:var(--glow);color:#04121e;border-color:var(--glow)}
 .stats{position:absolute;top:66px;right:36px;display:flex;gap:12px;font-size:12px;color:var(--mut);font-weight:600}
 .stats b{color:var(--num);font-family:var(--fd);font-size:15px;font-weight:700}
 .stats b.mut{color:var(--mut)}
-.stats .mc{color:var(--ok);font-size:9px;vertical-align:top;font-weight:700}
+.stats .mc{color:var(--ok);font-size:11px;vertical-align:top;font-weight:700}
 .reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;border:1px solid var(--mut);border-radius:50%;opacity:.55}
 .vitals{position:absolute;left:36px;bottom:32px;display:flex;flex-direction:column;gap:7px;width:300px}
 .vitals .nums{display:flex;align-items:baseline;gap:10px}
@@ -251,6 +253,8 @@ button:active{filter:brightness(1.15)}
 .prompt{position:absolute;left:50%;top:150px;transform:translateX(-50%) skewX(-10deg);background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.18em;padding:8px 26px}
 .prompt .unskew{display:inline-block;transform:skewX(10deg)}
 .infobtn{position:absolute;top:24px;right:6px;width:26px;height:26px;border:1px solid var(--edge);color:var(--mut);font:600 13px var(--fl);display:flex;align-items:center;justify-content:center;pointer-events:auto;z-index:5}
+/* ≥44px tap area; the ⓘ visual stays 26px */
+.infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
 [data-env="night"] .infobtn{color:var(--mut);border-color:var(--edge)}
 
 /* ============ diagnostics ============ */

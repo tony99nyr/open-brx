@@ -6,6 +6,8 @@ import { CHAMFER, CLS_COLOR, F, T, TAB, fmtAge, teamColor } from '../tokens';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag, onKey } from '../ui';
 
 export function Kit() {
+  const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
+  useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, []);
   const { state, weapons, selPlayer, setSelPlayer, run, api } = useStore();
   const [newName, setNewName] = useState('');
   if (!state) return null;
@@ -92,7 +94,15 @@ export function Kit() {
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />
-                <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.micro }}>{node?.gun_name ?? sp.gun_id ?? 'NO GUN'} · <span style={{ color: node ? T.ok : T.bad }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : 'NO NODE'}</span></span>
+                <select aria-label={`gun for ${sp.display}`} value={sp.gun_id ?? ''} onChange={e => patch({ gun_id: e.target.value || null })}
+                  style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 32, cursor: 'pointer' }}>
+                  <option value="">— NO GUN —</option>
+                  {registry.map(r => {
+                    const takenBy = players.find(q => q.player_id !== sp.player_id && q.gun_id === r.gun_id);
+                    return <option key={r.gun_id} value={r.gun_id} disabled={!!takenBy}>{r.sticker}{r.ble?.tail ? `-${r.ble.tail}` : ''}{takenBy ? ` · ${takenBy.display}` : ''}</option>;
+                  })}
+                </select>
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: node ? T.ok : sp.gun_id ? T.bad : T.micro }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : sp.gun_id ? 'NO NODE' : 'PICK A GUN'}</span>
                 {node && <EvictButton nodeId={node.node_id} />}
               </div>
             </div>
