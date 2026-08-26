@@ -394,8 +394,10 @@ class Session:
     def set_config(self, patch: dict) -> dict:
         if not isinstance(patch, dict):
             raise ValueError("config must be an object")
-        if self.phase == "recap" and not (isinstance(patch, dict) and patch.get("mode") and patch.get("mode") != self.config.get("mode")):
-            raise ValueError("match is over — pick a NEW MODE on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session")
+        if self.phase == "recap" and not (isinstance(patch, dict) and patch.get("mode")):
+            # only an explicit MODE pick on Build (same mode = "run it back", or a new one) rolls the
+            # finished session forward; other config edits from stale tabs get a clear error instead
+            raise ValueError("match is over — pick a mode on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session")
         if self.phase == "recap":
             # the match is OVER — a config change is the operator starting the next one (Tony,
             # 2026-08-26: "i get an error bc match in progress, but MC knows its over"). Roll the

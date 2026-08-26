@@ -324,7 +324,7 @@ The always-empty positions (secondary-fire ~7–13 and extra-headset ~42–43) a
 left unpinned** by the two samples (44 wire tokens − 38 named members ≈ 6; they occupy a few adjacent
 empty slots) — secondary-fire / extra-headset fields,
 default in both samples — pin them with a one-field Callsign capture (now trivial: change exactly
-that field). Note the **primaryDamageType vs primaryPowerType order (tok 3/4) ~~was unresolved~~ — **t3=damageType is now working truth**: U6 wrote types at t3, the victim echoed them in $HIR tok2 and played the mapped $SIR sound (bench 2026-08-26)**: the
+that field). Note the **primaryDamageType vs primaryPowerType order (tok 3/4) ~~was unresolved~~ — t3=damageType is now working truth: U6 wrote types at t3, the victim echoed them in $HIR tok2 and played the mapped $SIR sound (bench 2026-08-26)**: the
 field-declaration list orders damageType-before-powerType, the table has the reverse, and both read
 `0` on the AR so the diff can't decide — another one-field capture settles it. The charge-sound
 validation (28/29 present only on the charging weapon) makes the sound block certain.

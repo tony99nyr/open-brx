@@ -257,10 +257,10 @@ async function scanQrForMc() {
   ov.append(hint, frame, cancel); document.body.appendChild(ov);
   let stream = null, raf = 0, done = false;
   let stop = () => { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); ov.remove(); };
-  cancel.onclick = stop;
   const onHide = () => { if (document.hidden) stop(); };
   document.addEventListener('visibilitychange', onHide);
   const _stop = stop; stop = () => { document.removeEventListener('visibilitychange', onHide); _stop(); };
+  cancel.onclick = () => stop();
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     video.srcObject = stream; await video.play();

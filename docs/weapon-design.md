@@ -372,7 +372,6 @@ was never a missing field; we were overwriting the right one with the AR's value
 `ar`-derived burst rifle did not burst because the `ar` sample carries neither token.
 
 *Status: **PROVEN 2026-08-26** — one-field bench flip (sniper t20 7→0 single→auto; captured Burst Rifle = true 3-round bursts). See §5 U1.*
-confirmation: take the sniper's frame, flip `t20` from 7 to 0, and it should full-auto.*
 
 ### 4.2 `t41` — range is not differentiated, and that is a real gap
 
