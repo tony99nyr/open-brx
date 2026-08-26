@@ -84,3 +84,24 @@ the board also presented 11-hour-old data as current: now aged/decayed server-si
   localStorage collapsed both HUD pages into one node_id; an inline comment swallowed the config envelope
   spec (every config push silently dropped — third silent-drop incident: assert DELIVERY, not just send).
 - brx-opus session took the HUD lane: tap targets ≥44, labeled plates, human status copy, tiny-text sweep.
+
+## Round 6 retrospective — why Tony's finds slipped past a 34/34 suite, and what changed
+Slips and their mechanism:
+1. **HUD stuck on MATCH COMPLETE after NEW MATCH** — the suite asserted `engine.phase === 'kitted'`,
+   which was ALREADY true underneath the over screen. Lesson: assert the RENDERED SCREEN (visible text,
+   visible buttons), never internal state, for anything a human reported seeing.
+2. **Dead GO chip** — the suite navigated by the stepper, so the CTA a real operator clicks was never
+   clicked. Lesson: the suite must walk the operator's actual path (now: CONTINUE ▸ chain end to end).
+3. **Night-ops layout broken** — night mode was simply never rendered by any test. Lesson: every visual
+   MODE (night, cam-on, short viewports) needs its own sweep, not just every screen.
+4. **Result-screen overlap on the real phone** — one fixed desktop-ish viewport; the phone is shorter.
+   Now: overlap audit re-runs at a short viewport.
+5. **Reload/pips wrong on real guns only** — the fake gun echoed only slot 0; real config echoes carry
+   other slots' clip caps. Lesson: the fake gun must reproduce the FULL bench-captured frame traffic.
+6. **Cam passthrough black** — genuinely device-only (native preview under the webview). Boundary is now
+   explicit: device-only checks live in the bench checklist, not the browser suite.
+Process changes (implemented in tools/e2e.mjs): screen-truth steps for every reported issue; the
+CONTINUE-path walk; voice-preview asserted at the GUN (fakegun.writes); reload thresholds + pip counts;
+short-viewport overlap re-audit; diag-panel content assertions (no PANIC, SHARE LOG ships); runway
+presets. Night sweep lands with the night fix. Rule going forward: every user-reported bug becomes a
+screen-truth e2e step BEFORE the fix is written.
