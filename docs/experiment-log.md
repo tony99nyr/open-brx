@@ -1635,3 +1635,11 @@ t3 = 0 / 6 / 10:
 **Special-weapons recipe, fully proven**: custom IR type + victim $SIR row (chosen sound; damage
 via t5, incl. 0 for heals) + Companion/MC logic keyed on the tok2 echo with full attribution.
 Earlier zero-hit confusion this evening = my overlapping test windows, not hardware (logged for honesty).
+
+## 2026-08-26 (bench) — U9 answered: a bare $WEAP re-push RESETS ammo to the frame's values
+
+mcp/tools/u9_pickup.py on a live gun: AR armed ($AMMO 32/192), then the Burst frame re-pushed with
+NO $AMMO — the gun's next $ALCD read **36/108, the new frame's baked-in clip/reserve**, discarding
+prior ammo state. Design rule: **every weapon pickup/powerup must re-send $AMMO** with the intended
+counts, or the player silently receives the frame's full load. (Depletion-carryover nuance untested
+— no shots were fired between phases this run — but the overwrite is demonstrated.)

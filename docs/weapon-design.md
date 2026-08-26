@@ -411,7 +411,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | **U6** | ~~victim behaviour per damage type~~ ✅ **CLOSED 2026-08-26**: mapped types play a distinct victim hit SFX (presentation only); damage is always t5; type echoes in $HIR tok2 (exp-log). | — | done |
 | **U7** | **Damage ceiling in the IR payload** — Jay reports a ~7–8-bit value (≤ 256) (FOLLOWUPS P10). Our max is 115, so nothing is at risk today, but it caps any future double-damage powerup. | future powerups | Confirm on capture. |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
-| **U9** | **Reserve travels via `$AMMO`, not `$WEAP`.** Hardware-confirmed (§7r watched 384 → 352 → 338). A mid-game `$WEAP` re-push — a weapon pickup — needs its `$AMMO` re-sent too, or the player silently gets the frame's reserve. | weapon pickups / powerups | Re-push a `$WEAP` mid-game and watch `$ALCD`. |
+| **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
 
 **Closed since the first pass:** U0 (fire-mode token → `t20`, §4.1) · U3 (`t19` reload type →
 captured, `Shells` on the shotgun) · the burst-token hunt (native burst is `t20 = 9` + `t23`) ·
