@@ -60,6 +60,7 @@ const settings = {
 
 // ---------- wiring ----------
 const hud = new Hud(document, {});
+try { window.__hud = hud; } catch (_) { /* rig/screen-truth hook */ }
 let transport = null;
 const link = new BrxLink({
   log, onFrame: f => engine.feedFrame(f),

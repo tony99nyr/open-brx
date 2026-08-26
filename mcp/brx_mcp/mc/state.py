@@ -891,6 +891,9 @@ class Session:
                 pass
         self.start_info = None            # no re-hydrating a finished match's `start`
         self.phase = "recap"
+        for _nid in list(self.nodes):        # harvest every phone's log at match end (debug gold, ~1MB cap each)
+            try: self.net.push(_nid, "pull_log", {})
+            except Exception: pass
         self.lobby_pushed = False
         self.acks = {}
         for p in self.players.values():
