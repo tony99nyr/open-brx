@@ -1,8 +1,37 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-08-23, end of the MacBook session. Read `CLAUDE.md` first, then this,
-then `docs/experiment-log.md` (shared lab notebook — **append after every session**).
-Protocol ground truth: `protocol/brx-protocol.md`.
+**Updated:** 2026-08-26, end of the marathon Windows/WSL bench + build session. Read `CLAUDE.md`
+first, then this, then `docs/FOLLOWUPS.md` (all open work incl. the polish-loop deferred-lows
+ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth:
+`protocol/brx-protocol.md` (§6.1 + the t20/overheat/tok1 sections at the end).
+
+> **⚡ LATEST (2026-08-26) — the protocol map is essentially DONE and the arsenal is real.**
+> Bench-proven on live taggers, all committed with evidence + instruments:
+> - **$WEAP**: t5=exact applied damage · t14=fire interval · t15=850 constant (never write) ·
+>   **t20=FIRE MODE** (0 auto / 7 single-bolt / 9 burst / 2·3·14 charge variants / 13 melee — proven
+>   by one-field flip) · t23=burst cycle · **overheat = t24+t35 GATED by t37/t38** (transplantable).
+> - **$HIR fully decoded**: tok1 sensor (0=headset FRONT dome, 1=BACK dome, 4=gun — shield-isolated),
+>   tok2=IR-protocol echo, tok3=shooter pid, tok4=effective team, tok5=damage, tok7=subtype.
+> - **$TID & 3 → four usable teams**; **friendly fire is NOT firmware-enforced** (host-side, as our
+>   scorer already models); $SFLASH latches green unconditionally; $STUN direct = no-op; a bare
+>   $WEAP re-push RESETS ammo (pickups must re-send $AMMO); mapped damage types play their $SIR
+>   sound on the victim (the heal/EMP audio path works).
+> - **All 20 Callsign weapons captured** (`docs/reference/weapons.md`, raw btsnoops in
+>   `protocol/captures/raw/`), catalog **re-based on the real frames** with a zero-dominance
+>   rebalance + surgical sound overrides (byte-diff pinned; `docs/weapon-design.md`).
+> - **MC/app**: session persistence (survives restarts), mDNS+sweep+in-app-QR discovery with
+>   guards, device-first muster (claim a phone+gun in one gesture), dynamic game-state top bar,
+>   weapon-range verdict system on Kit, auto log-pull at match end. Suites: mcp 499/499 (both
+>   pythons), app 37/37, e2e 42/42. Windows MC: double-click `C:\Users\Tony\.brx-mcp\mc-start.bat`.
+> - **Next bench session menu (methods in FOLLOWUPS):** (1) U2 t41 range — fresh-fleet same-spot
+>   A/B 100-vs-5, counted both sides; (2) t37-vs-t38 semantics — two varied-value overheat probes;
+>   (3) sensor-map field-distance validation; then $BUT/$GREN alt-fire + heal/stun damage-type enum
+>   probes for special weapons. **Bench tools**: `mcp/tools/` (hittest = the one-script two-gun
+>   pattern; raw_weapon/firemode_probe/sendframes/weapon_range/…).
+> - **⚠ Fleet ops rules, learned the hard way:** POWER-REST the guns (two day-long-powered taggers
+>   went "screamer": advertise-but-won't-link / connect-then-drop); headsets ON and settled or the
+>   gun silently refuses; one script owning both guns + ONE audible GO beats any window choreography;
+>   Callsign wipes $NAME (re-stamp with `python -m brx_mcp rename`).
 
 > **⚡ LATEST (2026-08-25) — read the newest `experiment-log.md` entries before hardware work.**
 > (1) **The feedback fork is resolved, then resolved AGAIN in our favour.** A BLE-only Mission Control
