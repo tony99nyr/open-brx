@@ -266,3 +266,11 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - **Directional hit mechanics are now buildable** (2026-08-26): $HIR tok1 = 0 front dome / 1 back
   dome / 4 gun body, shield-isolated. Design candidates: backstab bonus, flank callouts, HUD hit
   direction indicator. Field-distance validation recommended before shipping a mode on it.
+
+- **Special weapons & accessories design space (Tony, 2026-08-26).** The protocol natively supports it:
+  (a) the victim-side `$SIR` matrix interprets each IR protocol/subtype separately (sound + undecoded
+  numeric params — likely modifiers) → per-weapon on-target effects; (b) **medic heal-gun**: custom IR
+  protocol + harmless `$SIR` row + Companion reads the `$HIR` tok2 protocol echo and applies +HP —
+  buildable today with attribution; (c) **EMP grenade**: `$STUN` (captured command, NEVER probed) +
+  `$GREN`/`$BUT` (grenade + alt-fire button notifications, unprobed) — bench-probe these three next
+  session; (d) decode the `$SIR` row params (e.g. `90,1,40` / `100,2,60`) — probably damage %/stun.
