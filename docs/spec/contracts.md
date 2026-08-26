@@ -462,6 +462,10 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     **still-live** node_id or gun must present the matching `node_key`, else it is refused (`4003 in_use`).
     A stale holder (no frame for `STALE_AFTER_MS`) is still displaced without a key — legitimate hot-swap of
     a dead phone. Stops a rogue client kicking a live player by echoing their id.
+    The displaced owner's key is remembered: if the displacer later goes stale the returning keyed owner wins the
+    gun back; while the displacer is fresh it keeps the gun (it is the phone mounted on the player — a dead phone
+    rebooting in a pocket must not yank the binding mid-match). The operator can `DELETE /api/nodes/{id}` (EVICT)
+    either one.
   - **A8.3 Hardening (no wire change):** config/roster/start inputs are whitelisted + range-checked (a bad
     value is a 4xx, never a 500 or a crashed tick loop); CSV export neutralises spreadsheet-formula
     injection; `ready`/`ack_config` trust the server's node↔player binding, not a client-supplied id;

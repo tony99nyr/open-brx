@@ -361,17 +361,19 @@ class NetServer:
         now = time.monotonic()
         for other in self._gun_holders(rec, gun_name, gun_tail):
             fresh = self._fresh(other, now)
-            # A8.2 + displaced owner: the key of an owner that a keyless hello displaced while it was out of coverage
-            # is remembered on the displacer, so the returning KEYED phone wins even while the displacer is fresh.
-            proven = presented_key == other.node_key or (bool(presented_key) and presented_key in other.displaced_keys)
+            # A8.2: only the holder's own key proves a claim against a FRESH holder. A keyless hello may still displace a
+            # STALE holder (hot-swap of a dead phone). The displaced owner's key is remembered on the displacer so that
+            # when the owner comes back WITH its key it wins over a displacer that has itself gone stale — and records
+            # nothing (else the displacer could use its own key to take the gun straight back). A FRESH displacer keeps
+            # the gun even against the returning keyed owner: the hot-swap phone is the one mounted on the player; a dead
+            # phone that reboots in a pocket must not yank the binding mid-match (operator EVICT if that is wrong).
+            proven = presented_key == other.node_key
+            returning = bool(presented_key) and presented_key in other.displaced_keys
             if fresh and not proven:
                 self.stats["rejected"] += 1
                 log.warning("%s for gun %s refused — node %s holds it (fresh, key not proven)", where, gun_name or gun_tail, other.node_id)
                 return other
-            if not proven:
-                # keyless displacement of a stale holder: remember its key (and the keys it displaced, so a chain of
-                # displacers still yields to the original owner). A PROVEN displacement (the owner coming back) records
-                # nothing — otherwise the displacer could use its own key to take the gun straight back.
+            if not (proven or returning):
                 rec.displaced_keys.add(other.node_key)
                 rec.displaced_keys |= other.displaced_keys
                 rec.displaced_keys.discard(rec.node_key)

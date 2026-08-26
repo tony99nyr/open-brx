@@ -533,9 +533,9 @@ def test_evict_route_is_auth_gated_and_404s_unknown():
 
 
 def test_displaced_owner_returning_with_key_wins_back_its_gun():
-    """MEDIUM: a keyless hello may take a STALE owner's gun (A8.2 hot-swap) — but out of coverage is normal on a park, so the
-    owner's phone coming back WITH its key must win over the displacer even while the displacer is fresh; and the
-    displacer must not be able to use its own key to take the gun straight back."""
+    """MEDIUM: a keyless hello may take a STALE owner's gun (A8.2 hot-swap). While that displacer is FRESH it keeps the
+    gun even against the owner returning with its key (the hot-swap phone is the one on the player); once the displacer
+    goes stale the keyed owner wins back — and the displacer's own key must not take the gun straight back."""
     Stack, until = _ws_stack()
     if Stack is None:
         return
@@ -547,27 +547,36 @@ def test_displaced_owner_returning_with_key_wins_back_its_gun():
                                "GUN-B-4E60": {"gun_id": "GUN-B-4E60", "sticker": "GUN-B", "ble": {"tail": "4E60"}}}
             p, q, a, b = await _two_live(st)
             st.net.stale_after_ms = 400
-            a._paused = True                      # ALPHA walks out of coverage
+            await a.disconnect()                  # ALPHA's phone dies
             await asyncio.sleep(0.8)
-            wb, code, ws = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1,
-                                                      "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+            gun = {"name": "GUN-A-3D4F", "tail": "3D4F"}
+            wb, code, ws = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1, "gun": gun})
             assert code is None and (wb or {}).get("node"), "stale owner is displaced (hot-swap rule)"
             hb = asyncio.create_task(_heartbeat(ws, "hijacker"))
             assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "hijacker", 2)
             assert a.node_key in st.net.nodes["hijacker"].displaced_keys
-            # the owner comes back into coverage with its key: it wins, the hijacker is closed 4000
-            a._paused = False
-            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 4), st.session.players[p["player_id"]]
-            assert await until(lambda: ws.state.name == "CLOSED", 2)
-            assert ws.close_code == 4000
+            # the dead phone reboots in a pocket and comes back with its key while the hot-swap phone is FRESH: refused
+            b3, c3, ws3 = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                     "node_key": a.node_key, "gun": gun})
+            assert c3 == 4003, (b3, c3)
+            await ws3.close()
+            assert st.session.players[p["player_id"]]["node_id"] == "hijacker"
+            # the hot-swap phone dies too: the owner returning with its key wins the gun back, recording nothing
             hb.cancel()
-            assert await until(lambda: a.connected, 2)
-            assert st.net.nodes["phone-A"].displaced_keys == set(), "a proven displacement records nothing"
+            await ws.close()
+            await asyncio.sleep(0.8)
+            b4, c4, ws4 = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                     "node_key": a.node_key, "gun": gun})
+            assert c4 is None and (b4 or {}).get("node"), (b4, c4)
+            hb4 = asyncio.create_task(_heartbeat(ws4, "phone-A"))
+            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 4), st.session.players[p["player_id"]]
+            assert st.net.nodes["phone-A"].displaced_keys == set(), "a returning-owner displacement records nothing"
             # the hijacker's own key must NOT take the gun back while the owner is fresh
             b2, c2, ws2 = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1,
-                                                     "node_key": (wb or {}).get("node_key"), "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+                                                     "node_key": (wb or {}).get("node_key"), "gun": gun})
             assert c2 == 4003, (b2, c2)
             await ws2.close()
+            hb4.cancel()
             assert st.session.players[p["player_id"]]["node_id"] == "phone-A"
     asyncio.run(asyncio.wait_for(go(), 60))
 
