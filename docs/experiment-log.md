@@ -1598,3 +1598,14 @@ FIXED (G03 — C3 closed as predicted). TTK pacing reads right by ear. Findings 
   overheated under sustained fire. CR is the ONLY frame carrying tail extras C19,C04,20,150 →
   working theory: the overheat mechanism requires the tail block, not just t24. Bench followup:
   transplant the block onto energy_rifle and re-test.
+
+## 2026-08-26 (bench) — OVERHEAT MECHANISM SOLVED: t37/t38 enable it
+
+Transplant probe: the SMG (t24=5, heat sound D11, never overheated) with the Charge Rifle's
+**t37=20 / t38=150** added — the heat gauge came ALIVE on the wire (28→52 through a mag dump,
+~2/shot) and the trigger gated at the top ("behaves like end of clip"). Confirms the range-pass
+theory: **t24 (heat/shot) + t35 (sound) are inert without t37/t38** — those two fields enable and
+parameterize the overheat system. At these params the 72-round mag empties before hard lockout, so
+they're TUNING knobs: any weapon can now be given an overheat as a balance lever (raise t24 or
+tighten t38 for a real lockout). U-item closed; exact semantics of 20 vs 150 (threshold? cooldown?)
+still to map — two more transplant probes with varied values.
