@@ -27,6 +27,10 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 | Open work (all items) | `FOLLOWUPS.md` |
 | QUERY/SETUP serial console + PlayerID | `../protocol/brx-protocol.md` §7c |
 
+## Reference
+- **[reference/weapons.md](reference/weapons.md)** — **the complete Callsign arsenal**: all 20 weapons,
+  named and behaviour-verified, with damage/cycle/clip/reserve/heat as sent on the wire.
+
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the **native phone app** (Capacitor → Android + iOS):
   prerequisites, commands, signing, and what's generated vs committed. Web Bluetooth is a dev-only
