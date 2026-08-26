@@ -1609,3 +1609,13 @@ parameterize the overheat system. At these params the 72-round mag empties befor
 they're TUNING knobs: any weapon can now be given an overheat as a balance lever (raise t24 or
 tighten t38 for a real lockout). U-item closed; exact semantics of 20 vs 150 (threshold? cooldown?)
 still to map — two more transplant probes with varied values.
+
+## 2026-08-26 (bench) — U6 parked: QT entered the documented "screamer" state
+
+After ~a full day powered, R0BQT stopped holding BLE: two connect-then-drop-mid-config failures,
+then connect attempts that hang entirely while the gun ADVERTISES normally (-70 dBm) — battery
+confirmed fine, power cycles only briefly helping. Matches the community-documented **"SCREAMERS"
+behavior (BLE drops / random fail after ~1 hr sessions; B1 hardware notes)** — first time we've
+reproduced it. Operational rule for match days: rotate/power-rest guns, don't leave the fleet
+powered all day. U6 (damage-type reactions), U9, U5, U2 remain queued in FOLLOWUPS — all need two
+healthy guns; methods written.
