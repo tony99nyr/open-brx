@@ -191,3 +191,18 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   existing `tutorial` frames (just proven on hardware) and records the selection as the player's loadout for
   compile. **MC gates it** with a per-session/per-mode setting (allow vs lock weapon-select on the HUD) — some
   modes want fixed loadouts. Touches: node HUD picker + `engine`/`transport`, a NODE_KIND, contract, MC state.
+
+## Phone HUD polish — bench 2026-08-25 (night), on-device findings (batch before next bench)
+- **Cam button dead** — `@capacitor-community/camera-preview` throws: the Android manifest has no `CAMERA`
+  permission (only INTERNET/BT/LOCATION) and no runtime request; iOS needs `NSCameraUsageDescription`. Add both
+  in `scripts/android-setup.sh` / `scripts/ios-setup.sh` + request at first toggle.
+- **RELOAD blinks constantly** — `lowMag = st.ammo/st.mag <= .15` fires in transient states; should only show
+  when live, alive, ammo<mag, ratio<=.15 (never at spawn / on a fresh mag).
+- **Ammo pips bar bugged** — the pip strip above the weapon name shows a single yellow tick at full ammo
+  instead of a filled magazine; `_pips()` mis-maps mag→pips (likely divides by the wrong max or fixed pip count).
+- **Top-right cluster cramped/tiny on device** — LINK + battery + CAM chip on one skewed row plus K/D/A/ACC
+  reads micro on a phone; needs a responsive pass (bigger CAM target, wrap/space the row).
+- **Countdown audio bunches on the gun** — heard "10,9,8,10,3,2,1" with the last 3-2-1 together; the node's
+  runway/countdown voice cues are scheduled or written with wrong timing/duplication. Review the M-START
+  countdown scheduler on the node (BLE write pacing vs tick clock).
+- (already logged: info icon clips behind "LINKED"; MC-LINKED text too subtle; MC mDNS auto-fill + QR.)
