@@ -28,7 +28,8 @@
     "@capacitor/network": "^8.0.1",
     "@capacitor/screen-orientation": "^8.0.1",
     "@capacitor/share": "^8.0.1",
-    "capacitor-zeroconf": "^4.0.0"
+    "capacitor-zeroconf": "^4.0.0",
+    "jsqr": "^1.4.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

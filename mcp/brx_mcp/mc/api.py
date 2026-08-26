@@ -328,8 +328,18 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return PlainTextResponse("Mission Control API is up. UI not built — run `npm run build` in webapp/mc "
                                  "(or `npm run dev` and open http://localhost:5173). API: /api/state")
 
+    async def apk(_):
+        """The companion APK, served from a stable path (webapp rebuilds wipe dist copies)."""
+        from pathlib import Path as _P
+        from starlette.responses import FileResponse
+        for cand in (_P.home() / ".brx-mcp" / "openbrx-node-debug.apk", UI_DIST / "openbrx.apk"):
+            if cand.exists():
+                return FileResponse(str(cand), media_type="application/vnd.android.package-archive", filename="openbrx.apk")
+        return JSONResponse({"error": "no apk staged"}, status_code=404)
+
     routes = [
         Route("/api/state", state),
+        Route("/openbrx.apk", apk),
         Route("/api/armory/scan", armory_scan, methods=["POST"]),
         Route("/api/armory", armory_list),
         Route("/api/modes", modes),
@@ -369,7 +379,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                 t.cancel()
 
     app = Starlette(routes=routes, lifespan=lifespan,
-                    middleware=[Middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+                    middleware=[Middleware(CORSMiddleware, allow_origins=["*"],
                                            allow_methods=["*"], allow_headers=["*"]),   # outermost so 401s carry CORS headers
                                 Middleware(_AuthMiddleware, token=token)])
     app.state.session = s

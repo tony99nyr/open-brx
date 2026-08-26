@@ -173,17 +173,28 @@ function JoinPanel() {
   const { state } = useStore();
   const [url, setUrl] = useState<string | null>(null);
   const qr = state?.lan.qr;
+  const apkUrl = state?.lan.ip ? `http://${state.lan.ip}:${state.lan.port || 8765}/openbrx.apk` : '';
+  const [apkQr, setApkQr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!apkUrl) return;
+    QRCode.toDataURL(apkUrl, { margin: 2, width: 300, errorCorrectionLevel: 'M', color: { dark: '#0b0e13', light: '#ffffff' } }).then(setApkQr).catch(() => setApkQr(null));
+  }, [apkUrl]);
   useEffect(() => {
     if (!qr) return;
-    QRCode.toDataURL(qr, { margin: 0, width: 480, color: { dark: '#e8eef5', light: '#07090d' } }).then(setUrl).catch(() => setUrl(null));
+    QRCode.toDataURL(qr, { margin: 2, width: 480, errorCorrectionLevel: 'M', color: { dark: '#0b0e13', light: '#ffffff' } }).then(setUrl).catch(() => setUrl(null));
   }, [qr]);
   if (!qr) return null;
   return (
     <div style={{ flex: '0 0 300px', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
-      {url && <img src={url} width={240} height={240} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} />}
+      {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={220} height={220} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
       <div style={{ font: F.mono(600, 13), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
-      <div style={{ font: F.mono(500, 9.5), letterSpacing: '.16em', color: T.dim, textAlign: 'center', lineHeight: 1.7 }}>EACH PHONE: OPEN <span style={{ color: T.ink }}>BRX COMPANION</span> → SCAN THIS, OR TYPE THE ADDRESS</div>
+      <div style={{ font: F.mono(500, 9.5), letterSpacing: '.16em', color: T.dim, textAlign: 'center', lineHeight: 1.7 }}>EACH PHONE: OPEN <span style={{ color: T.ink }}>BRX COMPANION</span> → IT FINDS MC ON ITS OWN. OFFLINE? TAP <span style={{ color: T.ink }}>SCAN QR</span> AND AIM HERE</div>
+      <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>NO APP YET? GET IT HERE</div>
+        {apkQr && <div style={{ background: '#ffffff', padding: 8, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}` }}><img src={apkQr} width={132} height={132} alt="apk download QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
+        <div style={{ font: F.mono(500, 10), letterSpacing: '.04em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
+      </div>
     </div>
   );
 }

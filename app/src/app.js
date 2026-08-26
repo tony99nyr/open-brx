@@ -1,3 +1,4 @@
+import jsQR from 'jsqr';
 // BRX Combat HUD — the per-player node (docs/spec/node.md, contracts A6).
 // One phone, one gun, one player. Composition of: Engine (state machine) + BrxLink (BLE) +
 // Transport (M-NET wire) + Hud (Phone HUD v2). Runs in a desktop browser with `?demo`.
@@ -151,6 +152,7 @@ Object.assign(hud.h, {
   onCloseDiag: () => hud.toggleDiag(),
   onReconnectGun: () => { if (link.deviceId) link._reconnect(); },
   onReconnectMc: () => connectMc(settings.mcUrl),
+  onScanQr: () => { scanQrForMc().catch(e => log('QR scan failed: ' + e.message, 'le')); },
   onEndOk: () => { engine.ackEnd(); },
   // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
   // re-push — a mishit mid-game ruins their match. Fleet safety = MC's PANIC + the physical power switch.
@@ -224,6 +226,88 @@ function startDiscovery() {
   } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
 }
 
+// In-app QR scanner: camera → jsQR → connect. No copy/paste, no native plugin (webview getUserMedia,
+// same camera permission CAM mode already holds). Accepts ws:// text or any URL carrying ?ws=/#ws=.
+function parseMcQr(text) {
+  const t = (text || '').trim();
+  if (t.startsWith('ws://') || t.startsWith('wss://')) return t;
+  const m = /[?#&]ws=([^&\s]+)/.exec(t);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+async function scanQrForMc() {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#04060a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px';
+  const hint = document.createElement('div');
+  hint.textContent = 'AIM AT THE QR ON THE MISSION CONTROL SCREEN';
+  hint.style.cssText = 'color:#8fa3bd;font:600 11px ui-monospace,monospace;letter-spacing:.22em;text-align:center';
+  const frame = document.createElement('div');
+  frame.style.cssText = 'position:relative;width:min(78vw,340px);aspect-ratio:1;border:1px solid #2c3a4e;overflow:hidden';
+  const video = document.createElement('video');
+  video.setAttribute('playsinline', ''); video.muted = true;
+  video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover';
+  const reticle = document.createElement('div');
+  reticle.style.cssText = 'position:absolute;inset:14%;border:2px solid rgba(255,201,71,.85);clip-path:polygon(0 0,22% 0,22% 6%,6% 6%,6% 22%,0 22%,0 0,100% 0,100% 22%,94% 22%,94% 6%,78% 6%,78% 0,100% 0,100% 100%,78% 100%,78% 94%,94% 94%,94% 78%,100% 78%,100% 100%,0 100%,0 78%,6% 78%,6% 94%,22% 94%,22% 100%,0 100%)';
+  frame.append(video, reticle);
+  const cancel = document.createElement('button');
+  cancel.textContent = 'CANCEL';
+  cancel.style.cssText = 'padding:12px 34px;background:#131b26;color:#e8eef5;border:1px solid #2c3a4e;font:700 12px ui-monospace,monospace;letter-spacing:.24em';
+  ov.append(hint, frame, cancel); document.body.appendChild(ov);
+  let stream = null, raf = 0, done = false;
+  const stop = () => { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); ov.remove(); };
+  cancel.onclick = stop;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream; await video.play();
+  } catch (e) { stop(); log('camera unavailable: ' + e.message, 'le'); return; }
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const tick = () => {
+    if (done) return;
+    if (video.videoWidth) {
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+      const url = code && code.data ? parseMcQr(code.data) : null;
+      if (url) { stop(); log('QR scanned — connecting: ' + url, 'lk'); connectMc(url); return; }
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+// Fallback discovery: mDNS can die on AP-isolated/multicast-filtered routers — sweep the likely /24s for
+// MC's HTTP port (8765) and let /api/state hand us the exact ws_url (CORS is open server-side for this).
+async function sweepForMc() {
+  if (transport && transport.state === 'bound') return;
+  const subnets = [];
+  const m = /ws:\/\/(\d+\.\d+\.\d+)\.(\d+):/.exec(settings.mcUrl || '');
+  if (m) subnets.push(m[1]);
+  for (const sn of ['192.168.0', '192.168.1', '192.168.86', '10.0.0', '172.20.10']) if (!subnets.includes(sn)) subnets.push(sn);
+  log('sweeping for Mission Control on :8765…', 'li');
+  for (const sn of subnets) {
+    if (transport && transport.state === 'bound') return;
+    const hosts = []; for (let i = 1; i <= 254; i++) hosts.push(`${sn}.${i}`);
+    const POOL = 32;
+    let found = null;
+    const probe = async ip => {
+      const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 500);
+      try {
+        const r = await fetch(`http://${ip}:8765/api/state`, { signal: ac.signal });
+        const j = await r.json();
+        if (j && j.lan && j.lan.ws_url) found = j.lan.ws_url;
+      } catch (_) { /* not MC */ } finally { clearTimeout(t); }
+    };
+    for (let i = 0; i < hosts.length && !found; i += POOL) await Promise.all(hosts.slice(i, i + POOL).map(probe));
+    if (found) {
+      log(`Mission Control found by port sweep: ${found}`, 'lk');
+      if (!transport || transport.state !== 'bound') connectMc(found);
+      return;
+    }
+  }
+  log('sweep found no Mission Control — QR/manual join', 'li');
+}
+
 // ---------- boot ----------
 (async () => {
   await loadPlugins();
@@ -248,6 +332,7 @@ function startDiscovery() {
     // mc_reachable=false with MC right there (Tony, 2026-08-26)
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
     startDiscovery();
+    setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback if mDNS is quiet and we're not bound
   }
   await refreshPreflight(); scheduleRender();
 })();
