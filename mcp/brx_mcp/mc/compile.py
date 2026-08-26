@@ -75,6 +75,11 @@ class WeaponCatalog:
           "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
           "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
           "range": 41}
+    # Doc-token positions that protocol-classes.md gives a NAME to. `overrides` may only name one of
+    # these — the hard rule is "never write a token we cannot name", and an override is still a write.
+    _NAMED = frozenset({0, 2, 3, 4, 5, 6, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                        27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42})
+
     # Legacy 4-sample tails, kept only for rows with no `capture` block (synthetic catalogs in tests).
     SAMPLES = {"ar": WEAPON_TAILS.get("ar", WEAPON_TAILS["primary"]),
                "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"])}
@@ -89,6 +94,10 @@ class WeaponCatalog:
         (tok19) and muzzle flash (tok25/26). On top of that we write ONLY the balance tokens — damage,
         fire interval, and the ammo/reload trio — preserving the two invariants every captured frame
         obeys: `tok39 == tok16` (clip start == max clip) and `tok17 == 2 * tok40`.
+
+        A weapon may additionally declare `overrides` — an explicit, per-token escape hatch for bench
+        findings that contradict a stock value (see `_override_index`). Each entry must name a
+        documented token and carry a `why`; nothing else in the frame can move.
 
         Rows without a `capture` block fall back to the old template path (synthetic test catalogs)."""
         w = self._row(weapon_id)
@@ -116,7 +125,28 @@ class WeaponCatalog:
         put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40
         put("reload", int(w["reload_ms"]))
+        for key, ov in (w.get("overrides") or {}).items():
+            idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
+            p[idx + 1] = str(ov["value"])
         return ",".join(p)
+
+    @staticmethod
+    def _override_index(weapon_id: str, key: str, ov) -> int:
+        """Validate one `overrides` entry and return its doc-token index.
+
+        An override is the ONLY sanctioned way to deviate from a captured frame outside the balance
+        tokens, so it is deliberately awkward: it must name a documented token and it must say why.
+        Bench findings that contradict a stock sound (a reload part that chirps, a fire sound that is
+        actually a music sting) are what this is for — not a general-purpose token writer."""
+        if not isinstance(ov, dict) or not str(ov.get("value", "")).strip() or not str(ov.get("why", "")).strip():
+            raise ValueError(f"{weapon_id}: override {key!r} needs both a 'value' and a 'why'")
+        try:
+            idx = int(str(key).lstrip("tT"))
+        except ValueError:
+            raise ValueError(f"{weapon_id}: override key {key!r} must look like 't33'") from None
+        if idx not in WeaponCatalog._NAMED:
+            raise ValueError(f"{weapon_id}: override tok{idx} is not a token we have a name for")
+        return idx
 
     def damage(self, weapon_id: str) -> int:
         """Per-hit damage the gun will actually apply — `$HIR` token 5 is this value (§7r). Provisional

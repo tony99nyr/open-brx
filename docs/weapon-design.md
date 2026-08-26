@@ -254,6 +254,36 @@ Ten distinct reload chains ship where there was previously one. The Suppressor i
 weapon with `t25`/`t26` set (quiet, no muzzle flash), and the Rail Gun and Laser Cannon carry charge
 cues (`C08`, `C11`) that the old build silently blanked.
 
+### 3.2 Sound overrides — the one sanctioned deviation
+
+The byte-diff pinning test blocks *every* change outside the balance tokens, sound edits included.
+That is the point, but the field range turned up two stock sounds that are genuinely wrong, so
+`weapons.json` now supports a narrow, explicit escape hatch:
+
+```json
+"overrides": { "t33": { "value": "D02", "why": "bench 2026-08-26: captured D21 plays a 'disable' chirp …" } }
+```
+
+Applied after the capture base and the balance tokens. Deliberately awkward: an entry must name a
+token `protocol-classes.md` has a **name** for, must carry a value, and must carry a `why` — enforced
+in `resolve()` and pinned by tests. The pinning test then allows exactly the declared token for that
+weapon and nothing else. An undeclared drift still fails.
+
+Two overrides ship, both from the 2026-08-26 field range:
+
+| weapon | token | change | why |
+|---|---|---|---|
+| Sniper Rifle, AMR, Force Rifle | `t33` reload part 3 | `D21` → `D02` | `D21` fires a "disable" chirp alongside the reload — reproduced on two guns. `D02` is the clean cocking beat the AR/Burst/Bolt chains already end on. |
+| Energy Launcher | `t27` fire sound | `J15` → `O01` | `J15` is a **music sting** (`J` = music/SFX in the DK legend), inherited from the "unnamed secondary" frame. `O01` (1.45 s) is an ordnance report; the whole **O** family is otherwise unused by the stock arsenal. |
+
+**Correction to the bench note:** the D21 weapons are the Sniper Rifle, the AMR and the **Force
+Rifle** — not the Bolt Rifle. Bolt shares `D04+D03` but its captured chain already ends on `D02`, so
+it needs no override; Force Rifle's chain is `D23+D22+D21`. Pinned by a test so the distinction
+cannot quietly rot.
+
+Other `O` candidates for a bench audition if `O01` does not sit right: `O05` 1.46 s, `O02` 1.71 s,
+`O04` 1.79 s, `O06` 1.81 s, `O03` 2.51 s. Any of them fits the Energy Launcher's 1600 ms cycle.
+
 ### 3.2 Retracted: the duration ÷ cadence ceiling
 
 > **The first pass defined a "2.07× ceiling"** — fire-sound duration divided by fire interval,
@@ -375,7 +405,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
 | **U2** | **`t41` range semantics.** Constant at 75 across the stock arsenal, so untested and unused. Is it %, metres, or an index? | the entire range axis; short-vs-long weapon identity | Two guns, one weapon, `t41` at 100 vs 25, walk it back until hits stop landing. **Highest value open item now that U0 is answered.** |
-| **U1** | **`t20` confirmation.** §4.1 is inference from 19 frames, not a fired test. | nothing — we ship the captured values either way | Flip the sniper's `t20` 7 → 0 and listen. One field, one shot. |
+| **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | **What the victim's firmware does per damage type** (`t3`) — hit sound, LED, or nothing? | whether damage type is a design lever or just metadata | Same damage value at `t3` = 0 vs 6 vs 14, watch the receiving gun. |
@@ -403,4 +433,5 @@ captured, `Shells` on the shotgun) · the burst-token hunt (native burst is `t20
 | `t18` | reload ms | ✅ always |
 | `t15` | the constant **850** in every captured frame | ❌ **never** — unidentified |
 | `t3` `t4` `t19` `t20` `t23` `t24` `t25` `t26` `t27–36` `t41` `t42` | damage type, power type, reload type, **fire mode**, burst, overheat, muzzle flash, all sounds, ranges | ❌ inherited from the capture |
+| declared `overrides` | one named token per entry, with a stated reason (§3.2) | ✅ where declared |
 | `t7–t13` | secondary fire | ❌ empty on all twenty stock weapons — no BRX weapon has an alt-fire |

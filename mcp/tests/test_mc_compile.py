@@ -219,12 +219,61 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
                T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1}
     cat = WeaponCatalog()
     for wid, row in rows.items():
+        allowed = balance | {int(k.lstrip("tT")) + 1 for k in (row.get("overrides") or {})}
         got = cat.resolve(wid, 0).split(",")
         want = row["capture"]["frame"].split(",")
         assert len(got) == len(want), wid
         for i, (a, b) in enumerate(zip(got, want)):
-            if i not in balance:
+            if i not in allowed:
                 assert a == b, f"{wid} tok{i - 1} drifted from the capture: {b!r} -> {a!r}"
+
+
+def test_every_override_is_declared_named_and_justified():
+    """`overrides` is the only sanctioned deviation from a capture outside the balance tokens, so
+    every entry must name a documented token, carry a value, and say why (bench evidence)."""
+    import json, pathlib
+    rows = json.loads((pathlib.Path(__file__).resolve().parents[1]
+                       / "brx_mcp/mc/weapons.json").read_text())["weapons"]
+    seen = 0
+    for w in rows:
+        for key, ov in (w.get("overrides") or {}).items():
+            seen += 1
+            assert int(key.lstrip("tT")) in WeaponCatalog._NAMED, f"{w['weapon_id']} {key} unnamed"
+            assert str(ov.get("value", "")).strip(), f"{w['weapon_id']} {key} has no value"
+            assert len(str(ov.get("why", "")).strip()) > 20, f"{w['weapon_id']} {key} needs a real why"
+    assert seen >= 4, "the bench sound swaps should still be declared"
+
+
+def test_override_mechanism_rejects_undeclared_and_unnamed_writes():
+    base = {"weapon_id": "x", "name": "X", "cls": 0, "mag": 4, "reserve": 8, "reload_ms": 1000,
+            "dmg": 1, "rof": 1, "rng": 1,
+            "capture": {"src": "t.btsnoop", "frame": "$WEAP,0,,100,0,0,40,0,,,,,,,,300,850,4,8,"
+                                                    "1000,0,7,100,100,,0,,,S16,,,,D04,D03,D21,D18,"
+                                                    ",,,,4,4,75,*"}}
+    ok = WeaponCatalog(rows=[{**base, "overrides": {"t33": {"value": "D02", "why": "bench: D21 chirps"}}}])
+    assert ok.resolve("x", 0).split(",")[34] == "D02"
+    for bad in ({"t33": {"value": "D02"}},                       # no why
+                {"t33": {"why": "because"}},                     # no value
+                {"t99": {"value": "D02", "why": "out of range"}},  # not a named token
+                {"nope": {"value": "D02", "why": "bad key shape"}}):
+        try:
+            WeaponCatalog(rows=[{**base, "overrides": bad}]).resolve("x", 0)
+            assert False, f"override {bad} should have been rejected"
+        except ValueError:
+            pass
+
+
+def test_bench_sound_swaps_are_applied():
+    """Field range 2026-08-26: D21 fires a 'disable' chirp; the Energy Launcher's J15 is a music sting."""
+    cat, T = WeaponCatalog(), WeaponCatalog._T
+    for wid in ("sniper_rifle", "amr", "force_rifle"):
+        chain = [cat.resolve(wid, 0).split(",")[T[k] + 1] for k in ("rel1", "rel2", "rel3")]
+        assert "D21" not in chain, f"{wid} still plays the disable chirp: {chain}"
+        assert chain[2] == "D02", chain
+    assert cat.resolve("bolt_rifle", 0).split(",")[T["rel3"] + 1] == "D02", \
+        "bolt_rifle never carried D21 — its captured chain already ended on D02, so it needs no override"
+    p = cat.resolve("energy_launcher", 0).split(",")
+    assert p[T["snd_fire"] + 1] == "O01" and "J15" not in p
 
 
 def test_resolve_keeps_the_captured_ammo_invariants():

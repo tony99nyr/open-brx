@@ -67,6 +67,12 @@
    "wire": {
     "dmg": 10
    },
+   "overrides": {
+    "t33": {
+     "value": "D02",
+     "why": "captured D21 plays a 'disable' chirp alongside the reload \u2014 reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
+    }
+   },
    "verified": false,
    "captured": true
   },
@@ -185,6 +191,12 @@
     "dmg": 60,
     "fire_ms": 1500
    },
+   "overrides": {
+    "t33": {
+     "value": "D02",
+     "why": "captured D21 plays a 'disable' chirp alongside the reload \u2014 reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
+    }
+   },
    "verified": false,
    "captured": true
   },
@@ -234,6 +246,12 @@
    "wire": {
     "dmg": 24,
     "fire_ms": 400
+   },
+   "overrides": {
+    "t33": {
+     "value": "D02",
+     "why": "captured D21 plays a 'disable' chirp alongside the reload \u2014 reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
+    }
    },
    "verified": false,
    "captured": true
@@ -390,6 +408,12 @@
    },
    "wire": {
     "fire_ms": 1600
+   },
+   "overrides": {
+    "t27": {
+     "value": "O01",
+     "why": "captured J15 is a music sting (J = music/SFX family, DK legend), inherited from the 'unnamed secondary' frame \u2014 bench 2026-08-26; O01 is an ordnance report and the O family is otherwise unused by the stock arsenal"
+    }
    },
    "verified": false,
    "captured": true
