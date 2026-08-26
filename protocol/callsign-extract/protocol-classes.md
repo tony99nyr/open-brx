@@ -83,10 +83,17 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `T01` | (secondary/pistol-class) | only weapon so far with `extraHeadset*` populated |
 | `J15` | Launcher-class | clip 1 / reserve 3 |
 | `M92` | Melee | gyro swing |
+| `S16` | **Sniper** | single shot; **bolt action** — pull back, release |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
 behaviour it describes, and empty elsewhere, is about as clean as a positional decode gets.
+
+**`t28`/`t29` are TWO-STAGE ACTION sounds, not charge-specific (cap15).** They were named
+`chargeUp_SoundName`/`chargeDown_SoundName` because the only weapon that had ever populated them was
+the Charge Rifle (`C15`/`C17`). The **Sniper** (`S16`) populates them too — `D20`/`D19` — matching
+the operator's description of the bolt: *pull back, then let it go*. So the pair means "a weapon
+whose action has a distinct engage and release phase", of which charging is one case.
 
 **`t17` is NOT independent of `t40`.** Across all six weapon frames we hold, **`t17 == 2 × t40`**
 without exception:
