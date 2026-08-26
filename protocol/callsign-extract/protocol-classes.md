@@ -90,6 +90,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `C03` | **Rail Gun** *(slot-1 stat line)* | charges on hold, **auto-fires** after ~1 s; also fires on a tap |
 | `C03` | **Rocket Launcher** *(different stat line, same sound)* | standard single shot |
 | `C06` | **Laser Cannon** | **must be held** to charge; a tap fires nothing |
+| `E03` | **Charge Rifle** | hold to charge, **fires on RELEASE**; also overheats |
+| `R12` | **Bolt Rifle** | single shot (operator: "like the AMR") — but **no** `t28`/`t29` |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -100,6 +102,37 @@ behaviour it describes, and empty elsewhere, is about as clean as a positional d
 the Charge Rifle (`C15`/`C17`). The **Sniper** (`S16`) populates them too — `D20`/`D19` — matching
 the operator's description of the bolt: *pull back, then let it go*. So the pair means "a weapon
 whose action has a distinct engage and release phase", of which charging is one case.
+
+### `t28`/`t29` — engage / release, across four charge behaviours
+
+Every charge-style weapon we have, sorted by what the operator physically observed:
+
+| weapon | behaviour | `t28` | `t29` |
+|---|---|---|---|
+| Rocket Launcher (`C03` s0) | single shot, nothing to charge | — | — |
+| Rail Gun (`C03` s1) | charges, **auto-fires**; a tap also fires | `C08` | — |
+| Laser Cannon (`C06`) | **must be held**; a tap fires nothing | `C11` | — |
+| **Charge Rifle (`E03`)** | hold to charge, **fires on RELEASE** | `C15` | **`C17`** |
+| Sniper (`S16`) / AMR (`S07`) | bolt: pull back, **let go** | `D20` | `D19` |
+
+**`t29` is present exactly when the weapon has a distinct RELEASE event** and absent when the
+weapon completes the action by itself. Four behaviours, four matching frames, including two
+predicted-then-confirmed absences.
+
+⚠ **Caveat:** the **Bolt Rifle** (`R12`) carries *neither*, despite the name and despite the
+operator reporting it behaves "like the AMR". So the pair tracks a weapon's **audible two-stage
+action**, not its name or its single-shot-ness.
+
+### Tokens 7–11 (the secondary-fire block) are DORMANT in every stock weapon
+
+Empty across **all 14 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
+`T01`, Energy Launcher, Rail Gun, Rocket Launcher, Laser Cannon, Charge Rifle and Melee. That is
+effectively the whole stock arsenal.
+
+**Conclusion: no stock BRX weapon has a secondary fire mode**, so these positions cannot be pinned
+by capture and their order stays source-derived only. Consistent with `apk-harvest.md`'s note that
+weapon stats are **server-fetched** — the block is presumably there for definitions the app can be
+sent. **Stop capturing weapons to fill 7–11**; our own weapon definitions don't need them either.
 
 **⚠ Token 27 is a SOUND, not a weapon identity (cap18).** The Rocket Launcher and the Rail Gun both
 fire `C03` while carrying completely different stat lines. Any analysis that keys weapons by their
