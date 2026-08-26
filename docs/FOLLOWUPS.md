@@ -2,7 +2,7 @@
 
 Single source of truth for open work. Supersedes the scattered A–G lists in
 `experiment-log.md` (kept there for history). Updated 2026-08-24. Status: ✅ done · 🔴 blocking /
-high value · 🟡 useful · ⬜ open · ❎ closed as answered.
+high value · 🟡 useful · ✅ **RESOLVED 2026-08-26 via the $HIR tok2 decode** (per-weapon IR protocol is carried on every hit — bench, exp-log) open · ❎ closed as answered.
 
 ## Build (hardware/software the platform needs)
 
