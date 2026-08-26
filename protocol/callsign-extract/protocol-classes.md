@@ -84,6 +84,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `J15` | Launcher-class | clip 1 / reserve 3 |
 | `M92` | Melee | gyro swing |
 | `S16` | **Sniper** | single shot; **bolt action** — pull back, release |
+| `S07` | **AMR** | single shot, no full auto; same bolt pair as the Sniper |
+| `G03` | **SMG** | full auto with an **overheat** mechanic (sound fires if held too long) |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -94,6 +96,11 @@ behaviour it describes, and empty elsewhere, is about as clean as a positional d
 the Charge Rifle (`C15`/`C17`). The **Sniper** (`S16`) populates them too — `D20`/`D19` — matching
 the operator's description of the bolt: *pull back, then let it go*. So the pair means "a weapon
 whose action has a distinct engage and release phase", of which charging is one case.
+
+**`t24` = `overheat` — CONFIRMED (cap16).** `5` on the SMG (`G03`), whose named mechanic is exactly
+that, and `0` on all nine other weapons captured. **`t35` (`weaponFeatureA`) = `D11` on the SMG
+alone** — the overheat sound — so `weaponFeatureA`/`B` are sound slots for a weapon's *special
+mechanic*, not generic extras.
 
 **`t17` is NOT independent of `t40`.** Across all six weapon frames we hold, **`t17 == 2 × t40`**
 without exception:
