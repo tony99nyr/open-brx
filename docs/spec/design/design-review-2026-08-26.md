@@ -49,3 +49,29 @@ every flow, audits animations/tap-targets/aria/console errors, and screenshots e
   The chip is the raw BRX `$WEAP` class id (protocol plumbing); the badge means the weapon's frame is a
   template, not hardware-verified (only AR + Charge Rifle are). → chip becomes "CLASS n" with a tooltip;
   badge gets a tooltip; rule: no UI element whose meaning needs the protocol doc.
+
+## Round 4 — fresh-eyes critic (independent agent, full report in session log) + triage
+25 ranked findings; the three "do-not-lose" strengths noted: HUD glance hierarchy (corner anchors/sizes),
+the honest distributed-system microcopy semantics, and the single design system + two-step-confirm pattern.
+
+**Confirmed + already fixed this round:** #4 armory GO gate (afe41e0, plus Tony independently hit it live —
+the board also presented 11-hour-old data as current: now aged/decayed server-side fields).
+
+**Fix next (behavioral, code):**
+- #5 PUSH CONFIG & ARM is one click doing push AND start — verified in Lobby.tsx (pushAndArm). Split.
+- #2 TAKING FIRE is a persistent low-HP state, not a damage event — event-triggered with decay; keep firevig for low HP.
+- #3 KILL overlay fully occludes combat view ~2.2 s — shrink to non-occluding top banner.
+- #6 PANIC gives zero UI acknowledgment — persistent "FLEET SAFED n/N" banner.
+- #7 join QR buried in the 10px status bar — big QR panel on Armory (it has the dead space).
+- #8 "KITTED" ignores gun binding — predicate or "· 1 NO GUN" warn.
+- #20 no font fallbacks → field LAN (no internet) collapses to serif. Add stacks now; self-host later.
+- #15 mode-card click re-applies defaults over tuned settings — apply on change only (+undo toast later).
+- #9 global 900 ms long-press flips night blackout — diag-only.
+- #17 RECALL/RESCHEDULE lack the two-step confirm the rest have.
+- #23 DOWN copy must say "GO TO A RESPAWN SCANNER" in scanner mode.
+- #14 team-red === alarm-red — shift team hue. #19 NEW MATCH should be primary on recap.
+- #24 demo button off the player path; in-use rows not tappable. #25 dead COMPANION row, FFA chip, unlabeled clip number.
+- #12/#13/#16/#18/#22: copy + tiny-text sweep (labels ≥11px when they carry meaning; human wording on the HUD;
+  spec jargon out of operator copy; status-vocabulary legend).
+**Design-tool scale (Tony's pass or a dedicated block):** #1 daylight/sun theme (the field-critical one),
+#11 fixed-stage scaling / portrait handling, #17's pinned control rail, #21 write-failure toasts.
