@@ -418,10 +418,15 @@ class Session:
         return None
 
     def _adopt_node_for_gun(self, p: Player):
-        g = self.guns.get(p.get("gun_id") or "")
-        for nid, nv in self.nodes.items():
-            name = nv.get("gun_name") or ""
-            if (g and (name.rsplit("-", 1)[0].lower() == g["sticker"].lower())) or name.lower() == (p.get("gun_id") or "").lower():
+        """Roster changed after nodes said hello: bind any connected node whose reported gun resolves to THIS
+        player — same matcher as the hello path (sticker base, armory tail, or full gun id). Bench 2026-08-25: a
+        phone holding `Tactix-XXXX` was left unbound when a gun (matched by its armory tail) was added afterwards."""
+        for nid, nv in list(self.nodes.items()):
+            name, tail = nv.get("gun_name") or "", nv.get("gun_tail") or ""
+            if not (name or tail):
+                continue
+            q = self._find_player_for_gun(name or None, tail or None)
+            if q is not None and q["player_id"] == p["player_id"]:
                 self._bind(nid, p)
 
     def _bind(self, nid: str, p: Player):

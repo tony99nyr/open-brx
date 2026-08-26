@@ -168,9 +168,9 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
 
     async def go():
         async with Stack(time_limit_s=30) as st:
-            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
             q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
-            a = await st.connect_node("GUN-A-3D4F"); b = await st.connect_node("GUN-B-4E60")
+            a = await st.connect_node("GUN-A-AB12"); b = await st.connect_node("GUN-B-4E60")
             assert await st.wait_ready(), st.session.readiness()
             a.send_ready(); b.send_ready()
             await st.push_and_start(runway_s=1)
@@ -181,7 +181,7 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
             closed_code = None
             async with connect(st.url) as ws:
                 hello = {"node_id": "rogue-1", "node_type": "phone", "app_ver": "x", "seq_next": 1,
-                         "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}}
+                         "gun": {"name": "GUN-A-AB12", "tail": "AB12"}}
                 await ws.send(E.encode(E.make_envelope("hello", hello)))
                 try:
                     msg = json.loads(await asyncio.wait_for(ws.recv(), 3))
@@ -290,9 +290,9 @@ async def _raw_hello(url, body, wait=1.5):
 
 
 async def _two_live(st):
-    p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+    p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
     q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
-    a = await st.connect_node("GUN-A-3D4F", node_id="phone-A"); b = await st.connect_node("GUN-B-4E60", node_id="phone-B")
+    a = await st.connect_node("GUN-A-AB12", node_id="phone-A"); b = await st.connect_node("GUN-B-4E60", node_id="phone-B")
     assert await st.wait_ready(), st.session.readiness()
     a.send_ready(); b.send_ready()
     await st.push_and_start(runway_s=1)
@@ -310,11 +310,11 @@ def test_a8_gun_variants_cannot_bypass_holder_check():
 
     async def go():
         async with Stack(time_limit_s=30) as st:
-            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}},
+            st.session.guns = {"GUN-A-AB12": {"gun_id": "GUN-A-AB12", "sticker": "GUN-A", "ble": {"tail": "AB12"}},
                                "GUN-B-4E60": {"gun_id": "GUN-B-4E60", "sticker": "GUN-B", "ble": {"tail": "4E60"}}}
             p, q, a, b = await _two_live(st)
             legit = st.session.players[p["player_id"]]["node_id"]
-            for name, tail in (("gun-a-3d4f", "3d4f"), ("GUN-A-0000", "0000"), ("GUN-A", ""), ("ZZZ-9999", "3D4F")):
+            for name, tail in (("gun-a-3d4f", "3d4f"), ("GUN-A-0000", "0000"), ("GUN-A", ""), ("ZZZ-9999", "AB12")):
                 body, code, ws = await _raw_hello(st.url, {"node_id": f"rogue-{name}", "node_type": "phone", "app_ver": "x",
                                                             "seq_next": 1, "gun": {"name": name, "tail": tail}})
                 await asyncio.sleep(0.2)
@@ -357,7 +357,7 @@ def test_a8_keyless_hello_for_fresh_disconnected_node_id_is_refused():
             await a.close(); await asyncio.sleep(0.1)
             st.net.stale_after_ms = 300
             await asyncio.sleep(0.5)
-            a2 = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            a2 = await st.connect_node("GUN-A-AB12", node_id="phone-A")
             assert a2.connected and a2.node_key and a2.node_key != key and a2.player_id == p["player_id"]
             n0 = len(a2.controls); st.net.push("phone-A", "control", {"cmd": "recall"})
             assert await until(lambda: len(a2.controls) > n0, 2)
@@ -421,9 +421,9 @@ def test_bind_to_another_gun_moves_the_node_and_frees_the_old_player():
 
     async def go():
         async with Stack(time_limit_s=30) as st:
-            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
             c = st.add_player("CHARLIE", "GUN-C-7777", team_id="yellow")
-            a = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            a = await st.connect_node("GUN-A-AB12", node_id="phone-A")
             assert await until(lambda: a.player_id == p["player_id"], 3)
             a._send(E.make_envelope("bind", {"node_id": "phone-A", "gun_name": "GUN-C-7777", "gun_tail": "7777"}))
             assert await until(lambda: st.session.node_player.get("phone-A") == c["player_id"], 3)
@@ -448,7 +448,7 @@ def test_second_hello_with_other_node_id_on_live_socket_is_closed():
 
     async def go():
         async with Stack(time_limit_s=30) as st:
-            st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
             body, code, ws = await _raw_hello(st.url, {"node_id": "n-1", "node_type": "phone", "app_ver": "x", "seq_next": 1})
             assert code is None
             await ws.send(E.encode(E.make_envelope("hello", {"node_id": "n-2", "node_type": "phone", "app_ver": "x", "seq_next": 1})))
@@ -484,16 +484,16 @@ def test_evicted_squatter_frees_the_gun_for_the_legit_phone():
 
     async def go():
         async with Stack(time_limit_s=30) as st:
-            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}}}
-            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            st.session.guns = {"GUN-A-AB12": {"gun_id": "GUN-A-AB12", "sticker": "GUN-A", "ble": {"tail": "AB12"}}}
+            p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
             body, code, ws = await _raw_hello(st.url, {"node_id": "squatter", "node_type": "phone", "app_ver": "x", "seq_next": 1,
-                                                        "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+                                                        "gun": {"name": "GUN-A-AB12", "tail": "AB12"}})
             assert code is None and (body or {}).get("node"), "the squatter binds first (names are public)"
             hb = asyncio.create_task(_heartbeat(ws, "squatter"))
             assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "squatter", 2)
             # the legit phone is refused while the squatter is fresh
             b2, c2, ws2 = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1,
-                                                     "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+                                                     "gun": {"name": "GUN-A-AB12", "tail": "AB12"}})
             assert c2 == 4003, (b2, c2)
             await ws2.close()
             # operator kicks the squatter
@@ -505,13 +505,13 @@ def test_evicted_squatter_frees_the_gun_for_the_legit_phone():
             assert st.session.players[p["player_id"]]["node_id"] is None
             assert "squatter" not in st.session.node_player and "squatter" not in st.session.nodes
             # the real phone now binds and gets pushes
-            a = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            a = await st.connect_node("GUN-A-AB12", node_id="phone-A")
             assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 3)
             assert st.net.nodes["phone-A"].player_id == p["player_id"]
             assert st.net.stats["evicted"] == 1
             # the squatter cannot reconnect with the key it was welcomed with and take the gun back
             b3, c3, ws3 = await _raw_hello(st.url, {"node_id": "squatter", "node_type": "phone", "app_ver": "x", "seq_next": 1,
-                                                     "node_key": (body or {}).get("node_key"), "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+                                                     "node_key": (body or {}).get("node_key"), "gun": {"name": "GUN-A-AB12", "tail": "AB12"}})
             assert c3 == 4003, (b3, c3)
             await ws3.close()
             assert a.connected and st.session.players[p["player_id"]]["node_id"] == "phone-A"
@@ -543,13 +543,13 @@ def test_displaced_owner_returning_with_key_wins_back_its_gun():
 
     async def go():
         async with Stack(time_limit_s=60) as st:
-            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}},
+            st.session.guns = {"GUN-A-AB12": {"gun_id": "GUN-A-AB12", "sticker": "GUN-A", "ble": {"tail": "AB12"}},
                                "GUN-B-4E60": {"gun_id": "GUN-B-4E60", "sticker": "GUN-B", "ble": {"tail": "4E60"}}}
             p, q, a, b = await _two_live(st)
             st.net.stale_after_ms = 400
             await a.disconnect()                  # ALPHA's phone dies
             await asyncio.sleep(0.8)
-            gun = {"name": "GUN-A-3D4F", "tail": "3D4F"}
+            gun = {"name": "GUN-A-AB12", "tail": "AB12"}
             wb, code, ws = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1, "gun": gun})
             assert code is None and (wb or {}).get("node"), "stale owner is displaced (hot-swap rule)"
             hb = asyncio.create_task(_heartbeat(ws, "hijacker"))
@@ -610,9 +610,9 @@ def test_prune_and_rehello_rejection_are_quiet():
 
     async def go():
         async with Stack(time_limit_s=30) as st:
-            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}}}
-            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
-            a = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            st.session.guns = {"GUN-A-AB12": {"gun_id": "GUN-A-AB12", "sticker": "GUN-A", "ble": {"tail": "AB12"}}}
+            p = st.add_player("ALPHA", "GUN-A-AB12", team_id="blue")
+            a = await st.connect_node("GUN-A-AB12", node_id="phone-A")
             assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 3)
             for i in range(5):
                 body, code, ws = await _raw_hello(st.url, {"node_id": f"throwaway-{i}", "node_type": "phone", "app_ver": "x", "seq_next": 1})
@@ -637,3 +637,16 @@ def test_prune_and_rehello_rejection_are_quiet():
             assert not stray, stray
             loop.set_exception_handler(None)
     asyncio.run(asyncio.wait_for(go(), 40))
+
+
+def test_player_added_after_hello_binds_by_armory_tail():
+    """Bench 2026-08-25: the phone said hello with gun `Tactix-AB12` (name reset by Callsign) BEFORE the host added
+    the player with gun_id `GUN-A` (armory tail AB12). The late-roster adopt path must match by tail like hello does."""
+    s = _sess()
+    s.guns = {"GUN-A": {"gun_id": "GUN-A", "sticker": "GUN-A", "ble": {"tail": "AB12"}}}
+    s.net.simulate_hello("phone-1", "Tactix-AB12")
+    s._on_node({"node_id": "phone-1", "node_type": "phone", "gun_name": "Tactix-AB12", "gun_tail": "AB12"})
+    assert s.node_player.get("phone-1") is None
+    p = s.add_player("ALPHA", "blue", gun_id="GUN-A")
+    assert s.node_player.get("phone-1") == p["player_id"], "late roster add must adopt the node by tail"
+    assert s.players[p["player_id"]]["node_id"] == "phone-1"

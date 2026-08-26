@@ -53,7 +53,11 @@ export class Hud {
     if (sig !== this.sig) {
       const urlEl = this.hudEl.querySelector('#mcurl');
       const typing = urlEl && typeof document !== 'undefined' && document.activeElement === urlEl;
-      if (!typing) { this.sig = sig; this.hudEl.innerHTML = this._structure(st); }
+      if (!typing) {
+        const lst = this.hudEl.querySelector('.list'); const keep = lst ? lst.scrollTop : 0;   // keep the picker's scroll across re-renders
+        this.sig = sig; this.hudEl.innerHTML = this._structure(st);
+        if (keep) { const l2 = this.hudEl.querySelector('.list'); if (l2) l2.scrollTop = keep; }
+      }
     }
     this._patch(st);
     this._chips(st);

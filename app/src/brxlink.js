@@ -54,7 +54,7 @@ export class BrxLink {
   async scan(onHit) {
     if (this._scanning) throw new Error('a scan is already open');
     await this.ensureInit(); this._scanning = true;
-    await this.ble.requestLEScan({ allowDuplicates: true, scanMode: 2 }, res => {
+    await this.ble.requestLEScan({ allowDuplicates: true, scanMode: 2 }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
       const d = res.device || {}; if (!d.deviceId) return;
       const name = d.name || res.localName || ''; if (!name) return;
       onHit({ deviceId: d.deviceId, name, rssi: res.rssi });

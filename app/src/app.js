@@ -104,10 +104,21 @@ function connectMc(url) {
 let scanning = false; const found = new Map();
 Object.assign(hud.h, {
   onSetGun: async () => {
-    if (scanning) { await link.stopScan(); scanning = false; hud.setScan([]); return; }
+    if (scanning) { await link.stopScan(); scanning = false; }   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25)
     try {
       found.clear(); scanning = true;
-      await link.scan(d => { found.set(d.deviceId, d); hud.setScan([...found.values()].sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999)).map(x => ({ ...x, ...splitName(x.name, x.deviceId) }))); scheduleRender(); });
+      // Stable rows: first-seen order (Map insertion), RSSI updated in place, re-render at most 2×/s —
+      // sorting by RSSI on every advert made the rows jump under the finger (bench 2026-08-25).
+      let lastPaint = 0;
+      await link.scan(d => {
+        if (!d.name) return;                       // unnamed adverts are never taggers (25 of them on the bench)
+        const prev = found.get(d.deviceId);
+        found.set(d.deviceId, prev ? { ...prev, ...d } : d);
+        const now = Date.now();
+        if (now - lastPaint < 500 && prev) return;
+        lastPaint = now;
+        hud.setScan([...found.values()].map(x => ({ ...x, ...splitName(x.name, x.deviceId) }))); scheduleRender();
+      });
     } catch (e) { scanning = false; log('scan: ' + (e && e.message || e), 'le'); }
   },
   onPick: async deviceId => {
@@ -179,6 +190,8 @@ window.addEventListener('pageshow', () => engine.resume());
     window.brxDemo = startDemo({ engine, log });
   } else {
     try { await link.ensureInit(); log('BLE ready — Set my gun', 'lk'); } catch (e) { log('BLE init: ' + (e && e.message || e), 'le'); }
+    // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
+    if (!engine.gun) { try { await hud.h.onSetGun(); } catch (_) { /* permission denied etc. — button still works */ } }
     if (settings.mcUrl && !engine.gun) log(`MC address remembered: ${settings.mcUrl}`);
   }
   await refreshPreflight(); scheduleRender();
