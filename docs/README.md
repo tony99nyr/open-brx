@@ -45,6 +45,10 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 | Node↔MC wire + game data model | `spec/contracts.md` |
 | Open work (all items) | `FOLLOWUPS.md` |
 
+- **[handoff-ble-experiments-no-ir.md](handoff-ble-experiments-no-ir.md)** — **four BLE-only bench
+  experiments** needing just two taggers and a laptop (no IR, no Callsign, no capture rig). Top item
+  could close P2 and remove an IR hardware dependency.
+
 ## Reference
 - **[reference/weapons.md](reference/weapons.md)** — **the complete Callsign arsenal**: all 20 weapons,
   named and behaviour-verified, with damage/cycle/clip/reserve/heat as sent on the wire.
