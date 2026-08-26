@@ -24,8 +24,9 @@ export function Lobby() {
   const allAcked = lobby.pushed && acked === players.length;
   const reds = readiness.board.filter(b => b.status === 'red').map(b => b.sticker);
 
+  // Two deliberate clicks (design-critic #5): PUSH, verify the acks/echoes land, THEN arm the countdown.
   const pushAndArm = async () => {
-    if (!lobby.pushed) { const r = await run(() => api.pushLobby()); if (!r) return; }
+    if (!lobby.pushed) { await run(() => api.pushLobby()); return; }   // stop here — the rail's step 2 is real now
     const s = await run(() => api.start(runway));
     if (s) setView('armed');
   };
@@ -77,7 +78,7 @@ export function Lobby() {
             : lobby.pushed && !allAcked
               ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(' + ')} DID NOT ECHO — HEADSET? GUN ASLEEP?</span>
               : <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.ok }}>ALL NODES READY &amp; IN RANGE — PUSH, THEN WALK</span>}
-        <PrimaryButton onClick={pushAndArm} disabled={reds.length > 0 || players.length === 0} title={allReady ? '' : 'Host override: pushing with players not ready'}>
+        <PrimaryButton onClick={pushAndArm} disabled={reds.length > 0 || players.length === 0 || (lobby.pushed && !allAcked)} title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : allReady ? '' : 'Host override: pushing with players not ready'}>
           {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
         </PrimaryButton>
       </div>

@@ -192,6 +192,7 @@ export class MockBackend implements Api {
     this.emit();
     return GUNS.map(([s, tail]) => ({ tail, name: `${s}-${tail}`, basename: s, gun_id: s, rssi: -60, identity: 'ok', t: now() }));
   }
+  async armory() { return GUNS.map(([s, tail]) => ({ gun_id: s, sticker: s, ble: { tail } })); }
   async getModes(): Promise<ModeInfo[]> { return clone(MODES); }
   async getWeapons(): Promise<WeaponView[]> { return clone(WEAPONS); }
   async putConfig(partial: Partial<GameConfig>) {

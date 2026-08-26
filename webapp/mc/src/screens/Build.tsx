@@ -24,7 +24,7 @@ export function Build() {
             {modes.map(m => {
               const on = m.mode === cfg.mode;
               return (
-                <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => put({ ...m.defaults, config_id: cfg.config_id })} onKeyDown={onKey(() => put({ ...m.defaults, config_id: cfg.config_id }))}
+                <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => { if (m.mode !== cfg.mode) put({ ...m.defaults, config_id: cfg.config_id }); }} onKeyDown={onKey(() => { if (m.mode !== cfg.mode) put({ ...m.defaults, config_id: cfg.config_id }); })}
                   style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : 'transparent'}`,
                     padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer' }}>
                   <StripedSlot height={76} caption={MODE_ART.has(m.mode) ? undefined : 'mode art'}

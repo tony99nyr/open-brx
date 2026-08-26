@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReadinessRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
@@ -9,6 +9,8 @@ const statusColor = (s: ReadinessRow['status']) => (s === 'red' ? T.bad : s === 
 export function Armory() {
   const { state, run, api } = useStore();
   const [scanning, setScanning] = useState(false);
+  const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
+  useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, [state?.readiness?.t]);
   if (!state) return null;
   const { readiness } = state;
   const board = readiness.board;
@@ -39,6 +41,29 @@ export function Armory() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
         {board.map(g => <GunCard key={g.sticker} g={g} />)}
       </div>
+      {(state?.nodes?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <SectionRule label={`PHONES ON THE NET // ${state.nodes.length}`} hint="EVERY CONNECTED COMPANION — WITH OR WITHOUT A GUN" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {(state?.nodes ?? []).map(n => (
+              <span key={n.node_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, background: T.panel, border: `1px solid ${n.gun_name ? T.line : T.warn}`, padding: '8px 14px' }}>
+                <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{n.gun_name ?? 'NO GUN YET'}</span>
+                <span style={{ font: F.mono(500, 10), color: T.micro }}>{n.node_id.slice(0, 10)} · {n.arm_state.toUpperCase()} · {fmtAge(n.last_seen_ms ?? 0)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id)).length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <SectionRule label="KNOWN GUNS — NOT SEEN" hint="IN THE ARMORY REGISTRY BUT NOT ADVERTISING — POWERED OFF OR OUT OF RANGE" />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id)).map(r => (
+              <span key={r.gun_id} style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.micro, background: T.panelAlt, border: `1px dashed ${T.line2}`, padding: '8px 14px' }}>{r.sticker}{r.ble?.tail ? `-${r.ble.tail}` : ''} · OFFLINE</span>
+            ))}
+          </div>
+        </div>
+      )}
       {readiness.unclaimed.length > 0 && (
         <div style={{ marginTop: 22 }}>
           <SectionRule label={`UNCLAIMED // ${readiness.unclaimed.length} GUNS ADVERTISING, NO NODE`} hint="HAND THEM OUT — A PHONE MUST CLAIM EACH GUN" />

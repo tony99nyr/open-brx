@@ -11,6 +11,7 @@ const viewIdx = (p: Phase) => (p === 'armed' ? 3 : PH.findIndex(x => x[0] === p)
 export function CommandBar() {
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, hasToken, setToken } = useStore();
   const [panic, setPanic] = useState(false);
+  const [panicked, setPanicked] = useState<string | null>(null);
   const [tokDraft, setTokDraft] = useState('');
   const offline = !mock && !connected && !authRequired;   // the token prompt owns the copy while auth is pending
   const cur = viewIdx(view);
@@ -48,10 +49,14 @@ export function CommandBar() {
           })}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {panicked && (
+            <button type="button" onClick={() => setPanicked(null)} title="dismiss"
+              style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.mono(600, 11), letterSpacing: '.1em', padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
+          )}
           {panic ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>FLEET-WIDE SAFE ($CLEAR → $SP,99) ON EVERY NODE IN RANGE?</span>
-              <HazardButton size={11} onClick={() => { setPanic(false); run(() => api.control('panic', true)); }}>CONFIRM PANIC</HazardButton>
+              <HazardButton size={11} onClick={async () => { setPanic(false); const r = await run(() => api.control('panic', true)); setPanicked(r ? `FLEET SAFED — $CLEAR→$SP,99 SENT TO EVERY NODE IN RANGE (${new Date().toLocaleTimeString()})` : 'PANIC FAILED — CHECK THE SERVER'); }}>CONFIRM PANIC</HazardButton>
               <GhostButton onClick={() => setPanic(false)}>CANCEL</GhostButton>
             </span>
           ) : (

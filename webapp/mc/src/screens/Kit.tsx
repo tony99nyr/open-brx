@@ -11,7 +11,7 @@ export function Kit() {
   if (!state) return null;
   const players = state.players;
   const sp = players.find(p => p.player_id === selPlayer) ?? players[0];
-  const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id).length;
+  const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id && p.gun_id).length;   // no gun = cannot play (critic #8)
   const selWeapon = weapons.find(w => w.weapon_id === sp?.loadout?.weapons?.[0]?.weapon_id) ?? weapons[0];
   const trying = state.kit.trying;
   const node = sp ? state.nodes.find(n => n.player_id === sp.player_id) : undefined;

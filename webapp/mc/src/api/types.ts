@@ -149,6 +149,7 @@ export interface Api {
   getState(): Promise<State>;
   subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry) => void, onLink?: (connected: boolean) => void): () => void;
   scan(duration_s?: number): Promise<ScanRow[]>;
+  armory(): Promise<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>;
   getModes(): Promise<ModeInfo[]>;
   getWeapons(): Promise<WeaponView[]>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;

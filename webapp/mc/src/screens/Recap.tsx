@@ -1,7 +1,7 @@
 import type { ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { Brackets, GhostButton, SectionRule } from '../ui';
+import { Brackets, SectionRule, PrimaryButton } from '../ui';
 
 const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(120px,1fr)';
 const AWARD_COLOR: Record<string, string> = { MVP: '#ffd23f', 'FIRST BLOOD': T.bad, MULTIKILL: T.warn };
@@ -53,8 +53,8 @@ export function Recap() {
         )}
         <span style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a href={csv} download="brx-recap.csv" className="hov-accbg" style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: T.acc, color: T.accInk, textDecoration: 'none', clipPath: CHAMFER.tl8, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>
-          <GhostButton size={12} pad="11px 22px" onClick={async () => { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }}>NEW MATCH</GhostButton>
+          <a href={csv} download="brx-recap.csv" className="hov-acc" style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>
+          <PrimaryButton size={13} onClick={async () => { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
         </div>
       </Brackets>
       <SectionRule label="HONORS" />

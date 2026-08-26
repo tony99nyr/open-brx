@@ -22,7 +22,7 @@ export class Hud {
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
     let pressT = null;
-    this.hudEl.addEventListener('pointerdown', () => { pressT = setTimeout(() => { pressT = null; this.h.onToggleNight && this.h.onToggleNight(); }, 900); });
+    // (removed 2026-08-26, critic #9: a resting glove/chin tripped the invisible 900 ms night toggle — NIGHT lives in the diag panel)
     this.hudEl.addEventListener('pointerup', () => { if (pressT) clearTimeout(pressT); pressT = null; });
     this.hudEl.addEventListener('pointerleave', () => { if (pressT) clearTimeout(pressT); pressT = null; });
     window.addEventListener('resize', () => this.fit()); this.fit();
@@ -46,7 +46,7 @@ export class Hud {
   render(st) {
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
-    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
+    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
@@ -165,7 +165,7 @@ export class Hud {
         <button class="camchip ${this.cam ? 'on' : ''}" data-act="onToggleCam"><span class="unskew10">◉ CAM${this.cam ? ' ON' : ''}</span></button></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       <div class="stats tab">${stat('K', st.kills, true)}${stat('D', st.deaths)}${stat('A', st.assists, true)}${stat('ACC', st.accuracy == null ? null : Math.round(st.accuracy * 100) + '%', true)}</div>
-      ${low ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
+      ${st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
@@ -259,7 +259,7 @@ export class Hud {
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="ghost"><div class="l tab">00</div><div class="r tab">${pad2(st.ammo)}<span style="font-size:26px">/${st.reserve != null ? st.reserve : '—'}</span></div></div>
           <div class="c"><div class="l2"><span class="t">DOWN</span><span class="kb">KILLED BY <b style="background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
-          <div style="display:flex;flex-direction:column;align-items:center"><span class="n tab" id="rd">${pad2(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span></div></div></div>`;
+          <div style="display:flex;flex-direction:column;align-items:center"><span class="n tab" id="rd">${pad2(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : st.respawnType === 'scanner' ? 'GO TO A RESPAWN SCANNER' : st.respawnType === 'none' ? 'NO RESPAWNS THIS MODE' : 'AWAITING REDEPLOY'}</span></div></div></div>`;
         this._flash();
       } else { const el = this.overlay.querySelector('#rd'); if (el) el.textContent = pad2(st.respawnIn); }
       return;

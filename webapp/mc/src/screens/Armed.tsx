@@ -11,6 +11,7 @@ export function Armed() {
   const [, tick] = useState(0);
   const [runway, setRunway] = useState(state?.start?.countdown_s ?? 120);
   const [confirmAbort, setConfirmAbort] = useState(false);
+  const [reschedConfirm, setReschedConfirm] = useState(false);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 250); return () => clearInterval(id); }, []);
   if (!state) return null;
   const st = state.start;
@@ -33,7 +34,12 @@ export function Armed() {
       <ScreenHeader kicker="[ A6 // DISPERSED START ]" title="Match Arming" right={
         <>
           <GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>
-          <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => run(() => api.reschedule(runway))} >RESCHEDULE</GhostButton>
+          {reschedConfirm ? (<>
+            <GhostButton color={T.warn} border={T.warn} onClick={() => { setReschedConfirm(false); run(() => api.reschedule(runway)); }}>CONFIRM — RESTART EVERY COUNTDOWN AT {String(Math.floor(runway / 60)).padStart(2, '0')}:{String(runway % 60).padStart(2, '0')}</GhostButton>
+            <GhostButton onClick={() => setReschedConfirm(false)}>CANCEL</GhostButton>
+          </>) : (
+            <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setReschedConfirm(true)} title="Two-step: pushes a fresh go-live time to every node in range">RESCHEDULE</GhostButton>
+          )}
           {confirmAbort ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>ABORT REACHES ONLY NODES IN RANGE ({inRange}/{nodes.length}) — RESCHEDULE INSTEAD?</span>

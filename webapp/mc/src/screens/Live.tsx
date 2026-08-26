@@ -9,6 +9,7 @@ const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr
 export function Live() {
   const { state, feed, run, api, serverNow, connected } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
+  const [recallConfirm, setRecallConfirm] = useState(false);
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   if (!state) return null;
@@ -63,7 +64,12 @@ export function Live() {
               ) : (
                 <GhostButton onClick={() => setEndConfirm(true)} title="Early end: reaches only nodes in range; the rest end at the time limit (confirm step)">END MATCH EARLY</GhostButton>
               )}
-              <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => run(() => api.control('recall'))}>RECALL</GhostButton>
+              {recallConfirm ? (<>
+                <GhostButton color={T.warn} border={T.warn} onClick={() => { setRecallConfirm(false); run(() => api.control('recall')); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
+                <GhostButton onClick={() => setRecallConfirm(false)}>CANCEL</GhostButton>
+              </>) : (
+                <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} title="Two-step: revive and hold every node in range">RECALL</GhostButton>
+              )}
               <span style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>

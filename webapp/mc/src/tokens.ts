@@ -22,8 +22,8 @@ export const CLS_COLOR: Record<string, string> = {
 
 // font shorthands (React accepts the CSS `font` shorthand as a string)
 export const F = {
-  osw: (w: number, px: number) => `${w} ${px}px 'Oswald'`,
-  chk: (w: number, px: number) => `${w} ${px}px 'Chakra Petch'`,
+  osw: (w: number, px: number) => `${w} ${px}px 'Oswald','Arial Narrow',Impact,sans-serif`,
+  chk: (w: number, px: number) => `${w} ${px}px 'Chakra Petch','Segoe UI',system-ui,sans-serif`,
   mono: (w: number, px: number) => `${w} ${px}px ui-monospace,monospace`,
 };
 export const TAB = { fontVariantNumeric: 'tabular-nums' } as const;

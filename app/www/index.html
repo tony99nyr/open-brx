@@ -150,13 +150,13 @@ button:active{filter:brightness(1.15)}
 .chip .unskew{display:inline-block;transform:skewX(12deg)}
 .tminus .r .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:center}
 .whiteout{position:absolute;inset:0;background:#fff;animation:whiteout .08s linear forwards}
-.kill{background:radial-gradient(circle at 50% 42%,#16264a 0%,#080d1a 55%,#03050c 100%);animation:killin .3s ease-out}
-.kill .rays{position:absolute;left:50%;top:42%;width:1400px;height:1400px;transform:translate(-50%,-50%);background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--glow) 13%,transparent) 0deg 6deg,transparent 6deg 16deg);-webkit-mask-image:radial-gradient(circle,#000 0%,transparent 60%);mask-image:radial-gradient(circle,#000 0%,transparent 60%);animation:raysspin 30s linear infinite,burst .5s ease-out}
-.kill .ring1{position:absolute;left:50%;top:42%;width:340px;height:340px;transform:translate(-50%,-50%);border:2px solid color-mix(in srgb,var(--glow) 60%,transparent);border-radius:50%;animation:ringpulse 2.4s ease-in-out infinite,ringgrow .6s ease-out}
-.kill .ring2{position:absolute;left:50%;top:42%;width:540px;height:540px;transform:translate(-50%,-50%);border:1px solid color-mix(in srgb,var(--glow) 25%,transparent);border-radius:50%}
-.kill .c{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
+.kill{background:radial-gradient(circle at 50% 20%,rgba(22,38,74,.6) 0%,rgba(8,13,26,.25) 45%,transparent 70%);animation:killin .3s ease-out;pointer-events:none}
+.kill .rays{position:absolute;left:50%;top:20%;width:700px;height:700px;transform:translate(-50%,-50%);background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--glow) 13%,transparent) 0deg 6deg,transparent 6deg 16deg);-webkit-mask-image:radial-gradient(circle,#000 0%,transparent 60%);mask-image:radial-gradient(circle,#000 0%,transparent 60%);animation:raysspin 30s linear infinite,burst .5s ease-out}
+.kill .ring1{position:absolute;left:50%;top:20%;width:220px;height:220px;transform:translate(-50%,-50%);border:2px solid color-mix(in srgb,var(--glow) 60%,transparent);border-radius:50%;animation:ringpulse 2.4s ease-in-out infinite,ringgrow .6s ease-out}
+.kill .ring2{position:absolute;left:50%;top:20%;width:340px;height:340px;transform:translate(-50%,-50%);border:1px solid color-mix(in srgb,var(--glow) 25%,transparent);border-radius:50%}
+.kill .c{position:absolute;top:20%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
 .kill .elim{background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.26em;padding:3px 20px;transform:skewX(-12deg)}
-.kill .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:148px;line-height:.82;letter-spacing:.04em;text-shadow:0 0 70px var(--glow),0 0 18px color-mix(in srgb,var(--glow) 70%,transparent);animation:slam .35s cubic-bezier(.2,1.4,.4,1),shimmer 1.2s .4s ease-in-out}
+.kill .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;line-height:.82;letter-spacing:.04em;text-shadow:0 0 70px var(--glow),0 0 18px color-mix(in srgb,var(--glow) 70%,transparent);animation:slam .35s cubic-bezier(.2,1.4,.4,1),shimmer 1.2s .4s ease-in-out}
 .kill .cf{font-family:var(--fd);font-weight:700;font-size:34px;letter-spacing:.52em;text-indent:.52em;color:var(--glow);text-shadow:0 0 30px var(--glow)}
 .kill .bars{display:flex;gap:8px;margin-top:8px}
 .kill .bars i{height:5px;transform:skewX(-24deg);display:block}

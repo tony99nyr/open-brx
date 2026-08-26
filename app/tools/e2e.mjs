@@ -49,7 +49,10 @@ console.log('node ws:', WS);
 const browser = await chromium.launch();
 const jsErrors = [];
 const mkPage = async (name, viewport) => {
-  const pg = await browser.newPage({ viewport });
+  // Each page gets its OWN context: pages share localStorage otherwise, so both HUDs helloed with the SAME
+  // persisted node_id and the A8 takeover machinery ate them (the hudB-never-binds mystery, 2026-08-26).
+  const ctx = await browser.newContext({ viewport });
+  const pg = await ctx.newPage();
   pg.setDefaultTimeout(6000);   // a missing selector fails the STEP in 6 s, not 30 s
   pg.on('pageerror', e => jsErrors.push({ page: name, flow: curFlow, err: String(e.message).slice(0, 200) }));
   pg.on('console', m => { if (m.type() === 'error') jsErrors.push({ page: name, flow: curFlow, err: 'console: ' + m.text().slice(0, 200) }); });
@@ -100,8 +103,7 @@ await step('mode cards switch + briefing follows + art present', async () => {
   await mc.click('text=BUILD');
   await mc.locator('div[role="button"]:has-text("FREE-FOR-ALL")').first().click();
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa applied');
-  const brief = await mc.locator('text=/MODE BRIEFING/i').first().textContent().catch(() => '');
-  expect(/FREE/i.test(brief || ''), 'briefing did not follow the mode: ' + brief);
+  await until(async () => /FREE/i.test(await mc.locator('text=/MODE BRIEFING/i').first().textContent().catch(() => '') || ''), 6000, 'briefing follows the mode');
   await mc.locator('div[role="button"]:has-text("TEAM DEATHMATCH")').first().click();
   await until(async () => (await st()).config.mode === 'tdm', 5000, 'tdm back');
   await shot(mc, 'build-modes'); await tapAudit(mc, 'build'); await textAudit(mc, 'build');
@@ -201,9 +203,10 @@ await step('ARM COUNTDOWN (01:00 runway) → Armed screen + HUD T-MINUS overlay'
   expect(/T-MINUS/i.test(t), 'overlay has no T-MINUS text');
   await shot(hudA, 'hudA-tminus'); await shot(mc, 'armed-screen'); await tapAudit(mc, 'armed');
 });
-await step('RESCHEDULE from the Armed screen', async () => {
+await step('RESCHEDULE is a two-step confirm and moves go-live', async () => {
   const before = (await st()).start.go_live_t;
-  await mc.click('text=RESCHEDULE');
+  await mc.click('button:has-text("RESCHEDULE")');
+  await mc.click('button:has-text("CONFIRM — RESTART")');
   await until(async () => (await st()).start.go_live_t > before, 8000, 'go_live_t moved');
 });
 await step('ABORT is a two-step confirm → back to lobby, HUDs stand down', async () => {
