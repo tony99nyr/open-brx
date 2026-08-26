@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import type { Phase } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { HazardButton, GhostButton } from '../ui';
+import { HazardButton, GhostButton, PrimaryButton } from '../ui';
 
 const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'BUILD'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'LIVE'], ['recap', 'RECAP']];
 const viewIdx = (p: Phase) => (p === 'armed' ? 3 : PH.findIndex(x => x[0] === p));
@@ -60,7 +60,26 @@ export function CommandBar() {
               <GhostButton onClick={() => setPanic(false)}>CANCEL</GhostButton>
             </span>
           ) : (
-            <HazardButton onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* the top-right is the STATE of the game, not a big red button (Tony 2026-08-26) */}
+              {state?.phase === 'recap' ? (
+                <>
+                  <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.ok }}>■ MATCH OVER</span>
+                  <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
+                  <HazardButton size={10} onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
+                </>
+              ) : state?.phase === 'live' || state?.phase === 'armed' ? (
+                <>
+                  <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: state.phase === 'live' ? T.bad : T.warn }}>{state.phase === 'live' ? '● LIVE' : '▲ ARMED'}</span>
+                  <HazardButton onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
+                </>
+              ) : (
+                <>
+                  <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim }}>◇ SETUP</span>
+                  <HazardButton size={10} onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
+                </>
+              )}
+            </span>
           )}
         </div>
       </div>

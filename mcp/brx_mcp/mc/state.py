@@ -376,6 +376,11 @@ class Session:
     def set_config(self, patch: dict) -> dict:
         if not isinstance(patch, dict):
             raise ValueError("config must be an object")
+        if self.phase == "recap":
+            # the match is OVER — a config change is the operator starting the next one (Tony,
+            # 2026-08-26: "i get an error bc match in progress, but MC knows its over"). Roll the
+            # session forward (roster kept, recap archived) instead of erroring.
+            self.new_session(keep_roster=True)
         if self.phase not in ("muster", "build", "kit", "lobby"):
             raise ValueError("cannot change config after the match has started")
         mode = patch.get("mode", self.config["mode"])
