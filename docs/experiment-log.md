@@ -1556,3 +1556,18 @@ not a gun behaviour — exactly how our MC scorer already works (it tracks `frie
 *app setting*, not a gun-enforced behaviour (see the GSET map caveat). All four handoff experiments closed.
 
 Handoff experiment 4 **PASSED** — all four BLE-only experiments (§`handoff-ble-experiments-no-ir.md`) closed.
+
+## 2026-08-26 (bench) — t20 = FIRE MODE, PROVEN by one-field flip
+
+brx-opus2's 19-frame correlation (t20: 0=full-auto 5/5, 7=single-shot 7/7, 9=burst 2/2, charge
+variants 2/3/14, melee 13) put to the trigger:
+
+1. Captured sniper frame verbatim (t20=7): **one shot per pull, holding does nothing** — native bolt feel.
+2. SAME frame, only t20 7→0: **full-auto** through the mag.
+3. Captured Burst Rifle (t20=9, t23=275): **exactly 3 rounds per pull.**
+
+t20 IS the fire-mode selector; t23 is the burst cycle. U0 closed — no Callsign semi capture needed.
+This retro-explains the whole day: the template stamped the AR's t20=0 on every weapon ("sniper
+full-autos", "burst doesn't burst", C1/C2), and the earlier idx21(=t20)=14 probe put the CHARGE
+RIFLE'S MODE on a sniper (the "slow pull fires silent" two-stage trigger = charge-and-release).
+The re-based catalog (f85b725) ships each weapon's own t20/t23 verbatim.

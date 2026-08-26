@@ -274,3 +274,8 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   buildable today with attribution; (c) **EMP grenade**: `$STUN` direct command is a NO-OP (probed 4 arg shapes 2026-08-26 — stun is likely IR-delivered via a $SIR row, weapon category 10 'Stun') +
   `$GREN`/`$BUT` (grenade + alt-fire button notifications, unprobed) — bench-probe these three next
   session; (d) decode the `$SIR` row params (e.g. `90,1,40` / `100,2,60`) — probably damage %/stun.
+
+- ✅ **U0 CLOSED — t20 = fire mode, PROVEN by one-field flip (2026-08-26).** 0 auto / 7 single / 9
+  burst (+t23 cycle) / 2-3-14 charge variants / 13 melee. Sniper flipped 7→0 changed single-shot to
+  full-auto on the bench; captured Burst Rifle fired true 3-round bursts. The re-based catalog ships
+  native modes.

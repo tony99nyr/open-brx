@@ -1295,3 +1295,13 @@ Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damag
 other sensor covered; multiple clean hits per id. Supersedes the earlier "1=headset, 4/0=gun" guess
 (1 is specifically the BACK dome). Point-blank shots flood multiple sensors — the reporting id then
 reflects whichever receiver won, so directional logic should trust tok1 only at field distances.
+
+
+### $WEAP t20 — FIRE MODE (PROVEN by one-field flip, 2026-08-26)
+
+`0` full-auto · `7` single-shot/bolt · `9` burst (cycle in `t23`, ms) · `2`/`3`/`14` charge variants
+(rail auto-release / laser hold-to-fire / charge-rifle release-to-fire) · `13` melee. Proof: the
+captured sniper frame fired single-shot at t20=7 and full-auto with ONLY t20 flipped to 0; the
+captured Burst Rifle (t20=9, t23=275) fired exactly 3 rounds per pull. Correlated 19/19 with
+capture-time behaviour notes (brx-opus2). Supersedes the "(secondary/overheat)" field-map guess —
+overheat is t24/t35.
