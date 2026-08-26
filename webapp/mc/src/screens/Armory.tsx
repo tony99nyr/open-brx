@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import type { ReadinessRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
@@ -38,8 +39,12 @@ export function Armory() {
           </div>
         </>
       } />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
-        {board.map(g => <GunCard key={g.sticker} g={g} />)}
+      <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flexWrap: 'wrap', marginBottom: 20 }}>
+        <JoinPanel />
+        <div style={{ flex: '1 1 520px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12, alignContent: 'start' }}>
+          {board.map(g => <GunCard key={g.sticker} g={g} />)}
+          {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>NO PLAYERS YET — ADD OPERATORS IN KIT, OR JUST GET PHONES JOINED FIRST ◂</div>}
+        </div>
       </div>
       {(state?.nodes?.length ?? 0) > 0 && (
         <div style={{ marginTop: 20 }}>
@@ -157,6 +162,27 @@ function GhostCard({ r }: { r: { gun_id: string; sticker: string; ble: { tail?: 
         <Tag color={T.micro}>OFFLINE</Tag>
       </div>
       <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>IN THE REGISTRY — POWER IT UP AND SCAN</div>
+    </div>
+  );
+}
+
+
+/** The join QR is step zero of muster — it earns a real panel, not a status-bar popover (critic #7). */
+function JoinPanel() {
+  const { state } = useStore();
+  const [url, setUrl] = useState<string | null>(null);
+  const qr = state?.lan.qr;
+  useEffect(() => {
+    if (!qr) return;
+    QRCode.toDataURL(qr, { margin: 0, width: 480, color: { dark: '#e8eef5', light: '#07090d' } }).then(setUrl).catch(() => setUrl(null));
+  }, [qr]);
+  if (!qr) return null;
+  return (
+    <div style={{ flex: '0 0 300px', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
+      {url && <img src={url} width={240} height={240} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} />}
+      <div style={{ font: F.mono(600, 13), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
+      <div style={{ font: F.mono(500, 9.5), letterSpacing: '.16em', color: T.dim, textAlign: 'center', lineHeight: 1.7 }}>EACH PHONE: OPEN <span style={{ color: T.ink }}>BRX COMPANION</span> → SCAN THIS, OR TYPE THE ADDRESS</div>
     </div>
   );
 }

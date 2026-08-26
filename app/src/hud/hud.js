@@ -224,7 +224,7 @@ export class Hud {
   // ---------- chips (WS / BLE / resync / tutorial) ----------
   _chips(st) {
     const pills = [];
-    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">MC REFUSED: ${esc(String(st.wsReason || 'refused')).toUpperCase()}</span></span>`);
+    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${st.wsReason ? ' (' + esc(String(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
     else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') pills.push(`<span class="pill warn"><span class="unskew">RECONNECTING TO MISSION CONTROL…</span></span>`);
     if (st.phase !== 'idle' && !st.bleUp) pills.push(`<span class="pill bad"><span class="unskew">GUN LINK LOST — RECONNECTING</span></span>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
