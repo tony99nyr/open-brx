@@ -185,19 +185,56 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     assert "melee" not in ids, "hidden melee is not in the visible picker"
     assert len(ids) == 18, f"the §3 roster is 18 weapons, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
-    assert by["assault_rifle"]["verified"] is True
-    assert by["sniper_rifle"]["verified"] is False
+    # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (190ms, not the
+    # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
+    assert by["assault_rifle"]["verified"] is False
+    assert by["burst_rifle"]["verified"] is True
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
-    assert "850ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
+    assert "190ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
     assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
 
 
-def test_resolve_verified_weapon_is_exact_ar_tail():
+def test_every_weapon_is_based_on_its_own_captured_frame():
+    """The whole roster is re-based on real Callsign frames (protocol/captures/raw/) — no templates."""
+    import json, pathlib
+    rows = json.loads((pathlib.Path(__file__).resolve().parents[1]
+                       / "brx_mcp/mc/weapons.json").read_text())["weapons"]
+    assert len(rows) == 19
+    for w in rows:
+        cap = w.get("capture") or {}
+        assert cap.get("frame", "").startswith("$WEAP,"), f"{w['weapon_id']} has no captured frame"
+        assert cap.get("src", "").endswith(".btsnoop"), f"{w['weapon_id']} has no capture source"
+        assert w.get("captured") is True
+
+
+def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
+    """resolve() emits the weapon's OWN captured frame; only slot + the balance tokens move."""
+    import json, pathlib
+    rows = {w["weapon_id"]: w for w in json.loads(
+        (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp/mc/weapons.json").read_text())["weapons"]}
+    T = WeaponCatalog._T
+    balance = {1, T["dmg"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
+               T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1}
     cat = WeaponCatalog()
-    from brx_mcp.gameconfig import WEAPON_TAILS
-    assert cat.resolve("assault_rifle", 0) == "$WEAP,0" + WEAPON_TAILS["ar"]
+    for wid, row in rows.items():
+        got = cat.resolve(wid, 0).split(",")
+        want = row["capture"]["frame"].split(",")
+        assert len(got) == len(want), wid
+        for i, (a, b) in enumerate(zip(got, want)):
+            if i not in balance:
+                assert a == b, f"{wid} tok{i - 1} drifted from the capture: {b!r} -> {a!r}"
+
+
+def test_resolve_keeps_the_captured_ammo_invariants():
+    """Every captured frame obeys tok39 == tok16 and tok17 == 2 * tok40; our rewrites must too."""
+    cat, T = WeaponCatalog(), WeaponCatalog._T
+    for w in cat.all():
+        p = w["weap_frame"].split(",")
+        assert p[T["clipstart"] + 1] == p[T["mag"] + 1], f"{w['weapon_id']}: tok39 != tok16"
+        assert int(p[T["reserve"] + 1]) == 2 * int(p[T["reserve_half"] + 1]), \
+            f"{w['weapon_id']}: tok17 != 2*tok40"
 
 
 def test_resolve_provisional_substitutes_mag_reserve():
@@ -213,23 +250,27 @@ def test_resolve_provisional_substitutes_mag_reserve():
     assert p[16] == "850", "rate-of-fire keeps the sample value (was being clobbered by mag)"
 
 # ---- mag >= htk invariant (docs/weapon-design.md §2.1) ---------------------
-def test_hits_to_kill_uses_wire_damage_and_captured_tails():
+def test_hits_to_kill_reads_the_resolved_frame():
     cat = WeaponCatalog()
-    # provisional: wire.dmg. sniper 60 -> 2 hits at the 45+70 default pool
+    # rebalanced: wire.dmg wins. sniper 60 -> 2 hits at the 45+70 default pool
     assert cat.damage("sniper_rifle") == 60
     assert cat.hits_to_kill("sniper_rifle", 115) == 2
-    # verified: no wire block, damage read back out of the captured AR tail (24 -> 5 hits, bench §7r)
-    assert cat.damage("assault_rifle") == 24
-    assert cat.hits_to_kill("assault_rifle", 115) == 5
+    # untuned damage is read back out of the captured frame — the AR really deals 9 (bench exp 2),
+    # the manual's 24 was stale (docs/reference/weapons.md)
+    assert cat.damage("assault_rifle") == 9
+    assert cat.hits_to_kill("assault_rifle", 115) == 13
 
 
 def test_validate_rejects_weapon_that_cannot_kill_on_one_magazine():
-    """rail_gun ships at mag 1 needing 2 hits vs the 115 pool — a kill costs a full reload."""
-    p = _player(weapons=("rail_gun",))
-    r = C.validate(_cfg(), [p])
+    """The invariant the pre-rebalance rail gun broke: mag 1 while needing 2 hits at the 115 pool.
+    Pinned on a synthetic row so the test keeps testing the RULE after the roster is retuned."""
+    broken = WeaponCatalog(rows=[{"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1,
+                                  "reserve": 6, "reload_ms": 2400, "dmg": 78, "rof": 25, "rng": 75,
+                                  "base": "ar", "wire": {"dmg": 90}}])
+    r = Compiler(broken).validate(_cfg(), [_player(weapons=("coilgun",))])
     assert not r["ok"]
-    assert any("rail_gun cannot kill on one magazine" in e for e in r["errors"]), r["errors"]
-    assert any("mag 1 < 2 hits at 90 dmg vs 115 pool" in e for e in r["errors"]), r["errors"]
+    assert any("coilgun cannot kill on one magazine: mag 1 < 2 hits at 90 dmg vs 115 pool" in e
+               for e in r["errors"]), r["errors"]
 
 
 def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
@@ -239,19 +280,21 @@ def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
 
 def test_mag_invariant_follows_the_per_player_health_override():
     """Pool is per-player: an override that raises hp/armor can push a legal weapon over the line.
-    ion_sniper is mag 2 / 80 dmg -> 2 hits at 115 (legal), 3 hits at 200 (illegal)."""
-    ok = _player(weapons=("ion_sniper",))
+    sniper_rifle is mag 4 / 60 dmg -> 2 hits at 115 (legal), 5 hits at 300 (illegal)."""
+    ok = _player(weapons=("sniper_rifle",))
     assert not any("one magazine" in e for e in C.validate(_cfg(), [ok])["errors"])
-    over = _player(weapons=("ion_sniper",))
-    over["loadout"]["overrides"] = {"max_hp": 100, "max_armor": 100}
+    over = _player(weapons=("sniper_rifle",))
+    over["loadout"]["overrides"] = {"max_hp": 150, "max_armor": 150}
     errs = C.validate(_cfg(), [over])["errors"]
-    assert any("ion_sniper cannot kill on one magazine" in e for e in errs), errs
-    assert any("vs 200 pool" in e for e in errs), errs
+    assert any("sniper_rifle cannot kill on one magazine" in e for e in errs), errs
+    assert any("mag 4 < 5 hits at 60 dmg vs 300 pool" in e for e in errs), errs
 
 
 def test_mag_invariant_reports_each_weapon_once_per_pool():
     """Two players carrying the same broken weapon is one error, not two."""
-    a, b = _player(num=7, weapons=("rail_gun",)), _player(num=8, weapons=("rail_gun",))
+    ov = {"max_hp": 150, "max_armor": 150}
+    a, b = _player(num=7, weapons=("sniper_rifle",)), _player(num=8, weapons=("sniper_rifle",))
+    a["loadout"]["overrides"] = b["loadout"]["overrides"] = ov
     errs = [e for e in C.validate(_cfg(), [a, b])["errors"] if "one magazine" in e]
     assert len(errs) == 1, errs
 
@@ -292,20 +335,71 @@ def test_award_medals_gated_for_tiny_rosters():
     assert C.award_medals([row, {**row, "player_id": "b"}], []) == {"a": [], "b": []}
 
 
-# ---- wire-table frames (2026-08-26: every provisional weapon sounded/behaved like the AR) ----------
-def test_wire_frames_carry_ir_protocol_and_sounds():
-    r = C.catalog.resolve("rail_gun", 0).split(",")
-    assert r[4] == "6", "rail gun must fire IR protocol 6 (the victim's $SIR,6 row)"
-    assert "O03" in r, "rail gun fires the ordnance sound"
-    s = C.catalog.resolve("sniper_rifle", 0).split(",")
-    assert s[5] == "1", "sniper is subtype 1 (pass-through, $SIR,0,1)"
-    assert "S16" in s, "sniper fires the SR-100 crack"
-    g = C.catalog.resolve("smg", 0).split(",")
-    assert g[15] == "400", "smg: fire cadence 400ms at raw idx15 — BENCH-PROVEN 2026-08-26 (sniper idx15=1250 fired 1/s)"
-    assert g[16] == "850", "raw idx16 keeps the sample's constant 850 (unidentified field — never write it)"
-    assert g[17] == "72", "MAG 72 at raw idx17"
-    assert "G10" in g
-    k = C.catalog.resolve("rocket_launcher", 0).split(",")
-    assert k[4] == "10" and "C03" in k, "rocket = the captured slot-5 sample (proto 10, C03)"
-    a = C.catalog.resolve("assault_rifle", 0)
-    assert a == "$WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*"[:len(a)] or a.startswith("$WEAP,0,,100,0,0,24"), "verified AR stays byte-exact"
+# ---- native behaviour inherited from the captured frames --------------------
+def test_captured_native_behaviour_survives_resolve():
+    """The point of re-basing: behaviours we cannot synthesise ride along in the captured frame."""
+    cat, T = WeaponCatalog(), WeaponCatalog._T
+    tok = lambda wid, n: cat.resolve(wid, 0).split(",")[n + 1]
+    assert tok("burst_rifle", T["burst"]) == "275", "3-round burst time (tok23) is Callsign's own"
+    assert tok("force_rifle", T["burst"]) == "250"
+    assert tok("burst_rifle", T["burst"]) != tok("force_rifle", T["burst"]), "two distinct bursts"
+    for wid, heat in (("smg", "5"), ("charge_rifle", "14"), ("plasma_sniper", "30"),
+                      ("energy_rifle", "6")):
+        assert tok(wid, T["heat"]) == heat, f"{wid} overheat (tok24)"
+    assert tok("shotgun", 19) == "2", "shotgun reload type = Shells — never set by the old templates"
+    assert tok("melee", 3) == "13", "melee damage type = MeleeDamage (tok3)"
+    assert tok("rocket_launcher", 3) == "10" and tok("rail_gun", 3) == "6"
+    # per-weapon reload chains, not one shared D04+D03+D02
+    chains = {w["weapon_id"]: tuple(w["weap_frame"].split(",")[T[k] + 1] for k in ("rel1", "rel2", "rel3"))
+              for w in cat.all()}
+    assert chains["shotgun"] == ("D01", "D28", "D27")
+    assert chains["smg"] == ("D26", "D25", "D24")
+    assert len(set(chains.values())) >= 8, f"expected many distinct reload chains, got {len(set(chains.values()))}"
+    # charge tell: the rail gun and laser cannon have a charge-up sound the old build blanked
+    assert tok("rail_gun", T["snd_up"]) == "C08"
+    assert tok("laser_cannon", T["snd_up"]) == "C11"
+
+
+def test_fire_interval_is_written_at_tok14_and_850_is_never_touched():
+    cat, T = WeaponCatalog(), WeaponCatalog._T
+    p = cat.resolve("assault_rifle", 0).split(",")
+    assert p[T["fire"] + 1] == "190", "rebalanced fire interval lands at tok14 (raw idx15)"
+    assert p[T["fire"] + 2] == "850", "the unidentified constant at tok15 is never written"
+
+
+def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
+    """Regression guard for the whole roster, not just the two weapons that used to break."""
+    cat = WeaponCatalog()
+    bad = [w["weapon_id"] for w in cat.all()
+           if int(cat._row(w["weapon_id"])["mag"]) < cat.hits_to_kill(w["weapon_id"], 115)]
+    assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
+
+
+def test_ttk_band_and_no_strictly_dominant_weapon():
+    """docs/weapon-design.md §2: every picker weapon lands in the 1.5-3.5s band (one-shot power
+    weapons excepted), and no weapon beats another on TTK, sustained DPS and total kills at once."""
+    cat = WeaponCatalog()
+    rows = []
+    for w in cat.all():
+        r = cat._row(w["weapon_id"])
+        htk = cat.hits_to_kill(w["weapon_id"], 115)
+        p = w["weap_frame"].split(",")
+        fire = int(p[WeaponCatalog._T["fire"] + 1])
+        burst = p[WeaponCatalog._T["burst"] + 1]
+        per = (2 * fire + int(burst)) / 3 if burst else fire
+        ttk = htk * fire if w["weapon_id"] in ("charge_rifle", "laser_cannon", "rail_gun") \
+            else (htk - 1) * per
+        rows.append({"id": w["weapon_id"], "htk": htk, "ttk": ttk,
+                     "sust": r["mag"] * cat.damage(w["weapon_id"]) / (r["mag"] * per + r["reload_ms"]),
+                     "tk": (r["mag"] + r["reserve"]) // htk})
+    for r in rows:
+        if r["htk"] > 1:
+            assert 1500 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.5-3.5s band"
+    pick = [r for r in rows if r["htk"] > 1]
+    for a in pick:
+        for b in pick:
+            if a is b:
+                continue
+            dominates = (a["ttk"] <= b["ttk"] and a["sust"] >= b["sust"] and a["tk"] >= b["tk"]
+                         and (a["ttk"] < b["ttk"] or a["sust"] > b["sust"] or a["tk"] > b["tk"]))
+            assert not dominates, f"{a['id']} strictly dominates {b['id']}"

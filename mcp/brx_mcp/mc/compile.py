@@ -67,50 +67,55 @@ class WeaponCatalog:
             raise KeyError(f"unknown weapon_id {weapon_id!r}")
         return self._by_id[weapon_id]
 
-    # §6 sample frames (tail after "$WEAP,<slot>") — hardware/capture-derived. "laser"/"rocket" are the
-    # slot-2/slot-5 Callsign captures (protocol §6): proto 10 + C03 identifies slot 5 as the rocket launcher.
-    SAMPLES = {
-        "ar":     WEAPON_TAILS["ar"] if "ar" in WEAPON_TAILS else WEAPON_TAILS["primary"],
-        "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"]),
-        "laser":  ",,100,0,0,150,0,,,,,,,,1000,850,2,32768,2000,0,7,100,100,,0,,,E07,D32,D31,,D17,D16,D15,A73,,,,,2,9999999,75,,",
-        "rocket": ",1,90,10,0,115,0,,,,,,115,80,1000,850,2,32768,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,9999999,30,20,",
-    }
-    # token map indices (protocol-classes.md "WEAP exact token positions"; doc tokN == split()[N+1])
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "mag": 16, "reload": 18,
-          "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34,
-          "clipstart": 39}
+    # doc token positions (protocol-classes.md, cross-checked against 19 captured frames by
+    # `python -m brx_mcp.weapmap`). doc tokN == frame.split(",")[N+1] — `put()` adds the +1.
+    # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26; the constant 850 at tok15 is
+    # an unidentified field and is never written.
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "mag": 16, "reserve": 17, "reload": 18,
+          "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
+          "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
+          "range": 41}
+    # Legacy 4-sample tails, kept only for rows with no `capture` block (synthetic catalogs in tests).
+    SAMPLES = {"ar": WEAPON_TAILS.get("ar", WEAPON_TAILS["primary"]),
+               "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"])}
 
     def resolve(self, weapon_id: str, slot: int) -> str:
-        """$WEAP frame for a slot. Verified weapons emit their exact hardware tail. Provisional ones are
-        built from the closest CAPTURED sample frame with the weapon's `wire` table applied: IR
-        protocol/subtype (so the victim's $SIR row interprets rail/rocket/energy correctly), real damage,
-        fire cadence, mag/reload and the per-family sound block — 2026-08-26, after the bench showed every
-        templated weapon sounding and behaving like the AR. Still provisional until each is bench-fired."""
+        """`$WEAP` frame for a slot, built from the weapon's OWN captured Callsign frame.
+
+        Every weapon carries `capture.frame` — the real frame Battle Company sent for that gun, pulled
+        out of `protocol/captures/raw/` (see `weapons.json._note`). Emitting it verbatim inherits every
+        native behaviour we cannot synthesise from a template: the 3-round burst (tok23), bolt/single
+        shot, charge, overheat (tok24/35), the per-weapon reload chain, damage type (tok3), reload type
+        (tok19) and muzzle flash (tok25/26). On top of that we write ONLY the balance tokens — damage,
+        fire interval, and the ammo/reload trio — preserving the two invariants every captured frame
+        obeys: `tok39 == tok16` (clip start == max clip) and `tok17 == 2 * tok40`.
+
+        Rows without a `capture` block fall back to the old template path (synthetic test catalogs)."""
         w = self._row(weapon_id)
-        if w.get("verified"):
+        cap = w.get("capture") or {}
+        frame = cap.get("frame")
+        if not frame:                                  # legacy template path
             base = w.get("base", "ar")
-            return f"$WEAP,{slot}{WEAPON_TAILS[base]}"
-        wire = w.get("wire")
-        if not wire:                                   # no wire table: old mag/reload substitution
-            base = w.get("base", "ar")
-            full = f"$WEAP,{slot}{WEAPON_TAILS[base]}"
-            p = full.split(",")
+            p = f"$WEAP,{slot}{WEAPON_TAILS[base]}".split(",")
             p[_W_MAG] = str(w["mag"]); p[_W_CLIPSTART] = str(w["mag"])
             p[_W_RESERVE] = str(w["reserve"]); p[_W_RELOAD] = str(w["reload_ms"])
             return ",".join(p)
-        tail = self.SAMPLES[wire.get("sample", "ar")]
-        p = f"$WEAP,{slot}{tail}".split(",")
+        p = frame.split(",")
+        p[1] = str(slot)
         T = self._T
+
         def put(key: str, val) -> None:
             p[T[key] + 1] = str(val)
-        put("proto", wire["proto"]); put("subtype", wire["subtype"]); put("dmg", wire["dmg"])
-        put("fire", wire["fire_ms"]); put("mag", w["mag"]); put("clipstart", w["mag"]); put("reload", w["reload_ms"])
-        # charge_ms parked: the charge token is still unidentified (idx15 turned out to be FIRE
-        # interval — bench 2026-08-26); wire.charge_ms stays in the json for when it's found.
-        snd = wire.get("sounds") or {}
-        put("snd_fire", snd.get("fire", "")); put("snd_up", snd.get("up", "")); put("snd_down", snd.get("down", ""))
-        rel = snd.get("rel") or ["", "", ""]
-        put("rel1", rel[0]); put("rel2", rel[1]); put("rel3", rel[2]); put("noammo", snd.get("noammo", ""))
+
+        wire = w.get("wire") or {}
+        if wire.get("dmg") is not None:
+            put("dmg", int(wire["dmg"]))
+        if wire.get("fire_ms") is not None:
+            put("fire", int(wire["fire_ms"]))
+        mag, reserve = int(w["mag"]), int(w["reserve"])
+        put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
+        put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40
+        put("reload", int(w["reload_ms"]))
         return ",".join(p)
 
     def damage(self, weapon_id: str) -> int:

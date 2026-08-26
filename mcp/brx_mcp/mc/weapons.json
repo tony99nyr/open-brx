@@ -1,561 +1,443 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). stats: dmg/rof/rng are 0-100 UI bars; mag/reserve/reload_ms are literal. 'base' names the WEAPON_TAILS template in gameconfig.py the $WEAP tail is built from; only assault_rifle(ar)/charge_rifle(charge) are hardware-fired -> verified:true, the rest are templated -> verified:false (pin by a one-field Callsign capture, protocol-classes Method). 'melee' is hidden (slot 4, never in the picker).",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/ \u2014 regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers \u2014 dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today \u2014 see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4).",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
    "name": "Assault Rifle",
-   "desc": "The house standard, and one of only two frames fired straight off stock hardware. 24 a hit every 850ms, 32 up and 384 in reserve \u2014 no gap and no edge; every other weapon is measured against it.",
+   "desc": "The anchor \u2014 its frame is the one every other weapon is measured against. 13 hits at 190ms with 32 up and 384 in reserve: 32 kills without resupply, the deepest pool in the arsenal, and the slowest kill in it.",
    "cls": 0,
+   "role": "assault",
    "mag": 32,
    "reserve": 384,
    "reload_ms": 1400,
-   "dmg": 55,
-   "rof": 80,
-   "rng": 55,
-   "base": "ar",
-   "verified": true
+   "dmg": 8,
+   "rof": 39,
+   "rng": 75,
+   "htk": 13,
+   "ttk_ms": 2280,
+   "capture": {
+    "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
+    "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*"
+   },
+   "wire": {
+    "fire_ms": 190
+   },
+   "verified": false,
+   "captured": true
   },
   {
    "weapon_id": "burst_rifle",
    "name": "Burst Rifle",
-   "desc": "An assault rifle wound tighter. Rapid 14-damage taps from a 36-round mag, 216 in reserve - ride the trigger in short bursts at range, not as a hose.",
+   "desc": "A real three-round burst \u2014 one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
    "cls": 0,
+   "role": "assault",
    "mag": 36,
    "reserve": 216,
    "reload_ms": 1700,
-   "dmg": 40,
-   "rof": 55,
-   "rng": 80,
-   "base": "primary",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 3,
-    "dmg": 14,
-    "fire_ms": 180,
-    "sounds": {
-     "fire": "R07",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D04",
-      "D03",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "sniper_rifle",
-   "name": "Sniper Rifle",
-   "desc": "One bolt, one long lane. 60 a hit on a 1.5s cycle, four in the mag and 1.7s to reload \u2014 a miss puts you on the clock while they close.",
-   "cls": 2,
-   "mag": 4,
-   "reserve": 24,
-   "reload_ms": 1700,
-   "dmg": 85,
-   "rof": 25,
-   "rng": 100,
-   "base": "ar",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 1,
-    "dmg": 60,
-    "fire_ms": 1500,
-    "sounds": {
-     "fire": "S16",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D09",
-      "D10",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "shotgun",
-   "name": "Shotgun",
-   "desc": "Doorways and corners. 50 a hit at 1.1s with six shells and a 400ms reload \u2014 the fastest recovery in the arsenal, paid for in range.",
-   "cls": 3,
-   "mag": 6,
-   "reserve": 24,
-   "reload_ms": 400,
-   "dmg": 85,
-   "rof": 30,
-   "rng": 20,
-   "base": "secondary",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 0,
-    "dmg": 50,
-    "fire_ms": 1100,
-    "sounds": {
-     "fire": "T14",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D07",
-      "D08",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "smg",
-   "name": "SMG",
-   "desc": "A hose. 12 a hit every 400ms with 72 in the mag: it wins by volume inside close range and does nothing at distance, and the 2.5s reload is the longest wait for the smallest number.",
-   "cls": 1,
-   "mag": 72,
-   "reserve": 288,
-   "reload_ms": 2500,
-   "dmg": 30,
-   "rof": 95,
-   "rng": 40,
-   "base": "ar",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 0,
-    "dmg": 12,
-    "fire_ms": 400,
-    "sounds": {
-     "fire": "G10",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D04",
-      "D03",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "amr",
-   "name": "AMR",
-   "desc": "Anti-materiel weight at a rifle's cadence. 40 a hit every 900ms with 14 up and a 1.4s reload \u2014 heavy per trigger pull, on a mag shallow enough to count.",
-   "cls": 4,
-   "mag": 14,
-   "reserve": 56,
-   "reload_ms": 1400,
-   "dmg": 85,
-   "rof": 80,
-   "rng": 80,
-   "base": "ar",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 3,
-    "dmg": 40,
-    "fire_ms": 900,
-    "sounds": {
-     "fire": "R04",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D09",
-      "D10",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "energy_launcher",
-   "name": "Energy Launcher",
-   "desc": "Charge, commit, erase. A 1.5s spool into a single 95-damage shot on a 2s cycle, one in the tube and six in reserve \u2014 every shot is a decision.",
-   "cls": 9,
-   "mag": 1,
-   "reserve": 6,
-   "reload_ms": 1400,
-   "dmg": 95,
-   "rof": 25,
-   "rng": 55,
-   "base": "charge",
-   "verified": false,
-   "wire": {
-    "sample": "charge",
-    "proto": 9,
-    "subtype": 3,
-    "dmg": 95,
-    "fire_ms": 2000,
-    "charge_ms": 1500,
-    "sounds": {
-     "fire": "E08",
-     "up": "C15",
-     "down": "C17",
-     "rel": [
-      "D30",
-      "D29",
-      "D37"
-     ],
-     "noammo": "A73"
-    }
-   }
-  },
-  {
-   "weapon_id": "rail_gun",
-   "name": "Rail Gun",
-   "desc": "A slug that does not care what it hits. 1.8s charge, 90 on impact, one shot and a 2.4s reload \u2014 the longest downtime on the roster for the flattest shot on it.",
-   "cls": 7,
-   "mag": 1,
-   "reserve": 6,
-   "reload_ms": 2400,
-   "dmg": 95,
-   "rof": 25,
-   "rng": 80,
-   "base": "charge",
-   "verified": false,
-   "wire": {
-    "sample": "charge",
-    "proto": 6,
-    "subtype": 0,
-    "dmg": 90,
-    "fire_ms": 2200,
-    "charge_ms": 1800,
-    "sounds": {
-     "fire": "O03",
-     "up": "C15",
-     "down": "C17",
-     "rel": [
-      "D30",
-      "D29",
-      "D37"
-     ],
-     "noammo": "A73"
-    }
-   }
-  },
-  {
-   "weapon_id": "rocket_launcher",
-   "name": "Rocket Launcher",
-   "desc": "Area denial, twice. 115 a hit \u2014 more than a default kit's HP and armor combined \u2014 on a 1.8s cycle, with two in the tube, a 1.2s reload and only eight rounds behind it: spend them on clusters.",
-   "cls": 9,
-   "mag": 2,
-   "reserve": 8,
-   "reload_ms": 1200,
-   "dmg": 95,
-   "rof": 25,
-   "rng": 60,
-   "base": "charge",
-   "verified": false,
-   "wire": {
-    "sample": "rocket",
-    "proto": 10,
-    "subtype": 0,
-    "dmg": 115,
-    "fire_ms": 1800,
-    "sounds": {
-     "fire": "C03",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D14",
-      "D13",
-      "D12"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "laser_cannon",
-   "name": "Laser Cannon",
-   "desc": "The biggest single number in the arsenal. 150 a hit on a 1.6s cycle with four shots and eight held back \u2014 a two-magazine weapon you carry for one fight.",
-   "cls": 4,
-   "mag": 4,
-   "reserve": 8,
-   "reload_ms": 2000,
-   "dmg": 95,
-   "rof": 25,
-   "rng": 80,
-   "base": "charge",
-   "verified": false,
-   "wire": {
-    "sample": "laser",
-    "proto": 0,
-    "subtype": 0,
-    "dmg": 150,
-    "fire_ms": 1600,
-    "sounds": {
-     "fire": "E07",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D17",
-      "D16",
-      "D15"
-     ],
-     "noammo": "A73"
-    }
-   }
-  },
-  {
-   "weapon_id": "charge_rifle",
-   "name": "Charge Rifle",
-   "desc": "The other frame verified off a real gun, and the only confirmed charge behaviour we have. A 1.25s spool into a 150-damage shot with 100 in the mag and a 2.5s reload \u2014 hold the lane, do not hold the trigger.",
-   "cls": 5,
-   "mag": 100,
-   "reserve": 200,
-   "reload_ms": 2500,
-   "dmg": 80,
-   "rof": 80,
-   "rng": 60,
-   "base": "charge",
-   "verified": true
-  },
-  {
-   "weapon_id": "bolt_rifle",
-   "name": "Bolt Rifle",
-   "desc": "Deliberate. 30 a hit every 700ms from an 18-round mag with 180 behind it \u2014 a marksman's rifle for operators who count shots, and a 2s reload that keeps them honest.",
-   "cls": 0,
-   "mag": 18,
-   "reserve": 180,
-   "reload_ms": 2000,
-   "dmg": 55,
-   "rof": 55,
-   "rng": 60,
-   "base": "primary",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 3,
-    "dmg": 30,
-    "fire_ms": 700,
-    "sounds": {
-     "fire": "R05",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D04",
-      "D03",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
-  },
-  {
-   "weapon_id": "plasma_sniper",
-   "name": "Plasma Sniper",
-   "desc": "A sniper you can actually work with. 55 a hit on a 1.3s cycle, 10 in the mag and 80 in reserve \u2014 less punch than the bolt gun and far more forgiving of a miss.",
-   "cls": 2,
-   "mag": 10,
-   "reserve": 80,
-   "reload_ms": 2000,
-   "dmg": 80,
-   "rof": 55,
-   "rng": 80,
-   "base": "ar",
-   "verified": false,
-   "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 1,
-    "dmg": 55,
-    "fire_ms": 1300,
-    "sounds": {
-     "fire": "E17",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D09",
-      "D10",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
+   "dmg": 8,
+   "rof": 100,
+   "rng": 75,
+   "htk": 13,
+   "ttk_ms": 1700,
+   "capture": {
+    "src": "2026-08-23-gset-respawn05.btsnoop",
+    "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
+   },
+   "verified": true,
+   "captured": true
   },
   {
    "weapon_id": "force_rifle",
    "name": "Force Rifle",
-   "desc": "Assault-rifle numbers in a bigger box. 24 a hit at 850ms with 36 up and 144 back \u2014 the same trade as the standard rifle, deeper mag, shallower reserve.",
+   "desc": "The burst rifle's heavier twin: same three-round pull, more per round. 12 hits instead of 13 and a faster kill, paid for with two-thirds the reserve and a slower five-part reload.",
    "cls": 0,
+   "role": "assault",
    "mag": 36,
    "reserve": 144,
    "reload_ms": 1700,
-   "dmg": 55,
-   "rof": 55,
-   "rng": 60,
-   "base": "primary",
-   "verified": false,
+   "dmg": 9,
+   "rof": 75,
+   "rng": 75,
+   "htk": 12,
+   "ttk_ms": 1650,
+   "capture": {
+    "src": "2026-08-26-weapons-plasmasniper-forcerifle.btsnoop",
+    "frame": "$WEAP,1,,100,0,1,9,0,,,,,,,,100,850,36,144,1700,0,9,100,100,250,0,,,R23,D20,D19,,D23,D22,D21,D18,,,,,36,72,75,*"
+   },
    "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 1,
-    "dmg": 24,
-    "fire_ms": 850,
-    "sounds": {
-     "fire": "R09",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D04",
-      "D03",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
+    "dmg": 10
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "bolt_rifle",
+   "name": "Bolt Rifle",
+   "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back \u2014 22 kills from a full kit for operators who would rather aim than hold.",
+   "cls": 0,
+   "role": "assault",
+   "mag": 18,
+   "reserve": 180,
+   "reload_ms": 2000,
+   "dmg": 11,
+   "rof": 33,
+   "rng": 75,
+   "htk": 9,
+   "ttk_ms": 1800,
+   "capture": {
+    "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
+    "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
+   },
+   "verified": true,
+   "captured": true
+  },
+  {
+   "weapon_id": "smg",
+   "name": "SMG",
+   "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag \u2014 four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+   "cls": 1,
+   "role": "cqb",
+   "mag": 72,
+   "reserve": 288,
+   "reload_ms": 2500,
+   "dmg": 7,
+   "rof": 54,
+   "rng": 75,
+   "htk": 15,
+   "ttk_ms": 1960,
+   "capture": {
+    "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
+    "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"
+   },
+   "wire": {
+    "fire_ms": 140
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "shotgun",
+   "name": "Shotgun",
+   "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload \u2014 sustained pressure from the shallowest ammo pool outside the power tier.",
+   "cls": 3,
+   "role": "cqb",
+   "mag": 6,
+   "reserve": 24,
+   "reload_ms": 400,
+   "dmg": 39,
+   "rof": 9,
+   "rng": 75,
+   "htk": 3,
+   "ttk_ms": 1600,
+   "capture": {
+    "src": "2026-08-23-gset-respawn15.btsnoop",
+    "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
+   },
+   "wire": {
+    "fire_ms": 800
+   },
+   "verified": false,
+   "captured": true
   },
   {
    "weapon_id": "stinger",
    "name": "Stinger",
-   "desc": "Fast, light, relentless. 30 a hit every 600ms with 18 in the mag and 72 in reserve \u2014 it out-paces rifles at mid range and runs itself dry doing it.",
+   "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve \u2014 eight hits to drop, twenty kills to spend, and nothing held back for range.",
    "cls": 6,
+   "role": "cqb",
    "mag": 18,
-   "reserve": 72,
+   "reserve": 144,
    "reload_ms": 1700,
-   "dmg": 80,
-   "rof": 55,
-   "rng": 60,
-   "base": "ar",
-   "verified": false,
+   "dmg": 13,
+   "rof": 30,
+   "rng": 75,
+   "htk": 8,
+   "ttk_ms": 1750,
+   "capture": {
+    "src": "2026-08-26-weapons-stinger-forcerifle.btsnoop",
+    "frame": "$WEAP,0,,100,0,0,15,0,,,,,,,,120,850,18,72,1700,0,0,100,100,,0,,,E11,,,,D17,D16,D15,A73,,,,,18,36,75,*"
+   },
    "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 0,
-    "dmg": 30,
-    "fire_ms": 600,
-    "sounds": {
-     "fire": "E14",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D04",
-      "D03",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
+    "fire_ms": 250
+   },
+   "verified": false,
+   "captured": true
   },
   {
-   "weapon_id": "energy_rifle",
-   "name": "Energy Rifle",
-   "desc": "A 300-cell battery that never really stops. 10 a hit every 200ms \u2014 the smallest per-hit number and the highest sustained pressure on the roster; the 2.4s reload is rare and expensive when it comes.",
-   "cls": 5,
-   "mag": 300,
-   "reserve": 600,
-   "reload_ms": 2400,
-   "dmg": 45,
-   "rof": 80,
-   "rng": 60,
-   "base": "charge",
-   "verified": false,
+   "weapon_id": "sniper_rifle",
+   "name": "Sniper Rifle",
+   "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it \u2014 the fewest hits to a kill outside the power tier, and no margin for a miss.",
+   "cls": 2,
+   "role": "marksman",
+   "mag": 4,
+   "reserve": 24,
+   "reload_ms": 1700,
+   "dmg": 52,
+   "rof": 5,
+   "rng": 75,
+   "htk": 2,
+   "ttk_ms": 1500,
+   "capture": {
+    "src": "2026-08-26-weapons-sniper.btsnoop",
+    "frame": "$WEAP,0,,100,0,1,80,0,,,,,,,,300,850,4,24,1700,0,7,100,100,,0,,,S16,D20,D19,,D04,D03,D21,D18,,,,,4,12,75,*"
+   },
    "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 0,
-    "dmg": 10,
-    "fire_ms": 200,
-    "sounds": {
-     "fire": "E01",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D30",
-      "D29",
-      "D37"
-     ],
-     "noammo": "A73"
-    }
-   }
+    "dmg": 60,
+    "fire_ms": 1500
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "plasma_sniper",
+   "name": "Plasma Sniper",
+   "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back \u2014 lean on it and it overheats.",
+   "cls": 2,
+   "role": "marksman",
+   "mag": 10,
+   "reserve": 80,
+   "reload_ms": 2000,
+   "dmg": 22,
+   "rof": 19,
+   "rng": 75,
+   "htk": 5,
+   "ttk_ms": 1600,
+   "capture": {
+    "src": "2026-08-26-weapons-plasmasniper-forcerifle.btsnoop",
+    "frame": "$WEAP,0,2,100,0,0,80,0,,,,,,80,80,225,850,10,80,2000,0,7,100,100,,30,,,E17,,,,D35,D34,D36,A73,D122,,,,10,40,75,40,*"
+   },
+   "wire": {
+    "dmg": 25,
+    "fire_ms": 400
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "amr",
+   "name": "AMR",
+   "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind \u2014 the hardest-hitting automatic and the shallowest.",
+   "cls": 4,
+   "role": "support",
+   "mag": 14,
+   "reserve": 56,
+   "reload_ms": 1400,
+   "dmg": 21,
+   "rof": 19,
+   "rng": 75,
+   "htk": 5,
+   "ttk_ms": 1600,
+   "capture": {
+    "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
+    "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
+   },
+   "wire": {
+    "dmg": 24,
+    "fire_ms": 400
+   },
+   "verified": false,
+   "captured": true
   },
   {
    "weapon_id": "suppressor",
    "name": "Suppressor",
-   "desc": "Quiet trigger, steady rhythm. 20 a hit every 500ms with 48 up and 288 in reserve \u2014 a support gun for pinning a lane, not for winning a duel.",
+   "desc": "Quiet, not silent, and no muzzle flash \u2014 the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
    "cls": 1,
+   "role": "support",
    "mag": 48,
-   "reserve": 288,
+   "reserve": 384,
    "reload_ms": 2000,
-   "dmg": 80,
-   "rof": 80,
-   "rng": 60,
-   "base": "ar",
-   "verified": false,
+   "dmg": 7,
+   "rof": 47,
+   "rng": 75,
+   "htk": 15,
+   "ttk_ms": 2240,
+   "capture": {
+    "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
+    "frame": "$WEAP,1,,100,0,0,8,0,,,,,,,,75,850,48,288,2000,0,0,100,100,,0,2,50,Q06,,,,D26,D25,D24,D18,,,,,48,144,75,*"
+   },
    "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 0,
-    "dmg": 20,
-    "fire_ms": 500,
-    "sounds": {
-     "fire": "Q06",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D04",
-      "D03",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
+    "fire_ms": 160
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "energy_rifle",
+   "name": "Energy Rifle",
+   "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit \u2014 the largest ammo pool in the game, on the smallest per-hit number.",
+   "cls": 5,
+   "role": "support",
+   "mag": 300,
+   "reserve": 600,
+   "reload_ms": 2400,
+   "dmg": 8,
+   "rof": 38,
+   "rng": 75,
+   "htk": 13,
+   "ttk_ms": 2400,
+   "capture": {
+    "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
+    "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,90,850,300,600,2400,0,0,100,100,,6,,,E12,,,,D17,D16,D15,A73,D122,,,,300,300,75,*"
+   },
+   "wire": {
+    "fire_ms": 200
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "charge_rifle",
+   "name": "Charge Rifle",
+   "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage \u2014 two hits to a kill and a heat budget that ends the party if you rush it; twelve up, twelve back.",
+   "cls": 5,
+   "role": "support",
+   "mag": 12,
+   "reserve": 12,
+   "reload_ms": 2500,
+   "dmg": 87,
+   "rof": 6,
+   "rng": 75,
+   "htk": 2,
+   "ttk_ms": 2500,
+   "capture": {
+    "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
+    "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "rocket_launcher",
+   "name": "Rocket Launcher",
+   "desc": "Point, pull, erase. 115 a hit \u2014 a full-health operator in one \u2014 on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
+   "cls": 9,
+   "role": "power",
+   "mag": 2,
+   "reserve": 2,
+   "reload_ms": 2600,
+   "dmg": 100,
+   "rof": 8,
+   "rng": 75,
+   "htk": 1,
+   "ttk_ms": 0,
+   "capture": {
+    "src": "2026-08-26-weapons-rocket-lasercannon.btsnoop",
+    "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "rail_gun",
+   "name": "Rail Gun",
+   "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total \u2014 everyone within earshot hears the spool.",
+   "cls": 7,
+   "role": "power",
+   "mag": 2,
+   "reserve": 2,
+   "reload_ms": 2400,
+   "dmg": 100,
+   "rof": 6,
+   "rng": 75,
+   "htk": 1,
+   "ttk_ms": 1200,
+   "capture": {
+    "src": "2026-08-26-weapons-energylauncher-railgun.btsnoop",
+    "frame": "$WEAP,1,0,100,6,0,115,0,,,,,,,,1200,850,1,6,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,1,3,75,*"
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "laser_cannon",
+   "name": "Laser Cannon",
+   "desc": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble.",
+   "cls": 4,
+   "role": "power",
+   "mag": 2,
+   "reserve": 2,
+   "reload_ms": 1600,
+   "dmg": 100,
+   "rof": 5,
+   "rng": 75,
+   "htk": 1,
+   "ttk_ms": 1500,
+   "capture": {
+    "src": "2026-08-26-weapons-rocket-lasercannon.btsnoop",
+    "frame": "$WEAP,1,,100,0,0,115,0,,,,,,,,1500,850,4,8,2000,0,3,100,100,,0,,,C06,C11,,,D17,D16,D15,A73,,,,,4,4,75,*"
+   },
+   "verified": false,
+   "captured": true
+  },
+  {
+   "weapon_id": "energy_launcher",
+   "name": "Energy Launcher",
+   "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier \u2014 four kills, spent quietly.",
+   "cls": 9,
+   "role": "power",
+   "mag": 2,
+   "reserve": 2,
+   "reload_ms": 1400,
+   "dmg": 100,
+   "rof": 5,
+   "rng": 75,
+   "htk": 1,
+   "ttk_ms": 0,
+   "capture": {
+    "src": "2026-08-23-gset-respawn05.btsnoop",
+    "frame": "$WEAP,1,,100,9,3,115,0,,,,,,,,360,850,1,6,1400,0,0,100,100,,0,,,J15,,,,D14,D13,D12,D18,,,,,1,3,75,*"
+   },
+   "wire": {
+    "fire_ms": 1600
+   },
+   "verified": false,
+   "captured": true
   },
   {
    "weapon_id": "ion_sniper",
    "name": "Ion Sniper",
-   "desc": "Two shots, both of them serious. 80 a hit on a 2s cycle with a 2s reload \u2014 the hardest single hit outside the launchers, with no margin at all for a miss.",
+   "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back \u2014 the power tier's only weapon that looks and sounds like a marksman rifle.",
    "cls": 2,
+   "role": "power",
    "mag": 2,
-   "reserve": 12,
+   "reserve": 2,
    "reload_ms": 2000,
-   "dmg": 80,
-   "rof": 25,
-   "rng": 80,
-   "base": "ar",
-   "verified": false,
+   "dmg": 100,
+   "rof": 5,
+   "rng": 75,
+   "htk": 1,
+   "ttk_ms": 0,
+   "capture": {
+    "src": "2026-08-26-weapons-ionsniper.btsnoop",
+    "frame": "$WEAP,0,,100,0,0,115,0,,,,,,,,1000,850,2,12,2000,0,7,100,100,,0,,,E07,D32,D31,,D17,D16,D15,A73,,,,,2,6,75,*"
+   },
    "wire": {
-    "sample": "ar",
-    "proto": 0,
-    "subtype": 1,
-    "dmg": 80,
-    "fire_ms": 2000,
-    "sounds": {
-     "fire": "E20",
-     "up": "",
-     "down": "",
-     "rel": [
-      "D09",
-      "D10",
-      "D02"
-     ],
-     "noammo": "D18"
-    }
-   }
+    "fire_ms": 1400
+   },
+   "verified": false,
+   "captured": true
   },
   {
    "weapon_id": "melee",
    "name": "Melee",
-   "desc": "Last resort: no ammo, no reload, no noise until it lands. 90 on contact at arm's length \u2014 hidden from the picker and always bound to slot 4.",
+   "desc": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact \u2014 hidden from the picker, always bound to slot 4.",
    "cls": 8,
+   "role": "melee",
    "mag": 1,
    "reserve": 0,
    "reload_ms": 0,
-   "dmg": 90,
-   "rof": 30,
-   "rng": 5,
-   "base": "melee",
+   "dmg": 78,
+   "rof": 8,
+   "rng": 20,
+   "htk": 2,
+   "ttk_ms": 1000,
+   "capture": {
+    "src": "2026-08-23-gset-respawn05.btsnoop",
+    "frame": "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*"
+   },
    "verified": true,
+   "captured": true,
    "hidden": true
   }
  ]
