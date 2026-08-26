@@ -81,6 +81,10 @@ and drop the caveat in `weapons.md`. Deltas identical regardless of weapon → d
 
 ## 3. Fire `$SFLASH` from OUR stack 🟡 quick
 
+> ✅ **PASSED — 2026-08-26 (WSL/Windows session).** Bare `$SFLASH,*` on an idle unspawned gun turns the
+> sight green, **latching for several seconds**. Unconditional — no game state needed. Kill-confirm
+> engine validated; see experiment-log.
+
 **Question.** `$SFLASH` = the shooter's green-sight kill confirm was decoded from the official app
 (§7o) and is now wired into our engine (`KillConfirm` → `$SFLASH,*`). **We have never actually sent
 it.** Everything about it is inferred from watching Callsign.

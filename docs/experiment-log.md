@@ -1436,3 +1436,11 @@ better: start from the **byte-identical Charge Rifle** (a WORKING charge state) 
 one at a time toward the sniper — the first removal that kills the charge names the missing element,
 with no need to guess the full combination. (Alternative: capture a Callsign semi/burst weapon frame
 and diff it.) Hunt paused here.
+
+## 2026-08-26 (bench, handoff experiment 3) — $SFLASH validated from OUR stack
+
+Bare `$SFLASH,*` sent to an idle, unspawned gun (no game state, `mcp/tools/sendframes.py`):
+**the sight goes GREEN and stays green for several seconds** — it latches; three sends ~0.5 s apart
+read as one continuous green. No wire reply. So the frame decode (§7o) is correct, no game state or
+companion frame is required, and the engine's `KillConfirm → $SFLASH,*` path is validated end-to-end
+(B18 visual half REAL). Single-send duration not yet isolated (needs one send + a stopwatch).
