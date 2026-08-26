@@ -75,7 +75,7 @@ class WeaponCatalog:
         "rocket": ",1,90,10,0,115,0,,,,,,115,80,1000,850,2,32768,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,9999999,30,20,",
     }
     # token map indices (protocol-classes.md "WEAP exact token positions"; doc tokN == split()[N+1])
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "charge": 14, "fire": 15, "mag": 16, "reload": 18,
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "mag": 16, "reload": 18,
           "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34,
           "clipstart": 39}
 
@@ -104,8 +104,8 @@ class WeaponCatalog:
             p[T[key] + 1] = str(val)
         put("proto", wire["proto"]); put("subtype", wire["subtype"]); put("dmg", wire["dmg"])
         put("fire", wire["fire_ms"]); put("mag", w["mag"]); put("clipstart", w["mag"]); put("reload", w["reload_ms"])
-        if wire.get("charge_ms") is not None:
-            put("charge", wire["charge_ms"])
+        # charge_ms parked: the charge token is still unidentified (idx15 turned out to be FIRE
+        # interval — bench 2026-08-26); wire.charge_ms stays in the json for when it's found.
         snd = wire.get("sounds") or {}
         put("snd_fire", snd.get("fire", "")); put("snd_up", snd.get("up", "")); put("snd_down", snd.get("down", ""))
         rel = snd.get("rel") or ["", "", ""]
