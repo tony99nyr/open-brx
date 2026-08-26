@@ -206,3 +206,7 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   runway/countdown voice cues are scheduled or written with wrong timing/duplication. Review the M-START
   countdown scheduler on the node (BLE write pacing vs tick clock).
 - (already logged: info icon clips behind "LINKED"; MC-LINKED text too subtle; MC mDNS auto-fill + QR.)
+- **Non-cam layout should differ from cam-overlay** — the HUD is designed as a camera overlay (scrims, vignette,
+  edge glow, thin skewed chips). With no camera behind it, that reads cramped/hard. Want a distinct **no-cam
+  layout**: drop the overlay scrims, use the full screen for big readable HP/ammo/clock/K-D, and switch to the
+  overlay treatment only when CAM is on. (Design-tool pass — Tony owns the HUD visuals per the design workflow.)
