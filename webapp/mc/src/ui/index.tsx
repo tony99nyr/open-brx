@@ -108,9 +108,9 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
 }
 
 /** Square toggle. */
-export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
-    <button type="button" className="hit44" onClick={() => onChange(!on)} role="switch" aria-checked={on}
+    <button type="button" className="hit44" onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label}
       style={{ ...BTN_RESET, width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
       <span style={{ position: 'absolute', top: 2, left: on ? 22 : 2, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
     </button>

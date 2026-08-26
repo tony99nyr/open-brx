@@ -79,7 +79,7 @@ export function Build() {
               <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => put({ environment: v })} />
             </Row>
             <Row label={<>NIGHT OPS <span style={{ font: F.mono(500, 10), color: T.micro }}>// BLACKOUT HUD</span></>}>
-              <Toggle on={cfg.night} onChange={v => put({ night: v })} />
+              <Toggle on={cfg.night} onChange={v => put({ night: v })} label="night ops" />
             </Row>
             <div style={{ height: 1, background: T.line }} />
             <Row label="RESPAWN TYPE">
