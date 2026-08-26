@@ -93,7 +93,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `E03` | **Charge Rifle** | hold to charge, **fires on RELEASE**; also overheats |
 | `R12` | **Bolt Rifle** | single shot (operator: "like the AMR") — but **no** `t28`/`t29` |
 | `E17` | **Plasma Sniper** | single shot, **overheats** if fired fast; shell reload |
-| `R23` | **Force Rifle** | 3-shot burst |
+| `R23` | **Force Rifle** | 3-shot burst; standard "pull back, let go" reload |
+| `E11` | **Stinger** | full auto |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -164,17 +165,38 @@ twelve other weapons. Only Melee (`10`) and `T01` (`2`) are non-zero. Whatever `
 not track the reload style the player actually performs — **treat the `reloadType` label as
 unconfirmed**, and do not use `t19` to infer shell-vs-magazine.
 
-### ⚠ `D20`/`D19` is not explained by the charge model
+### RESOLVED — `t28`/`t29` are two extra ACTION sounds; the SOUND PREFIX says which action
 
-The Force Rifle (`R23`) is a **3-shot burst** weapon and carries `t28`=`D20`, `t29`=`D19` — the same
-pair as the Sniper and AMR — while the Burst Rifle (`R18`) carries neither. The engage/release
-reading is solid for the **C-series charge weapons** (auto-fire vs fires-on-release, confirmed by
-two absences). What triggers the `D20`/`D19` pair on Sniper/AMR/Force Rifle is **not yet
-identified** — open question, not a settled decode.
+cap21 raised a problem: the Force Rifle is a *burst* weapon yet carried `t28`=`D20`/`t29`=`D19`,
+which the charge model could not explain. cap22 settles it — **every weapon carrying that pair also
+has `t33` = `D21`, and no weapon without the pair does:**
+
+| weapon | t31 | t32 | t33 | t28 | t29 |
+|---|---|---|---|---|---|
+| Sniper `S16` | D04 | D03 | **D21** | D20 | D19 |
+| AMR `S07` | D04 | D03 | **D21** | D20 | D19 |
+| Force Rifle `R23` | D23 | D22 | **D21** | D20 | D19 |
+| all 13 others | … | … | D12/D34/D15/D37/D36/D24/D02/D27 | — | — |
+
+`D19`/`D20`/`D21` are one **reload sound family**: those weapons have a *five*-part reload, and
+`t28`/`t29` hold the two extra parts. Operator-confirmed — the Force Rifle's reload is the same
+"pull back, let go" as the Sniper's.
+
+**So `t28`/`t29` are two extra action sounds whose meaning depends on the weapon, and the SOUND ID
+PREFIX is the discriminator:**
+
+- **`C…`** → charge (`C08` rail gun, `C11` laser cannon, `C15`/`C17` charge rifle). Here the
+  engage/release reading holds and is confirmed by two absences: the rail gun auto-fires and the
+  laser cannon can't be tapped, so neither has a release sound; the charge rifle fires on release
+  and has both.
+- **`D…`** → reload cycle, always alongside `t33`=`D21`.
+
+Note also that reload trios are **reused across weapons** (the Stinger and the Laser Cannon share
+`D17`/`D16`/`D15`), reinforcing that sound ids are not weapon identities.
 
 ### Tokens 7–11 (the secondary-fire block) are DORMANT in every stock weapon
 
-Empty across **all 16 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
+Empty across **all 17 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
 `T01`, Energy Launcher, Rail Gun, Rocket Launcher, Laser Cannon, Charge Rifle and Melee. That is
 effectively the whole stock arsenal.
 
