@@ -79,7 +79,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (groups {0,4} seen; "1 = headset/headshot" UNCONFIRMED — §7r), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied (EXACT = the `$WEAP` `t5` field — §7r bench exp 2), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
+| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (SHIELD-ISOLATED 2026-08-26: **0 = headset FRONT, 1 = headset BACK, 4 = gun body** — point-blank floods mis-attribute; see the tok1 sensor map section), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied (EXACT = the `$WEAP` `t5` field — §7r bench exp 2), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
 | `$HP,<hp>,<armor>,<shield>,*` | Health update (tokens verified §7r) | `$HP,0,0,0` = player died (or turned zombie in Survival); arrives in the same ms as its `$HIR` |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
@@ -1222,7 +1222,7 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
   = the `$WEAP` damage field). Free HUD feature: token 1 == 1 is a headshot.
   ⚠ **Caveat (sensor sweep 2026-08-26):** a five-phase aimed sweep (`sensor_bench.py`) saw tok1 only
   ∈ **{0, 4}, never 1** — at bench distance IR floods every receiver so aim→sensor doesn't map cleanly.
-  tok1 *is* a real per-hit sensor id (≥2 groups), but **"1 = headset / headshot" is UNCONFIRMED** and
+  tok1 *is* a real per-hit sensor id — **RESOLVED by shielded isolation (2026-08-26): 0 = headset FRONT dome, 1 = headset BACK dome, 4 = gun body** — and
   needs a shielded isolation pass (cover all sensors but one). Don't ship the headshot HUD cue on it yet.
 - **`$HP,<hp>,<armor>,<shield>,*`** — token 2 is the armor pool (70 → 46 → 22 → 0 at 24/hit, spill into HP:
   `$HP,43,0,0`). `$HP` and its `$HIR` arrive in the same millisecond.
