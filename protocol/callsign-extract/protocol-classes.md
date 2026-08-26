@@ -96,7 +96,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `R23` | **Force Rifle** | 3-shot burst; standard "pull back, let go" reload |
 | `E11` | **Stinger** | full auto |
 | `E12` | **Energy Rifle** | full auto, **overheats**; 300-round clip |
-| `Q06` | **Suppressor** | full auto, standard reload — **makes no sound** |
+| `Q06` | **Suppressor** | full auto, standard reload — **quiet (not silent), and no muzzle flash** |
+| `E07` | **Ion Sniper** | single shot, 2-round clip |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -148,14 +149,21 @@ is specifically the **overheat sound**. Pairs with the live heat telemetry in `$
 
 ### `t25`/`t26` — only the Suppressor populates them
 
-The **Suppressor** (`Q06`) is the sole weapon of nineteen to carry **`t25` = 2** (`muzzleFlash`) and
+The **Suppressor** (`Q06`) is the sole weapon of twenty to carry **`t25` = 2** (`muzzleFlash`) and
 **`t26` = 50**; both are empty on every other weapon (melee has `t25`=0). It is also the only weapon
 whose fire sound uses the **`Q`** prefix.
 
-A suppressor's defining traits are no report and no flash, and the operator confirms *"it doesn't
-make a sound"*. So `t25` plausibly selects a suppressed muzzle-flash variant and `t26` a loudness
-scale (50 = half?). **One sample — correlation only, not confirmed.** A second quiet weapon, or any
-weapon with a visible muzzle flash, would settle both.
+The operator's corrected description is precise and makes both readings sharper: the Suppressor is
+**quiet but NOT silent — it does play audio — and it has NO muzzle flash.**
+
+- **`t26` = 50 → loudness scale.** "Quiet, not silent" is exactly a *reduced* volume rather than a
+  mute, and 50 reads as half. A silent weapon would more likely be an empty `t27` or a `0`.
+- **`t25` = 2 → the "no flash" variant.** Every other weapon leaves `t25` **empty** (melee is `0`),
+  and the one weapon that visibly lacks a flash is the one that sets it — so a populated `t25`
+  suppresses the default rather than selecting a flash style.
+
+**Still one sample.** Any weapon with an obvious muzzle flash (rocket launcher, shotgun) would
+confirm `t25`, and a second quiet weapon would confirm `t26`.
 
 ### `t1` = 2 marks the weapons carrying an extra-headset payload
 
@@ -190,11 +198,17 @@ has `t33` = `D21`, and no weapon without the pair does:**
 | Sniper `S16` | D04 | D03 | **D21** | D20 | D19 |
 | AMR `S07` | D04 | D03 | **D21** | D20 | D19 |
 | Force Rifle `R23` | D23 | D22 | **D21** | D20 | D19 |
-| all 13 others | … | … | D12/D34/D15/D37/D36/D24/D02/D27 | — | — |
+| **Ion Sniper `E07`** | D17 | D16 | **D15** | **D32** | **D31** |
+| all others | … | … | D12/D34/D37/D36/D24/D02/D27 | — | — |
 
-`D19`/`D20`/`D21` are one **reload sound family**: those weapons have a *five*-part reload, and
-`t28`/`t29` hold the two extra parts. Operator-confirmed — the Force Rifle's reload is the same
-"pull back, let go" as the Sniper's.
+Those weapons have a *five*-part reload and `t28`/`t29` hold the two extra parts. Operator-confirmed
+— the Force Rifle's reload is the same "pull back, let go" as the Sniper's.
+
+⚠ **Correction (cap24).** This section previously claimed *"every weapon carrying the pair also has
+`t33`=`D21`, and no weapon without it does"*. The **Ion Sniper** disproves it: it carries a pair
+(`D32`/`D31`) with `t33`=`D15`. `D19`/`D20`/`D21` is simply **one** reload set that three weapons
+happen to share; `D31`/`D32` with `D17`/`D16`/`D15` is another. The rule is that a weapon with a
+five-part reload fills `t28`/`t29` from **its own** sound set — not that any particular id appears.
 
 **So `t28`/`t29` are two extra action sounds whose meaning depends on the weapon, and the SOUND ID
 PREFIX is the discriminator:**
@@ -210,7 +224,7 @@ Note also that reload trios are **reused across weapons** (the Stinger and the L
 
 ### Tokens 7–11 (the secondary-fire block) are DORMANT in every stock weapon
 
-Empty across **all 17 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
+Empty across **all 20 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
 `T01`, Energy Launcher, Rail Gun, Rocket Launcher, Laser Cannon, Charge Rifle and Melee. That is
 effectively the whole stock arsenal.
 
