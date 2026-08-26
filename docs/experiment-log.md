@@ -1411,6 +1411,8 @@ Net: fire RATE is now controllable and proven; fire-MODE (semi/burst) is likely 
 firmware; the CR charge mechanism is still an open token hunt. Weapon verdicts (`burst_rifle`,
 `sniper_rifle`, `shotgun`, `smg`) stay logged as "issue" pending the rate-fix retest.
 
+> **→ SUPERSEDED below: t20 = fire mode, PROVEN by one-field flip (same day).**
+
 ## 2026-08-26 (bench, cont.) — charge-feel: combinational, engages-but-never-completes; walk-back is the better method
 
 Continued the `tok20`+`tok24` charge lead (both read `14` on the CR). **Single-token isolation** on the
@@ -1436,6 +1438,8 @@ better: start from the **byte-identical Charge Rifle** (a WORKING charge state) 
 one at a time toward the sniper — the first removal that kills the charge names the missing element,
 with no need to guess the full combination. (Alternative: capture a Callsign semi/burst weapon frame
 and diff it.) Hunt paused here.
+
+> **→ SUPERSEDED below: the charge feel is t20 variants 2/3/14 — walk-back never needed (t20 entry, same day).**
 
 ## 2026-08-26 (bench, handoff experiment 3) — $SFLASH validated from OUR stack
 

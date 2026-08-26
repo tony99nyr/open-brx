@@ -167,7 +167,7 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
 - **Force Rifle** — the burst rifle's heavier twin: 10 damage instead of 9, so 12 hits instead of 13
   and a faster kill, paid for in half the reserve and a slower five-part reload.
 - **Bolt Rifle** — stock. Single shot, 9 hits, 22 kills.
-- **SMG** — four kills a magazine, 24 across the kit, and a real overheat budget (`t24 = 5`).
+- **SMG** — four kills a magazine, 24 across the kit, and a heat value (`t24 = 5`) — **inert as shipped: overheat requires t37/t38, which only the Charge Rifle carries (bench 2026-08-26)**.
 - **Shotgun** — three hits, six shells, a **400 ms Shells-type reload** — the highest sustained
   output in the arsenal from its shallowest ammo pool.
 - **Stinger** — full auto, eight hits, 20 kills. Reserve doubled so it is not simply the SMG's worse
@@ -371,7 +371,7 @@ was never a missing field; we were overwriting the right one with the AR's value
 **It also resolves C2.** Native burst exists: the Burst Rifle's `t20 = 9` with `t23 = 275`. Our
 `ar`-derived burst rifle did not burst because the `ar` sample carries neither token.
 
-*Status: inferred from 19 frames plus capture-time notes, not yet fired. One-field bench
+*Status: **PROVEN 2026-08-26** — one-field bench flip (sniper t20 7→0 single→auto; captured Burst Rifle = true 3-round bursts). See §5 U1.*
 confirmation: take the sniper's frame, flip `t20` from 7 to 0, and it should full-auto.*
 
 ### 4.2 `t41` — range is not differentiated, and that is a real gap
@@ -404,7 +404,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
-| **U2** | **`t41` range semantics.** Constant at 75 across the stock arsenal, so untested and unused. Is it %, metres, or an index? | the entire range axis; short-vs-long weapon identity | Two guns, one weapon, `t41` at 100 vs 25, walk it back until hits stop landing. **Highest value open item now that U0 is answered.** |
+| **U2** | **`t41` range — OPEN with one solid positive**: t41=100 killed at max indoor distance; t41=5 zeros CONTAMINATED by rig degradation (2026-08-26). | the range axis | fresh-fleet same-spot A/B (100 vs 5), counted windows both sides — 10 min. |
 | **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |

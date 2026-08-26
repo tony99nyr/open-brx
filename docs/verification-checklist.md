@@ -186,5 +186,5 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ✅ Health-write `$LIFE`/`$BUMP` additive-clamped; no native armor regen (exp-log #33).
 - ✅ Grenade mode map + `$HIR,0,15,0,<team>,<mode>` beacon decode; `$GREN` can't set objective modes (G8);
   grenade USB-C power-only (G7). (exp-log #35–40.)
-- ✅ `$TID` 1=blue, 2=yellow; two-gun damage requires distinct teams; no-power-cycle `$STOP`/`$CLEAR` reset.
+- ✅ `$TID` 1=blue, 2=yellow; two-gun damage requires distinct teams *(NOTE 2026-08-26: distinct teams are NOT required for damage — FF is not firmware-enforced; distinct teams still recommended for clean attribution)*; no-power-cycle `$STOP`/`$CLEAR` reset.
 - ✅ Remote game start (`$SPAWN`/`$PB*`); config/spawn/live; trigger fires (mag decrements in `$ALCD`).

@@ -77,7 +77,7 @@ value).
 `T01` (45), Sniper `S16` (80), Rocket Launcher (115) — put it in the shooter's slot 0, fire **one**
 shot at a stationary target, and record the victim's `$HP` before and after.
 
-⚠ **Armor absorbs first** (~9/hit observed, exp-log): let armor deplete, or track the armor field
+~~⚠ Armor absorbs first (~9/hit observed)~~ **[CORRECTED: armor absorbs FULL weapon damage 1:1 then overflows to HP — the ~9 was just AR damage being 9 (exp 2)]**: let armor deplete, or track the armor field
 rather than HP, or the deltas will not be comparable.
 
 **Outcomes.** Deltas scale with `t5` → `t5` is damage and the manual's 24 was stale; restore the ✓

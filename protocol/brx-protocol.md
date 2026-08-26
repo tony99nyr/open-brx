@@ -132,6 +132,8 @@ accuracy (%), per-slot ammo.
 
 ### 6.1 Bench-probed corrections (live tagger, 2026-08-26)
 
+> **⚠ PARTIALLY SUPERSEDED same-day:** the open questions below (t23 'suspect', 'fire-mode not located/may not exist', charge-feel 'not localized') were ALL RESOLVED hours later — **see the t20 FIRE MODE and overheat sections near the end of this file** (t20 proven by one-field flip; t23=burst cycle; charge = t20 variants 2/3/14; overheat = t24+t35 gated by t37/t38). The proven fire-interval/850-constant findings here still stand.
+
 Tony live-probed the built frames on a real gun (`firemode_probe.py`), one token at a time. The
 bench tool prints **raw 1-indexed** positions (slot = idx1); the field map above and the compiler
 are **0-indexed** (slot = tok0), so **raw idx = tok + 1**. Findings (tok = 0-indexed here):
@@ -1240,7 +1242,7 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
   belong to `$SPAWN`. The T-10 s head re-write (M-START) costs no audio.
 - **A configured-but-unspawned gun ignores IR** — no `$HIR`, no `$HP`, no reaction. Kit-out try-outs are safe.
 - **`$PSET` token 2 is inert**: 0 / 1 / 7 gave byte-identical `$HIR`, identical damage, LEDs, hit grunts.
-- **Live `$TID` write takes effect immediately for hit resolution** (same-team → zero `$HIR` both ways; back to
+- **Live `$TID` write takes effect immediately for hit resolution** (same-team → zero `$HIR` both ways **[⚠ SUPERSEDED 2026-08-26: same-team IR DOES damage — FF is NOT firmware-enforced (§7r FF probe, both GSET token1 values); the 08-25 zero was likely an unspawned/misconfigured gun]**; back to
   the other team → damage resumes on the next hit) but does NOT repaint the LEDs — colour is set at `$SPAWN`.
 - **Resync (M-NODE §3.10) verified:** on a fresh link a dead gun volunteers nothing and `$PHONE,*` returns
   nothing (the link is alive — `$VERSION` answers). Trigger while dead → `$BUT,0,1/0` only; reload handle →
@@ -1307,6 +1309,8 @@ overheat is t24/t35.
 
 
 ### Overheat + the $ALCD heat gauge (CONFIRMED 2026-08-26)
+
+> **⚠ CORRECTED (same day, bench-proven):** t24/t35 are **INERT on their own** — three weapons carrying them (SMG, Energy Rifle, Plasma Sniper) never overheat as shipped. The mechanism is **enabled/parameterized by t37/t38** (Charge Rifle stock: t37=20, t38=150; transplanting them onto the SMG brought its dead heat gauge alive). t37-vs-t38 semantics still unmapped.
 
 `$WEAP` t24 = heat added per shot (nonzero on SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30);
 t35 = the overheat sound. `$ALCD`'s LAST token is a live 0–100+ heat gauge — watched climbing ~8/shot

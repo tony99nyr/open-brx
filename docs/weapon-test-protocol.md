@@ -1,43 +1,45 @@
 # Weapon Test Protocol
 
-**GENERATED from weapons.json — do not hand-edit the table** (regenerate: see git log for the script).
+**GENERATED from the RESOLVED wire frames** (source of truth: weapons.json `capture.frame` + balance
+tokens + declared sound overrides, via `Compiler.resolve()`). Do not hand-edit the table.
 
-Bench-verify every weapon on a real tagger. One gun, one operator, MC on Kit.
+Bench-verify weapons on a real tagger. One gun, one operator, MC on Kit.
 
 ## Procedure (per weapon)
 
-1. Kit screen: select the bench operator, tap the weapon card (try-out pushes it to the gun).
-2. Fire a full mag: FIRE sound, rate, charge-up if any. 3. Hit the second gun: damage feel (default pool 115 = 45 HP + 70 armor).
-4. Reload: sound chain + time. 5. On MC: **SOUNDS RIGHT ✓** / **LOG ISSUE ✗** — verdicts persist to `~/.brx-mcp/weapon-verdicts.jsonl` and badge the cards.
+1. Kit: select the bench operator, tap the weapon card (try-out pushes the shipped frame).
+2. Fire: confirm the FIRE MODE column's behavior (single-shot never auto-fires on hold; bursts are 3-round; charge modes wind up).
+3. Hit the second gun: damage is EXACT (t5, bench-proven) vs the 45+70=115 default pool.
+4. Reload: sound chain + time. 5. MC: **SOUNDS RIGHT ✓ / LOG ISSUE ✗** → `~/.brx-mcp/weapon-verdicts.jsonl` + card badges.
 
-Design + rebalance: see **docs/weapon-design.md**.
+Design + rebalance rationale: **docs/weapon-design.md**. Token truth: **protocol/brx-protocol.md** (§6.1 + t20/overheat sections).
 
-## Expected wire behavior
+## Shipped wire truth
 
-| weapon | verified | sample | dmg | fire ms | charge ms | fire snd | hits-to-kill (115) |
-|---|---|---|---|---|---|---|---|
-| Assault Rifle (`assault_rifle`) | ✓ | — | — | — | — | — | — |
-| Burst Rifle (`burst_rifle`) | prov | ar | 14 | 180 | — | R07 | 9 |
-| Sniper Rifle (`sniper_rifle`) | prov | ar | 60 | 1500 | — | S16 | 2 |
-| Shotgun (`shotgun`) | prov | ar | 50 | 1100 | — | T14 | 3 |
-| SMG (`smg`) | prov | ar | 12 | 400 | — | G10 | 10 |
-| AMR (`amr`) | prov | ar | 40 | 900 | — | R04 | 3 |
-| Energy Launcher (`energy_launcher`) | prov | charge | 95 | 2000 | 1500 | E08 | 2 |
-| Rail Gun (`rail_gun`) | prov | charge | 90 | 2200 | 1800 | O03 | 2 |
-| Rocket Launcher (`rocket_launcher`) | prov | rocket | 115 | 1800 | — | C03 | 1 |
-| Laser Cannon (`laser_cannon`) | prov | laser | 150 | 1600 | — | E07 | 1 |
-| Charge Rifle (`charge_rifle`) | ✓ | — | — | — | — | — | — |
-| Bolt Rifle (`bolt_rifle`) | prov | ar | 30 | 700 | — | R05 | 4 |
-| Plasma Sniper (`plasma_sniper`) | prov | ar | 55 | 1300 | — | E17 | 3 |
-| Force Rifle (`force_rifle`) | prov | ar | 24 | 850 | — | R09 | 5 |
-| Stinger (`stinger`) | prov | ar | 30 | 600 | — | E14 | 4 |
-| Energy Rifle (`energy_rifle`) | prov | ar | 10 | 200 | — | E01 | 12 |
-| Suppressor (`suppressor`) | prov | ar | 20 | 500 | — | Q06 | 6 |
-| Ion Sniper (`ion_sniper`) | prov | ar | 80 | 2000 | — | E20 | 2 |
-| Melee (`melee`) | ✓ | — | — | — | — | — | — |
+| weapon | dmg (t5) | cycle ms (t14) | fire mode (t20) | burst ms (t23) | heat/shot (t24) | mag | reserve | reload | fire snd |
+|---|---|---|---|---|---|---|---|---|---|
+| Assault Rifle (`assault_rifle`) | 9 | 190 | full-auto |  |  | 32 | 384 | 1400 | R01 |
+| Burst Rifle (`burst_rifle`) | 9 | 75 | burst | 275 |  | 36 | 216 | 1700 | R18 |
+| Force Rifle (`force_rifle`) | 10 | 100 | burst | 250 |  | 36 | 144 | 1700 | R23 |
+| Bolt Rifle (`bolt_rifle`) | 13 | 225 | single/bolt |  |  | 18 | 180 | 2000 | R12 |
+| SMG (`smg`) | 8 | 140 | full-auto |  | 5 | 72 | 288 | 2500 | G03 |
+| Shotgun (`shotgun`) | 45 | 800 | single/bolt |  |  | 6 | 24 | 400 | T01 |
+| Stinger (`stinger`) | 15 | 250 | full-auto |  |  | 18 | 144 | 1700 | E11 |
+| Sniper Rifle (`sniper_rifle`) | 60 | 1500 | single/bolt |  |  | 4 | 24 | 1700 | S16 |
+| Plasma Sniper (`plasma_sniper`) | 25 | 400 | single/bolt |  | 30 | 10 | 80 | 2000 | E17 |
+| AMR (`amr`) | 24 | 400 | single/bolt |  |  | 14 | 56 | 1400 | S07 |
+| Suppressor (`suppressor`) | 8 | 160 | full-auto |  |  | 48 | 384 | 2000 | Q06 |
+| Energy Rifle (`energy_rifle`) | 9 | 200 | full-auto |  | 6 | 300 | 600 | 2400 | E12 |
+| Charge Rifle (`charge_rifle`) | 100 | 1250 | tap-or-charge-release |  | 14 | 12 | 12 | 2500 | E03 |
+| Rocket Launcher (`rocket_launcher`) | 115 | 1000 | single/bolt |  |  | 2 | 2 | 2600 | C03 |
+| Rail Gun (`rail_gun`) | 115 | 1200 | charge-auto-release |  |  | 2 | 2 | 2400 | C03 |
+| Laser Cannon (`laser_cannon`) | 115 | 1500 | hold-to-charge |  |  | 2 | 2 | 1600 | C06 |
+| Energy Launcher (`energy_launcher`) | 115 | 1600 | full-auto |  |  | 2 | 2 | 1400 | O01 |
+| Ion Sniper (`ion_sniper`) | 115 | 1400 | single/bolt |  |  | 2 | 2 | 2000 | E07 |
 
-## Known gaps (field-confirmed 2026-08-26)
+## Known gaps (current, 2026-08-26)
 
-- **Fire mode is uncontrolled** — sniper/shotgun fire full-auto on hold; semi/bolt flag = uncaptured token (probing live).
-- Burst Rifle: no native burst with our frames.
-- tok41 gun-range % is never written (all 75) — range identity unused.
+- **t41 range (U2)**: OPEN — one solid far-kill at 100; the low-value zeros were contaminated by rig degradation. Fresh-fleet A/B method in FOLLOWUPS.
+- **Overheat is ENABLED only where t37/t38 are populated** (Charge Rifle stock; proven transplantable). t24/t35 alone are inert — heat values in this table without t37/t38 do not overheat as shipped.
+- **t37 vs t38 semantics** (rate/threshold/cooldown) unmapped — two varied-value probes.
+- Power-rest the fleet: day-long powered guns degrade ("screamer") — rotate batteries/power between sessions.

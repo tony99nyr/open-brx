@@ -302,7 +302,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 17 | 32768 | 32768 | maxAmmo / unlimited flag | ~ (identical in both frames — a 2-frame diff can't validate a position that doesn't change) |
 | 18 | 1400 | 2500 | reloadSpeed (ms) | ~ |
 | 19 | 0 | 0 | reloadType (Magazine/Quiver/Shells…) | ~ |
-| 20 | 0 | 14 | (secondary/overheat) | ~ |
+| 20 | 0 | 14 | ~~(secondary/overheat)~~ **FIRE MODE — bench-proven 2026-08-26** (0 auto/7 single/9 burst/2·3·14 charge/13 melee; overheat is t24+t35 gated by t37/t38; refuted guess kept for provenance) | ~ |
 | 21 | 100 | 100 | maxAccuracy | ~ |
 | 22 | 100 | 100 | singleShotAccuracy | ~ |
 | 24 | 0 | 14 | overheat | ~ |
@@ -315,6 +315,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 33 | D02 | D37 | reloadPart3_SoundName | ✓ |
 | 34 | D18 | A73 | noAmmo_SoundName | ~ |
 | 35–36 | — | C19,C04 | weaponFeatureA/B sounds | ~ |
+| 37–38 | — | 20,150 | **overheat enable/params** — populated ONLY on the stock Charge Rifle; t24/t35 are INERT without them (SMG transplant enabled its dead heat gauge — bench 2026-08-26); t37-vs-t38 semantics unmapped | ✅ gate proven |
 | 39 | 32 | 100 | clipStartingAmmo (= maxClip here) | ~ |
 | 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ~ (identical in both frames — not discriminable by the diff) |
 | 41 | 75 | 75 | gunRange % | ~ |
@@ -323,7 +324,7 @@ The always-empty positions (secondary-fire ~7–13 and extra-headset ~42–43) a
 left unpinned** by the two samples (44 wire tokens − 38 named members ≈ 6; they occupy a few adjacent
 empty slots) — secondary-fire / extra-headset fields,
 default in both samples — pin them with a one-field Callsign capture (now trivial: change exactly
-that field). Note the **primaryDamageType vs primaryPowerType order (tok 3/4) is unresolved**: the
+that field). Note the **primaryDamageType vs primaryPowerType order (tok 3/4) ~~was unresolved~~ — **t3=damageType is now working truth**: U6 wrote types at t3, the victim echoed them in $HIR tok2 and played the mapped $SIR sound (bench 2026-08-26)**: the
 field-declaration list orders damageType-before-powerType, the table has the reverse, and both read
 `0` on the AR so the diff can't decide — another one-field capture settles it. The charge-sound
 validation (28/29 present only on the charging weapon) makes the sound block certain.
