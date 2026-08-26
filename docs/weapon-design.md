@@ -78,6 +78,17 @@ Consequences for this document:
 - **Capturing the fire-mode token is the single highest-value protocol task open.** It is worth
   more to weapon feel than every damage number in §2 combined. See U0 in §5.
 
+**Update — 2026-08-26 bench:** `fire_ms` is now REAL, and the fire-mode hunt is largely retired. Two
+things changed. (1) The rate field was **proven**: a sniper built with fire-interval `tok14=1250`
+fired exactly 1 shot/s. (2) A compiler bug that had made `fire_ms` inert was fixed — it wrote the
+value into the constant `tok15` (`850` in every capture), so every weapon had actually been running
+at the AR sample's `tok14=100` → **10 shots/s**, not its configured cadence. With `compile.py` now
+writing fire→`tok14` (commit c606417), the `fire_ms` values in §2 finally take effect on hardware.
+The full-auto limit above is unchanged (a held trigger still auto-fires at that cadence; semi-auto is
+still unenforceable), but the rebalance's cadences are now **real cadences, not inert numbers** — and
+the "highest-value task" framing above no longer holds: the bad feel was the rate bug, now fixed, and
+a true semi-auto mode probably does not exist to capture (`GunWeaponType` has no semi member — C2).
+
 ### C2 — There is no native burst fire.
 
 Confirmed on hardware: the Burst Rifle built on the `ar` sample with `subtype: 3` **does not
@@ -105,6 +116,20 @@ reload chains all landed correctly via `tutorial_frames`.
 `dmg`/`fire`/`chg` are the literal `wire` values; the two **HW** rows carry no `wire` block and
 these are read out of their captured hardware tails (`WEAPON_TAILS`). `x` = fire-sound duration ÷
 fire interval (see §3.2). Reserve is delivered by `$AMMO`, not by the `$WEAP` frame.
+
+> ⚠️ **Pre-fix / theoretical — corrected 2026-08-26.** Two problems make this "current state" table
+> describe a config that **never physically ran on hardware**:
+> 1. **Fire/charge are swapped on the HW rows.** The bench proved `tok14` = the *fire interval*
+>    (`protocol/brx-protocol.md` §6.1), so the AR's real cadence is the **`100` shown under `chg ms`**
+>    (`tok14` → 10 shots/s), and the `850` under `fire ms` is the unknown constant `tok15`. The HW
+>    rows' `fire ms`/`x`/TTK/DPS are computed from the wrong field.
+> 2. **Authored `fire_ms` never reached the gun.** Until tonight's compiler fix it was written to the
+>    constant `tok15`, so every `prov` weapon physically fired at the `ar` sample's `tok14=100 ms`
+>    (10 shots/s), not its listed cadence.
+>
+> Read the `fire ms`/`x`/TTK/DPS/sust here as **pre-fix/theoretical** and recompute against real
+> `tok14` values on the next revision. **§2.2's forward-looking column is unaffected** and, post-fix
+> (compiler commit c606417), is now **real** — its cadences land on the gun.
 
 | weapon | cls | ver | dmg | fire ms | chg ms | htk | TTK s | DPS | sust | mag | res | reload | mag/total kills | fire snd | x |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -523,6 +548,13 @@ Related and unmeasured: `$GSET` `gunLaserRegion`, `$IRTX` `rangeOutdoor`/`rangeI
 
 ### 4.3 tok14 — charge time, and the Laser Cannon bug
 
+> ⚠️ **Superseded (2026-08-26 bench): `tok14` is the FIRE INTERVAL, not charge time.** A sniper with
+> `tok14=1250` fired exactly 1 shot/s (`protocol/brx-protocol.md` §6.1). So the CR's `tok14=1250` is
+> its *fire* rate, and the charge mechanism lives in other tokens (open hunt — currently the
+> `tok20`+`tok24` pair). The inheritance bug below is still real, but re-read it as "a `charge` value
+> written into `tok14` **corrupts the fire rate**" — which is exactly the 10-shots/s bug the compiler
+> fix (c606417) resolved: `charge` is now parked, not written to `tok14`.
+
 `resolve()` only writes `charge` when the weapon declares `charge_ms`, so weapons built from the
 `laser` and `rocket` samples silently inherit **`charge: 1000`** from the capture. For the Laser
 Cannon that is worse than cosmetic: `wire.sounds.up`/`down` are `""`, which **overwrites the
@@ -558,6 +590,15 @@ and the fire-mode flag are unlocated** in the 44 tokens — most likely among th
 therefore cannot discriminate the field by diffing. Pinning it needs **a capture of a stock
 semi-auto weapon** (fire the Callsign app's own sniper into a BLE capture and diff it against our
 `ar` frame), not more diffing of what we already have. This is U0.
+
+**Bench update (2026-08-26):** `tok19`=`reloadType` is now enum-matched and probe-confirmed as a
+reload mechanism — a sniper probe of it changed nothing about firing. Fire-mode eliminations so far:
+`tok1` (sniper `tok1=2`, still full-auto) and `tok19`. The strong new read: **semi-auto may not
+exist in the firmware at all** — `GunWeaponType` has no semi member, and the "always full-auto" feel
+turned out to be the `tok14` rate bug (now fixed, c606417), not a missing mode. U0 is downgraded:
+chase a stock semi-auto capture only to **confirm absence**; real cadence control (`tok14`) already
+delivers most of the feel. (The Charge Rifle's charge mechanism *is* in the frame — a byte-identical
+CR taps-vs-holds differently — and localizes to the `tok20`+`tok24` pair; see the exp-log.)
 
 ---
 

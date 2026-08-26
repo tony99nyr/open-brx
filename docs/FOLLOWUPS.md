@@ -244,11 +244,18 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   roster+kits to `~/.brx-mcp/session.json` and restore on boot (phase resets to muster, players survive).
 
 - **Capture the burst-fire token.** 2026-08-26 field: Burst Rifle fired single heavy shots (no burst) —
-  our 4 captured $WEAP samples (ar/charge/laser/rocket) never exercise burst. Capture Callsign's Burst
-  Rifle frame (extract names `burstWeaponTime`; likely near tok16-20) and wire real burst; until then
-  the weapon is tuned as fast tap-fire (14 dmg / 180 ms).
+  our 4 captured $WEAP samples (ar/charge/laser/rocket) never exercise burst. `burstWeaponTime` is now
+  **suspected at `tok23`** (raw idx24; a sniper probe read ≈275 there, unverified). But the
+  `GunWeaponType` enum has **no burst member** (C2 in `weapon-design.md`), so a "burst rifle" may only
+  ever be a fast-cadence weapon with burst-shaped audio — capture Callsign's Burst Rifle frame to settle
+  whether `tok23` changes anything. Until then it's tuned as fast tap-fire (14 dmg / 180 ms).
 
-- **Capture the fire-mode token (semi/bolt vs full-auto).** Range session 2026-08-26: sniper and
-  shotgun fire FULL-AUTO on trigger hold — both must be one-pull-one-shot. Our 4 captured $WEAP
-  samples are all full-auto; the semi/bolt flag is somewhere in the uncaptured tokens (same hunt as
-  the burst token). Until then every built weapon inherits full-auto.
+- **Fire-mode token (semi/bolt vs full-auto) — likely does not exist.** Range session 2026-08-26:
+  sniper and shotgun fire FULL-AUTO on trigger hold. **Eliminated** as the selector: `tok1` (sniper
+  `tok1=2`, still full-auto) and `tok19`=`reloadType` (a reload mechanism — probe changed nothing).
+  The `GunWeaponType` enum (`FullAutoFire/Bow/ChargeAndAutoRelease/ChargeAndRelease`) has **no semi
+  member**, so per-pull semi-auto may not be expressible in this firmware — every built weapon stays
+  full-auto. **What DID resolve:** fire RATE is now real — `tok14` = fire-interval ms is **bench-PROVEN**
+  (sniper `1250`→1 shot/s), and the compiler bug that had pinned every weapon at 10 shots/s is fixed
+  (it wrote `fire_ms` to the constant `tok15`; now writes `tok14`, commit c606417). Cadences work; only
+  per-pull discipline can't be enforced.

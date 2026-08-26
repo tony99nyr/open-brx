@@ -1373,3 +1373,40 @@ RELOAD/pips warn only when live+alive+low; CAMERA permission + webview debugging
 readability. Peer session fixed the MC banner port and wired the `victory` cue to winning nodes at recap
 (+e2e). 464/464 python, 33+8 app tests, APK reinstalled on the Pixel (it dropped off adb after — on-device
 keep-awake/cam verification is first thing next bench). Screenshots in the session scratchpad.
+
+## 2026-08-26 (bench) — `$WEAP` token probes: fire-interval PROVEN, compiler rate bug fixed, fire-mode still open
+
+Live-probed the built `$WEAP` frames on a real tagger (`firemode_probe.py`), one token at a time on a
+sniper build, plus a Charge Rifle control test. The bench tool numbers tokens **raw 1-indexed**
+(slot = idx1); the field map and compiler are 0-indexed (slot = tok0), so **raw idx = tok + 1**
+(tok = 0-indexed below).
+
+**PROVEN — `tok14` (raw idx15) is the fire interval (ms).** A sniper with `tok14=1250` fired exactly
+one shot per second. This overturns the `protocol-classes.md` field-order guess (`tok14`=chargeUp,
+`tok15`=rateOfFire): the real rate is `tok14`.
+
+**Compiler bug found + fixed (c606417).** `compile.py` had been writing `fire_ms` into `tok15` — the
+field that reads a constant `850` in every captured frame (function still unknown; we now never write
+it). Because the value never landed, every built weapon ran at the AR sample's `tok14=100` → **10
+shots/s full-auto regardless of config**. Now maps fire→`tok14` (charge parked), so configured
+cadences finally reach the gun.
+
+**Fire-mode eliminations (sniper).** `tok1=2` → still full-auto (not fire-mode). `tok19` → probe did
+nothing → consistent with `reloadType` (Magazine=0/Shells=2, enum-matched, unverified), a reload
+mechanism, not a mode selector. `tok3` (damageType `8`) alone → no charge effect. The `GunWeaponType`
+enum has no semi/burst member, so **per-pull semi-auto may not exist in this firmware** — held-trigger
+full-auto is all we can build.
+
+**`tok23` (raw idx24) ≈ 275** on the sniper probe → `burstWeaponTime`-suspect, unverified.
+
+**Charge feel is in the frame, not yet localized.** A byte-identical Charge Rifle gives a weak splat
+on a tap vs a charged blast on a hold → the behaviour is carried by `$WEAP` tokens. Eliminated as sole
+carriers: `tok3` (damageType) and `tok14` (rate). **Progress:** the paired fields that both read `14`
+on the CR (`tok20`+`tok24`, raw idx21+idx25) together produced a **delayed-shot charge feel** on the
+sniper → the charge mechanism lives in that pair. Isolating it: `tok20=14` alone is on the gun now,
+awaiting Tony's verdict; the CR tail block `tok35`–`tok38` (`C19,C04,20,150`) is the fallback if the
+pair doesn't reproduce from a single token.
+
+Net: fire RATE is now controllable and proven; fire-MODE (semi/burst) is likely absent from the
+firmware; the CR charge mechanism is still an open token hunt. Weapon verdicts (`burst_rifle`,
+`sniper_rifle`, `shotgun`, `smg`) stay logged as "issue" pending the rate-fix retest.

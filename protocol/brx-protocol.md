@@ -130,6 +130,37 @@ Recognizable fields: damage, fire delay (ms), mag capacity, ammo reserve (32768/
 flags), reload time (ms), IR signature/power type, sound IDs (`R01`,`D04`,`E03`,`C15`…), range/
 accuracy (%), per-slot ammo.
 
+### 6.1 Bench-probed corrections (live tagger, 2026-08-26)
+
+Tony live-probed the built frames on a real gun (`firemode_probe.py`), one token at a time. The
+bench tool prints **raw 1-indexed** positions (slot = idx1); the field map above and the compiler
+are **0-indexed** (slot = tok0), so **raw idx = tok + 1**. Findings (tok = 0-indexed here):
+
+- **`tok14` = FIRE INTERVAL (ms) — PROVEN.** A sniper built with `tok14=1250` fired **exactly one
+  shot per second**. This is the real rate control. ⚠️ It **corrects** the `protocol-classes.md`
+  field table, which inferred from field order that `tok14`=chargeUp-time and `tok15`=rateOfFire —
+  the rate is **`tok14`**, and `tok15` is not it.
+- **`tok15` = constant `850` in every captured frame; function UNKNOWN — do not write it.** The
+  compiler had been writing `fire_ms` into `tok15`, so it never reached the gun and every built
+  weapon inherited the AR sample's `tok14=100` → **10 shots/s full-auto regardless of config**.
+  Fixed 2026-08-26 (`compile.py` maps fire→`tok14`, charge parked; commit c606417).
+- **`tok19` = `reloadType` — enum-matched, UNVERIFIED.** `Magazine=0 / … / Shells=2` (`ReloadType`
+  enum, `protocol-classes.md`): a magazine auto reads 0, a pump reads 2. A sniper probe of `tok19`
+  changed nothing about firing → consistent with a **reload mechanism, not** the fire-mode selector.
+- **`tok23` = `burstWeaponTime` — SUSPECT, unverified.** Empty in the AR/CR samples; a sniper probe
+  read ≈275. Candidate burst/cycle timer.
+- **Fire-mode / semi-auto — NOT located, and may not exist.** `tok1` is eliminated (a sniper with
+  `tok1=2` still fired full-auto). The `GunWeaponType` enum (`FullAutoFire, Bow, ChargeAndAutoRelease,
+  ChargeAndRelease`, `apk-harvest.md`) has **no semi/burst member**, so per-pull semi-auto may simply
+  not be expressible in this firmware — held-trigger full-auto is the only mode we can build today.
+- **Charge feel is in the frame but not localized.** A byte-identical Charge Rifle frame gives a weak
+  splat on a tap vs a charged blast on a hold, so the charge behaviour is carried by `$WEAP` tokens.
+  Eliminated as sole carriers: `tok3` (damageType `8`, no effect) and `tok14` (`1250`, pure rate).
+  The paired fields that both read `14` on the CR (`tok20`+`tok24`) together produced a **delayed-shot
+  charge feel** → the mechanism lives in that pair; isolating `tok20` alone is in progress (unverified).
+  Fallback candidate if it doesn't reproduce from one token: the CR tail block `tok35`–`tok38`
+  (`C19,C04,20,150`) as a unit.
+
 ## 7. Unknowns / TODO
 
 **Much of this was SOLVED by the Callsign APK teardown (2026-08-24)** — see
