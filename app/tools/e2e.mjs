@@ -361,6 +361,8 @@ await step('END MATCH EARLY is a two-step confirm', async () => {
 await step('HUDs show GAME OVER result with stats; OK → MATCH COMPLETE', async () => {
   await until(async () => (await hudA.locator('.result').count()) > 0, 8000, 'result screen');
   expect((await hudA.locator('text=GAME OVER').count()) > 0, 'no GAME OVER banner');
+  const accTxt = (await hudA.locator('.result .cell:has-text("ACCURACY") b').innerText()).trim();
+  if (accTxt !== '\u2014') expect(parseInt(accTxt, 10) <= 100, `accuracy reads ${accTxt} — >100% means double-scaled (server sends PERCENT)`);
   expect((await hudA.locator('.result .cell').count()) >= 4, 'stat cells missing');
   await shot(hudA, 'hudA-result'); await shot(hudB, 'hudB-result'); await tapAudit(hudA, 'hud-result');
   const ov = await overlapAudit(hudA, 'hud-result', ['.result .banner', '.result .rstats', '.result .sess', '.result .foot .ready', '.result .syncline']);

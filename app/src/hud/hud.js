@@ -139,14 +139,14 @@ export class Hud {
     const v = (x, suf = '') => x == null ? '—' : x + suf;
     const hist = this.history || [];
     const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
-    const sess = tot.g > 1 ? `<div class="sess">TONIGHT · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
+    const sess = tot.g > 1 ? `<div class="sess">OVERALL · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
     return `<div class="lobby result"><div class="scan"></div><div class="edgeglow"></div>
       <div class="banner"><span class="unskew">GAME OVER</span></div>
       <div class="rstats">
         <div class="cell"><b>${v(st.kills)}</b><span>KILLS${st.kills != null ? ' ✓MC' : ''}</span></div>
         <div class="cell"><b>${v(st.deaths)}</b><span>DEATHS</span></div>
         <div class="cell"><b>${v(st.assists)}</b><span>ASSISTS</span></div>
-        <div class="cell"><b>${v(st.accuracy == null ? null : Math.round(st.accuracy * 100), '%')}</b><span>ACCURACY</span></div>
+        <div class="cell"><b>${v(st.accuracy == null ? null : Math.round(st.accuracy), '%')}</b><span>ACCURACY</span></div>
         <div class="cell"><b>${st.shots != null ? st.shots : '—'}</b><span>SHOTS</span></div>
       </div>${sess}
       <div class="foot">${this.sync && this.sync.bound && this.sync.pending === 0
@@ -173,7 +173,7 @@ export class Hud {
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span>
         <button class="camchip ${this.cam ? 'on' : ''}" data-act="onToggleCam"><span class="unskew10">◉ CAM${this.cam ? ' ON' : ''}</span></button></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
-      <div class="stats tab">${stat('K', st.kills, true)}${stat('D', st.deaths)}${stat('A', st.assists, true)}${stat('ACC', st.accuracy == null ? null : Math.round(st.accuracy * 100) + '%', true)}</div>
+      <div class="stats tab">${stat('K', st.kills, true)}${stat('D', st.deaths)}${stat('A', st.assists, true)}${stat('ACC', st.accuracy == null ? null : Math.round(st.accuracy) + '%', true)}</div>
       ${st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
