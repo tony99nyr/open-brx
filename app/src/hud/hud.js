@@ -49,7 +49,7 @@ export class Hud {
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
-      st.rejoin, !!st.pendingTeardown].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
+      st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
     if (sig !== this.sig) {
       const urlEl = this.hudEl.querySelector('#mcurl');
       const typing = urlEl && typeof document !== 'undefined' && document.activeElement === urlEl;

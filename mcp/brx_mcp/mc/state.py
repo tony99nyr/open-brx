@@ -107,14 +107,24 @@ class Session:
     # (players/teams/config) — never live link state (node_id, phase, acks).
     _persist_path = None            # set by __main__; None = persistence off (tests)
     _persist_last = 0.0
+    _persist_dirty = False
+
+    def persist_now(self):
+        """Throttle-bypassing flush — atexit and phase transitions call this so the FINAL
+        write of a burst is never lost to the 2s debounce (polish-loop 2026-08-26)."""
+        if self._persist_path and self._persist_dirty:
+            self._persist_last = 0.0
+            self._persist()
 
     def _persist(self):
         if not self._persist_path:
             return
         now = time.monotonic()
         if now - self._persist_last < 2.0:
+            self._persist_dirty = True      # a delayed flush (persist_now via atexit/transitions) picks this up
             return
         self._persist_last = now
+        self._persist_dirty = False
         try:
             snap = {"v": 1, "saved_ms": self.now_ms(),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
@@ -200,6 +210,10 @@ class Session:
                    voice: str = "male", loadout: dict | None = None) -> Player:
         if len(self.players) >= MAX_PLAYERS:
             raise ValueError("roster full")
+        if gun_id:
+            for q in self.players.values():
+                if (q.get("gun_id") or "").lower() == gun_id.lower():
+                    raise ValueError(f"gun {gun_id} is already assigned to {q['display']}")
         pid = uuid.uuid4().hex[:8]
         team_id = self._check_team(team_id)
         if team_id is None and self.teams:
@@ -253,6 +267,10 @@ class Session:
             if not d:
                 raise ValueError("display must not be empty")
             fields["display"] = d
+        if fields.get("gun_id"):
+            for q in self.players.values():
+                if q["player_id"] != pid and (q.get("gun_id") or "").lower() == str(fields["gun_id"]).lower():
+                    raise ValueError(f"gun {fields['gun_id']} is already assigned to {q['display']}")
         for k in ("display", "team_id", "voice", "loadout", "player_num", "gun_id", "ready"):
             if k in fields and fields[k] is not None or (k in fields and k in ("team_id", "gun_id")):
                 p[k] = fields[k]
@@ -376,6 +394,8 @@ class Session:
     def set_config(self, patch: dict) -> dict:
         if not isinstance(patch, dict):
             raise ValueError("config must be an object")
+        if self.phase == "recap" and not (isinstance(patch, dict) and patch.get("mode") and patch.get("mode") != self.config.get("mode")):
+            raise ValueError("match is over — pick a NEW MODE on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session")
         if self.phase == "recap":
             # the match is OVER — a config change is the operator starting the next one (Tony,
             # 2026-08-26: "i get an error bc match in progress, but MC knows its over"). Roll the
@@ -478,7 +498,8 @@ class Session:
             if not gid:
                 continue                      # a gun-less roster entry never matches (an empty name would equal "")
             g = self.guns.get(p.get("gun_id") or "")
-            if g and ((base and g["sticker"].lower() == base) or (tail and g["ble"].get("tail", "").lower() == tail)):
+            _sticker = g["sticker"].lower() if g else ""
+            if g and (((base and _sticker == base) and not _sticker.startswith("tactix")) or (tail and g["ble"].get("tail", "").lower() == tail)):
                 return p
             if gid in {x for x in (base, full) if x}:
                 return p
@@ -945,9 +966,6 @@ class Session:
                 st.flushed = True
 
     def new_session(self, keep_roster: bool = True) -> None:
-        if not keep_roster and self._persist_path:
-            try: self._persist_path.unlink(missing_ok=True)
-            except Exception: pass
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None
@@ -976,6 +994,12 @@ class Session:
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
         self._changed()
+        if keep_roster:
+            self.persist_now()                       # roster survives a crash right after NEW MATCH
+        elif self._persist_path:
+            self._persist_dirty = False              # nothing to flush — and remove the file LAST so
+            try: self._persist_path.unlink(missing_ok=True)   # our own _changed can't resurrect it
+            except Exception: pass
 
     # ---------- snapshot ----------
     def snapshot(self) -> dict:

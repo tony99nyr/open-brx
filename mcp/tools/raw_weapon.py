@@ -11,12 +11,17 @@ async def main() -> None:
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
     await mgr.connect(address, "raw")
-    for fr in ["$VOL,60,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET,
-               "$SIR,0,0,,1,0,0,1,,*", "$TID,1,*", frame, "$SPAWN,,*", "$PLAYX,0,*",
-               f"$AMMO,0,{mag},{int(mag) * 6 if mag.isdigit() else 192},1,*", "$BMAP,0,0,,,,,*"]:
-        await mgr.send("raw", fr, reply_window_ms=350)
-    print("pushed raw frame - gun LIVE:", frame[:80], flush=True)
-    await mgr.disconnect("raw")
+    try:
+        for fr in ["$VOL,60,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET,
+                   "$SIR,0,0,,1,0,0,1,,*", "$TID,1,*", frame, "$SPAWN,,*", "$PLAYX,0,*",
+                   f"$AMMO,0,{mag},{int(mag) * 6 if mag.isdigit() else 192},1,*", "$BMAP,0,0,,,,,*"]:
+            await mgr.send("raw", fr, reply_window_ms=350)
+        print("pushed raw frame - gun LIVE:", frame[:80], flush=True)
+        await mgr.disconnect("raw")
+    finally:
+        import contextlib
+        with contextlib.suppress(Exception): await mgr.disconnect("raw")
+
 
 
 asyncio.run(main())

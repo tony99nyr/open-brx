@@ -138,7 +138,7 @@ export function Kit() {
                       <GhostButton size={10} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
                       <span style={{ display: 'inline-flex', gap: 6, marginLeft: 10 }}>
                         <GhostButton size={10} pad="4px 10px" onClick={async () => { const twid = trying[sp.player_id]; if (twid) { await run(() => api.rangeVerdict(twid, 'pass')); setVerdicts(v => ({ ...v, [twid]: { verdict: 'pass', note: '' } })); } }}>SOUNDS RIGHT ✓</GhostButton>
-                        <GhostButton size={10} pad="4px 10px" onClick={async () => { const twid = trying[sp.player_id]; if (twid) { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)') || ''; await run(() => api.rangeVerdict(twid, 'issue', note)); setVerdicts(v => ({ ...v, [twid]: { verdict: 'issue', note } })); } }}>LOG ISSUE ✗</GhostButton>
+                        <GhostButton size={10} pad="4px 10px" onClick={async () => { const twid = trying[sp.player_id]; if (twid) { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; await run(() => api.rangeVerdict(twid, 'issue', note)); setVerdicts(v => ({ ...v, [twid]: { verdict: 'issue', note } })); } }}>LOG ISSUE ✗</GhostButton>
                       </span>
                     </div>
                   )}

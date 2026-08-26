@@ -64,6 +64,8 @@ def build(args):
         # a restored roster with a bare-tail gun_id once stole the e2e fake gun (2026-08-26).
         from pathlib import Path as _P
         session._persist_path = _P.home() / ".brx-mcp" / "session.json"
+        import atexit
+        atexit.register(session.persist_now)         # flush the debounced final write on exit
         restored = session.restore_snapshot()
         if restored:
             print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")

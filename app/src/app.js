@@ -100,9 +100,9 @@ async function refreshPreflight() {
   if (transport) transport.setPreflight(preflight);
 }
 
-function connectMc(url) {
+function connectMc(url, remember = true) {
   if (!url) return;
-  settings.mcUrl = url; hud.mcUrl = url;
+  if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   transport = new Transport({ node: { app_ver: APP_VER }, gun });
@@ -223,7 +223,7 @@ function startDiscovery() {
         const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
         const url = `ws://${ip}:${svc.port}${path}`;
         log(`Mission Control discovered: ${url}`, 'lk');
-        if (!settings.mcUrl && (!transport || transport.state !== 'bound')) connectMc(url);   // never override an explicit target
+        if ((allowAssist || !settings.mcUrl) && (!transport || transport.state !== 'bound')) connectMc(url, false);   // assist when unconfigured OR the remembered target has failed for 15s
       } catch (e) { log('discovery: ' + (e && e.message || e), 'li'); }
     }).catch(e => log('discovery watch: ' + (e && e.message || e), 'li'));
   } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
@@ -256,8 +256,11 @@ async function scanQrForMc() {
   cancel.style.cssText = 'padding:12px 34px;background:#131b26;color:#e8eef5;border:1px solid #2c3a4e;font:700 12px ui-monospace,monospace;letter-spacing:.24em';
   ov.append(hint, frame, cancel); document.body.appendChild(ov);
   let stream = null, raf = 0, done = false;
-  const stop = () => { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); ov.remove(); };
+  let stop = () => { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); ov.remove(); };
   cancel.onclick = stop;
+  const onHide = () => { if (document.hidden) stop(); };
+  document.addEventListener('visibilitychange', onHide);
+  const _stop = stop; stop = () => { document.removeEventListener('visibilitychange', onHide); _stop(); };
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     video.srcObject = stream; await video.play();
@@ -281,8 +284,11 @@ async function scanQrForMc() {
 
 // Fallback discovery: mDNS can die on AP-isolated/multicast-filtered routers — sweep the likely /24s for
 // MC's HTTP port (8765) and let /api/state hand us the exact ws_url (CORS is open server-side for this).
+let allowAssist = false;
 async function sweepForMc() {
   if (transport && transport.state === 'bound') return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;   // no network, no sweep
+  const urlAtStart = settings.mcUrl;
   const subnets = [];
   const m = /ws:\/\/(\d+\.\d+\.\d+)\.(\d+):/.exec(settings.mcUrl || '');
   if (m) subnets.push(m[1]);
@@ -304,7 +310,8 @@ async function sweepForMc() {
     for (let i = 0; i < hosts.length && !found; i += POOL) await Promise.all(hosts.slice(i, i + POOL).map(probe));
     if (found) {
       log(`Mission Control found by port sweep: ${found}`, 'lk');
-      if (!transport || transport.state !== 'bound') connectMc(found);
+      if (settings.mcUrl && settings.mcUrl !== urlAtStart) return;   // the user typed/scanned mid-sweep — their target wins (polish-loop)
+      if (!transport || transport.state !== 'bound') connectMc(found, false);
       return;
     }
   }
@@ -336,7 +343,10 @@ async function sweepForMc() {
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
     lockLandscape();
     startDiscovery();
-    if (!settings.mcUrl) setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback only when NO explicit target (typed/QR wins — e2e hijack 2026-08-26)
+    if (!settings.mcUrl) setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback only when NO explicit target (typed/QR wins)
+    setTimeout(() => {   // a REMEMBERED url that keeps failing must not disable discovery forever (polish-loop)
+      if (!transport || transport.state !== 'bound') { allowAssist = true; sweepForMc().catch(() => {}); }
+    }, 15000);
   }
   await refreshPreflight(); scheduleRender();
 })();

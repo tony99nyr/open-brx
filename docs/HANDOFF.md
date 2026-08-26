@@ -58,7 +58,7 @@ laptop with a synchronised start.
 **Current state (2026-08-25):** the platform is now a Mission Control host on a local Wi-Fi LAN
 (WebSocket, not MQTT) that compiles a per-player `FrameBundle` (`mcp/brx_mcp/mc/compile.py`), plus a
 native Capacitor phone node (Web Bluetooth is dead — `adr/0003`). Software is **built + tested (438
-tests incl. 12 e2e)**; the **MC↔phone field path is UNVERIFIED on hardware.** The authoritative spec
+tests incl. 12 e2e)**; the **MC↔phone LIVE path is field-VERIFIED (2026-08-25/26 real phone→MC→gun sessions); soak/scale/lock-screen certification still open (verification-checklist).** The authoritative spec
 set is **`docs/spec/`** (roadmap + `mission-control.md`) and the ADRs (`docs/adr/`); the open hardware
 proofs are in **`docs/verification-checklist.md`**.
 
