@@ -668,6 +668,11 @@ class Session:
         p = self.players[pid]
         if weapon_id is None:
             self.trying.pop(pid, None)
+            # tell the NODE too — without this the phone stayed on the try-out screen and the gun stayed
+            # armed until the next config push (e2e find, 2026-08-26). Teardown = the known end sequence.
+            if p.get("node_id"):
+                self.net.push(p["node_id"], "tutorial", {"end": True, "frames": [
+                    "$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"]})
             self._changed()
             return
         if any(nv.get("arm_state") in ("lobby", "armed", "live") for nv in self.nodes.values()):

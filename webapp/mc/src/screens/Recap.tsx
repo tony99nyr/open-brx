@@ -34,7 +34,7 @@ export function Recap() {
       )}
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.28em', color: T.micro }}>[ A8 // MATCH COMPLETE · {state.config.mode.toUpperCase()} · {fmtClock(state.config.time_limit_s ?? 0)} ]</div>
+          <div style={{ font: F.mono(500, 9), letterSpacing: '.28em', color: T.dim, position: 'relative', zIndex: 1, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {state.config.mode.toUpperCase()} · {fmtClock(state.config.time_limit_s ?? 0)} ]</div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15, marginTop: 6 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>

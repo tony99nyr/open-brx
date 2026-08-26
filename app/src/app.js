@@ -196,12 +196,13 @@ window.addEventListener('pageshow', () => engine.resume());
   if (params.has('demo')) {
     const { startDemo } = await import('./demo.js');
     window.brxDemo = startDemo({ engine, log });
-  } else if (params.get('mc') && params.get('gun')) {
-    // browser test rig: FAKE gun + REAL Mission Control (tooling, 2026-08-26) — see src/fakegun.js
+  } else if (params.get('gun')) {
+    // browser test rig: FAKE gun + REAL Mission Control (tooling, 2026-08-26) — see src/fakegun.js.
+    // With ?mc= it auto-joins; with ?gun= alone the user types the MC URL (the real join UX, e2e-tested).
     const { installFakeGun } = await import('./fakegun.js');
     engine.now = () => Date.now(); engine.isSynced = () => true;
     window.fakeGun = installFakeGun({ engine, log, name: params.get('gun') });
-    connectMc(params.get('mc'));
+    if (params.get('mc')) connectMc(params.get('mc'));
   } else {
     try { await link.ensureInit(); log('BLE ready — Set my gun', 'lk'); } catch (e) { log('BLE init: ' + (e && e.message || e), 'le'); }
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.

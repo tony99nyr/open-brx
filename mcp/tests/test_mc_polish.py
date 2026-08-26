@@ -650,3 +650,29 @@ def test_player_added_after_hello_binds_by_armory_tail():
     p = s.add_player("ALPHA", "blue", gun_id="GUN-A")
     assert s.node_player.get("phone-1") == p["player_id"], "late roster add must adopt the node by tail"
     assert s.players[p["player_id"]]["node_id"] == "phone-1"
+
+
+def test_end_tryout_pushes_teardown_to_the_node():
+    """e2e find 2026-08-26: ending a try-out popped MC state but told the node nothing — the phone stayed
+    on the try-out screen and the gun stayed armed."""
+    s = _sess()
+    p = s.add_player("ALPHA", "blue", gun_id=None)
+    s.net.simulate_hello("n1", "GUN-A-AB12")
+    s._on_node({"node_id": "n1", "node_type": "phone", "gun_name": "GUN-A-AB12", "gun_tail": "AB12"})
+    s._bind("n1", p)
+    s.tryout(p["player_id"], "smg")
+    assert s.net.pushes("tutorial")[-1][2].get("weapon", {}).get("weapon_id") == "smg"
+    s.tryout(p["player_id"], None)
+    last = s.net.pushes("tutorial")[-1][2]
+    assert last.get("end") is True and "$CLEAR,*" in last["frames"], last
+
+
+def test_honors_gated_for_tiny_rosters():
+    """Design review 2026-08-26 #3: a 1-player recap must not crown itself MVP/SURVIVOR."""
+    from brx_mcp.mc.scoring import Scorer
+    teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+             {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
+    p = {"player_id": "a", "display": "A", "team_id": "blue", "player_num": 1, "node_id": None,
+         "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True}
+    sc = Scorer("m1", 0, 60, "tdm", {"a": p}, teams, {}, {})
+    assert sc.honors() == [], "one scored player must yield no honors"

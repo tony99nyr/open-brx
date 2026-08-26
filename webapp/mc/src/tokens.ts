@@ -4,7 +4,7 @@ export const T = {
   page: '#07090d', panel: '#0c1016', panelAlt: '#090d12', inset: '#05070a',
   line: '#1c2733', row: '#131c26', line2: '#25313f', slot: '#141c26', panelSoft: '#0e141b', panelDeep: '#0a0e13',
   // ink
-  ink: '#e8eef5', body: '#c7d3de', dim: '#8aa0b4', micro: '#5c7186', faint: '#3a4a5c',
+  ink: '#e8eef5', body: '#c7d3de', dim: '#8aa0b4', micro: '#71879c', faint: '#3a4a5c',
   // accent
   acc: '#39b4ff', accHover: '#7fd0ff', accInk: '#04121e',
   // semantic

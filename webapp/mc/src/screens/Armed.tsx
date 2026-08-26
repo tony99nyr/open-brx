@@ -51,7 +51,7 @@ export function Armed() {
           <div aria-live="off" style={{ font: F.osw(700, 56), ...TAB, letterSpacing: '.04em', lineHeight: 1 }}>T-{fmtClock(tMinus / 1000)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>COUNTDOWN</span>
+          <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>RESCHEDULE TO</span>
           <Seg value={String(runway) as '60'} options={RUNWAYS.map(r => ({ value: String(r) as '60', label: fmtClock(r) }))} onChange={v => setRunway(Number(v))} pad="5px 12px" />
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>

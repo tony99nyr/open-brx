@@ -31,7 +31,7 @@ const REQUIRED = {
   log_offer: ['node_id', 'bytes', 'lines'], log_data: ['node_id', 'seq', 'chunk', 'last'],
   ready: ['node_id', 'player_id', 'ready'],
   welcome: ['session_id', 'server_t', 'seq_hi'], assign: ['player', 'team', 'roster'],
-  tutorial: ['weapon', 'frames'], config: ['config', 'frames', 'roster'],
+  tutorial: ['frames'],   // weapon optional: an end-of-try-out push carries {end, frames} only (2026-08-26) config: ['config', 'frames', 'roster'],
   start: ['match_id', 'go_live_t', 'config_id', 'seq', 'countdown_s'],
   feedback: ['player_id', 'kind', 't'], control: ['cmd'], time_res: ['t_node', 'server_t'],
   pull_log: [], ack: ['seq_hi'], apply: ['frames'], score: ['player_id'],

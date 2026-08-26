@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { GameConfig } from '../api/types';
 import { useStore } from '../store';
-import { CHAMFER, F, T } from '../tokens';
+import { F, T } from '../tokens';
 import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox, onKey } from '../ui';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
@@ -26,7 +26,7 @@ export function Build() {
               return (
                 <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => put({ ...m.defaults, config_id: cfg.config_id })} onKeyDown={onKey(() => put({ ...m.defaults, config_id: cfg.config_id }))}
                   style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : 'transparent'}`,
-                    padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer', clipPath: CHAMFER.br10 }}>
+                    padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer' }}>
                   <StripedSlot height={76} caption={MODE_ART.has(m.mode) ? undefined : 'mode art'}
                     style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
                     corner={<>
@@ -44,6 +44,7 @@ export function Build() {
           {sel && (
             <div className="screen" style={{ marginTop: 14, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${T.acc}`, padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: '16px 44px' }}>
               <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                {MODE_ART.has(sel.mode) && <div style={{ height: 220, background: `url(assets/modes/${sel.mode}.jpg) center/cover no-repeat`, border: `1px solid ${T.line2}`, marginBottom: 14 }} />}
                 <div style={{ font: F.mono(600, 9), letterSpacing: '.26em', color: T.acc, marginBottom: 6 }}>MODE BRIEFING // {sel.name}</div>
                 <div style={{ font: F.chk(500, 13), lineHeight: 1.55, color: T.body, maxWidth: '60ch' }}>{sel.brief}</div>
               </div>

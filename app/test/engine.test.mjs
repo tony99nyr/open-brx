@@ -421,3 +421,14 @@ test('runway cues are edge-triggered: stale thresholds never fire, crossed ones 
   b.adv(10000); b.eng.tick();  // T-9
   assert.ok(b.eng.cuesFired.has('runway_10'));
 });
+
+
+test('tutorial end push quiets the gun and clears the try-out state', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG' }, frames: ['$CLEAR,*'] } });
+  assert.equal(h.eng.tutorial, true); assert.equal(h.eng.tutorialWeapon.weapon_id, 'smg');
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'tutorial', body: { end: true, frames: ['$STOP,*', '$CLEAR,*'] } });
+  assert.equal(h.eng.tutorial, false); assert.equal(h.eng.tutorialWeapon, null);
+  assert.ok(h.writes.includes('$STOP,*'), 'teardown written to the gun');
+});

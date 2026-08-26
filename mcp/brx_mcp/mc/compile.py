@@ -277,7 +277,9 @@ class Compiler:
     def award_medals(self, rows: list[ScoreRow], kills: list[dict]) -> dict[str, list[str]]:
         """§5b award rules → {player_id: [medal_id]}. Exact per-player (A4.1)."""
         out: dict[str, list[str]] = {r["player_id"]: [] for r in rows}
-        if not rows:
+        # honors need an audience: with < 3 scored players every medal is a participation trophy
+        # ("MVP · 0 K · 0.0 K/D" on a 1-player recap — design review 2026-08-26 #3)
+        if len(rows) < 3:
             return out
 
         def add(pid: str, medal: str) -> None:
@@ -286,7 +288,8 @@ class Compiler:
 
         # single-winner medals (ties broken as noted)
         mvp = max(rows, key=lambda r: (r["kills"] - r["deaths"], r["kd"]))
-        add(mvp["player_id"], "MVP")
+        if mvp["kills"] > 0:                      # an MVP with zero kills is noise, not an honor
+            add(mvp["player_id"], "MVP")
         top = max(rows, key=lambda r: r["kills"])
         if top["kills"] > 0:
             add(top["player_id"], "TOP_GUN")
@@ -300,7 +303,8 @@ class Compiler:
             sharp = max(acc_pool, key=lambda r: r["accuracy"] or 0.0)
             add(sharp["player_id"], "SHARP_SHOOTER")
         surv = min(rows, key=lambda r: r["deaths"])
-        add(surv["player_id"], "SURVIVALIST")
+        if surv["deaths"] < max(r["deaths"] for r in rows):   # only when someone actually outlived the field
+            add(surv["player_id"], "SURVIVALIST")
         most_assist = max(rows, key=lambda r: r["assists"])
         if most_assist["assists"] > 0:
             add(most_assist["player_id"], "ASSISTANT")

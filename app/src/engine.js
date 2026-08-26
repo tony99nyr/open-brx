@@ -240,8 +240,14 @@ export class Engine {
     else this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' });
   }
 
-  _tutorial({ frames, weapon }) {
+  _tutorial({ frames, weapon, end }) {
     if (this.phase !== 'kitted' || !frames) return;
+    if (end) {                               // host ended the try-out: quiet the gun, drop the panel
+      this.tutorial = false; this.tutorialWeapon = null;
+      this._write(frames, 'tutorial end');
+      this._changed();
+      return;
+    }
     this.tutorial = true;
     this.tutorialWeapon = weapon || null;    // shown on the HUD: image + details of what's being tried
     this._write(frames, 'tutorial');

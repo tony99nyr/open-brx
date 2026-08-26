@@ -341,7 +341,9 @@ class Scorer:
         return out
 
     def honors(self) -> list[dict]:
-        if not self.stats:
+        # honors need an audience (design review 2026-08-26 #3): a 1-player recap crowned itself
+        # MVP · 0 K · 0.0 K/D + SURVIVOR · 1 DEATHS. Under 3 scored players there are no honors.
+        if len(self.stats) < 3:
             return []
         items = list(self.stats.items())
         def add(award, pid, stat):
@@ -349,9 +351,11 @@ class Scorer:
         out: list[dict] = []
         mvp = max(items, key=lambda kv: (kv[1].kills - kv[1].deaths, kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
         m = self.stats[mvp]
-        add("MVP", mvp, f"{m.kills} K · {m.kills / max(m.deaths,1):.1f} K/D · ×{m.best_streak} STREAK")
+        if m.kills > 0:                                   # a zero-kill MVP is noise
+            add("MVP", mvp, f"{m.kills} K · {m.kills / max(m.deaths,1):.1f} K/D · ×{m.best_streak} STREAK")
         mk = max(items, key=lambda kv: kv[1].kills)[0]
-        add("MOST KILLS", mk, f"{self.stats[mk].kills} ELIMINATIONS")
+        if self.stats[mk].kills > 0:
+            add("MOST KILLS", mk, f"{self.stats[mk].kills} ELIMINATIONS")
         non = [kv for kv in items if kv[0] != mvp]
         if non:
             bk = max(non, key=lambda kv: (kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
@@ -362,7 +366,8 @@ class Scorer:
             ss = max(shooters, key=lambda x: x[1])
             add("SHARPSHOOTER", ss[0], f"{ss[1]:.0f}% ACCURACY")
         sv = min(items, key=lambda kv: (kv[1].deaths, -kv[1].kills))[0]
-        add("SURVIVOR", sv, f"{self.stats[sv].deaths} DEATHS")
+        if self.stats[sv].deaths < max(kv[1].deaths for kv in items):   # someone must actually have outlived the field
+            add("SURVIVOR", sv, f"FEWEST DEATHS · {self.stats[sv].deaths}")
         if self.first_blood:
             fb = next((k for k in self.kills if k["killer"] == self.first_blood), None)
             add("FIRST BLOOD", self.first_blood, f"AT {self._match_t(fb['t']) if fb else '--:--'}")

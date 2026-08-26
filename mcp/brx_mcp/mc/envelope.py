@@ -44,7 +44,7 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     # MC → node
     "welcome": ("session_id", "server_t", "seq_hi"),
     "assign": ("player", "team", "roster"),
-    "tutorial": ("weapon", "frames"),
+    "tutorial": ("frames",),   # weapon optional: end-of-try-out pushes {end, frames} only (2026-08-26)
     "config": ("config", "frames", "roster"),
     "start": ("match_id", "go_live_t", "config_id", "seq", "countdown_s"),
     "feedback": ("player_id", "kind", "t"),
