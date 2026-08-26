@@ -283,3 +283,8 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - ✅ **Overheat mechanism SOLVED (2026-08-26): t37/t38 enable it** — SMG + t37=20/t38=150 transplant
   brought the dead heat gauge alive (28→52/dump, trigger gating at top). t24/t35 are inert without
   them. Remaining: map what 20 vs 150 each mean (two varied-value probes).
+
+- **U2 (t41 range) — OPEN, one tantalizing positive.** t41=100 killed at max indoor distance; t41=5
+  read zero — but the session ended in rig degradation (point-blank zeros on a known-good frame), so
+  5's zeros are unattributable. Rerun the same-spot 100-vs-5 A/B with counted windows on a FRESH fleet
+  (t41 inverted-range method, exp-log 2026-08-26).

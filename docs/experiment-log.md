@@ -1647,3 +1647,14 @@ NO $AMMO — the gun's next $ALCD read **36/108, the new frame's baked-in clip/r
 prior ammo state. Design rule: **every weapon pickup/powerup must re-send $AMMO** with the intended
 counts, or the player silently receives the frame's full load. (Depletion-carryover nuance untested
 — no shots were fired between phases this run — but the overwrite is demonstrated.)
+
+## 2026-08-26 (bench, late) — U2 attempt CONTAMINATED by rig degradation; stays OPEN
+
+t41 inverted-range test (can't walk to a 300ft floor -> shrink t41 instead): one SOLID positive —
+**t41=100 sniper killed from max indoor distance** while the rig was healthy. Then t41=5 read zero
+hits (suggestive!) — but before it could be controlled, registrations died entirely: t41=100 at
+POINT-BLANK, fresh-armed victim, counted window = **0 hits**. A frame that was killing an hour
+earlier. Verdict: rig degradation (R0BAT ~12h powered — the night's SECOND screamer-family failure;
+emitter or receiver side unresolved), so the t41=5 zeros are unattributable. **U2 stays OPEN.**
+Method for a fresh fleet (worth 10 minutes): same-spot A/B, t41 100 vs 5, counted windows both sides.
+Fleet ops rule reinforced: POWER-REST GUNS — a day-long bench session degrades them below usability.
