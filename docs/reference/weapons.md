@@ -8,8 +8,8 @@ Field decode and the evidence behind it: `protocol/callsign-extract/protocol-cla
 Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`.
 
-**Reading the columns.** `dmg` = `t5` (⚠ *unresolved* — see the field notes; an AR reads 9 here, not
-the manual's 24). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
+**Reading the columns.** `dmg` = `t5` (✓ **confirmed = the applied damage**, bench exp 2 2026-08-26 —
+an AR deals 9; the manual's 24 was stale). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
 charge time. `clip`/`reserve` = `t16`/`t40`. `heat` = `t24`, non-zero only on weapons that overheat.
 
 | weapon | sound | behaviour | dmg | cycle ms | clip | reserve | heat |
@@ -52,6 +52,8 @@ behaviour it describes, and empty on all the others:
 
 ## Caveat worth carrying
 
-`t5` does **not** match the manual's damage figures (an AR reads 9). Weapon stats are server-fetched
-per `apk-harvest.md`, so the numbers above are what the app sent on the day — treat them as a
-faithful record of the wire, not as authoritative game balance.
+`t5` **is the applied damage** — bench-confirmed exact across four weapons (exp 2, 2026-08-26;
+`brx-protocol.md` §7r): an AR really deals 9, the manual's 24 was stale. Weapon stats are still
+server-fetched per `apk-harvest.md`, so the numbers above are what the app sent on the day — a
+faithful record of the wire, and now trustworthy as the damage each weapon lands, though not
+necessarily BRX's current live-service balance.

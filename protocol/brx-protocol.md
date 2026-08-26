@@ -79,7 +79,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,<irProto>,<t2>,<shooterPlayerId>,<shooterTeam>,...,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (1 = headset, 4/0 = gun body — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied** — hardware-verified (§7k team, §7q player id, §7r sensor/damage) |
+| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (1 = headset, 4/0 = gun body — §7r), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied (EXACT = the `$WEAP` `t5` field — §7r bench exp 2), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
 | `$HP,<hp>,<armor>,<shield>,*` | Health update (tokens verified §7r) | `$HP,0,0,0` = player died (or turned zombie in Survival); arrives in the same ms as its `$HIR` |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
@@ -516,7 +516,10 @@ Observed forms: `$HIR,0,0,1,1,9,0,3,*` and `$HIR,4,0,1,1,9,0,3,*`. Only the **fi
 varies** across this capture — the IR protocol id, matching `$SIR`'s first field.
 Protocol `0` hits drained **18** armor each; protocol `4` hits drained **9**.
 Token 5 was `9` in both, so it is **not** simply the damage value — the `$SIR` table's
-mapping of protocol → effect is what determines damage. Shooter-ID semantics could not be
+mapping of protocol → effect is what determines damage.
+> **Corrected (§7r, handoff exp 2, 2026-08-26): token 5 IS the applied damage, exact across four
+> weapons.** This old capture's "protocol 0 → 18 vs protocol 4 → 9" split was a `$SIR`-table mapping
+> artifact, not evidence against `t5`; with a full `$SIR` table the delta equals `t5` every time. Shooter-ID semantics could not be
 confirmed from this capture (both players sat on default ids) — **now resolved, see §7k.**
 
 ### Death and respawn — host-driven
@@ -1249,6 +1252,29 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
   answers — `$STOP` is not needed), and `$SPAWN,,*` echoes `$LCD,0,0,0,0,0,0` + `$ALCD,0,0,0,0,0` — a live gun
   with nothing loaded. That zeroed `$LCD` is the node's tell for "re-push the head". A power-cycled gun also
   needs its headset re-linked before BLE holds (connects then drops within ~1 s until the headset is back).
+
+### 7r bench addendum — 2026-08-26 (handoff experiment 2): damage exact, armor model, `$HIR` tok2/tok7
+
+Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damage_bench.py`):
+
+- **`$HIR` token 5 = the applied damage, EXACT (4/4 across the range).** AR (`t5`=9) → armor −9;
+  Shotgun `T01` (45) → armor −45; Sniper (80) → 70 absorbed + 10 to HP; Rocket (115) → instant kill.
+  So `t5` IS the `$WEAP` damage field and the AR really deals **9** — the manual's "M-4 = 24" was
+  stale. (The 2026-08-25 "24 here" above was simply that day's 24-damage config.) Frames verbatim:
+  `$HIR,4,0,5,1,9,0,0` · `$HIR,4,0,5,1,45,0,0` · `$HIR,4,0,5,1,80,0,1` (+ a gun-sensor variant
+  `$HIR,0,…`) · `$HIR,4,10,5,1,115,0,0`. Kill-shot anomaly: the shotgun's fatal hit reported
+  `$HIR,4,0,5,1,70,0,0` — `70` = the victim's *entire remaining pool*, i.e. an overkill/pool-clamped
+  report on the killing blow, not `t5`.
+- **Armor model pinned:** armor absorbs **1:1 first**, overflow **spills into HP**, **no per-hit cap**
+  (the sniper's 80 split exactly 70/10). The old "~9/hit absorption" reading was just the AR dealing 9.
+- **`$HIR` token 2 = the shooter's IR protocol** — `10` on the rocket (proto 10), `0` on standard
+  weapons. Every prior "always 0" reading was standard-protocol-only traffic. **Token 7 = subtype
+  echo** — the sniper's hit carried `…,1` (its subtype 1).
+- **Operational (bench):** `$BMAP,0,0,,,,,*` is **required** or the trigger is dead; a **dead gun does
+  not revive on `$SPAWN` alone** — a full cold start (`$CLEAR`→`$START`→…→`$SPAWN`) is needed; and a
+  victim registers **non-standard IR only if its `$SIR` table has the matching protocol/subtype rows**
+  — a single-row `$SIR,0,0` ignores the sniper's subtype-1 hit (the full 10-row captured `$SIR` table
+  is in `damage_bench.py`).
 
 ## 8. Safe testing notes
 

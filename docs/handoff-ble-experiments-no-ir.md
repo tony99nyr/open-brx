@@ -59,6 +59,13 @@ rather than a prerequisite for FFA scoring. This one result can delete a hardwar
 
 ## 2. Does `$WEAP` `t5` actually mean damage? 🟡
 
+> ✅ **PASSED — 2026-08-26 (WSL/Windows session).** `t5` **is** the applied damage — **exact, 4-of-4**
+> across the range (AR 9→armor −9; Shotgun `T01` 45→−45; Sniper 80→70 absorbed +10 HP; Rocket 115→
+> instant kill). The manual's M-4=24 was stale; the AR really deals 9. `weapons.md` ✓ restored + caveat
+> dropped; `protocol-classes.md` `t5` resolved. Bonus decodes: `$HIR` **tok2 = shooter IR protocol**
+> (0 standard, 10 on the rocket) and **tok7 = subtype echo** (sniper 1); armor model pinned (1:1
+> absorb, spill to HP, no cap). See `brx-protocol.md` §7r + experiment-log.
+
 **Question.** `t5` was read as `primaryDamage`, anchored to the manual's M-4 = 24. cap14's Assault
 Rifle carries **9**, so it is currently marked **unresolved** (`protocol-classes.md`).
 

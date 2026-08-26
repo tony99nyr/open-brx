@@ -275,10 +275,11 @@ without exception:
 So `t17`/`t40` are the same quantity in different units (or one is derived on send) — **do not treat
 them as two independent knobs.** Likewise `t39 == t16` in every frame (clip starts full).
 
-⚠ **`t5` (`primaryDamage`) does not match the earlier 2-frame derivation.** That table read the AR's
-`t5` as **24** (anchored to the manual's M-4 damage); cap14's `R01` carries **9**, as does `R18`.
-Either the app now sends a server-fetched value, the earlier alignment was off, or `t5` is not
-damage. Treat `t5` as **unresolved** rather than ✓.
+✅ **`t5` (`primaryDamage`) — RESOLVED (bench exp 2, 2026-08-26).** `t5` **is** the applied damage:
+`$HIR` token 5 equalled `t5` exactly on all four weapons fired (AR 9, Shotgun 45, Sniper 80, Rocket
+115 — `brx-protocol.md` §7r). So the AR really deals **9**; the earlier 2-frame table's **24** was the
+stale manual M-4 anchor, not a wire read. (Weapon stats remain server-fetched, so a given weapon's
+`t5` is whatever the app last sent — but `t5`→applied-damage is now firm.)
 
 ### WEAP exact token positions (metadata field names × 2 live frames)
 

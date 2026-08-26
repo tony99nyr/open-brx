@@ -1444,3 +1444,47 @@ Bare `$SFLASH,*` sent to an idle, unspawned gun (no game state, `mcp/tools/sendf
 read as one continuous green. No wire reply. So the frame decode (§7o) is correct, no game state or
 companion frame is required, and the engine's `KillConfirm → $SFLASH,*` path is validated end-to-end
 (B18 visual half REAL). Single-send duration not yet isolated (needs one send + a stopwatch).
+
+## 2026-08-26 (bench, handoff experiment 2) — `$HIR` t5 = applied damage (EXACT); armor model pinned; new tok2/tok7 decodes
+
+Two real guns, victim rebuilt to a full 45/70 before each single shot (`mcp/tools/damage_bench.py`).
+Resolves the `t5`=damage question (was "unresolved" in `weapons.md` / `protocol-classes.md`) and P10.
+
+**`$HIR` token 5 = the applied damage, EXACT — 4 of 4 across the range:**
+- AR (`t5`=9) → armor 70→61 (−9). Frame: `$HIR,4,0,5,1,9,0,0`.
+- Shotgun `T01` (45) → armor 70→25 (−45). `$HIR,4,0,5,1,45,0,0`.
+- Sniper (80) → armor 70 absorbed + HP 45→35 (spill). `$HIR,4,0,5,1,80,0,1` (+ a gun-sensor variant `$HIR,0,…`).
+- Rocket (115) → instant kill. `$HIR,4,10,5,1,115,0,0`.
+
+So `t5` **is** the `$WEAP` damage field, and the AR really deals **9** — the manual's "M-4 = 24" was
+stale (the 2026-08-25 §7r "24 here" was just that day's 24-damage config). A kill-shot anomaly: the
+shotgun's killing blow reported `$HIR,4,0,5,1,70,0,0` — `70` = the victim's *entire remaining pool*,
+i.e. an overkill / pool-clamped report on the fatal hit, not `t5`. (Footnote, not a `t5` counterexample.)
+
+**Armor model pinned:** armor absorbs **1:1 first**, overflow **spills into HP**, **no per-hit cap** —
+the sniper's 80 split exactly 70 armor / 10 HP. The old "~9/hit absorption" reading was just the AR's
+damage being 9, not an absorption limit.
+
+**NEW decode — `$HIR` token 2 = the shooter's IR protocol:** `10` on the rocket hit (proto 10), `0`
+on standard weapons. Every prior "always 0" reading was standard-protocol-only traffic (resolves the
+P2 "tok2 always 0" note). **Token 7 = subtype echo:** the sniper's hit carried `…,1` = its subtype 1.
+
+**Operational learnings (→ §7r):** `$BMAP,0,0,,,,,*` is **required** or the trigger is dead; a **dead
+gun does not revive on `$SPAWN` alone** — a full cold start (`$CLEAR`→`$START`→…→`$SPAWN`) is needed;
+and a victim registers **non-standard IR only if its `$SIR` table has the matching protocol/subtype
+rows** — a single-row `$SIR,0,0` ignores the sniper's subtype-1 hit (the full 10-row captured `$SIR`
+table is in `damage_bench.py`).
+
+Handoff experiment 2 **PASSED**. (Experiment 4 — `$TID` team range — runs next; its entry goes below.)
+
+## 2026-08-26 (bench) — $HIR sensor-id sweep: INCONCLUSIVE at point-blank
+
+Question (Tony): does the headset distinguish front vs back hits? Five aimed phases
+(mcp/tools/sensor_bench.py: front/back/left/right/gun, victim rebuilt per phase). Results: only ids
+**0** and **4** ever observed in $HIR tok1 (never 1, the old "headset" guess). Left/right headset
+shots read 0; gun-body shots read 4 — roughly INVERTING the morning's damage-bench pattern (headset
+aim → mostly 4). At bench distance the IR floods every receiver and the first to catch it reports, so
+aim point does not map cleanly to the id. **Facts:** tok1 carries a real per-hit sensor id with (at
+least) two groups {0, 4}; front-vs-back is NOT resolvable without isolation (cover all sensors but
+one). Front/back damage bonuses cannot be built on tok1 yet. Also §7m re-confirmed twice: a gun with
+an unsettled headset accepts a connection and instantly drops it ("Not connected" mid-config).
