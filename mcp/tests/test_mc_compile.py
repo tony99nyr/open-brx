@@ -212,6 +212,50 @@ def test_resolve_provisional_substitutes_mag_reserve():
     assert p[19] == "777", "reload ms"
     assert p[16] == "850", "rate-of-fire keeps the sample value (was being clobbered by mag)"
 
+# ---- mag >= htk invariant (docs/weapon-design.md §2.1) ---------------------
+def test_hits_to_kill_uses_wire_damage_and_captured_tails():
+    cat = WeaponCatalog()
+    # provisional: wire.dmg. sniper 60 -> 2 hits at the 45+70 default pool
+    assert cat.damage("sniper_rifle") == 60
+    assert cat.hits_to_kill("sniper_rifle", 115) == 2
+    # verified: no wire block, damage read back out of the captured AR tail (24 -> 5 hits, bench §7r)
+    assert cat.damage("assault_rifle") == 24
+    assert cat.hits_to_kill("assault_rifle", 115) == 5
+
+
+def test_validate_rejects_weapon_that_cannot_kill_on_one_magazine():
+    """rail_gun ships at mag 1 needing 2 hits vs the 115 pool — a kill costs a full reload."""
+    p = _player(weapons=("rail_gun",))
+    r = C.validate(_cfg(), [p])
+    assert not r["ok"]
+    assert any("rail_gun cannot kill on one magazine" in e for e in r["errors"]), r["errors"]
+    assert any("mag 1 < 2 hits at 90 dmg vs 115 pool" in e for e in r["errors"]), r["errors"]
+
+
+def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
+    r = C.validate(_cfg(), [_player(weapons=("assault_rifle", "shotgun"))])
+    assert not any("one magazine" in e for e in r["errors"]), r["errors"]
+
+
+def test_mag_invariant_follows_the_per_player_health_override():
+    """Pool is per-player: an override that raises hp/armor can push a legal weapon over the line.
+    ion_sniper is mag 2 / 80 dmg -> 2 hits at 115 (legal), 3 hits at 200 (illegal)."""
+    ok = _player(weapons=("ion_sniper",))
+    assert not any("one magazine" in e for e in C.validate(_cfg(), [ok])["errors"])
+    over = _player(weapons=("ion_sniper",))
+    over["loadout"]["overrides"] = {"max_hp": 100, "max_armor": 100}
+    errs = C.validate(_cfg(), [over])["errors"]
+    assert any("ion_sniper cannot kill on one magazine" in e for e in errs), errs
+    assert any("vs 200 pool" in e for e in errs), errs
+
+
+def test_mag_invariant_reports_each_weapon_once_per_pool():
+    """Two players carrying the same broken weapon is one error, not two."""
+    a, b = _player(num=7, weapons=("rail_gun",)), _player(num=8, weapons=("rail_gun",))
+    errs = [e for e in C.validate(_cfg(), [a, b])["errors"] if "one magazine" in e]
+    assert len(errs) == 1, errs
+
+
 # ---- medals ---------------------------------------------------------------
 def test_award_medals_basic():
     rows = [

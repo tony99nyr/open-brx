@@ -10,6 +10,7 @@ A6: `cues(voice)` returns **pre-composed `$PLAY` frames** (not bare ids); `valid
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 from typing import Any
 
@@ -111,6 +112,25 @@ class WeaponCatalog:
         rel = snd.get("rel") or ["", "", ""]
         put("rel1", rel[0]); put("rel2", rel[1]); put("rel3", rel[2]); put("noammo", snd.get("noammo", ""))
         return ",".join(p)
+
+    def damage(self, weapon_id: str) -> int:
+        """Per-hit damage the gun will actually apply — `$HIR` token 5 is this value (§7r). Provisional
+        weapons carry it in `wire.dmg`; verified ones have no wire block, so read it back out of their
+        captured tail rather than treating them as unknown."""
+        w = self._row(weapon_id)
+        dmg = (w.get("wire") or {}).get("dmg")
+        if dmg:
+            return int(dmg)
+        try:
+            return int(self.resolve(weapon_id, 0).split(",")[self._T["dmg"] + 1])
+        except (IndexError, ValueError):
+            return 0
+
+    def hits_to_kill(self, weapon_id: str, pool: int) -> int:
+        """Hits to drop a `pool`-point target (hp + armor). Armor absorbs at face value and spills into
+        HP — no multiplier — bench-verified §7r. 0 = damage unknown, caller should skip."""
+        dmg = self.damage(weapon_id)
+        return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
     def spawn_ammo(self, weapon_id: str) -> tuple[int, int]:
         w = self._row(weapon_id)
@@ -287,6 +307,30 @@ class Compiler:
             for w in p.get("loadout", {}).get("weapons", []):
                 if w["weapon_id"] not in self.catalog._by_id:
                     errors.append(f"unknown weapon_id {w['weapon_id']!r}")
+
+        # a weapon must be able to kill on one magazine: mag >= ceil(pool / dmg).
+        # `docs/weapon-design.md` §2.1 — the rail gun and energy launcher shipped at mag 1 needing 2 hits,
+        # so a kill cost charge + shot + full reload + charge again. Pool is per-player: loadout overrides
+        # win over config health, exactly as `_gset` reads them.
+        health = config.get("health") or {}
+        seen: set[tuple[str, int]] = set()
+        for p in roster:
+            ov = ((p.get("loadout") or {}).get("overrides")) or {}
+            hp, armor = ov.get("max_hp", health.get("max_hp")), ov.get("max_armor", health.get("max_armor"))
+            if hp is None or armor is None:
+                continue                                     # no health model to check against
+            pool = int(hp) + int(armor)
+            for w in (p.get("loadout", {}) or {}).get("weapons", []):
+                wid = w.get("weapon_id")
+                if wid not in self.catalog._by_id or (wid, pool) in seen:
+                    continue                                 # unknown ids already reported above
+                seen.add((wid, pool))
+                htk = self.catalog.hits_to_kill(wid, pool)
+                mag = int(self.catalog._row(wid)["mag"])
+                if htk and mag < htk:
+                    errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
+                                  f"{self.catalog.damage(wid)} dmg vs {pool} pool "
+                                  f"(docs/weapon-design.md §2.1)")
 
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
         if (config.get("scoring", {}).get("frag_limit") or 0) > 0 and not covered:
