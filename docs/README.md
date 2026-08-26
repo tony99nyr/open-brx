@@ -27,6 +27,10 @@ To keep facts from drifting, each fact has one home; other docs should link, not
 | Open work (all items) | `FOLLOWUPS.md` |
 | QUERY/SETUP serial console + PlayerID | `../protocol/brx-protocol.md` §7c |
 
+- **[handoff-ble-experiments-no-ir.md](handoff-ble-experiments-no-ir.md)** — **four BLE-only bench
+  experiments** needing just two taggers and a laptop (no IR, no Callsign, no capture rig). Top item
+  could close P2 and remove an IR hardware dependency.
+
 ## Reference
 - **[reference/weapons.md](reference/weapons.md)** — **the complete Callsign arsenal**: all 20 weapons,
   named and behaviour-verified, with damage/cycle/clip/reserve/heat as sent on the wire.
