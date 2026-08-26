@@ -38,7 +38,8 @@ if (await fetch(MC + '/api/state').then(r => r.ok).catch(() => false)) {
   console.error('FATAL: something already listens on 8865 — kill the stale MC first (a previous run left one behind?)');
   process.exit(3);
 }
-const mcProc = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', '8865', '--ws-port', '8866'], { cwd: path.join(REPO, 'mcp'), stdio: 'ignore' });
+const mcLog = fs.openSync(path.join(OUT, 'mc-server.log'), 'w');
+const mcProc = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', '8865', '--ws-port', '8866', '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', mcLog, mcLog] });
 process.on('exit', () => { try { mcProc.kill(); } catch {} });   // the watchdog/timeout path must not leak the server
 await until(async () => (await fetch(MC + '/api/state')).ok, 30000, 'MC server');
 WS = (await (await fetch(MC + '/api/state')).json()).lan.ws_url;

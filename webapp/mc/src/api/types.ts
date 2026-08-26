@@ -61,6 +61,8 @@ export interface ReadinessRow {
   node: 'none' | 'linked';
   headset: 'proven' | 'unknown' | 'absent';
   battery_pct?: number; battery_age_ms?: number; fw?: string; phone_batt?: number;
+  last_seen_age_ms?: number | null;
+  gun_linked?: boolean | null;
   ssid_ok?: boolean; mc_reachable?: boolean; synced?: boolean; screen_on?: boolean; foreground?: boolean;
   last_seen_ms?: number;
   status: 'green' | 'amber' | 'red';

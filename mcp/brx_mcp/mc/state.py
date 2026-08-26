@@ -647,6 +647,8 @@ class Session:
                 if nid and not self.lobby_pushed:
                     ambers.append("HEADSET UNPROVEN UNTIL CONFIG PUSH")
             row.update({"battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
+                        "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
+                        "gun_linked": pf.get("gun_linked"),
                         "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
                         "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
                         "foreground": pf.get("foreground"), "blockers": blockers + ambers,

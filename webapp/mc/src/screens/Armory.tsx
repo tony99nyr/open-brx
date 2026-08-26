@@ -18,7 +18,7 @@ export function Armory() {
   const firstRed = board.find(g => g.status === 'red');
   const gateNote = nRed
     ? `${firstRed?.sticker} BLOCKS START — ${firstRed?.blockers[0]?.split(' — ')[0] ?? 'CHECK IT'}`
-    : 'NO REDS — START WHEN READY';
+    : nGreen ? 'NO REDS — START WHEN READY' : 'NOTHING READY YET — POWER GUNS, OPEN THE APP ON EACH PHONE';
 
   return (
     <div className="screen">
@@ -31,7 +31,7 @@ export function Armory() {
             <CountBlock value={nRed} label="RED" color={nRed ? T.bad : T.micro} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-            <div style={{ font: F.osw(700, 22), letterSpacing: '.3em', padding: '8px 26px 8px 32px', background: nRed ? T.bad : T.ok, color: T.accInk, clipPath: CHAMFER.tl14 }}>{nRed ? 'HOLD' : 'GO'}</div>
+            <div style={{ font: F.osw(700, 22), letterSpacing: '.3em', padding: '8px 26px 8px 32px', background: nRed ? T.bad : nGreen ? T.ok : T.panelAlt, color: nRed || nGreen ? T.accInk : T.dim, border: nRed || nGreen ? 'none' : `1px solid ${T.line2}`, clipPath: CHAMFER.tl14 }}>{nRed ? 'HOLD' : nGreen ? 'GO' : 'STANDBY'}</div>
             <div role="status" aria-live="polite" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim }}>{gateNote}</div>
           </div>
         </>
@@ -63,9 +63,10 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const red = g.status === 'red';
   const batt = g.battery_pct;
   const battColor = batt == null ? T.micro : batt < 30 ? T.bad : batt < 60 ? T.warn : T.ok;
-  const stale = (g.last_seen_ms ?? 0) > 8000;
-  const linkText = g.node === 'none' ? `LAST SEEN ${fmtAge(g.last_seen_ms ?? 0)}` : `${fmtAge(g.last_seen_ms ?? 0)} AGO`;
-  const hs = g.headset === 'proven' ? 'CONNECTED' : g.headset === 'absent' ? '—' : 'UNKNOWN';
+  const age = g.last_seen_age_ms ?? g.battery_age_ms ?? null;                 // real link age from the server
+  const stale = age != null && age > 60_000;                                   // >1 min old = show nothing as live truth
+  const linkText = g.node === 'none' ? 'NO PHONE' : age == null ? '—' : `${fmtAge(age)} AGO`;
+  const hs = stale ? 'UNKNOWN' : g.headset === 'proven' ? 'CONNECTED' : g.headset === 'absent' ? '—' : 'UNKNOWN';
   return (
     <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
@@ -77,12 +78,13 @@ function GunCard({ g }: { g: ReadinessRow }) {
         <Tag color={color}>{red ? 'BLOCKED' : g.status === 'amber' ? 'CHECK' : 'READY'}</Tag>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-        <Micro>POWER</Micro><Val color={g.present ? T.ink : T.bad}>{g.present ? 'ON' : 'OFF'}</Val>
-        <Micro>HEADSET</Micro><Val color={g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val>
+        <Micro>GUN</Micro><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
+        <Micro>HEADSET</Micro><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val>
         <Micro>BATTERY</Micro>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ font: F.osw(600, 14), ...TAB, minWidth: 38, color: battColor }}>{batt == null ? '—' : `${batt}%`}</span>
-          <SegBar pct={batt ?? 0} color={battColor} height={8} cell={7} style={{ flex: 1, maxWidth: 96 }} />
+          <span style={{ font: F.osw(600, 14), ...TAB, minWidth: 38, color: stale ? T.micro : battColor }}>{batt == null ? '—' : stale ? `${batt}%*` : `${batt}%`}</span>
+          <SegBar pct={stale ? 0 : batt ?? 0} color={battColor} height={8} cell={7} style={{ flex: 1, maxWidth: 96 }} />
+          {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
         <Micro>LINK</Micro><Val color={g.node === 'none' ? T.bad : stale ? T.warn : T.dim}>{linkText}</Val>
         <Micro>COMPANION</Micro><Val color={T.micro}>—</Val>
