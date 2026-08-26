@@ -137,3 +137,24 @@ is **server-fetched, not bundled**. So two capture routes remain, both gun-off-f
 
 No broad "watch the app over BLE" sweep is needed; the remaining data is either in the server API or
 in a couple of one-setting diffs.
+
+## Polish-loop Low items — Mission Control build (deferred 2026-08-25, not blocking)
+
+Three review iterations (9 fresh lenses + the peer's spec-vs-code read) on commits `d0fedaa..9254c5f`; every
+Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were surfaced, not fixed:
+- **Server:** `store.py` commits per status envelope (~N/2 fsyncs/s) — consider `synchronous=NORMAL`; `recap`
+  keys `post_end`/`parked` vs API.md `post_end_facts` naming drift; FFA winner with 0 kills / team-tie `tie` key
+  handling in the UI copy; `net.py` a never-applied seq >256 behind a newer live seq is dropped as replay;
+  `time_req.t_node` oversize raises inside `_send` (handled, noisy); `compile.py` station-gated list vs MODES
+  (`extraction` left ungated as coverage-only); UI allows `max_hp` up to 999, server caps 255.
+- **Phone node:** `pull_log`/`log_offer` unimplemented on the JS side (§6); `statusBody` omits `dropped`;
+  `hit_taken` uses a hardcoded 1000 ms latch for the dmg pairing; a stale-latch death reports the stale team
+  rather than 0; `app/package.json` lacks `"type": "module"` (Node warning only); ARMED-phase resync re-writes
+  the head and lets T-0 spawn (an unspawned gun can't give trigger evidence — documented choice).
+- **UI:** feed backlog not seeded from the snapshot (additive `live.feed?`); `lobby.all_acked` emitted but
+  unused; `T.micro` (#5c7186) ≈3.7:1 on the new copy; PANIC copy is protocol jargon ("$CLEAR → $SP,99") —
+  fine for the owner, opaque to a guest host; the alternate compact weapon-list layout from the design is
+  not implemented; fonts still Google-hosted (self-host before a no-internet field).
+- **Spec drift to amend:** modes §3 prose says `damage`/`rof` are substituted into `$WEAP` — the compiler
+  deliberately does not (catalog dmg/rof are 0–100 UI bars, not frame rates; provisional weapons share the
+  base tail until a capture pins them); §3 prose `class/damage/range` vs code `cls/dmg/rng`.
