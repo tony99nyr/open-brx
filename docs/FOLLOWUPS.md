@@ -185,3 +185,9 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - **HUD: info icon clips behind "LINKED"** on the post-connect screen (CSS alignment).
 - **Node keep-alive across shade/short-lock** — investigate a foreground-service or wake path so a brief shade
   pull / glance doesn't drop the socket (today it recovers in ~10 s; acceptable but not ideal).
+- **HUD weapon-select (self-serve kitting)** — let each player pick/try weapons on their own phone during KIT
+  instead of the operator running tryouts one at a time. Fits the architecture: HUD shows the catalog (already
+  in `welcome`/`assign`), player taps → node sends a **new up-message (loadout/tryout request)** → MC pushes the
+  existing `tutorial` frames (just proven on hardware) and records the selection as the player's loadout for
+  compile. **MC gates it** with a per-session/per-mode setting (allow vs lock weapon-select on the HUD) — some
+  modes want fixed loadouts. Touches: node HUD picker + `engine`/`transport`, a NODE_KIND, contract, MC state.
