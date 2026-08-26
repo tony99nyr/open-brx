@@ -1504,3 +1504,12 @@ So the earlier flood-run "headset" hits reading 4 were catching the GUN sensor. 
 4/0=gun" §7r guess is corrected: 1 IS a headset sensor — the BACK one. **Front-vs-back is
 distinguishable on every hit** → directional mechanics (backstab bonus, flank feedback, HUD hit
 direction) are buildable over pure BLE. Tool: mcp/tools/sensor_bench.py (isolation phase list).
+
+## 2026-08-26 (bench) — $STUN direct command: NO-OP
+
+Bare `$STUN,*` plus `,1` / `,5` / `,1,5` sent to a gun holding a live AR (spawned, trigger working):
+no sound, no LED change, trigger unaffected, no wire reply. So $STUN is not a host-side disable in
+these shapes. Working theory: stun is an IR-delivered effect — the extract types weapon category 10
+as "Stun" and $PLAY carries a `stun` field — i.e. the victim's $SIR row interprets a stun-type hit
+(like tear gas 11). Next probe: fire an IR frame with a stun damage-type at a victim whose $SIR has
+a matching row, or capture Callsign using a stun accessory.
