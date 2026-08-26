@@ -1,7 +1,7 @@
 # BRX Companion — per-tagger accessory module (hardware spec)
 
 **Status:** proposal, 2026-08-24. This is the full hardware realization of the `firmware/bridge/`
-node in `docs/brx-architecture-v0.2.md`, informed by everything the protocol teardown proved.
+node (see `docs/spec/` + the ADRs), informed by everything the protocol teardown proved.
 Working name **BRX Companion** (aka "the rider" — the tagger-rider ESP32 concept is credited to
 LaserTagMods; this is a fresh design). Design goal: **the one cheap accessory every BRX modder
 wants** — clips on, never touches stock firmware, and turns a dumb tagger into a fully
@@ -19,8 +19,10 @@ Four hard facts from `docs/experiment-log.md` drive every design decision:
 4. **Every game action is now a known BLE command** — `$SPAWN`, `$LIFE`, `$WEAP`, `$AMMO`, `$BUMP`,
    `$BHIT` (see `protocol/callsign-extract/protocol-classes.md`). Powerups are just command sequences.
 
-The official system solves #1/#2 by making every player carry a phone. The Companion **is that
-phone**, purpose-built, cheaper, open, and without the AWS cloud dependency.
+The official system solves #1/#2 by making every player carry a phone. The Companion is **an
+OPTIMIZATION for dispersed feedback** (ADR-0001) — a purpose-built, cheaper, open, AWS-free version
+of that phone — **not** a requirement for scoring: per-player attribution is BLE-native/exact
+(P2 closed, `$PSET` tok1 / `$HIR` tok3), so scoring stands without it.
 
 ## ⚡ 2026-08-25 reframe — the `$SFLASH` tier collapse + the real core BOM
 
@@ -44,7 +46,7 @@ to a complete unit.
 | TP4056 charge+protect | 0.5 | USB-C LiPo charging + safety (or a dev board with charging) |
 | Momentary button | 0.1 | pairing/bind + power/mode (see Pairing, below) |
 | Status LED (WS2812) | 0.3 | link/battery/firmware self-test at a glance on the rack |
-| **VS1838B IR receiver** | 0.3 | decode the shot's **6-bit player-id → per-player attribution (P2)** with no nRF tap |
+| VS1838B IR receiver *(optional)* | 0.3 | **not required for attribution** — that's BLE-native/exact (P2 closed: `$PSET` tok1 / `$HIR` tok3). At most a **B13 IR cross-check** of the shot's 6-bit player-id |
 | printed clip + wiring | ~3 | slim **body** mount, out of the sight line (ADR-0001) |
 | **Total** | **~$12–15** | |
 
@@ -110,7 +112,7 @@ One chip covers every requirement:
 | **Game engine** | lives, score, respawn timer, game clock, powerup state — **runs fully offline** | fact #1 |
 | **Powerup executor** | translates rules → command sequences (below) | decoded §3 commands |
 | **Store-and-forward** | timestamped event log to flash; replays to server on reconnect | architecture §"prime directive 2" |
-| **Wi-Fi/MQTT client** | live feed + final sync to lobby; best-effort, never blocking | topic tree §3 |
+| **Wi-Fi (WebSocket) client** | live feed + final sync to Mission Control over the LAN; best-effort, never blocking | contracts §5 |
 | **Audio engine** | SD → I2S amp → speaker, priority queue (game-state > kill > flavor) | fact #3 |
 | **HUD / status** | health/ammo/lives/respawn countdown + team color + hit flash | replaces phone HUD |
 
@@ -169,7 +171,7 @@ The concern is real: the tagger's built-in speaker is deliberately loud. To matc
 
 | Tier | Adds | ~BOM | What you get |
 |---|---|---|---|
-| **T0 — Brain** | ESP32-S3 + LiPo + mount **+ button + IR RX + LED** (see the reframe above) | **~$12–15** | BLE link, offline game engine, powerups, Wi-Fi sync, store-and-forward — **and drives the gun's OWN flash (`$SFLASH`) + audio (`$PLAY`) + team LED**, so this tier alone now delivers the full native feel. IR RX adds per-player attribution (P2). |
+| **T0 — Brain** | ESP32-S3 + LiPo + mount **+ button + IR RX + LED** (see the reframe above) | **~$12–15** | BLE link, offline game engine, powerups, Wi-Fi sync, store-and-forward — **and drives the gun's OWN flash (`$SFLASH`) + audio (`$PLAY`) + team LED**, so this tier alone now delivers the full native feel. IR RX is an optional B13 cross-check (attribution is already BLE-native/exact — P2 closed). |
 | **T1 — +Audio** | MAX98357A + speaker (+ piezo horn) + microSD | **+$5–7** | unlimited custom sounds |
 | **T2 — +HUD** | SSD1306 OLED or ST7789 TFT + WS2812 LEDs + bigger LiPo + printed shell | **+$8–12** | health/ammo/lives/respawn HUD, team color, hit flash |
 
@@ -195,16 +197,16 @@ toggled by what's populated.
 
 - **Real field play** — respawn, clock, and score survive out of BLE range (T0 fixes the #12/19 wall).
 - **Custom everything** — sounds, weapons, powerups, game modes, all host/Companion-side, no gun mods.
-- **Scales to 20+** — each player is autonomous; the server aggregates over Wi-Fi/MQTT, never holding
+- **Scales to 20+** — each player is autonomous; Mission Control aggregates over Wi-Fi (WebSocket), never holding
   20 direct BLE links.
-- **Reuses the whole stack** — same `brx-mcp` command layer, same MQTT topic tree, same decoded
+- **Reuses the whole stack** — same `brx-mcp` command layer, same LAN contracts (WebSocket), same decoded
   protocol. The Companion firmware lives in `firmware/bridge/` (this spec supersedes the bare
   "bridge" sketch in the architecture doc).
 
 ## How it fits the system (the three pieces)
 
-The Companion is one of three complementary pieces — see `docs/mission-control-spec.md` and
-`docs/phone-app-spec.md`:
+The Companion is one of three complementary pieces — see `docs/spec/mission-control.md` and
+ADR-0003 (the native-app decision):
 
 | Piece | Role | For |
 |---|---|---|
@@ -214,7 +216,8 @@ The Companion is one of three complementary pieces — see `docs/mission-control
 
 The Companion and the phone app are **interchangeable per-player nodes** — a match can mix them.
 All three share the decoded protocol (`protocol/callsign-extract/`), the `brx-mcp` command layer,
-and the MQTT bus. Mission Control assigns loadout/team/mode; the Companion executes and reports.
+and the node→MC WebSocket link over the LAN (MQTT is reserved for the deferred inter-Companion mesh,
+`docs/spec/net.md` §1). Mission Control assigns loadout/team/mode; the Companion executes and reports.
 
 **Community validation:** LaserTagMods' proven mount is exactly this shape — a USB power bank +
 ESP32 riding the phone bracket, no permanent gun modification, ~15 h on a 5000 mAh pack

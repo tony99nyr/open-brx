@@ -21,8 +21,10 @@ each budget) · [`docs/game-modes.md`](docs/game-modes.md) (mode catalog).
    factory-restore path.
 2. Store-and-forward everywhere: every node buffers timestamped events locally and syncs when
    in coverage. Live feed is best-effort; final results are always complete.
-3. The server is the single source of truth for rules; nodes stay dumb.
-4. Everything is a subscriber: scoreboard, lights, smoke, announcer are peers on the event bus.
+3. Each per-player **node** runs its own gun's game loop autonomously (offline-capable); **Mission
+   Control** (a laptop) authors games and aggregates the scoreboard over the local LAN — it is not a
+   live BLE hub, and cross-player truth is eventually-consistent via store-and-forward (ADR-0001/0002).
+4. Everything is a subscriber: scoreboard, lights, smoke, announcer are peers on the event stream.
 
 ## Repo layout
 
@@ -31,18 +33,20 @@ each budget) · [`docs/game-modes.md`](docs/game-modes.md) (mode catalog).
 | `protocol/` | Serial command reference + **`callsign-extract/`** (command/field maps, **$WEAP token map**, **2166-id sound bank**, game modes — decoded from the Callsign app) ✅ |
 | `mcp/` | **brx-mcp** — MCP server + CLI giving direct BLE control (scan/identify/listen/startgame/deathmatch/arena/…) ✅ |
 | `firmware/` | PlatformIO monorepo: bridge/Companion, item-pack, objective-station, effect-node (todo) |
-| `server/` | Game engine: MQTT, rules/modes, scoring, announcer, event log (todo) |
+| `server/` | Game engine — built in **`mcp/brx_mcp/mc/`**: Mission Control rules/modes, scoring, announcer, event log, driving player nodes over the LAN (WebSocket) ✅ |
 | `app/` | **BRX Companion** — the native phone app (Capacitor: one codebase → Android + iOS, native BLE). Build instructions: [`app/README.md`](app/README.md) ✅ |
 | `webapp/` | Static site: Mission Control operator console + `ble-test.html`. **Web Bluetooth is a dev/test harness only** — it has no iOS support and is disabled by default on Android, so the player-facing phone path is `app/` (ADR-0001) |
 | `hardware/` | **`brx-companion-spec.md`** (per-tagger accessory) ✅; STLs, wiring, BOM (todo) |
-| `docs/` | **[`docs/README.md`](docs/README.md)** index — architecture, specs (Mission Control, phone app), followups, reference (manual, LaserTagMods, community) |
+| `docs/` | **[`docs/README.md`](docs/README.md)** index — the **[`docs/spec/`](docs/spec/)** product spec (the record), the **[ADRs](docs/adr/)**, followups, and protocol/reference |
 
 **Current status:** protocol largely decoded (remote game start, `$WEAP`/`$GSET` maps, full sound
 bank, game modes, grenade config) — including **native kill feedback over BLE** (`$SFLASH` +
 the `$PLAY` announcer slot, `protocol/brx-protocol.md` §7o), so a host can drive the green-sight
 kill confirm and announcer the same way the official app does. Working `brx-mcp` drives real
-matches. Next: the per-player node (Companion / phone app), Mission Control UI, and the MQTT
-engine. See `docs/FOLLOWUPS.md`.
+matches, and the whole stack is **built + tested in software** — Mission Control (`mcp/brx_mcp/mc/`,
+WebSocket over the LAN), the native phone node (`app/`), and the web UI (`webapp/mc/`) — 438 tests incl.
+12 full-stack e2e, with **BLE-native per-player identity** (`$PSET`/`$HIR`, §7p/§7q). Next: the first
+hardware muster (`docs/field-runbook-mc.md`). See `docs/FOLLOWUPS.md`.
 
 ## brx-mcp quickstart
 
@@ -99,10 +103,11 @@ Full prerequisites, signing notes, and what's generated vs committed: **[`app/RE
 
 ## Roadmap
 
-M1 Identify ✅ → M2 Control (4 sessions) ✅ → M3 Protocol depth (`$WEAP` map, sound bank) ✅ →
-M4 Pilot game (per-player node + engine + scoreboard) ← *here* → M5 Arena (objectives, items,
-effects) → M6 Scale + community. Full detail: `docs/brx-architecture-v0.2.md`, current work:
-`docs/FOLLOWUPS.md`.
+M1 Identify ✅ → M2 Control ✅ → M3 Protocol depth (`$WEAP` map, sound bank, **per-player id over BLE**) ✅ →
+M4 Pilot game (per-player node + Mission Control + live scoreboard) — **built + tested in software**
+(438 tests incl. 12 full-stack e2e); the **MC↔phone field path is unverified on hardware** (next: a live
+muster, `docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of
+record: **`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.
 
 ## License
 

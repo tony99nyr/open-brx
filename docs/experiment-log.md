@@ -1326,3 +1326,19 @@ E20D and **`$PSET,19,…`+`$TID,2`** on 3D4F. Both spawned (`$LCD,45,70,0,0,36,2
   tok3; `Player` needs a `player_num` (wire 0–63 / display 1–64); `$PSET` is per-player, not per-game
   (`setup_frames()` must take the id); FFA = one team + FF on + distinct ids; `feedback{kill}` has a
   real target; "approx" attribution can be deleted. Amendment A3 to `contracts.md` is the next step.
+
+## 2026-08-25 (late) — first bench of the MC-compiled FrameBundle on two guns (checklist NEXT items)
+
+Rig: Windows bench (`brx` MCP), two taggers GUN-A (player 6 / team 1) and GUN-B (player 19 / team 2), MC's
+golden head written verbatim, `$VOL,60`. Ten of the 14 NEXT items closed; full protocol write-up in
+`protocol/brx-protocol.md` §7r. Headlines: `$HIR` token 1 = sensor (headshot detect), `$HP` = hp/armor/shield,
+headset-off kills the BLE link (`$DISCONNECT`) — so link+echo IS the headset check, head write is silent,
+unspawned guns ignore IR, `$PSET` tok2 inert, live `$TID` flips hit resolution instantly (LED lags to respawn),
+resync signatures verified exactly as §3.10 (dead = `$BUT` only; `$PHONE` reads nothing back), config survives a
+BLE drop, `$PLAY` needs `4,6` to be audible, `VA33` = "game over", `VSF`+`JAY` = victory. Mishaps: both
+headsets were switched off mid-session → both guns `$DISCONNECT`ed at the same instant and refused to hold a
+link until power-cycled; the 5-min hold got cut at ~2 min (re-run). Also: MC ran on the Windows Python for the
+first time (deps installed; banner prints `ws://…:0/ws` before the net server binds — cosmetic), and the phone
+node APK was built (JDK 21 at `~/jdk21`) and installed on the Pixel (`com.openbrx.companion`) but NOT yet run
+against a gun — phone-path items 4/8/13 remain. Code impact: `compile.py` cues (`game_over` → VA33, new
+`victory`, `tick`/`klaxon` given `4,6`).

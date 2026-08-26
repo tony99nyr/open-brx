@@ -229,7 +229,7 @@ for static per-gun packs; the bridge for anything dynamic or unlimited.
 - REST API: `ltp-prod-v4.us-east-1.elasticbeanstalk.com` (AWS Elastic Beanstalk).
 - Multiplayer coordination: **AWS SQS/SNS** (the phone-to-phone lobby; ~1-min lobby delay is a
   cloud round-trip). ECS creds endpoint `169.254.170.2`. IP geo via `ip-api.com`.
-- A self-hosted platform replaces this entire cloud layer with the local MQTT bus.
+- A self-hosted platform replaces this entire cloud layer with the local LAN (WebSocket, `docs/spec/net.md`).
 
 ## Method (reproduce / extend)
 

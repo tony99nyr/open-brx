@@ -1,7 +1,7 @@
 # Callsign config facts (restated)
 
 Facts restated in our own words from the Callsign app's `assets/Configs/` JSON, per the repo
-policy (`docs/apk-investigation.md`): document facts, never copy assets. These describe game
+policy (`RAW_ASSETS_NOTE.md`): document facts, never copy assets. These describe game
 design the platform can mirror; none are protocol-wire facts (those go in
 `protocol/brx-protocol.md`).
 

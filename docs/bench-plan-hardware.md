@@ -118,7 +118,7 @@ a cheaper P2 path. Don't over-invest.
 
 ## ✅ Callsign BLE capture — RESOLVED 2026-08-25 (was a parallel Mac/iPhone track)
 
-Done — see `docs/handoff-callsign-nrf-capture-RESULTS.md` + protocol §7o. **There is no nRF-enable
+Done — see `protocol/brx-protocol.md` §7o. **There is no nRF-enable
 frame** (the app's arm is byte-identical to ours). Instead the app **scores on the phone and drives the
 feedback over plain BLE**: per kill it sends **`$SFLASH,*`** (green-sight flash) + **`$PLAY,,4,6,V3A,,,,*`**
 (kill line, token-4 announcer slot) + a lead-change score line. So **BLE reaches the whole feedback layer

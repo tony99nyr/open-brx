@@ -2,8 +2,9 @@
 
 The `*.json` files here are **raw config assets from Battle Company's Callsign app**, committed
 verbatim (2026-08-24, Tony's call) because they are directly useful for building against the
-protocol. This is a **deliberate, temporary exception** to the repo policy in
-`docs/apk-investigation.md` ("do not copy assets; restate facts in our own words").
+protocol. This is a **deliberate, temporary exception** to the repo's asset policy — which is:
+**document facts in our own words; never commit raw APK assets** (the repo goes MIT). This note is the
+canonical statement of that policy for the teardown.
 
 **Before this repo goes public / MIT:** revisit this. Options at that point —
 - keep only the derived, restated docs (`sound-bank.md`, `config-facts.md`) and delete the raw

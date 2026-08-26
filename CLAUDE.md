@@ -2,16 +2,17 @@
 
 Open-source platform orchestrating Battle Company BRX laser taggers.
 **Strategy/vision:** `docs/VISION.md`; what-to-build-by-budget: `docs/build-tiers.md`; mode catalog:
-`docs/game-modes.md`. Specs:
-`docs/brx-architecture-v0.2.md` (master plan), `docs/brx-mcp-spec.md`,
-`protocol/brx-protocol.md` (serial command reference — the ground truth for all tagger I/O).
+`docs/game-modes.md`. **Spec of record: `docs/spec/`** (`contracts.md` = the node↔MC wire + game data
+model, amendments A1–A8; + the module docs) — the software is built + tested against it. Architecture
+decisions: `docs/adr/` (0001 per-player node · 0002 laptop Mission Control + local LAN · 0003 native app
+over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 
 **Start with [`docs/README.md`](docs/README.md)** — the docs index. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (current state), `docs/experiment-log.md` (lab notebook — **append
 after every session**), and `docs/FOLLOWUPS.md` (consolidated open work). Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
-token positions, 2166-id sound bank, game modes, grenade). System specs: `mission-control-spec.md`,
-`phone-app-spec.md`, `hardware/brx-companion-spec.md`. Community/JEDGE facts:
+token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/spec/`; hardware:
+`hardware/brx-companion-spec.md` + `brx-station-spec.md`. Community/JEDGE facts:
 `docs/reference/lasertagmods.md` + `community-notes.md`.
 
 ## Hard rules
@@ -45,7 +46,7 @@ token positions, 2166-id sound bank, game modes, grenade). System specs: `missio
 
 `mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; run `python -m brx_mcp.mc`) ·
 `app/` native phone app (Capacitor → Android + iOS; see `app/README.md`) ·
-`firmware/` PlatformIO ESP32 flavors · `server/` game engine + MQTT · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design source `docs/spec/design/mc-export/`) · `webapp/` legacy static harness (Web BT is not the player path) ·
+`firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design source `docs/spec/design/mc-export/`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference.
 
 **Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and

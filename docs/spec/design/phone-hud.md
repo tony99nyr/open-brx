@@ -1,14 +1,15 @@
 # BRX Design — Phone HUD (the per-player node)
 
-**Package for:** the player's phone. Read `foundation.md` (shared) + `tokens.css` first;
-`current-hud-reference.html` is the **live shipping HUD today** — a visual starting point to push past,
-not a target. Iterate these states in Claude Design.
+**Package for:** the player's phone. Read `foundation.md` (shared) + `tokens.css` first.
+**Visual source of truth: `hud-export/` (Phone HUD v2)** — landscape, rail-mounted, ten screen states.
+The **live shipping HUD today** is the app itself (`app/www/index.html`, 844×390 landscape) — a starting
+point to push past, not a target. Iterate these states in Claude Design.
 
 One phone, one gun, one player. Two jobs: a few **setup screens** (before the match) and the **in-game
 HUD** (during). The HUD is the star: a **first-person-shooter heads-up display** — instantly readable at
 a glance, in sun or dark, while the player is moving and getting shot at.
 
-**Portrait, one-handed, thumb-reachable. Minimal chrome. Big numbers. No scrolling during play.**
+**Landscape (844×390), rail-mounted on the gun/forearm. Minimal chrome. Big numbers. No scrolling during play.**
 
 ### B0 · Lifecycle → what the screen shows
 | State | Screen |

@@ -103,7 +103,7 @@ Adopt Jay's captive-AP model (`jay-ecosystem.md` §3) — **zero app install, an
 
 ## Networking tiers (measured, from the crawl + range tests)
 
-Cite `docs/field-architecture.md` and `jay-ecosystem.md` §5 for the numbers:
+Cite ADR-0001/ADR-0002 and `jay-ecosystem.md` §5 for the numbers:
 
 | Scope | Transport | Range (measured, obstructed) | Use |
 |---|---|---|---|
@@ -140,8 +140,10 @@ state — with different firmware rules:
 The box is the **capture/hold primitive** (IR RX = who shot me + which team; IR TX = beacon owner + push
 perks; LED = owner). **Extraction and Bomb** are that primitive **+ a defended countdown timer** (run on
 the box, reported to MC) + the loot/round rules that live in the host engine (`extraction.py`) and the
-player node (`brx-companion-spec.md`). **Team identity** comes free from the IR hit; *per-player*
-identity (which player planted) needs P2.
+player node (`brx-companion-spec.md`). **Team identity** comes free from the IR hit. Note **P2 is now
+solved on the BLE side** (per-player attribution is BLE-native/exact: `$PSET` tok1 / `$HIR` tok3) — but
+a **station has no BLE-to-gun link**, so decoding the player-id from the IR hit stays a legitimate
+**station-local B13 task** here (the box only ever speaks IR across the air).
 
 ## The BRX IR the box must emit (the one reverse-engineering task)
 
@@ -193,7 +195,7 @@ Consequences:
 |---|---|---|
 | **BRX Station** (this) | fixed contested point — capture/hold/respawn/extraction, **loud/visible truth on the spot** | IR to guns; ESP-NOW/LoRa to other nodes |
 | **BRX Companion** (`brx-companion-spec.md`) | rides the player — game engine + **loot wallet** + powerups + audio | BLE to its gun; ESP-NOW/LoRa to stations |
-| **Mission Control** (`docs/mission-control-spec.md`) | operator console — assigns modes, aggregates score | Wi-Fi/MQTT |
+| **Mission Control** (`docs/spec/mission-control.md`) | operator console — assigns modes, aggregates score | Wi-Fi (WebSocket) |
 
 Station and Companion talk over the **same ESP-NOW/LoRa mesh** — e.g. the Station announces "point A →
 red" or "extraction started", the Companion adjusts the player's HUD/loot. QR codes (paper, ~$0) remain

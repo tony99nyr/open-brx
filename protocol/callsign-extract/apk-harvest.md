@@ -3,7 +3,7 @@
 Everything useful mined from the Callsign IL2CPP app beyond the wire protocol (which is in
 `protocol-classes.md`). Covers game modes, win conditions, the QR pickup/station system, the
 grenade, weapon spawns, enums, monetization, and backend. Source policy per
-`docs/apk-investigation.md`: facts restated, no code/assets copied.
+`RAW_ASSETS_NOTE.md`: facts restated, no code/assets copied.
 
 ## Game modes (complete list)
 
@@ -95,7 +95,7 @@ A self-hosted platform simply reimplements any wanted mode host-side and skips t
 REST: `ltp-prod-v4.us-east-1.elasticbeanstalk.com`. Multiplayer: **AWS SQS/SNS** (the ~1-min
 lobby delay is a cloud round-trip). Networking DTOs live under
 `LaserTag.Network.ArenaClient.Edge.Domain.CallSign.Games.*`. Replace the whole layer with the
-local MQTT bus.
+local LAN (WebSocket, `docs/spec/net.md`).
 
 ## Where the game DATA lives — server, not the APK (verified 2026-08-24, UnityPy)
 

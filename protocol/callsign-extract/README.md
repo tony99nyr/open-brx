@@ -20,14 +20,14 @@ never ship Battle Company's assets.** The APK itself is NOT committed.
   fallback-sound ambiguity. IDs are the app's own names — the protocol uses them directly.
 - **`config-facts.md`** — restated (not copied) facts from the app's config JSONs: weapon
   category ids 0–12, the post-game medal set and the stats it implies, and killstreak
-  rewards. Per repo policy (`docs/apk-investigation.md`) we do not commit the raw assets.
+  rewards. Per repo policy (`RAW_ASSETS_NOTE.md`) we do not commit the raw assets.
 
 ## Architecture confirmations (from metadata strings)
 
 - **The phone-to-phone lobby is AWS SQS/SNS.** Many `SendMessageAsync`/`GetQueueUrlAsync`/
   `ListSubscriptionsByTopicAsync` strings — the ~1-minute lobby delay noted in the field
   tests is a cloud round-trip, not BLE. (The whole multiplayer coordination layer is
-  Amazon-hosted; a self-hosted platform replaces this with the local MQTT bus.)
+  Amazon-hosted; a self-hosted platform replaces this with the local LAN (WebSocket, `docs/spec/net.md`).)
 - **The app drives respawn** — `AUTO RESPAWN IN {0}` string present. Corroborates the
   experiment-log finding that respawn/clock live in the app, not the gun.
 - **The app can play offline** — `"Are you sure play offline game without connected players?"`

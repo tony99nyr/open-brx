@@ -34,7 +34,7 @@ Control has a dark theme but doesn't need true blackout (it sits at the base).
   `<NAME>-<tail>` (e.g. `GUN-A-3D4F`).
 - **Health/ammo defaults (TDM):** HP `45`, armor `70`, ammo `36 / 216`.
 - **Modes:** Team Deathmatch, Free-for-All, Infection, Last-Man-Standing, Extraction.
-- **Weapons:** the ~18-weapon roster + real stats are in `weapon-roster.md` (MC package). Per weapon show
+- **Weapons:** the ~18-weapon roster + real stats are in `docs/reference/callsign-ui.md`. Per weapon show
   **damage, magazine, reserve, fire-rate, reload time, range, class**. Archetypes: assault rifle, SMG,
   sniper, shotgun, pistol, LMG. **Use the real names/numbers from that file.**
 - **Voices:** Male / Female first; the full voice pack later (modes §5).

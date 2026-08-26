@@ -4,8 +4,7 @@
   compiled by MC, large-field reality; A5: adversarial + consistency review fixes). Module specs updated to A5.
 - **Owners:** Tony (product) · multiple Claude sessions (parallel implementation)
 - **Anchors:** ADR-0001 (per-player node), ADR-0002 (laptop MC + local host).
-  Extends `docs/mission-control-spec.md`, `docs/phone-app-spec.md`,
-  `docs/m0-game-engine.md`, `docs/game-modes.md`. Ground truth: `protocol/brx-protocol.md`.
+  Extends `docs/m0-game-engine.md`, `docs/game-modes.md`. Ground truth: `protocol/brx-protocol.md`.
 
 This is the **whole product**, armory to recap. It is written to be **built in parallel**:
 §4 defines modules with hard interface boundaries, §5 the workstream/dependency plan, and

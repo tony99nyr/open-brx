@@ -70,10 +70,11 @@ indistinguishable stock guns. (Ref: exp-log 2026-08-24 armory correlation; `_enr
 Mission Control reads this map for roster/readiness. Real PINs live only in `~/.brx-mcp/armory.json` +
 the out-of-repo backups — **never commit them**.
 
-> **Not part of Armory Setup:** setting the tagger's internal **PlayerID** or re-pairing a headset — those
-> are the USB **`SETUP`** (write) path, deliberately **not built** yet (factory-provisioning writes, gated
-> behind explicit confirm — FOLLOWUPS P2/B7). Armory Setup is read-and-name only, so it's safe to run on
-> every gun.
+> **Not part of Armory Setup:** re-pairing a headset is the USB **`SETUP`** (write) path, deliberately
+> **not built** yet (factory-provisioning writes, gated behind explicit confirm — FOLLOWUPS B7). The
+> tagger's **player_num** is **not** a SETUP write — it's assigned **over BLE at kit-out** (`$PSET`
+> token 1, 0–63; P2 closed — §7p/§7q), so Muster numbers the fleet with no cable. Armory Setup itself is
+> read-and-name only, so it's safe to run on every gun.
 
 ---
 
@@ -138,6 +139,6 @@ every tagger armed to its station.
 
 ## See also
 - `reference/grenade.md` — grenade modes, on-grenade programming, Respawn Station mechanics + the timing reconciliation.
-- `mission-control-spec.md` — the operator console (roster, readiness, gamertag display layer).
+- `docs/spec/mission-control.md` — the operator console (roster, readiness, gamertag display layer).
 - `FOLLOWUPS.md` — B10 (config-all-then-spawn barrier), B12 (host-vs-grenade respawn), B7/P2 (USB SETUP writes), B8 (grenade state display).
 - `verification-checklist.md` — the hardware items that confirm Armory Setup, Muster, and Station-Arming timing.

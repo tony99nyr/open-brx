@@ -1,7 +1,7 @@
 # BRX Design — Mission Control (MacBook web app; tablet-friendly)
 
 **Package for:** the operator console. Read `foundation.md` (shared) + `tokens.css` first; real weapon
-data is in `weapon-roster.md`. Iterate these 8 screens in Claude Design.
+data is in `docs/reference/callsign-ui.md`. Iterate these 8 screens in Claude Design.
 
 An operator console the host drives from armory to recap. **Desktop-first, but every screen must also
 work on a tablet held in one hand** — the host walks up to each player during kit-out. Dense where it
@@ -37,7 +37,7 @@ A **per-player card**, filled while the player gears up and sizes their strap. T
 - **Player number** (1–63, auto-filled in roster order, editable — the id enemy guns report when hit by this
   player; must be visible and unique), **vanity display name**, **team** (color chips), **voice** (Male/Female).
 - **Weapon select — a showcase.** A visual gallery of the ~18-weapon roster (real names/stats in
-  `weapon-roster.md`): weapon art, class, and a clean **stat block** (damage, magazine, reserve,
+  `docs/reference/callsign-ui.md`): weapon art, class, and a clean **stat block** (damage, magazine, reserve,
   fire-rate, reload, range). Picking a weapon feels deliberate and game-like.
 - Shows the player's **live node/gun link** so the host knows the kit-out reached them.
 

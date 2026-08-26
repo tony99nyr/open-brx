@@ -79,8 +79,8 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,<irProto>,<t2>,<shooterPlayerId>,<shooterTeam>,...,*` | **Hit! Tagger was tagged** | **token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`)** — both hardware-verified (§7k team, §7q player id) |
-| `$HP,<hp>,...` | Health update | `$HP,0,...` = player died (or turned zombie in Survival) |
+| `$HIR,<irProto>,<t2>,<shooterPlayerId>,<shooterTeam>,...,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (1 = headset, 4/0 = gun body — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied** — hardware-verified (§7k team, §7q player id, §7r sensor/damage) |
+| `$HP,<hp>,<armor>,<shield>,*` | Health update (tokens verified §7r) | `$HP,0,0,0` = player died (or turned zombie in Survival); arrives in the same ms as its `$HIR` |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
 | `$AS,...` | Game/control echo (0–11 tokens; token 8 = applicator) | |
@@ -780,7 +780,7 @@ Reading results back after out-of-range play remains **unsolved**, and may be im
 §7g established the phone is the game engine and the tagger enforces nothing, so there may
 be no score stored to read. The way to settle it is a capture of a complete Callsign game
 through its end-of-round summary, to see whether the app ever asks the gun for anything —
-see `docs/mac-capture-plan.md` Experiment 2. **Do not probe `$SP` on hardware to shortcut
+see `docs/experiment-log.md` (the Mac Callsign capture sessions). **Do not probe `$SP` on hardware to shortcut
 this**: it is documented as the end-of-game report, but `$SP,99,*` is half the panic
 sequence and may destroy the results it is meant to report.
 
@@ -1154,6 +1154,49 @@ strength of the LaserTagMods note), it just never varied. `$PSET` token 1 (§7p)
 - **Token 2 still `0` in every frame** — still unknown.
 - Our raw bleak client still dropped E20D once at ~6.6 s after the first connect (before any frame was
   written); reconnect held for the whole session (~3.5 min).
+
+## 7r. BENCH 2026-08-25 (late) — `$HIR` token 1 = SENSOR, `$HP` = hp/armor/shield, headset-off, `$PLAY` tokens
+
+Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC golden
+`FrameBundle` head written verbatim over BLE from the bench rig (`$VOL,60`). Findings, each observed directly:
+
+- **`$HIR` token 1 is the SENSOR that caught the IR, not a damage class.** Aimed shots: headset-only hits →
+  `$HIR,1,…`; gun-body hits → `$HIR,4,…`; a third value `0` appeared on unaimed hits (another gun sensor).
+  A kill is NOT marked in `$HIR` (no `2`): the kill is `$HP,0,0,0` followed by `$LCD,0,0,0,0,<mag>,<reserve>`.
+  §7q's "4 = armor absorbed / 0 = HP / 2 = kill" reading is **retracted**. Token 5 = damage applied (24 here,
+  = the `$WEAP` damage field). Free HUD feature: token 1 == 1 is a headshot.
+- **`$HP,<hp>,<armor>,<shield>,*`** — token 2 is the armor pool (70 → 46 → 22 → 0 at 24/hit, spill into HP:
+  `$HP,43,0,0`). `$HP` and its `$HIR` arrive in the same millisecond.
+- **Headset OFF = no BLE.** Switching a headset off while linked makes the gun send `$DISCONNECT,*` and drop the
+  link; a new link to a headset-less gun "connects", answers a quick `$PING`, then dies within seconds and
+  echoes NOTHING to a config head (no `$ALCD`, no `$LCD`). So there is no headset probe to design: a held link
+  + `$ALCD` echoes IS the headset check (A5.4). Reconnecting too fast after the gun's own `$DISCONNECT` gives
+  a dead session (`BleakCharacteristicNotFoundError` for the NUS TX char from a fresh process) — power-cycle.
+- **`$VERSION` token 2 = headset firmware** (`hds.59` with the headset linked; earlier captures show `?`).
+- **Fresh power-up needs the handshake.** A just-booted gun ignores a bare `$VERSION,*`; after
+  `$STOP,*` → `$PHONE,*` it answers (§7m). The node's pre-config probe set is mandatory, not cosmetic.
+- **The config head is SILENT.** Writing `$CLEAR…$TID` (no `$SPAWN`) plays nothing; "get some" + the cock
+  belong to `$SPAWN`. The T-10 s head re-write (M-START) costs no audio.
+- **A configured-but-unspawned gun ignores IR** — no `$HIR`, no `$HP`, no reaction. Kit-out try-outs are safe.
+- **`$PSET` token 2 is inert**: 0 / 1 / 7 gave byte-identical `$HIR`, identical damage, LEDs, hit grunts.
+- **Live `$TID` write takes effect immediately for hit resolution** (same-team → zero `$HIR` both ways; back to
+  the other team → damage resumes on the next hit) but does NOT repaint the LEDs — colour is set at `$SPAWN`.
+- **Resync (M-NODE §3.10) verified:** on a fresh link a dead gun volunteers nothing and `$PHONE,*` returns
+  nothing (the link is alive — `$VERSION` answers). Trigger while dead → `$BUT,0,1/0` only; reload handle →
+  `$BUT,2,1/0` only. Alive: `$BUT,0,1` + `$ALCD,<mag-1>,…` per shot; reload = `$BUT,2` then `$ALCD,32,…,<reserve>`
+  with reserve accounted per round (384 → 352 → 338). `$SPAWN,,*` + `$AMMO` on the fresh link revived it with
+  config intact (`$LCD,45,70,0,0,32,32768`): **config survives a BLE drop (E1 ✅)**.
+- **Hold-across-disperse:** a head held unspawned for ~2 min then `$SPAWN`ed went live with config intact.
+  The 5-min run was cut by the headset event — re-run.
+- **`$PLAY` needs the volume/priority tokens.** `$PLAY,VA33,,,,,,,*` was SILENT; `$PLAY,VA33,4,6,,,,,*` spoke
+  "game over". `$PLAY,VSF,4,6,JAY,,,,*` = victory sting + "victory" — the §7o end line is the WINNER's cue.
+- **LEDs**: in this app-derived config the LEDs slow-blink the team colour and never show HP; Tony reports the
+  on-gun native games show life on the LEDs — a config token to find (FOLLOWUPS).
+- Kill in 5 hits at 24 dmg from 45/70 (matches the sim).
+- **Power-cycle WIPES the config** (E1 second half): after off/on, `$PHONE,*` alone wakes the gun (`$VERSION`
+  answers — `$STOP` is not needed), and `$SPAWN,,*` echoes `$LCD,0,0,0,0,0,0` + `$ALCD,0,0,0,0,0` — a live gun
+  with nothing loaded. That zeroed `$LCD` is the node's tell for "re-push the head". A power-cycled gun also
+  needs its headset re-linked before BLE holds (connects then drops within ~1 s until the headset is back).
 
 ## 8. Safe testing notes
 

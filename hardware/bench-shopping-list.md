@@ -20,7 +20,12 @@ This box is the **IR bench**, not the nRF tap — no nRF radio in it.
 → Enables: **B13 IR bit-layout capture**, the range experiment, IR Utility-Box (B4) prototyping.
 → Does **NOT** enable: the nRF24 mesh tap (needs a module, below) or BLE sniffing (needs nRF52840).
 
-## 🛒 nRF24 mesh kit — CHOSEN 2026-08-25 (Aideepen 3-pack, ~$15, overnight → arrives 2026-08-26)
+## 🛒 nRF24 mesh kit — SPECULATIVE / off the critical path (Aideepen 3-pack, ~$15, ordered 2026-08-25, arrives 2026-08-26)
+
+> **Demoted 2026-08-25.** P2 (per-player attribution) is **BLE-native/exact** (`$PSET` tok1 / `$HIR`
+> tok3) — so the nRF24 mesh tap is **NOT the attribution route**. It's now **exploratory native-mesh
+> *feedback* only** (observe/drive gun-to-gun mesh for feel), off the critical path. The kit was already
+> ordered; treat it as speculative. The **IR bench kit above stays live**.
 
 **Aideepen 3× nRF24L01+PA+LNA (SMA antenna, ~1100m) + 3× breakout adapter (AMS1117-3.3).** Picked over a
 bare 3-pack (no adapters) and a UMLIFE 5+5 (not overnight) because it **bundles the adapters** *and* ships
@@ -33,11 +38,12 @@ overnight, so the nRF track starts alongside the IR kit. 3 modules = a coordinat
 
 ---
 
-## Route 2 — nRF24 mesh tap (the priority; the Companion / D1 per-player attribution path)
+## Route 2 — nRF24 mesh tap (exploratory native-mesh FEEDBACK only — NOT the attribution route)
 
-Goal: join the guns' gun-to-gun **nRF24L01** game mesh to *observe* kill-confirms (→ per-player
-attribution, native-game visibility) and later drive native feedback. This is the track tomorrow's parts
-should serve.
+Goal: join the guns' gun-to-gun **nRF24L01** game mesh to *observe* kill-confirms and later drive native
+feedback. **Note:** this is **no longer the per-player-attribution path** — P2 is BLE-native/exact
+(`$PSET` tok1 / `$HIR` tok3), so attribution needs no mesh tap. Route 2 is now an **optional, exploratory
+native-mesh-feedback experiment**, off the critical path.
 
 | Item | Why | Notes / gotchas | Status |
 |---|---|---|---|
@@ -60,7 +66,7 @@ plain 3.3V SPI). Don't cross the two up.
 
 ## Route 1 — BLE capture (the Callsign/nRF-enable question; mostly no hardware)
 
-Goal: capture what Callsign sends over BLE (see `docs/handoff-callsign-nrf-capture.md`).
+Goal: capture what Callsign sends over BLE (done — see `protocol/brx-protocol.md` §7o).
 
 | Item | Why | Notes | Status |
 |---|---|---|---|
@@ -104,9 +110,10 @@ Goal: capture what Callsign sends over BLE (see `docs/handoff-callsign-nrf-captu
 
 ## Open decision this list serves
 
-`docs/handoff-callsign-nrf-capture.md` decides **Route 1 vs Route 2**:
+`protocol/brx-protocol.md` §7o settled **Route 1 vs Route 2**:
 - If Callsign enables nRF peering **over BLE** → Route 1 wins, most nRF24 hardware becomes optional.
-- If not → **Route 2 (nRF24 mesh tap) is the path**, and the parts above are the build.
+- If not → Route 2 (nRF24 mesh tap) is available as **exploratory native-mesh feedback** — but note it is
+  **no longer the attribution route** (P2 is BLE-native), so it is off the critical path either way.
 
 Either way the nRF24 kit also builds the **B1 Companion** (`hardware/brx-companion-spec.md`), so it's not
 wasted. Update this file whenever parts are ordered/arrive.

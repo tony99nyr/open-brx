@@ -61,7 +61,7 @@ callouts are firmware-native**, computed on the gun over nRF. Implications:
 - In a **phoneless native (gun-menu) game** the confirmation rides the gun's **nRF mesh** (a passive
   BLE tap during one captured zero frames). But that is *not the only path*:
 - **A host drives the identical feedback over plain BLE** — the Callsign-capture probe is **RESOLVED**
-  (`handoff-callsign-nrf-capture-RESULTS.md`, §7o): on each scored kill the host (the app, and now MC)
+  (`protocol/brx-protocol.md` §7o): on each scored kill the host (the app, and now MC)
   sends **`$SFLASH,*`** (green flash) + **`$PLAY,,4,6,V3A,,,,*`** (kill line) + a lead-change score
   line. Not "free" — the host computes the kill (from the victim's `$HP,0` + `$HIR` shooter team) and
   sends it. `KillAnnouncer` (B18) does exactly this. The nRF tap (D1) is now needed only for per-player
@@ -72,8 +72,11 @@ callouts are firmware-native**, computed on the gun over nRF. Implications:
 - **Loadout sounds:** set once in `GameConfig`/`$SIR`/`$PSET`/`$WEAP` — the gun handles hit/death/reload
   autonomously.
 - **Mode announcers:** emit `Callout`/`PlaySound` from the engine → the driver `$PLAY`s them. A shared
-  announcer rule module (multikill-extras, objective callouts, timers) can serve every mode — but note
-  the base multikills are already native.
+  announcer rule module (multikill-extras, objective callouts, timers) can serve every mode. **Note on
+  the "base multikills are native":** the firmware's own multikill audio fires *only in a phoneless
+  gun-menu game* (nRF-computed). **Under our BLE config it is SILENT** — the gun doesn't announce
+  multikills once a central is driving it — so MC must **host-`$PLAY`** them, LAN-gated (A5.3). Native
+  multikill is not free under our stack.
 - **Grenade/Utility-Box sounds:** the gun/headset plays them from *its* bank on the box's IR — reskin via
   the tagger sound swap or drive any bank id through `$SIR` (`reference/grenade.md`, `brx-station-spec.md`).
 - **Sound-id catalog:** `mcp/brx_mcp/sounds.py` — semantic names → verified bank ids, with a

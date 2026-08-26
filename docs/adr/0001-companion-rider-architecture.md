@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-08-25
 - **Deciders:** Tony (owner)
-- **Related:** `docs/field-architecture.md`, `hardware/brx-companion-spec.md`,
+- **Related:** `hardware/brx-companion-spec.md`,
   `protocol/brx-protocol.md` §7o/§7n, FOLLOWUPS **B1/B18/B18b/P2/D1**,
   memory `mc-not-live-during-gameplay`, `docs/reference/lasertagmods.md` (JEDGE),
   `docs/reference/jay-ecosystem.md`.
@@ -81,7 +81,7 @@ is the proven Jay/JEDGE pattern (ESP32 tagger-rider, no gun mod). **Companion = 
 | **Reflash the tagger firmware** | ❌ rejected | Violates the hard rule; brick/warranty risk; forks from stock + community gear; **and unnecessary** — a rider gets ~everything. Jay didn't do it either. |
 | **MC-only, live over BLE** | ❌ rejected | MC is stationary; cannot hold BLE to guns scattered across a field. Viable only for a pilot/lobby game where everyone stays in range. |
 | **Lean on the firmware's native gun-menu mode** (guns self-fire) | ❌ not primary | No synced start, no MC setup control, no custom modes/loadouts, manual per-gun. Kept only as a fallback for the simplest phoneless play. |
-| **Per-player phone app (B2)** | ◐ BYOD option — **native, not PWA** | A dedicated rider beats phones for a rental/club fleet (no BYOD, cheap to replace, ruggedizable, fleet-manageable). **The Web-Bluetooth PWA path is ruled out** (2026-08-25 spike, `phone-app-spec.md` §RESULT): Chrome reported "Web Bluetooth globally disabled" + needed flags on the test phone, and **iOS has no Web Bluetooth at all**. So the phone option is a **native app** (Capacitor/RN, native BLE) reusing the shared web UI/engine — kept for personal/BYOD, not primary. |
+| **Per-player phone app (B2)** | ◐ BYOD option — **native, not PWA** | A dedicated rider beats phones for a rental/club fleet (no BYOD, cheap to replace, ruggedizable, fleet-manageable). **The Web-Bluetooth PWA path is ruled out** (ADR-0003): Chrome reported "Web Bluetooth globally disabled" + needed flags on the test phone, and **iOS has no Web Bluetooth at all**. So the phone option is a **native app** (Capacitor/RN, native BLE) reusing the shared web UI/engine — kept for personal/BYOD, not primary. |
 | **nRF mesh tap only (D1)** | ❌ not for feedback | Observes native traffic / could give attribution, but does **not drive** host-mode feedback, and native-mode feedback isn't customizable. nRF work **re-scoped to P2 only**. |
 
 **Why the Companion wins:** it is the only thing that is simultaneously (a) **connected to the

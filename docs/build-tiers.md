@@ -42,7 +42,7 @@ Everything here needs **only a laptop in BLE range** (one radio reaches ~7–10 
 
 **The Tier-0 objective toolkit (no bought hardware — the grenades ARE your Tier-0 IR nodes; ESP32
 stations are Tier 3).** Players interact only by **shooting** (gun IR) or **touching a screen** — never
-by pairing to an objective (`../docs/phone-app-spec.md`). Mechanisms, all $0:
+by pairing to an objective (`../docs/adr/0003-native-app-over-web-bluetooth.md`). Mechanisms, all $0:
 
 | Mechanism | Interaction | Good for | Limit |
 |---|---|---|---|
@@ -59,12 +59,14 @@ touch-terminals** (bomb/hack). What Tier 0 buys: 2-flag CTF, CS with 2 sites, Ko
 simultaneous shoot/hold points **indoors** is where Tier-3 stations start to pay off.
 
 **Tier-0 limit:** players must stay in the laptop's BLE range. No field roaming, no live scoreboard
-away from the laptop, per-player FFA scoring is approximate until per-player id (P2) is set.
+away from the laptop. (Per-player FFA scoring is **exact** — `$HIR` tok3 carries the shooter's
+player_num over BLE, P2 closed.)
 
 ## Tier 1 — old Android phones as player nodes (~$0 if you have them, else ~$30–50 used each)
 
-The **biggest capability jump for the least money.** A Web-Bluetooth PWA on each player's phone
-becomes their game engine + HUD → **breaks the BLE-range limit** (the link rides the player).
+The **biggest capability jump for the least money.** A **native Capacitor app on each player's phone**
+becomes their game engine + HUD, reporting to Mission Control over the local Wi-Fi **LAN** → **breaks the
+BLE-range limit** (the link rides the player). (Web Bluetooth is dead — `adr/0003-native-app-over-web-bluetooth.md`.)
 - Unlocks: **full-field roaming** for every Tier-0 mode, a **per-player HUD** ("your score/ammo/
   lives" — the #1 thing players ask for), offline play with results syncing at HQ WiFi.
 - Gated on a **free 10-min test**: does Android Chrome hold a BRX BLE link? (followup, no purchase).
@@ -73,7 +75,7 @@ becomes their game engine + HUD → **breaks the BLE-range limit** (the link rid
   **still Tier 0/1** — software on phones you own, no hardware spend. Distribution: **installable PWA**
   on Android (the primary path — update by redeploy, no reinstall; APK an optional fallback), free
   **AltStore/SideStore** sideload on iOS (or $99/yr TestFlight for smooth sharing — note TestFlight is
-  *not* free). See `phone-app-spec.md` §"Common core, platform shells" + §Distribution.
+  *not* free). See `adr/0003-native-app-over-web-bluetooth.md` + `app/README.md` (platform shells + distribution).
 
 ## Tier 2 — ESP32 "Companion" per tagger (~$8–25 each)
 

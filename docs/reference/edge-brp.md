@@ -91,8 +91,8 @@ chaining/CTF/control points).
 - **Environmental effects** (smoke/fog, lighting, **DMX**, relays, moving props) → ship effect nodes
   with **relay + DMX output**. This is Battle Company's key moat.
 - **Multi-purpose station** (respawn/domination/ammo/health/target) → our station spec = their UBox
-  20-in-1. Add **"order activation"** chaining (one station's event triggers another) — cheap in our
-  MQTT bus.
+  20-in-1. Add **"order activation"** chaining (one station's event triggers another) — cheap over the
+  LAN event stream.
 - **"Enemies"-style standalone head sensors** (fire/take damage unpaired from a gun) → a
   differentiating target; the headset's ARGB is WS2812B (`community-notes.md`).
 - Hardware niceties (hot-swap batteries, on-gun LCD, sunlight LED sensors) — not our layer (stock BRX).
@@ -101,7 +101,7 @@ chaining/CTF/control points).
 - **Native, open DMX + scriptable effects** (their DMX is UBox-mediated and closed).
 - **Open networking** (they don't publish WiFi/base-station scaling; ours is documented + pluggable).
 - **No per-location license, no $600–1,600/yr subscription** — MIT, self-hosted.
-- **Field play without venue WiFi** (our station-mesh + data-mule model, `field-architecture.md`) —
+- **Field play without venue WiFi** (our station-mesh + data-mule model, ADR-0002) —
   Edge assumes venue WiFi coverage.
 
 ## Sources

@@ -8,35 +8,44 @@ Legend: ⬜ unverified · ✅ verified · ⚠ verified-with-caveat · ❌ failed
 
 ## ⭐ NEXT — post-A4 spec bench items (2026-08-25, `docs/spec/`)
 Each one unblocks a spec decision marked [OPEN — bench] in `docs/spec/README.md` §6. Order = value.
-1. ⬜ **Hold-across-disperse** (M-START §3): write the config head (`$START`+config, NO `$SPAWN`, no `VA81`),
+1. ⚠ **Hold-across-disperse** (M-START §3): write the config head (`$START`+config, NO `$SPAWN`, no `VA81`),
    leave the gun unspawned **5+ minutes** (walk away, come back), then `$SPAWN,,*` + `$AMMO`. Does it go live with
    config intact (`$LCD,45,70,…` echo, correct ammo)? If not, the T-10 s head re-write becomes the default.
-2. ⬜ **BLE resync probe** (M-NODE §3.10): while LIVE, drop the link (walk out of range / toggle BT), kill the
+   → **2026-08-25: 2-min hold → `$SPAWN` went live with config intact; 5-min run interrupted — re-run (§7r).**
+2. ✅ **BLE resync probe** (M-NODE §3.10): while LIVE, drop the link (walk out of range / toggle BT), kill the
    gun during the gap, reconnect. What does the gun emit on reconnect? Does `$PHONE` (or anything
    side-effect-free) re-elicit `$LCD`/`$HP` without spawning? Also: does a gun keep its config across a BLE
    reconnect vs a power-cycle (E1 assumption)?
-3. ⬜ **`$VERSION` with the headset OFF** — does the gun answer? (§7m: `$PING` does.) Decides whether there is a
+   → **2026-08-25: dead gun volunteers nothing on reconnect; `$PHONE` reads nothing; `$BUT`-only when dead, `$BUT`+`$ALCD` alive; `$SPAWN` on the fresh link revived with config intact → config survives a BLE drop; a POWER-CYCLE wipes it — `$SPAWN` then echoes `$LCD,0,0,0,0,0,0`, the re-push tell (§7r).**
+3. ❎ **`$VERSION` with the headset OFF** — does the gun answer? (§7m: `$PING` does.) Decides whether there is a
    side-effect-free headset detector or only the `$LCD`-echo-on-config path (`ack_config.gun_echo`).
+   → **2026-08-25: moot — a headset-less gun cannot hold a BLE link at all (`$DISCONNECT`, then silent drops); with the headset ON, `$VERSION` token 2 = `hds.59` = headset fw (§7r).**
 4. ⬜ **20-minute two-node soak** (Pixel + iPhone, one gun each): screen-lock one phone at T+5, background the
    other at T+10, walk both out of Wi-Fi range. Check: BLE held? engine resumed on unlock (respawn/expiry
    reconcile)? outbox flushed on return? timed end fired locally on both?
-5. ⬜ **Tutorial safety** (M-MODES §4): a configured-but-unspawned gun (head written, no `$SPAWN`) — does it take
+5. ✅ **Tutorial safety** (M-MODES §4): a configured-but-unspawned gun (head written, no `$SPAWN`) — does it take
    damage / register `$HIR` when a try-out gun shoots it? Decides whether kit-out try-outs are safe in a crowd.
-6. ⬜ **`$PSET` token 2** — vary it (0/1/7) with everything else fixed; any change in `$HIR`, LED, sounds?
-7. ⬜ **`$HIR` token 1** — read `4` while armor absorbed, `0` for HP-taking hits, `2` on the kill (§7q). Confirm
+   → **2026-08-25: configured-but-unspawned gun ignores IR completely — try-outs are safe (§7r).**
+6. ✅ **`$PSET` token 2** — vary it (0/1/7) with everything else fixed; any change in `$HIR`, LED, sounds?
+   → **2026-08-25: tok2 ∈ {0,1,7} → identical `$HIR`/damage/LEDs — inert, keep 0 (§7r).**
+7. ✅ **`$HIR` token 1** — read `4` while armor absorbed, `0` for HP-taking hits, `2` on the kill (§7q). Confirm
    the pattern and whether it tracks weapon `$SIR` type vs applied effect.
+   → **2026-08-25: pattern RETRACTED — token 1 = sensor (1 headset, 4/0 gun body); no kill marker; token 5 = damage (§7r).**
 8. ⬜ **Phone auto-rejoin** (M-NET §8): on each phone, walk out of the router's range for 3 min, walk back — does
    it rejoin the no-internet SSID by itself? With mobile data on vs off? Record per OS.
 9. ⬜ **`$VOLTS` % token** — controlled discharge sweep, both tokens (still open; HUD battery reads tok3 today).
-10. ⬜ **Head echo with the headset OFF** (A5.4): write a config head (no `$SPAWN`) to a gun whose headset is off —
+10. ✅ **Head echo with the headset OFF** (A5.4): write a config head (no `$SPAWN`) to a gun whose headset is off —
     does it answer `$LCD,0,0,0,0,0,0` anyway? Decides whether the lobby push can prove the headset or only `$SPAWN` can.
-11. ⬜ **`$START` in the head audible?** — at the lobby head write, does the gun play anything? (M-START §3 T-10 re-write.)
-12. ⬜ **Mid-match `$TID` write** (infection `team_flip`): change a live gun's `$TID`; does friendly-fire resolution
+   → **2026-08-25: headset OFF → the head write echoes NOTHING and the link dies; link + `$ALCD` echo is the headset proof (§7r).**
+11. ✅ **`$START` in the head audible?** — at the lobby head write, does the gun play anything? (M-START §3 T-10 re-write.)
+   → **2026-08-25: head write is SILENT; the voice + cock belong to `$SPAWN` (§7r).**
+12. ✅ **Mid-match `$TID` write** (infection `team_flip`): change a live gun's `$TID`; does friendly-fire resolution
     follow immediately (same-team hits now inert / enemy hits now damage)?
+   → **2026-08-25: live `$TID` flips hit resolution immediately both ways; LED colour only repaints at respawn (§7r).**
 13. ⬜ **iOS locked-phone BLE**: lock the iPhone node mid-match, take 3 hits, unlock — did the queued `$HIR`/`$HP`
     notifications reach the JS engine on resume, or were they lost? (node.md §3.11.)
-14. ⬜ **`game_over` cue** — pin by ear (`VSF`+`JAY` per §7o end sequence) and add to `sounds.py`.
-
+14. ✅ **`game_over` cue** — pin by ear (`VSF`+`JAY` per §7o end sequence) and add to `sounds.py`.
+   → **2026-08-25: `VA33` (with `4,6`) = "game over"; `VSF`+`JAY` = victory sting + "victory" (winner's cue); empty-token `$PLAY` is silent (§7r). `compile.py` updated.**
 ## ⭐ EFFICIENT BENCH PLAN (post sim-hardening, 2026-08-25)
 All game LOGIC for every mode is now exhaustively verified in software (156 sim scenarios + the SimGame
 harness) — so the bench only needs to confirm what the sim CAN'T model. Do these in order; each is fast:

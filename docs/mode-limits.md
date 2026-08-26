@@ -31,7 +31,7 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   2. **Hybrid app:** the same PWA wrapped in Capacitor/Cordova with a BLE plugin (or a
      `navigator.bluetooth` polyfill → CoreBluetooth). Same web core, first-class BLE.
   3. **Native / RN / Flutter app:** full BLE via **CoreBluetooth** — iOS is then **completely
-     first-class** (see `phone-app-spec.md` §"Common core, platform shells").
+     first-class** (see `docs/adr/0003`).
 
   So the *only* real ceiling is **web-zero-install vs. app-distribution overhead**, not capability. **For
   the zero-install first cut, Android (Pixel/OnePlus) is the BLE node and iOS is screens/MC; a native/
@@ -48,8 +48,8 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   macOS is more generous but not unlimited. ([Apple forum](https://developer.apple.com/forums/thread/738861))
   **Two reasons this is a non-issue by design:** (1) **range** — even with a high count, BLE is ~1–10 m,
   so one laptop physically can't reach guns spread across a field; (2) **architecture** — **Mission
-  Control is a *server the nodes report to over WiFi/MQTT*, not a BLE hub** (`../CLAUDE.md`,
-  `field-architecture.md`). Each player's node holds its *own* gun's single link; MC's own BLE count is
+  Control is a *server the nodes report to over WiFi (WebSocket)*, not a BLE hub** (`../CLAUDE.md`,
+  `docs/adr/0002`). Each player's node holds its *own* gun's single link; MC's own BLE count is
   ~0. **Small-scale exception that works today:** for ~4 guns a laptop *does* connect to all of them
   directly — the `arena`/`fieldstart` CLI already does exactly this. So: **direct-drive a few guns from
   one machine (fine for Tony's 4 BRX); go node-per-player for anything bigger or on a field.**
@@ -74,9 +74,10 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   table silently swallows** grenade IR — read it bare or with a passthrough `$SIR`.
 
 ### Identity & protocol (mostly 🧪 — pending, not ceilings)
-- 🧪 **Per-player identity (P2):** `$HIR` gives the shooter's **team**, not player. FFA per-player
-  scoring and "credit the exact killer" (Syphon) need a player id — settable via `SETUP` (`PlayerID`),
-  untested. **Team modes don't need it.**
+- ✅ **Per-player identity (P2 closed):** `$PSET` tok1 sets player_num (0–63), `$HIR` tok3 reports the
+  shooter's player_num on every hit — bench-verified both directions over pure BLE (no `SETUP` cable, no
+  IR). FFA per-player scoring and "credit the exact killer" (Syphon) both resolve exactly; the only limit
+  is **LAN coverage** of the node that hears the hit, not identity.
 - 🧪 **Max native team count (P9):** confirmed 2 (TDM) + 3 (Supremacy); N-team / duos native support
   untested. *Workaround today:* FFA + Mission-Control logical teams (any structure, no hardware FF
   protection).
@@ -125,7 +126,7 @@ Mechanics: `game-modes.md` §Extraction. Engine built: `mcp/brx_mcp/modes/extrac
 everyone, **T3** for a real defendable site, **T4** for field-wide drama.
 
 ### Counter-Strike (plant / defuse)
-Mechanics: `game-modes.md` (custom modes) + `phone-app-spec.md` §screen-objectives.
+Mechanics: `game-modes.md` (custom modes).
 
 | Tier | CS status | Limit / why |
 |---|---|---|
@@ -145,10 +146,11 @@ Mechanics: `game-modes.md` §Health/regen. All **T0** — no props.
 |---|---|---|
 | **Halo regenerating health** | ✅ T0 | Per-node, no P2. **Host-driven only** — regen tested, armor does NOT self-recover (P11 closed); node refills via additive `$LIFE`/`$BUMP` after a no-damage timer. Refill armor+HP (shields inactive — P16). |
 | **Overshield / medic** | ✅ T0 (armor) | Host grants additive `$LIFE`. ⚠️ **shield pool inactive until activated (P16)** — use an armor overshield today. |
-| **Syphon (health-on-kill)** | ⚠️ T0 **+ P2** | 🧪 **Hard-ish dependency: needs per-player identity** to heal the *exact* killer — `$HIR` alone gives only team. Until P2, Syphon can only credit "a teammate," not the killer. |
+| **Syphon (health-on-kill)** | ✅ T0 | Routes to the *exact* killer — `$HIR` tok3 gives the shooter's player_num over BLE (P2 closed). The only limit is **LAN coverage** (a node must hear the hit), not identity. |
 
 **Bottom line:** host-driven regen/heal/medic (armor+HP) are the cleanest modes we have (T0, per-node,
-additive writes confirmed). Syphon is gated on P2; shield-pool effects on P16.
+additive writes confirmed). Syphon now resolves the exact killer over BLE (P2 closed); shield-pool
+effects still wait on P16.
 
 ### Objective family — Domination / King-of-the-Hill / CTF / Assault
 Mechanics: `game-modes.md` catalog. These are inherently **contested-place** modes.
@@ -171,7 +173,7 @@ $0 shortcut and only for a *single* point, with its own quirks.
 | **+T3** (station) | ✅ + data mule | Purpose-built respawn point that doubles as a store-and-forward sync node on a field. |
 
 ### Phone-as-objective (screen objectives: bomb, hack terminal, hostage, utility box)
-`phone-app-spec.md` §screen-objectives. The phone's superpower is the **touchscreen**; its ceiling is IR.
+The phone's superpower is the **touchscreen**; its ceiling is IR.
 
 | Capability | Status | Limit / why |
 |---|---|---|
@@ -189,8 +191,7 @@ $0 shortcut and only for a *single* point, with its own quirks.
    BLE nodes. **Not a true ceiling:** a native/hybrid iOS app (CoreBluetooth) makes iOS fully
    first-class — and that's **still Tier 0** (software on phones you already own; only optional cost is a
    $99/yr Apple account **only if** you want smooth TestFlight sharing — the truly-free iOS route is
-   AltStore/SideStore sideload with a ~7-day re-sign; Android is a free APK sideload. See
-   `phone-app-spec.md` §Distribution).
+   AltStore/SideStore sideload with a ~7-day re-sign; Android is a free APK sideload).
 2. **7 concurrent BLE connections per phone** → one phone hosts ~4–6 guns; scale with per-player nodes.
 3. **Phones have no IR** → shoot-the-point needs an IR station or the grenade; phones do touch/proximity.
 4. **LoRa is low-bandwidth + no field WiFi** → live field-wide state needs T4 broadcast; else
@@ -199,8 +200,8 @@ $0 shortcut and only for a *single* point, with its own quirks.
 
 **Resolved this session (exp-log #33–40):** G-2 health writes (additive-clamped, no native regen), G-1
 grenade (mode map + Hill/Respawn beacon decode = G6), G8 (`$GREN` can't config objective modes), G7
-(grenade USB-C power-only). **Still pending (hardware tests that unlock things):** P2 (per-player id →
-FFA scoring + Syphon), P16 (shield activation), P10 (damage-weighted scoring), P9 (native small teams),
+(grenade USB-C power-only), P2 (per-player id over BLE → FFA scoring + Syphon exact-killer, §7p/§7q).
+**Still pending (hardware tests that unlock things):** P16 (shield activation), P10 (damage-weighted scoring), P9 (native small teams),
 G9 (CTF team-assign), G10 (thrown-blast `$GREN`). All tracked in `FOLLOWUPS.md`.
 
 **Net:** with **Tony's kit** (4 BRX + 2 grenades + Pixel 4/OnePlus + 2 iPhone X + iPad Air), the modes

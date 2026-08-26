@@ -10,7 +10,7 @@ field networking, browser-based config, store-and-forward.
 
 This doc distills ~30 of his videos (transcript analysis; credit the channel — subscribe/support him).
 It complements `grenade.md` (his grenade videos), `lasertagmods.md` (JEDGE/JBOX from LaserTagMods),
-and `field-architecture.md` (our range design — now validated by his measured numbers §5).
+and ADR-0001 (our range design — now validated by his measured numbers §5).
 
 > **What's ours vs. his:** Jay sells his boards and keeps his firmware his own. We **do not copy his
 > code or resell his hardware.** We treat his work as *proof the architecture works* and as a source
@@ -63,7 +63,7 @@ with zero install. See §7 for the old-phone answer.
 it is **not done until it says "OTA success"** (still installing) — don't close the page; it reboots
 after. Flash **each device individually**. Version string shows at the top of the page.
 
-## 5. Radio range — measured numbers (validates `field-architecture.md`)
+## 5. Radio range — measured numbers (validates ADR-0001)
 
 Jay's field range tests (RYLR896 LoRa modules; ESP32 "minis" and ESP32-U with external **Molex
 antennas**; obstructed trail, *not* clear line-of-sight; stop at first two-way packet loss). This is
@@ -151,13 +151,18 @@ assumption is real hardware behavior.
 
 ### What can an old phone do? (direct answer)
 
+> **⚠️ Superseded on the player path (ADR-0003).** The **Web-Bluetooth "old phone runs the browser
+> player engine" Tier-0 below is ruled out** — the per-player node ships as a **native app**, not a
+> browser tab. The old-phone *config/score-screen* and *Mission Control terminal* roles (items 2–4,
+> plain HTTP) still stand. Kept here as history and for Jay's numbers.
+
 A spare/old phone is genuinely useful at several jobs — with one hard platform split:
 
-1. **Per-player node + HUD (Android only):** Android **Chrome supports Web Bluetooth**, so an old
-   Android phone runs the browser-based player engine/HUD against its own gun — no app store, no
-   install. **iOS Safari has NO Web Bluetooth** → an iPhone needs a wrapper browser (**Bluefy**) or a
-   native app. (This is exactly `phone-app-spec.md`.) One browser tab reliably drives **one gun** (BLE
-   central limits) → old phone = *per-player* node, not a 45-gun hub.
+1. **Per-player node + HUD (~~Web-Bluetooth~~ → native app, ADR-0003):** the old plan had Android
+   **Chrome's Web Bluetooth** run a browser-based player engine/HUD against its own gun (and **iOS
+   Safari has NO Web Bluetooth** → an iPhone needed a wrapper browser like **Bluefy**). That path is
+   **ruled out** — the per-player node is now a **native app** (ADR-0003). Either way, one node drives
+   **one gun** (BLE central limits) → old phone = *per-player* node, not a 45-gun hub.
 2. **Operator console / config screen (ANY phone, even iOS):** connect the phone to an ESP32 base's
    **WiFi AP** and open `192.168.4.1` — it's plain HTTP, so **any** browser works. An old phone is a
    zero-install config + live-score screen for any station (Jay's model, §3).
@@ -176,7 +181,7 @@ a handful of ~$8 ESP32 stations*, with a Pi or JEDGE-style host only when you sc
 ## 8. What this changes for us (open items)
 
 - **Adopt LoRa-*standard* mode + ESP-NOW-with-antenna** as the field radio baseline (§5) — folded into
-  `field-architecture.md`.
+  ADR-0001.
 - **JBOX Mini BOM** (ESP32 + IR rx/tx + RGB + resistors, USB-powered) is our objective-station
   reference design; **JHALO** (spare headset + ESP32) is our respawn-station reference.
 - **IR damage-value in the payload** (~7–8 bits, ≤256; explosive tags score higher) is a real BRX IR

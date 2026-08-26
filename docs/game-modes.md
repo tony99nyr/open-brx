@@ -28,7 +28,7 @@ kills), CaptureTheFlag, SquadLeader.
   points — the JBOX/QR model). The mode centres on *contested locations*, so those locations need a
   local authority. Playable without any field radio: stations are self-authoritative (LED/sound show
   truth locally) + end-of-game log collection + near-live via respawn-mule sync
-  (`field-architecture.md`).
+  (`docs/adr/0002`).
 - **Tier 2 — + broadcast.** Adds a **live field-wide downlink** ("flag taken", zone shrinking, live
   scoreboard) for the full experience on a large no-WiFi field. Only needed when live global
   awareness matters; the Tier-1 modes still *function* without it.
@@ -37,7 +37,7 @@ kills), CaptureTheFlag, SquadLeader.
 
 | Mode | Source | Core mechanic | Scoring / win | Tier | Props | Broadcast | Notes |
 |---|---|---|---|---|---|---|---|
-| **Free For All** | manual, EUG, APK | everyone vs everyone, friendly fire on | most kills (Slayer) / K-D | **0** | – | – | needs **per-player id (P2)** for individual scoring; team-based fallback otherwise |
+| **Free For All** | manual, EUG, APK | everyone vs everyone, friendly fire on | most kills (Slayer) / K-D | **0** | – | – | per-player attribution is **EXACT over BLE** (`$HIR` tok3 = shooter id); FFA is **never-friendly**, scoring is roster-based (A5.2) |
 | **Team Death Match** | manual, EUG, APK | two teams, weapons + perks | team kills / Death | **0** | – | – | works today — `$HIR` gives shooter **team** (no P2 needed) |
 | **Survival / Infection** | manual, EUG, APK | humans vs infected; a kill converts a human | last human / infection spread | **0** | – | – | host/node flips a killed human to the infected team on `$HP,0` |
 | **The Swarm** | EUG, APK | infection, but a **Hive Queen** is the infected respawn point | last human | **0** | – | – | respawn point is a **player role**, not a prop (revive at the Queen via trigger/IR) |
@@ -55,15 +55,17 @@ kills), CaptureTheFlag, SquadLeader.
 ## How to read it for building
 
 - **Tier 0 is the MVP** and is essentially built (`arena`/`deathmatch`): TDM works now; FFA/Slayer
-  need per-player identity (**followup P2**, set `PlayerID` via `SETUP`); infection/Generals/
-  Commander/Swarm are host-side rule modules over the same event stream + a designated player role.
+  get **EXACT per-player attribution over BLE** (`$PSET` tok1 sets player_num, `$HIR` tok3 reports the
+  shooter — P2 closed, no `SETUP`/IR), and FFA is never-friendly with roster-based scoring (A5.2);
+  infection/Generals/Commander/Swarm are host-side rule modules over the same event stream + a
+  designated player role.
 - **Tier 1 unlocks the objective modes** — build the **objective-station** node (IR receiver + LED
   ring, self-authoritative, JBOX-style; QR codes are the zero-cost alternative). Each of Domination/
   KotH/CTF/Assault is the same station primitive with different rules.
-- **Tier 2 is the polish** — the broadcast downlink (`field-architecture.md`) for live callouts, and
+- **Tier 2 is the polish** — the broadcast downlink (`docs/adr/0002`) for live callouts, and
   Battle Royale additionally needs location on each node. Do this last.
 
-**Respawn stations** (`field-architecture.md`) are cross-cutting: any tier benefits from them as
+**Respawn stations** (`docs/adr/0002`) are cross-cutting: any tier benefits from them as
 data-mule sync points on a large field, and they double as the physical respawn point for modes that
 don't use a player-role respawn.
 
@@ -88,7 +90,7 @@ No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team
 | **King of the Hill** | 1 | hill station **or the grenade as zone emitter** | hold the zone for time |
 | **VIP escort (A→B)** | 1 | 1 extraction station + **VIP player role** | VIP = special low-HP loadout (General-style role); escorts protect; VIP triggers the extraction station on arrival |
 | **Hostage rescue + extract** | 1 | extraction station + hostage role | hostage = neutral/downed player freed by a teammate via IR (revive-style), then escorted to the extraction station |
-| **Counter-Strike (plant/defuse)** | 1 | bomb-site **stations**, **the grenade as the bomb**, or **a phone as the bomb** | attacker plants (dwell/IR, or **touch a phone's screen: enter arm code**) → the site runs the plant timer; defender defuses (via IR, or **solves an on-screen puzzle**) → round ends on detonate / defuse / elimination. The **phone-as-bomb** version (arm code + defuse puzzle on the touchscreen) needs no IR — see `phone-app-spec.md` §"Phones as screen-equipped objectives" |
+| **Counter-Strike (plant/defuse)** | 1 | bomb-site **stations**, **the grenade as the bomb**, or **a phone as the bomb** | attacker plants (dwell/IR, or **touch a phone's screen: enter arm code**) → the site runs the plant timer; defender defuses (via IR, or **solves an on-screen puzzle**) → round ends on detonate / defuse / elimination. The **phone-as-bomb** version (arm code + defuse puzzle on the touchscreen) needs no IR |
 
 **Key insight:** almost all of these are the **same objective-station primitive** (IR receiver + LED +
 a local timer/owner state) with different rules — build that node once and CS bomb-sites, hills,
@@ -151,8 +153,7 @@ executes, matching the "host rules over the event stream" architecture.
 on summon, plays the alarm on taggers via `$PLAY` (the guns scream) and respawns/boosts via
 `$LIFE`/`$SPAWN`. At small scale (~4 guns) **one Android phone connected to all of them is the whole
 site, $0**; at scale the summon is a mesh event each player-node renders on its own gun. A phone can't
-do the IR "shoot the site to interact" part — that needs an IR station or the grenade. Full breakdown:
-`phone-app-spec.md` §"A phone as an objective / respawn / extraction node".
+do the IR "shoot the site to interact" part — that needs an IR station or the grenade.
 
 *Genre research sources:* [What is an extraction shooter? (Antihero Studios)](https://antiherostudios.com/blog/what-is-an-extraction-shooter),
 [Extraction shooter (Wikipedia)](https://en.wikipedia.org/wiki/Extraction_shooter),
@@ -173,15 +174,15 @@ broadcast — but refill armor/HP, not shields, for now.
 
 | Variant | Mechanic | How (Tier 0) | Caveat |
 |---|---|---|---|
-| **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | node watches the `$HIR`→`$HP,0` kill attribution, then sends `$LIFE`/`$BUMP` to the **killer's** gun | needs **per-player id (P2)** — you must heal the *specific* killer, and `$HIR` alone gives only the shooter **team**. Team play without P2 can't route the heal to the right teammate. |
+| **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | node watches the `$HIR`→`$HP,0` kill attribution, then sends `$LIFE`/`$BUMP` to the **killer's** gun | routes to the **exact** killer — `$HIR` tok3 gives the shooter's player_num over BLE (P2 closed), so the heal reaches the right gun even in shared-team play. |
 | **Halo shields (regen after no-damage)** | health/shield refills to full after T s without taking damage | **host-driven** — node watches its own gun's `$HP` stream and sends `$LIFE`/`$BUMP` (additive, clamped at max) to refill once no decrease for T s. **No P2 needed.** | ✅ writes confirmed (exp-log #33). **Not native:** regen was tested and armor does **not** self-recover — it must be host-driven. Shields-as-a-pool are inactive until activated (P16), so refill **armor+HP** today. |
 | **Overshield / powerup pickup** | grab an item → temporary extra shields | node grants `$LIFE,0,0,<shields>` on the pickup event | ⚠️ **shields inactive until activated (P16)** — grants to the shield pool may not take today; use an **armor** overshield until shield-activation is worked out |
 | **Medic / Lifesteal support role** | a role heals teammates | node grants `$LIFE` (armor/HP) to the healed gun; `MedicHeal`/`ActivateShield` are APK ability types | role logic like General/VIP |
 
 **Bottom line:** syphon, Halo-style regenerating health, (armor-based) overshields, and medic roles are
 all **Tier 0** — they ride the **additive `$LIFE`/`$BUMP` writes** (confirmed) over the existing event
-stream, with the node doing the regen timing (no native regen). Syphon is the only one that wants **P2**
-(to credit the exact killer); the rest work per-node today. Shield-pool effects wait on P16.
+stream, with the node doing the regen timing (no native regen). Syphon credits the exact killer over
+BLE (`$HIR` tok3, P2 closed); the rest work per-node today. Shield-pool effects wait on P16.
 
 > **Corroboration (FB group crawl):** native shields + medic behaviour are real on stock BRX today —
 > **energy weapons grant a temporary shield when you equip a new weapon**, and the Supremacy **Medic

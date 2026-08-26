@@ -1,9 +1,9 @@
 # M-MC — Mission Control (the host app)
 
 - **Status:** Draft (Wave 3 integrator), updated to contracts **A6**. Binds to [`contracts.md`](contracts.md) — **read it first**.
-- **Owner:** M-MC session. **Extends** `docs/mission-control-spec.md` (feature catalog) and matches/beats
-  the operator surface in `docs/reference/callsign-ui.md`. Anchored by ADR-0002 (laptop = author + host +
-  coordinator, BLE only at the bench).
+- **Owner:** M-MC session. This is the **current MC spec** (the authority for the feature catalog); it
+  matches/beats the operator surface in `docs/reference/callsign-ui.md`. Anchored by ADR-0002 (laptop = author
+  + host + coordinator, BLE only at the bench).
 - **Role:** the **integrator**. MC owns no game rules and no transport of its own — it **composes**
   M-ARMORY, M-MODES (which runs *inside* MC and compiles every frame), M-NET, and drives the host through
   README §3 phases 1-7. Every data shape it touches is defined in `contracts.md`; this doc says *what MC
@@ -47,7 +47,7 @@ Per README §6:
 - **UI = a local web app** the server serves at `http://<mc-host>:<port>/` — opened in the operator's
   browser on the same machine (and on a tablet on the field LAN). Big-screen roster/board/recap (ADR-0002).
   Sharing a web/UI kit with the Capacitor node app (M-NODE) where practical keeps **one web-UI language**.
-- **Why not Web Bluetooth in MC:** rejected in `mission-control-spec.md` — no silent bulk scan, ~7-10 link
+- **Why not Web Bluetooth in MC:** rejected per ADR-0003 — no silent bulk scan, ~7-10 link
   ceiling, no iOS. The Python `bleak` path has none of those limits and is the same code the CLI uses.
 - **State store:** match/roster/armory persist under `~/.brx-mcp/` on the host (armory registry already
   lives there, `contracts.md` §1). **Event log → SQLite**, every inbound envelope stored with its node `t`,
@@ -145,8 +145,8 @@ sit-down form. One **player card** per person (a `Player`, `contracts.md` §2):
   order** (first player = 1) and lets the host edit; unique per match, ≤63 players.
   This is the id every enemy gun will report when it is hit by this player — it is what makes K/D exact.
 - **Vanity DISPLAY NAME** — the gamertag the host types. This is a **display layer only**; it is **never
-  written to the gun** (the gun's `$NAME` is the permanent sticker id — `tagger-naming-architecture`,
-  `mission-control-spec.md` §1b). It labels the scoreboard, recap, and other players' "☠ by …" line.
+  written to the gun** (the gun's `$NAME` is the permanent sticker id — `tagger-naming-architecture`).
+  It labels the scoreboard, recap, and other players' "☠ by …" line.
 - **Team** — assign to a `Team`; color follows `tid` automatically.
 - **Voice** — dropdown; Male / Female today (`callsign-ui.md`), room for the full voice-pack set later.
 - **Per-player settings / overrides** — `Loadout.overrides` (max_hp/armor) where the mode allows.
@@ -192,8 +192,8 @@ scoring, no announcement (it is *audible* — the point is to hear fire + reload
 
 ## 7. Phase 4 — Lobby
 
-- **Team assignment finalized:** drag-and-drop team builder, auto-balance, lock teams before start
-  (`mission-control-spec.md` §2). Board shows each team's roster + colors + numbers.
+- **Team assignment finalized:** drag-and-drop team builder, auto-balance, lock teams before start.
+  Board shows each team's roster + colors + numbers.
 - **Per-player READY-UP:** each player readies on **their node**, which sends **`ready { player_id, ready }`**
   over M-NET (`contracts.md` §5) to flip `Player.ready` — a toggle while the node is **KITTED**. A node may
   only go ready when **`status.synced` is true** (clock fresh within `SYNC_FRESH_MS`, M-START §4) and its
@@ -366,7 +366,7 @@ M-NET are live.
 - **Coverage-zone planning UI.** Should MC help the host *plan* coverage — mark which base/respawn point is
   in router range (from node heartbeats seen during setup walks) and warn when a respawn point is out of
   range? Cheap and directly improves how often K/A/ACC catch up mid-match (README §3).
-- **Host-side mid-match interventions.** `mission-control-spec.md` §5 lists powerups/extra-life/loadout-swap.
+- **Host-side mid-match interventions** (powerups / extra-life / loadout-swap).
   MC is not gun-connected mid-match — any intervention must ride `control`/`assign` **via the node** and only
   reaches nodes in range. Confirm which interventions are in scope for M-MC vs deferred.
 - **Multi-operator / handoff.** One host today; is a second read-only board (another laptop/phone on the

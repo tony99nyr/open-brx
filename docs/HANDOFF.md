@@ -10,7 +10,7 @@ Protocol ground truth: `protocol/brx-protocol.md`.
 > app has no nRF radio either: it scores on the phone and sends **`$SFLASH,*`** (the green-sight
 > kill-confirm) plus **`$PLAY,,4,6,<id>,,,,*`** (the announcer slot) over plain BLE. **The earlier
 > "green-sight is nRF-only" call is WRONG — it probed `$GLED`, the wrong command.** See
-> **`protocol/brx-protocol.md` §7o** and `docs/handoff-callsign-nrf-capture-RESULTS.md`. There is **no
+> **`protocol/brx-protocol.md` §7o**. There is **no
 > hidden enabler frame** — Callsign's arm is byte-identical to ours — and none is needed.
 > (2) **Headset-present is a hard pre-game join-gate** (**B18b**) — a dark headset silently blocks a
 > gun (the real cause of "only 2 of 3 armed"). (3) **Direct-BLE 3-gun synced arm is HW-proven**
@@ -54,6 +54,13 @@ run on Windows?" — `_split_addrs()` in `__main__.py` now handles both.)
 takes them live, runs a timed match, tracks hits and deaths, and drives respawns. Verified
 on hardware across several matches, including two taggers driven simultaneously from one
 laptop with a synchronised start.
+
+**Current state (2026-08-25):** the platform is now a Mission Control host on a local Wi-Fi LAN
+(WebSocket, not MQTT) that compiles a per-player `FrameBundle` (`mcp/brx_mcp/mc/compile.py`), plus a
+native Capacitor phone node (Web Bluetooth is dead — `adr/0003`). Software is **built + tested (438
+tests incl. 12 e2e)**; the **MC↔phone field path is UNVERIFIED on hardware.** The authoritative spec
+set is **`docs/spec/`** (roadmap + `mission-control.md`) and the ADRs (`docs/adr/`); the open hardware
+proofs are in **`docs/verification-checklist.md`**.
 
 Working CLI:
 
@@ -99,19 +106,18 @@ system gives every player their own phone.
 protocol and a **wrong design for field play** — do not build further game logic on it
 without deciding the transport question first.
 
-### The new critical path: the nRF radio
+### Attribution + feedback are BLE-native (the old nRF "critical path" is retired)
 
-`QUERY` reports **`NRFhost 1`** and **`NRFslave 1`**, and LaserTagMods ship `NRFL-Bases`
-and `LoRa-Controlled-Taggers` — **they hit this same wall and solved it with a different
-radio.** If these guns already carry a long-range radio, BLE was never the right transport
-for field play and this reframes the problem instead of working around it.
+The framing that once lived here — *"the nRF radio is the new critical path"* — is **dead.**
+Per-player attribution is BLE-native (`$PSET` token 1 sets player_num, `$HIR` token 3 reports the
+shooter — §7p/§7q), and native kill feedback (green sight + announcer) is host-driven over plain BLE
+(§7o). Neither needs nRF, IR, or USB `SETUP`. The IR/nRF bench is now only about **objective
+stations**, not attribution or feedback.
 
-**This is Windows-friendly work** — reading their sources and probing hardware, no iOS
-captures needed. Good fit for the machine development is moving back to.
-
-Other options if nRF does not pan out (full list in §7n): a device per player (what the
-official system does), a cheap ESP32 relay per player, or on-gun menu configuration with no
-central scoring (fine casually, does not scale to 20 taggers).
+Out-of-range field play is still solved the way the official system does it — a device **on each
+player** (the Companion, or the native phone node reporting to Mission Control over the LAN) — not a
+better courtside radio. The nRF probe (D1) survives only as a "is there a bonus native radio for the
+station/broadcast tier" question, not the linchpin it was framed as here.
 
 ## Followups and unknown fields
 

@@ -8,6 +8,15 @@ Node↔MC wire is separate (`docs/spec/contracts.md` §5, `net.py`). Shapes name
 `muster | build | kit | lobby | armed | live | recap` — `armed` is the A6 sub-screen of LOBBY.
 Server owns the phase; UI navigates freely for viewing but actions are validated per phase.
 
+## Operator auth (A8.1)
+The server mints a per-launch **operator token** and prints it as `http://<ip>:8765/#tok=<token>` (also in the
+join QR). `_AuthMiddleware` enforces it: every **non-GET `/api/*`** request needs `Authorization: Bearer <token>`
+or `?tok=<token>`, and **`/ui-ws` needs `?tok=`**. `GET`/`HEAD`/`OPTIONS` stay open so a spectator board can
+watch `/api/state` and `/api/recap`. A missing/wrong token is `401 {"error":"unauthorized"}` (HTTP) or an
+accept-then-close **4401** on the WebSocket. `State.lan.auth_required` tells the UI whether a token is in force;
+the UI keeps the token from the URL fragment in `sessionStorage` and never puts it in a path. `--no-auth`
+disables the gate (bench only — any device on the LAN can then `panic`/`end`/edit the roster).
+
 ## Realtime feed — `GET /ui-ws` (WebSocket)
 Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every state change
 (coalesced, ≤4/s), plus `{ "kind": "feed", "entry": <FeedEntry> }` for live events.
@@ -58,6 +67,7 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `POST /api/control` | `{cmd: "end"|"recall"|"panic"}` → `{ok}`; `panic` requires `{confirm: true}` | armed/live |
 | `GET /api/recap` | → `RecapView` | live/recap |
 | `GET /api/recap.csv` | → text/csv (full stats table + medals) | recap |
+| `POST /api/phase` | `{phase: "muster"|"build"|"kit"|"lobby"}` → `State`; host navigation between the setup phases (`armed`/`live`/`recap` are driven by start/end and are rejected here, 400) | ≤ lobby |
 | `POST /api/session/new` | `{keep_roster?: boolean}` → `State` (back to muster) | recap |
 
 Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.

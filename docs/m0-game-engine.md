@@ -31,6 +31,9 @@ Every operator-settable knob, mapped to the BRX frame(s) that apply it:
 `player_frames(team)` → team + spawn. Presets are applied **class-first, then kid-mode floors** (so a
 low-HP class can't drop below the kid minimum; kid-mode deliberately forces friendly-fire off).
 
+The Mission Control config→frames compiler now lives in **`mcp/brx_mcp/mc/compile.py`** — it turns a
+`GameConfig` + roster into a per-player **`FrameBundle`** the node writes verbatim.
+
 ⚠ **Unconfirmed:** LEDs-off (`$GLED`) is a best-effort guess (P17); shields are inactive until
 activated (P16) — set `armor`/`hp`, not `shield`, for now.
 
@@ -83,8 +86,8 @@ python -m brx_mcp play <mode> <addr...> [k=v ...]          # LIVE on taggers
 ```
 
 ## Status
-Built + polish-looped; **112 unit tests** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
+Built + polish-looped; **438 tests (+12 e2e)** green (config, modes, driver, extraction + adapter, sounds, diag, irbridge,
 diagnostics). **Not yet run on hardware** — that's the next step (needs 1–2 taggers; the live path is
-`run_live`/`play`). Native multikill/streak sounds come from the firmware (D4); custom announcers layer
-on via `PlaySound`/`Callout`. What each mode needs + its limits: `mode-limits.md`; the sequencing:
-`tier0-plan.md`.
+`run_live`/`play`). Native multikill/streak sounds are silent under our BLE config, so MC host-`$PLAY`s
+them; custom announcers layer on via `PlaySound`/`Callout`. What each mode needs + its limits:
+`mode-limits.md`; the roadmap/sequencing: `spec/`.
