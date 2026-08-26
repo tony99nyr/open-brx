@@ -369,6 +369,8 @@ in the legend when the sound-bank page gets rebuilt (FOLLOWUPS B9).
 
 ### 3.2 The rule that actually matters: duration vs cadence
 
+> **PRE-FIX / VOID (2026-08-26):** this section's duration÷cadence ceiling was derived reading the stock AR at 850 ms; the bench proved its real cadence is **100 ms** (tok14=fire) and the firmware truncates-and-retriggers by design — the 2.07× ceiling does not exist. Duration only constrains weapons slower than ~1 s between shots; faster weapons must be auditioned by ear (attack transient, which bank data cannot measure). Verdict column void; to be redone against the proven mapping with the rebalance.
+
 A fire sound is retriggered on every shot. The stock Assault Rifle — captured from real hardware,
 therefore known-acceptable — plays a **1.76 s** sample at an **850 ms** cadence: a **2.07×**
 overlap. That gives a usable ceiling:
@@ -468,6 +470,8 @@ inside a **400 ms** reload — the sound runs 2.6× past the window. (§2.2 leng
 4. **Restore the Laser Cannon's charge sounds** — see §4.3; this is a bug, not a preference.
 
 ### 3.5 Audition shortlists — what the bank offers at each cadence
+
+> **PRE-FIX / VOID (2026-08-26):** these shortlists were ceiling arithmetic (see §3.2 note) — no such cadence constraint exists. Open bench question that decides whether ANY duration limit applies: does a held trigger retrigger the sample from zero, or ring-under? To be redone with the rebalance.
 
 The 2.07× ceiling is a hard filter, and at fast cadences it is *brutal*. For each proposed weapon,
 every gunshot-family (**G/P/R/S/T**) id that fits:

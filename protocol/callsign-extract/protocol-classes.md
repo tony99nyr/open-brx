@@ -84,8 +84,8 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 5 | **24** | **150** | **primaryDamage** | ✓ (M-4=24) |
 | 6 | 0 | 0 | primaryCriticalChance | ~ |
 | 7–13 | — | — | secondary* fields (fireChance,damageType,powerType,damage,critChance) | ~ |
-| 14 | 100 | 1250 | chargeUp time (CR charges) | ~ |
-| 15 | 850 | 850 | rateOfFire / fire delay (ms) | ~ |
+| 14 | 100 | 1250 | **fire interval (ms)** — ~~chargeUp time (CR charges)~~ *refuted by live probe 2026-08-26 (brx-protocol §6.1): sniper `tok14=1250` → 1 shot/s* | ✅ |
+| 15 | 850 | 850 | **constant `850`, function unknown — do not write** — ~~rateOfFire / fire delay (ms)~~ *refuted 2026-08-26: `tok14` is the rate, not this* | ~ |
 | 16 | **32** | **100** | **maxClip** | ✓ (mag) |
 | 17 | 32768 | 32768 | maxAmmo / unlimited flag | ~ (identical in both frames — a 2-frame diff can't validate a position that doesn't change) |
 | 18 | 1400 | 2500 | reloadSpeed (ms) | ~ |

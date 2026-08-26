@@ -1410,3 +1410,29 @@ pair doesn't reproduce from a single token.
 Net: fire RATE is now controllable and proven; fire-MODE (semi/burst) is likely absent from the
 firmware; the CR charge mechanism is still an open token hunt. Weapon verdicts (`burst_rifle`,
 `sniper_rifle`, `shotgun`, `smg`) stay logged as "issue" pending the rate-fix retest.
+
+## 2026-08-26 (bench, cont.) — charge-feel: combinational, engages-but-never-completes; walk-back is the better method
+
+Continued the `tok20`+`tok24` charge lead (both read `14` on the CR). **Single-token isolation** on the
+sniper found no single carrier:
+- **`tok20` alone (idx21)** — a **two-stage trigger**: a slow pull fires **silently**, a quick pull
+  fires with sound. Behaviour-affecting, but not the charge feel.
+- **`tok24` alone (idx25)** — no change.
+- **CR tail block `tok35`–`tok38` (`C19,C04,20,150`) alone** — no change, confirmed twice.
+
+**Combined probe** (sniper + rate `tok14=1250` + `tok20=14` + `tok24=14` + the CR tail block, sniper
+identity kept) — the **charge machinery ENGAGES but never completes**: holding starts an audible
+spin-up loop (`C19` doing its job) that "doesn't really build," release does nothing, a quick tap is a
+dead click. The first transplanted sound made "a sniper sound AND a charge sound" (Tony) — the
+machinery is real. So charge is **(a) combinational** (no single token carries it), **(b) gates the
+trigger as expected**, and **(c) missing at least one element we didn't transplant**. Remaining
+candidates: `damageType 8` + subtype pairing; the `E03`/`C15`/`C17` sound-trio positions; or the tail
+numerics `20`/`150` needing to agree with the charge/fire timers. Gun restored to a clean sniper (true
+1.5 s cadence).
+
+**Method note for the next bench session — walk BACK from working, don't build up.** Tonight built the
+charge *up* from a sniper by transplanting CR tokens and never reached a completing charge. Strictly
+better: start from the **byte-identical Charge Rifle** (a WORKING charge state) and remove ITS tokens
+one at a time toward the sniper — the first removal that kills the charge names the missing element,
+with no need to guess the full combination. (Alternative: capture a Callsign semi/burst weapon frame
+and diff it.) Hunt paused here.

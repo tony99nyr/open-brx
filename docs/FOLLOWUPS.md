@@ -259,3 +259,6 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   (sniper `1250`→1 shot/s), and the compiler bug that had pinned every weapon at 10 shots/s is fixed
   (it wrote `fire_ms` to the constant `tok15`; now writes `tok14`, commit c606417). Cadences work; only
   per-pull discipline can't be enforced.
+
+- **Bench: held-trigger fire sounds — retrigger-from-zero or ring-under?** Decides whether any
+  sound-duration ceiling exists at all (weapon-design §3.2 void note, 2026-08-26).
