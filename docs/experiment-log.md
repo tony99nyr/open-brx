@@ -1619,3 +1619,19 @@ behavior (BLE drops / random fail after ~1 hr sessions; B1 hardware notes)** —
 reproduced it. Operational rule for match days: rotate/power-rest guns, don't leave the fleet
 powered all day. U6 (damage-type reactions), U9, U5, U2 remain queued in FOLLOWUPS — all need two
 healthy guns; methods written.
+
+## 2026-08-26 (bench) — U6 CLOSED: damage types = victim-side presentation + wire metadata
+
+Clean single-timeline hit tests (mcp/tools/hittest.py, R0BAS shooting R0BAT), same 9-dmg AR with
+t3 = 0 / 6 / 10:
+
+- **Damage applied is ALWAYS t5** (9 exactly, every phase — even type 10 whose $SIR row carries
+  `100,2,60`: those params do NOT override damage).
+- **tok2 echoes the type faithfully** (0/6/10 observed) — software always knows what hit.
+- **A MAPPED type changes the victim's hit presentation**: type 10 played a distinct (subtle,
+  non-explosion) hit SFX before the standard pain voice; unmapped type 6 sounded identical to baseline.
+- Also re-verified: front-dome sensor id, per-shooter id/team attribution, 2-shot mag accounting.
+
+**Special-weapons recipe, fully proven**: custom IR type + victim $SIR row (chosen sound; damage
+via t5, incl. 0 for heals) + Companion/MC logic keyed on the tok2 echo with full attribution.
+Earlier zero-hit confusion this evening = my overlapping test windows, not hardware (logged for honesty).
