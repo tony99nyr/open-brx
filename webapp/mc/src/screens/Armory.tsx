@@ -172,6 +172,7 @@ function GhostCard({ r }: { r: { gun_id: string; sticker: string; ble: { tail?: 
 function JoinPanel() {
   const { state } = useStore();
   const [url, setUrl] = useState<string | null>(null);
+  const [showQr, setShowQr] = useState(false);
   const qr = state?.lan.qr;
   const apkUrl = state?.lan.ip ? `http://${state.lan.ip}:${state.lan.port || 8765}/openbrx.apk` : '';
   const [apkQr, setApkQr] = useState<string | null>(null);
@@ -187,14 +188,21 @@ function JoinPanel() {
   return (
     <div style={{ flex: '0 0 300px', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
-      {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={220} height={220} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
-      <div style={{ font: F.mono(600, 13), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
-      <div style={{ font: F.mono(500, 9.5), letterSpacing: '.16em', color: T.dim, textAlign: 'center', lineHeight: 1.7 }}>EACH PHONE: OPEN <span style={{ color: T.ink }}>BRX COMPANION</span> → IT FINDS MC ON ITS OWN. OFFLINE? TAP <span style={{ color: T.ink }}>SCAN QR</span> AND AIM HERE</div>
-      <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>NO APP YET? GET IT HERE</div>
-        {apkQr && <div style={{ background: '#ffffff', padding: 8, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}` }}><img src={apkQr} width={132} height={132} alt="apk download QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
-        <div style={{ font: F.mono(500, 10), letterSpacing: '.04em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
-      </div>
+      <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</div>
+      <div style={{ font: F.mono(600, 12), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
+      <button onClick={() => setShowQr(v => !v)} style={{ alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 10), letterSpacing: '.24em', padding: '9px 0', cursor: 'pointer' }}>
+        {showQr ? '▴ HIDE QR CODES' : '▾ SHOW QR CODES'}
+      </button>
+      {showQr && <>
+        <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
+        {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={200} height={200} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
+        <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>NO APP YET? PHONE CAMERA HERE</div>
+          {apkQr && <div style={{ background: '#ffffff', padding: 8, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}` }}><img src={apkQr} width={132} height={132} alt="apk download QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
+          <div style={{ font: F.mono(500, 10), letterSpacing: '.04em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
+        </div>
+      </>}
     </div>
   );
 }
+
