@@ -41,4 +41,4 @@ def test_corrupt_snapshot_starts_clean():
     tmp.write_text("{nope")
     s._persist_path = tmp
     assert s.restore_snapshot() == 0
-    assert s.players == {}
+    assert len(s.players) == 2      # mk()'s seeded roster untouched by the bad snapshot
