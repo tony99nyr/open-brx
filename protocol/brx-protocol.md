@@ -79,7 +79,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (1 = headset, 4/0 = gun body — §7r), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied (EXACT = the `$WEAP` `t5` field — §7r bench exp 2), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
+| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (groups {0,4} seen; "1 = headset/headshot" UNCONFIRMED — §7r), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied (EXACT = the `$WEAP` `t5` field — §7r bench exp 2), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
 | `$HP,<hp>,<armor>,<shield>,*` | Health update (tokens verified §7r) | `$HP,0,0,0` = player died (or turned zombie in Survival); arrives in the same ms as its `$HIR` |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
@@ -1220,6 +1220,10 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
   A kill is NOT marked in `$HIR` (no `2`): the kill is `$HP,0,0,0` followed by `$LCD,0,0,0,0,<mag>,<reserve>`.
   §7q's "4 = armor absorbed / 0 = HP / 2 = kill" reading is **retracted**. Token 5 = damage applied (24 here,
   = the `$WEAP` damage field). Free HUD feature: token 1 == 1 is a headshot.
+  ⚠ **Caveat (sensor sweep 2026-08-26):** a five-phase aimed sweep (`sensor_bench.py`) saw tok1 only
+  ∈ **{0, 4}, never 1** — at bench distance IR floods every receiver so aim→sensor doesn't map cleanly.
+  tok1 *is* a real per-hit sensor id (≥2 groups), but **"1 = headset / headshot" is UNCONFIRMED** and
+  needs a shielded isolation pass (cover all sensors but one). Don't ship the headshot HUD cue on it yet.
 - **`$HP,<hp>,<armor>,<shield>,*`** — token 2 is the armor pool (70 → 46 → 22 → 0 at 24/hit, spill into HP:
   `$HP,43,0,0`). `$HP` and its `$HIR` arrive in the same millisecond.
 - **Headset OFF = no BLE.** Switching a headset off while linked makes the gun send `$DISCONNECT,*` and drop the
@@ -1281,3 +1285,11 @@ Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damag
 - The tagger's stock firmware is untouched by all of this; power-cycling the tagger restores normal operation.
 - Factory restore path: Battle Company's official USB updater.
 - Recommended probe sequence: connect → `$PING,*` → await `$PONG` → read-only listen session (pull trigger, get tagged, watch `$BUT`/`$HIR`/`$HP` traffic) before sending any config.
+
+
+### $HIR token 1 — sensor id map (SHIELD-ISOLATED, 2026-08-26)
+
+`0` = headset FRONT dome · `1` = headset BACK dome · `4` = gun body sensor. Each isolated with every
+other sensor covered; multiple clean hits per id. Supersedes the earlier "1=headset, 4/0=gun" guess
+(1 is specifically the BACK dome). Point-blank shots flood multiple sensors — the reporting id then
+reflects whichever receiver won, so directional logic should trust tok1 only at field distances.

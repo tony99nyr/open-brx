@@ -2,7 +2,7 @@
 
 Single source of truth for open work. Supersedes the scattered A–G lists in
 `experiment-log.md` (kept there for history). Updated 2026-08-24. Status: ✅ done · 🔴 blocking /
-high value · 🟡 useful · ✅ **RESOLVED 2026-08-26 via the $HIR tok2 decode** (per-weapon IR protocol is carried on every hit — bench, exp-log) open · ❎ closed as answered.
+high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 
 ## Build (hardware/software the platform needs)
 
@@ -60,7 +60,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | P3 | `$PSET` voice-pack token→sound mapping | ⬜ | **Server-side** — it's the Callsign `voice-profiles` endpoint (`apk-harvest.md`). Get it from the API capture, or change one voice profile and diff the `$PSET`. |
 | P8 | **Callsign server API capture** (gun-off) | 🟡 NEW | MITM the app's HTTPS (`/api/v1/callsign/settings`, `voice-profiles`, `arenas/games`) → yields weapon stats, voice-pack presets, game defs directly. Needs proxy + cert on the phone, not the gun. Distinct from BLE snooping. Answers P1/P3 + weapon stats at once. |
 | P4 | `$AS` / `$UP` semantics | ⬜ | `$AS` token 8 = applicator (99=all, 0=local) per LaserTagMods; `$UP,*` bare gets no reply |
-| P5 | `$HIR` `45,0,0` / `70,0,0` variants; per-weapon IR protocol | ⬜ | fire each slot deliberately, watch token 1; numbers equal starting HP/armor |
+| P5 | `$HIR` variants; per-weapon IR protocol | ✅ **RESOLVED 2026-08-26 (via the $HIR tok2 decode)** | Per-weapon IR protocol is carried on **`$HIR` token 2** (0 standard, 10 on the rocket — bench exp 2, `brx-protocol.md` §7r / P10). The `45,0,0`/`70,0,0` variants were `$HP`-pool echoes, not damage classes. `tok1` = a per-hit sensor id (groups {0,4} seen; front-vs-back **not** resolvable at bench distance — sensor sweep 2026-08-26, needs shielded isolation). |
 | P6 | Results read-back after a game | ❎ | Gun keeps **no score** (§7n). There is nothing to read; the host/phone is the only score-keeper. **Do not probe `$SP`** (half the panic sequence). |
 | P7 | `$SFLASH,*` | ✅ **RESOLVED** | **It is the shooter's green-sight kill-confirm flash** — one per kill scored, sent by the host over plain BLE (cap8, §7o). The old "periodic, never near a hit" note came from a **victim-side** capture; kills you score are invisible in your own `$HIR`/`$HP`. |
 | P9 | **Max native team count** (`$TID` range) | ⬜ | Confirmed 2 (TDM) + 3 (Supremacy). Test how many distinct `$TID` values the gun honours for friendly-fire resolution — decides whether small teams (duos) work *natively* vs. via the FFA+MC-logical-teams workaround. Quick BLE test: set two guns to `$TID,4`/`$TID,5`+, check same-team = no damage, cross-team = damage. |
@@ -262,3 +262,7 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 
 - **Bench: held-trigger fire sounds — retrigger-from-zero or ring-under?** Decides whether any
   sound-duration ceiling exists at all (weapon-design §3.2 void note, 2026-08-26).
+
+- **Directional hit mechanics are now buildable** (2026-08-26): $HIR tok1 = 0 front dome / 1 back
+  dome / 4 gun body, shield-isolated. Design candidates: backstab bonus, flank callouts, HUD hit
+  direction indicator. Field-distance validation recommended before shipping a mode on it.

@@ -1488,3 +1488,19 @@ aim point does not map cleanly to the id. **Facts:** tok1 carries a real per-hit
 least) two groups {0, 4}; front-vs-back is NOT resolvable without isolation (cover all sensors but
 one). Front/back damage bonuses cannot be built on tok1 yet. Also §7m re-confirmed twice: a gun with
 an unsettled headset accepts a connection and instantly drops it ("Not connected" mid-config).
+
+## 2026-08-26 (bench) — $HIR sensor map RESOLVED by shielded isolation
+
+Follow-on to the inconclusive point-blank sweep above: one exposed sensor per phase (everything else
+hand-shielded), one AR shot each. Unambiguous, repeated hits per phase:
+
+| $HIR tok1 | sensor |
+|---|---|
+| **0** | headset FRONT dome |
+| **1** | headset BACK dome |
+| **4** | gun body sensor |
+
+So the earlier flood-run "headset" hits reading 4 were catching the GUN sensor. The old "1=headset,
+4/0=gun" §7r guess is corrected: 1 IS a headset sensor — the BACK one. **Front-vs-back is
+distinguishable on every hit** → directional mechanics (backstab bonus, flank feedback, HUD hit
+direction) are buildable over pure BLE. Tool: mcp/tools/sensor_bench.py (isolation phase list).

@@ -8,7 +8,7 @@ PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H
 SIRS = ["$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*", "$SIR,10,0,X13,1,0,100,2,60,*",
         "$SIR,13,0,H50,1,0,0,1,,*", "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,3,H49,1,0,100,0,60,*",
         "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]
-PHASES = ["FRONT of the headset", "BACK of the headset", "LEFT side", "RIGHT side", "the GUN body/sight"]
+PHASES = ["HEADSET FRONT ONLY - shield the gun sensors and the back dome", "HEADSET BACK ONLY - shield the gun and the front dome", "GUN ONLY - shield the whole headset dome"]
 
 
 async def main() -> None:
