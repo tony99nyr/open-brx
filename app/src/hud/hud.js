@@ -46,7 +46,7 @@ export class Hud {
   render(st) {
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
-    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills,
+    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
@@ -97,8 +97,16 @@ export class Hud {
     const [nm, tail] = splitGun(st.gun);
     const cs = esc(st.callsign || (mode === 'connected' ? 'LINKED' : 'OPERATOR'));
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
-    const plates = st.player ? `<div class="plates">
-        <div class="plate"><div class="in"><div class="h">${esc(st.weapon)}</div><div class="s">MAG ${st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : '—')} · RESERVE ${st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : '—')}</div></div></div>
+    const tw = st.tutorial && st.tutorialWeapon ? st.tutorialWeapon : null;
+    const twStats = tw && tw.stats ? tw.stats : (tw || {});
+    const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
+    const tryout = tw ? `<div class="tryout">
+        <div class="art" style="background-image:url('assets/weapons/${esc(tw.weapon_id)}.jpg')"></div>
+        <div class="meta"><div class="lbl">TRY-OUT · FIRE A FEW ROUNDS</div><div class="nm">${esc((tw.name || tw.weapon_id || '').toUpperCase())}</div>
+          <div class="ln">MAG ${twStats.mag != null ? twStats.mag : (tw.mag != null ? tw.mag : '—')} · RESERVE ${twStats.reserve != null ? twStats.reserve : (tw.reserve != null ? tw.reserve : '—')}${tw.cls ? ' · CLASS ' + esc(String(tw.cls)) : ''}</div>
+          ${bar('DMG', twStats.dmg)}${bar('ROF', twStats.rof != null ? twStats.rof : twStats.rpm)}${bar('RNG', twStats.rng)}</div></div>` : '';
+    const plates = st.player ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
+        <div class="plate wart"><div class="thumb" style="background-image:url('assets/weapons/${esc(st.weaponId || '')}.jpg')"></div><div class="in"><div class="h">${esc(st.weapon)}</div><div class="s">MAG ${st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : '—')} · RESERVE ${st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : '—')}</div></div></div>
         <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">${st.maxHp}</span> · <span style="color:var(--armor)">${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div></div>` : '';
     let foot, status;
     if (mode === 'connected') {

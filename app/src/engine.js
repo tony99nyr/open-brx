@@ -69,7 +69,7 @@ export class Engine {
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
-    this.tutorial = false;
+    this.tutorial = false; this.tutorialWeapon = null;
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
     this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
     this._headRewritten = false;
@@ -221,7 +221,7 @@ export class Engine {
   _applyConfig({ config, frames, roster }, why) {
     this.config = config || this.config; this.frames = frames || this.frames; if (roster) this.roster = roster;
     if (config && config.night != null) this.night = !!config.night;
-    this.tutorial = false;
+    this.tutorial = false; this.tutorialWeapon = null;
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
@@ -240,9 +240,10 @@ export class Engine {
     else this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' });
   }
 
-  _tutorial({ frames }) {
+  _tutorial({ frames, weapon }) {
     if (this.phase !== 'kitted' || !frames) return;
     this.tutorial = true;
+    this.tutorialWeapon = weapon || null;    // shown on the HUD: image + details of what's being tried
     this._write(frames, 'tutorial');
     this._changed();
   }
@@ -602,7 +603,8 @@ export class Engine {
       killedBy: this.killedBy, respawnIn: (!this.alive && this.deadAt) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
-      ready: !!this.ready, tutorial: this.tutorial, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
+      ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,
+      weaponId: this.player && this.player.loadout && this.player.loadout.weapons && this.player.loadout.weapons[0] ? this.player.loadout.weapons[0].weapon_id : null, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       moment: this.moment, ended: this.ended, endAck: this.endAck, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
     };
