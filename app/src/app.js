@@ -63,7 +63,7 @@ const link = new BrxLink({
     engine.onBleConnected(advert);
     if (transport) {
       transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined };
-      if (transport.state === 'bound') { try { transport.bind({ player_id: engine.player && engine.player.player_id }); } catch (_) { /* best-effort */ } }
+      if (transport.state === 'bound') { try { transport.bind({ player_id: engine.player && engine.player.player_id, gun: engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : undefined }); } catch (_) { /* best-effort */ } }
     }
   },
   unbounded: () => engine.phase === 'armed' || engine.phase === 'live',
@@ -196,6 +196,12 @@ window.addEventListener('pageshow', () => engine.resume());
   if (params.has('demo')) {
     const { startDemo } = await import('./demo.js');
     window.brxDemo = startDemo({ engine, log });
+  } else if (params.get('mc') && params.get('gun')) {
+    // browser test rig: FAKE gun + REAL Mission Control (tooling, 2026-08-26) — see src/fakegun.js
+    const { installFakeGun } = await import('./fakegun.js');
+    engine.now = () => Date.now(); engine.isSynced = () => true;
+    window.fakeGun = installFakeGun({ engine, log, name: params.get('gun') });
+    connectMc(params.get('mc'));
   } else {
     try { await link.ensureInit(); log('BLE ready — Set my gun', 'lk'); } catch (e) { log('BLE init: ' + (e && e.message || e), 'le'); }
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.

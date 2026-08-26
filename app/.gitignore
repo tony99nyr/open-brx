@@ -5,3 +5,4 @@ www/app.js
 dist/
 .gradle/
 *.log
+shots/

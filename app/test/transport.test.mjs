@@ -194,3 +194,17 @@ test('transport: a server refusal (4003 in use / 4001 version) stops the reconne
   assert.equal(t.state, 'rejected'); assert.equal(t.rejected.code, 4003); assert.ok(t.closed);
   assert.ok(states.includes('rejected'));
 });
+
+test('gun linked after connect: bind carries the late gun (MC-first join order)', () => {
+  const t = new Transport({ storage: memoryStorage(), node: { app_ver: 'x' } });   // no gun at construction
+  const sent = [];
+  t._sendKind = (kind, body) => sent.push({ kind, body });
+  t.bind({});                                              // no gun anywhere: must stay silent
+  assert.equal(sent.length, 0, 'bind without any gun sends nothing');
+  t.bind({ gun: { name: 'GUN-A-3D4F', tail: '3D4F' } });   // the late gun arrives with the bind
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, 'bind');
+  assert.equal(sent[0].body.gun_name, 'GUN-A-3D4F');
+  assert.equal(sent[0].body.gun_tail, '3D4F');
+  assert.deepEqual(t.gun, { name: 'GUN-A-3D4F', tail: '3D4F' }, 'transport adopts the gun for future hellos');
+});

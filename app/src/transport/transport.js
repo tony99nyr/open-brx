@@ -53,7 +53,8 @@ export class Transport {
       this._connectTimer = this.timers.setTimeout(() => { this._connectTimer = null; if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + this.welcomeTimeoutMs + ' ms')); } }, this.welcomeTimeoutMs);
     });
   }
-  bind({ player_id } = {}) {
+  bind({ player_id, gun } = {}) {
+    if (gun && gun.name) this.gun = gun;      // gun linked AFTER connect (MC-first join order) — without this the bind never carried the gun (rig find, 2026-08-26)
     if (!this.gun) return;
     if (player_id) this.playerId = player_id;
     this._sendKind('bind', { node_id: this.nodeId, player_id: this.playerId, gun_name: this.gun.name, gun_tail: this.gun.tail });
