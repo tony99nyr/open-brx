@@ -257,7 +257,9 @@ def test_wire_frames_carry_ir_protocol_and_sounds():
     assert s[5] == "1", "sniper is subtype 1 (pass-through, $SIR,0,1)"
     assert "S16" in s, "sniper fires the SR-100 crack"
     g = C.catalog.resolve("smg", 0).split(",")
-    assert g[16] == "400" and g[17] == "72", "smg: fire cadence 400ms at tok15, MAG 72 at tok16 (the old code wrote mag into the RoF slot)"
+    assert g[15] == "400", "smg: fire cadence 400ms at raw idx15 — BENCH-PROVEN 2026-08-26 (sniper idx15=1250 fired 1/s)"
+    assert g[16] == "850", "raw idx16 keeps the sample's constant 850 (unidentified field — never write it)"
+    assert g[17] == "72", "MAG 72 at raw idx17"
     assert "G10" in g
     k = C.catalog.resolve("rocket_launcher", 0).split(",")
     assert k[4] == "10" and "C03" in k, "rocket = the captured slot-5 sample (proto 10, C03)"
