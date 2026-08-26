@@ -1571,3 +1571,16 @@ This retro-explains the whole day: the template stamped the AR's t20=0 on every 
 full-autos", "burst doesn't burst", C1/C2), and the earlier idx21(=t20)=14 probe put the CHARGE
 RIFLE'S MODE on a sniper (the "slow pull fires silent" two-stage trigger = charge-and-release).
 The re-based catalog (f85b725) ships each weapon's own t20/t23 verbatim.
+
+## 2026-08-26 (bench) — charge modes + overheat CONFIRMED; the fire-behavior matrix is complete
+
+- **t20=2 (Rail Gun)**: hold → charges → **fires on its own**, no release needed; tap fires a weak shot.
+- **t20=3 (Laser Cannon)**: tap plays a sound cue but does NOT discharge; hold → charges → fires on its own.
+- **t20=14 (Charge Rifle)**: **fires on tap AND on release** — quick tap = weak shot, hold-charge then
+  release = the potent blast.
+- **Overheat (t24)**: live-watched on the wire — heat climbs ~8/shot (t24=14) through $ALCD's last
+  token (0–100+ gauge), gun overheats "if you shoot too fast too much", cools on idle (101→41 observed).
+  **The HUD can render a real heat bar from $ALCD with zero new protocol.**
+
+With t20 ∈ {0 auto, 7 single, 9 burst(+t23), 2/3/14 charge variants, 13 melee} and t24 heat all
+trigger-confirmed, the fire-behavior matrix is fully mapped.

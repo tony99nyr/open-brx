@@ -1299,9 +1299,16 @@ reflects whichever receiver won, so directional logic should trust tok1 only at 
 
 ### $WEAP t20 — FIRE MODE (PROVEN by one-field flip, 2026-08-26)
 
-`0` full-auto · `7` single-shot/bolt · `9` burst (cycle in `t23`, ms) · `2`/`3`/`14` charge variants
-(rail auto-release / laser hold-to-fire / charge-rifle release-to-fire) · `13` melee. Proof: the
+`0` full-auto · `7` single-shot/bolt · `9` burst (cycle in `t23`, ms) · `2` charge-auto-release (tap = weak shot) · `3` hold-to-charge auto-fire (tap = sound only, no discharge) · `14` tap-fire OR charge-release · `13` melee — ALL trigger-confirmed 2026-08-26. Proof: the
 captured sniper frame fired single-shot at t20=7 and full-auto with ONLY t20 flipped to 0; the
 captured Burst Rifle (t20=9, t23=275) fired exactly 3 rounds per pull. Correlated 19/19 with
 capture-time behaviour notes (brx-opus2). Supersedes the "(secondary/overheat)" field-map guess —
 overheat is t24/t35.
+
+
+### Overheat + the $ALCD heat gauge (CONFIRMED 2026-08-26)
+
+`$WEAP` t24 = heat added per shot (nonzero on SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30);
+t35 = the overheat sound. `$ALCD`'s LAST token is a live 0–100+ heat gauge — watched climbing ~8/shot
+on the Charge Rifle, crossing 100 (overheat lockout) and decaying on idle. HUD heat bars need no new
+protocol — the gauge already streams.
