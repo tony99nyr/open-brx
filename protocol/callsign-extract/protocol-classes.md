@@ -92,6 +92,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `C06` | **Laser Cannon** | **must be held** to charge; a tap fires nothing |
 | `E03` | **Charge Rifle** | hold to charge, **fires on RELEASE**; also overheats |
 | `R12` | **Bolt Rifle** | single shot (operator: "like the AMR") — but **no** `t28`/`t29` |
+| `E17` | **Plasma Sniper** | single shot, **overheats** if fired fast; shell reload |
+| `R23` | **Force Rifle** | 3-shot burst |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -123,9 +125,56 @@ predicted-then-confirmed absences.
 operator reporting it behaves "like the AMR". So the pair tracks a weapon's **audible two-stage
 action**, not its name or its single-shot-ness.
 
+### `t24` overheat + `t35` overheat-sound: three weapons, three matches
+
+`t24` is non-zero on **exactly the three weapons the operator described as overheating**, and `0`
+on the other thirteen:
+
+| weapon | `t24` | `t35` (sound) |
+|---|---|---|
+| SMG (`G03`) | 5 | `D11` |
+| Charge Rifle (`E03`) | 14 | `C19` |
+| Plasma Sniper (`E17`) | 30 | `D122` |
+
+`t35` (`weaponFeatureA`) is populated on those same three and nothing else — so for these weapons it
+is specifically the **overheat sound**. Pairs with the live heat telemetry in `$ALCD` token 5 (§7j).
+
+`t23` (burst) likewise has exactly two holders, both burst weapons: Burst Rifle `275`, Force Rifle
+`250`.
+
+### `t1` = 2 marks the weapons carrying an extra-headset payload
+
+`t1`, `t12`, `t13` and `t42` co-occur **perfectly** — populated on exactly three weapons and empty
+on all thirteen others:
+
+| weapon | `t1` | `t12` dmg | `t13` rangeOut | `t42` rangeIn |
+|---|---|---|---|---|
+| `T01` | 2 | 70 | 80 | 30 |
+| Rocket Launcher | 2 | 115 | 80 | 30 |
+| Plasma Sniper | 2 | 80 | 80 | 40 |
+
+(Melee is `t1`=1, Rail Gun `t1`=0, everything else empty.) So `t1` is a mode/IR-source flag and **`2`
+selects the extra-headset damage path** — a structural relationship, not a coincidence across four
+independent positions.
+
+### ⚠ `t19` is NOT simply reloadType
+
+The Plasma Sniper has a **shell reload** (operator-confirmed) yet carries `t19` = **0**, the same as
+twelve other weapons. Only Melee (`10`) and `T01` (`2`) are non-zero. Whatever `t19` encodes, it does
+not track the reload style the player actually performs — **treat the `reloadType` label as
+unconfirmed**, and do not use `t19` to infer shell-vs-magazine.
+
+### ⚠ `D20`/`D19` is not explained by the charge model
+
+The Force Rifle (`R23`) is a **3-shot burst** weapon and carries `t28`=`D20`, `t29`=`D19` — the same
+pair as the Sniper and AMR — while the Burst Rifle (`R18`) carries neither. The engage/release
+reading is solid for the **C-series charge weapons** (auto-fire vs fires-on-release, confirmed by
+two absences). What triggers the `D20`/`D19` pair on Sniper/AMR/Force Rifle is **not yet
+identified** — open question, not a settled decode.
+
 ### Tokens 7–11 (the secondary-fire block) are DORMANT in every stock weapon
 
-Empty across **all 14 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
+Empty across **all 16 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
 `T01`, Energy Launcher, Rail Gun, Rocket Launcher, Laser Cannon, Charge Rifle and Melee. That is
 effectively the whole stock arsenal.
 
