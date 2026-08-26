@@ -98,7 +98,7 @@ export class Hud {
     const cs = esc(st.callsign || (mode === 'connected' ? 'LINKED' : 'OPERATOR'));
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
     const plates = st.player ? `<div class="plates">
-        <div class="plate"><div class="in"><div class="h">${esc(st.weapon)}</div><div class="s">MAG ${st.mag != null ? st.mag : '—'} · RESERVE ${st.reserve != null ? st.reserve : '—'}</div></div></div>
+        <div class="plate"><div class="in"><div class="h">${esc(st.weapon)}</div><div class="s">MAG ${st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : '—')} · RESERVE ${st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : '—')}</div></div></div>
         <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">${st.maxHp}</span> · <span style="color:var(--armor)">${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div></div>` : '';
     let foot, status;
     if (mode === 'connected') {
@@ -213,7 +213,7 @@ export class Hud {
     if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">MC REFUSED: ${esc(String(st.wsReason || 'refused')).toUpperCase()}</span></span>`);
     else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') pills.push(`<span class="pill warn"><span class="unskew">RECONNECTING TO MISSION CONTROL…</span></span>`);
     if (st.phase !== 'idle' && !st.bleUp) pills.push(`<span class="pill bad"><span class="unskew">GUN LINK LOST — RECONNECTING</span></span>`);
-    if (st.moment && st.moment.kind === 'go' && st.phase === 'live') pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);
+    if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew">GUN RELINKED — ${esc(st.resync.prompt).toUpperCase()}</span></div>` : '';
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;

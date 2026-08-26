@@ -25,6 +25,8 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       if (hp === 0) { spawned = false; feed(`$LCD,0,0,0,0,${mag},${reserve},*`); } } },
     kill(shooter = 19, team = 2) { while (hp > 0) api.hit(1, shooter, team, 24); },
     volts() { feed('$VOLTS,8101,3789,82,48,*'); },
+    drop() { engine.onBleDropped(); },              // walk out of BLE range
+    relink() { engine.onBleConnected({ name, basename: name.split('-').slice(0, -1).join('-'), tail: name.split('-').pop() }); },
     state: () => ({ hp, armor, mag, reserve, spawned }),
   };
   // link the gun IMMEDIATELY — the boot hook connects MC right after, so the hello carries the gun

@@ -358,9 +358,18 @@ export class Engine {
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.resync = null; this.start = null; this._resyncRevive = false;
+    this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
     this._set('kitted');
     this.log(`match ended: ${why}`, 'lk');
+  }
+
+  /** Loadout ammo for slot 0 straight from the bundle's spawn frames (display truth for the lobby plate). */
+  _loadAmmo() {
+    const f = this.frames && this.frames.spawn && this.frames.spawn.find(x => x.startsWith('$AMMO,0,'));
+    if (!f) return [null, null];
+    const t = f.split(',');
+    return [+t[2] || null, +t[3] || null];
   }
 
   /** Player tapped OK on the result screen → fall through to the 'MATCH COMPLETE' over screen. */
@@ -388,6 +397,7 @@ export class Engine {
         this._panicked = this.start ? { match_id: this.start.match_id, seq: this.start.seq } : null;
         this.spawned = false; this.alive = false; this.start = null; this.resync = null;
         if (this.phase !== 'idle' && this.phase !== 'connected') this._set('kitted');
+        this.ready = false;
         return;
       default: return;
     }
@@ -586,6 +596,7 @@ export class Engine {
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
       hp: this.hp, armor: this.armor, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: this.mag,
+      loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
       killedBy: this.killedBy, respawnIn: (!this.alive && this.deadAt) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
