@@ -69,6 +69,217 @@ Anchor check: manual's M-4 damage 24 ↔ `primaryDamage`; rate-of-fire, clip, re
 This is the field map that was the "highest reverse-engineering priority" — recovered without
 per-token capture diffing.
 
+### WEAP — hardware-confirmed positions and weapon identities (2026-08-26, cap14)
+
+Captured with the operator **naming the weapon in each slot**, which is what turns a frame into
+evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token × weapon table.
+
+**Weapon signatures on the wire** (token 27, `primaryFire_SoundName`):
+
+| sound | weapon | behaviour |
+|---|---|---|
+| `R01` | **Assault Rifle** | full auto |
+| `R18` | **Burst Rifle** | 3-round burst, one trigger pull per burst |
+| `T01` | (secondary/pistol-class) | only weapon so far with `extraHeadset*` populated |
+| `J15` | Launcher-class | clip 1 / reserve 3 |
+| `M92` | Melee | gyro swing |
+| `S16` | **Sniper** | single shot; **bolt action** — pull back, release |
+| `S07` | **AMR** | single shot, no full auto; same bolt pair as the Sniper |
+| `G03` | **SMG** | full auto with an **overheat** mechanic (sound fires if held too long) |
+| `J15` | **Energy Launcher** | clip 1 / reserve 3 |
+| `C03` | **Rail Gun** *(slot-1 stat line)* | charges on hold, **auto-fires** after ~1 s; also fires on a tap |
+| `C03` | **Rocket Launcher** *(different stat line, same sound)* | standard single shot |
+| `C06` | **Laser Cannon** | **must be held** to charge; a tap fires nothing |
+| `E03` | **Charge Rifle** | hold to charge, **fires on RELEASE**; also overheats |
+| `R12` | **Bolt Rifle** | single shot (operator: "like the AMR") — but **no** `t28`/`t29` |
+| `E17` | **Plasma Sniper** | single shot, **overheats** if fired fast; shell reload |
+| `R23` | **Force Rifle** | 3-shot burst; standard "pull back, let go" reload |
+| `E11` | **Stinger** | full auto |
+| `E12` | **Energy Rifle** | full auto, **overheats**; 300-round clip |
+| `Q06` | **Suppressor** | full auto, standard reload — **quiet (not silent), and no muzzle flash** |
+| `E07` | **Ion Sniper** | single shot, 2-round clip |
+
+**`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
+and on every other weapon captured**. A field that is populated on exactly the weapon whose named
+behaviour it describes, and empty elsewhere, is about as clean as a positional decode gets.
+
+**`t28`/`t29` are TWO-STAGE ACTION sounds, not charge-specific (cap15).** They were named
+`chargeUp_SoundName`/`chargeDown_SoundName` because the only weapon that had ever populated them was
+the Charge Rifle (`C15`/`C17`). The **Sniper** (`S16`) populates them too — `D20`/`D19` — matching
+the operator's description of the bolt: *pull back, then let it go*. So the pair means "a weapon
+whose action has a distinct engage and release phase", of which charging is one case.
+
+### `t28`/`t29` — engage / release, across four charge behaviours
+
+Every charge-style weapon we have, sorted by what the operator physically observed:
+
+| weapon | behaviour | `t28` | `t29` |
+|---|---|---|---|
+| Rocket Launcher (`C03` s0) | single shot, nothing to charge | — | — |
+| Rail Gun (`C03` s1) | charges, **auto-fires**; a tap also fires | `C08` | — |
+| Laser Cannon (`C06`) | **must be held**; a tap fires nothing | `C11` | — |
+| **Charge Rifle (`E03`)** | hold to charge, **fires on RELEASE** | `C15` | **`C17`** |
+| Sniper (`S16`) / AMR (`S07`) | bolt: pull back, **let go** | `D20` | `D19` |
+
+**`t29` is present exactly when the weapon has a distinct RELEASE event** and absent when the
+weapon completes the action by itself. Four behaviours, four matching frames, including two
+predicted-then-confirmed absences.
+
+⚠ **Caveat:** the **Bolt Rifle** (`R12`) carries *neither*, despite the name and despite the
+operator reporting it behaves "like the AMR". So the pair tracks a weapon's **audible two-stage
+action**, not its name or its single-shot-ness.
+
+### `t24` overheat + `t35` overheat-sound: three weapons, three matches
+
+`t24` is non-zero on **exactly the four weapons the operator described as overheating**, and `0`
+on the other fifteen:
+
+| weapon | `t24` | `t35` (sound) |
+|---|---|---|
+| SMG (`G03`) | 5 | `D11` |
+| Charge Rifle (`E03`) | 14 | `C19` |
+| Plasma Sniper (`E17`) | 30 | `D122` |
+| Energy Rifle (`E12`) | 6 | `D122` |
+
+`t35` (`weaponFeatureA`) is populated on those same four and nothing else — so for these weapons it
+is specifically the **overheat sound**. Pairs with the live heat telemetry in `$ALCD` token 5 (§7j).
+
+`t23` (burst) likewise has exactly two holders, both burst weapons: Burst Rifle `275`, Force Rifle
+`250`.
+
+### `t25`/`t26` — only the Suppressor populates them
+
+The **Suppressor** (`Q06`) is the sole weapon of twenty to carry **`t25` = 2** (`muzzleFlash`) and
+**`t26` = 50**; both are empty on every other weapon (melee has `t25`=0). It is also the only weapon
+whose fire sound uses the **`Q`** prefix.
+
+The operator's corrected description is precise and makes both readings sharper: the Suppressor is
+**quiet but NOT silent — it does play audio — and it has NO muzzle flash.**
+
+- **`t26` = 50 → loudness scale.** "Quiet, not silent" is exactly a *reduced* volume rather than a
+  mute, and 50 reads as half. A silent weapon would more likely be an empty `t27` or a `0`.
+- **`t25` = 2 → the "no flash" variant.** Every other weapon leaves `t25` **empty** (melee is `0`),
+  and the one weapon that visibly lacks a flash is the one that sets it — so a populated `t25`
+  suppresses the default rather than selecting a flash style.
+
+**Still one sample.** Any weapon with an obvious muzzle flash (rocket launcher, shotgun) would
+confirm `t25`, and a second quiet weapon would confirm `t26`.
+
+### `t1` = 2 marks the weapons carrying an extra-headset payload
+
+`t1`, `t12`, `t13` and `t42` co-occur **perfectly** — populated on exactly three weapons and empty
+on all thirteen others:
+
+| weapon | `t1` | `t12` dmg | `t13` rangeOut | `t42` rangeIn |
+|---|---|---|---|---|
+| `T01` | 2 | 70 | 80 | 30 |
+| Rocket Launcher | 2 | 115 | 80 | 30 |
+| Plasma Sniper | 2 | 80 | 80 | 40 |
+
+(Melee is `t1`=1, Rail Gun `t1`=0, everything else empty.) So `t1` is a mode/IR-source flag and **`2`
+selects the extra-headset damage path** — a structural relationship, not a coincidence across four
+independent positions.
+
+### ⚠ `t19` is NOT simply reloadType
+
+The Plasma Sniper has a **shell reload** (operator-confirmed) yet carries `t19` = **0**, the same as
+twelve other weapons. Only Melee (`10`) and `T01` (`2`) are non-zero. Whatever `t19` encodes, it does
+not track the reload style the player actually performs — **treat the `reloadType` label as
+unconfirmed**, and do not use `t19` to infer shell-vs-magazine.
+
+### RESOLVED — `t28`/`t29` are two extra ACTION sounds; the SOUND PREFIX says which action
+
+cap21 raised a problem: the Force Rifle is a *burst* weapon yet carried `t28`=`D20`/`t29`=`D19`,
+which the charge model could not explain. cap22 settles it — **every weapon carrying that pair also
+has `t33` = `D21`, and no weapon without the pair does:**
+
+| weapon | t31 | t32 | t33 | t28 | t29 |
+|---|---|---|---|---|---|
+| Sniper `S16` | D04 | D03 | **D21** | D20 | D19 |
+| AMR `S07` | D04 | D03 | **D21** | D20 | D19 |
+| Force Rifle `R23` | D23 | D22 | **D21** | D20 | D19 |
+| **Ion Sniper `E07`** | D17 | D16 | **D15** | **D32** | **D31** |
+| all others | … | … | D12/D34/D37/D36/D24/D02/D27 | — | — |
+
+Those weapons have a *five*-part reload and `t28`/`t29` hold the two extra parts. Operator-confirmed
+— the Force Rifle's reload is the same "pull back, let go" as the Sniper's.
+
+⚠ **Correction (cap24).** This section previously claimed *"every weapon carrying the pair also has
+`t33`=`D21`, and no weapon without it does"*. The **Ion Sniper** disproves it: it carries a pair
+(`D32`/`D31`) with `t33`=`D15`. `D19`/`D20`/`D21` is simply **one** reload set that three weapons
+happen to share; `D31`/`D32` with `D17`/`D16`/`D15` is another. The rule is that a weapon with a
+five-part reload fills `t28`/`t29` from **its own** sound set — not that any particular id appears.
+
+**So `t28`/`t29` are two extra action sounds whose meaning depends on the weapon, and the SOUND ID
+PREFIX is the discriminator:**
+
+- **`C…`** → charge (`C08` rail gun, `C11` laser cannon, `C15`/`C17` charge rifle). Here the
+  engage/release reading holds and is confirmed by two absences: the rail gun auto-fires and the
+  laser cannon can't be tapped, so neither has a release sound; the charge rifle fires on release
+  and has both.
+- **`D…`** → reload cycle, always alongside `t33`=`D21`.
+
+Note also that reload trios are **reused across weapons** (the Stinger and the Laser Cannon share
+`D17`/`D16`/`D15`), reinforcing that sound ids are not weapon identities.
+
+### Tokens 7–11 (the secondary-fire block) are DORMANT in every stock weapon
+
+Empty across **all 20 distinct weapon frames** — AR, Burst Rifle, Bolt Rifle, SMG, Sniper, AMR,
+`T01`, Energy Launcher, Rail Gun, Rocket Launcher, Laser Cannon, Charge Rifle and Melee. That is
+effectively the whole stock arsenal.
+
+**Conclusion: no stock BRX weapon has a secondary fire mode**, so these positions cannot be pinned
+by capture and their order stays source-derived only. Consistent with `apk-harvest.md`'s note that
+weapon stats are **server-fetched** — the block is presumably there for definitions the app can be
+sent. **Stop capturing weapons to fill 7–11**; our own weapon definitions don't need them either.
+
+**⚠ Token 27 is a SOUND, not a weapon identity (cap18).** The Rocket Launcher and the Rail Gun both
+fire `C03` while carrying completely different stat lines. Any analysis that keys weapons by their
+fire sound will silently merge distinct weapons — `weapmap` keys on the full stat line instead.
+
+**⚠ `t14` and `t15` are SWAPPED in the field-order derivation (cap17).** The metadata order reads
+`… rateOfFire, weaponSwapDelay …`, and the 2-frame table assigned `t14` = chargeUp and `t15` =
+rateOfFire. The wire says otherwise:
+
+- **`t15` = `850` on every gun** captured (melee alone differs at `100`). A rate-of-fire identical
+  for an SMG and a sniper is meaningless — this is the **weapon-swap delay**, which *should* be
+  constant.
+- **`t14` tracks each weapon's actual cadence**: burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 ·
+  launcher 360 · shotgun 900 · melee 1000 · **rail gun 1200** · charge rifle 1250. For charge
+  weapons this *is* the charge time — the Rail Gun's 1200 ms is the ~1 s hold the operator measured
+  by feel before it auto-fired.
+
+So **`t14` = per-shot cycle/charge time (ms)** and **`t15` = weaponSwapDelay**.
+
+**The `t28`/`t29` pair is engage/release, and the Rail Gun proves it by omission.** It populates
+`t28` (`C08`) and leaves **`t29` empty** — it charges and fires *itself*, so there is no release.
+The Sniper and AMR, which the operator must release, carry both (`D20`/`D19`); the Charge Rifle
+carries both (`C15`/`C17`). A field absent exactly where the behaviour is absent is strong evidence.
+
+**`t24` = `overheat` — CONFIRMED (cap16).** `5` on the SMG (`G03`), whose named mechanic is exactly
+that, and `0` on all nine other weapons captured. **`t35` (`weaponFeatureA`) = `D11` on the SMG
+alone** — the overheat sound — so `weaponFeatureA`/`B` are sound slots for a weapon's *special
+mechanic*, not generic extras.
+
+**`t17` is NOT independent of `t40`.** Across all six weapon frames we hold, **`t17 == 2 × t40`**
+without exception:
+
+| weapon | t16 clip | t17 | t39 start | t40 reserve |
+|---|---|---|---|---|
+| R01 (AR) | 32 | 384 | 32 | 192 |
+| R18 (Burst) | 36 | 216 | 36 | 108 |
+| T01 | 6 | 24 | 6 | 12 |
+| J15 | 1 | 6 | 1 | 3 |
+| M92 (melee) | 1 | 0 | 1 | 0 |
+
+So `t17`/`t40` are the same quantity in different units (or one is derived on send) — **do not treat
+them as two independent knobs.** Likewise `t39 == t16` in every frame (clip starts full).
+
+⚠ **`t5` (`primaryDamage`) does not match the earlier 2-frame derivation.** That table read the AR's
+`t5` as **24** (anchored to the manual's M-4 damage); cap14's `R01` carries **9**, as does `R18`.
+Either the app now sends a server-fetched value, the earlier alignment was off, or `t5` is not
+damage. Treat `t5` as **unresolved** rather than ✓.
+
 ### WEAP exact token positions (metadata field names × 2 live frames)
 
 Cross-validated: the 38-member metadata field list aligned against the two known-good frames

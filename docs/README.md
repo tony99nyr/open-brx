@@ -45,6 +45,10 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 | Node↔MC wire + game data model | `spec/contracts.md` |
 | Open work (all items) | `FOLLOWUPS.md` |
 
+## Reference
+- **[reference/weapons.md](reference/weapons.md)** — **the complete Callsign arsenal**: all 20 weapons,
+  named and behaviour-verified, with damage/cycle/clip/reserve/heat as sent on the wire.
+
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the **native phone app** (Capacitor → Android + iOS): the
   player node. Web Bluetooth is a dev-only harness; the player path is native (ADR-0003).

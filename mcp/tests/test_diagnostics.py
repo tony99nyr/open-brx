@@ -62,3 +62,19 @@ if __name__ == "__main__":
             fn()
             print(f"PASS {name}")
     print("all diagnostics parser tests passed")
+
+
+def test_alcd_heat_is_parsed():
+    """$ALCD token 5 = weapon heat (§7j) — non-zero only on overheat weapons."""
+    from brx_mcp.protocol import parse_alcd, parse_event
+
+    hot = parse_alcd("$ALCD,54,100,0,100,106,*")     # cap19, charge rifle mid-burst
+    assert hot["mag"] == 54 and hot["slot"] == 0 and hot["reserve"] == 100
+    assert hot["heat"] == 106 and hot["overheating"] is True
+
+    cool = parse_alcd("$ALCD,36,100,0,108,0,*")      # every non-overheat weapon
+    assert cool["heat"] == 0 and cool["overheating"] is False
+
+    # and it reaches callers through the generic event parser
+    assert parse_event("$ALCD,54,100,0,100,106,*")["heat"] == 106
+    assert parse_alcd("$HP,45,70,0,*") == {}

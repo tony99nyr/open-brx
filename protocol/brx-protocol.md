@@ -716,7 +716,28 @@ $ALCD,<mag>,<100>,<slot>,<reserve>,<0>,*
   frame** that immediately reverts to the weapon in hand, not a run.
   (Corrected after an initial misreading: seeing `4` appear between runs of `0` and `1`
   looks like a cycle position until you know the operator was swinging the gun.)
-- Token 2 was `100` throughout and token 5 `0`; meanings unknown.
+- Token 2 was `100` throughout; meaning still unknown.
+- **Token 5 = WEAPON HEAT — decoded 2026-08-26 (cap19 + a re-read of cap16).** It is non-zero in
+  **exactly the two captures whose weapon has an overheat mechanic** — the SMG (`G03`, `$WEAP`
+  `t24`=5) and the Charge Rifle — and **`0` across 400+ `$ALCD` frames in the twelve other
+  captures**, which between them cover AR, burst rifle, sniper, AMR, launcher, rail gun, rocket
+  launcher, laser cannon, shotgun and melee.
+
+  It **accumulates with sustained fire and resets after cooling**. From cap19, firing the Charge
+  Rifle (operator: *"it got hotter on light trigger pulls"*):
+
+  ```
+  $ALCD,58,100,0,100,86,*     light pulls cost 1 ammo and drive heat up
+  $ALCD,57,100,0,100,82,*
+  $ALCD,55,100,0,100,89,*
+  $ALCD,54,100,0,100,97,*
+  $ALCD,54,100,0,100,106,*    <- peak (note: exceeds 100, so not a percentage)
+  $ALCD,53,100,0,100,14,*     <- reset after cooldown/overheat
+  ```
+
+  **This is live weapon telemetry a host can read over BLE** — Mission Control can show a heat bar,
+  and a mode could react to overheating. It cost nothing to obtain: cap16 already contained it and
+  we had logged the field as "unknown".
 - **Reload is round-by-round.** A slot-1 reload emitted one `$ALCD` per round as the
   magazine refilled and the reserve drained in step:
   `mag 0→1→2→3→4→5` while `reserve 12→11→10→9→8→7`. A HUD should expect a burst of

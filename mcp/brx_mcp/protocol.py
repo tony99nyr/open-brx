@@ -102,6 +102,8 @@ def parse_event(message: str) -> dict[str, Any]:
         parsed["button"] = tok(1)
     elif name == "PONG":
         parsed["pong"] = True
+    elif name == "ALCD":
+        parsed.update(parse_alcd(message))
     elif name == "VOLTS":
         parsed.update(parse_volts(message))
     elif name == "VERSION":
@@ -115,6 +117,27 @@ def _to_int(s: str | None) -> int | None:
         return int(s) if s not in (None, "") else None
     except (ValueError, TypeError):
         return None
+
+
+def parse_alcd(frame: str) -> dict[str, Any]:
+    """`$ALCD,<mag>,<100>,<slot>,<reserve>,<heat>,*` — the ammo/weapon HUD stream.
+
+    Token 5 is **weapon heat** (protocol §7j): non-zero only on weapons with an
+    overheat mechanic (`$WEAP` t24), rising with sustained fire and resetting after
+    cooldown. Observed above 100, so treat it as a raw level, not a percentage.
+    Returns {} if not an ALCD frame.
+    """
+    t = tokenize(frame)
+    if not t or t[0] != "ALCD":
+        return {}
+    heat = _to_int(t[5] if len(t) > 5 else None)
+    return {
+        "mag": _to_int(t[1] if len(t) > 1 else None),
+        "slot": _to_int(t[3] if len(t) > 3 else None),
+        "reserve": _to_int(t[4] if len(t) > 4 else None),
+        "heat": heat,
+        "overheating": bool(heat),
+    }
 
 
 def parse_volts(frame: str) -> dict[str, Any]:
