@@ -247,3 +247,8 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   our 4 captured $WEAP samples (ar/charge/laser/rocket) never exercise burst. Capture Callsign's Burst
   Rifle frame (extract names `burstWeaponTime`; likely near tok16-20) and wire real burst; until then
   the weapon is tuned as fast tap-fire (14 dmg / 180 ms).
+
+- **Capture the fire-mode token (semi/bolt vs full-auto).** Range session 2026-08-26: sniper and
+  shotgun fire FULL-AUTO on trigger hold — both must be one-pull-one-shot. Our 4 captured $WEAP
+  samples are all full-auto; the semi/bolt flag is somewhere in the uncaptured tokens (same hunt as
+  the burst token). Until then every built weapon inherits full-auto.

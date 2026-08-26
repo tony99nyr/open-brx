@@ -1,7 +1,10 @@
 """Config changes after a finished match roll the session forward instead of erroring."""
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import pytest
+try:
+    import pytest
+except ImportError:                     # system python has no pytest — run_tests.py must stay green
+    pytest = None
 from test_mc_state import mk
 
 
@@ -19,5 +22,8 @@ def test_set_config_in_recap_rolls_session():
 def test_set_config_mid_match_still_blocked():
     s, net, clock, ps = mk()
     s.phase = "live"
-    with pytest.raises(ValueError):
+    try:
         s.set_config({"mode": "ffa"})
+    except ValueError:
+        return
+    raise AssertionError("set_config must refuse mid-match changes")

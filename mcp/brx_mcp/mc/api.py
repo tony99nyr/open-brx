@@ -350,7 +350,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         """Append a bench verdict: {weapon_id, verdict: pass|issue, note?}."""
         body = await request.json()
         wid, verdict = body.get("weapon_id"), body.get("verdict")
-        if not isinstance(wid, str) or verdict not in ("pass", "issue"):
+        if not wid or not isinstance(wid, str) or verdict not in ("pass", "issue"):
             return JSONResponse({"error": "weapon_id + verdict (pass|issue) required"}, status_code=400)
         import time as _t
         rec = {"weapon_id": wid, "verdict": verdict, "note": str(body.get("note") or "")[:400], "t": int(_t.time() * 1000)}
