@@ -87,7 +87,9 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `S07` | **AMR** | single shot, no full auto; same bolt pair as the Sniper |
 | `G03` | **SMG** | full auto with an **overheat** mechanic (sound fires if held too long) |
 | `J15` | **Energy Launcher** | clip 1 / reserve 3 |
-| `C03` | **Rail Gun** | charges on hold, **auto-fires** after ~1 s; also fires on a tap |
+| `C03` | **Rail Gun** *(slot-1 stat line)* | charges on hold, **auto-fires** after ~1 s; also fires on a tap |
+| `C03` | **Rocket Launcher** *(different stat line, same sound)* | standard single shot |
+| `C06` | **Laser Cannon** | **must be held** to charge; a tap fires nothing |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -98,6 +100,10 @@ behaviour it describes, and empty elsewhere, is about as clean as a positional d
 the Charge Rifle (`C15`/`C17`). The **Sniper** (`S16`) populates them too — `D20`/`D19` — matching
 the operator's description of the bolt: *pull back, then let it go*. So the pair means "a weapon
 whose action has a distinct engage and release phase", of which charging is one case.
+
+**⚠ Token 27 is a SOUND, not a weapon identity (cap18).** The Rocket Launcher and the Rail Gun both
+fire `C03` while carrying completely different stat lines. Any analysis that keys weapons by their
+fire sound will silently merge distinct weapons — `weapmap` keys on the full stat line instead.
 
 **⚠ `t14` and `t15` are SWAPPED in the field-order derivation (cap17).** The metadata order reads
 `… rateOfFire, weaponSwapDelay …`, and the 2-frame table assigned `t14` = chargeUp and `t15` =

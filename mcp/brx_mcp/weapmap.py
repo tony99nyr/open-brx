@@ -87,9 +87,16 @@ def main() -> None:
             if slot_filter is not None and slot != slot_filter:
                 continue
             snd = t[27] if len(t) > 27 else ""
-            key = f"{snd or '?'}/s{slot}"
+            # Key on the FULL stat line, not the fire sound: cap18 showed `C03` on
+            # BOTH the Rail Gun and the Rocket Launcher with completely different
+            # stats, so token 27 is a SOUND, not a weapon identity. Keying by sound
+            # would silently merge two distinct weapons into one column.
+            key = ",".join(t[1:])
             if key not in weapons:
-                weapons[key] = (f"{snd or '(nosnd)'} s{slot}", t)
+                dupes = sum(1 for lab, _ in weapons.values()
+                            if lab.startswith(f"{snd or '(nosnd)'} s{slot}"))
+                label = f"{snd or '(nosnd)'} s{slot}" + (f"#{dupes + 1}" if dupes else "")
+                weapons[key] = (label, t)
                 found += 1
         print(f"{Path(path).name}: {found} new weapon frame(s)", file=sys.stderr)
 
