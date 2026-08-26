@@ -4,6 +4,7 @@
   {
    "weapon_id": "assault_rifle",
    "name": "Assault Rifle",
+   "desc": "The house standard, and one of only two frames fired straight off stock hardware. 24 a hit every 850ms, 32 up and 384 in reserve \u2014 no gap and no edge; every other weapon is measured against it.",
    "cls": 0,
    "mag": 32,
    "reserve": 384,
@@ -17,6 +18,7 @@
   {
    "weapon_id": "burst_rifle",
    "name": "Burst Rifle",
+   "desc": "An assault rifle wound tighter. 28 a hit every 550ms from a 36-round mag, but only 216 held back \u2014 work it in bursts at range, not as a hose.",
    "cls": 0,
    "mag": 36,
    "reserve": 216,
@@ -48,6 +50,7 @@
   {
    "weapon_id": "sniper_rifle",
    "name": "Sniper Rifle",
+   "desc": "One bolt, one long lane. 60 a hit on a 1.5s cycle, four in the mag and 1.7s to reload \u2014 a miss puts you on the clock while they close.",
    "cls": 2,
    "mag": 4,
    "reserve": 24,
@@ -79,6 +82,7 @@
   {
    "weapon_id": "shotgun",
    "name": "Shotgun",
+   "desc": "Doorways and corners. 50 a hit at 1.1s with six shells and a 400ms reload \u2014 the fastest recovery in the arsenal, paid for in range.",
    "cls": 3,
    "mag": 6,
    "reserve": 24,
@@ -110,6 +114,7 @@
   {
    "weapon_id": "smg",
    "name": "SMG",
+   "desc": "A hose. 12 a hit every 400ms with 72 in the mag: it wins by volume inside close range and does nothing at distance, and the 2.5s reload is the longest wait for the smallest number.",
    "cls": 1,
    "mag": 72,
    "reserve": 288,
@@ -141,6 +146,7 @@
   {
    "weapon_id": "amr",
    "name": "AMR",
+   "desc": "Anti-materiel weight at a rifle's cadence. 40 a hit every 900ms with 14 up and a 1.4s reload \u2014 heavy per trigger pull, on a mag shallow enough to count.",
    "cls": 4,
    "mag": 14,
    "reserve": 56,
@@ -172,6 +178,7 @@
   {
    "weapon_id": "energy_launcher",
    "name": "Energy Launcher",
+   "desc": "Charge, commit, erase. A 1.5s spool into a single 95-damage shot on a 2s cycle, one in the tube and six in reserve \u2014 every shot is a decision.",
    "cls": 9,
    "mag": 1,
    "reserve": 6,
@@ -204,6 +211,7 @@
   {
    "weapon_id": "rail_gun",
    "name": "Rail Gun",
+   "desc": "A slug that does not care what it hits. 1.8s charge, 90 on impact, one shot and a 2.4s reload \u2014 the longest downtime on the roster for the flattest shot on it.",
    "cls": 7,
    "mag": 1,
    "reserve": 6,
@@ -236,6 +244,7 @@
   {
    "weapon_id": "rocket_launcher",
    "name": "Rocket Launcher",
+   "desc": "Area denial, twice. 115 a hit \u2014 more than a default kit's HP and armor combined \u2014 on a 1.8s cycle, with two in the tube, a 1.2s reload and only eight rounds behind it: spend them on clusters.",
    "cls": 9,
    "mag": 2,
    "reserve": 8,
@@ -267,6 +276,7 @@
   {
    "weapon_id": "laser_cannon",
    "name": "Laser Cannon",
+   "desc": "The biggest single number in the arsenal. 150 a hit on a 1.6s cycle with four shots and eight held back \u2014 a two-magazine weapon you carry for one fight.",
    "cls": 4,
    "mag": 4,
    "reserve": 8,
@@ -298,6 +308,7 @@
   {
    "weapon_id": "charge_rifle",
    "name": "Charge Rifle",
+   "desc": "The other frame verified off a real gun, and the only confirmed charge behaviour we have. A 1.25s spool into a 150-damage shot with 100 in the mag and a 2.5s reload \u2014 hold the lane, do not hold the trigger.",
    "cls": 5,
    "mag": 100,
    "reserve": 200,
@@ -311,6 +322,7 @@
   {
    "weapon_id": "bolt_rifle",
    "name": "Bolt Rifle",
+   "desc": "Deliberate. 30 a hit every 700ms from an 18-round mag with 180 behind it \u2014 a marksman's rifle for operators who count shots, and a 2s reload that keeps them honest.",
    "cls": 0,
    "mag": 18,
    "reserve": 180,
@@ -342,6 +354,7 @@
   {
    "weapon_id": "plasma_sniper",
    "name": "Plasma Sniper",
+   "desc": "A sniper you can actually work with. 55 a hit on a 1.3s cycle, 10 in the mag and 80 in reserve \u2014 less punch than the bolt gun and far more forgiving of a miss.",
    "cls": 2,
    "mag": 10,
    "reserve": 80,
@@ -373,6 +386,7 @@
   {
    "weapon_id": "force_rifle",
    "name": "Force Rifle",
+   "desc": "Assault-rifle numbers in a bigger box. 24 a hit at 850ms with 36 up and 144 back \u2014 the same trade as the standard rifle, deeper mag, shallower reserve.",
    "cls": 0,
    "mag": 36,
    "reserve": 144,
@@ -404,6 +418,7 @@
   {
    "weapon_id": "stinger",
    "name": "Stinger",
+   "desc": "Fast, light, relentless. 30 a hit every 600ms with 18 in the mag and 72 in reserve \u2014 it out-paces rifles at mid range and runs itself dry doing it.",
    "cls": 6,
    "mag": 18,
    "reserve": 72,
@@ -435,6 +450,7 @@
   {
    "weapon_id": "energy_rifle",
    "name": "Energy Rifle",
+   "desc": "A 300-cell battery that never really stops. 10 a hit every 200ms \u2014 the smallest per-hit number and the highest sustained pressure on the roster; the 2.4s reload is rare and expensive when it comes.",
    "cls": 5,
    "mag": 300,
    "reserve": 600,
@@ -466,6 +482,7 @@
   {
    "weapon_id": "suppressor",
    "name": "Suppressor",
+   "desc": "Quiet trigger, steady rhythm. 20 a hit every 500ms with 48 up and 288 in reserve \u2014 a support gun for pinning a lane, not for winning a duel.",
    "cls": 1,
    "mag": 48,
    "reserve": 288,
@@ -497,6 +514,7 @@
   {
    "weapon_id": "ion_sniper",
    "name": "Ion Sniper",
+   "desc": "Two shots, both of them serious. 80 a hit on a 2s cycle with a 2s reload \u2014 the hardest single hit outside the launchers, with no margin at all for a miss.",
    "cls": 2,
    "mag": 2,
    "reserve": 12,
@@ -528,6 +546,7 @@
   {
    "weapon_id": "melee",
    "name": "Melee",
+   "desc": "Last resort: no ammo, no reload, no noise until it lands. 90 on contact at arm's length \u2014 hidden from the picker and always bound to slot 4.",
    "cls": 8,
    "mag": 1,
    "reserve": 0,

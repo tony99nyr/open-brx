@@ -179,6 +179,7 @@ class Session:
 
     def patch_player(self, pid: str, **fields) -> Player:
         p = self.players[pid]
+        old_voice, old_display = p.get("voice"), p.get("display")
         if "player_num" in fields and fields["player_num"] is not None:
             if self.lobby_pushed:
                 raise ValueError("player_num is fixed once config has been pushed")
@@ -218,7 +219,26 @@ class Session:
         if "gun_id" in fields:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
+        # A9.1 bench voice preview: if VOICE or the gamertag changed and the player has a bound node in a
+        # pre-lobby phase, play a one-frame sample of the voice so the pick is audible on the tagger.
+        if (p.get("voice") != old_voice or p.get("display") != old_display) \
+                and p.get("node_id") and self.phase in ("muster", "build", "kit"):
+            self._push_voice_preview(p)
         return p
+
+    def _push_voice_preview(self, p: Player) -> None:
+        """A9.1: best-effort `apply{preview}` of the voice family's kill line so a VOICE/gamertag change is
+        audible on the bound tagger. One $PLAY frame — the node's preview gate drops anything that isn't
+        $PLAY/$SFLASH and ignores a preview once past LOBBY, so this is safe to fire optimistically."""
+        nid = p.get("node_id")
+        if not nid:
+            return
+        try:
+            cue = self.compiler.cues(p.get("voice") or "male").get("kill")
+        except Exception:
+            cue = None
+        if cue:
+            self.net.push(nid, "apply", {"preview": True, "frames": [cue]})
 
     def _voice_ids(self) -> set[str]:
         ids = {"male", "female"}
@@ -524,7 +544,7 @@ class Session:
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone"})
-        nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped") if k in body})
+        nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending") if k in body})
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
         # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
@@ -847,11 +867,28 @@ class Session:
 
     def recap(self) -> dict | None:
         if self.scorer:
+            self._mark_flushed_live()
             r = self.scorer.recap()
             if self.phase != "recap":
                 r["provisional"] = True
             return r
         return self.last_recap
+
+    def _mark_flushed_live(self) -> None:
+        """A node that is CONNECTED, fresh, and reports pending == 0 has nothing left to flush — count its
+        player as flushed even if it never sent a single fact (2026-08-26: a zero-event match stayed
+        PROVISIONAL forever with the phone sitting right there)."""
+        if not self.scorer:
+            return
+        now = self.now_ms()
+        for pid, st in self.scorer.stats.items():
+            if st.flushed:
+                continue
+            p = self.players.get(pid) or {}
+            nv = self.nodes.get(p.get("node_id") or "", {})
+            fresh = nv and (now - nv.get("last_seen_ms", 0)) < 30_000
+            if fresh and nv.get("pending") == 0:
+                st.flushed = True
 
     def new_session(self, keep_roster: bool = True) -> None:
         self.session_id = uuid.uuid4().hex[:8]

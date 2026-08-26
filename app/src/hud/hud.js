@@ -149,8 +149,12 @@ export class Hud {
         <div class="cell"><b>${v(st.accuracy == null ? null : Math.round(st.accuracy * 100), '%')}</b><span>ACCURACY</span></div>
         <div class="cell"><b>${st.shots != null ? st.shots : '—'}</b><span>SHOTS</span></div>
       </div>${sess}
-      <div class="foot"><button class="ready" data-act="onEndOk"><span class="unskew">OK</span></button>
-      <div class="note">Scores reconcile at Mission Control when you're back in range.</div></div></div>`;
+      <div class="foot">${this.sync && this.sync.bound && this.sync.pending === 0
+        ? '<div class="syncline ok">SCORES SENT TO THE HOST ✓</div>'
+        : this.sync && this.sync.bound
+          ? `<div class="syncline warn">SENDING SCORES… ${this.sync.pending} LEFT</div>`
+          : '<div class="syncline warn">OUT OF RANGE — SCORES SEND WHEN YOU ARE BACK</div>'}
+      <button class="ready" data-act="onEndOk"><span class="unskew">OK</span></button></div></div>`;
   }
 
   _live(st) {

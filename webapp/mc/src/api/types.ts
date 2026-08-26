@@ -83,6 +83,7 @@ export interface NodeView {
   node_id: string; node_type: string; gun_name?: string; gun_tail?: string; player_id?: string;
   arm_state: ArmState; last_seen_ms: number; synced: boolean; preflight?: Preflight;
   battery?: number; fw?: string; hp?: number; armor?: number; ammo?: number; alive?: boolean;
+  pending?: number | null;
 }
 
 export type LiveRow = ScoreRow & {

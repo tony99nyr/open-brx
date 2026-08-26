@@ -29,13 +29,13 @@ export function Recap() {
     <div className="screen">
       {rc.provisional && (
         <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
-          ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? '' : 'S'} HAVE NOT FLUSHED ({rc.missing.map(name).join(', ')}). KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE.
+          ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}). KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE.
         </div>
       )}
+      <div style={{ font: F.mono(500, 10), letterSpacing: '.28em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {state.config.mode.toUpperCase()} · {fmtClock(state.config.time_limit_s ?? 0)} ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.28em', color: T.dim, position: 'relative', zIndex: 1, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {state.config.mode.toUpperCase()} · {fmtClock(state.config.time_limit_s ?? 0)} ]</div>
-          <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15, marginTop: 6 }}>
+          <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
         </div>
@@ -57,6 +57,7 @@ export function Recap() {
           <PrimaryButton size={13} onClick={async () => { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
         </div>
       </Brackets>
+      {rc.honors.length > 0 && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
         {rc.honors.map(h => {
@@ -67,6 +68,26 @@ export function Recap() {
               <span style={{ font: F.osw(700, 19), letterSpacing: '.08em' }}>{name(h.player_id)}</span>
               <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>{h.stat}</span>
             </div>
+          );
+        })}
+      </div>
+      </>)}
+      <SectionRule label="DATA SYNC" hint="WHO HAS DELIVERED THEIR MATCH DATA" />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
+        {state.players.map(pl => {
+          const nv = state.nodes.find(n => n.node_id === pl.node_id);
+          const missing = rc.missing.includes(pl.player_id);
+          const fresh = nv && (nv.last_seen_ms ?? 1e9) < 30000;
+          const pend = nv?.pending ?? null;
+          const [txt, col] = !missing ? ['SYNCED ✓', T.ok]
+            : fresh && pend ? [`SENDING · ${pend} LEFT`, T.warn]
+            : fresh ? ['CONNECTED — AWAITING DATA', T.warn]
+            : ['OUT OF RANGE — WILL SYNC ON RETURN', T.bad];
+          return (
+            <span key={pl.player_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${col}`, padding: '8px 14px' }}>
+              <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{pl.display}</span>
+              <span style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: col }}>{txt}</span>
+            </span>
           );
         })}
       </div>

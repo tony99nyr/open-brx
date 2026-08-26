@@ -688,3 +688,98 @@ def test_unbound_stale_nodes_prune_without_a_count_gate():
     s._on_node({"node_id": "fresh", "node_type": "phone"})   # any node event triggers the prune
     assert "ghost" not in s.nodes, "stale unbound record must be pruned"
     assert "fresh" in s.nodes
+
+
+# ---------------------------------------------------------------- A9.1 bench voice preview (Tony 2026-08-26)
+def _kit_bound():
+    """A player kitted with a bound (n1) node — the pre-lobby state where a voice/name edit previews."""
+    s = _sess(); s.set_config({"mode": "tdm", "time_limit_s": 60})
+    p = s.add_player("REAPER", team_id="blue", gun_id="GUN-A")
+    s._bind("n1", p)
+    assert s.phase == "kit" and s.players[p["player_id"]]["node_id"] == "n1"
+    return s, p
+
+
+def test_voice_change_previews_on_bound_node():
+    """A9.1: changing VOICE pushes a one-frame `apply{preview}` of the voice's kill line to the tagger."""
+    s, p = _kit_bound()
+    n0 = len(s.net.pushes("apply"))
+    s.patch_player(p["player_id"], voice="female")
+    ap = s.net.pushes("apply")
+    assert len(ap) == n0 + 1, ap
+    nid, kind, body = ap[-1]
+    assert nid == "n1" and body.get("preview") is True
+    assert len(body["frames"]) == 1 and body["frames"][0].startswith("$PLAY"), body
+    # re-patching the SAME voice is a no-op → no second preview (don't spam the bench)
+    s.patch_player(p["player_id"], voice="female")
+    assert len(s.net.pushes("apply")) == n0 + 1
+
+
+def test_display_change_previews_current_voice():
+    """A9.1: editing the gamertag also re-plays the current voice so the pick stays audible."""
+    s, p = _kit_bound()
+    s.patch_player(p["player_id"], voice="female")     # first preview
+    n1 = len(s.net.pushes("apply"))
+    s.patch_player(p["player_id"], display="NEWTAG")
+    assert len(s.net.pushes("apply")) == n1 + 1, "a gamertag edit re-previews the voice"
+    assert s.net.pushes("apply")[-1][2].get("preview") is True
+
+
+def test_no_preview_without_a_bound_node():
+    """No node bound → nothing to play; the push must not fire."""
+    s = _sess(); s.set_config({"mode": "tdm", "time_limit_s": 60})
+    p = s.add_player("REAPER", team_id="blue", gun_id="GUN-A")   # no _bind
+    assert s.players[p["player_id"]]["node_id"] is None
+    s.patch_player(p["player_id"], voice="female", display="X")
+    assert s.net.pushes("apply") == []
+
+
+def test_no_preview_after_lobby_push():
+    """Once the game is pushed (LOBBY), a voice edit must not preview — the gun is holding config, never mid-lobby+."""
+    s, p = _kit_bound()
+    s.nodes["n1"]["synced"] = True
+    s.patch_player(p["player_id"], ready=True)
+    s.push_config()
+    assert s.lobby_pushed and s.phase != "kit"
+    n0 = len(s.net.pushes("apply"))
+    s.patch_player(p["player_id"], voice="female")
+    assert len(s.net.pushes("apply")) == n0, "no bench preview once the game is pushed"
+
+
+def test_mock_apply_gate_mirrors_engine_preview_rule():
+    """The MOCK must drop what real hardware drops (engine A6.4 + A9.1): non-preview applies pre-live, and any
+    preview carrying a non-$PLAY/$SFLASH frame — so a green test can't hide frames the tagger ignores."""
+    from brx_mcp.mc.mock_node import MockNode
+    n = MockNode("ws://x", node_id="n1"); n.arm_state = "kitted"
+    play = "$PLAY,,4,6,VAA,,,,*"
+    n._handle({"kind": "apply", "body": {"preview": True, "frames": [play]}})
+    assert len(n.applies) == 1, "a $PLAY preview is written pre-live"
+    n._handle({"kind": "apply", "body": {"frames": ["$AMMO,0,36,108,1,*"]}})
+    assert len(n.applies) == 1, "a NON-preview apply pre-live is dropped"
+    n._handle({"kind": "apply", "body": {"preview": True, "frames": [play, "$AMMO,0,1,1,1,*"]}})
+    assert len(n.applies) == 1, "a preview with a non-$PLAY frame is dropped whole (no state smuggling)"
+    n.arm_state = "live"
+    n._handle({"kind": "apply", "body": {"frames": ["$AMMO,0,36,108,1,*"]}})
+    assert len(n.applies) == 2, "once LIVE a runtime apply is written verbatim"
+
+
+def test_zero_event_match_finalizes_when_nodes_are_live_and_empty():
+    """2026-08-26: a match with NO facts stayed PROVISIONAL forever — flushed now includes 'connected,
+    fresh, pending 0' nodes, not only nodes that delivered an event."""
+    from test_mc_state import mk, online
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    s.players[ps[0]["player_id"]]["ready"] = True
+    s.push_config()
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$ALCD,32,100,0,384,0,*"}, 0)
+    s.start(runway_s=0); clock["t"] += 1000
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "arm_state": "live", "synced": True, "pending": 0}, clock["t"])
+    s.control("end")
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "arm_state": "kitted", "synced": True, "pending": 0}, clock["t"] + 500)
+    r = s.recap()
+    assert r["provisional"] is False, "live + pending 0 must finalize: " + str(r.get("missing"))
+    # a node that still owes facts keeps the recap provisional
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "arm_state": "kitted", "synced": True, "pending": 3}, clock["t"] + 900)
+    s.scorer.stats[ps[0]["player_id"]].flushed = False
+    r2 = s.recap()
+    assert r2["provisional"] is True

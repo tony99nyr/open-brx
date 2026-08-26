@@ -291,15 +291,19 @@ button:active{filter:brightness(1.15)}
 @keyframes trackin{from{opacity:0;transform:translate(24px,-50%)}to{opacity:1;transform:translate(0,-50%)}}
 @keyframes wipeout{to{transform:translateX(120%);opacity:0}}
 
-/* end-of-match result screen (bench 2026-08-25) */
-.result .banner{position:absolute;top:44px;left:36px;right:36px;text-align:center;font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;letter-spacing:.18em;color:var(--num);transform:skewX(-8deg);text-shadow:0 0 40px rgba(122,190,255,.35)}
+/* end-of-match result screen — flex column so nothing can stack on short viewports (2026-08-26) */
+.result{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:14px;padding:24px 36px}
+.result .banner{text-align:center;font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(34px,10vh,58px);letter-spacing:.18em;color:var(--num);transform:skewX(-8deg);text-shadow:0 0 40px rgba(122,190,255,.35)}
 .result .banner .unskew{display:inline-block;transform:skewX(8deg)}
-.result .rstats{position:absolute;top:150px;left:36px;right:36px;display:flex;gap:12px;justify-content:center}
+.result .rstats{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .result .rstats .cell{flex:0 1 150px;border:1px solid var(--edge);background:var(--plate);padding:14px 8px;text-align:center;transform:skewX(-8deg)}
 .result .rstats .cell b{display:block;font-family:var(--fd);font-weight:700;font-size:40px;color:var(--num);transform:skewX(8deg)}
 .result .rstats .cell span{display:block;margin-top:4px;font-size:11px;letter-spacing:.22em;color:var(--mut);font-weight:600;transform:skewX(8deg)}
-.result .sess{position:absolute;top:268px;left:36px;right:36px;text-align:center;font-size:12px;letter-spacing:.24em;color:var(--mut);font-weight:600}
-.result .foot .ready{max-width:420px;margin:0 auto}
+.result .sess{text-align:center;font-size:12px;letter-spacing:.24em;color:var(--mut);font-weight:600}
+.result .foot{position:static;display:flex;flex-direction:column;gap:6px;align-items:center}
+.result .foot .ready{max-width:420px;width:100%;margin:0 auto}
+.result .syncline{font-size:11px;letter-spacing:.2em;font-weight:700}
+.result .syncline.ok{color:var(--ok)}.result .syncline.warn{color:var(--warn)}
 /* connected screen: unmistakable MC state (bench 2026-08-25) */
 .mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
 .mclinked .unskew{display:inline-block;transform:skewX(10deg)}

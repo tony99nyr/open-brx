@@ -135,6 +135,7 @@ class Weapon(TypedDict):
     weapon_id: str
     name: str
     cls: str
+    desc: NotRequired[str]     # house-written armory blurb (weapons.json `desc`); "" if a row lacks one
     stats: dict
     weap_frame: str
     icon: NotRequired[str]

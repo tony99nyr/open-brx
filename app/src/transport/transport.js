@@ -74,6 +74,7 @@ export class Transport {
   }
   /** Live-only heartbeat: sent iff bound, else dropped (no seq, no queue). */
   status(body = {}) {
+    body.pending = this.ring.pending().length;   // lets MC know 'nothing left to flush' (recap finality, 2026-08-26)
     if (this.state !== 'bound') return false;
     const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
                    arm_state: 'connected', ...body, preflight: { ...this.preflight, ...(body.preflight || {}) } };

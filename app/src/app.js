@@ -177,6 +177,7 @@ function renderNow() {
 }
 setInterval(() => { engine.tick(); scheduleRender(); }, 250);
 setInterval(refreshPreflight, 5000);
+setInterval(() => { try { hud.sync = { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; } catch (_) { /* ignore */ } }, 1000);
 
 // ---------- app lifecycle (§3.11) ----------
 function onForeground(fg) {

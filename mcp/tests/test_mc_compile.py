@@ -187,6 +187,11 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     by = {w["weapon_id"]: w for w in cat.all()}
     assert by["assault_rifle"]["verified"] is True
     assert by["sniper_rifle"]["verified"] is False
+    # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
+    blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
+    assert not blank, f"weapons missing desc: {blank}"
+    assert "850ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
+    assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
 
 
 def test_resolve_verified_weapon_is_exact_ar_tail():

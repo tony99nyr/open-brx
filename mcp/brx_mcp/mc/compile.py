@@ -53,6 +53,7 @@ class WeaponCatalog:
                 continue
             out.append({
                 "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
+                "desc": w.get("desc", ""),
                 "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
                           "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"]},
                 "weap_frame": self.resolve(w["weapon_id"], 0),

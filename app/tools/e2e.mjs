@@ -75,6 +75,19 @@ const textAudit = async (pg, screen) => {
     } return [...out].slice(0, 6); });
   for (const t of tiny) findings.push({ kind: 'tiny-text', where: screen, what: t });
 };
+const overlapAudit = async (pg, screen, sels) => {
+  const boxes = [];
+  for (const sel of sels) { const el = pg.locator(sel).first(); if (await el.count()) { const b = await el.boundingBox(); if (b) boxes.push({ sel, ...b }); } }
+  const bad = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j];
+    const ox = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+    if (ox > 4 && oy > 4) bad.push(`${a.sel} × ${b.sel} overlap ${Math.round(ox)}x${Math.round(oy)}px`);
+  }
+  for (const w of bad) findings.push({ kind: 'overlap', where: screen, what: w });
+  return bad;
+};
 const tapAudit = async (pg, screen) => {
   const rows = await pg.evaluate(() => [...document.querySelectorAll('button,[role="button"]')]
     .filter(el => el.offsetParent !== null)
@@ -277,10 +290,23 @@ await step('HUDs show GAME OVER result with stats; OK → MATCH COMPLETE', async
   expect((await hudA.locator('text=GAME OVER').count()) > 0, 'no GAME OVER banner');
   expect((await hudA.locator('.result .cell').count()) >= 4, 'stat cells missing');
   await shot(hudA, 'hudA-result'); await shot(hudB, 'hudB-result'); await tapAudit(hudA, 'hud-result');
+  const ov = await overlapAudit(hudA, 'hud-result', ['.result .banner', '.result .rstats', '.result .sess', '.result .foot .ready', '.result .syncline']);
+  expect(ov.length === 0, 'result-screen elements overlap: ' + ov.join('; '));
+  expect((await hudA.locator('.result .syncline').textContent()).includes('SENT TO THE HOST'), 'result must confirm score delivery');
   await hudA.click('[data-act="onEndOk"]');
   await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) > 0, 6000, 'over screen');
   const hist = await hudA.evaluate(() => JSON.parse(localStorage.getItem('brx.history') || '[]'));
   expect(hist.length === 1 && hist[0].deaths === 1, 'history entry wrong: ' + JSON.stringify(hist));
+});
+await step('recap is FINAL with connected empty nodes; honors hidden; DATA SYNC board shows ✓', async () => {
+  await until(async () => { const s = await st(); return s.recap && s.recap.provisional === false; }, 15000, 'recap finality (zero pending, nodes connected)');
+  await mc.click('text=RECAP').catch(() => {});
+  expect((await mc.locator('text=PROVISIONAL —').count()) === 0, 'provisional banner must be gone');
+  expect((await mc.locator('text=DATA SYNC').count()) > 0, 'DATA SYNC board missing');
+  await until(async () => (await mc.locator('text=SYNCED ✓').count()) >= 2, 8000, 'both players synced');
+  const ovr = await overlapAudit(mc, 'recap', ['text=/MATCH COMPLETE ·/', 'text=EXPORT CSV', 'text=FULL STATS']);
+  expect(ovr.length === 0, 'recap overlaps: ' + ovr.join('; '));
+  await shot(mc, 'recap-final');
 });
 await step('MC recap: rows + yellow wins + CSV exports', async () => {
   await until(async () => (await mc.locator('text=EXPORT CSV').count()) > 0, 8000, 'recap screen');
