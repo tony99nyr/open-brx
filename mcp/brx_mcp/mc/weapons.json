@@ -1,24 +1,543 @@
 {
-  "_note": "M-MODES WeaponCatalog (docs/spec/modes.md §3). stats: dmg/rof/rng are 0-100 UI bars; mag/reserve/reload_ms are literal. 'base' names the WEAPON_TAILS template in gameconfig.py the $WEAP tail is built from; only assault_rifle(ar)/charge_rifle(charge) are hardware-fired -> verified:true, the rest are templated -> verified:false (pin by a one-field Callsign capture, protocol-classes Method). 'melee' is hidden (slot 4, never in the picker).",
-  "weapons": [
-    {"weapon_id": "assault_rifle",   "name": "Assault Rifle",   "cls": 0, "mag": 32,  "reserve": 384, "reload_ms": 1400, "dmg": 55, "rof": 80, "rng": 55, "base": "ar",       "verified": true},
-    {"weapon_id": "burst_rifle",     "name": "Burst Rifle",     "cls": 0, "mag": 36,  "reserve": 216, "reload_ms": 1700, "dmg": 68, "rof": 55, "rng": 80, "base": "primary",  "verified": false},
-    {"weapon_id": "sniper_rifle",    "name": "Sniper Rifle",    "cls": 2, "mag": 4,   "reserve": 24,  "reload_ms": 1700, "dmg": 85, "rof": 25, "rng": 100, "base": "ar",      "verified": false},
-    {"weapon_id": "shotgun",         "name": "Shotgun",         "cls": 3, "mag": 6,   "reserve": 24,  "reload_ms": 400,  "dmg": 85, "rof": 30, "rng": 20, "base": "secondary","verified": false},
-    {"weapon_id": "smg",             "name": "SMG",             "cls": 1, "mag": 72,  "reserve": 288, "reload_ms": 2500, "dmg": 30, "rof": 95, "rng": 40, "base": "ar",       "verified": false},
-    {"weapon_id": "amr",             "name": "AMR",             "cls": 4, "mag": 14,  "reserve": 56,  "reload_ms": 1400, "dmg": 85, "rof": 80, "rng": 80, "base": "ar",       "verified": false},
-    {"weapon_id": "energy_launcher", "name": "Energy Launcher", "cls": 9, "mag": 1,   "reserve": 6,   "reload_ms": 1400, "dmg": 95, "rof": 25, "rng": 55, "base": "charge",   "verified": false},
-    {"weapon_id": "rail_gun",        "name": "Rail Gun",        "cls": 7, "mag": 1,   "reserve": 6,   "reload_ms": 2400, "dmg": 95, "rof": 25, "rng": 80, "base": "charge",   "verified": false},
-    {"weapon_id": "rocket_launcher", "name": "Rocket Launcher", "cls": 9, "mag": 2,   "reserve": 8,   "reload_ms": 1200, "dmg": 95, "rof": 25, "rng": 60, "base": "charge",   "verified": false},
-    {"weapon_id": "laser_cannon",    "name": "Laser Cannon",    "cls": 4, "mag": 4,   "reserve": 8,   "reload_ms": 2000, "dmg": 95, "rof": 25, "rng": 80, "base": "charge",   "verified": false},
-    {"weapon_id": "charge_rifle",    "name": "Charge Rifle",    "cls": 5, "mag": 100, "reserve": 200, "reload_ms": 2500, "dmg": 80, "rof": 80, "rng": 60, "base": "charge",   "verified": true},
-    {"weapon_id": "bolt_rifle",      "name": "Bolt Rifle",      "cls": 0, "mag": 18,  "reserve": 180, "reload_ms": 2000, "dmg": 55, "rof": 55, "rng": 60, "base": "primary",  "verified": false},
-    {"weapon_id": "plasma_sniper",   "name": "Plasma Sniper",   "cls": 2, "mag": 10,  "reserve": 80,  "reload_ms": 2000, "dmg": 80, "rof": 55, "rng": 80, "base": "ar",       "verified": false},
-    {"weapon_id": "force_rifle",     "name": "Force Rifle",     "cls": 0, "mag": 36,  "reserve": 144, "reload_ms": 1700, "dmg": 55, "rof": 55, "rng": 60, "base": "primary",  "verified": false},
-    {"weapon_id": "stinger",         "name": "Stinger",         "cls": 6, "mag": 18,  "reserve": 72,  "reload_ms": 1700, "dmg": 80, "rof": 55, "rng": 60, "base": "ar",       "verified": false},
-    {"weapon_id": "energy_rifle",    "name": "Energy Rifle",    "cls": 5, "mag": 300, "reserve": 600, "reload_ms": 2400, "dmg": 45, "rof": 80, "rng": 60, "base": "charge",   "verified": false},
-    {"weapon_id": "suppressor",      "name": "Suppressor",      "cls": 1, "mag": 48,  "reserve": 288, "reload_ms": 2000, "dmg": 80, "rof": 80, "rng": 60, "base": "ar",       "verified": false},
-    {"weapon_id": "ion_sniper",      "name": "Ion Sniper",      "cls": 2, "mag": 2,   "reserve": 12,  "reload_ms": 2000, "dmg": 80, "rof": 25, "rng": 80, "base": "ar",       "verified": false},
-    {"weapon_id": "melee",           "name": "Melee",           "cls": 8, "mag": 1,   "reserve": 0,   "reload_ms": 0,    "dmg": 90, "rof": 30, "rng": 5,  "base": "melee",    "verified": true, "hidden": true}
-  ]
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). stats: dmg/rof/rng are 0-100 UI bars; mag/reserve/reload_ms are literal. 'base' names the WEAPON_TAILS template in gameconfig.py the $WEAP tail is built from; only assault_rifle(ar)/charge_rifle(charge) are hardware-fired -> verified:true, the rest are templated -> verified:false (pin by a one-field Callsign capture, protocol-classes Method). 'melee' is hidden (slot 4, never in the picker).",
+ "weapons": [
+  {
+   "weapon_id": "assault_rifle",
+   "name": "Assault Rifle",
+   "cls": 0,
+   "mag": 32,
+   "reserve": 384,
+   "reload_ms": 1400,
+   "dmg": 55,
+   "rof": 80,
+   "rng": 55,
+   "base": "ar",
+   "verified": true
+  },
+  {
+   "weapon_id": "burst_rifle",
+   "name": "Burst Rifle",
+   "cls": 0,
+   "mag": 36,
+   "reserve": 216,
+   "reload_ms": 1700,
+   "dmg": 68,
+   "rof": 55,
+   "rng": 80,
+   "base": "primary",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 3,
+    "dmg": 28,
+    "fire_ms": 550,
+    "sounds": {
+     "fire": "R07",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D04",
+      "D03",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "sniper_rifle",
+   "name": "Sniper Rifle",
+   "cls": 2,
+   "mag": 4,
+   "reserve": 24,
+   "reload_ms": 1700,
+   "dmg": 85,
+   "rof": 25,
+   "rng": 100,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 1,
+    "dmg": 60,
+    "fire_ms": 1500,
+    "sounds": {
+     "fire": "S16",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D09",
+      "D10",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "shotgun",
+   "name": "Shotgun",
+   "cls": 3,
+   "mag": 6,
+   "reserve": 24,
+   "reload_ms": 400,
+   "dmg": 85,
+   "rof": 30,
+   "rng": 20,
+   "base": "secondary",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 0,
+    "dmg": 50,
+    "fire_ms": 1100,
+    "sounds": {
+     "fire": "T14",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D07",
+      "D08",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "smg",
+   "name": "SMG",
+   "cls": 1,
+   "mag": 72,
+   "reserve": 288,
+   "reload_ms": 2500,
+   "dmg": 30,
+   "rof": 95,
+   "rng": 40,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 0,
+    "dmg": 12,
+    "fire_ms": 400,
+    "sounds": {
+     "fire": "G10",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D04",
+      "D03",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "amr",
+   "name": "AMR",
+   "cls": 4,
+   "mag": 14,
+   "reserve": 56,
+   "reload_ms": 1400,
+   "dmg": 85,
+   "rof": 80,
+   "rng": 80,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 3,
+    "dmg": 40,
+    "fire_ms": 900,
+    "sounds": {
+     "fire": "R04",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D09",
+      "D10",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "energy_launcher",
+   "name": "Energy Launcher",
+   "cls": 9,
+   "mag": 1,
+   "reserve": 6,
+   "reload_ms": 1400,
+   "dmg": 95,
+   "rof": 25,
+   "rng": 55,
+   "base": "charge",
+   "verified": false,
+   "wire": {
+    "sample": "charge",
+    "proto": 9,
+    "subtype": 3,
+    "dmg": 95,
+    "fire_ms": 2000,
+    "charge_ms": 1500,
+    "sounds": {
+     "fire": "E08",
+     "up": "C15",
+     "down": "C17",
+     "rel": [
+      "D30",
+      "D29",
+      "D37"
+     ],
+     "noammo": "A73"
+    }
+   }
+  },
+  {
+   "weapon_id": "rail_gun",
+   "name": "Rail Gun",
+   "cls": 7,
+   "mag": 1,
+   "reserve": 6,
+   "reload_ms": 2400,
+   "dmg": 95,
+   "rof": 25,
+   "rng": 80,
+   "base": "charge",
+   "verified": false,
+   "wire": {
+    "sample": "charge",
+    "proto": 6,
+    "subtype": 0,
+    "dmg": 90,
+    "fire_ms": 2200,
+    "charge_ms": 1800,
+    "sounds": {
+     "fire": "O03",
+     "up": "C15",
+     "down": "C17",
+     "rel": [
+      "D30",
+      "D29",
+      "D37"
+     ],
+     "noammo": "A73"
+    }
+   }
+  },
+  {
+   "weapon_id": "rocket_launcher",
+   "name": "Rocket Launcher",
+   "cls": 9,
+   "mag": 2,
+   "reserve": 8,
+   "reload_ms": 1200,
+   "dmg": 95,
+   "rof": 25,
+   "rng": 60,
+   "base": "charge",
+   "verified": false,
+   "wire": {
+    "sample": "rocket",
+    "proto": 10,
+    "subtype": 0,
+    "dmg": 115,
+    "fire_ms": 1800,
+    "sounds": {
+     "fire": "C03",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D14",
+      "D13",
+      "D12"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "laser_cannon",
+   "name": "Laser Cannon",
+   "cls": 4,
+   "mag": 4,
+   "reserve": 8,
+   "reload_ms": 2000,
+   "dmg": 95,
+   "rof": 25,
+   "rng": 80,
+   "base": "charge",
+   "verified": false,
+   "wire": {
+    "sample": "laser",
+    "proto": 0,
+    "subtype": 0,
+    "dmg": 150,
+    "fire_ms": 1600,
+    "sounds": {
+     "fire": "E07",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D17",
+      "D16",
+      "D15"
+     ],
+     "noammo": "A73"
+    }
+   }
+  },
+  {
+   "weapon_id": "charge_rifle",
+   "name": "Charge Rifle",
+   "cls": 5,
+   "mag": 100,
+   "reserve": 200,
+   "reload_ms": 2500,
+   "dmg": 80,
+   "rof": 80,
+   "rng": 60,
+   "base": "charge",
+   "verified": true
+  },
+  {
+   "weapon_id": "bolt_rifle",
+   "name": "Bolt Rifle",
+   "cls": 0,
+   "mag": 18,
+   "reserve": 180,
+   "reload_ms": 2000,
+   "dmg": 55,
+   "rof": 55,
+   "rng": 60,
+   "base": "primary",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 3,
+    "dmg": 30,
+    "fire_ms": 700,
+    "sounds": {
+     "fire": "R05",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D04",
+      "D03",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "plasma_sniper",
+   "name": "Plasma Sniper",
+   "cls": 2,
+   "mag": 10,
+   "reserve": 80,
+   "reload_ms": 2000,
+   "dmg": 80,
+   "rof": 55,
+   "rng": 80,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 1,
+    "dmg": 55,
+    "fire_ms": 1300,
+    "sounds": {
+     "fire": "E17",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D09",
+      "D10",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "force_rifle",
+   "name": "Force Rifle",
+   "cls": 0,
+   "mag": 36,
+   "reserve": 144,
+   "reload_ms": 1700,
+   "dmg": 55,
+   "rof": 55,
+   "rng": 60,
+   "base": "primary",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 1,
+    "dmg": 24,
+    "fire_ms": 850,
+    "sounds": {
+     "fire": "R09",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D04",
+      "D03",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "stinger",
+   "name": "Stinger",
+   "cls": 6,
+   "mag": 18,
+   "reserve": 72,
+   "reload_ms": 1700,
+   "dmg": 80,
+   "rof": 55,
+   "rng": 60,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 0,
+    "dmg": 30,
+    "fire_ms": 600,
+    "sounds": {
+     "fire": "E14",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D04",
+      "D03",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "energy_rifle",
+   "name": "Energy Rifle",
+   "cls": 5,
+   "mag": 300,
+   "reserve": 600,
+   "reload_ms": 2400,
+   "dmg": 45,
+   "rof": 80,
+   "rng": 60,
+   "base": "charge",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 0,
+    "dmg": 10,
+    "fire_ms": 200,
+    "sounds": {
+     "fire": "E01",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D30",
+      "D29",
+      "D37"
+     ],
+     "noammo": "A73"
+    }
+   }
+  },
+  {
+   "weapon_id": "suppressor",
+   "name": "Suppressor",
+   "cls": 1,
+   "mag": 48,
+   "reserve": 288,
+   "reload_ms": 2000,
+   "dmg": 80,
+   "rof": 80,
+   "rng": 60,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 0,
+    "dmg": 20,
+    "fire_ms": 500,
+    "sounds": {
+     "fire": "Q06",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D04",
+      "D03",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "ion_sniper",
+   "name": "Ion Sniper",
+   "cls": 2,
+   "mag": 2,
+   "reserve": 12,
+   "reload_ms": 2000,
+   "dmg": 80,
+   "rof": 25,
+   "rng": 80,
+   "base": "ar",
+   "verified": false,
+   "wire": {
+    "sample": "ar",
+    "proto": 0,
+    "subtype": 1,
+    "dmg": 80,
+    "fire_ms": 2000,
+    "sounds": {
+     "fire": "E20",
+     "up": "",
+     "down": "",
+     "rel": [
+      "D09",
+      "D10",
+      "D02"
+     ],
+     "noammo": "D18"
+    }
+   }
+  },
+  {
+   "weapon_id": "melee",
+   "name": "Melee",
+   "cls": 8,
+   "mag": 1,
+   "reserve": 0,
+   "reload_ms": 0,
+   "dmg": 90,
+   "rof": 30,
+   "rng": 5,
+   "base": "melee",
+   "verified": true,
+   "hidden": true
+  }
+ ]
 }

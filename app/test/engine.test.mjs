@@ -432,3 +432,16 @@ test('tutorial end push quiets the gun and clears the try-out state', () => {
   assert.equal(h.eng.tutorial, false); assert.equal(h.eng.tutorialWeapon, null);
   assert.ok(h.writes.includes('$STOP,*'), 'teardown written to the gun');
 });
+
+
+test('apply.preview plays sound-only frames at the bench; non-preview stays live-only (A9.1)', () => {
+  const h = harness().kit();
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'apply', body: { frames: ['$PLAY,,4,6,VAA,,,,*'] } });
+  assert.equal(h.writes.length, 0, 'non-preview apply must not write off-live');
+  h.eng.onMcMessage({ kind: 'apply', body: { preview: true, frames: ['$PLAY,,4,6,VAA,,,,*'] } });
+  assert.ok(h.writes.includes('$PLAY,,4,6,VAA,,,,*'), 'preview sound plays in kitted');
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'apply', body: { preview: true, frames: ['$CLEAR,*'] } });
+  assert.equal(h.writes.length, 0, 'a preview may never smuggle non-sound frames');
+});

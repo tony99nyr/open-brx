@@ -22,7 +22,7 @@ VOL_PLAY = 69  # house rule — 30 is inaudible for game audio
 # $WEAP full-frame token indices (0-based over the comma-split of "$WEAP,<slot>,<tail>"),
 # protocol-classes §WEAP: 5=primaryDamage, 15=rateOfFire, 16=maxClip, 18=reloadSpeed(ms),
 # 39=clipStartingAmmo, 40=ammoReserv, 41=gunRange%.
-_W_MAG, _W_RELOAD, _W_CLIPSTART, _W_RESERVE = 16, 18, 39, 40
+_W_MAG, _W_RELOAD, _W_CLIPSTART, _W_RESERVE = 17, 19, 40, 41   # doc tokN == split()[N+1]; the old values wrote MAG into the RoF token (found 2026-08-26)
 
 # Kill-line id per voice family (§5/§5b). VA (male) + V3A (heavy "kill") are hardware-confirmed;
 # the rest are the family's kill slot, best-effort until pinned.
@@ -65,28 +65,51 @@ class WeaponCatalog:
             raise KeyError(f"unknown weapon_id {weapon_id!r}")
         return self._by_id[weapon_id]
 
+    # §6 sample frames (tail after "$WEAP,<slot>") — hardware/capture-derived. "laser"/"rocket" are the
+    # slot-2/slot-5 Callsign captures (protocol §6): proto 10 + C03 identifies slot 5 as the rocket launcher.
+    SAMPLES = {
+        "ar":     WEAPON_TAILS["ar"] if "ar" in WEAPON_TAILS else WEAPON_TAILS["primary"],
+        "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"]),
+        "laser":  ",,100,0,0,150,0,,,,,,,,1000,850,2,32768,2000,0,7,100,100,,0,,,E07,D32,D31,,D17,D16,D15,A73,,,,,2,9999999,75,,",
+        "rocket": ",1,90,10,0,115,0,,,,,,115,80,1000,850,2,32768,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,9999999,30,20,",
+    }
+    # token map indices (protocol-classes.md "WEAP exact token positions"; doc tokN == split()[N+1])
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "charge": 14, "fire": 15, "mag": 16, "reload": 18,
+          "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34,
+          "clipstart": 39}
+
     def resolve(self, weapon_id: str, slot: int) -> str:
-        """$WEAP frame for a slot. Verified weapons emit their exact hardware tail; provisional ones
-        template the base tail with the catalog mag/reserve/reload substituted."""
+        """$WEAP frame for a slot. Verified weapons emit their exact hardware tail. Provisional ones are
+        built from the closest CAPTURED sample frame with the weapon's `wire` table applied: IR
+        protocol/subtype (so the victim's $SIR row interprets rail/rocket/energy correctly), real damage,
+        fire cadence, mag/reload and the per-family sound block — 2026-08-26, after the bench showed every
+        templated weapon sounding and behaving like the AR. Still provisional until each is bench-fired."""
         w = self._row(weapon_id)
-        base = w.get("base", "ar")
-        full = f"$WEAP,{slot}{WEAPON_TAILS[base]}"
-        if not w.get("verified"):
+        if w.get("verified"):
+            base = w.get("base", "ar")
+            return f"$WEAP,{slot}{WEAPON_TAILS[base]}"
+        wire = w.get("wire")
+        if not wire:                                   # no wire table: old mag/reload substitution
+            base = w.get("base", "ar")
+            full = f"$WEAP,{slot}{WEAPON_TAILS[base]}"
             p = full.split(",")
-            if len(p) > _W_RESERVE:  # guard: only substitute a well-formed 44-token frame
-                p[_W_MAG] = str(w["mag"])
-                p[_W_CLIPSTART] = str(w["mag"])
-                p[_W_RESERVE] = str(w["reserve"])
-                p[_W_RELOAD] = str(w["reload_ms"])
-                # NOTE: damage (tok 5) + rate-of-fire (tok 15) are deliberately NOT substituted. The
-                # catalog dmg/rof are 0-100 UI bars, while the frame holds literal firmware rates
-                # (e.g. tok15=850) on an unknown scale — so a provisional weapon shares its base
-                # template's damage/rof until a one-field Callsign capture pins the real values
-                # (verified:false). modes §3's "substitute 5/15" is scale-unsafe as written; when the
-                # capture lands, add a dmg/rof→frame map here (and amend §3). Mag/reserve/reload are
-                # literal and safe to substitute now.
-                full = ",".join(p)
-        return full
+            p[_W_MAG] = str(w["mag"]); p[_W_CLIPSTART] = str(w["mag"])
+            p[_W_RESERVE] = str(w["reserve"]); p[_W_RELOAD] = str(w["reload_ms"])
+            return ",".join(p)
+        tail = self.SAMPLES[wire.get("sample", "ar")]
+        p = f"$WEAP,{slot}{tail}".split(",")
+        T = self._T
+        def put(key: str, val) -> None:
+            p[T[key] + 1] = str(val)
+        put("proto", wire["proto"]); put("subtype", wire["subtype"]); put("dmg", wire["dmg"])
+        put("fire", wire["fire_ms"]); put("mag", w["mag"]); put("clipstart", w["mag"]); put("reload", w["reload_ms"])
+        if wire.get("charge_ms") is not None:
+            put("charge", wire["charge_ms"])
+        snd = wire.get("sounds") or {}
+        put("snd_fire", snd.get("fire", "")); put("snd_up", snd.get("up", "")); put("snd_down", snd.get("down", ""))
+        rel = snd.get("rel") or ["", "", ""]
+        put("rel1", rel[0]); put("rel2", rel[1]); put("rel3", rel[2]); put("noammo", snd.get("noammo", ""))
+        return ",".join(p)
 
     def spawn_ammo(self, weapon_id: str) -> tuple[int, int]:
         w = self._row(weapon_id)

@@ -471,3 +471,9 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     injection; `ready`/`ack_config` trust the server's node↔player binding, not a client-supplied id;
     pulled-log bytes and unbound hello-only node records are capped; the `event_batch` re-base path (A5.7)
     is now actually invoked on the real stack (it was dead — batches fell through the single-event path).
+
+- **A9 (2026-08-26, additive):**
+  - **A9.1 `apply.preview`.** An `apply` whose body carries `preview: true` and whose frames are ALL
+    `$PLAY`/`$SFLASH` may be written by the node in `connected`/`kitted`/`lobby` too (bench previews: the
+    tagger speaks a voice sample when the host changes a player's voice or gamertag). Everything else about
+    A6.4 stands: non-preview applies, and any frame that is not pure sound/flash, still write only when LIVE.

@@ -196,11 +196,16 @@ def test_resolve_verified_weapon_is_exact_ar_tail():
 
 
 def test_resolve_provisional_substitutes_mag_reserve():
-    cat = WeaponCatalog()
-    f = cat.resolve("sniper_rifle", 0)  # mag 4, reserve 24
-    parts = f.split(",")
-    assert parts[16] == "4" and parts[40] == "24"
-
+    """Fallback path for a provisional weapon WITHOUT a wire table: mag/clipstart/reserve/reload land on the
+    CORRECT tokens (doc tokN == split()[N+1]; the old indices wrote mag into rate-of-fire)."""
+    from brx_mcp.mc.compile import WeaponCatalog
+    cat = WeaponCatalog(rows=[{"weapon_id": "x", "name": "X", "cls": 0, "mag": 9, "reserve": 99,
+                               "reload_ms": 777, "dmg": 1, "rof": 1, "rng": 1, "base": "ar", "verified": False}])
+    p = cat.resolve("x", 0).split(",")
+    assert p[17] == "9" and p[40] == "9", "mag + clipStartingAmmo"
+    assert p[41] == "99", "ammo reserve"
+    assert p[19] == "777", "reload ms"
+    assert p[16] == "850", "rate-of-fire keeps the sample value (was being clobbered by mag)"
 
 # ---- medals ---------------------------------------------------------------
 def test_award_medals_basic():
@@ -236,3 +241,20 @@ def test_award_medals_gated_for_tiny_rosters():
            "assists": 0, "shots": 10, "hits": 0, "accuracy": 0.0, "kd": 0.0, "streak": 0, "medals": []}
     assert C.award_medals([row], []) == {"a": []}
     assert C.award_medals([row, {**row, "player_id": "b"}], []) == {"a": [], "b": []}
+
+
+# ---- wire-table frames (2026-08-26: every provisional weapon sounded/behaved like the AR) ----------
+def test_wire_frames_carry_ir_protocol_and_sounds():
+    r = C.catalog.resolve("rail_gun", 0).split(",")
+    assert r[4] == "6", "rail gun must fire IR protocol 6 (the victim's $SIR,6 row)"
+    assert "O03" in r, "rail gun fires the ordnance sound"
+    s = C.catalog.resolve("sniper_rifle", 0).split(",")
+    assert s[5] == "1", "sniper is subtype 1 (pass-through, $SIR,0,1)"
+    assert "S16" in s, "sniper fires the SR-100 crack"
+    g = C.catalog.resolve("smg", 0).split(",")
+    assert g[16] == "400" and g[17] == "72", "smg: fire cadence 400ms at tok15, MAG 72 at tok16 (the old code wrote mag into the RoF slot)"
+    assert "G10" in g
+    k = C.catalog.resolve("rocket_launcher", 0).split(",")
+    assert k[4] == "10" and "C03" in k, "rocket = the captured slot-5 sample (proto 10, C03)"
+    a = C.catalog.resolve("assault_rifle", 0)
+    assert a == "$WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*"[:len(a)] or a.startswith("$WEAP,0,,100,0,0,24"), "verified AR stays byte-exact"

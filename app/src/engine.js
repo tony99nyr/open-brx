@@ -206,7 +206,14 @@ export class Engine {
       case 'start': return this.startAt(body);
       case 'feedback': return this.feedback(body, t);
       case 'control': return this.control(body);
-      case 'apply': return this.phase === 'live' ? this._write(body.frames || [], 'apply') : undefined;
+      case 'apply': {
+        const fr = body.frames || [];
+        if (this.phase === 'live') return this._write(fr, 'apply');
+        // A9.1 preview: sound-only applies may play OFF-live (voice/gamertag preview at the bench) —
+        // restricted to $PLAY/$SFLASH so A6.4's no-state-writes-off-live safety holds.
+        if (body.preview && ['connected', 'kitted', 'lobby'].includes(this.phase) && fr.length && fr.every(f => f.startsWith('$PLAY') || f.startsWith('$SFLASH'))) return this._write(fr, 'apply preview');
+        return undefined;
+      }
       case 'score': if (body && typeof body === 'object') { this.score = body; this.scoreAt = this.now(); this._changed(); } return;
       default: return;
     }
