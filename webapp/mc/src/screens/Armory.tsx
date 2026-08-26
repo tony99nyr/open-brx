@@ -110,7 +110,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
           {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
         <Micro>LINK</Micro><Val color={g.node === 'none' ? T.bad : stale ? T.warn : T.dim}>{linkText}</Val>
-        <Micro>COMPANION</Micro><Val color={T.micro}>—</Val>
+        {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       {g.blockers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

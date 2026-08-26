@@ -152,7 +152,7 @@ export function Kit() {
                         corner={<span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: CLS_COLOR[w.cls] ?? T.acc }}>{w.cls}</span>} />
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
                         <span style={{ font: F.chk(700, 12), letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
-                        <span style={{ font: F.osw(600, 11), ...TAB, color: T.micro }}>{w.clip}</span>
+                        <span style={{ font: F.osw(600, 11), ...TAB, color: T.micro }} title={`magazine ${w.clip}`}>MAG {w.clip}</span>
                       </div>
                     </div>
                   );
