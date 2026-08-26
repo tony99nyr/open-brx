@@ -72,13 +72,20 @@ don't use a player-role respawn.
 ## Team structure — is it only all-red vs all-blue?
 
 No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team layout is flexible:
-- **Native hardware teams:** confirmed 2 (TDM) + 3 factions (Supremacy); **max native team count is
-  UNTESTED** (followup — see below). If the firmware allows N teams, you get N small teams (e.g.
-  duos) with hardware friendly-fire protection.
+- **Native hardware teams: FOUR** (bench exp 4, 2026-08-26). `$TID` is masked to 2 bits (effective
+  team = `$TID & 3`), giving four usable teams **0, 1, 2, 3** (a `$TID,2` shooter lands cross-team hits
+  normally; an earlier apparent team-2 anomaly turned out to be a bench-script re-setup race). Small
+  native teams (e.g. duos) work up to **4**; a 5th+ squad needs the MC logical-teams route below.
+  **There is no hardware friendly-fire protection** — the gun damages same-team hits regardless of
+  `$TID`, under either `$GSET` FF value (bench exp 4), so friendly-fire is MC-side scoring either way (as
+  our scorer already does). What native teams *do* give: per-team LED colour + `$HIR` tok4 team
+  attribution with no MC id-mapping.
 - **FFA + Mission-Control logical teams (works today, any structure):** every gun on one team,
   **friendly fire ON**, players wear armbands/flags for their real squad, **MC tracks the true teams
   and scores accordingly** (David Knox's proven "flag" technique). Supports duos/trios/free-form
-  instantly; the only cost is no hardware friendly-fire protection (MC penalizes team-kills).
+  instantly — and since the gun never blocks same-team hits anyway (no hardware FF, exp 4), MC-scored
+  friendly fire is the *same* model native teams use; the only real trade-off is losing per-team LED
+  colours (every gun lights one colour).
 
 ## Custom / advanced modes (all buildable — host rules over the same primitives)
 

@@ -41,7 +41,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$CONNECT,*` | Connection handshake | |
 | `$INIT,*` | Initialize | |
 | `$PHONE,*` | Put tagger in app-controlled mode | Same mode the official app uses |
-| `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
+| `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. **⚠ `friendlyFire` (token 1) is NOT gun-enforced** (bench exp 4, 2026-08-26: same-team damage lands under both 0 and 1 — FF is app-side bookkeeping; the token's on-gun function is UNKNOWN). Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
 | `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
@@ -56,7 +56,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$NAME,<name>,*` | Set tagger name (captured) | App sent `$NAME,Tactix2,*` |
 | `$VERSION,*` | Query firmware version (captured) | Reply: `$VERSION,v4.32,?,4,,devhost.03,*` |
 | `$PBWEAP,<n>,*` / `$PBTEAM,` / `$PBPERK,` | Pre-battle weapon / team / perk selection | Mirrors the on-gun menu choices |
-| `$TID,` | Set team ID | |
+| `$TID,<team>,*` | Set team ID | **Masked to 2 bits — effective team = `$TID & 3`** (bench exp 4, 2026-08-26). **Four usable native teams — 0, 1, 2, 3** (a `$TID,2` shooter lands cross-team hits normally: `$HIR,4,0,0,2,24,0,0`; earlier team-2 silences were a bench-script re-setup race, not a limit). >4 squads → MC logical teams. `$HIR` token 4 echoes the shooter's effective team. |
 | `$SPAWN`, `$RP`, `$RV`, `$UR`, `$IT`, `$KK`, `$TA`, `$PT`, `$HS`, `$PH` | Respawn/revive/status family | Partially mapped — see §7 Unknowns |
 | **New commands from APK teardown (2026-08-24):** | | field maps in `callsign-extract/protocol-classes.md` |
 | `$GREN,...` | **Smart Grenade config** (sent to the GUN, which programs the grenade) | iRType,crit,modifier,indoorMode,operationMode,channel,GrenadeType,MaxCount. GrenadeMode enum = FlashBang/Gas/Confusion/Molotov. See `callsign-extract/apk-harvest.md` |

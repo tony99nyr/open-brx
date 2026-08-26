@@ -78,9 +78,12 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   shooter's player_num on every hit — bench-verified both directions over pure BLE (no `SETUP` cable, no
   IR). FFA per-player scoring and "credit the exact killer" (Syphon) both resolve exactly; the only limit
   is **LAN coverage** of the node that hears the hit, not identity.
-- 🧪 **Max native team count (P9):** confirmed 2 (TDM) + 3 (Supremacy); N-team / duos native support
-  untested. *Workaround today:* FFA + Mission-Control logical teams (any structure, no hardware FF
-  protection).
+- ✅ **Max native team count (P9) — FOUR** (bench exp 4, 2026-08-26): `$TID` masks to 2 bits (`& 3`),
+  giving four usable teams **0, 1, 2, 3** (a `$TID,2` shooter lands cross-team hits normally; an earlier
+  apparent team-2 anomaly was a bench-script re-setup race). Native small teams work up to 4. *Beyond 4:*
+  FFA + Mission-Control logical teams (any structure). **No hardware friendly-fire protection exists**
+  either way — the gun damages same-team hits under both `$GSET` FF values (bench exp 4), so FF is MC-side
+  scoring (our scorer tracks `friendly_kills`); `$GSET` token 1's gun function is now UNKNOWN.
 - 🧪 **IR damage value (P10)** — needed for damage-weighted scoring. ✅ **Regen is NOT native (P11
   closed)** — armor held through 30 s idle, so Halo-shields are **host-driven** (node refills). 🧪
   **`$PB*` enums are v4.30; ours is v4.32 (P12).**
@@ -201,8 +204,9 @@ The phone's superpower is the **touchscreen**; its ceiling is IR.
 **Resolved this session (exp-log #33–40):** G-2 health writes (additive-clamped, no native regen), G-1
 grenade (mode map + Hill/Respawn beacon decode = G6), G8 (`$GREN` can't config objective modes), G7
 (grenade USB-C power-only), P2 (per-player id over BLE → FFA scoring + Syphon exact-killer, §7p/§7q).
-**Still pending (hardware tests that unlock things):** P16 (shield activation), P10 (damage-weighted scoring), P9 (native small teams),
+**Still pending (hardware tests that unlock things):** P16 (shield activation),
 G9 (CTF team-assign), G10 (thrown-blast `$GREN`). All tracked in `FOLLOWUPS.md`.
+(P9 native teams + P10 damage/armor were **resolved on the bench 2026-08-26**.)
 
 **Net:** with **Tony's kit** (4 BRX + 2 grenades + Pixel 4/OnePlus + 2 iPhone X + iPad Air), the modes
 that run **today at T0/T1** are TDM/FFA, the health/shield variants, small-scale Extraction, single-point

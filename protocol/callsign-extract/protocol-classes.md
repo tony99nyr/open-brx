@@ -34,7 +34,7 @@ Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
 
 | # | field | example | meaning |
 |---|---|---|---|
-| 1 | friendlyFire | 0 | friendly fire off/on |
+| 1 | friendlyFire | 0 | **app-setting label, NOT gun-enforced** (bench exp 4, 2026-08-26): same-team damage lands under both 0 and 1 → FF is app-side bookkeeping; the token's on-gun function is UNKNOWN |
 | 2 | outdoorMode | 0 | indoor(0)/outdoor(1) IR range profile |
 | 3 | gunLaserRegion | 1 | gun-laser region/zone |
 | 4 | autoAmbientLight | 0 | auto ambient-light compensation |

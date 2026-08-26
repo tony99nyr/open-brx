@@ -1513,3 +1513,46 @@ these shapes. Working theory: stun is an IR-delivered effect — the extract typ
 as "Stun" and $PLAY carries a `stun` field — i.e. the victim's $SIR row interprets a stun-type hit
 (like tear gas 11). Next probe: fire an IR frame with a stun damage-type at a victim whose $SIR has
 a matching row, or capture Callsign using a stun accessory.
+
+## 2026-08-26 (bench, handoff experiment 4) — `$TID` masked to 2 bits: FOUR usable native teams (0–3), effective = `$TID & 3`
+
+Six phases, one AR shot each (`mcp/tools/tid_bench.py`); `$HIR` tok4 = the shooter's **effective** team.
+
+| shooter `$TID` | & 3 | victim `$TID` | result |
+|---|---|---|---|
+| 4 | 0 | 5 (→1) | HIT, tok4=**0** |
+| 4 | 0 | 4 (→0) | HIT — **same team damaged** (wrinkle a), tok4=0 |
+| 30 | 2 | 31 (→3) | no registration — later attributed to a bench-script re-setup race (see below) |
+| 62 | 2 | 63 (→3) | no registration + "dead trigger" — same race (shooter caught mid-`$CLEAR`); NOT a team-2 limit |
+| 63 | 3 | 63 (→3) | HIT — **same team damaged** (wrinkle a), tok4=**3** |
+| 100 | 0 | 101 (→1) | HIT, tok4=**0** |
+
+**`$TID` is masked to 2 bits — effective team = `$TID & 3`, values 0–3.** The tok4 reads confirm it
+(4→0, 63→3, 100→0), so >4 IDs collapse onto four slots.
+
+**All four masked teams (0–3) are usable — team 2 included.** The decisive re-run: with the victim
+properly re-armed (spawned, team 1, full `$SIR` table), R0BAT on `$TID,2` mag-dumping produced **5 clean
+registrations, all `$HIR,4,0,0,2,24,0,0`** — a team-2 shooter landing cross-team hits normally. (Nice
+incidental cross-check: tok3=0 and tok5=24 are exactly right for the try-out AR armed there — an
+identity-0 `$PSET` and the catalog 24-damage frame — reconfirming tok3 = shooter id / tok5 = damage.)
+So the **native team count is FOUR (0, 1, 2, 3)**; larger squad counts still need MC logical teams.
+
+*History (why the table shows two blanks):* mid-bench, the two team-2 phases (shooter `$TID` 30 and 62)
+read as silent, briefly suggesting a "no-fire" then a "fires-but-rarely-registers" team-2 anomaly. The
+re-armed re-run refuted both — best explained as a **bench-script re-setup race**: `tid_bench` re-set both
+guns between phases, so a shooter caught mid-`$CLEAR`/unspawned shows a dead trigger and zero hits,
+exactly what was seen. Not a team-2 property. (Registration-rate-vs-rounds wasn't clean enough to quote a
+number, so none is stated.)
+
+The 2-bit mask stands on the tok4 evidence (4→0, 63→3, 100→0). The last remaining question — friendly
+fire — is also resolved below (wrinkle a): it is **not** IR-enforced.
+
+**Sub-open (a) — friendly fire — RESOLVED: FF is NOT IR/firmware-enforced.** Same-team damage landed
+under BOTH `$GSET` token-1 values: FF=0 (the 4v4 / 63v63 phases above) and a follow-up **FF=1** probe
+(both guns team 1, `$GSET` token1=1, several shots → **7 registrations**, `$HIR,4,0,5,1,9,0,0`). So
+same-team hits **always** damage on the wire; the native game's "FF off" must be **app-side bookkeeping**,
+not a gun behaviour — exactly how our MC scorer already works (it tracks `friendly_kills` separately). ⇒
+`$GSET` token 1's on-gun function reverts to **UNKNOWN**: the teardown's `friendlyFire` label names the
+*app setting*, not a gun-enforced behaviour (see the GSET map caveat). All four handoff experiments closed.
+
+Handoff experiment 4 **PASSED** — all four BLE-only experiments (§`handoff-ble-experiments-no-ir.md`) closed.

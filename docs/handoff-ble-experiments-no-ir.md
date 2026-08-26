@@ -107,6 +107,13 @@ visual half is still open. **Either way stop describing the green sight as "ours
 
 ## 4. `$TID` team range (P9) 🟡 quick
 
+> ✅ **PASSED — 2026-08-26.** `$TID` is **masked to 2 bits** (effective team = `$TID & 3`). **All four masked teams (0–3) are usable** — a
+> re-armed re-run caught 5 clean `$HIR,4,0,0,2,24,0,0` registrations from a `$TID,2` shooter, so
+> **native team count = FOUR**; the earlier team-2 silences were a bench-script re-setup race. >4 squads
+> → MC logical teams. **FF sub-open now CLOSED:** friendly fire is **not IR-enforced** — same-team damage
+> lands under `$GSET` token1=0 AND 1, so it's app-side (our MC scorer handles it). **All four experiments
+> fully resolved.** See exp-log + `brx-protocol.md` `$TID` row.
+
 **Question.** 2 teams (TDM) and 3 (Supremacy) are confirmed. How many distinct `$TID` values does
 the gun honour for friendly-fire resolution?
 
