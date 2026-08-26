@@ -17,6 +17,7 @@ export class MockBackend implements Api {
   private config: GameConfig = clone(MODES[0].defaults);
   private players: Player[] = [];
   private trying: Record<string, string> = {};
+  private evicted = new Set<string>();
   private pushed = false;
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];
@@ -62,7 +63,7 @@ export class MockBackend implements Api {
   private state(): State {
     const t = now();
     const readiness = this.readiness();
-    const nodes = readiness.board.filter(b => b.node === 'linked').map(b => ({
+    const nodes = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`)).map(b => ({
       node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
       player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_ms ?? 0,
       synced: true, battery: b.battery_pct, fw: b.fw,
@@ -220,6 +221,7 @@ export class MockBackend implements Api {
     this.emit(); return clone(p);
   }
   async deletePlayer(id: string) { this.players = this.players.filter(p => p.player_id !== id); this.emit(); }
+  async evictNode(id: string) { this.evicted.add(id); this.emit(); }
   async tryout(id: string, weapon_id: string) {
     if (this.pushed) throw new Error('try-outs are disabled once a config head has been pushed (modes.md §4)');
     this.trying[id] = weapon_id; this.emit();

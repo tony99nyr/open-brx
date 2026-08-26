@@ -153,6 +153,7 @@ export interface Api {
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;
   deletePlayer(id: string): Promise<void>;
+  evictNode(node_id: string): Promise<void>;   // DELETE /api/nodes/{id} — operator kick (closes 4000, unbinds, rotates key)
   tryout(id: string, weapon_id: string): Promise<void>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;

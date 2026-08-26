@@ -405,11 +405,15 @@ class Session:
             return None
         base = (gun_name or "").rsplit("-", 1)[0].lower()
         tail = (gun_tail or (gun_name or "").rsplit("-", 1)[-1]).lower()
+        full = (gun_name or "").lower()
         for p in self.players.values():
+            gid = (p.get("gun_id") or "").lower()
+            if not gid:
+                continue                      # a gun-less roster entry never matches (an empty name would equal "")
             g = self.guns.get(p.get("gun_id") or "")
-            if g and (g["sticker"].lower() == base or g["ble"].get("tail", "").lower() == tail):
+            if g and ((base and g["sticker"].lower() == base) or (tail and g["ble"].get("tail", "").lower() == tail)):
                 return p
-            if (p.get("gun_id") or "").lower() in (base, gun_name and gun_name.lower()):
+            if gid in {x for x in (base, full) if x}:
                 return p
         return None
 
@@ -445,6 +449,24 @@ class Session:
             self._push_config_to(p)
             if self.start_info:
                 self.net.push(nid, "start", self._start_body())
+
+    def evict_node(self, nid: str) -> bool:
+        """Operator recovery: kick a node (e.g. a stranger that hello'd with a live gun name before its owner's phone).
+        Closes its socket, unbinds its player and forgets everything it claimed (ready/ack) so the next legit hello
+        re-hydrates by gun (A5.5). Returns False for an id nobody has heard of."""
+        known = nid in self.nodes or nid in self.node_player or nid in getattr(self.net, "nodes", {})
+        if hasattr(self.net, "evict"):
+            self.net.evict(nid)
+        pid = self.node_player.pop(nid, None)
+        for p in self.players.values():
+            if p.get("node_id") == nid or p["player_id"] == pid:
+                p["node_id"] = None
+                p["ready"] = False
+                self.acks.pop(p["player_id"], None)
+        self.nodes.pop(nid, None)
+        self.synced_at_lobby.pop(nid, None)
+        self._changed()
+        return known
 
     def _prune_unbound_nodes(self):
         """Cap hello-only node records that never bound a player (net.md §8 memory)."""

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
+import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, CLS_COLOR, F, T, TAB, fmtAge, teamColor } from '../tokens';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, StripedSlot as Slot, Tag, onKey } from '../ui';
 
@@ -92,6 +93,7 @@ export function Kit() {
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />
                 <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.micro }}>{node?.gun_name ?? sp.gun_id ?? 'NO GUN'} · <span style={{ color: node ? T.ok : T.bad }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : 'NO NODE'}</span></span>
+                {node && <EvictButton nodeId={node.node_id} />}
               </div>
             </div>
             {/* weapon hero */}

@@ -220,6 +220,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _err(str(e))
         return JSONResponse({"ok": True})
 
+    async def evict_node(req):
+        nid = req.path_params["nid"]
+        if not s.evict_node(nid):
+            return _err("no such node", 404)
+        return JSONResponse({"ok": True})
+
     async def tryout(req):
         pid = req.path_params["pid"]
         if pid not in s.players:
@@ -334,6 +340,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/players/{pid}", patch_player, methods=["PATCH"]),
         Route("/api/players/{pid}", delete_player, methods=["DELETE"]),
         Route("/api/players/{pid}/tryout", tryout, methods=["POST", "DELETE"]),
+        Route("/api/nodes/{nid}", evict_node, methods=["DELETE"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
         Route("/api/start", start, methods=["POST"]),

@@ -33,6 +33,8 @@ log = logging.getLogger("brx.mc.net")
 
 HELLO_TIMEOUT_S = 5.0          # net.md §8: no valid hello within the grace window → close
 REORDER_WINDOW = 256           # net.md §4: small recent-set to tolerate reordering
+PRUNE_AFTER_MS = 600_000          # unbound + disconnected + silent this long → record dropped
+
 WS_PING_INTERVAL_S = STATUS_HEARTBEAT_MS / 1000.0   # server-initiated ping at the heartbeat cadence
 WS_PING_TIMEOUT_S = STALE_AFTER_MS / 1000.0
 
@@ -71,6 +73,7 @@ class NodeRecord:
     stale: bool = False
     seq_hi: int = 0                    # highest persisted seq applied
     node_key: str = ""                # A8: secret to re-claim this node_id / its gun
+    displaced_keys: set = field(default_factory=set)   # keys of the (stale) holders this record displaced WITHOUT proving them
     applied: deque = field(default_factory=lambda: deque(maxlen=REORDER_WINDOW))
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
 
@@ -118,7 +121,7 @@ class NetServer:
         self._port = 0
         self._ws_path = "/ws"
         self._zeroconf = None
-        self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0}
+        self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0, "evicted": 0}
 
     # ---------------- registration (interfaces.NetServer) ----------------
     def hydrate(self, cb: Callable[[dict], dict | None]) -> None:
@@ -358,10 +361,20 @@ class NetServer:
         now = time.monotonic()
         for other in self._gun_holders(rec, gun_name, gun_tail):
             fresh = self._fresh(other, now)
-            if fresh and presented_key != other.node_key:
+            # A8.2 + displaced owner: the key of an owner that a keyless hello displaced while it was out of coverage
+            # is remembered on the displacer, so the returning KEYED phone wins even while the displacer is fresh.
+            proven = presented_key == other.node_key or (bool(presented_key) and presented_key in other.displaced_keys)
+            if fresh and not proven:
                 self.stats["rejected"] += 1
                 log.warning("%s for gun %s refused — node %s holds it (fresh, key not proven)", where, gun_name or gun_tail, other.node_id)
                 return other
+            if not proven:
+                # keyless displacement of a stale holder: remember its key (and the keys it displaced, so a chain of
+                # displacers still yields to the original owner). A PROVEN displacement (the owner coming back) records
+                # nothing — otherwise the displacer could use its own key to take the gun straight back.
+                rec.displaced_keys.add(other.node_key)
+                rec.displaced_keys |= other.displaced_keys
+                rec.displaced_keys.discard(rec.node_key)
             if other.ws is None:
                 continue                      # stale (or keyed) and already disconnected: nothing to displace
             self.stats["takeovers"] += 1
@@ -370,6 +383,25 @@ class NetServer:
             other.ws = None
             self._loop.create_task(self._close_quiet(old, _CLOSE_TAKEOVER, "gun taken over"))
         return None
+
+    def evict(self, node_id: str) -> bool:
+        """Operator recovery (host UI): drop a node NOW — close its socket (4000), forget its gun/player, rotate its key
+        and mark it stale so whatever it squatted on can be claimed by the next hello. Returns False for an unknown id."""
+        rec = self.nodes.get(node_id)
+        if rec is None:
+            return False
+        ws, rec.ws = rec.ws, None
+        if ws is not None and self._loop is not None:
+            self._loop.create_task(self._close_quiet(ws, _CLOSE_TAKEOVER, "evicted by operator"))
+        rec.last_seen = -1e9                      # stale immediately (finite: view() still renders an age)
+        rec.stale = True
+        rec.node_key = secrets.token_urlsafe(9)   # its old key no longer reclaims anything
+        rec.displaced_keys.clear()
+        rec.player_id = None
+        rec.gun_name = rec.gun_tail = rec.gun_fw = None
+        self.stats["evicted"] += 1
+        log.warning("node %s evicted by operator", node_id)
+        return True
 
     def _set_player(self, rec: NodeRecord, pid: str | None) -> None:
         """Keep NodeRecord.player_id truthful: one record per player (the holder check keys on it)."""
@@ -419,9 +451,11 @@ class NetServer:
             self.stats["takeovers"] += 1
             log.warning("takeover of node %s by a new socket", node_id)
             old = rec.ws
-            rec.ws = None
+            rec.ws = ws                           # own the record BEFORE awaiting: a simultaneous keyed hello then sees a live socket
             with contextlib.suppress(Exception):
                 await old.close(_CLOSE_TAKEOVER, "taken over")
+            if rec.ws is not ws:                  # …and took it over from us meanwhile
+                raise _Rejected()
         # A8 (gun): the same fresh-holder rule as bind, applied BEFORE hydrate — hydrate rebinds the
         # player to this node, so a keyless hello carrying a copied (or case/tail-varied) gun name must never reach it.
         gun0 = body.get("gun") if isinstance(body.get("gun"), dict) else {}
@@ -484,7 +518,7 @@ class NetServer:
                 self._loop.create_task(self._close_quiet(ws, _CLOSE_POLICY, "node_id changed"))
                 return
             # a second hello on a live socket: treat as a refresh (re-hydrate), not an error
-            self._loop.create_task(self._on_hello(rec.ws, env))
+            self._loop.create_task(self._rehello(rec.ws, env))
             return
         if kind == "bind":
             self._on_bind(rec, body)
@@ -531,6 +565,10 @@ class NetServer:
         # A8: the player binding is the server's (set by hydrate); a client-supplied player_id is never honoured.
         self._fire_node(rec)
 
+    async def _rehello(self, ws, env: dict) -> None:
+        with contextlib.suppress(_Rejected):
+            await self._on_hello(ws, env)
+
     async def _close_quiet(self, ws, code: int, reason: str) -> None:
         with contextlib.suppress(Exception):
             await ws.close(code, reason)
@@ -570,9 +608,12 @@ class NetServer:
             await asyncio.sleep(period)
             now = time.monotonic()
             for rec in list(self.nodes.values()):
+                age_ms = int((now - rec.last_seen) * 1000)
+                if rec.hello_ok and rec.ws is None and rec.player_id is None and age_ms > PRUNE_AFTER_MS:
+                    self.nodes.pop(rec.node_id, None)     # net.md §8: throwaway / evicted records don't accumulate
+                    continue
                 if not rec.hello_ok or rec.stale:
                     continue
-                age_ms = int((now - rec.last_seen) * 1000)
                 if age_ms >= self.stale_after_ms:
                     rec.stale = True
                     for cb in self._on_stale:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
+import { EvictButton } from '../ui/EvictButton';
 import { F, T, TAB, fmtAge, fmtClock } from '../tokens';
 import { Brackets, GhostButton, HazardButton, ScreenHeader, Seg, Tag } from '../ui';
 
@@ -22,7 +23,7 @@ export function Armed() {
     );
   }
   const tMinus = Math.max(0, st.go_live_t - serverNow());
-  const nodes = state.players.map(p => ({ p, n: st.per_node[p.player_id] }));
+  const nodes = state.players.map(p => ({ p, n: st.per_node[p.player_id], nv: state.nodes.find(x => x.player_id === p.player_id) }));
   const armed = nodes.filter(x => x.n?.arm_state === 'armed' || x.n?.arm_state === 'live').length;
   const inRange = nodes.filter(x => (x.n?.last_seen_ms ?? 1e9) < 8000).length;
   const outOfRange = nodes.length - inRange;
@@ -60,7 +61,7 @@ export function Armed() {
         </div>
       </Brackets>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 10 }}>
-        {nodes.map(({ p, n }) => {
+        {nodes.map(({ p, n, nv }) => {
           const ack = n?.arm_state === 'armed' || n?.arm_state === 'live';
           const live = n?.arm_state === 'live';
           const color = live ? T.acc : ack ? T.ok : T.warn;
@@ -77,6 +78,7 @@ export function Armed() {
                 {ack ? (stale ? `COUNTING · AUTONOMOUS · LAST SEEN ${fmtAge(n!.last_seen_ms)}` : 'COUNTING · AUTONOMOUS') : `RETRYING · LAST SEEN ${fmtAge(n?.last_seen_ms ?? 0)}`}
                 {n && !n.synced && ' · UNSYNCED'}
               </div>
+              {nv && <div style={{ display: 'flex', justifyContent: 'flex-end' }}><EvictButton nodeId={nv.node_id} /></div>}
             </div>
           );
         })}

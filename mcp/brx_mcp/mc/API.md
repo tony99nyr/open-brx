@@ -49,6 +49,7 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `PATCH /api/players/{id}` | any of `{display, team_id, voice, loadout, player_num, gun_id}` → `Player`; re-sends `assign` (and re-compiles/re-pushes `config` if already pushed) | ≤ lobby |
 | `DELETE /api/players/{id}` | → `{ok}` | ≤ lobby |
 | `POST /api/players/{id}/tryout` | `{weapon_id}` → `{ok}` (pushes `tutorial`); `DELETE` same path ends it | kit |
+| `DELETE /api/nodes/{node_id}` | → `{ok}`; operator kick: closes the node's socket (4000), unbinds its player, clears its ready/ack, rotates its key and marks it stale so the next hello for that gun (the real phone) re-hydrates. Use when a stranger squatted a live gun name before its owner's phone connected. 404 for an unknown node | any |
 | `POST /api/players/{id}/ready` | `{ready}` host override → `Player` | lobby |
 | `POST /api/lobby/push` | `{}` → `{ok, acks}`; compiles every bundle, pushes `config`; refuses if readiness has reds | lobby |
 | `POST /api/start` | `{runway_s?}` → `{match_id, go_live_t, seq}` | lobby (all acked) |

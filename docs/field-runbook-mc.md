@@ -77,8 +77,17 @@ flakes with many clients); use it only for a small game. `[UNVERIFIED]` at scale
 **Phone node checklist** (each player's phone, from `net.md §8b`; the Android app's `android-setup.sh`
 already sets the cleartext + Wi-Fi permissions and forces landscape):
 - **Join the game SSID**, and set it to **auto-join** (so a phone that drops rejoins without a human).
-- **Mobile data OFF** — otherwise the phone routes `ws://<private-ip>` over cellular and never reaches MC.
-- **Do Not Disturb ON**, auto-lock long / stay-awake — a locked screen suspends the node's timers.
+- **Mobile data: Android OFF, iOS can stay on.** The field router has no internet, so Android marks it "no
+  internet" and many phones (Samsung "switch to mobile data", Pixel adaptive connectivity) move the default route to
+  cellular — a `ws://<private-ip>` then leaves over LTE and never reaches MC. Turning mobile data off (or tapping
+  "stay connected" on the no-internet prompt) is the reliable workaround until the app binds its socket to Wi-Fi
+  (net.md §8b(d), not yet implemented). iOS routes on-link private IPs over Wi-Fi regardless; just turn **Wi-Fi
+  Assist off**.
+- **Do Not Disturb ON.** The app itself keeps the screen awake and locked to landscape while armed/live (keep-awake
+  plugin), so no auto-lock setting is needed — but **do not press the power button and do not take calls**: a locked or
+  backgrounded phone suspends the HUD's timers (iOS/Android WebViews pause JS) until the app is back in front, when it
+  reconciles (missed T-0 → late spawn, missed respawn/expiry → applied on resume). DND is what stops a call from
+  foregrounding the dialer mid-match.
 - The app talks **cleartext `ws://` to a private IP** (Android ≥9 blocks this by default; the app opts
   in via `usesCleartextTraffic`). iOS needs the ATS local-network exception (in `ios-setup.sh`).
 

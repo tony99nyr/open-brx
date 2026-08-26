@@ -456,3 +456,175 @@ def test_second_hello_with_other_node_id_on_live_socket_is_closed():
             assert "n-2" not in st.net.nodes and st.net.nodes["n-1"].ws is None
             await ws.close()
     asyncio.run(asyncio.wait_for(go(), 40))
+
+
+# ---------------------------------------------------------------- final re-check: eviction / displaced owner / empty gun name
+async def _heartbeat(ws, nid, period=0.05):
+    """A rogue socket that keeps itself fresh (status every 50 ms)."""
+    import asyncio
+    from brx_mcp.mc import envelope as E
+    while True:
+        try:
+            await ws.send(E.encode(E.make_envelope("status", {"node_id": nid, "player_id": None, "match_id": None, "hp": 45, "armor": 70,
+                                                               "ammo": 36, "alive": True, "shots": 0, "battery": 90, "arm_state": "kitted",
+                                                               "synced": True, "dropped": 0, "preflight": {}})))
+        except Exception:
+            return
+        await asyncio.sleep(period)
+
+
+def test_evicted_squatter_frees_the_gun_for_the_legit_phone():
+    """HIGH: a stranger that hellos with a live gun name BEFORE the owner's phone binds the player and, while it heartbeats,
+    the legit phone is refused. DELETE /api/nodes/{id} (Session.evict_node) must close it (4000), unbind, rotate its key
+    and let the real phone bind on its next hello."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}}}
+            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            body, code, ws = await _raw_hello(st.url, {"node_id": "squatter", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                        "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+            assert code is None and (body or {}).get("node"), "the squatter binds first (names are public)"
+            hb = asyncio.create_task(_heartbeat(ws, "squatter"))
+            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "squatter", 2)
+            # the legit phone is refused while the squatter is fresh
+            b2, c2, ws2 = await _raw_hello(st.url, {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                     "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+            assert c2 == 4003, (b2, c2)
+            await ws2.close()
+            # operator kicks the squatter
+            assert st.session.evict_node("squatter") is True
+            assert st.session.evict_node("nobody") is False
+            assert await until(lambda: ws.state.name == "CLOSED", 2)
+            assert ws.close_code == 4000
+            hb.cancel()
+            assert st.session.players[p["player_id"]]["node_id"] is None
+            assert "squatter" not in st.session.node_player and "squatter" not in st.session.nodes
+            # the real phone now binds and gets pushes
+            a = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 3)
+            assert st.net.nodes["phone-A"].player_id == p["player_id"]
+            assert st.net.stats["evicted"] == 1
+            # the squatter cannot reconnect with the key it was welcomed with and take the gun back
+            b3, c3, ws3 = await _raw_hello(st.url, {"node_id": "squatter", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                     "node_key": (body or {}).get("node_key"), "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+            assert c3 == 4003, (b3, c3)
+            await ws3.close()
+            assert a.connected and st.session.players[p["player_id"]]["node_id"] == "phone-A"
+    asyncio.run(asyncio.wait_for(go(), 40))
+
+
+def test_evict_route_is_auth_gated_and_404s_unknown():
+    if not HAVE:
+        return
+    from brx_mcp.mc.api import create_app
+    s = _sess()
+    c = TestClient(create_app(s, token="secret"))
+    assert c.delete("/api/nodes/x").status_code == 401
+    assert c.delete("/api/nodes/x?tok=secret").status_code == 404
+    s.net.simulate_hello("n1", "GUN-Z-1111")
+    assert "n1" in s.nodes
+    assert c.delete("/api/nodes/n1?tok=secret").status_code == 200
+    assert "n1" not in s.nodes
+
+
+def test_displaced_owner_returning_with_key_wins_back_its_gun():
+    """MEDIUM: a keyless hello may take a STALE owner's gun (A8.2 hot-swap) — but out of coverage is normal on a park, so the
+    owner's phone coming back WITH its key must win over the displacer even while the displacer is fresh; and the
+    displacer must not be able to use its own key to take the gun straight back."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio
+
+    async def go():
+        async with Stack(time_limit_s=60) as st:
+            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}},
+                               "GUN-B-4E60": {"gun_id": "GUN-B-4E60", "sticker": "GUN-B", "ble": {"tail": "4E60"}}}
+            p, q, a, b = await _two_live(st)
+            st.net.stale_after_ms = 400
+            a._paused = True                      # ALPHA walks out of coverage
+            await asyncio.sleep(0.8)
+            wb, code, ws = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                      "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+            assert code is None and (wb or {}).get("node"), "stale owner is displaced (hot-swap rule)"
+            hb = asyncio.create_task(_heartbeat(ws, "hijacker"))
+            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "hijacker", 2)
+            assert a.node_key in st.net.nodes["hijacker"].displaced_keys
+            # the owner comes back into coverage with its key: it wins, the hijacker is closed 4000
+            a._paused = False
+            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 4), st.session.players[p["player_id"]]
+            assert await until(lambda: ws.state.name == "CLOSED", 2)
+            assert ws.close_code == 4000
+            hb.cancel()
+            assert await until(lambda: a.connected, 2)
+            assert st.net.nodes["phone-A"].displaced_keys == set(), "a proven displacement records nothing"
+            # the hijacker's own key must NOT take the gun back while the owner is fresh
+            b2, c2, ws2 = await _raw_hello(st.url, {"node_id": "hijacker", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                     "node_key": (wb or {}).get("node_key"), "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+            assert c2 == 4003, (b2, c2)
+            await ws2.close()
+            assert st.session.players[p["player_id"]]["node_id"] == "phone-A"
+    asyncio.run(asyncio.wait_for(go(), 60))
+
+
+def test_empty_gun_name_with_a_tail_does_not_bind_a_gunless_player():
+    """MEDIUM: `hello.gun = {name: "", tail: "BEEF"}` matched a roster entry with gun_id=None ("" in ("", …))."""
+    s = _sess()
+    z = s.add_player("ZULU")                       # no gun yet
+    assert s._find_player_for_gun("", "BEEF") is None
+    assert s._find_player_for_gun("", "") is None
+    assert s._find_player_for_gun(None, "beef") is None
+    s.net.simulate_hello("rogue", "")
+    s._on_node({"node_id": "rogue", "node_type": "phone", "gun_name": "", "gun_tail": "BEEF"})
+    assert s.players[z["player_id"]]["node_id"] is None and "rogue" not in s.node_player
+    # a real gun still resolves
+    s.patch_player(z["player_id"], gun_id="GUN-Z-BEEF")
+    assert s._find_player_for_gun("GUN-Z-BEEF", "BEEF")["player_id"] == z["player_id"]
+    s.guns["GUN-Z-BEEF"] = {"gun_id": "GUN-Z-BEEF", "sticker": "GUN-Z", "ble": {"tail": "BEEF"}}
+    assert s._find_player_for_gun("gun-z-0000", "0000")["player_id"] == z["player_id"]     # base-name match via the registry
+    assert s._find_player_for_gun("", "beef")["player_id"] == z["player_id"]               # tail-only match via the registry
+
+
+def test_prune_and_rehello_rejection_are_quiet():
+    """LOW: unbound + disconnected records older than PRUNE_AFTER_MS are dropped by the stale loop; a refused re-hello on
+    a live socket never leaves an unretrieved task exception."""
+    Stack, until = _ws_stack()
+    if Stack is None:
+        return
+    import asyncio, logging
+    from brx_mcp.mc import net as N
+
+    async def go():
+        async with Stack(time_limit_s=30) as st:
+            st.session.guns = {"GUN-A-3D4F": {"gun_id": "GUN-A-3D4F", "sticker": "GUN-A", "ble": {"tail": "3D4F"}}}
+            p = st.add_player("ALPHA", "GUN-A-3D4F", team_id="blue")
+            a = await st.connect_node("GUN-A-3D4F", node_id="phone-A")
+            assert await until(lambda: st.session.players[p["player_id"]]["node_id"] == "phone-A", 3)
+            for i in range(5):
+                body, code, ws = await _raw_hello(st.url, {"node_id": f"throwaway-{i}", "node_type": "phone", "app_ver": "x", "seq_next": 1})
+                await ws.close()
+            assert await until(lambda: all(st.net.nodes[f"throwaway-{i}"].ws is None for i in range(5)), 2)
+            for i in range(5):
+                st.net.nodes[f"throwaway-{i}"].last_seen -= N.PRUNE_AFTER_MS / 1000 + 5
+            assert await until(lambda: not any(f"throwaway-{i}" in st.net.nodes for i in range(5)), 3)
+            assert "phone-A" in st.net.nodes                # bound records are never pruned
+            # re-hello on the live socket naming another player's gun → refused, socket closed, no stray task exception
+            q = st.add_player("BRAVO", "GUN-B-4E60", team_id="yellow")
+            b = await st.connect_node("GUN-B-4E60", node_id="phone-B")
+            assert await until(lambda: st.session.players[q["player_id"]]["node_id"] == "phone-B", 3)
+            stray = []
+            loop = asyncio.get_running_loop()
+            loop.set_exception_handler(lambda l, ctx: stray.append(ctx))
+            from brx_mcp.mc import envelope as E
+            await a._ws.send(E.encode(E.make_envelope("hello", {"node_id": "phone-A", "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                                                                  "node_key": a.node_key, "gun": {"name": "GUN-B-4E60", "tail": "4E60"}})))
+            await asyncio.sleep(0.5)
+            assert st.session.players[q["player_id"]]["node_id"] == "phone-B"
+            assert not stray, stray
+            loop.set_exception_handler(None)
+    asyncio.run(asyncio.wait_for(go(), 40))
