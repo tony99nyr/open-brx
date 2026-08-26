@@ -43,3 +43,9 @@ what was changed. Evidence: `app/shots/e2e/` (suite screenshots), WCAG numbers c
 ## Process
 The e2e suite (`npm run ui:e2e`) is the regression net for all of the above: it drives both UIs through
 every flow, audits animations/tap-targets/aria/console errors, and screenshots each step.
+
+## Round 3 (Tony's questions ARE findings)
+- **Kit detail panel: bare "2" chip + "FRAME PROVISIONAL"** — the operator had to ask what they mean.
+  The chip is the raw BRX `$WEAP` class id (protocol plumbing); the badge means the weapon's frame is a
+  template, not hardware-verified (only AR + Charge Rifle are). → chip becomes "CLASS n" with a tooltip;
+  badge gets a tooltip; rule: no UI element whose meaning needs the protocol doc.
