@@ -4,6 +4,8 @@ import { useStore } from '../store';
 import { CHAMFER, F, T } from '../tokens';
 import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox, onKey } from '../ui';
 
+const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
+
 export function Build() {
   const { state, modes, run, api } = useStore();
   const [extras, setExtras] = useState(false);
@@ -25,7 +27,8 @@ export function Build() {
                 <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} onClick={() => put({ ...m.defaults, config_id: cfg.config_id })} onKeyDown={onKey(() => put({ ...m.defaults, config_id: cfg.config_id }))}
                   style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : 'transparent'}`,
                     padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer', clipPath: CHAMFER.br10 }}>
-                  <StripedSlot height={76} caption="mode art"
+                  <StripedSlot height={76} caption={MODE_ART.has(m.mode) ? undefined : 'mode art'}
+                    style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
                     corner={<>
                       <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 9px' }}>{m.abbr}</span>
                       {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9}>ACTIVE</Tag></span>}

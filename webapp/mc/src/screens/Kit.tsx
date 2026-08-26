@@ -99,9 +99,9 @@ export function Kit() {
             {/* weapon hero */}
             {selWeapon && (
               <Brackets style={{ padding: 20, display: 'flex', flexWrap: 'wrap', gap: 24 }}>
-                <Slot style={{ flex: '1 1 260px', maxWidth: 340, minHeight: 150 }}
-                  corner={<span style={{ position: 'absolute', top: 8, left: 10, font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>VISUAL // PENDING</span>}>
-                  <span style={{ font: F.mono(500, 11), color: T.dim, background: T.page, padding: '4px 10px', border: `1px solid ${T.line2}` }}>weapon art — {selWeapon.name}</span>
+                <Slot style={{ flex: '1 1 260px', maxWidth: 340, minHeight: 150, background: `url(assets/weapons/${selWeapon.weapon_id}.jpg) center/cover no-repeat` }}
+                  corner={<span style={{ position: 'absolute', top: 8, left: 10, font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro, textShadow: '0 1px 6px rgba(0,0,0,.9)' }}>VISUAL</span>}>
+                  
                 </Slot>
                 <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
@@ -138,7 +138,7 @@ export function Kit() {
                   return (
                     <div key={w.weapon_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`${w.name}, ${w.cls}, magazine ${w.clip}`} onClick={() => pickWeapon(w)} onKeyDown={onKey(() => pickWeapon(w))}
                       style={{ background: on ? 'rgba(57,180,255,.08)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, padding: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7, clipPath: CHAMFER.br8, minHeight: 44 }}>
-                      <StripedSlot height={50} style={{ background: `repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)` }}
+                      <StripedSlot height={50} style={{ background: `url(assets/weapons/${w.weapon_id}.jpg) center/cover no-repeat, repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)` }}
                         corner={<span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: CLS_COLOR[w.cls] ?? T.acc }}>{w.cls}</span>} />
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
                         <span style={{ font: F.chk(700, 12), letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
