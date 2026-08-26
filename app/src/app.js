@@ -30,6 +30,7 @@ async function loadPlugins() {
     tryImport('share', () => import('@capacitor/share').then(m => ({ v: m.Share }))),
     tryImport('fs', () => import('@capacitor/filesystem').then(m => ({ v: m }))),
     tryImport('cam', () => import('@capacitor-community/camera-preview').then(m => ({ v: m.CameraPreview }))),
+    tryImport('zeroconf', () => import('capacitor-zeroconf').then(m => ({ v: m.ZeroConf }))),
   ]);
 }
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -204,6 +205,25 @@ function onForeground(fg) {
 document.addEventListener('visibilitychange', () => onForeground(document.visibilityState !== 'hidden'));
 window.addEventListener('pageshow', () => engine.resume());
 
+// ---------- MC auto-discovery (mDNS _openbrx._tcp — MC advertises, we watch) ----------
+function startDiscovery() {
+  if (!plugins.zeroconf || !isNative()) return;
+  try {
+    plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
+      try {
+        const svc = res && res.service;
+        if (!svc || (res.action !== 'resolved' && res.action !== 'added')) return;
+        const ip = (svc.ipv4Addresses && svc.ipv4Addresses[0]) || '';
+        if (!ip || !svc.port) return;
+        const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
+        const url = `ws://${ip}:${svc.port}${path}`;
+        log(`Mission Control discovered: ${url}`, 'lk');
+        if (!transport || transport.state !== 'bound') connectMc(url);
+      } catch (e) { log('discovery: ' + (e && e.message || e), 'li'); }
+    }).catch(e => log('discovery watch: ' + (e && e.message || e), 'li'));
+  } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
+}
+
 // ---------- boot ----------
 (async () => {
   await loadPlugins();
@@ -224,7 +244,10 @@ window.addEventListener('pageshow', () => engine.resume());
     try { await link.ensureInit(); log('BLE ready — Set my gun', 'lk'); } catch (e) { log('BLE init: ' + (e && e.message || e), 'le'); }
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
     if (!engine.gun) { try { await hud.h.onSetGun(); } catch (_) { /* permission denied etc. — button still works */ } }
-    if (settings.mcUrl && !engine.gun) log(`MC address remembered: ${settings.mcUrl}`);
+    // remembered address: CONNECT now — a gunless hello is fine (late-bind), and waiting for a gun left
+    // mc_reachable=false with MC right there (Tony, 2026-08-26)
+    if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
+    startDiscovery();
   }
   await refreshPreflight(); scheduleRender();
 })();

@@ -65,6 +65,11 @@ def build(args):
         async def _start_net():
             await net.start(ip, args.ws_port, "/ws")
             try:
+                if net.advertise_mdns():
+                    print("  mDNS: advertising _openbrx._tcp (phones auto-discover)")
+            except Exception as e:
+                print(f"  mDNS advertising failed ({e}) — QR/manual join still work")
+            try:
                 ji = net.join_info()
                 session.lan.update({"ws_url": ji.get("url") or ws_url, "qr": ji.get("qr") or ji.get("url") or ws_url,
                                     "session_id": ji.get("session_id")})
