@@ -1342,3 +1342,22 @@ first time (deps installed; banner prints `ws://…:0/ws` before the net server 
 node APK was built (JDK 21 at `~/jdk21`) and installed on the Pixel (`com.openbrx.companion`) but NOT yet run
 against a gun — phone-path items 4/8/13 remain. Code impact: `compile.py` cues (`game_over` → VA33, new
 `victory`, `tick`/`klaxon` given `4,6`).
+
+## 2026-08-25 (night) — first phone→MC→gun path on real hardware
+
+MC on the Windows Python (`--no-auth`), the BRX Companion APK on the Pixel, one gun (GUN-A). Proved end to end:
+the phone said hello, MC bound it to the roster player, and a **kit-out try-out pushed from MC fired the real
+gun**. Fixes found on hardware this session (all committed):
+- **Try-out couldn't fire** — `compile.tutorial_frames` deliberately dropped `$START`/`$TID`/`$SIR`; without
+  `$START` the gun spawns but the trigger only *reloads*. Added `$START` + a `$TID` (identity stays `$PSET,0`
+  so a stray hit is uncredited) + one `$SIR` row → fires. (LED still flashes in try-out — FOLLOWUPS.)
+- **BLE picker** — Android's `requestLEScan` service-filter missed a tagger whose UUID rides in the scan
+  response (GUN-A never listed); switched to name-filtering. List re-sorted on every advert (rows jumped under
+  the finger) and re-render reset scroll → stable first-seen order + scroll preserved + auto-scan on launch.
+- **MC late-roster adopt** — the phone said hello as `Tactix-XXXX` (Callsign had reset `$NAME`) *before* the
+  host added the player with the real gun_id; `_adopt_node_for_gun` now matches a live node by armory tail.
+- **§3.11 confirmed the hard way**: locking the phone, pulling the notification shade, or backgrounding the app
+  all suspend the webview JS and drop the MC socket; it reconnects within ~10 s once foreground again. The app's
+  keep-awake stops *auto*-lock only. Field rule stands: phone mounted, foreground, DND, don't lock.
+Not yet done: items 4/8/13 (soak/auto-rejoin/iOS-locked), the 5-min hold re-run, LED clean-up, headset-proof at
+push (board still amber "HEADSET UNPROVEN UNTIL CONFIG PUSH" — the push itself was next when we stopped).

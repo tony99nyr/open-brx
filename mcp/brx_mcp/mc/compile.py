@@ -178,16 +178,20 @@ class Compiler:
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
-        """§4 private try-out: one weapon, identity 0, no $START/$TID/$SIR, audible (VOL 69)."""
+        """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL 69). Needs $START + a $TID to
+        actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard."""
         outdoor = 1 if environment == "outdoor" else 0
         wid = weapon["weapon_id"]
         mag, reserve = self.catalog.spawn_ammo(wid)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
         pset = "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
         return [
-            "$VOL,69,0,*", "$CLEAR,*",
-            f"$GSET,0,{outdoor},1,0,1,0,50,1,*",   # FF off, env; NO $START
+            "$VOL,69,0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
+                                                     # spawns but the trigger only reloads, it will not fire IR
+            f"$GSET,0,{outdoor},1,0,1,0,50,1,*",   # FF off, env
             pset,
+            "$SIR,0,0,,1,0,0,1,,*",                # standard-weapon IR interpretation so a try-out shot registers
+            "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
             self.catalog.resolve(wid, 0),          # the one weapon, slot 0
             "$SPAWN,,*", "$PLAYX,0,*",              # live, then silence the spawn chirp
             f"$AMMO,0,{mag},{reserve},1,*",

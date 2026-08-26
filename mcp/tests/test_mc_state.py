@@ -137,7 +137,7 @@ def test_tryout_disabled_once_a_node_is_in_lobby():
     s, net, clock, ps = mk(1)
     online(s, net, clock, ps[0], 0)
     s.tryout(ps[0]["player_id"], "smg")
-    assert net.pushes("tutorial")[-1][2]["frames"][4].startswith("$WEAP,0,<smg>")
+    assert any(f.startswith("$WEAP,0,<smg>") for f in net.pushes("tutorial")[-1][2]["frames"])
     net.simulate_status("node0", {"player_id": ps[0]["player_id"], "arm_state": "lobby", "synced": True}, clock["t"])
     try:
         s.tryout(ps[0]["player_id"], "shotgun"); assert False

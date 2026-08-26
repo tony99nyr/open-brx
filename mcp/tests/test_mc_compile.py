@@ -129,10 +129,13 @@ def test_cues_kill_line_varies_by_voice():
 def test_tutorial_is_reduced_and_identity_zero():
     frames = C.tutorial_frames({"weapon_id": "smg", "name": "SMG", "cls": "1", "stats": {},
                                 "weap_frame": ""}, "outdoor")
-    assert not any(f.startswith("$START") or f == "$START,*" for f in frames)
-    assert not any(f.startswith("$TID") for f in frames), "tutorial writes no $TID"
-    assert not any(f.startswith("$SIR") for f in frames), "tutorial omits the $SIR table"
-    assert any(f.startswith("$PSET,0,") for f in frames), "tutorial identity is 0"
+    # bench 2026-08-25: a try-out gun must actually FIRE, which needs $START + a $TID + a $SIR row
+    # (without $START the trigger only reloads); identity 0 keeps any stray hit off the scoreboard.
+    assert "$START,*" in frames, "tutorial needs $START to fire"
+    assert any(f.startswith("$TID") for f in frames), "tutorial needs a team to spawn-to-live"
+    assert any(f.startswith("$SIR") for f in frames), "tutorial needs a $SIR row so a shot registers"
+    assert any(f.startswith("$SPAWN") for f in frames), "tutorial spawns the gun live"
+    assert any(f.startswith("$PSET,0,") for f in frames), "tutorial identity is 0 (uncredited)"
     assert "$VOL,69,0,*" in frames  # audible
     assert any(f.startswith("$WEAP,0,") for f in frames)
 

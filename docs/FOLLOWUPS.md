@@ -175,3 +175,13 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - **MC banner** prints `nodes: ws://<ip>:0/ws` before the net server binds — print after `_start_net`.
 - **Phone-path bench** (items 4/8/13 + the whole MC↔phone↔gun path) — APK is on the Pixel; MC runs on the
   Windows Python (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --no-auth`).
+
+## Phone-path bench 2026-08-25 (night)
+- **Try-out LED flashes** — the gun fires in try-out but the LEDs strobe (standby/unspawned pattern). Find the
+  LED-quieting token for the tutorial head (relates to the LED-life-mode item above).
+- **MC self-discovery on the phone** — MC advertises `_brx-mc._tcp` over mDNS; the app should auto-fill the MC
+  URL (and offer a camera QR scan) instead of manual `ws://ip:8766/ws` entry.
+- **HUD: MC-link state is too subtle** — "MC LINKED" is tiny green top-right; make link/disconnect obvious.
+- **HUD: info icon clips behind "LINKED"** on the post-connect screen (CSS alignment).
+- **Node keep-alive across shade/short-lock** — investigate a foreground-service or wake path so a brief shade
+  pull / glance doesn't drop the socket (today it recovers in ~10 s; acceptable but not ideal).
