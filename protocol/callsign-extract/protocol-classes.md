@@ -86,6 +86,8 @@ evidence. Run `python -m brx_mcp.weapmap <captures…>` to regenerate the token 
 | `S16` | **Sniper** | single shot; **bolt action** — pull back, release |
 | `S07` | **AMR** | single shot, no full auto; same bolt pair as the Sniper |
 | `G03` | **SMG** | full auto with an **overheat** mechanic (sound fires if held too long) |
+| `J15` | **Energy Launcher** | clip 1 / reserve 3 |
+| `C03` | **Rail Gun** | charges on hold, **auto-fires** after ~1 s; also fires on a tap |
 
 **`t23` = `burstWeaponTime` — CONFIRMED.** `275` on the Burst Rifle and **empty on the full-auto AR
 and on every other weapon captured**. A field that is populated on exactly the weapon whose named
@@ -96,6 +98,25 @@ behaviour it describes, and empty elsewhere, is about as clean as a positional d
 the Charge Rifle (`C15`/`C17`). The **Sniper** (`S16`) populates them too — `D20`/`D19` — matching
 the operator's description of the bolt: *pull back, then let it go*. So the pair means "a weapon
 whose action has a distinct engage and release phase", of which charging is one case.
+
+**⚠ `t14` and `t15` are SWAPPED in the field-order derivation (cap17).** The metadata order reads
+`… rateOfFire, weaponSwapDelay …`, and the 2-frame table assigned `t14` = chargeUp and `t15` =
+rateOfFire. The wire says otherwise:
+
+- **`t15` = `850` on every gun** captured (melee alone differs at `100`). A rate-of-fire identical
+  for an SMG and a sniper is meaningless — this is the **weapon-swap delay**, which *should* be
+  constant.
+- **`t14` tracks each weapon's actual cadence**: burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 ·
+  launcher 360 · shotgun 900 · melee 1000 · **rail gun 1200** · charge rifle 1250. For charge
+  weapons this *is* the charge time — the Rail Gun's 1200 ms is the ~1 s hold the operator measured
+  by feel before it auto-fired.
+
+So **`t14` = per-shot cycle/charge time (ms)** and **`t15` = weaponSwapDelay**.
+
+**The `t28`/`t29` pair is engage/release, and the Rail Gun proves it by omission.** It populates
+`t28` (`C08`) and leaves **`t29` empty** — it charges and fires *itself*, so there is no release.
+The Sniper and AMR, which the operator must release, carry both (`D20`/`D19`); the Charge Rifle
+carries both (`C15`/`C17`). A field absent exactly where the behaviour is absent is strong evidence.
 
 **`t24` = `overheat` — CONFIRMED (cap16).** `5` on the SMG (`G03`), whose named mechanic is exactly
 that, and `0` on all nine other weapons captured. **`t35` (`weaponFeatureA`) = `D11` on the SMG
