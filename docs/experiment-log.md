@@ -1361,3 +1361,15 @@ gun**. Fixes found on hardware this session (all committed):
   keep-awake stops *auto*-lock only. Field rule stands: phone mounted, foreground, DND, don't lock.
 Not yet done: items 4/8/13 (soak/auto-rejoin/iOS-locked), the 5-min hold re-run, LED clean-up, headset-proof at
 push (board still amber "HEADSET UNPROVEN UNTIL CONFIG PUSH" — the push itself was next when we stopped).
+
+## 2026-08-26 (overnight) — no-hardware fix batch for the bench punch-list (commit 23a5930)
+
+Playwright over the app's `?demo` reproduced the phone symptoms and found the umbrella root cause: the boot
+awaited Capacitor plugin PROXIES as thenables → `proxy.then()` → the await never settled → keep-awake,
+app-state listener, auto-scan, cam and demo were all dead from one line. Fixed (imports box the plugin), plus:
+GAME OVER result screen → OK → MATCH COMPLETE with localStorage match history; edge-triggered runway cues
+(the stacked "10,9,8,10…" heard on the gun) with runway_30/20 silenced until distinct lines are pinned;
+RELOAD/pips warn only when live+alive+low; CAMERA permission + webview debugging; info-button/top-right/MC-LINKED
+readability. Peer session fixed the MC banner port and wired the `victory` cue to winning nodes at recap
+(+e2e). 464/464 python, 33+8 app tests, APK reinstalled on the Pixel (it dropped off adb after — on-device
+keep-awake/cam verification is first thing next bench). Screenshots in the session scratchpad.

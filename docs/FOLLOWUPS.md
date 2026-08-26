@@ -165,14 +165,14 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - **LED life mode** — our app-derived config slow-blinks the team colour and never shows HP; native on-gun games
   reportedly show life on the LEDs. Find the `$GSET`/`$PSET`/`$GLED`/`$HLED` token that selects it.
 - **5-min hold-across-disperse** — re-run (the 2-min run passed; the 5-min run was cut by the headset event).
-- **Victory cue wiring** — `compile.py` now has `victory` (VSF+JAY) separate from `game_over` (VA33); MC should
+- ✅ BUILT (23a5930, peer session: MC pushes `victory` to the winning team's connected nodes at recap + e2e test; defeat line still unpinned) **Victory cue wiring** — `compile.py` now has `victory` (VSF+JAY) separate from `game_over` (VA33); MC should
   send `victory` to winning nodes in coverage at recap (M-MC), losers get nothing extra. Find a defeat line
   (`JAW`/`JAX` are 8-s announcer lines next to `JAY` — pin by ear).
 - **Reconnect-after-`$DISCONNECT`** — a fresh link right after the gun's own `$DISCONNECT` comes up dead
   (NUS TX char missing). Node should back off ≥5 s before reconnecting after a gun-initiated drop; log it.
 - **Node: detect a power-cycled gun** — after resync, a `$SPAWN` that echoes `$LCD,0,0,0,0,0,0` means the config
   was wiped (power-cycle): re-write the head (§3.10 "silence → re-push" gets a second, positive trigger).
-- **MC banner** prints `nodes: ws://<ip>:0/ws` before the net server binds — print after `_start_net`.
+- ✅ FIXED (23a5930, peer session) **MC banner** printed `nodes: ws://<ip>:0/ws` before the net server binds — print after `_start_net`.
 - **Phone-path bench** (items 4/8/13 + the whole MC↔phone↔gun path) — APK is on the Pixel; MC runs on the
   Windows Python (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --no-auth`).
 
@@ -181,8 +181,8 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   LED-quieting token for the tutorial head (relates to the LED-life-mode item above).
 - **MC self-discovery on the phone** — MC advertises `_brx-mc._tcp` over mDNS; the app should auto-fill the MC
   URL (and offer a camera QR scan) instead of manual `ws://ip:8766/ws` entry.
-- **HUD: MC-link state is too subtle** — "MC LINKED" is tiny green top-right; make link/disconnect obvious.
-- **HUD: info icon clips behind "LINKED"** on the post-connect screen (CSS alignment).
+- ✅ FIXED (23a5930: full-width MC LINKED ✓ chip on the connected screen) **HUD: MC-link state is too subtle** — "MC LINKED" is tiny green top-right; make link/disconnect obvious.
+- ✅ FIXED (23a5930: moved to the free corner) **HUD: info icon clips behind "LINKED"** on the post-connect screen (CSS alignment).
 - **Node keep-alive across shade/short-lock** — investigate a foreground-service or wake path so a brief shade
   pull / glance doesn't drop the socket (today it recovers in ~10 s; acceptable but not ideal).
 - **HUD weapon-select (self-serve kitting)** — let each player pick/try weapons on their own phone during KIT
@@ -193,16 +193,16 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   modes want fixed loadouts. Touches: node HUD picker + `engine`/`transport`, a NODE_KIND, contract, MC state.
 
 ## Phone HUD polish — bench 2026-08-25 (night), on-device findings (batch before next bench)
-- **Cam button dead** — `@capacitor-community/camera-preview` throws: the Android manifest has no `CAMERA`
+- ✅ FIXED (23a5930, pending device re-test) **Cam button dead** — `@capacitor-community/camera-preview` throws: the Android manifest has no `CAMERA`
   permission (only INTERNET/BT/LOCATION) and no runtime request; iOS needs `NSCameraUsageDescription`. Add both
   in `scripts/android-setup.sh` / `scripts/ios-setup.sh` + request at first toggle.
-- **RELOAD blinks constantly** — `lowMag = st.ammo/st.mag <= .15` fires in transient states; should only show
+- ✅ FIXED (23a5930) **RELOAD blinks constantly** — `lowMag = st.ammo/st.mag <= .15` fires in transient states; should only show
   when live, alive, ammo<mag, ratio<=.15 (never at spawn / on a fresh mag).
-- **Ammo pips bar bugged** — the pip strip above the weapon name shows a single yellow tick at full ammo
+- ✅ FIXED (23a5930: bigger pips + warn gating; root cause was the boot hang + warn rule) **Ammo pips bar bugged** — the pip strip above the weapon name shows a single yellow tick at full ammo
   instead of a filled magazine; `_pips()` mis-maps mag→pips (likely divides by the wrong max or fixed pip count).
 - **Top-right cluster cramped/tiny on device** — LINK + battery + CAM chip on one skewed row plus K/D/A/ACC
   reads micro on a phone; needs a responsive pass (bigger CAM target, wrap/space the row).
-- **Countdown audio bunches on the gun** — heard "10,9,8,10,3,2,1" with the last 3-2-1 together; the node's
+- ✅ FIXED (23a5930: edge-triggered cues, runway_30/20 silenced; re-verify by ear) **Countdown audio bunches on the gun** — heard "10,9,8,10,3,2,1" with the last 3-2-1 together; the node's
   runway/countdown voice cues are scheduled or written with wrong timing/duplication. Review the M-START
   countdown scheduler on the node (BLE write pacing vs tick clock).
 - (already logged: info icon clips behind "LINKED"; MC-LINKED text too subtle; MC mDNS auto-fill + QR.)
@@ -212,9 +212,24 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   overlay treatment only when CAM is on. (Design-tool pass — Tony owns the HUD visuals per the design workflow.)
 
 ## Phone HUD — end-of-match + history (bench 2026-08-25 night)
-- **No game-over / victory / defeat screen** — at match end the HUD shows nothing (no result, no stats). Want a
+- ✅ BUILT (23a5930: GAME OVER + K/D/A/ACC/shots + session totals → OK → MATCH COMPLETE; VICTORY/DEFEAT variants still need the winner reaching the node) **No game-over / victory / defeat screen** — at match end the HUD shows nothing (no result, no stats). Want a
   real end screen: VICTORY / DEFEAT / GAME OVER banner + this player's K/D/A/ACC, an **OK** button → the existing
   "MATCH COMPLETE — READY FOR NEXT" idle-between-games screen. (MC already sends `score`/recap; the node has its
   own totals.) Ties into the `victory`/`game_over` cues just pinned (VSF+JAY / VA33).
-- **Game history / running totals (nice-to-have)** — keep per-game results on the phone (localStorage) so a
+- ✅ BUILT (23a5930: localStorage per-match history, session totals on the result screen; a browsable history view is still open) **Game history / running totals (nice-to-have)** — keep per-game results on the phone (localStorage) so a
   player can see how they did each game across a session; optional lifetime totals. Node-local, no MC needed.
+
+## Night session 2026-08-25→26 — root cause worth remembering
+- **Capacitor plugin proxies are thenables-of-doom**: any promise that RESOLVES WITH a plugin proxy makes
+  `await` call `proxy.then()` (a fake native method) and NEVER SETTLES — the app's whole boot hung there on
+  device and web, silently killing keep-awake, the app-state listener, auto-scan, cam and demo mode. Rule:
+  never let a plugin object be a promise's resolution value — box it (`{v: Plugin}`). Regression canary: the
+  `?demo` page must reach phase `connected` (playwright harness in the scratchpad did this).
+- **Screen-lock answer (Tony's question)**: with the boot fixed, keep-awake holds FLAG_KEEP_SCREEN_ON → no
+  auto-lock (re-asserted on every foreground). Still IMPOSSIBLE to prevent from an app: power-button lock,
+  incoming calls, user-initiated backgrounding — webview JS suspends; engine reconciles on resume (§3.11).
+  The remaining hardening option is the Android foreground service (manifest already carries the permission)
+  plus moving T-0/respawn/expiry into native — logged above, M3-scale.
+- Verify on device next bench: KEEP_SCREEN_ON flag present (`dumpsys window`), cam permission prompt + preview,
+  countdown by ear (single count, no stacking), result screen after a real match. Webview devtools now
+  enabled in debug builds (`webContentsDebuggingEnabled`) — `adb forward tcp:9224 localabstract:webview_devtools_remote_<pid>`.

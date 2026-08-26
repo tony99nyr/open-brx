@@ -806,7 +806,8 @@ class Session:
                 continue
             won = (wt is not None and p.get("team_id") == wt) or (wp is not None and p["player_id"] == wp)
             if won:
-                self._feedback(p["player_id"], {"kind": "victory", "t": self.now_ms()})
+                # feedback.player_id is required by the envelope contract (contracts §5)
+                self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
     def _finish(self):
         self.last_recap = self.scorer.recap() if self.scorer else None
