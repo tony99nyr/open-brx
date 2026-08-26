@@ -295,3 +295,19 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
 - **Fleet ops rule: POWER-REST the guns.** Two "screamer" failures on day-long-powered taggers
   (2026-08-26): advertise-but-won't-link / connect-then-drop. Rotate power between sessions; never
   bench-marathon a match-day fleet.
+
+## polish-loop 2026-08-26 deferred lows (noted, not fixed — pick freely)
+
+Code: api.py range_verdict 500s (not 400) on malformed JSON + verdicts jsonl unbounded/full-rescan
+per GET; CORS `*` + `--no-auth` admits internet-origin pages in a LAN browser (moot with auth on);
+compile t17==2×t40 silently floors odd reserves + the override _NAMED set permits ammo tokens that
+would break the invariant; restore_snapshot trusts file player_nums until next config change;
+zeroconf executor thread survives the 6s timeout (registers late); app onReconnectMc no-ops after a
+discovery-only connect; allowAssist never resets after bind (transient two-MC steal possible,
+never persisted); Kit registry fetched once (no refresh after later scans) + `v as never` cast;
+parseMcQr gives no "not an MC code" feedback + rejects uppercase WS://; JoinPanel renders the
+GET-THE-APP header with no QR when lan.ip is missing; NEW MATCH button not disabled in-flight;
+u9_pickup/quick_victim lack the try/finally disconnect wrap; hoist shared PSET/SIR/AR frames + a
+connect-finally helper into mcp/tools/bench_common.py (7-file copy-paste drift).
+Docs: FOLLOWUPS/HANDOFF header dates stale; U7 cites closed P10; Energy-Launcher O-family audition
+alternates (O05/O02/O04/O06/O03) live only in weapon-design §3.2 prose.
