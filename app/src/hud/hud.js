@@ -46,7 +46,7 @@ export class Hud {
   render(st) {
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
-    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon,
+    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
@@ -69,7 +69,7 @@ export class Hud {
     switch (st.phase) {
       case 'idle': return this._idle(st);
       case 'connected': return this._lobby(st, 'connected');
-      case 'kitted': return this._lobby(st, st.ended ? 'over' : 'kitted');
+      case 'kitted': return st.ended && !st.endAck ? this._result(st) : this._lobby(st, st.ended ? 'over' : 'kitted');
       case 'lobby': return this._lobby(st, 'lobby');
       case 'armed': return '';
       case 'live': return this._live(st);
@@ -102,7 +102,9 @@ export class Hud {
         <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">${st.maxHp}</span> · <span style="color:var(--armor)">${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div></div>` : '';
     let foot, status;
     if (mode === 'connected') {
-      foot = `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><div class="note">Waiting for kit-out from Mission Control. Scan the QR on the MC screen or type its address.</div>`;
+      foot = st.wsState === 'bound'
+        ? `<div class="mclinked"><span class="unskew">MC LINKED ✓ — WAITING FOR KIT-OUT</span></div><div class="note">Mission Control has this gun. Your callsign and loadout arrive with the kit.</div>`
+        : `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><div class="note">Waiting for kit-out from Mission Control. Scan the QR on the MC screen or type its address.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'kitted') {
       foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
@@ -119,9 +121,29 @@ export class Hud {
       <div class="tr">${status}</div><div class="foot">${foot}</div></div>`;
   }
 
+  /** End-of-match result: banner + this player's line, OK -> the 'over' screen (bench request 2026-08-25). */
+  _result(st) {
+    const v = (x, suf = '') => x == null ? '—' : x + suf;
+    const hist = this.history || [];
+    const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
+    const sess = tot.g > 1 ? `<div class="sess">TONIGHT · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
+    return `<div class="lobby result"><div class="scan"></div><div class="edgeglow"></div>
+      <div class="banner"><span class="unskew">GAME OVER</span></div>
+      <div class="rstats">
+        <div class="cell"><b>${v(st.kills)}</b><span>KILLS${st.kills != null ? ' ✓MC' : ''}</span></div>
+        <div class="cell"><b>${v(st.deaths)}</b><span>DEATHS</span></div>
+        <div class="cell"><b>${v(st.assists)}</b><span>ASSISTS</span></div>
+        <div class="cell"><b>${v(st.accuracy == null ? null : Math.round(st.accuracy * 100), '%')}</b><span>ACCURACY</span></div>
+        <div class="cell"><b>${st.shots != null ? st.shots : '—'}</b><span>SHOTS</span></div>
+      </div>${sess}
+      <div class="foot"><button class="ready" data-act="onEndOk"><span class="unskew">OK</span></button>
+      <div class="note">Scores reconcile at Mission Control when you're back in range.</div></div></div>`;
+  }
+
   _live(st) {
     const low = st.hp <= st.maxHp * .25 && st.alive;
-    const lowMag = st.mag ? st.ammo / st.mag <= .15 : false;
+    // only nag when genuinely low: live+alive, mag known, not a fresh mag (it blinked constantly on the bench)
+    const lowMag = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
     const [nm] = splitGun(st.gun);
     const stat = (k, v, mc) => `<span>${k} <b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b>${mc && v != null ? '<b class="mc"> ✓MC</b>' : ''}</span>`;
     const kb = st.killedBy ? `` : '';
@@ -147,7 +169,7 @@ export class Hud {
   _pips(st) {
     const n = 12, mag = st.mag || Math.max(st.ammo, 1);
     const lit = Math.round(n * Math.min(1, st.ammo / mag));
-    const warn = st.mag ? st.ammo / st.mag <= .15 : false;
+    const warn = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
     let s = ''; for (let i = 0; i < n; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;
     return s;
   }

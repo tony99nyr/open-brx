@@ -2,5 +2,8 @@
   "appId": "com.openbrx.companion",
   "appName": "BRX Companion",
   "webDir": "www",
-  "android": { "allowMixedContent": true }
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": true
+  }
 }

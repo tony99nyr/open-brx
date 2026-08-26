@@ -793,8 +793,24 @@ class Session:
         self._changed()
         return {"ok": True}
 
+    def _push_victory(self, recap: dict | None) -> None:
+        """At recap, the WINNING team's (or FFA winner's) connected nodes get the `victory` cue; losers
+        get nothing extra. In-coverage only — a dispersed node just played its neutral `game_over` on its
+        own timer. A6-shaped: `_feedback` attaches the pre-composed `$PLAY,VSF,4,6,JAY` frame from the bundle."""
+        w = (recap or {}).get("winner") or {}
+        wt, wp = w.get("team_id"), w.get("player_id")
+        if wt is None and wp is None:
+            return
+        for p in self.players.values():
+            if not p.get("node_id"):
+                continue
+            won = (wt is not None and p.get("team_id") == wt) or (wp is not None and p["player_id"] == wp)
+            if won:
+                self._feedback(p["player_id"], {"kind": "victory", "t": self.now_ms()})
+
     def _finish(self):
         self.last_recap = self.scorer.recap() if self.scorer else None
+        self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         if self.store and self.start_info and self.last_recap:
             try:
                 self.store.match_ended(self.start_info["match_id"], self.last_recap)

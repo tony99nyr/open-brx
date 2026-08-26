@@ -210,3 +210,11 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   edge glow, thin skewed chips). With no camera behind it, that reads cramped/hard. Want a distinct **no-cam
   layout**: drop the overlay scrims, use the full screen for big readable HP/ammo/clock/K-D, and switch to the
   overlay treatment only when CAM is on. (Design-tool pass — Tony owns the HUD visuals per the design workflow.)
+
+## Phone HUD — end-of-match + history (bench 2026-08-25 night)
+- **No game-over / victory / defeat screen** — at match end the HUD shows nothing (no result, no stats). Want a
+  real end screen: VICTORY / DEFEAT / GAME OVER banner + this player's K/D/A/ACC, an **OK** button → the existing
+  "MATCH COMPLETE — READY FOR NEXT" idle-between-games screen. (MC already sends `score`/recap; the node has its
+  own totals.) Ties into the `victory`/`game_over` cues just pinned (VSF+JAY / VA33).
+- **Game history / running totals (nice-to-have)** — keep per-game results on the phone (localStorage) so a
+  player can see how they did each game across a session; optional lifetime totals. Node-local, no MC needed.

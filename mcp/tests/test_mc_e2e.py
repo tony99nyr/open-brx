@@ -167,6 +167,31 @@ async def _kill(s, killer, victim_node):
         victim_node.take_hit(_num(killer), _tid(s, killer), dmg=40)
 
 
+def _got_cue(node, kind):
+    return any(e.get("kind") == "feedback" and (e.get("body") or {}).get("kind") == kind
+               for e in node.received)
+
+
+# ------------------------------------------------ victory cue → winning team only (at recap)
+def test_victory_cue_to_winning_team_only():
+    if not HAVE_WS:
+        return skip("victory")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)      # a=blue, b=yellow
+            await _kill(s, a, nb)                    # blue draws first blood → blue wins on end
+            assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) >= 1)
+            s.session.control("end")
+            r = s.session.recap()
+            assert r["winner"].get("team_id") == a["team_id"], f"blue should win: {r['winner']}"
+            # the WINNER's node gets the victory cue; the LOSER's does not
+            assert await until(lambda: _got_cue(na, "victory"), 5.0), "winning node receives the victory cue"
+            await until(lambda: False, timeout=0.4)   # give any stray push time to (not) arrive
+            assert not _got_cue(nb, "victory"), "losing node must NOT get the victory cue"
+    run(go())
+
+
 # ------------------------------------------------ (e) post-end parking (validates C1 end-freeze)
 def test_post_end_parking_does_not_move_the_winner():
     if not HAVE_WS:

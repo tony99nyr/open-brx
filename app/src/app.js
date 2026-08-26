@@ -15,17 +15,21 @@ function log(msg, cls = 'li') { const t = new Date().toISOString().substr(11, 8)
 // ---------- Capacitor plugins (all guarded: the web build must run in a desktop browser) ----------
 const plugins = {};
 async function loadPlugins() {
-  const tryImport = async (name, fn) => { try { plugins[name] = await fn(); } catch (e) { log(`plugin ${name} unavailable: ${e && e.message || e}`, 'li'); } };
+  // Capacitor plugin objects are PROXIES that intercept every property — including `.then`. If a promise
+  // resolves WITH the proxy, `await` adopts it as a thenable, calls proxy.then() (a fake native method), and
+  // the await never settles: the whole boot hung here on device AND web (found 2026-08-25 via playwright —
+  // keep-awake/app-listener/auto-scan/demo all dead). So every import BOXES the plugin: resolve {v: Plugin}.
+  const tryImport = async (name, fn) => { try { plugins[name] = (await fn()).v; } catch (e) { log(`plugin ${name} unavailable: ${e && e.message || e}`, 'li'); } };
   await Promise.all([
-    tryImport('keepAwake', () => import('@capacitor-community/keep-awake').then(m => m.KeepAwake)),
-    tryImport('orientation', () => import('@capacitor/screen-orientation').then(m => m.ScreenOrientation)),
-    tryImport('haptics', () => import('@capacitor/haptics').then(m => m)),
-    tryImport('device', () => import('@capacitor/device').then(m => m.Device)),
-    tryImport('network', () => import('@capacitor/network').then(m => m.Network)),
-    tryImport('app', () => import('@capacitor/app').then(m => m.App)),
-    tryImport('share', () => import('@capacitor/share').then(m => m.Share)),
-    tryImport('fs', () => import('@capacitor/filesystem').then(m => m)),
-    tryImport('cam', () => import('@capacitor-community/camera-preview').then(m => m.CameraPreview)),
+    tryImport('keepAwake', () => import('@capacitor-community/keep-awake').then(m => ({ v: m.KeepAwake }))),
+    tryImport('orientation', () => import('@capacitor/screen-orientation').then(m => ({ v: m.ScreenOrientation }))),
+    tryImport('haptics', () => import('@capacitor/haptics').then(m => ({ v: m }))),
+    tryImport('device', () => import('@capacitor/device').then(m => ({ v: m.Device }))),
+    tryImport('network', () => import('@capacitor/network').then(m => ({ v: m.Network }))),
+    tryImport('app', () => import('@capacitor/app').then(m => ({ v: m.App }))),
+    tryImport('share', () => import('@capacitor/share').then(m => ({ v: m.Share }))),
+    tryImport('fs', () => import('@capacitor/filesystem').then(m => ({ v: m }))),
+    tryImport('cam', () => import('@capacitor-community/camera-preview').then(m => ({ v: m.CameraPreview }))),
   ]);
 }
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -75,6 +79,9 @@ const engine = new Engine({
 });
 engine.night = settings.night;
 hud.mcUrl = settings.mcUrl;
+// per-match history (bench request 2026-08-25): node-local, survives restarts, capped
+try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }
+engine.onEnd = (g) => { try { const h = hud.history || []; h.push(g); while (h.length > 50) h.shift(); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };
 
 // preflight (contracts A4.9)
 const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cellular_off: true, dnd_on: false, phone_batt: null, screen_on: true, foreground: true, gun_linked: false, headset_ok: false };
@@ -143,6 +150,7 @@ Object.assign(hud.h, {
   onCloseDiag: () => hud.toggleDiag(),
   onReconnectGun: () => { if (link.deviceId) link._reconnect(); },
   onReconnectMc: () => connectMc(settings.mcUrl),
+  onEndOk: () => { engine.ackEnd(); },
   onPanic: () => { if (confirm('PANIC: clear the gun now?')) engine.control({ cmd: 'panic' }); },
   onShareLog: async () => {
     const text = logLines.join('\n') + '\n' + JSON.stringify(engine.state());
@@ -174,7 +182,7 @@ setInterval(refreshPreflight, 5000);
 function onForeground(fg) {
   preflight.foreground = fg; preflight.screen_on = fg;
   if (transport) { transport.setPreflight(preflight); if (!fg) transport.status(engine.statusBody(preflight)); }   // one immediate status on background (§3.11)
-  if (fg) engine.resume();
+  if (fg) { engine.resume(); keepAwake(true); }
 }
 document.addEventListener('visibilitychange', () => onForeground(document.visibilityState !== 'hidden'));
 window.addEventListener('pageshow', () => engine.resume());

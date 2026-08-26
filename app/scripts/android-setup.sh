@@ -65,6 +65,8 @@ BLOCK = (
     '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />\n'
     '    <!-- TODO node.md §3.11: the keep-alive foreground service (foregroundServiceType="connectedDevice") is not built yet; keep-awake covers screen-on only -->\n'
     '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
+    # camera look-through (@capacitor-community/camera-preview) — without this the CAM button is dead (bench 2026-08-25)
+    '    <uses-permission android:name="android.permission.CAMERA" />\n'
 )
 
 # 2b) allow cleartext ws:// to the private LAN (API 28+ blocks it by default). Capacitor's
@@ -75,6 +77,9 @@ if 'android:usesCleartextTraffic' not in s:
 # 2c) landscape-only, rail-mounted: force it on the main activity.
 if 'android:screenOrientation' not in s:
     s = re.sub(r'(<activity\b)', r'\1 android:screenOrientation="landscape"', s, count=1)
+# camera permission may be missing from a manifest written by an OLDER setup run (marker present, no CAMERA)
+if 'android.permission.CAMERA' not in s:
+    s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.CAMERA" />\n</manifest>')
 if MARKER not in s:
     # place right before the closing </manifest>
     s = s.replace("</manifest>", BLOCK + "</manifest>", 1)

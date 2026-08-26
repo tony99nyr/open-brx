@@ -211,8 +211,8 @@ class Compiler:
             "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
             "multi":     "$PLAY,,4,6,VA46,,,,*",          # provisional (nRF-native is silent over BLE)
             "medal":     f"$PLAY,,4,6,{kill},,,,*",       # provisional (reuse kill line until pinned)
-            "runway_30": "$PLAY,,4,6,VA85,,,,*",          # provisional runway voice
-            "runway_20": "$PLAY,,4,6,VA85,,,,*",          # provisional
+            "runway_30": "",                              # SILENT for now — VA85 at 30 AND 20 AND 10 stacked the same counting track (bench 2026-08-25); pin distinct lines by ear
+            "runway_20": "",                              # SILENT (see runway_30)
             "runway_10": "$PLAY,,4,6,VA85,,,,*",          # provisional
         }
 

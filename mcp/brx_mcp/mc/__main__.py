@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import logging
 import secrets
 import socket
@@ -70,6 +71,9 @@ def build(args):
             except Exception as e:  # pragma: no cover
                 log.warning("join_info: %s", e)
             log.info("net: listening on %s", session.lan["ws_url"])
+            # print the nodes line HERE (not in the pre-loop banner) so the REAL bound port shows —
+            # the banner renders before this async bind, when the port is still 0/unbound.
+            print(f"  nodes: {session.lan['ws_url']}   (scan the join QR / enter this URL on each phone)", flush=True)
         extra.append(_start_net)
     else:
         net.start(ip, args.ws_port, "/ws")
@@ -111,7 +115,10 @@ def main(argv=None):
     ip = session.lan["ip"]
     url = f"http://{ip}:{args.port}/" + (f"#tok={token}" if token else "")
     print(f"Mission Control  {url}", flush=True)
-    print(f"  nodes: {session.lan.get('ws_url') or 'ws://'+ip+':'+str(args.ws_port)+'/ws'}", flush=True)
+    if not inspect.iscoroutinefunction(getattr(net, "start", None)):
+        # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes
+        # line from _start_net once it binds (avoids the stale ws://<ip>:0 placeholder before the bind).
+        print(f"  nodes: {session.lan.get('ws_url') or 'ws://'+ip+':'+str(args.ws_port)+'/ws'}", flush=True)
     if token:
         print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)", flush=True)
     else:

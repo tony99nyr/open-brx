@@ -81,6 +81,8 @@ export class Engine {
     this.activeSlot = 0;
     this.magBySlot = {};
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
+    this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
+    this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.configPending = false;     // config arrived while the gun was unlinked → write head on relink
     this.pendingTeardown = null;    // 'end' | 'panic' owed to the gun once it relinks
   }
@@ -263,6 +265,7 @@ export class Engine {
     this._panicked = null;
     if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
     this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
+    this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed') this._set('armed');
     this._save();
@@ -307,9 +310,15 @@ export class Engine {
     this._checkEcho();
     if (this.phase === 'armed' && this.start) {
       const rem = this.goLiveT - now;
-      if (rem <= 30000) this._cue('runway_30');
-      if (rem <= 20000) this._cue('runway_20');
-      if (rem <= 10000) this._cue('runway_10');
+      // Runway cues are EDGE-triggered: fire only when crossing the threshold from above. With a runway shorter
+      // than a threshold the stale cue is skipped — firing them all at arm time stacked three copies of the
+      // counting track on the gun ("10, 9, 8, 10, …", bench 2026-08-25).
+      const prevRem = this._prevRem != null ? this._prevRem : rem;
+      this._prevRem = rem;
+      const edge = (ms) => prevRem > ms && rem <= ms;
+      if (edge(30000)) this._cue('runway_30');
+      if (edge(20000)) this._cue('runway_20');
+      if (edge(10000)) this._cue('runway_10');
       if (rem <= 9000 && rem > 3000) { const s = Math.ceil(rem / 1000); const k = `tick${s}`; if (!this.cuesFired.has(k) && this.frames && this.frames.cues && this.frames.cues.tick) { this.cuesFired.add(k); this._write([this.frames.cues.tick], 'tick'); } }
       if (rem <= 3000) this._cue('countdown');
       // Hold-across-disperse is bench-UNVERIFIED (start-sequence §3 / checklist NEXT #1): if the gun drops its
@@ -342,7 +351,10 @@ export class Engine {
 
   _endLocal(why) {
     if (this.ended) return;
-    this.ended = true; this._panicked = null;
+    this.ended = true; this._panicked = null; this.endAck = false;
+    try { if (this.onEnd) this.onEnd({ t: this.now(), match_id: this.matchId, kills: this.score ? this.score.kills : null,
+      deaths: this.deaths, assists: this.score ? this.score.assists : null,
+      accuracy: this.score ? this.score.accuracy : null, shots: this.shots, mode: this.config ? this.config.mode : null }); } catch (_) { /* history is best-effort */ }
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.resync = null; this.start = null; this._resyncRevive = false;
@@ -350,6 +362,9 @@ export class Engine {
     this._set('kitted');
     this.log(`match ended: ${why}`, 'lk');
   }
+
+  /** Player tapped OK on the result screen → fall through to the 'MATCH COMPLETE' over screen. */
+  ackEnd() { if (this.ended) { this.endAck = true; this._changed(); } }
 
   _writeTeardown(kind, why) {
     if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
@@ -577,7 +592,7 @@ export class Engine {
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
-      moment: this.moment, ended: this.ended, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
+      moment: this.moment, ended: this.ended, endAck: this.endAck, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
     };
   }

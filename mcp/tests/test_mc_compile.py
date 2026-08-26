@@ -118,7 +118,9 @@ def test_cues_are_full_play_frames():
     cues = C.cues("male")
     assert cues["countdown"] == "$PLAY,VA81,4,6,,,,,*"
     assert cues["kill"] == "$PLAY,,4,6,VAA,,,,*"
-    assert all(v.startswith("$PLAY") for v in cues.values())
+    # a cue may be "" = deliberately silent (runway_30/20 until distinct lines are pinned — bench 2026-08-25)
+    assert all(v.startswith("$PLAY") for v in cues.values() if v)
+    assert cues["runway_10"].startswith("$PLAY"), "the T-10 count stays audible"
 
 
 def test_cues_kill_line_varies_by_voice():

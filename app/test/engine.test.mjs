@@ -400,3 +400,24 @@ test('KITTED + match over + BLE relink does not re-write the head or clear the m
   assert.ok(!h.writes.slice(before).includes('$START,*'), 'no head re-write over the match-over screen');
   assert.ok(h.eng.ended, 'still ended');
 });
+
+test('runway cues are edge-triggered: stale thresholds never fire, crossed ones fire once', () => {
+  // 9 s runway: every runway threshold (30/20/10 s) is already below — NONE may fire (they stacked on the bench).
+  const a = harness().kit().config_();
+  a.adv(1600); a.echo(); a.eng.tick(); a.writes.length = 0;
+  a.start(9000); a.eng.tick();
+  a.adv(5000); a.eng.tick(); a.adv(3000); a.eng.tick();
+  assert.equal(a.writes.filter(f => f.includes('VA85')).length, 0, 'no VA85 with a 9 s runway');
+  assert.ok(!a.eng.cuesFired.has('runway_30') && !a.eng.cuesFired.has('runway_20') && !a.eng.cuesFired.has('runway_10'));
+  // 35 s runway: each threshold fires exactly once as it is crossed from above.
+  const b = harness().kit().config_();
+  b.adv(1600); b.echo(); b.eng.tick();
+  b.start(35000); b.eng.tick();
+  assert.ok(!b.eng.cuesFired.has('runway_30'), 'nothing at T-35');
+  b.adv(6000); b.eng.tick();   // T-29
+  assert.ok(b.eng.cuesFired.has('runway_30') && !b.eng.cuesFired.has('runway_20'));
+  b.adv(10000); b.eng.tick();  // T-19
+  assert.ok(b.eng.cuesFired.has('runway_20') && !b.eng.cuesFired.has('runway_10'));
+  b.adv(10000); b.eng.tick();  // T-9
+  assert.ok(b.eng.cuesFired.has('runway_10'));
+});
