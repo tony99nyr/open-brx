@@ -482,8 +482,10 @@ class Session:
                 return p
             if gid in {x for x in (base, full) if x}:
                 return p
-            if tail and gid == tail:          # device-first claim: gun_id may be just the tail
-                return p
+        for p in self.players.values():
+            gid = (p.get("gun_id") or "").lower()
+            if gid and tail and gid == tail:  # device-first claim: gun_id may be just the tail —
+                return p                      # SECOND pass: an exact registry match always wins first
         return None
 
     def _adopt_node_for_gun(self, p: Player):
