@@ -597,6 +597,12 @@ await step('designer-controls: templates, class chips, tiles, who-picks, slot OF
   await until(async () => /13 OF 18/.test(await pSum()), 4000, 'HEAVY chip off → 13 of 18');
   await prim.locator('button[aria-label^="Assault Rifle"]').click();                          // one tile off
   await until(async () => /12 OF 18/.test(await pSum()), 4000, 'tile off → 12 of 18');
+  expect((await prim.locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not shown as off');
+  expect((await prim.locator('button[aria-label="Rail Gun, off"]').count()) === 1, 'rail gun not shown as off under HEAVY-off');
+  await prim.locator('button[aria-label="Rail Gun, off"]').click();                           // allow one heavy through the chip
+  await until(async () => /13 OF 18/.test(await pSum()) && (await prim.locator('button[aria-label="Rail Gun, allowed"]').count()) === 1, 4000, 'rail gun allowed through the chip → 13 of 18');
+  await prim.locator('button[aria-label="Rail Gun, allowed"]').click();
+  await until(async () => /12 OF 18/.test(await pSum()), 4000, 'and off again → 12 of 18');
   await prim.locator('button:has-text("FIXED")').click();                                     // who picks: FIXED → single-select
   await prim.locator('button[aria-label^="SMG"]').click();
   await until(async () => /EVERYONE GETS SMG/.test(await pSum()), 4000, 'FIXED + tap SMG → everyone gets SMG');
@@ -642,12 +648,21 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await until(async () => (await pg.locator('text=PREDATES THIS UI').count()) > 0, 6000, 'the "server predates this UI" banner');
   await until(async () => (await pg.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES rendered');
   await pg.click('button[aria-label="create a game"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (create)');
-  await until(async () => (await pg.locator('text=CAN\'T PREVIEW THESE RULES').count()) > 0, 6000, 'designer says the server cannot preview');
+  await until(async () => (await pg.locator('text=RULES PREVIEW LOCALLY').count()) > 0, 6000, 'designer says the server cannot preview');
   await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');   // templates are client-side: must work here too
   await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'template applies against a stale server');
   await pg.click('button[title="Everything, players pick both slots"]');
-  await until(async () => /18 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'pool falls back to all-allowed, tiles not dimmed');
-  expect((await pg.locator('[aria-label="primary slot rules"] button[disabled]').count()) === 0, 'tiles disabled against a stale server');
+  await until(async () => /18 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'OPEN → 18 of 18 (pool computed locally)');
+  // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
+  const prim = pg.locator('[aria-label="primary slot rules"]');
+  await prim.locator('button:has-text("HEAVY")').first().click();
+  await until(async () => /13 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'HEAVY chip off → 13 of 18 against a stale server');
+  expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile not shown as off');
+  await prim.locator('button[aria-label^="Assault Rifle"]').click();
+  await until(async () => /12 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'tile tap → 12 of 18 against a stale server');
+  await prim.locator('button[aria-label="Rocket Launcher, off"]').click();   // a tag-excluded tile is still tappable: allow just this one
+  await until(async () => /13 OF 18/.test(await pg.getByTestId('primary-summary').textContent()) && (await prim.locator('button[aria-label="Rocket Launcher, allowed"]').count()) === 1, 4000, 'allowing one heavy through the chip');
+  expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
   await pg.click('button:has-text("◂ BACK TO GAMES")'); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
   await nav(2); await noCrash('KIT'); await nav(3); await noCrash('LOBBY'); await nav(0); await noCrash('ARMORY');
   await pg.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-compat-older-server.png`) });

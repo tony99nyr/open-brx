@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
-import { TEMPLATE_RULES, gameSig, rulesLine, withPolicy } from './gameSummary';
+import { TEMPLATE_RULES, computePool, gameSig, rulesLine, withPolicy } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -38,11 +38,13 @@ export function Designer() {
   const [cfg, setCfg] = useState<GameConfig | null>(() => initial);   // the seed is fixed for the page's lifetime
   const [name, setName] = useState(seed?.game?.name && !seed.game.builtin ? seed.game.name : seed?.game?.builtin ? `${seed.game.name} (mine)` : '');
   const [desc, setDesc] = useState(seed?.game?.desc ?? '');
-  const [pool, setPool] = useState<LoadoutPool | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [previewOff, setPreviewOff] = useState(false);   // the server has no pool preview (older MC) — counts are "all allowed"
 
-  // pool preview for the DRAFT policy — server rule engine, debounced; the server also re-derives the preset name
+  // The pool is computed HERE from the rules being edited — every chip/tile/who-picks change shows instantly and needs
+  // no server. (Tony, round 8: a server-only preview with an "all allowed" fallback made HEAVY-off and tile taps do
+  // nothing visible.) The server preview only re-derives the preset name (OPEN / NO HEAVIES / … / CUSTOM).
+  const pool: LoadoutPool | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg?.loadout_policy, weapons, perks]);
   const tick = useRef(0);
   useEffect(() => {
     if (!cfg?.loadout_policy) return;
@@ -50,17 +52,12 @@ export function Designer() {
     const h = setTimeout(() => {
       api.previewPool(cfg.loadout_policy, cfg.mode).then(r => {
         if (my !== tick.current) return;
-        setPool(r.pool);
+        setPreviewOff(false);
         if (r.policy.preset !== cfg.loadout_policy.preset) setCfg(c => c ? { ...c, loadout_policy: { ...c.loadout_policy, preset: r.policy.preset } } : c);
-      }).catch(() => {
-        // no preview route (older MC): show everything allowed rather than a page of dimmed tiles — and SAY so
-        if (my !== tick.current) return;
-        setPreviewOff(true);
-        setPool({ primary: weapons.map(w => w.weapon_id), secondary_weapons: weapons.map(w => w.weapon_id), secondary_perks: perks.map(k => k.perk_id) });
-      });
-    }, 120);
+      }).catch(() => { if (my === tick.current) setPreviewOff(true); });
+    }, 150);
     return () => clearTimeout(h);
-  }, [cfg?.loadout_policy, cfg?.mode, api, weapons, perks]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg?.loadout_policy, cfg?.mode, api]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!state || !cfg) return null;
   const mode = modes.find(m => m.mode === cfg.mode);
@@ -138,7 +135,7 @@ export function Designer() {
           {/* 3 LOADOUT */}
           <section>
             <SectionRule label="3 // LOADOUT — WHO CARRIES WHAT" hint={<span style={{ color: PERK_COLOR }}>{pol.preset === 'custom' ? 'CUSTOM RULES' : TEMPLATES.find(t => t.value === pol.preset)?.label}</span>} style={{ marginBottom: 12 }} />
-            {previewOff && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER CAN'T PREVIEW THESE RULES (IT PREDATES THIS UI) — COUNTS SHOW EVERYTHING ALLOWED. RESTART THE SERVER.</div>}
+            {previewOff && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER PREDATES THIS UI — RULES PREVIEW LOCALLY BUT SAVE / PLAY WILL FAIL UNTIL YOU RESTART IT.</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <span style={{ font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim }}>START FROM</span>
               <span role="group" aria-label="loadout template" style={{ display: 'flex', gap: 4 }}>
@@ -241,14 +238,19 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
           {weapons.map(w => {
             const inPool = allowedW.includes(w.weapon_id);
             const byId = rule.exclude_ids.includes(w.weapon_id);
-            const byTag = !inPool && !byId && !fixed;
+            const byTag = !inPool && !byId && !fixed;   // off because of a class chip
             const on = fixed ? rule.fixed_id === w.weapon_id : inPool;
             const role = roleOf(w.role, w.cls);
-            const tip = fixed ? 'Tap to make this the fixed weapon' : byTag ? 'Off by a class chip above' : byId ? 'Off — tap to allow' : 'Allowed — tap to switch off';
+            const tip = fixed ? 'Tap to make this the fixed weapon' : byTag ? `Off by the ${role.label || 'class'} chip — tap to allow just this one` : byId ? 'Off — tap to allow' : 'Allowed — tap to switch off';
+            // a tag-excluded tile is still tappable: allowing it lifts the class exclusion and switches the rest of that class off by id
+            const allowThroughTag = () => {
+              const mates = weapons.filter(x => x.weapon_id !== w.weapon_id && (x.tags ?? []).some(t => (w.tags ?? []).includes(t) && rule.exclude_tags.includes(t))).map(x => x.weapon_id);
+              onRule({ exclude_tags: rule.exclude_tags.filter(t => !(w.tags ?? []).includes(t)), exclude_ids: Array.from(new Set([...rule.exclude_ids.filter(id => id !== w.weapon_id), ...mates])) });
+            };
             return (
-              <button key={w.weapon_id} type="button" aria-pressed={on} disabled={byTag} title={tip} aria-label={`${w.name}${on ? ', allowed' : ', off'}`} className={byTag ? undefined : 'hov-acc'}
-                onClick={() => fixed ? onRule({ fixed_id: w.weapon_id }) : onRule({ exclude_ids: toggle(rule.exclude_ids, w.weapon_id) })}
-                style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 4, padding: 5, textAlign: 'left', cursor: byTag ? 'not-allowed' : 'pointer', background: on ? (fixed ? 'rgba(57,180,255,.1)' : T.panel) : T.panelDeep, border: `1px solid ${on ? (fixed ? T.acc : T.line2) : T.line}`, minHeight: 44 }}>
+              <button key={w.weapon_id} type="button" aria-pressed={on} title={tip} aria-label={`${w.name}${on ? ', allowed' : ', off'}`} className="hov-acc"
+                onClick={() => fixed ? onRule({ fixed_id: w.weapon_id }) : byTag ? allowThroughTag() : onRule({ exclude_ids: toggle(rule.exclude_ids, w.weapon_id) })}
+                style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 4, padding: 5, textAlign: 'left', cursor: 'pointer', background: on ? (fixed ? 'rgba(57,180,255,.1)' : T.panel) : T.panelDeep, border: `1px solid ${on ? (fixed ? T.acc : T.line2) : T.line}`, minHeight: 44 }}>
                 <span style={{ display: 'block', height: 40, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, opacity: on ? 1 : .25, filter: on ? undefined : 'grayscale(1)' }} />
                 <span style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline' }}>
                   <span style={{ font: F.chk(700, 10), letterSpacing: '.04em', color: on ? T.ink : T.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>

@@ -1,5 +1,22 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { GameConfig, LoadoutPolicy, SlotRule } from '../api/types';
+import type { GameConfig, LoadoutPolicy, LoadoutPool, PerkView, SlotRule, WeaponView } from '../api/types';
+
+/** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
+ *  being edited on every change (instant, server-independent); the server re-derives on save/apply and is the authority. */
+const inPool = (r: SlotRule, id: string, tags: string[]) =>
+  (r.only_ids.length === 0 || r.only_ids.includes(id)) && !r.exclude_ids.includes(id) && !tags.some(t => r.exclude_tags.includes(t));
+export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
+  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id).map(w => w.weapon_id)
+    : weapons.filter(w => inPool(p.primary, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
+  const s = p.secondary;
+  let sw: string[] = [], sp: string[] = [];
+  if (s.choice === 'fixed') { sw = weapons.filter(w => w.weapon_id === s.fixed_id).map(w => w.weapon_id); sp = perks.filter(k => k.perk_id === s.fixed_id).map(k => k.perk_id); }
+  else if (s.choice !== 'off') {
+    if (s.kinds.includes('weapon')) sw = weapons.filter(w => inPool(s, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
+    if (s.kinds.includes('perk')) sp = perks.filter(k => !k.hidden && inPool(s, k.perk_id, k.tags ?? [])).map(k => k.perk_id);
+  }
+  return { primary: prim, secondary_weapons: sw, secondary_perks: sp };
+}
 
 const rule = (over: Partial<SlotRule> = {}): SlotRule => ({ choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null, ...over });
 /** OPEN — what the server means by "no policy". A config from a session persisted before A10, or served by an older MC,
