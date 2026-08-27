@@ -72,6 +72,16 @@ fn 3/8/23-28/35), all of which had been fired from an enemy team only. **Every I
 state its shooter team, and carry a known-good control at both ends** — without a control you cannot
 tell "rejected" from "broken".
 
+**`git filter-repo --replace-text` reports success but silently SKIPS binary blobs.**
+A scrub that greps clean afterwards in text and commit messages can still leave the value inside
+`.btsnoop` captures, images or any other binary — `--replace-text` does not touch them. Reaching those
+needs a **`--blob-callback`** doing raw byte replacement. Verified 2026-08-27: after a clean-looking
+pass, both `protocol/captures/raw/2026-08-25-*.btsnoop` still carried the gun's advertised BLE name.
+Two further traps in the same area: **commit messages** need `--replace-message` (a blob filter never
+sees them), and any replacement inside a **btsnoop** must be **byte-length-neutral** — the format
+stores per-packet length fields, so a longer string desynchronises every following packet and the
+capture stops parsing.
+
 **Never write a headset sticker id into the repo.**
 The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
 docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the

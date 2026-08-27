@@ -2743,6 +2743,46 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — VALIDATED NEGATIVE: fn 23 is the ONLY status function with any BLE signature
+
+**This closes the stun hunt as a keyboard-only problem.** It cannot be cracked without an operator, and
+that is now an evidence-backed statement rather than an excuse.
+
+**Why this run existed.** The big function sweep watched only `$HP` and `$HIR`. But fn 23's audio
+suppression was originally caught as **`$ALCD` token 2 -> 0** — an entirely different frame. So the
+status-class functions might have had signatures the sweep was structurally blind to. This run captured
+**every frame type** for 9 s after a single shot, excluding only the `$VOLTS` battery heartbeat.
+
+**fn 23 was carried as a POSITIVE CONTROL** — the one function already proven to be a status effect. If
+the method could not see its known signature, the method was blind and every "(none)" would be
+meaningless.
+
+| fn | shooter | non-`$HP`/`$HIR` frames in 9 s |
+|---|---|---|
+| **23** | **enemy** | **`$ALCD,32,0,0,192,0`** — audio level 0, the known signature ✅ **control fired** |
+| 23 | friendly | (none) |
+| 3, 8, 24, 25, 26, 27, 28, 35 | enemy | **(none)** |
+| 9, 10, 15, 31, 32, 34 | friendly | **(none)** |
+| 1 (plain damage) | enemy | (none) — negative control |
+
+**Result: of every function in the status class, only fn 23 touches BLE at all.** Because the positive
+control fired, these are **true negatives, not a blind instrument**.
+
+**Two things follow.**
+
+1. **The stun, if it exists, is invisible to BLE.** Whatever fn 3 / 8 / 24-28 / 35 do, they do it
+   entirely victim-side — audio, LEDs, or a firing lockout — with no telemetry whatsoever. No amount of
+   keyboard work will find it. It needs a person holding the gun reporting what they **hear, see, or
+   cannot do**. This is why bench item 0.x is blocked on an operator and cannot be worked around.
+2. **fn 23's suppression is enemy-only.** It lands from both teams (per the function map) but produces
+   the `$ALCD` signature **only from an enemy source** — consistent with a debuff, and a useful detail
+   for anyone building it into a mode.
+
+**Corollary for Mission Control:** status effects are **not observable in telemetry**. A HUD cannot show
+"you are stunned" or "your audio is suppressed" from gun frames alone — except for fn 23, which is
+detectable as `$ALCD` t2 = 0. Same family of constraint as Q13 (friendly fire invisible on the wire).
+
+
 ### 2026-08-27 — ⚠️ UNRESOLVED: the fn 36 / 37 damage multipliers did not reproduce
 
 **Kept deliberately, unconfirmed.** This is the most important open thread from the session and it is
