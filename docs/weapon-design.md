@@ -473,6 +473,11 @@ every game head (`gameconfig._SIR_TABLE`, sent by `Compiler.compile()`).
   event that touches no pool (experiment-log, *"SPECIAL-WEAPONS TIER"* — *"`D8` is not 'damage' — it
   is the MAGNITUDE"*).
 - Pools drain **shields → armor → HP**, and armor overflow spills into shields.
+  > ⚠ **The third pool is discarded in our code, not just under-specified.** `protocol.py` parses only
+  > `$HP` token 1, `app/src/engine.js` drops the shield token, and the phone engine — the thing that
+  > actually scores a live game — has no concept of shields anywhere. Harmless until now because
+  > nothing could fill the pool; it **fails open** the moment a shield charger exists, which is now an
+  > evening's work. Pending decision: `docs/spec/node.md` §10-Q12 and FOLLOWUPS Q12.
 - **Shields are not a BLE-writable pool.** They fill only from an IR function-11 event — which is
   what closed P16 after `$PSET` shield values had done nothing all session.
 
@@ -703,10 +708,18 @@ Design consequences:
 - ⚠️ **Still unconfirmed by a human:** that the trigger genuinely does nothing during the window.
   `$ALCD` t2 is a strong proxy, but no one has pulled a trigger mid-EMP. See `bench-tomorrow.md` 1.2.
 
-Two clean negatives worth carrying **[two-sided map]**: **all 16 protocols accept damage** given a fn-1
-row, so there is no protocol whitelist and the 4-bit field is not a scarce resource; and the **`$SIR`
-row parameters p5–p8 do not scale damage** — five different shapes all landed exactly the magnitude.
-Whatever those parameters do, it is not a multiplier.
+**Three clean negatives worth carrying** — each one closes a design direction someone would otherwise
+spend a session on:
+
+- **All 16 protocols accept damage** given a fn-1 row, so there is no protocol whitelist and the 4-bit
+  field is not a scarce resource **[two-sided map]**.
+- **`$SIR` row parameters p5–p8 do not scale damage** — five different shapes all landed exactly the
+  magnitude **[two-sided map]**. Whatever they do, it is not a multiplier.
+- **No status function is a damage-over-time.** Each of 3/8/23/24–28/35 and 31/32/34 was fired once and
+  watched for 18 s: **no HP ticks without further shots** (IR bench, 2026-08-26). So poison, cryo and
+  incendiary — all named in the `DamageType` enum and in the manual's perk list — are **not** `$SIR`
+  functions that tick a pool. If we want a DoT it has to be host-driven (repeat emissions from a
+  station, or a Companion applying `$BHIT` on a timer), not a fire-and-forget effect.
 
 ### 6.4 What a weapon is now
 
