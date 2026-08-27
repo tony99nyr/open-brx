@@ -4,6 +4,9 @@ Built overnight from the IR session. **Everything in here is blocked on a human*
 ear, an eye, floor space, or the grenade. Everything that could be cracked from the keyboard already
 was — see `docs/experiment-log.md` 2026-08-26 entries.
 
+**This is the subset that needs a human.** For the whole board — including what's blocked on a capture,
+on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
+
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
@@ -68,18 +71,35 @@ but longer, with shot-parity invalid. Almost certainly the **gun→grenade acces
 (nothing public decodes it). It does **not** let a gun fire a damage/station word — scope it as
 accessory signalling.
 
-| # | Goal | Do this |
-|---|---|---|
-| **3½.1** | **Capture a `$GREN` word INTACT** | Raise `IDLE_GAP_US` in `ir_capture.ino` (or drop the per-frame RAW print) — every frame so far was split by print latency. Then `$GREN,*` at the receiver |
-| **3½.2** | **Is it arg-drivable?** | Sweep `iRType / operationMode / channel / GrenadeType` and diff the captured words. **If the bits track the args, the gun becomes a programmable accessory emitter** |
-| **3½.3** | **Which emitter sends it?** | Cover the gun's muzzle emitter, then the headset's — whichever kills the `$GREN` IR is the source |
+| # | Goal | Do this | Pass |
+|---|---|---|---|
+| **3½.1** | **Capture a `$GREN` word INTACT** | Raise `IDLE_GAP_US` in `ir_capture.ino` to ~30000 (or drop the per-frame RAW print) — every frame so far was split by print latency. Then `$GREN,*` at the receiver | **one unbroken frame of 28–32 bits**, same word on ≥3 repeats. If it still splits, cut the RAW print — that is the known cause |
+| **3½.2** | **Is it arg-drivable?** | Sweep `iRType / operationMode / channel / GrenadeType` one field at a time and diff the captured words | **any bit changes with any argument** ⇒ the gun is a programmable accessory emitter. **All identical** ⇒ it's a fixed broadcast; stop here, it has no further use to us |
+| **3½.3** | **Which emitter sends it?** | Cover the gun's muzzle emitter with a finger/tape, fire `$GREN`; then uncover and cover the **headset** emitter instead | whichever covering **kills** the IR names the source. Neither ⇒ a third emitter, or reflection — move the receiver off-axis and retry |
+
+## GROUP 3¾ — LOADOUT v2: perks + empty slot 1 (~10 min, one gun + MC) 🎒 *new 2026-08-27*
+Kit a player in MC (or `python -m brx_mcp.mc.mock_node … ` then `pick secondary body_armor`), PUSH, and read the gun:
+1. **Body Armor** — `$PSET` armor should read **+50** (`$PSET,<n>,0,45,120,…`); `$SPAWN` → `$LCD` shows 120 armor; take one
+   hit → armor drops first, HP untouched. *(Proves the perk lands; the mechanism itself is already bench-proven.)*
+2. **Extended Mags** — primary `$WEAP` t16/t39 doubled, `$AMMO,0` doubled; the HUD max (from the config echo) matches;
+   fire a mag dry → the reload refills to the doubled count.
+3. **Easy Reload** — ALT button reloads (`$BMAP,1,97`); the pump still reloads too; ALT does NOT cycle a weapon.
+4. **Empty slot 1** (secondary = none, no perk) — press ALT: expected **reload / no-op, no error chirp**
+   (`brx-protocol.md:48`). If it chirps "disabled", the compiler should mirror the primary into slot 1 instead — tell brx-fable.
+5. **Quick Hands** — reload chain audibly faster (t18 halved). Unverified: if the chain does NOT shorten, flip
+   `quick_hands.verified` stays false and we hide it.
+6. **Snipers preset** — BUILD → LOADOUT RULES → SNIPERS: every gun gets `$WEAP,0` = sniper, no `$WEAP,1`; the phone
+   shows the padlock and refuses a pick (`loadout_ack.reason` = "Set by the host…").
 
 ## GROUP 4 — ears and eyes (~15 min) 👂
-| # | Goal | Do this |
-|---|---|---|
-| **4.1** | **P13 — `$GLED` colour index** | Mid-game sweep `$GLED,<0-8>,0,0,1,2000,2000,*`, one field at a time |
-| **4.2** | **P17 — how to turn LEDs OFF** (night mode) | StopIR vs all-zeros vs brightness-0 |
-| **4.3** | **LED "life mode"** + the try-out strobe | find the token that shows HP on the LEDs |
+*All four need a lit gun in front of you. Do them in a dim room — several are colour calls.*
+
+| # | Goal | Do this | Pass |
+|---|---|---|---|
+| **4.1** | **P13 — is `$GLED` colour a single 0–8 index?** | Mid-game, sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, **one value at a time**, and write down the colour you see for each | a **stable n → colour map**. The FB map claims 0 red … 8 orange and fits 5/6 of our earlier probe — either confirm it or record where it diverges. Colour not changing at all ⇒ token 1 is not the index and colour really is only `$TID`-derived |
+| **4.2** | **P17 — how do you turn the LEDs OFF?** | Mid-game, try in order: `$GLED,0,4,0,0,0,,*` (effect=StopIR — what we ship today, **unconfirmed**), then all-zeros, then brightness/duration = 0 | **LEDs actually go dark and stay dark.** Whichever frame does it becomes night mode's. If none do, night mode cannot darken a gun and `GameConfig(leds=False)` is lying — say so, it's a mode-design constraint |
+| **4.3** | **LED "life mode"** — native games show HP on the LEDs; ours slow-blinks team colour | Start a **native on-gun** game, watch the LEDs while taking hits, and describe the pattern. Then hunt the token: `$GSET` / `$PSET` / `$GLED` effect values | a described HP pattern we can aim at. Even "it dims in thirds" is enough to start; without it we don't know what we're reproducing |
+| **4.4** | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | In our try-out flow, note what the LEDs do vs a real game | the quieting token, or confirmation that try-out simply isn't spawned (in which case it's a mode fix, not an LED one) |
 
 ---
 
@@ -94,3 +114,16 @@ its multiplicative stacking with fn 36/37 · `$GSET` t1 = enforced friendly fire
 IR · `$HIR` tok5 = raw magnitude · AP bypasses shields · heals clamp · `$SPAWN` clears the EMP · the EMP's ~6–8 s self-clearing duration · `$GREN` emits a second IR protocol.
 
 *(P4 is only half closed: `$AS`/`$UP` are proven **silent** — no reply on v4.32 — but their **effect** was never probed. If you have a spare minute it belongs in Group 1.)*
+
+- **[A10] Empty slot 2 button map.** With no secondary and no Easy Reload the head now pushes
+  `$BMAP,1,100,0,0,99,99` (ALT cycles to slot 0 only) instead of the stock `…,0,1,…` that targets an unloaded
+  slot 1 (brx-opus review). Bench: kit a player with an EMPTY secondary, spawn, press ALT → expect nothing
+  (no reload, no swap, no crash); fire still works. Then Easy Reload → ALT reloads. Then a secondary weapon
+  → ALT swaps 0↔1.
+- **[A10] Quick Hands vs the reload sound chain.** `reload_mult` halves t18 only; the D-family reload sounds keep
+  their fixed length, so the reload may finish mid-sound. Listen for clipping/overlap; if ugly, floor t18 at
+  the chain length (brx-opus review). Perk stays `verified:false` until then.
+- **[A10] Body Armor `$PSET` armor ceiling.** The compiler caps `max_armor_add` results at 255 (assumed 8-bit).
+  Push armor 120 (default 70 + 50) → `$LCD` shows 120 → a hit absorbs. Then try 255 and 300 to find the real cap.
+- **[A10] Try-out shows the RAW weapon** (no perk ammo): a player with Extended Mags sees 32/384 in try-out and
+  64/768 at spawn. Acceptable for v1; if the HUD try-out panel confuses people, label its ammo "base".

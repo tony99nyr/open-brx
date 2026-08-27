@@ -1,0 +1,143 @@
+# The unknowns index — everything not yet confirmed
+
+**One page, every open question, organised by *what unblocks it*.** Built 2026-08-27 by extracting the
+open items from `FOLLOWUPS.md`, `verification-checklist.md`, `weapon-design.md` §5, `spec/node.md` §10,
+`mode-limits.md` and `bench-tomorrow.md` — which is where they had scattered to.
+
+**This file is an INDEX, not a replacement.** It carries one line per item; the detail, method and
+evidence stay in the owning doc. If a row and its source disagree, the source wins.
+
+- **`docs/bench-tomorrow.md`** = the subset that needs Tony, sequenced for a bench session. Use that on
+  bench day; use this file to see the whole board.
+- **`docs/FOLLOWUPS.md`** = the detail and the method for each item.
+
+---
+
+## A. Blocked on TONY AT THE BENCH  ·  18 items
+
+Nothing here can be cracked from the keyboard — it needs a trigger pulled, a sound heard, a light seen,
+or floor space. This is the biggest category and the highest-value one.
+
+### A1 · Needs a TRIGGER PULL (8)
+| id | unknown | why it matters |
+|---|---|---|
+| **1.2** | Does the EMP (`$SIR` fn 23) actually stop the gun firing? | the only new mechanic whose central claim rests on a **proxy** (`$ALCD` t2), not an observation |
+| **1.3** | Does a stun cost the victim a reload? | decides the stun's real cost |
+| **K4 / 1.1** | Why does **melee not work in our compiled game**? | a stock feature we lose; frames are byte-identical to Callsign's, so it is runtime/state |
+| **1.5** | What do status functions 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) *do*? | they register but move no pool and emit nothing — invisible without a human |
+| **1.6** | Is the KotH **rate-of-fire buff** one of the ally-side no-pool functions? | would name 31/32/34 |
+| **K1 / 1.4** | Kid auto-reload: `alt_reload` (`$BMAP,1,97`, already ships) vs `$WEAP` t19=5 (`AutoReload`) | two different features; which does Tony want |
+| **U4 / U5** | Reload-chain timing vs `reload_ms`; held-trigger fire sound retrigger vs ring-under | weapon sound design |
+| **t37/t38** | What do the two overheat values (20 vs 150) each mean? | overheat is transplantable but unmapped |
+
+### A2 · Needs EYES (4) — **the LED cluster, entirely unconfirmed**
+| id | unknown | why it matters |
+|---|---|---|
+| **P13** | Is `$GLED` colour a single 0–8 index? | neutral-white FFA + team colours |
+| **P17** | How do you turn the LEDs **OFF**? | night mode currently emits a **best-effort, UNCONFIRMED** frame |
+| — | **LED life mode** — native games show HP on the LEDs; ours slow-blinks team colour | stock feature we lose |
+| — | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | looks broken to a player |
+
+### A3 · Needs EARS (2)
+| id | unknown |
+|---|---|
+| **P3** | `$PSET` voice-pack token → which line changes (or get it from the API capture, §C) |
+| — | Defeat announcer line (`JAW`/`JAX` sit next to the confirmed `JAY`) |
+
+### A4 · Needs SPACE / a tape measure (4)
+| id | unknown | why it matters |
+|---|---|---|
+| **U2 / 2.1** | Does `$WEAP` **t41** change emitted range? | **the last unresolved weapon token**; now measurable by IR instrument, no victim gun |
+| **2.2** | The **"halo assassinate"** — is a back-dome melee a different word, or the same word on a different sensor? | melee is magnitude 90 and should *not* one-shot |
+| **2.3** | Sensor map (tok1 0/1/4) at field distance | point-blank washes the domes together |
+| **P15** | Max simultaneous BLE connections a phone holds; which `$PLAY` id makes a field-wide alarm | phone-as-station design |
+
+---
+
+## B. Blocked on THE GRENADE  ·  6 items
+*The biggest single unlock left: if we can replay a station beacon, the Utility Box can impersonate a
+grenade and the whole objective tier opens.*
+
+| id | unknown |
+|---|---|
+| **3.1** | What each mode actually beacons (predicted: protocol 15, mode in the magnitude field — Respawn 6, Hill 8) |
+| **3.2** | The **Hill buff word** — capture what the grenade sends the holder |
+| **3.3** | Does a **replayed** beacon from our emitter make a gun behave like the real grenade? |
+| **B12 / 3.4** | Respawn **arming**: does the passive beacon alone arm a living tagger, or is the button press required? Does it persist all match? |
+| **G9 / 3.5** | **CTF flag team assignment** — likely the `$GREN` `channel` field |
+| **G10 / 3.6** | `$GREN` blast type on a **paired thrown** grenade (needs an install-accessory pairing) |
+
+---
+
+## C. Blocked on a CAPTURE  ·  5 items
+*MacBook + iPhone only — Callsign is iOS, PacketLogger is macOS. Batch these for when the Mac is out.*
+
+| id | unknown | note |
+|---|---|---|
+| **P8 / R1** | **Callsign HTTPS API** (`settings`, `voice-profiles`, `arenas/games`) | **gun-free.** Would hand us every ability parameter, weapon stat and voice pack **at once** — the single highest-yield item on this page |
+| **P3** | voice-pack presets | falls out of P8 |
+| **P12** | `$PB*` playbook enum tables, re-tested on v4.32 | behaviour is version-sensitive |
+| **G3** | The app configuring a grenade → the exact `$GREN` | |
+| **R2** | Re-scrape the FB group **with comments expanded** | the 08-24 crawl missed comment threads |
+
+---
+
+## D. Blocked on HARDWARE WE HAVE BUT HAVEN'T WIRED  ·  4 items
+
+| id | unknown | note |
+|---|---|---|
+| **D1 / D4** | **The nRF radio** — is there a native gun-to-gun mesh? Does it carry the multikill kill-confirm? | modules + adapters are in hand, unwired. **Time-box the mesh tap to 30 min** — unknown channel/address/CRC/rate |
+| **3½.1** | Capture a **`$GREN` accessory word intact** | needs `IDLE_GAP_US` raised or the RAW print cut — every frame so far was split |
+| **3½.2** | Is that word **arg-drivable**? | if yes, the gun becomes a programmable accessory emitter |
+| **3½.3** | Which emitter sends it — gun muzzle or headset? | cover one, then the other |
+
+---
+
+## E. Blocked on PARTS WE DON'T HAVE  ·  3 items
+| id | unknown |
+|---|---|
+| **P14** | Is the audio SD card removable/swappable? (needs teardown) |
+| **G4** | Is grenade `.bin` flashing real? USB-C is power-only and there's no PROGRAM pin, so the assumed method is dead |
+| **K3** | **Death-explosion** — the headset emits IR when a Supremacy robot dies. Mechanism is expressible (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`), untested |
+
+---
+
+## F. NOT unknowns — build work  ·  9 items
+*No open question; someone just has to do it.* B1 Companion · B4 Utility Box (now unblocked) ·
+B8/G5 grenade state app · B9 manual website · B11 custom connect voice · B14 voice selection ·
+B16 kid mode · B17 tutorial mode · H1–H6 print files.
+
+---
+
+## G. DECISIONS, not unknowns — Tony's call  ·  3 items
+| # | decision |
+|---|---|
+| 1 | **Energy Launcher deals zero damage in every shipped game** — fix required either way |
+| 2 | **Flatten `_SIR_TABLE` or retune five weapons.** Flatten costs no retune; it restores the already band-checked §2 numbers |
+| 3 | **Q12** — should `hit_taken` include the **shield delta**? (both sessions recommend yes; `dmg: 0` invites `if dmg:` guards to drop the event) |
+
+---
+
+## H. Field / scale verification  ·  needs players, space, time
+`verification-checklist.md` carries ~24 unverified items that aren't protocol unknowns but *system*
+proofs: combat modes on real guns, live-path resilience with a tagger off, teardown, 20-minute two-node
+soak, phone auto-rejoin, iOS locked-phone BLE, `$VOLTS` token decode, armory/muster end-to-end, FFA
+attribution and the attribution fuse, syphon, time-limit/respawn ramp. **Not indexed line-by-line here —
+that file is already the right home.** Read it before a field day.
+
+---
+
+## Scoreboard
+| category | items |
+|---|---|
+| A · needs Tony at the bench | **18** (8 trigger · 4 eyes · 2 ears · 4 space) |
+| B · needs the grenade | 6 |
+| C · needs a capture | 5 |
+| D · hardware in hand, unwired | 4 |
+| E · parts we don't have | 3 |
+| F · build work, no unknown | 9 |
+| G · decisions | 3 |
+| H · field/scale proofs | ~24 (see verification-checklist) |
+
+**If you do only one thing:** the **Callsign HTTPS API capture (P8)** is gun-free and would collapse
+several rows at once. **If you have a bench hour:** `bench-tomorrow.md`'s one-hour path.

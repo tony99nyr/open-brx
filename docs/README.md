@@ -15,6 +15,8 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — the single source of truth for **open work**.
 - **[HANDOFF.md](HANDOFF.md)** — current cross-machine state; read before a hardware session.
 - **[experiment-log.md](experiment-log.md)** — the shared lab notebook. **Append after every session.**
+- **[`unknowns.md`](unknowns.md)** — **the index of everything not yet confirmed**, grouped by what
+  unblocks it. Start here to see the whole board.
 - **[`bench-tomorrow.md`](bench-tomorrow.md)** — the next bench session: everything still blocked on a
   human (trigger pulls, ears, eyes, the grenade), grouped to minimise re-rigging. Start here on bench day.
 - **[verification-checklist.md](verification-checklist.md)** — what needs YOU + a tagger to confirm (the

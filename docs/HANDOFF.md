@@ -52,6 +52,8 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 >   as the measuring instrument, which removes the screamer/arming-race failure mode that
 >   contaminated U2. Prefer the instrument method over any two-gun A/B where the question is
 >   "what did the shooter emit".
+> - **📍 EVERYTHING STILL UNKNOWN: [`docs/unknowns.md`](unknowns.md)** — one page, grouped by what
+>   unblocks it (18 need Tony at the bench, 6 need the grenade, 5 need a capture, …).
 > - **➡️ NEXT BENCH SESSION: [`docs/bench-tomorrow.md`](bench-tomorrow.md)** — the authoritative list of
 >   what still needs a human, grouped to minimise re-rigging, with a one-hour path and a
 >   **do-not-re-run** list. It supersedes the Session 0/1/2 menu that used to sit here: those are
@@ -112,6 +114,16 @@ run on Windows?" — `_split_addrs()` in `__main__.py` now handles both.)
 takes them live, runs a timed match, tracks hits and deaths, and drives respawns. Verified
 on hardware across several matches, including two taggers driven simultaneously from one
 laptop with a synchronised start.
+
+**Loadout v2 (2026-08-27, `docs/spec/loadout.md`, contracts A10) — BUILT, not yet bench-verified:** every
+player has two slots (primary + secondary **weapon | perk | empty**); the host sets **loadout rules** per game
+in BUILD (presets OPEN / NO HEAVIES / SNIPERS / CUSTOM, per-slot who-picks + class allow-chips; FFA defaults
+to NO HEAVIES); **players pick + try weapons from the phone** when the rules allow (`loadout_request` →
+`tutorial` → `loadout_ack`, MC roster shows PICKING… / TRYING / READY live); v1 perks are passive (Body Armor,
+Extended Mags, Quick Hands, Easy Reload — compiled into the head frames); **saved games** persist a whole
+build under a name (`~/.brx-mcp/presets.json`, builtin "Silenced Sniper"). Per-game weapon tuning (silenced
+fire sound, damage overrides) is deferred (FOLLOWUPS K6). Bench items: `docs/bench-tomorrow.md` (empty
+slot 1 + ALT, Body Armor `$PSET`, Extended Mags HUD max, Easy Reload). e2e: `cd app && npm run ui:e2e`.
 
 **Current state (2026-08-25):** the platform is now a Mission Control host on a local Wi-Fi LAN
 (WebSocket, not MQTT) that compiles a per-player `FrameBundle` (`mcp/brx_mcp/mc/compile.py`), plus a
