@@ -3,12 +3,14 @@ _Gen1 speaks Bluetooth Classic; Gen2 and Gen3 speak BLE. Here is how to tell in 
 Last verified: 2026-08-27
 
 Gen1 vs Gen2/3
-- Radio | **Bluetooth Classic (SPP)** via an HC-05-class module, 57,600 baud ✅ 👥 | **Bluetooth Low Energy**, Nordic UART Service, 115,200 baud ✅
-- How it shows up | Pairs as a classic BT serial device; guide-era name `LTP-alpha`, pair code `0001` 📖 👥 | Advertises as `Tactix-XXXX` (XXXX = last two bytes of its address); the UART service is visible in a BLE scan ✅
-- Phone support | v1 app was Android-only 📖 | iOS and Android
-- Headset requirement for the radio | Headset must be connected for Bluetooth to work 👥 | A headset-less gun accepts a link then drops it within seconds ✅
-- "Logo" vs "non-logo" | Non-logo units need extra steps after firmware/disk mode and a pair code 📖 | Logo units need no password and have the gesture (melee-swing) headset 📖
-- Everything else | Same IR, same sounds, same game modes | Same
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Radio | **Bluetooth Classic (SPP)** via an HC-05-class module, 57,600 baud ✅ 👥 | **Bluetooth Low Energy**, Nordic UART Service, 115,200 baud ✅ |
+| How it shows up | Pairs as a classic BT serial device; guide-era name `LTP-alpha`, pair code `0001` 📖 👥 | Advertises as `Tactix-XXXX` (XXXX = last two bytes of its address); the UART service is visible in a BLE scan ✅ |
+| Phone support | v1 app was Android-only 📖 | iOS and Android |
+| Headset requirement for the radio | Headset must be connected for Bluetooth to work 👥 | A headset-less gun accepts a link then drops it within seconds ✅ |
+| "Logo" vs "non-logo" | Non-logo units need extra steps after firmware/disk mode and a pair code 📖 | Logo units need no password and have the gesture (melee-swing) headset 📖 |
+| Everything else | Same IR, same sounds, same game modes | Same |
 Source: protocol/brx-protocol.md §1 §7a §7r, docs/reference/brx-extended-user-guide.md, docs/reference/lasertagmods.md
 
 ## Identify your generation

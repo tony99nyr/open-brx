@@ -19,10 +19,12 @@ Fire mode (full-auto, single-shot, 3-round burst, hold-to-charge, melee) is a pr
 Source: protocol/brx-protocol.md §"$WEAP t20 — FIRE MODE"
 
 Ports
-- Charging port | body | DC input for the **8.4 V two-cell smart charger** that ships with the tagger; charger LED goes red → green when full | 📖
-- micro-USB "Programing Port" | body | Two personalities: on a normal boot it is a **USB serial console** (the tagger's Teensy microcontroller shows up as a COM port — "PuTTY into the tagger"); with **SELECT held at power-on** it becomes a **USB disk** exposing the firmware `.BIN` and the `AUDIO` folder | ✅ 📖
-- Headset jack | — | **None.** The headset links wirelessly | ✅
-- Accessory port | — | **None** on Gen2/3 units we have opened up to the connector level — micro-USB only | ✅
+| col 1 | col 2 | col 3 | col 4 |
+|---|---|---|---|
+| Charging port | body | DC input for the **8.4 V two-cell smart charger** that ships with the tagger; charger LED goes red → green when full | 📖 |
+| micro-USB "Programing Port" | body | Two personalities: on a normal boot it is a **USB serial console** (the tagger's Teensy microcontroller shows up as a COM port — "PuTTY into the tagger"); with **SELECT held at power-on** it becomes a **USB disk** exposing the firmware `.BIN` and the `AUDIO` folder | ✅ 📖 |
+| Headset jack | — | **None.** The headset links wirelessly | ✅ |
+| Accessory port | — | **None** on Gen2/3 units we have opened up to the connector level — micro-USB only | ✅ |
 Source: protocol/brx-protocol.md §7c, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
 ## What's inside (for the curious — you do not need to open it)

@@ -12,11 +12,13 @@ IR emitter (Class 1 laser, IEC 60825-1) — from Battle Company's Extended User 
 Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
 
 What a shot looks like on the air (bench-measured)
-- Frame | one ~25-bit word per shot, pulse-width encoded | ✅
-- Sync pulse | ~1,990 µs | ✅
-- "1" mark / "0" mark | ~990 µs / ~500 µs | ✅
-- Carried in every shot | player id (0–63), team, damage, damage type, crit flag | ✅
-- Receiver that decodes it | any 38 kHz demodulating IR receiver (community IDs the Vishay TSSP38 in the headset) | ✅ 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Frame | one ~25-bit word per shot, pulse-width encoded | ✅ |
+| Sync pulse | ~1,990 µs | ✅ |
+| "1" mark / "0" mark | ~990 µs / ~500 µs | ✅ |
+| Carried in every shot | player id (0–63), team, damage, damage type, crit flag | ✅ |
+| Receiver that decodes it | any 38 kHz demodulating IR receiver (community IDs the Vishay TSSP38 in the headset) | ✅ 👥 |
 Source: protocol/brx-ir-protocol.md, docs/reference/lasertagmods.md
 
 ## Range and light.

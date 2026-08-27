@@ -42,6 +42,11 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$INIT,*` | Initialize | |
 | `$PHONE,*` | Put tagger in app-controlled mode | Same mode the official app uses |
 | `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. **`friendlyFire` (token 1) is GUN-ENFORCED** (bench 2026-08-26, brx-ir four-cell IR emitter, 2×+control): FF=0 blocks same-team damage AND enemy heals; FF=1 opens the gate — exactly as labelled. (An intermediate same-day gun-probe read it as not-enforced, but only reached FF=1 with an unverified victim team; MC friendly-fire is a policy/scoring layer over this enforced base.) Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
+> **BENCH-CONFIRMED 2026-08-27 — `$GSET` token 7 is the crit modifier IN PERCENT:**
+> `crit damage = magnitude × (1 + t7/100)`. Exact at t7 = 0/10/25/50/75/100/150 (3/3 reps each,
+> single shots, armor 200 so nothing clipped). **t7=0 disables crits entirely; 100 doubles.** The
+> shipped value is 50, which is why crit had looked like a fixed ×1.5. Non-crit damage is untouched.
+> Tokens 2,3,4,5,6,8 showed **no** effect on damage / friendly fire / crit and remain unknown.
 | `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |

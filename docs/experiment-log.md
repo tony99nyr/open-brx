@@ -2702,3 +2702,43 @@ respond on our firmware, so those enum tables cannot be mapped this way here.
 `$GSET,*` `$PSET,*` `$SIR,*` `$TID,*` `$LCD,*` `$HP,*` — bare reads of the config commands do **not**
 work. `$VERSION,*` does (`$VERSION,v4.32,hds.59,4,,devhost.03`). So the read surface is
 **`$QUERY` + `$VERSION` only.**
+
+## 2026-08-27 (unattended) — ✅ `$GSET` token 7 = the CRIT MODIFIER, in percent — exact formula
+
+Method: armor **200** so a strong crit cannot clip on the pool ceiling, magnitude 20, **single shot per
+trial with `hits==1` verified**, **3 reps per cell**, re-armed between every shot.
+
+```
+t7      crit=0 per-hit      crit=1 per-hit
+0       [20,20,20]          [20,20,20]        +0%    crits disabled
+10      [20,20,20]          [22,22,22]        +10%
+25      [20,20,20]          [25,25,25]        +25%
+50      [20,20,20]          [30,30,30]        +50%   <- the shipped value
+75      [20,20,20]          [35,35,35]        +75%
+100     [20,20,20]          [40,40,40]        +100%  crits double
+150     [20,20,20]          [50,50,50]        +150%  x2.5
+```
+
+> ### `crit damage = magnitude × (1 + t7/100)`
+
+Exact at every level. Non-crit damage is **unaffected** throughout (always 20), so t7 touches **only**
+the crit path.
+
+**This refines the ×1.5 finding from 2026-08-26.** That was correct, but only because the shipped
+`_SIR_TABLE`/`$GSET` uses **t7 = 50**. **Crit is a tunable per-game knob**, not a fixed 1.5:
+- **`t7=0` disables crits entirely** — useful for a "no random spikes" competitive mode
+- **`t7=100`** makes a crit exactly double
+- values above 100 are honoured (150 → ×2.5), so a high-variance mode is expressible
+
+Combined with the earlier multiplier finding, the full applied-damage formula is:
+
+> **applied = magnitude × (`$SIR` function multiplier) × (1 + `$GSET` t7/100 if the crit bit is set)**
+
+### The rest of `$GSET` — tokens 2–6 and 8 showed nothing
+A first sweep flipped each of tokens 2–8 to 0/1/99 and measured enemy damage, same-team damage and crit
+damage. **Only token 7 produced a monotonic, reproducible effect.** The apparent deviations on t3=99 and
+t5=0 were **hit-count artifacts** (3 registrations where 2 were fired) and did not survive; t2/t4/t6/t8
+changed nothing measurable on any of the three axes. ⇒ **tokens 2, 3, 4, 5, 6, 8 remain UNKNOWN** — they
+do not affect damage, friendly fire or crit, so whatever they do is outside what an IR damage probe can
+see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
+menu path).

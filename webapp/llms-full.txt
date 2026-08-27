@@ -1,6 +1,6 @@
 # Open BRX — The Ultimate BRX Manual (full text)
 
-Generated 2026-08-27T20:33:01.652Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-08-27T20:39:12.224Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -191,10 +191,12 @@ Fire mode (full-auto, single-shot, 3-round burst, hold-to-charge, melee) is a pr
 Source: protocol/brx-protocol.md §"$WEAP t20 — FIRE MODE"
 
 Ports
-- Charging port | body | DC input for the **8.4 V two-cell smart charger** that ships with the tagger; charger LED goes red → green when full | 📖
-- micro-USB "Programing Port" | body | Two personalities: on a normal boot it is a **USB serial console** (the tagger's Teensy microcontroller shows up as a COM port — "PuTTY into the tagger"); with **SELECT held at power-on** it becomes a **USB disk** exposing the firmware `.BIN` and the `AUDIO` folder | ✅ 📖
-- Headset jack | — | **None.** The headset links wirelessly | ✅
-- Accessory port | — | **None** on Gen2/3 units we have opened up to the connector level — micro-USB only | ✅
+| col 1 | col 2 | col 3 | col 4 |
+|---|---|---|---|
+| Charging port | body | DC input for the **8.4 V two-cell smart charger** that ships with the tagger; charger LED goes red → green when full | 📖 |
+| micro-USB "Programing Port" | body | Two personalities: on a normal boot it is a **USB serial console** (the tagger's Teensy microcontroller shows up as a COM port — "PuTTY into the tagger"); with **SELECT held at power-on** it becomes a **USB disk** exposing the firmware `.BIN` and the `AUDIO` folder | ✅ 📖 |
+| Headset jack | — | **None.** The headset links wirelessly | ✅ |
+| Accessory port | — | **None** on Gen2/3 units we have opened up to the connector level — micro-USB only | ✅ |
 Source: protocol/brx-protocol.md §7c, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
 ## What's inside (for the curious — you do not need to open it)
@@ -226,11 +228,13 @@ IR emitter (Class 1 laser, IEC 60825-1) — from Battle Company's Extended User 
 Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
 
 What a shot looks like on the air (bench-measured)
-- Frame | one ~25-bit word per shot, pulse-width encoded | ✅
-- Sync pulse | ~1,990 µs | ✅
-- "1" mark / "0" mark | ~990 µs / ~500 µs | ✅
-- Carried in every shot | player id (0–63), team, damage, damage type, crit flag | ✅
-- Receiver that decodes it | any 38 kHz demodulating IR receiver (community IDs the Vishay TSSP38 in the headset) | ✅ 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Frame | one ~25-bit word per shot, pulse-width encoded | ✅ |
+| Sync pulse | ~1,990 µs | ✅ |
+| "1" mark / "0" mark | ~990 µs / ~500 µs | ✅ |
+| Carried in every shot | player id (0–63), team, damage, damage type, crit flag | ✅ |
+| Receiver that decodes it | any 38 kHz demodulating IR receiver (community IDs the Vishay TSSP38 in the headset) | ✅ 👥 |
 Source: protocol/brx-ir-protocol.md, docs/reference/lasertagmods.md
 
 ## Range and light.
@@ -268,24 +272,28 @@ Two separate LED systems: the **gun** LEDs (a small bank on the rifle) and the *
 Source: docs/experiment-log.md (2026-08-27)
 
 Gun LEDs
-- Colour while in the menu | **Selected game mode**: Free For All white · Death Match red · Generals yellow · Supremacy blue · Commander pink · Survival green · The Swarm orange | 📖
-- Colour during a game | **Your team / faction colour** (e.g. team 1 blue, team 2 yellow on our bench) — colour is team-derived, not a free-form RGB | ✅
-- Colour palette available | 9 colours reported by the community: red · blue · yellow · green · purple · cyan · white · pink · orange | 👥
-- Segments going out | **A life gauge**: the three LEDs act as a segmented bar that drains as you take damage | ✅
-- Manual's description | "LED indicator shows ammo & health" | 📖
-- Slow blink in team colour | An externally-hosted game that has not switched on the life gauge | ✅
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Colour while in the menu | **Selected game mode**: Free For All white · Death Match red · Generals yellow · Supremacy blue · Commander pink · Survival green · The Swarm orange | 📖 |
+| Colour during a game | **Your team / faction colour** (e.g. team 1 blue, team 2 yellow on our bench) — colour is team-derived, not a free-form RGB | ✅ |
+| Colour palette available | 9 colours reported by the community: red · blue · yellow · green · purple · cyan · white · pink · orange | 👥 |
+| Segments going out | **A life gauge**: the three LEDs act as a segmented bar that drains as you take damage | ✅ |
+| Manual's description | "LED indicator shows ammo & health" | 📖 |
+| Slow blink in team colour | An externally-hosted game that has not switched on the life gauge | ✅ |
 Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7i, docs/experiment-log.md (LED life mode, 2026-08-27)
 
 _[diagram HW-10: (gun LED gauge states — see Images table)]_
 
 Headset LEDs
-- **Slow rainbow cycling** | **Disconnected / not paired** to a tagger. Visible across a room — check every headset before a game starts | ✅
-- **Solid / pulsing team colour** (red, blue…) | Paired and synced to the tagger — **pre-game only** | ✅
-- **Dark** | **Normal during play.** The band goes dark once the game starts; dark is not a fault | ✅
-- **Green blink** | Hit feedback | ✅
-- **Holds green** | Kill feedback | ✅
-- **Green flash in Target Mode** | A direct hit on the sighting target | 📖
-- **Bright green burst** (4 directions) | The 3 W hit LEDs — meant to be visible in daylight; dimmed in indoor mode | 📖
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| **Slow rainbow cycling** | **Disconnected / not paired** to a tagger. Visible across a room — check every headset before a game starts | ✅ |
+| **Solid / pulsing team colour** (red, blue…) | Paired and synced to the tagger — **pre-game only** | ✅ |
+| **Dark** | **Normal during play.** The band goes dark once the game starts; dark is not a fault | ✅ |
+| **Green blink** | Hit feedback | ✅ |
+| **Holds green** | Kill feedback | ✅ |
+| **Green flash in Target Mode** | A direct hit on the sighting target | 📖 |
+| **Bright green burst** (4 directions) | The 3 W hit LEDs — meant to be visible in daylight; dimmed in indoor mode | 📖 |
 Source: docs/experiment-log.md (2026-08-27, "the HEADSET LED is autonomous"), docs/field-process.md, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
 ## An earlier version of our own notes had this wrong.
@@ -327,14 +335,16 @@ _[image HW-03: (see Images table)]_
 Source: protocol/brx-protocol.md §"$HIR token 1", docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, docs/reference/grenade.md
 
 Headset facts
-- Link to tagger | Wireless; pairs automatically after power-on. Can take **up to 3 minutes** with many taggers/BT devices around | 📖
-- Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects. Booted with **no** headset → tagger shoots fine locally | 📖 ✅
-- Apps need it | The official phone app silently disconnects a tagger that has no linked headset; an externally-hosted game cannot hold a link to a headset-less gun either | ✅
-- Battery | Single **18650** lithium cell (v2 headsets); charges from **any USB 5 V** source; v1 has a slide compartment | 👥 📖
-- Firmware | Reported by the tagger as `hds.59` on our units | ✅
-- Extra functions | Offline short-range scoring and player-proximity detection | 📖
-- Spares Battle Company sells | Speakers, sensor circuit boards (front/left/right, "HS 2.0"), a 19" 2-pin wire bundle | 👥
-- Water | Taggers usually survive a soaking after days of drying; **headsets usually do not** | 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Link to tagger | Wireless; pairs automatically after power-on. Can take **up to 3 minutes** with many taggers/BT devices around | 📖 |
+| Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects. Booted with **no** headset → tagger shoots fine locally | 📖 ✅ |
+| Apps need it | The official phone app silently disconnects a tagger that has no linked headset; an externally-hosted game cannot hold a link to a headset-less gun either | ✅ |
+| Battery | Single **18650** lithium cell (v2 headsets); charges from **any USB 5 V** source; v1 has a slide compartment | 👥 📖 |
+| Firmware | Reported by the tagger as `hds.59` on our units | ✅ |
+| Extra functions | Offline short-range scoring and player-proximity detection | 📖 |
+| Spares Battle Company sells | Speakers, sensor circuit boards (front/left/right, "HS 2.0"), a 19" 2-pin wire bundle | 👥 |
+| Water | Taggers usually survive a soaking after days of drying; **headsets usually do not** | 👥 |
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7m §7r, docs/reference/community-notes.md
 
 ## Before every game: look for rainbow.
@@ -375,9 +385,11 @@ _[image HW-06: (battery pack + connector — see Images table)]_
 Source: docs/reference/community-notes.md, docs/gotchas.md, docs/experiment-log.md (2026-08-26 screamer)
 
 Headset power
-- Cell | one 18650 lithium cell (v2) | 👥
-- Charging | any USB 5 V supply | 📖
-- Voltage readout | reported through the tagger's USB console (e.g. "Head: 3.84 V") | ✅
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Cell | one 18650 lithium cell (v2) | 👥 |
+| Charging | any USB 5 V supply | 📖 |
+| Voltage readout | reported through the tagger's USB console (e.g. "Head: 3.84 V") | ✅ |
 Source: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
 
 
@@ -390,12 +402,14 @@ _Gen1 speaks Bluetooth Classic; Gen2 and Gen3 speak BLE. Here is how to tell in 
 Last verified: 2026-08-27
 
 Gen1 vs Gen2/3
-- Radio | **Bluetooth Classic (SPP)** via an HC-05-class module, 57,600 baud ✅ 👥 | **Bluetooth Low Energy**, Nordic UART Service, 115,200 baud ✅
-- How it shows up | Pairs as a classic BT serial device; guide-era name `LTP-alpha`, pair code `0001` 📖 👥 | Advertises as `Tactix-XXXX` (XXXX = last two bytes of its address); the UART service is visible in a BLE scan ✅
-- Phone support | v1 app was Android-only 📖 | iOS and Android
-- Headset requirement for the radio | Headset must be connected for Bluetooth to work 👥 | A headset-less gun accepts a link then drops it within seconds ✅
-- "Logo" vs "non-logo" | Non-logo units need extra steps after firmware/disk mode and a pair code 📖 | Logo units need no password and have the gesture (melee-swing) headset 📖
-- Everything else | Same IR, same sounds, same game modes | Same
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Radio | **Bluetooth Classic (SPP)** via an HC-05-class module, 57,600 baud ✅ 👥 | **Bluetooth Low Energy**, Nordic UART Service, 115,200 baud ✅ |
+| How it shows up | Pairs as a classic BT serial device; guide-era name `LTP-alpha`, pair code `0001` 📖 👥 | Advertises as `Tactix-XXXX` (XXXX = last two bytes of its address); the UART service is visible in a BLE scan ✅ |
+| Phone support | v1 app was Android-only 📖 | iOS and Android |
+| Headset requirement for the radio | Headset must be connected for Bluetooth to work 👥 | A headset-less gun accepts a link then drops it within seconds ✅ |
+| "Logo" vs "non-logo" | Non-logo units need extra steps after firmware/disk mode and a pair code 📖 | Logo units need no password and have the gesture (melee-swing) headset 📖 |
+| Everything else | Same IR, same sounds, same game modes | Same |
 Source: protocol/brx-protocol.md §1 §7a §7r, docs/reference/brx-extended-user-guide.md, docs/reference/lasertagmods.md
 
 ## Identify your generation
@@ -440,12 +454,14 @@ The grenade, like the tagger, **keeps no game state and cannot show a winner** �
 Source: docs/reference/grenade.md
 
 Other accessories
-- **Hatchet, shield, sidearm** | IR-paired accessories (paired the same way as a thrown grenade); each has a PROGRAM button for USB firmware updates | 📖
-- **Scope** | An optical sight; zeroed using the tagger's Target Mode. Snipers sight long, shotgun/SMG short | 📖 👥
-- **Phone bracket** | Mounts a phone for the Callsign app. The community also uses it to carry an ESP32 + USB power bank rider (JEDGE-style) with **no permanent modification** to the tagger — a 5,000 mAh pack runs such a rider ~15 h | 👥
-- **Sling mount** | Community drill size for a sling stud: **7/32"** (15/64" is too loose) | 👥
-- **Utility Box (UBox)** | Battle Company's commercial station: one networked box reconfigured in software into 20+ roles (domination, CTF, bomb, respawn, dispensers, targets). Part of the EDGE commercial suite, not the BRX consumer kit | 📖
-- **3D-printed skins** | The dominant cosmetic mod; paint is rare (black plastic primer base coat if you do) | 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| **Hatchet, shield, sidearm** | IR-paired accessories (paired the same way as a thrown grenade); each has a PROGRAM button for USB firmware updates | 📖 |
+| **Scope** | An optical sight; zeroed using the tagger's Target Mode. Snipers sight long, shotgun/SMG short | 📖 👥 |
+| **Phone bracket** | Mounts a phone for the Callsign app. The community also uses it to carry an ESP32 + USB power bank rider (JEDGE-style) with **no permanent modification** to the tagger — a 5,000 mAh pack runs such a rider ~15 h | 👥 |
+| **Sling mount** | Community drill size for a sling stud: **7/32"** (15/64" is too loose) | 👥 |
+| **Utility Box (UBox)** | Battle Company's commercial station: one networked box reconfigured in software into 20+ roles (domination, CTF, bomb, respawn, dispensers, targets). Part of the EDGE commercial suite, not the BRX consumer kit | 📖 |
+| **3D-printed skins** | The dominant cosmetic mod; paint is rare (black plastic primer base coat if you do) | 👥 |
 Source: docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, docs/reference/lasertagmods.md, docs/reference/edge-brp.md
 
 ## Known wear points (anatomy-level; fixes are in Repairs)
@@ -494,11 +510,13 @@ Smart Grenade:
 - 5 modes: Frag · Assault · Hill · Respawn · CTF ✅
 
 What's in the box (typical retail kit)
-- Tagger | with reload handle (screws on) | 📖
-- Wireless headset | pre-paired to its tagger at the factory (the tagger's record stores the headset's serial as its pairing PIN) | ✅ 📖
-- 8.4 V two-cell smart charger | red → green LED | 📖
-- Quick manual (V7) | link: Battle Company's BRX Manual V7 PDF | 📖
-- Optional | 6×AA battery holder use, scope, phone bracket, smart grenade | 📖 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Tagger | with reload handle (screws on) | 📖 |
+| Wireless headset | pre-paired to its tagger at the factory (the tagger's record stores the headset's serial as its pairing PIN) | ✅ 📖 |
+| 8.4 V two-cell smart charger | red → green LED | 📖 |
+| Quick manual (V7) | link: Battle Company's BRX Manual V7 PDF | 📖 |
+| Optional | 6×AA battery holder use, scope, phone bracket, smart grenade | 📖 👥 |
 Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md §7c
 
 ## Official documents

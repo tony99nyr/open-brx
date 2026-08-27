@@ -68,11 +68,12 @@
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); modal.hidden ? openSearch() : closeSearch(); } if (e.key === 'Escape' && !modal.hidden) closeSearch(); });
   modal?.addEventListener('click', e => { if (e.target === modal) closeSearch(); });
   function runSearch() {
-    if (!index) return; const q = sInput.value.trim().toLowerCase(); if (!q) { sRes.innerHTML = '<p class="muted">Type to search.</p>'; return; }
+    const fold = s => String(s).toLowerCase().replace(/[’'`]/g, '');
+    if (!index) return; const q = fold(sInput.value.trim()); if (!q) { sRes.innerHTML = '<p class="muted">Type to search.</p>'; return; }
     const terms = q.split(/\s+/);
-    const score = p => { const t = p.title.toLowerCase(), s = (p.subtitle || '').toLowerCase(), h = p.heads.join(' ').toLowerCase(), r = p.terms.join(' ').toLowerCase(); let sc = 0; for (const w of terms) { if (t.includes(w)) sc += 10; if (s.includes(w)) sc += 4; if (h.includes(w)) sc += 3; if (r.includes(w)) sc += 2; if (!(t + s + h + r).includes(w)) return 0; } return sc; };
+    const score = p => { const t = fold(p.title), s = fold(p.subtitle || ''), h = fold(p.heads.join(' ')), r = fold(p.terms.join(' ')); let sc = 0; for (const w of terms) { if (t.includes(w)) sc += 10; if (s.includes(w)) sc += 4; if (h.includes(w)) sc += 3; if (r.includes(w)) sc += 2; if (!(t + s + h + r).includes(w)) return 0; } return sc; };
     const hits = index.map(p => [score(p), p]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 12);
-    sRes.innerHTML = hits.length ? hits.map(([, p]) => { const term = p.terms.find(x => terms.some(w => x.toLowerCase().includes(w))); return `<a href="${esc(p.url)}"><div class="s">${esc(p.section)}</div><div class="t">${esc(p.title)}</div><div class="sub">${esc(term ? `matches “${term}” · ` : '')}${esc(p.subtitle)}</div></a>`; }).join('') : `<p class="muted">No results for “${esc(q)}”.</p>`;
+    sRes.innerHTML = hits.length ? hits.map(([, p]) => { const term = p.terms.find(x => terms.some(w => fold(x).includes(w))); return `<a href="${esc(p.url)}"><div class="s">${esc(p.section)}</div><div class="t">${esc(p.title)}</div><div class="sub">${esc(term ? `matches “${term}” · ` : '')}${esc(p.subtitle)}</div></a>`; }).join('') : `<p class="muted">No results for “${esc(q)}”.</p>`;
   }
   sInput?.addEventListener('input', runSearch);
 

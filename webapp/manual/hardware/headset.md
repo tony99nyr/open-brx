@@ -18,14 +18,16 @@ _[image HW-03: (see Images table)]_
 Source: protocol/brx-protocol.md §"$HIR token 1", docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, docs/reference/grenade.md
 
 Headset facts
-- Link to tagger | Wireless; pairs automatically after power-on. Can take **up to 3 minutes** with many taggers/BT devices around | 📖
-- Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects. Booted with **no** headset → tagger shoots fine locally | 📖 ✅
-- Apps need it | The official phone app silently disconnects a tagger that has no linked headset; an externally-hosted game cannot hold a link to a headset-less gun either | ✅
-- Battery | Single **18650** lithium cell (v2 headsets); charges from **any USB 5 V** source; v1 has a slide compartment | 👥 📖
-- Firmware | Reported by the tagger as `hds.59` on our units | ✅
-- Extra functions | Offline short-range scoring and player-proximity detection | 📖
-- Spares Battle Company sells | Speakers, sensor circuit boards (front/left/right, "HS 2.0"), a 19" 2-pin wire bundle | 👥
-- Water | Taggers usually survive a soaking after days of drying; **headsets usually do not** | 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Link to tagger | Wireless; pairs automatically after power-on. Can take **up to 3 minutes** with many taggers/BT devices around | 📖 |
+| Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects. Booted with **no** headset → tagger shoots fine locally | 📖 ✅ |
+| Apps need it | The official phone app silently disconnects a tagger that has no linked headset; an externally-hosted game cannot hold a link to a headset-less gun either | ✅ |
+| Battery | Single **18650** lithium cell (v2 headsets); charges from **any USB 5 V** source; v1 has a slide compartment | 👥 📖 |
+| Firmware | Reported by the tagger as `hds.59` on our units | ✅ |
+| Extra functions | Offline short-range scoring and player-proximity detection | 📖 |
+| Spares Battle Company sells | Speakers, sensor circuit boards (front/left/right, "HS 2.0"), a 19" 2-pin wire bundle | 👥 |
+| Water | Taggers usually survive a soaking after days of drying; **headsets usually do not** | 👥 |
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7m §7r, docs/reference/community-notes.md
 
 ## Before every game: look for rainbow.

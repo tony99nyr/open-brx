@@ -68,6 +68,14 @@ for (const u of sitemapUrls()) {
     expect(dupIds, 'duplicate ids').toEqual([]);
     const badFig = await page.evaluate(() => [...document.querySelectorAll('figure')].filter(f => !(f.querySelector('img[alt]') || f.querySelector('[aria-label]'))).length);
     expect(badFig, 'figure without alt/aria-label').toBe(0);
+    // "→ Title" cross-references must be links, and page links must show a title, not a raw slug
+    const deadRefs = await page.evaluate(() => [...document.querySelectorAll('main em')].filter(e => !e.closest('a') && /→\s*$/.test((e.previousSibling?.textContent || '').slice(-3))).map(e => e.textContent));
+    expect(deadRefs, 'dead → cross-references').toEqual([]);
+    const slugLinks = await page.evaluate(() => [...document.querySelectorAll('main a.pl')].filter(a => /^\/(manual|platform)/.test(a.textContent.trim())).map(a => a.textContent));
+    expect(slugLinks, 'page links showing raw slugs').toEqual([]);
+    const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    expect(sw, `horizontal page overflow (${sw} > ${iw})`).toBeLessThanOrEqual(iw + 1);
+    await expect(page.locator('.legend summary')).toBeVisible();
     expect(errors, errors.join('\n')).toEqual([]);
   });
 }
@@ -244,6 +252,10 @@ it('2g · search: ⌘K opens, results for a symptom, "$WEAP", no-results message
   await expect(res.first()).toContainText(/Pairing|Headset/i);
   await page.locator('[data-search-input]').fill('$WEAP');
   await expect(res.first()).toContainText(/WEAP/i);
+  await page.locator('[data-search-input]').fill('wont fire');
+  await expect(res.first()).toBeVisible();
+  await page.locator('[data-search-input]').fill('screamer');
+  await expect(page.locator('[data-search-results]')).toContainText(/pairing|Bluetooth/i);
   await page.locator('[data-search-input]').fill('qzxv-nothing');
   await expect(page.locator('[data-search-results]')).toContainText('No results');
   await page.keyboard.press('Escape');
@@ -385,7 +397,7 @@ it('4b · search index 500 → visible error; typing does not pretend to search'
 
 // ---- 5. viewports ------------------------------------------------------------------------------
 it('5 · no horizontal page overflow on key pages; short landscape phone still usable', async ({ page }) => {
-  const urls = ['/', '/manual/', '/manual/hardware/leds/', '/manual/gameplay/weapons/', '/manual/dev/commands/', '/manual/dev/weap/', '/manual/sound/sound-bank/', '/platform/architecture/'];
+  const urls = ['/', '/manual/', '/manual/hardware/leds/', '/manual/fix/diagnose/', '/manual/fix/pairing/', '/manual/gameplay/weapons/', '/manual/dev/commands/', '/manual/dev/weap/', '/manual/sound/sound-bank/', '/platform/architecture/'];
   for (const u of urls) {
     await page.goto(u, { waitUntil: 'networkidle' });
     const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);

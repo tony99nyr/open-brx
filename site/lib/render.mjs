@@ -16,14 +16,26 @@ const EMOJI_RE = /[✅📖🔍👥🧪📐🚧]/gu;
 const EMOJI_KIND = { '✅': 'bench', '📖': 'official', '🔍': 'apk', '👥': 'community', '🧪': 'software', '📐': 'spec', '🚧': 'wip' };
 function badgesInline(html) { return html.replace(EMOJI_RE, e => badge(EMOJI_KIND[e])); }
 
-function linkSlugs(html, slugs) {
-  // `<code>/manual/x/y</code>` → link when the slug exists
+function linkSlugs(html, ctx) {
+  // `<code>/manual/x/y</code>` → a link labelled with the page's title when the slug exists
+  const { slugs, slugTitles } = ctx;
   return html.replace(/<code>(\/(?:manual|platform|credits|changelog)[a-z0-9/-]*)<\/code>/g, (m, s) => {
     const slug = s.replace(/\/$/, '');
-    return slugs.has(slug) ? `<a href="${slug}/">${esc(slug)}</a>` : `<code data-todo="missing page ${esc(slug)}">${esc(slug)}</code>`;
+    if (!slugs.has(slug)) return `<code data-todo="missing page ${esc(slug)}">${esc(slug)}</code>`;
+    const label = slugTitles?.get(slug) || slug;
+    return `<a class="pl" href="${slug}/">${esc(label)}</a>`;
   });
 }
 
+function crossRefs(html, ctx) {
+  // "→ <em>Page title</em>" written by the manual authors → a link when a page (or section) with that title exists
+  if (!ctx?.titles) return html;
+  return html.replace(/(→|&rarr;)\s*<em>([^<]+)<\/em>/g, (m, arrow, title) => {
+    const key = title.toLowerCase().replace(/[`*"“”]/g, '').replace(/\s+/g, ' ').trim();
+    const slug = ctx.titles.get(key) || ctx.titles.get(key.split(/[:—–(]/)[0].trim());
+    return slug ? `${arrow} <a href="${slug}/">${esc(title)}</a>` : m;
+  });
+}
 export function md(text, ctx) {
   // an [image ID] / [diagram ID] reference embedded in prose → an inline placeholder chip (or the image link)
   text = text.replace(/\[(image|diagram)\s+([A-Z]+-\d+[a-z]?)\]/g, (m, kind, id) => {
@@ -34,7 +46,10 @@ export function md(text, ctx) {
   // a "src: …" fragment that survived inside a table cell is provenance noise, not content
   html = html.replace(/(<td>[^<]*?)\s*(?:<code>)?src:\s*[^<]*(?:<\/code>)?(\s*<\/td>)/g, '$1$2');
   html = badgesInline(html);
-  if (ctx?.slugs) html = linkSlugs(html, ctx.slugs);
+  if (ctx?.slugs) html = linkSlugs(html, ctx);
+  html = crossRefs(html, ctx);
+  // every table scrolls inside its own container, never the page
+  html = html.replace(/<table>[\s\S]*?<\/table>/g, m => `<div class="table-wrap">${m}</div>`);
   return html;
 }
 const inline = (text, ctx) => md(text, ctx).replace(/^<p>|<\/p>\s*$/g, '');
@@ -143,7 +158,7 @@ function tableWarning(b) {
 function dataTable(b, ctx) {
   const table = md(b.body.join('\n'), ctx);
   const n = (b.body.filter(l => l.startsWith('|')).length - 2);
-  return `${tableWarning(b)}<div class="dt" data-rows="${Math.max(n, 0)}"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">${Math.max(n, 0)} rows</span></div><div class="table-wrap">${table}</div></div>`;
+  return `${tableWarning(b)}<div class="dt" data-rows="${Math.max(n, 0)}"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">${Math.max(n, 0)} rows</span></div>${table}</div>`;
 }
 
 function underConstruction(b, ctx) {
@@ -161,7 +176,7 @@ export function renderBlock(b, ctx) {
     case 'callout': { const k = (b.mod || 'info').split('|')[0]; return wrap(b, `co-${k}`, `<aside class="callout ${k}" role="note"${b.id ? ` id="${b.id}"` : ''}>${b.title ? `<strong class="co-title">${inline(b.title, ctx)}</strong>` : ''}${b.head ? `<p>${inline(b.head, ctx)}</p>` : ''}${md(body, ctx)}${srcLine(b)}</aside>`); }
     case 'steps': return wrap(b, '', `${blockHead(b, ctx)}<div class="steps">${md(body, ctx)}</div>${srcLine(b)}`);
     case 'cards': return wrap(b, '', `${blockHead(b, ctx)}<div class="cards">${md(body, ctx)}</div>${srcLine(b)}`);
-    case 'table': case 'compare': case 'timeline': case 'pricing-tiers': { const lt = listTable(b, ctx); return wrap(b, '', `${blockHead(b, ctx)}${tableWarning(b)}<div class="table-wrap">${lt ?? md(body, ctx)}</div>${srcLine(b)}`); }
+    case 'table': case 'compare': case 'timeline': case 'pricing-tiers': { const lt = listTable(b, ctx); return wrap(b, '', `${blockHead(b, ctx)}${tableWarning(b)}${lt ? `<div class="table-wrap">${lt}</div>` : md(body, ctx)}${srcLine(b)}`); }
     case 'data-table': return wrap(b, '', `${blockHead(b, ctx)}${dataTable(b, ctx)}${srcLine(b)}`);
     case 'spec-sheet': return wrap(b, '', `${blockHead(b, ctx)}${specSheet(b, ctx)}${srcLine(b)}`);
     case 'accordion': return wrap(b, '', `${blockHead(b, ctx)}${details(b, ctx)}${srcLine(b)}`);
@@ -243,6 +258,7 @@ export function pageBody(page, ctx, extras = {}) {
 <h1>${inline(page.title, ctx)}</h1>
 ${page.subtitle ? `<p class="subtitle">${inline(page.subtitle, ctx)}</p>` : ''}
 <p class="meta">${[...prov].map(badge).join('')}${lv ? `<span class="lv">Last verified <time datetime="${lv}">${lv}</time></span>` : ''}<a class="md-link" href="${page.slug}.md">View as Markdown</a></p>
+<details class="legend"><summary>What the badges mean</summary><ul>${Object.entries(PROV_LABEL).map(([k, v]) => `<li>${badge(k)} ${esc(v)}</li>`).join('')}</ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
 </header>
 ${blocks}
 ${extras.after || ''}
@@ -261,8 +277,18 @@ export function markdownTwin(page) {
     if (b.type === 'under-construction') { out.push(`## ${b.title || b.head} 🚧`, 'Under construction — details when it has run on real hardware.', ''); continue; }
     if (b.type === 'image' || b.type === 'diagram') { out.push(`_[${b.type} ${b.arg}: ${b.head || ''}]_`, ''); continue; }
     if (b.title) out.push(`## ${b.title}`);
-    if (b.head) out.push(b.head);
-    out.push(...b.body);
+    const cm = (b.head || '').match(/columns?:\s*(.+)$/i);
+    const items = listItems(b.body);
+    if (['table', 'compare', 'timeline', 'pricing-tiers'].includes(b.type) && !b.body.some(l => l.startsWith('|')) && items.length && items.every(it => it.includes('|'))) {
+      if (b.head && !cm) out.push(b.head); else if (cm && b.head.slice(0, cm.index).trim()) out.push(b.head.slice(0, cm.index).replace(/[—–-]\s*$/, '').trim());
+      const cols = cm ? cm[1].split('|').map(s => s.trim()).filter(Boolean) : null;
+      const rows = items.map(it => it.split('|').map(s => s.trim()));
+      const n = cols ? cols.length : Math.max(...rows.map(r => r.length));
+      out.push(`| ${(cols || Array.from({ length: n }, (_, i) => `col ${i + 1}`)).join(' | ')} |`, `|${'---|'.repeat(n)}`, ...rows.map(r => `| ${Array.from({ length: n }, (_, i) => r[i] || '').join(' | ')} |`));
+    } else {
+      if (b.head) out.push(b.head);
+      out.push(...b.body);
+    }
     if (b.src.length) out.push(`Source: ${b.src.join(' · ')}`);
     out.push('');
   }

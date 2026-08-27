@@ -18,12 +18,14 @@ The grenade, like the tagger, **keeps no game state and cannot show a winner** �
 Source: docs/reference/grenade.md
 
 Other accessories
-- **Hatchet, shield, sidearm** | IR-paired accessories (paired the same way as a thrown grenade); each has a PROGRAM button for USB firmware updates | 📖
-- **Scope** | An optical sight; zeroed using the tagger's Target Mode. Snipers sight long, shotgun/SMG short | 📖 👥
-- **Phone bracket** | Mounts a phone for the Callsign app. The community also uses it to carry an ESP32 + USB power bank rider (JEDGE-style) with **no permanent modification** to the tagger — a 5,000 mAh pack runs such a rider ~15 h | 👥
-- **Sling mount** | Community drill size for a sling stud: **7/32"** (15/64" is too loose) | 👥
-- **Utility Box (UBox)** | Battle Company's commercial station: one networked box reconfigured in software into 20+ roles (domination, CTF, bomb, respawn, dispensers, targets). Part of the EDGE commercial suite, not the BRX consumer kit | 📖
-- **3D-printed skins** | The dominant cosmetic mod; paint is rare (black plastic primer base coat if you do) | 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| **Hatchet, shield, sidearm** | IR-paired accessories (paired the same way as a thrown grenade); each has a PROGRAM button for USB firmware updates | 📖 |
+| **Scope** | An optical sight; zeroed using the tagger's Target Mode. Snipers sight long, shotgun/SMG short | 📖 👥 |
+| **Phone bracket** | Mounts a phone for the Callsign app. The community also uses it to carry an ESP32 + USB power bank rider (JEDGE-style) with **no permanent modification** to the tagger — a 5,000 mAh pack runs such a rider ~15 h | 👥 |
+| **Sling mount** | Community drill size for a sling stud: **7/32"** (15/64" is too loose) | 👥 |
+| **Utility Box (UBox)** | Battle Company's commercial station: one networked box reconfigured in software into 20+ roles (domination, CTF, bomb, respawn, dispensers, targets). Part of the EDGE commercial suite, not the BRX consumer kit | 📖 |
+| **3D-printed skins** | The dominant cosmetic mod; paint is rare (black plastic primer base coat if you do) | 👥 |
 Source: docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, docs/reference/lasertagmods.md, docs/reference/edge-brp.md
 
 ## Known wear points (anatomy-level; fixes are in Repairs)

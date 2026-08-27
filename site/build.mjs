@@ -15,7 +15,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.start
 const MANUAL = path.resolve(args.manual || path.join(REPO, 'docs/manual'));
 const OUT = path.resolve(args.out || path.join(REPO, 'webapp'));
 const SITE = args.site || 'https://open-brx.iamrossi.workers.dev';
-const PROTECTED = new Set(['mc', 'brx-companion.apk']); // never written or deleted by this build
+const PROTECTED = new Set(['mc']); // never written or deleted by this build
 const NOW = new Date().toISOString();
 
 const written = new Set();
@@ -39,7 +39,11 @@ for (const s of sections) slugs.add(s.slug);
 const imgDir = path.join(MANUAL, 'img');
 const imageFiles = {};
 if (fs.existsSync(imgDir)) for (const f of fs.readdirSync(imgDir)) { const m = f.match(/^([A-Z]+-\d+[a-z]?)\.(png|jpe?g|webp|svg|avif)$/i); if (m) imageFiles[m[1]] = f; }
-const ctx = { site: SITE, slugs, images: manual.images, imageFiles };
+const norm = s => String(s).toLowerCase().replace(/[`*"“”]/g, '').replace(/\s+/g, ' ').trim();
+const titles = new Map(); const slugTitles = new Map();
+for (const p of pages) { titles.set(norm(p.title), p.slug); slugTitles.set(p.slug, p.title.replace(/[`*]/g, '')); }
+for (const s of sections) { if (!titles.has(norm(s.title))) titles.set(norm(s.title), s.slug); if (!slugTitles.has(s.slug)) slugTitles.set(s.slug, s.title); }
+const ctx = { site: SITE, slugs, images: manual.images, imageFiles, titles, slugTitles };
 
 // ---- nav / sidebar ------------------------------------------------------------------------
 const manualSections = sections.filter(s => s.slug.startsWith('/manual'));
@@ -119,7 +123,7 @@ function renderOne(page, opts = {}) {
   sitemap.push(page.slug);
   const rows = page.blocks.flatMap(b => b.body.filter(l => l.startsWith('|') && !/^\|\s*-/.test(l)).map(l => l.split('|')[1]?.replace(/[`*]/g, '').trim()).filter(Boolean));
   const heads = page.blocks.filter(b => b.title).map(b => b.title.replace(/[`*]/g, ''));
-  const faqs = page.blocks.filter(b => b.type === 'faq').flatMap(b => b.body.filter(l => /^\s*[-*]\s+\*\*/.test(l)).map(l => l.replace(/^\s*[-*]\s+\*\*(.+?)\*\*.*$/, '$1')));
+  const faqs = page.blocks.flatMap(b => b.body.filter(l => /^\s*(?:[-*]|\d+\.)\s+\*\*/.test(l)).map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+\*\*(.+?)\*\*.*$/, '$1').replace(/[`*]/g, '')));
   searchIndex.push({ url: page.slug + (page.slug === '/' ? '' : '/'), title: page.title.replace(/[`*]/g, ''), section: page.section.title || 'Open BRX', subtitle: page.subtitle || '', heads, terms: [...new Set([...rows, ...faqs])].slice(0, 400) });
 }
 for (const page of pages) renderOne(page);

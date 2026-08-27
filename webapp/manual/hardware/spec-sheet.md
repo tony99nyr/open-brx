@@ -32,11 +32,13 @@ Smart Grenade:
 - 5 modes: Frag · Assault · Hill · Respawn · CTF ✅
 
 What's in the box (typical retail kit)
-- Tagger | with reload handle (screws on) | 📖
-- Wireless headset | pre-paired to its tagger at the factory (the tagger's record stores the headset's serial as its pairing PIN) | ✅ 📖
-- 8.4 V two-cell smart charger | red → green LED | 📖
-- Quick manual (V7) | link: Battle Company's BRX Manual V7 PDF | 📖
-- Optional | 6×AA battery holder use, scope, phone bracket, smart grenade | 📖 👥
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Tagger | with reload handle (screws on) | 📖 |
+| Wireless headset | pre-paired to its tagger at the factory (the tagger's record stores the headset's serial as its pairing PIN) | ✅ 📖 |
+| 8.4 V two-cell smart charger | red → green LED | 📖 |
+| Quick manual (V7) | link: Battle Company's BRX Manual V7 PDF | 📖 |
+| Optional | 6×AA battery holder use, scope, phone bracket, smart grenade | 📖 👥 |
 Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md §7c
 
 ## Official documents

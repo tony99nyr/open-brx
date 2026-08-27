@@ -10,13 +10,13 @@
 ### Page: Home  (`/`)  — template T1
 _Video game inspired tactical laser tag — open and self-hosted._
 
-[hero] **Open BRX.** The definitive manual for the Battle Company BRX tagger and headset — and an open-source platform that turns stock BRX guns into a fully orchestrated laser-tag system: real game modes, live scoring, objectives, a phone HUD, a laptop mission control. No subscription. No firmware mods. No venue Wi-Fi required.
+[hero] **Open BRX.** The definitive manual for the Battle Company BRX tagger and headset — and an open-source platform that turns stock BRX guns into an orchestrated laser-tag system: real game modes, live scoring and objectives from a laptop today, with a phone HUD and a laptop Mission Control under construction. No subscription. No firmware mods. No venue Wi-Fi required.
 [image HOME-01] full-bleed hero (night field, dim red HUD glow — see images.md)
 src: docs/VISION.md, README.md
 
-[cards] "Two doors" — 2 large cards:
-- **The Ultimate BRX Manual** → `/manual`. "Everything about the tagger and headset in one place: anatomy, pairing, every weapon, the 2166-sound bank, repairs, and the full BLE protocol. Built from the official docs, the community, and our own bench." ✅📖👥
-- **The Open BRX platform** → `/platform`. "Run Team Deathmatch and more on stock guns from a laptop today with `brx-mcp` — proven on real hardware. The rest — a mission-control console, a phone HUD per gun, an ESP32 rider — is under construction." ✅🚧
+[cards] "Two doors"
+- **The Ultimate BRX Manual** — Everything about the tagger and headset in one place: anatomy, pairing, every weapon, the 2166-sound bank, repairs, and the full BLE protocol. Built from the official docs, the community, and our own bench. ✅📖👥 → `/manual`
+- **The Open BRX platform** — Run Team Deathmatch and more on stock guns from a laptop today with `brx-mcp` — proven on real hardware. The rest — a mission-control console, a phone HUD per gun, an ESP32 rider — is under construction. ✅🚧 → `/platform`
 src: docs/README.md, docs/architecture-topology.md
 
 [stat-row] 4 big numbers:

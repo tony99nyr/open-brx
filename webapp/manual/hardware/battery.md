@@ -27,7 +27,9 @@ _[image HW-06: (battery pack + connector — see Images table)]_
 Source: docs/reference/community-notes.md, docs/gotchas.md, docs/experiment-log.md (2026-08-26 screamer)
 
 Headset power
-- Cell | one 18650 lithium cell (v2) | 👥
-- Charging | any USB 5 V supply | 📖
-- Voltage readout | reported through the tagger's USB console (e.g. "Head: 3.84 V") | ✅
+| col 1 | col 2 | col 3 |
+|---|---|---|
+| Cell | one 18650 lithium cell (v2) | 👥 |
+| Charging | any USB 5 V supply | 📖 |
+| Voltage readout | reported through the tagger's USB console (e.g. "Head: 3.84 V") | ✅ |
 Source: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
