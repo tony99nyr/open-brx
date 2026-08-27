@@ -169,8 +169,10 @@ Everything else is static. Interactivity is for data, never for decoration.
 ## 9. Where it deploys (this IS a constraint)
 
 The site is **already hosted**: the repo's root `wrangler.toml` publishes the `webapp/` folder as an
-assets-only **Cloudflare Worker** (`open-brx.iamrossi.workers.dev`), git-connected — a push to `main`
-redeploys. Nothing outside `webapp/` is published. So:
+assets-only **Cloudflare Worker** (`open-brx.iamrossi.workers.dev`). **Deploy is a manual
+`npx wrangler deploy` from the repo root** (a push to `main` does *not* redeploy — verified 2026-08-27);
+`webapp/.assetsignore` keeps `mc/` and the build manifest off the public host. Nothing outside `webapp/`
+is published. So:
 
 - **The built site's output lands in `webapp/`**: `webapp/index.html` becomes the T1 Home (it is a
   throwaway dev landing page today), `webapp/manual/…` and `webapp/platform/…` hold the sections, with

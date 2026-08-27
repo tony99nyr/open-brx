@@ -24,8 +24,9 @@ tap-target/tiny-text audits, machine-readable layer) on desktop + phone, and ref
 newer than the built output. `npm run serve` previews `webapp/` on :4173. Real photos go in
 `docs/manual/img/<ID>.<ext>` and are picked up by ID.
 
-**Where it ships.** `webapp/` is already published as an assets-only Cloudflare Worker via the root
-`wrangler.toml` (git-connected; push to `main` = redeploy). The built site goes into `webapp/`
+**Where it ships.** `webapp/` is published as an assets-only Cloudflare Worker via the root
+`wrangler.toml` — **deploy = `npx wrangler deploy` from the repo root** (wrangler is logged in from WSL;
+a git push alone does not redeploy). The built site goes into `webapp/`
 (`index.html` = Home, `manual/`, `platform/`, `llms.txt`); site source stays outside the published tree;
 `webapp/mc/` and `app/` (Mission Control UI, phone HUD — still in development) are not touched.
 
