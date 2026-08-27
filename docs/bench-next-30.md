@@ -20,12 +20,27 @@ yet say the ability emits IR at all. The splitting bug that would explain it **i
 2. I open a capture (RAW off).
 3. **Fire the EMP ability 3–4 times, ~6 s apart.** Nothing else — no normal shots, so nothing to confuse.
 
-**Pass:** a complete 25-bit word whose **protocol** is not 0. Read the protocol + subtype → that is the
-`$SIR` cell to write for a stun, and U11 closes.
+**Pass:** a complete 25-bit word whose **protocol** is not 0 (evidence so far points at **protocol 8**).
+⚠️ **This pins the protocol but NOT the effect** — the effect is decided by the *victim's* `$SIR` row,
+which we cannot read from a native game. So this narrows the search; item **2b** is what actually
+closes it.
 **If it decodes as a 28–32 bit word instead:** the ability uses the **accessory format** (like `$GREN`),
 which is a finding in itself — abilities would live on a second protocol we barely know.
 
-## 2 · Capture a `$GREN` accessory word intact  ·  5 min  ·  no gun needed
+## 2 · ~~Capture a `$GREN` accessory word intact~~ — ❌ DONE UNATTENDED, NEGATIVE
+Swept every `$GREN` field with the splitting fix in place and a clean baseline: the emission decodes to
+**all-zeros at varying lengths and does NOT track the arguments**. `$GREN` is not a programmable
+emitter. **Skip this — replaced by item 2b.**
+
+## 2b · Trigger-test the remaining status functions  ·  10 min  ⭐ the only way to detect a stun
+**Why this replaces the `$GREN` item:** a stun that only stops the victim's trigger is **invisible to
+every instrument we have** — it moves no pool and emits no BLE frame. That is exactly how fn 23 fooled
+us. The only detector is a human pulling a trigger.
+I arm `$SIR,<p>,0,,<fn>` for each remaining candidate (**3, 8, 24, 25, 26, 27, 28, 35**), fire it at you,
+and **you try to fire immediately**. ~1 min each.
+**Pass:** any function where the trigger genuinely does nothing ⇒ **that is the stun, U11 closes.**
+**All nine fire normally ⇒ no `$SIR` function is a stun**, and category 10 needs a different mechanism —
+also a real answer, and it would close a hunt that has now cost three sessions.
 Same splitting bug hid this one. I drive `$GREN` over BLE, receiver watching.
 **Pass:** one unbroken word of **≥28 bits, identical across ≥3 repeats** (the earlier 28/32 figures came from *split fragments*, so treat the exact length as unknown until a whole frame lands). Then sweep `iRType / operationMode /
 channel / GrenadeType` — **if the bits track the arguments, the gun becomes a programmable emitter.**

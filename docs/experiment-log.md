@@ -2559,3 +2559,52 @@ reproducing?" half of the LED cluster (bench item 4.3), which no wire capture co
 **P13** (is colour a single 0–8 index?) and **P17** (how to turn the LEDs OFF) are unchanged — both need
 a lit gun and a `$GLED` sweep. But 4.3's premise is now answered: **we know what the target behaviour
 is.** Only the token that drives it is missing.
+
+## 2026-08-27 (unattended) — `$GREN` word does NOT track its arguments · and why "capture the native EMP" is only half an answer
+
+### `$GREN` accessory emission — negative
+Splitting fix in place (RAW off), **baseline 0 ambient frames**, host-driven so no operator involved.
+Swept `iRType / crit / modifier / operationMode / channel / GrenadeType / MaxCount` one field at a time:
+
+```
+bare            bits=23   00000000000000000000000
+bare rpt        bits=32   00000000000000000000000000000010
+modifier=99     bits=29   00000000000000000000000100000
+operationMode=7 bits=24   000000000000000000000000
+channel=5       bits=26   00000000000000000000000000
+iRType / crit / GrenadeType      no frame at all
+```
+**Mostly zeros, variable apparent length, and no correspondence to the arguments.** Repeats of the
+*same* command give different lengths (23 / 32 / 19), so either the frame length genuinely varies or it
+still fragments for a reason `IDLE_GAP_US=30000` does not fix.
+
+⇒ **`$GREN` is not usable as a programmable emitter** on this evidence. It emits *something*, but we
+cannot drive its content. Downgrade the earlier "if the bits track the args, the gun becomes a
+programmable accessory emitter" hope — **they do not track.**
+
+### ⚠ REFRAME: capturing the native EMP word will not, by itself, give us a stun
+A realisation from the day's own results, recorded because it changes the plan:
+
+**The effect of an IR hit is decided by the VICTIM's `$SIR` row, not by the shooter's word.** We proved
+this repeatedly — the same protocol delivers damage, a heal, an armor grant or audio suppression purely
+according to the receiving gun's table.
+
+So capturing the Sentinel's EMP tells us **which protocol** the ability uses (evidence so far points at
+**protocol 8**, magnitude 15 — though the confirming A/B was void). It does **not** tell us what
+function a native Supremacy victim has bound to that protocol, and **we cannot read a native game's
+`$SIR` table** — the gun never reports it.
+
+**What this means for the stun hunt:**
+- The protocol number is necessary but **not sufficient**.
+- The effect must still come from a `$SIR` **function**, and our sweep of the whole function space found
+  exactly one non-damage, non-grant behaviour: **fn 23, audio suppression**.
+- ⇒ Either the native "EMP" *is* substantially audio/sensory disruption (consistent with the victim
+  keeping the ability to fire), **or** the stun lives in a function our sweep could not detect because it
+  produces no pool change and no BLE frame — a class our instruments are blind to.
+- **The honest position: we may not be able to find a stun by sweeping**, because a stun that only
+  affects the victim's trigger is invisible to both the `$HP` stream and the `$ALCD` meter. It needs a
+  human pulling a trigger during each candidate — 9 candidates × a trigger test.
+
+**Next-session correction:** capturing the native EMP is still worth 10 minutes (it pins the protocol,
+and a non-8 answer would be informative), but it should be followed by **trigger-testing the remaining
+status functions**, which is the only method that can actually detect a stun.
