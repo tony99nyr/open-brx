@@ -6,11 +6,13 @@
 > hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
 > Fix options in **§6.2**; it is a bug, not a design question.
 >
-> ⚠️ **The observation stands; the earlier explanation for it does not.** This banner used to say
-> "function 24 is a status function that touches no pool". A later listen-only run fired **fn 24 on
-> protocol 7 and it dealt damage** (armor 70→30). Same function, different protocol, opposite result.
-> So fn 24 is **not** inert — whatever silences the Energy Launcher is specific to its `<9,3>` cell,
-> and is not yet understood. The bug is directly measured; the mechanism is open.
+> **On the mechanism, which has now flipped twice.** This banner originally said fn 24 is a status
+> function that touches no pool. A listen-only run then fired fn 24 on protocol 7 and reported damage
+> (armor 70→30), so I corrected it to "fn 24 is not inert". **A controlled matrix has since found fn
+> 24 pool-neutral on protocols 0, 5, 7, 9 and 10** — the damaging observation does not reproduce
+> (`eb73b0e`). So the original reading is the one currently supported, and my correction of it was
+> based on a result that did not hold. The Energy Launcher landing 0 is *consistent* with fn 24 being
+> pool-neutral; that is no longer a puzzle, though the non-reproducing observation is (§6.2).
 >
 > *(An earlier revision of this banner questioned the measurement because it shared a session with
 > the disputed multipliers. Withdrawn: the emitter has since been shown to deliver faithful
@@ -472,17 +474,14 @@ Every function-class result carries a **trailing known-good control**, added aft
 produced sixteen clean-looking negatives that were a configuration artifact — worth knowing when
 reading any negative result in this area.
 
-> ⚠️ **Scope: the function classes below were each measured at a SINGLE IR protocol, and at least one
-> does not travel.** The sweeps behind them ran on one protocol per session and the results were
-> written up as properties of the *function*. They are not yet known to be. **fn 24 moved no pool on
-> one protocol and dealt damage (armor 70→30) on protocol 7** — same function, opposite result. So
-> read "fn 6 is armor-piercing" or "fn 16 is dual-polarity" as *"was, on the protocol it was tested
-> on"*, and re-check before building a weapon on one at a different protocol. A full
-> function × protocol matrix is being measured now; this section should be revisited when it lands.
+> ✅ **Scope: resolved — the classes travel.** An earlier revision of this note warned that each class
+> had been measured at a single IR protocol and might not generalise. A controlled matrix across
+> protocols **0, 5, 7, 9 and 10** has since found **no cell varying by protocol** (`eb73b0e`), with fn 1
+> holding a correct 40 as control throughout. So "fn 6 is armor-piercing" can be read plainly, and a
+> weapon designed on protocol 9 gets the same behaviour as one on protocol 0. The caveat was
+> over-cautious and is withdrawn.
 >
-> The **multiplier** rows are the exception and are safe as stated: `<0,1>` → ×1.25 and `<0,3>` → ×2
-> were verified through the actual shipped rows, on the same protocol (0) as the weapons that use
-> them — so the measurement and the application match.
+> The one thing that is **not** settled is the fn 36/37 **multiplier magnitude** — see §6.2.
 
 ### 6.1 The model
 
@@ -549,6 +548,16 @@ with a trailing known-good control (experiment-log 2026-08-26). **A later contro
 same bench and emitter read ×1.0 in all 24 multiplier cells**, fn 1 control correct throughout
 (`brx-protocol.md` §5 "DISPUTED"). Both runs were internally consistent; no systematic difference
 between them has been found.
+
+**Two results from the same measurement context have now failed to reproduce**, which is a pattern
+rather than two flukes: the ×2 multiplier, and fn 24 dealing damage on protocol 7. Both original
+observations came from sessions with **an operator physically holding the victim gun**; both re-tests
+were **unattended, with the gun on the bench**. That is currently the single best-supported difference
+between the runs, and it collapses two open questions into one: *what changes about a gun when
+someone is holding it?* A concrete candidate is the **sensor struck** — `$HIR` token 1 distinguishes
+front dome, back dome and gun body, and a held gun presents a completely different face and incidence
+angle to the emitter than one lying on a bench. Whether the sensor that catches the IR affects the
+damage applied has never been tested.
 
 **Our emitter is not the explanation, and that matters.** The obvious suspicion was that the rig had
 encoded 40 where it meant 20, which would look exactly like a ×2. It didn't: the emitter is
