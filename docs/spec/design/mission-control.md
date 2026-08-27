@@ -32,6 +32,12 @@ A red/amber/green **gear grid**, one card per gun.
 - **Global settings:** environment Indoor/Outdoor, **Night** toggle, respawn (type + delay), time limit,
   scoring (frag limit / win condition). LED/environment extras behind a disclosure.
 
+### A2b · Loadout rules (in BUILD, under Global Settings) — *added 2026-08-27, loadout.md §3/§5*
+Preset row `OPEN · NO HEAVIES · SNIPERS · CUSTOM` + a **players pick on phone** toggle, then one block per slot
+(PRIMARY / SECONDARY): who picks (`PLAYER / HOST / FIXED / OFF`), a pool summary the server computes
+("13 OF 18 WEAPONS · 4 PERKS"), allow-chips per class, a fixed-item picker, and a per-weapon override
+disclosure. Any rule edit flips the preset to CUSTOM. FFA defaults to NO HEAVIES.
+
 ### A3 · Kit each player — the centerpiece
 A **per-player card**, filled while the player gears up and sizes their strap. This is where the "cool" lives.
 - **Player number** (1–63, auto-filled in roster order, editable — the id enemy guns report when hit by this
@@ -40,6 +46,14 @@ A **per-player card**, filled while the player gears up and sizes their strap. T
   `docs/reference/callsign-ui.md`): weapon art, class, and a clean **stat block** (damage, magazine, reserve,
   fire-rate, reload, range). Picking a weapon feels deliberate and game-like.
 - Shows the player's **live node/gun link** so the host knows the kit-out reached them.
+- **Two slots (2026-08-27, loadout.md §5).** A **loadout rail** of two cards — PRIMARY and SECONDARY — sits
+  beside the hero; the focused card drives the arsenal below. Slot 2 is a **weapon OR a perk OR empty**
+  ("alt-fire does nothing" — a valid kit). Perks are a second tab of the same arsenal (purple), with an
+  effects block instead of DMG/ROF/RNG. Rule-locked slots show a padlock + "SET IN BUILD"; out-of-pool
+  tiles stay visible but dimmed, and the arsenal header carries the pool summary once ("13 OF 18 · NO
+  HEAVIES"), never per tile. Roster rows show each player's live state — `PICKING…` (phone browser open),
+  `TRYING <weapon>`, `READY ✓` — and a two-item loadout line. A RULES chip in the header links to BUILD.
+  Tablet ≤ 900 px: the roster becomes a horizontal strip above the detail.
 
 ### A4 · Weapon try-out (silent tutorial)
 Changing a weapon **silently arms that player's gun** so they fire + reload to feel it — no game start.

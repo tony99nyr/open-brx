@@ -470,3 +470,88 @@ test('a fresh assign after match end leaves the MATCH COMPLETE screen (new-match
   assert.equal(h.eng.ended, false, 'assign resets the over screen');
   assert.equal(h.eng.phase, 'kitted');
 });
+
+// ---------- A10 self-serve kitting (docs/spec/loadout.md §4) ----------
+const CAT = { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', role: 'assault', tags: ['assault'], clip: 32, reserve: 384 }, { weapon_id: 'smg', name: 'SMG', role: 'cqb', tags: ['cqb'], clip: 72, reserve: 288 }, { weapon_id: 'rocket_launcher', name: 'Rocket Launcher', role: 'power', tags: ['heavy'], clip: 1, reserve: 4 }],
+  perks: [{ perk_id: 'body_armor', name: 'Body Armor', mechanism: 'passive', effects: { max_armor_add: 50 }, verified: true, hidden: false }] };
+const POL = { hud_select: true, primary: { choice: 'player', allowed_ids: ['assault_rifle', 'smg'] }, secondary: { choice: 'player', kinds: ['weapon', 'perk'], allowed_weapon_ids: ['smg'], allowed_perk_ids: ['body_armor'] } };
+function kitA10(policy = POL) { const h = harness(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy } }); return h; }
+
+test('A10: assign carries catalog + policy → state; loadout view resolves names from the catalog', () => {
+  const h = kitA10();
+  const st = h.eng.state();
+  assert.equal(st.catalog.weapons.length, 3); assert.equal(st.policy.primary.choice, 'player');
+  assert.equal(st.loadout.primary.name, 'Assault Rifle'); assert.equal(st.loadout.secondary, null);
+  assert.equal(st.weapon, 'ASSAULT RIFLE'); assert.ok(st.canPickPrimary && st.canPickSecondary);
+});
+
+test('A10: requestLoadout reports loadout_request (id + try only when set) and holds an optimistic pendingPick', () => {
+  const h = kitA10();
+  assert.equal(h.eng.requestLoadout('primary', 'weapon', 'smg', true), true);
+  const r = h.reports.find(x => x.k === 'loadout_request');
+  assert.deepEqual(r.b, { player_id: 'p1', slot: 'primary', kind: 'weapon', id: 'smg', try: true });
+  assert.deepEqual(h.eng.state().pendingPick.id, 'smg');
+  assert.equal(h.eng.requestLoadout('secondary', 'none'), true);
+  const r2 = h.reports.filter(x => x.k === 'loadout_request')[1];
+  assert.deepEqual(r2.b, { player_id: 'p1', slot: 'secondary', kind: 'none' }, 'kind none carries no id and no try');
+  assert.equal(h.eng.requestLoadout('primary', 'perk', 'body_armor'), false, 'primary is weapons only');
+  assert.equal(h.eng.requestLoadout('primary', 'none'), false, 'primary can never be empty');
+});
+
+test('A10: policy is the lock — host/fixed/off slots and hud_select=false refuse locally, nothing reported', () => {
+  const h = kitA10({ ...POL, primary: { choice: 'fixed', allowed_ids: ['assault_rifle'] }, secondary: { ...POL.secondary, choice: 'off' } });
+  assert.equal(h.eng.requestLoadout('primary', 'weapon', 'smg'), false);
+  assert.equal(h.eng.requestLoadout('secondary', 'weapon', 'smg'), false);
+  assert.equal(h.reports.filter(x => x.k === 'loadout_request').length, 0);
+  assert.equal(h.eng.state().canPickPrimary, false);
+  const h2 = kitA10({ ...POL, hud_select: false });
+  assert.equal(h2.eng.canPick('primary'), false);
+});
+
+test('A10: loadout_ack ok applies the echoed loadout (perk in slot 2); reject keeps MC\'s loadout + surfaces the reason; tick() clears it after 4 s', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('secondary', 'perk', 'body_armor');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'body_armor' } } });
+  let st = h.eng.state();
+  assert.equal(st.pendingPick, null); assert.equal(st.loadoutAck.ok, true);
+  assert.equal(st.loadout.secondary.kind, 'perk'); assert.equal(st.loadout.secondary.name, 'Body Armor'); assert.equal(st.loadout.secondary.effects.max_armor_add, 50);
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: false, reason: 'Host locked this slot', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'body_armor' } } });
+  st = h.eng.state();
+  assert.equal(st.loadoutAck.ok, false); assert.equal(st.loadoutAck.reason, 'Host locked this slot');
+  assert.equal(st.loadout.primary.weapon_id, 'assault_rifle', 'a reject reverts the optimistic pick to MC\'s echo');
+  h.adv(4100); h.eng.tick();
+  assert.equal(h.eng.state().loadoutAck, null, 'ack chip expires');
+});
+
+test('A10: a secondary WEAPON shows in slot 2; weaponName never breaks with one weapon; unanswered pick expires', () => {
+  const h = kitA10();
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } } });
+  const st = h.eng.state();
+  assert.equal(st.loadout.secondary.kind, 'weapon'); assert.equal(st.loadout.secondary.weapon_id, 'smg');
+  h.eng.activeSlot = 1; assert.equal(h.eng.weaponName, 'SMG');
+  h.eng.activeSlot = 3; assert.equal(h.eng.weaponName, 'ASSAULT RIFLE', 'unknown slot falls back to the primary');
+  h.eng.requestLoadout('primary', 'weapon', 'smg'); h.adv(6100); h.eng.tick();
+  assert.equal(h.eng.state().pendingPick, null, 'MC never answered → optimistic row dropped');
+});
+
+test('A10: browse(open) reports loadout_browse once per transition; DONE on a try-out hides the panel until the next try-out', () => {
+  const h = kitA10();
+  h.eng.browse(true); h.eng.browse(true); h.eng.browse(false);
+  const b = h.reports.filter(x => x.k === 'loadout_browse').map(x => x.b.open);
+  assert.deepEqual(b, [true, false]);
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG' }, frames: ['$START,*'] } });
+  assert.equal(h.eng.state().tryoutSeen, null);
+  h.eng.dismissTryout(); assert.equal(h.eng.state().tryoutSeen, 'smg');
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'shotgun', name: 'Shotgun' }, frames: ['$START,*'] } });
+  assert.equal(h.eng.state().tryoutSeen, null, 'a fresh try-out shows its panel again');
+});
+
+test('A10: catalog + policy survive a persisted reload and a welcome re-hydrate', () => {
+  const h = kitA10();
+  const store = h.eng.storage;
+  const e2 = new Engine({ writer: () => {}, now: () => 1_000_500, synced: () => true, storage: store, log: () => {} });
+  assert.equal(e2.catalog.weapons.length, 3); assert.equal(e2.policy.hud_select, true);
+  e2.hydrate({ player: h.player, catalog: { weapons: [], perks: [] }, policy: { ...POL, hud_select: false } });
+  assert.equal(e2.policy.hud_select, false); assert.equal(e2.catalog.weapons.length, 0);
+});

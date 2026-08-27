@@ -77,6 +77,7 @@ class MockNode:
         self.controls: list[dict] = []
         self.tutorials: list[dict] = []
         self.configs: list[dict] = []
+        self.loadout_acks: list[dict] = []      # A10: every `loadout_ack` received, in order
         self.starts: list[dict] = []
         self.acks: list[int] = []
         self.applies: list[dict] = []          # A6 `apply{frames, reason?}` downlinks (recorded, not "written")
@@ -175,6 +176,18 @@ class MockNode:
 
     def team_change(self, tid: int) -> None:
         self.emit({"type": "team_change", "tid": tid})
+
+    def send_loadout_request(self, slot: str, kind: str, rid: str | None = None, try_: bool = False) -> None:
+        """A10 §4.2: pick <slot> <id> [try] — `kind` ∈ weapon|perk|none."""
+        body = {"node_id": self.node_id, "player_id": self.player_id, "slot": slot, "kind": kind}
+        if rid:
+            body["id"] = rid
+        if try_:
+            body["try"] = True
+        self._send(E.make_envelope("loadout_request", body))
+
+    def send_loadout_browse(self, open_: bool = True) -> None:
+        self._send(E.make_envelope("loadout_browse", {"node_id": self.node_id, "player_id": self.player_id, "open": bool(open_)}))
 
     def send_ready(self, ready: bool = True) -> None:
         self._send(E.make_envelope("ready", {"node_id": self.node_id, "player_id": self.player_id,
@@ -344,8 +357,14 @@ class MockNode:
             self.context["player"] = body.get("player")
             self.context["team"] = body.get("team")
             self.context["roster"] = body.get("roster")
+            self.context["catalog"] = body.get("catalog")       # A10: what the phone browses
+            self.context["policy"] = body.get("policy")
             self._absorb_context({"player": body.get("player")})
             self.arm_state = "kitted" if self.arm_state in ("idle", "connected") else self.arm_state
+        elif kind == "loadout_ack":                              # A10 §4.2
+            self.loadout_acks.append(body)
+            print(f"loadout_ack {body.get('slot')} ok={body.get('ok')}" + (f" — {body['reason']}" if body.get("reason") else ""),
+                  body.get("loadout"), flush=True)
         elif kind == "config":
             self.configs.append(body)
             self.context.update({k: body.get(k) for k in ("config", "frames", "roster")})
@@ -411,7 +430,7 @@ class MockNode:
 # ---------------- CLI demo ----------------
 async def _repl(node: MockNode) -> None:
     print("commands: hit <num> <team> [dmg] | die <num> <team> | respawn | fire [n] | drop | up | "
-          "status | ready | quit")
+          "status | ready | pick <primary|secondary> <weapon_id|perk_id|none> [try] | browse [off] | quit")
     loop = asyncio.get_running_loop()
     while True:
         line = await loop.run_in_executor(None, sys.stdin.readline)
@@ -436,6 +455,13 @@ async def _repl(node: MockNode) -> None:
                 node.reconnect()
             elif cmd == "ready":
                 node.send_ready(True)
+            elif cmd == "pick":                                  # A10: pick secondary body_armor / pick primary smg try
+                slot, rid = args[0], args[1]
+                cat = node.context.get("catalog") or {}
+                kind = "none" if rid == "none" else ("perk" if any(p.get("perk_id") == rid for p in cat.get("perks") or []) else "weapon")
+                node.send_loadout_request(slot, kind, None if kind == "none" else rid, try_=(len(args) > 2 and args[2] == "try"))
+            elif cmd == "browse":
+                node.send_loadout_browse(not (args and args[0] == "off"))
             elif cmd == "status":
                 print(node.status_body(), "connected" if node.connected else "offline",
                       "ring", len(node.ring))

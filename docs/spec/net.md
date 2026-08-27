@@ -215,10 +215,10 @@ interface Transport {
   bind(b: { node_id: string; player_id?: string; gun_name: string; gun_tail: string }): void; // gun_name/gun_tail from the advert name, never the deviceId
   send(ev: Event): void;            // PERSISTED facts only (hit_taken|death|respawn): enqueue to ring; NEVER blocks, NEVER throws offline
   status(body: StatusBody): void;   // live-only heartbeat: sent iff bound, else dropped (no seq, no queue)
-  report(msg: NodeMessage): void;   // ready|ack_config|log_offer|log_data — sent iff bound; ack_config/ready are retried by M-NODE on hydrate, not queued here
+  report(msg: NodeMessage): void;   // ready|ack_config|log_offer|log_data|loadout_request|loadout_browse (A10) — sent iff bound; ack_config/ready are retried by M-NODE on hydrate, not queued here
   syncedNow(): number;              // §7 — local_now() + smoothed offset
   synced(): boolean;                // §7 — offset fresh within SYNC_FRESH_MS (what M-NODE puts in status.synced)
-  onMessage(cb: (msg: MCMessage) => void): void; // assign|config|tutorial|start|feedback|control|time_res|pull_log (welcome + ack consumed internally)
+  onMessage(cb: (msg: MCMessage) => void): void; // assign|config|tutorial|start|feedback|control|time_res|pull_log|score|apply|loadout_ack (A10) (welcome + ack consumed internally)
   onState(cb: (s: LinkState) => void): void;     // 'connecting'|'open'|'bound'|'offline'
   close(): void;
 }
@@ -229,7 +229,7 @@ caller's. The Transport **consumes `welcome`** (it hands `welcome.node` back fro
 is surfaced through `onMessage`. `onMessage` delivers the remaining MC→node envelopes already validated
 (§8) and version-gated; bodies pass through untouched for M-NODE/M-START to interpret.
 
-`NodeMessage` = the **non-fact** Node→MC envelopes — `ready`, `ack_config`, `log_offer`, `log_data`.
+`NodeMessage` = the **non-fact** Node→MC envelopes — `ready`, `ack_config`, `log_offer`, `log_data`, and (A10) `loadout_request` / `loadout_browse` (docs/spec/loadout.md §4).
 Facts go via `send()`/`onEvent`; the heartbeat via `status()`/`onStatus`; everything else via
 `report()`/`onNodeMessage`.
 
@@ -242,10 +242,10 @@ interface NetServer {
   onNode(cb: (n: { node_id: string; node_type: string; player_id?: string; gun_tail?: string }) => void): void; // hello+bind
   onEvent(cb: (node_id: string, ev: Event, t_recv: number) => void): void;    // post-dedup persisted facts, monotonic per node
   onStatus(cb: (node_id: string, s: StatusBody, t_recv: number) => void): void; // live-only heartbeat (never dedup'd — latest wins)
-  onNodeMessage(cb: (node_id: string, msg: NodeMessage, t_recv: number) => void): void; // ready|ack_config|log_offer|log_data
+  onNodeMessage(cb: (node_id: string, msg: NodeMessage, t_recv: number) => void): void; // ready|ack_config|log_offer|log_data|loadout_request|loadout_browse (A10)
   onStale(cb: (node_id: string, ageMs: number) => void): void;
   onReturn(cb: (node_id: string) => void): void;             // stale → live again
-  push(node_id: string, msg: MCMessage): void;               // assign|config|tutorial|start|feedback|control|time_res|pull_log|ack
+  push(node_id: string, msg: MCMessage): void;               // assign|config|tutorial|start|feedback|control|time_res|pull_log|ack|score|apply|loadout_ack (A10)
   broadcast(msg: MCMessage): void;                           // e.g. start to all bound nodes
   timeService(): void;                                       // answers time_req with time_res (§7)
 }

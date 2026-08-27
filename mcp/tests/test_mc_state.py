@@ -133,15 +133,20 @@ def test_controls_land_in_kitted_and_rematch_needs_push():
     assert s.phase == "kit" and not s.lobby_pushed and net.pushes("control")[-1][2]["cmd"] == "recall"
 
 
-def test_tryout_disabled_once_a_node_is_in_lobby():
-    s, net, clock, ps = mk(1)
-    online(s, net, clock, ps[0], 0)
+def test_tryout_disabled_once_the_lobby_is_pushed():
+    """A10 §4.4: the gate is the config PUSH, not 'any node reports LOBBY' — the old rule let the first
+    player's ready kill every other player's try-out (brx-opus2 S1, 2026-08-27)."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.tryout(ps[0]["player_id"], "smg")
     assert any(f.startswith("$WEAP,0,<smg>") for f in net.pushes("tutorial")[-1][2]["frames"])
     net.simulate_status("node0", {"player_id": ps[0]["player_id"], "arm_state": "lobby", "synced": True}, clock["t"])
+    s.tryout(ps[1]["player_id"], "shotgun")           # another node's state never blocks a try-out
+    s.push_config()
     try:
         s.tryout(ps[0]["player_id"], "shotgun"); assert False
-    except ValueError: pass
+    except ValueError as e:
+        assert "closed" in str(e)                     # human reason (loadout_ack.reason / MC toast)
 
 
 def test_config_warnings_surface():

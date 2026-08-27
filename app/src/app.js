@@ -143,6 +143,17 @@ Object.assign(hud.h, {
     scheduleRender();
   },
   onReady: () => { if (engine.phase === 'kitted') { engine.setReady(!engine.ready); haptic('tap'); } },
+  // A10 self-serve kitting (docs/spec/loadout.md §4.5): slot plates → LOADOUT browser → tap-to-equip / TRY IT / DONE
+  onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; engine.browse(true); haptic('tap'); },
+  onLoTab: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot === 'secondary' ? 'secondary' : 'primary'; hud.lo.focus = null; hud.sig = null; scheduleRender(); },
+  onLoFilter: f => { hud.lo.filter = f === 'perks' ? 'perks' : 'weapons'; hud.lo.focus = null; hud.sig = null; scheduleRender(); },
+  onLoNone: () => { engine.requestLoadout('secondary', 'none'); haptic('tap'); },
+  onPickItem: key => { const i = String(key || '').indexOf(':'); if (i < 0) return; const kind = key.slice(0, i), id = key.slice(i + 1); hud.lo.focus = key; if (engine.requestLoadout(hud.lo.tab, kind, id, false)) haptic('tap'); else scheduleRender(); },
+  onTryIt: () => { const st = engine.state(); const tab = hud.lo.tab; const rows = hud._loRows(st, tab); const eq = tab === 'primary' ? st.loadout.primary : st.loadout.secondary;
+    const key = (hud.lo.focus && rows.some(r => r.key === hud.lo.focus)) ? hud.lo.focus : (eq && eq.kind === 'weapon' ? 'weapon:' + eq.weapon_id : (rows[0] && rows[0].key));
+    if (!key || !key.startsWith('weapon:')) return; if (engine.requestLoadout(tab, 'weapon', key.slice(7), true)) haptic('tap'); },
+  onLoDone: () => { engine.browse(false); haptic('tap'); },
+  onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
   onSetUrl: () => { const el = $('mcurl'); if (el && el.value.trim()) connectMc(el.value.trim()); },
   onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },
   onToggleCam: async () => {

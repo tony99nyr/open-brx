@@ -50,7 +50,9 @@ Player {
 Team { team_id: string, name: string, color: "blue"|"yellow"|"red"|"green"|string, tid: number } // tid → $TID (LED colour + friendly-fire class)
 
 Loadout {
-  weapons: WeaponSel[],      // ordered; index maps to the gun's weapon slots
+  weapons: WeaponSel[],      // ordered; index maps to the gun's weapon slots: [primary] or [primary, secondary]. NEVER empty —
+                             // a primary is required; an EMPTY slot 1 is legal (no $WEAP,1 / $AMMO,1; ALT falls back to reload) (A10)
+  perk?: string | null,      // A10: perk_id in slot 2 INSTEAD of a secondary weapon — mutually exclusive with weapons[1] (loadout.md §2)
   // per-player tunables the mode allows (health/armor caps come from the mode, not here, unless overridden)
   overrides?: { max_hp?: number, max_armor?: number }
 }
@@ -124,8 +126,10 @@ Weapon {
   // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
   // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
   weap_frame: string,   // the $WEAP,... template (token positions per callsign-extract)
-  icon?: string
+  icon?: string,
+  tags: string[], role: string   // A10: policy vocabulary ("heavy", "sniper", + the role) — presets exclude by tag (loadout.md §1.1)
 }
+PerkView { perk_id, name, desc, tags, mechanism: "passive"|"slot_frame", effects: {...}, verified, hidden }   // A10, loadout.md §1.2
 ```
 
 ## 4. The event model (the heart of scoring)
@@ -240,12 +244,15 @@ for idempotent replay. `status` carries no `seq`.
 | `log_offer` | `{ node_id, bytes, lines }` | node has a diagnostic log MC can pull |
 | `log_data` | `{ node_id, seq, chunk, last:boolean }` | the log itself, chunked (≤ 48 KB/chunk), in reply to `pull_log` |
 | `ready` | `{ node_id, player_id, ready:boolean }` | ready-up toggle in **KITTED** (phase 4); **all-ready gates the `config` push** |
+| `loadout_request` | `{ node_id, player_id, slot:"primary"\|"secondary", kind:"weapon"\|"perk"\|"none", id?, try?:boolean }` | A10: phone self-serve pick (loadout.md §4.2). MC validates vs `loadout_policy`, applies, re-sends `assign`, optionally starts the try-out, and ALWAYS answers `loadout_ack` |
+| `loadout_browse` | `{ node_id, player_id, open:boolean }` | A10: HUD opened/closed its loadout browser → MC roster shows "PICKING…" (60 s server expiry) |
 
 **MC → Node** (`kind`):
 | kind | body | when |
 |---|---|---|
 | `welcome` | `{ session_id, server_t, seq_hi, node_key, node?: { player, team, roster, config, frames, start?, match_id?, score? } }` | reply to hello. **Full re-hydration (A4.5, A5.5): MC resolves the context by `hello.gun` (sticker/tail → the player bound to that gun) first, then by `node_id`** — so a hot-swapped phone with a brand-new `node_id` is hydrated on its first `hello`, before `bind`. `score?` = that player's current `ScoreRow` (so a swapped phone's D/K/A start right). `seq_hi` = highest event seq MC has from this `node_id`; node sets `next_seq = max(own, seq_hi+1)`. |
-| `assign` | `{ player: Player, team: Team, roster: RosterEntry[] }` | kit-out: set player+team → **KITTED**. Carries **no config**. **Re-sent on any change to the player** (loadout, name, team, player_num); the node's latest `player` is authoritative. |
+| `assign` | `{ player: Player, team: Team, roster: RosterEntry[], catalog: { weapons: WeaponView[], perks: PerkView[] }, policy: { hud_select, primary: { choice, allowed_ids }, secondary: { choice, kinds, allowed_weapon_ids, allowed_perk_ids } } }` | kit-out: set player+team → **KITTED**. Carries **no config**. **Re-sent on any change to the player** (loadout, name, team, player_num); the node's latest `player` is authoritative. **A10:** `catalog` + this player's slot rights ride along (also in `welcome.node`) so the phone can browse/pick with no rule logic of its own (loadout.md §4.1). |
+| `loadout_ack` | `{ slot, ok:boolean, reason?: string, loadout: Loadout }` | A10: reply to every `loadout_request`; `reason` is human copy the HUD shows verbatim. `ok:true` + `reason` = the pick applied but the try-out could not arm (lobby already pushed). |
 | `tutorial` | `{ weapon: Weapon, frames: string[] }` | silent try-out arming (phase 3a; requires KITTED). Frames compiled by MC. |
 | `config` | `{ config: GameConfig, frames: FrameBundle, roster: RosterEntry[] }` | pushed on **all-ready** (phase 4) → node writes `frames.head` (no `$SPAWN`), replies `ack_config` → **LOBBY**. Re-pushed (new `frames`) if a player's loadout/num changes after the push. |
 | `start` | `{ match_id, go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START). MC mints `match_id` and stamps a **monotonic `seq` per session**. **Rules (A5.6):** re-push of the *same* schedule (straggler, grace re-arm) = **same `seq` + same `match_id`** (no-op on a node that holds it); a **reschedule** = **new `seq` + new `match_id`** (supersedes). A late-joining player mid-match: `assign` → `config` → the same `start` re-pushed → hot-join (M-START E5). |
@@ -488,3 +495,22 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     `$PLAY`/`$SFLASH` may be written by the node in `connected`/`kitted`/`lobby` too (bench previews: the
     tagger speaks a voice sample when the host changes a player's voice or gamertag). Everything else about
     A6.4 stands: non-preview applies, and any frame that is not pure sound/flash, still write only when LIVE.
+
+- **A10 (2026-08-27, M-LOADOUT — `docs/spec/loadout.md` is the full spec; additive, no `v` bump):**
+  - **A10.1 Two slots + perks.** `Loadout.weapons` = `[primary]` or `[primary, secondary]`; new `Loadout.perk`
+    (slot 2 = weapon | perk | empty). The compiler emits `$WEAP,1`/`$AMMO,1` **only when a secondary exists** —
+    the silent default shotgun in slot 1 is gone (an empty slot 1 is hardware-verified harmless). v1 perks are
+    passive head tweaks (`body_armor` → `$PSET` armor, `extended_mags` → `$AMMO,0` + t16/t39/t17/t40,
+    `quick_hands` → t18, `easy_reload` → `$BMAP,1,97`); `slot_frame` perks stay `hidden` until benched.
+  - **A10.2 `GameConfig.loadout_policy`** (presets `open`/`no_heavies`/`snipers`/`custom`; per-slot `choice`
+    player|host|fixed|off + tag/id rules). `ffa` defaults to `no_heavies`. The derived pool is server-computed
+    and published (`State.loadout_pool`, `assign.policy`) — no rule logic in the UIs. MC auto-applies the policy
+    to every loadout on config change / add player / restore.
+  - **A10.3 Wire.** Node→MC `loadout_request` + `loadout_browse`; MC→node `loadout_ack`; `assign`/`welcome.node`
+    gain `catalog` + `policy`; `Weapon` gains `tags`/`role`; `GET /api/perks`.
+  - **A10.4 Ready semantics fixed.** A player's `ready` ENDS their try-out (`tutorial {end}` teardown); kit → lobby
+    auto-advances only when **every** rostered player is ready (was: the first ready, which then disabled everyone
+    else's try-outs); `tryout` refuses only once the lobby has been **pushed**, with a human reason.
+  - **A10.5 Saved games** (loadout.md §8, HTTP only — no wire change): `SavedGame {preset_id, name, desc, builtin,
+    created_t, updated_t, config: GameConfig, weapon_tuning?: RESERVED}` on the MC host (`~/.brx-mcp/presets.json`);
+    `/api/presets*`; applying one is `PUT /api/config` with that config (fresh `config_id`).

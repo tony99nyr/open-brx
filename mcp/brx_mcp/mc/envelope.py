@@ -41,6 +41,9 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "log_offer": ("node_id", "bytes", "lines"),
     "log_data": ("node_id", "seq", "chunk", "last"),
     "ready": ("node_id", "player_id", "ready"),
+    # A10 (loadout.md §4): `id`/`try` are OPTIONAL — a required field that is absent DROPS the frame
+    "loadout_request": ("node_id", "player_id", "slot", "kind"),
+    "loadout_browse": ("node_id", "player_id", "open"),
     # MC → node
     "welcome": ("session_id", "server_t", "seq_hi"),
     "assign": ("player", "team", "roster"),
@@ -53,6 +56,7 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "pull_log": (),
     "ack": ("seq_hi",),
     "apply": ("frames",),   # A6: best-effort "write these frames now" (coverage-zone runtime effects)
+    "loadout_ack": ("slot", "ok"),   # A10: `reason`/`loadout` optional
     "score": ("player_id",), # A7: MC pushes a player's current ScoreRow to its node (coverage-zone live K/A/ACC)
 }
 

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { GameConfig } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
+import { LoadoutRules } from './LoadoutRules';
+import { SavedGames, useActiveSavedGame } from './SavedGames';
 import { Chamfer, PanelHeader, ScreenHeader, SectionRule, Seg, StripedSlot, Tag, Toggle, ValueBox, onKey, PrimaryButton } from '../ui';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
@@ -9,6 +11,7 @@ const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   //
 export function Build() {
   const { state, modes, run, api, setView } = useStore();
   const [extras, setExtras] = useState(false);
+  const savedGame = useActiveSavedGame();   // a loaded saved game drives the build → the mode card is its BASE, not ACTIVE
   if (!state) return null;
   const cfg = state.config;
   const sel = modes.find(m => m.mode === cfg.mode) ?? modes[0];
@@ -18,8 +21,9 @@ export function Build() {
     <div className="screen">
       <ScreenHeader kicker="[ A2 // GAME AUTHORING ]" title="Build the Game" />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
-        <div style={{ flex: '2 1 480px' }}>
-          <SectionRule label="SELECT MODE" style={{ marginBottom: 12 }} />
+        <div style={{ flex: '2 1 480px', minWidth: 0 }}>
+          <SavedGames />
+          <SectionRule label="START FROM A STOCK MODE" style={{ marginBottom: 12 }} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
             {modes.map(m => {
               const on = m.mode === cfg.mode;
@@ -31,7 +35,7 @@ export function Build() {
                     style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
                     corner={<>
                       <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 9px' }}>{m.abbr}</span>
-                      {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9}>ACTIVE</Tag></span>}
+                      {on && <span style={{ position: 'absolute', top: 6, right: 6 }}>{savedGame ? <Tag size={9} color={T.line2} ink={T.ink}>BASE</Tag> : <Tag size={9}>ACTIVE</Tag>}</span>}
                     </>} />
                   <div>
                     <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
@@ -69,13 +73,19 @@ export function Build() {
         <PrimaryButton onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
       </div>
       {(state.config_warnings?.length ?? 0) > 0 && (
-            <div style={{ marginTop: 10, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {state.config_warnings!.join(' · ').toUpperCase()}</div>
+            <div role="status" style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[...state.config_warnings!].sort((x, y) => Number(/LOADOUTS? RESET/i.test(y)) - Number(/LOADOUTS? RESET/i.test(x))).map((w, i) => {
+                const reset = /LOADOUTS? RESET/i.test(w);   // the A10 apply_policy notice — the one the host must not miss
+                return <div key={i} style={{ font: reset ? F.chk(700, 12) : F.mono(500, 10), letterSpacing: reset ? '.14em' : '.1em', color: reset ? T.accInk : T.warn, background: reset ? T.warn : 'transparent', padding: reset ? '6px 10px' : 0, alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>;
+              })}
+            </div>
           )}
           {state.config_errors.length > 0 && (
             <div style={{ marginTop: 10, font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>
           )}
         </div>
-        <Chamfer style={{ flex: '1 1 330px', maxWidth: 460 }}>
+        <div style={{ flex: '1 1 330px', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <Chamfer>
           <PanelHeader label="GLOBAL SETTINGS" />
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <Row label="ENVIRONMENT">
@@ -113,6 +123,8 @@ export function Build() {
             )}
           </div>
         </Chamfer>
+        <LoadoutRules />
+        </div>
       </div>
     </div>
   );

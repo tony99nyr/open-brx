@@ -103,10 +103,37 @@ def build(args):
     except Exception as e:
         log.warning("store disabled: %s", e)
 
+    # A10 §8 saved games: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy so a
+    # demo "SAVE AS…" never lands in (or wipes) the host's real presets.json
+    from pathlib import Path as _PP
+    from .presets import PresetStore, default_path
+    from .state import default_config
+    from . import policy as _policy
+    if args.demo or getattr(args, "ephemeral", False):
+        import tempfile
+        ppath = _PP(tempfile.mkdtemp(prefix="brx-mc-presets-")) / "presets.json"
+        log.info("presets: throwaway shelf at %s (demo/ephemeral)", ppath)
+    else:
+        ppath = default_path()
+    session.presets = PresetStore(ppath, session.sanitize_config, default_config, _policy.merge, now_ms=session.now_ms)
+
     if args.demo:
         session.set_config({"mode": "tdm"})
+        # A10 demo loadouts: a secondary weapon, a perk, an empty slot 2, and different primaries, so the
+        # Kit page shows every slot-2 state without anyone typing (docs/spec/loadout.md §5)
+        demo_loadouts = [
+            {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]},
+            {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"},
+            {"weapons": [{"weapon_id": "burst_rifle"}]},
+            {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "extended_mags"},
+            {"weapons": [{"weapon_id": "force_rifle"}, {"weapon_id": "stinger"}]},
+            {"weapons": [{"weapon_id": "bolt_rifle"}], "perk": "easy_reload"},
+            {"weapons": [{"weapon_id": "charge_rifle"}]},
+            {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "smg"}]},
+        ]
         for i, name in enumerate(DEMO_NAMES):
-            session.add_player(name, team_id="blue" if i % 2 == 0 else "yellow", gun_id=f"GUN-{chr(65 + i)}")
+            session.add_player(name, team_id="blue" if i % 2 == 0 else "yellow", gun_id=f"GUN-{chr(65 + i)}",
+                               loadout=demo_loadouts[i % len(demo_loadouts)])
         if fake_net:
             driver = DemoDriver(session, net, n=len(DEMO_NAMES), speed=args.demo_speed)
             extra.append(driver.run)

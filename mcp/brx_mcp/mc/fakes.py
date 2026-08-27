@@ -32,10 +32,26 @@ _WEAPONS = [  # (weapon_id, name, cls, clip, mags, reload_s, dmg, rpm, rng)
 ]
 
 
+# A10 policy tags for the fake catalog (mirrors weapons.json: heavy = the power guns, sniper = the long guns)
+_HEAVY = {"energy_launcher", "rail_gun", "rocket_launcher", "laser_cannon", "ion_sniper"}
+_SNIPER = {"sniper_rifle", "plasma_sniper", "ion_sniper", "amr"}
+
+
+def _tags(wid: str, cls: str) -> list[str]:
+    t = [cls.lower()]
+    if wid in _HEAVY:
+        t.append("heavy")
+    if wid in _SNIPER:
+        t.append("sniper")
+    return t
+
+
 def weapon_views() -> list[dict]:
     return [{"weapon_id": w[0], "name": w[1], "cls": w[2], "clip": w[3], "mags": w[4],
              "reserve": w[3] * w[4], "reload_s": w[5], "dmg": w[6], "rpm": w[7], "rng": w[8],
-             "verified": w[0] in ("assault_rifle", "charge_rifle")} for w in _WEAPONS]
+             "verified": w[0] in ("assault_rifle", "charge_rifle"),
+             "tags": _tags(w[0], w[2]), "role": w[2].lower(),
+             "htk": max(1, round(13 * 55 / max(w[6], 1)))} for w in _WEAPONS]
 
 
 class FakeCompiler:
@@ -97,9 +113,16 @@ class FakeCompiler:
 
     def weapon_catalog(self) -> list[Weapon]:
         return [{"weapon_id": w[0], "name": w[1], "cls": w[2],
-                 "stats": {"damage": w[6], "mag": w[3], "reserve": w[3] * w[4], "rof": w[7], "reload_ms": int(w[5] * 1000)},
-                 "weap_frame": f"$WEAP,<slot>,<{w[0]}>,*", "verified": w[0] in ("assault_rifle", "charge_rifle")}
+                 "stats": {"damage": w[6], "mag": w[3], "reserve": w[3] * w[4], "rof": w[7], "reload_ms": int(w[5] * 1000),
+                           "htk": max(1, round(13 * 55 / max(w[6], 1)))},   # fake: AR bar 55 → 13 hits, scaled
+                 "weap_frame": f"$WEAP,<slot>,<{w[0]}>,*", "verified": w[0] in ("assault_rifle", "charge_rifle"),
+                 "tags": _tags(w[0], w[2]), "role": w[2].lower()}
                 for w in _WEAPONS]
+
+    def perk_catalog(self) -> list[dict]:
+        """A10: the REAL perks.json rows — static data, no hardware, safe for the fake."""
+        from .perks import default_perks
+        return default_perks().all()
 
     def award_medals(self, rows: list[ScoreRow], kills: list[dict]) -> dict[str, list[str]]:
         return {}

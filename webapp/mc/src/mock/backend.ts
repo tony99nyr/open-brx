@@ -1,11 +1,30 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, FeedEntry, GameConfig, LiveRow, ModeInfo, Phase, Player, ReadinessRow, ReadinessSnapshot,
-  RecapView, ScanRow, ScoreRow, StartView, State, WeaponView,
+  Api, FeedEntry, GameConfig, LiveRow, Loadout, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
+  RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, WeaponView,
 } from '../api/types';
-import { GUNS, LIVE, MODES, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
+import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
+import { PRESETS, apply as applyPolicy, pool as poolOf, presetOf, reject } from './policy';
 
 const now = () => Date.now();
+// loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
+const BUILTIN_SNIPER = (): SavedGame => {
+  const ffa = clone(MODES.find(m => m.mode === 'ffa')!.defaults);
+  ffa.health = { ...ffa.health, max_armor: 0 };
+  ffa.loadout_policy = { preset: 'custom', hud_select: false,
+    primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
+    secondary: { choice: 'fixed', kinds: ['weapon', 'perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'extended_mags' } };
+  return { preset_id: 'builtin:silenced_sniper', name: 'Silenced Sniper', builtin: true, created_t: 0, updated_t: 0, config: ffa,
+    desc: 'Everyone gets the bolt-action sniper with extended mags, no armor — one shot kills. No teams, no picking. (Fire-sound "silencing" waits on the weapon-tuning spec.)' };
+};
+// every slot-2 state the Kit page can show: weapon / perk / empty
+const DEMO_LOADOUTS: (() => Loadout)[] = [
+  () => ({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }], perk: null }),
+  () => ({ weapons: [{ weapon_id: 'burst_rifle' }], perk: 'body_armor' }),
+  () => ({ weapons: [{ weapon_id: 'smg' }], perk: null }),
+  () => ({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'smg' }], perk: null }),
+  () => ({ weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' }),
+];
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -17,6 +36,8 @@ export class MockBackend implements Api {
   private config: GameConfig = clone(MODES[0].defaults);
   private players: Player[] = [];
   private trying: Record<string, string> = {};
+  private browsing: Record<string, number> = {};
+  private presets: SavedGame[] = [BUILTIN_SNIPER()];
   private evicted = new Set<string>();
   private pushed = false;
   private acks: State['lobby']['acks'] = {};
@@ -30,10 +51,11 @@ export class MockBackend implements Api {
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
       player_id: `p${i + 1}`, player_num: i + 1, display, team_id, node_id: `node_${GUNS[gi][1]}`,
-      gun_id: GUNS[gi][0], loadout: { weapons: [{ weapon_id: i % 2 ? 'burst_rifle' : 'assault_rifle' }, { weapon_id: 'shotgun' }] },
+      gun_id: GUNS[gi][0], loadout: DEMO_LOADOUTS[i % DEMO_LOADOUTS.length](),
       voice: 'male', ready: READY[display] ?? false,
     }));
     this.trying = { p4: 'smg' };
+    this.browsing = { p6: now() };   // SABLE is browsing on the phone
     this.timer = window.setInterval(() => this.tick(), 1000);
   }
 
@@ -74,7 +96,8 @@ export class MockBackend implements Api {
       lan: { mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws', qr: 'ws://192.168.8.10:8765/ws' },
       nodes, readiness, config: clone(this.config), config_errors: [], config_warnings: [],
       players: clone(this.players), teams: clone(TEAMS),
-      kit: { kitted, total: this.players.length, trying: { ...this.trying } },
+      kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
+      loadout_pool: this.pool(),
       lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed, acks: clone(this.acks) },
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
@@ -95,12 +118,22 @@ export class MockBackend implements Api {
     const tl = this.config.time_limit_s ?? 600;
     return { match_id: l.match_id, go_live_t: l.go_live_t, time_limit_s: tl, ends_t: l.go_live_t + tl * 1000, score, rows: clone(l.rows) };
   }
+  private pool() { return poolOf(this.config.loadout_policy, WEAPONS, PERKS); }
+  /** server `apply_policy()` — every player's kit brought into compliance with the current rules */
+  private applyPolicy() {
+    const pl = this.pool();
+    for (const p of this.players) {
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl);
+      if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
+    }
+  }
   private emit() { const s = this.state(); this.subs.forEach(x => x.snap(s)); }
   private feed(e: FeedEntry) { this.live_?.feed.unshift(e); this.subs.forEach(x => x.feed(e)); }
 
   // ---------- simulation tick ----------
   private tick() {
     const t = now();
+    for (const [pid, at] of Object.entries(this.browsing)) if (t - at > 60_000) delete this.browsing[pid];
     if (this.phase === 'armed' && this.start_) {
       for (const pid of Object.keys(this.start_.per_node)) {
         const n = this.start_.per_node[pid];
@@ -196,8 +229,46 @@ export class MockBackend implements Api {
   async armory() { return GUNS.map(([s, tail]) => ({ gun_id: s, sticker: s, ble: { tail } })); }
   async getModes(): Promise<ModeInfo[]> { return clone(MODES); }
   async getWeapons(): Promise<WeaponView[]> { return clone(WEAPONS); }
+  async getPerks(): Promise<PerkView[]> { return clone(PERKS.filter(k => !k.hidden)); }
+  async getPresets(): Promise<SavedGame[]> { return clone(this.presets); }
+  async savePreset(p: { name: string; desc?: string; config?: GameConfig; replace?: boolean }): Promise<SavedGame> {
+    const name = p.name.trim(); if (!name) throw new Error('Give the game a name');
+    const clash = this.presets.find(x => x.name.toLowerCase() === name.toLowerCase());
+    if (clash?.builtin) throw new Error(`"${clash.name}" is a built-in game — pick another name`);
+    if (clash && !p.replace) throw new Error(`A saved game called "${clash.name}" already exists`);
+    const { config_id: _cid, ...cfg } = clone(p.config ?? this.config); void _cid;
+    const t = now();
+    const sg: SavedGame = { preset_id: clash?.preset_id ?? uid('preset'), name, desc: p.desc ?? clash?.desc ?? '', builtin: false, created_t: clash?.created_t ?? t, updated_t: t, config: { ...cfg, config_id: '' } };
+    this.presets = [...this.presets.filter(x => x !== clash), sg];
+    return clone(sg);
+  }
+  async deletePreset(id: string) {
+    const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
+    if (sg.builtin) throw new Error('Built-in games cannot be deleted');
+    this.presets = this.presets.filter(x => x !== sg);
+  }
+  async applyPreset(id: string) {
+    const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
+    const { config_id: _cid, loadout_policy, ...rest } = clone(sg.config); void _cid;
+    // like PUT /api/config with the whole preset: rules go through the same merge (custom preset carries its slots)
+    return this.putConfig({ ...rest, loadout_policy: { ...loadout_policy, preset: 'custom' } });
+  }
   async putConfig(partial: Partial<GameConfig>) {
+    const prevMode = this.config.mode, prevPol = this.config.loadout_policy;
     this.config = { ...this.config, ...partial, config_id: uid('cfg') };
+    if (partial.loadout_policy) {
+      // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same
+      // patch merge on top, then the name is re-derived (custom if nothing matches)
+      const lp = partial.loadout_policy as Partial<typeof prevPol>;
+      const base = lp.preset && lp.preset !== 'custom' ? clone(PRESETS[lp.preset]) : clone(prevPol);
+      if (lp.primary) base.primary = { ...base.primary, ...lp.primary };
+      if (lp.secondary) base.secondary = { ...base.secondary, ...lp.secondary };
+      if (lp.hud_select != null) base.hud_select = lp.hud_select;
+      base.preset = lp.preset === 'custom' ? 'custom' : presetOf(base);
+      this.config.loadout_policy = base;
+    }
+    void prevMode;
+    this.applyPolicy();
     const errors: string[] = [];
     if (this.config.time_limit_s == null || this.config.time_limit_s <= 0) errors.push('time_limit_s is required on the phone path');
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
@@ -209,7 +280,7 @@ export class MockBackend implements Api {
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: p.team_id ?? null, node_id: null,
-      gun_id: p.gun_id ?? null, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool()), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
@@ -217,6 +288,18 @@ export class MockBackend implements Api {
     if (patch.player_num != null) {
       if (patch.player_num < 1 || patch.player_num > 63) throw new Error('player_num must be 1–63');
       if (this.players.some(x => x !== p && x.player_num === patch.player_num)) throw new Error('player_num in use');
+    }
+    if (patch.loadout) {
+      const lo = patch.loadout, pol = this.config.loadout_policy, pl = this.pool();
+      if (!lo.weapons?.length) throw new Error('A primary weapon is required');
+      if (lo.weapons.length > 1 && lo.perk) throw new Error('Slot 2 is a weapon OR a perk, not both');
+      const r0 = reject(pol, pl, 'primary', 'weapon', lo.weapons[0].weapon_id, true);
+      if (r0 && lo.weapons[0].weapon_id !== p.loadout.weapons[0]?.weapon_id) throw new Error(r0);
+      const secId = lo.weapons[1]?.weapon_id ?? lo.perk ?? null;
+      const secKind = lo.weapons[1] ? 'weapon' : lo.perk ? 'perk' : 'none';
+      const prevSec = p.loadout.weapons[1]?.weapon_id ?? p.loadout.perk ?? null;
+      const r1 = reject(pol, pl, 'secondary', secKind, secId, true);
+      if (r1 && secId !== prevSec) throw new Error(r1);
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];
@@ -233,7 +316,12 @@ export class MockBackend implements Api {
     this.trying[id] = weapon_id; this.emit();
   }
   async endTryout(id: string) { delete this.trying[id]; this.emit(); }
-  async setReady(id: string, ready: boolean) { const p = this.players.find(x => x.player_id === id)!; p.ready = ready; this.emit(); return clone(p); }
+  async setReady(id: string, ready: boolean) {
+    const p = this.players.find(x => x.player_id === id)!; p.ready = ready;
+    if (ready) { delete this.trying[id]; delete this.browsing[id]; }
+    if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.phase = 'lobby';
+    this.emit(); return clone(p);
+  }
   async pushLobby() {
     if (!this.readiness().go) throw new Error('readiness has reds — clear them before pushing');
     this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};

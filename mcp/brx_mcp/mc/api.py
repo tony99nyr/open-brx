@@ -170,19 +170,69 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def weapons(_):
         from .fakes import weapon_views
+        from .views import weapon_view
         try:
-            cat = s.compiler.weapon_catalog()
-            views = []
-            for w in cat:
-                st = w.get("stats", {})
-                views.append({"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
-                              "clip": st.get("mag"), "mags": (st.get("reserve", 0) // max(st.get("mag", 1), 1)),
-                              "reserve": st.get("reserve"), "reload_s": round(st.get("reload_ms", 0) / 1000, 1),
-                              "dmg": st.get("dmg", st.get("damage", 50)), "rpm": st.get("rof", st.get("rpm", 50)), "rng": st.get("rng", st.get("range_pct", 50)),
-                              "verified": bool(w.get("verified"))})
+            views = [weapon_view(w) for w in s.compiler.weapon_catalog()]
             return JSONResponse(views if views else weapon_views())
         except Exception:
             return JSONResponse(weapon_views())
+
+    # ---- A10 §8 saved games (presets) ----
+    from .presets import PresetError, PresetStore
+    if getattr(s, "presets", None) is None:
+        from .state import default_config
+        from . import policy as _policy
+        s.presets = PresetStore(None, s.sanitize_config, default_config, _policy.merge, now_ms=s.now_ms)   # memory-only
+
+    def _perr(e: PresetError):
+        return _err(str(e), e.status)
+
+    async def presets_list(_):
+        return JSONResponse(s.presets.list())
+
+    async def presets_create(req):
+        b = await body(req)
+        cfg = b.get("config") if isinstance(b.get("config"), dict) else s.config
+        try:
+            return JSONResponse(s.presets.create(b.get("name"), b.get("desc"), cfg, replace=bool(b.get("replace"))))
+        except PresetError as e:
+            return _perr(e)
+        except ValueError as e:
+            return _err(str(e))
+
+    async def presets_update(req):
+        b = await body(req)
+        try:
+            return JSONResponse(s.presets.update(req.path_params["pid"], name=b.get("name"), desc=b.get("desc"),
+                                                 config=b.get("config") if isinstance(b.get("config"), dict) else None))
+        except PresetError as e:
+            return _perr(e)
+        except ValueError as e:
+            return _err(str(e))
+
+    async def presets_delete(req):
+        try:
+            s.presets.delete(req.path_params["pid"])
+        except PresetError as e:
+            return _perr(e)
+        return JSONResponse({"ok": True})
+
+    async def presets_apply(req):
+        try:
+            row = s.presets.get(req.path_params["pid"])
+            return JSONResponse(s.set_config(row["config"]))     # same path as PUT /api/config: apply_policy + reset notice
+        except PresetError as e:
+            return _perr(e)
+        except ValueError as e:
+            return _err(str(e))
+
+    async def perks(_):
+        """A10: visible perks (loadout.md §1.2) — `PerkView[]`."""
+        pc = getattr(s.compiler, "perk_catalog", None)
+        try:
+            return JSONResponse(list(pc()) if callable(pc) else [])
+        except Exception:
+            return JSONResponse([])
 
     async def put_config(req):
         try:
@@ -377,6 +427,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/armory", armory_list),
         Route("/api/modes", modes),
         Route("/api/weapons", weapons),
+        Route("/api/perks", perks),
+        Route("/api/presets", presets_list),
+        Route("/api/presets", presets_create, methods=["POST"]),
+        Route("/api/presets/{pid}", presets_update, methods=["PUT"]),
+        Route("/api/presets/{pid}", presets_delete, methods=["DELETE"]),
+        Route("/api/presets/{pid}/apply", presets_apply, methods=["POST"]),
         Route("/api/config", put_config, methods=["PUT"]),
         Route("/api/phase", set_phase, methods=["POST"]),
         Route("/api/players", post_player, methods=["POST"]),

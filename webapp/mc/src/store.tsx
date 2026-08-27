@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Api, FeedEntry, ModeInfo, Phase, State, WeaponView } from './api/types';
+import type { Api, FeedEntry, ModeInfo, PerkView, Phase, State, WeaponView } from './api/types';
 import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
 
@@ -11,6 +11,7 @@ export interface Store {
   feed: FeedEntry[];
   modes: ModeInfo[];
   weapons: WeaponView[];
+  perks: PerkView[];
   /** the screen the operator is looking at (free navigation); `state.phase` is the server's phase */
   view: Phase;
   setView: (p: Phase) => void;
@@ -40,6 +41,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [feed, setFeed] = useState<FeedEntry[]>([]);
   const [modes, setModes] = useState<ModeInfo[]>([]);
   const [weapons, setWeapons] = useState<WeaponView[]>([]);
+  const [perks, setPerks] = useState<PerkView[]>([]);
   const [view, setViewRaw] = useState<Phase>('muster');
   const [selPlayer, setSelPlayer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.getModes().then(setModes).catch(() => {});
     api.getWeapons().then(setWeapons).catch(() => {});
+    api.getPerks().then(setPerks).catch(() => {});
     const un = api.subscribe(
       s => {
         offset.current = s.t - Date.now();
@@ -77,13 +80,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authRequired, api, mock]);
 
   const store = useMemo<Store>(() => ({
-    api, state, feed, modes, weapons, view, setView: setViewRaw, selPlayer, setSelPlayer, error, mock,
+    api, state, feed, modes, weapons, perks, view, setView: setViewRaw, selPlayer, setSelPlayer, error, mock,
     connected: mock ? true : connected, authRequired, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, view, selPlayer, error, mock, connected, authRequired]);
+  }), [api, state, feed, modes, weapons, perks, view, selPlayer, error, mock, connected, authRequired]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

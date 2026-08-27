@@ -1,5 +1,5 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/ \u2014 regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers \u2014 dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today \u2014 see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4).",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/ \u2014 regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers \u2014 dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today \u2014 see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1) \u2014 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem \u2014 the UIs show it on the tile and hero.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
@@ -23,7 +23,10 @@
     "fire_ms": 190
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "assault"
+   ]
   },
   {
    "weapon_id": "burst_rifle",
@@ -44,7 +47,10 @@
     "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
    },
    "verified": true,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "assault"
+   ]
   },
   {
    "weapon_id": "force_rifle",
@@ -74,7 +80,10 @@
     }
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "assault"
+   ]
   },
   {
    "weapon_id": "bolt_rifle",
@@ -95,7 +104,10 @@
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
    },
    "verified": true,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "assault"
+   ]
   },
   {
    "weapon_id": "smg",
@@ -119,7 +131,10 @@
     "fire_ms": 140
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "cqb"
+   ]
   },
   {
    "weapon_id": "shotgun",
@@ -143,7 +158,10 @@
     "fire_ms": 800
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "cqb"
+   ]
   },
   {
    "weapon_id": "stinger",
@@ -167,7 +185,10 @@
     "fire_ms": 250
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "cqb"
+   ]
   },
   {
    "weapon_id": "sniper_rifle",
@@ -198,7 +219,11 @@
     }
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "marksman",
+    "sniper"
+   ]
   },
   {
    "weapon_id": "plasma_sniper",
@@ -223,7 +248,11 @@
     "fire_ms": 400
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "marksman",
+    "sniper"
+   ]
   },
   {
    "weapon_id": "amr",
@@ -254,7 +283,11 @@
     }
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "support",
+    "sniper"
+   ]
   },
   {
    "weapon_id": "suppressor",
@@ -278,7 +311,10 @@
     "fire_ms": 160
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "support"
+   ]
   },
   {
    "weapon_id": "energy_rifle",
@@ -302,7 +338,10 @@
     "fire_ms": 200
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "support"
+   ]
   },
   {
    "weapon_id": "charge_rifle",
@@ -323,7 +362,10 @@
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "support"
+   ]
   },
   {
    "weapon_id": "rocket_launcher",
@@ -344,7 +386,11 @@
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "power",
+    "heavy"
+   ]
   },
   {
    "weapon_id": "rail_gun",
@@ -365,7 +411,11 @@
     "frame": "$WEAP,1,0,100,6,0,115,0,,,,,,,,1200,850,1,6,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,1,3,75,*"
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "power",
+    "heavy"
+   ]
   },
   {
    "weapon_id": "laser_cannon",
@@ -386,7 +436,11 @@
     "frame": "$WEAP,1,,100,0,0,115,0,,,,,,,,1500,850,4,8,2000,0,3,100,100,,0,,,C06,C11,,,D17,D16,D15,A73,,,,,4,4,75,*"
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "power",
+    "heavy"
+   ]
   },
   {
    "weapon_id": "energy_launcher",
@@ -416,7 +470,12 @@
     }
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "power",
+    "heavy"
+   ],
+   "caution": "Known issue: deals no damage in our shipped config (weapon-design.md) \u2014 avoid until fixed"
   },
   {
    "weapon_id": "ion_sniper",
@@ -440,7 +499,12 @@
     "fire_ms": 1400
    },
    "verified": false,
-   "captured": true
+   "captured": true,
+   "tags": [
+    "power",
+    "heavy",
+    "sniper"
+   ]
   },
   {
    "weapon_id": "melee",
@@ -462,7 +526,10 @@
    },
    "verified": true,
    "captured": true,
-   "hidden": true
+   "hidden": true,
+   "tags": [
+    "melee"
+   ]
   }
  ]
 }

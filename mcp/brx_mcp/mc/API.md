@@ -26,10 +26,11 @@ State {
   lan: { mode: "router"|"hotspot"|"unknown", ssid?: string, ip: string, port: number, ws_url: string, qr: string /* same as ws_url */ },
   nodes: NodeView[],                          // every node that ever said hello this session
   readiness: ReadinessSnapshot,
-  config: GameConfig,                         // current draft (validated on PUT)
-  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1)
+  config: GameConfig,                         // current draft (validated on PUT); A10: carries loadout_policy {preset, hud_select, primary: SlotRule, secondary: SlotRule}
+  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1); A10: "N LOADOUTS RESET BY <ruleset>" after a policy change overwrote picks (cleared on the next PUT)
   players: Player[], teams: Team[],
-  kit: { kitted: number, total: number, trying: { [player_id]: weapon_id } },
+  kit: { kitted: number, total: number, trying: { [player_id]: weapon_id }, browsing: { [player_id]: t_ms } },   // A10 browsing = HUD has its loadout browser open ("PICKING…"), 60 s expiry
+  loadout_pool: { primary: string[], secondary_weapons: string[], secondary_perks: string[] },   // A10: allowed ids per slot under config.loadout_policy (server-computed; render, don't re-derive)
   lobby: { ready: number, total: number, pushed: boolean, acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string } } },
   start?: { match_id, go_live_t, seq, countdown_s, per_node: { [player_id]: { arm_state, t_minus_ms?, synced, last_seen_ms } } },
   live?: LiveView,
@@ -52,10 +53,16 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `POST /api/armory/scan` | `{duration_s?}` → `ScanRow[]` | muster |
 | `GET /api/armory` | → `ArmoryRecord[]` | any |
 | `GET /api/modes` | → `ModeInfo[]` `{mode, name, abbr, desc, brief, teams_text, win_text, respawn_text, defaults: GameConfig}` | any |
-| `GET /api/weapons` | → `WeaponView[]` `{weapon_id, name, cls, clip, mags, reserve, reload_s, dmg, rpm, rng, verified}` (dmg/rpm/rng 0–100) | any |
-| `PUT /api/config` | `GameConfig` (partial ok) → `{ok, errors: string[], config}` | muster/build/kit |
+| `GET /api/weapons` | → `WeaponView[]` `{weapon_id, name, cls, clip, mags, reserve, reload_s, dmg, rpm, rng, verified, tags: string[], role, htk, ttk_ms, caution?}` (dmg/rpm/rng 0–100; A10 `tags`/`role` = policy vocabulary, `htk` = hits to kill — show it instead of the flat `rng`; `caution` = known live problem, show on tile + hero) | any |
+| `GET /api/perks` | → `PerkView[]` `{perk_id, name, desc, tags, mechanism: "passive"\|"slot_frame", effects, verified, hidden}` — visible rows only (A10, `docs/spec/loadout.md` §1.2) | any |
+| `GET /api/presets` | → `SavedGame[]` `{preset_id, name, desc, builtin, created_t, updated_t, config}` — the builtin "Silenced Sniper" (`builtin:silenced_sniper`) is always first (A10 §8, `docs/spec/loadout.md`) | any |
+| `POST /api/presets` | `{name, desc?, config?, replace?}` → `SavedGame` (default `config` = the current draft; `config_id` stripped). `409` on a case-insensitive name clash unless `replace: true` (keeps the id); `403` for a builtin name; `400` bad name/config | any |
+| `PUT /api/presets/{id}` | `{name?, desc?, config?}` → `SavedGame`; `403` builtin, `404`, `409` clash | any |
+| `DELETE /api/presets/{id}` | → `{ok}`; `403` builtin, `404` | any |
+| `POST /api/presets/{id}/apply` | `{}` → `{ok, errors, config}` — exactly `PUT /api/config` with the preset's config (fresh `config_id`, `apply_policy`, the "N LOADOUTS RESET BY …" warning) | muster/build/kit |
+| `PUT /api/config` | `GameConfig` (partial ok) → `{ok, errors: string[], config}`. A10: `loadout_policy` is a partial merge — `{preset: "no_heavies"}` rewrites the rules, a rule edit (`{secondary: {choice: "off"}}`) flips `preset` to `custom`; every player's loadout is auto-fixed to the new ruleset (`assign` re-sent) | muster/build/kit |
 | `POST /api/players` | `{display, team_id?, gun_id?, voice?}` → `Player` (server assigns `player_num`) | ≤ lobby |
-| `PATCH /api/players/{id}` | any of `{display, team_id, voice, loadout, player_num, gun_id}` → `Player`; re-sends `assign` (and re-compiles/re-pushes `config` if already pushed) | ≤ lobby |
+| `PATCH /api/players/{id}` | any of `{display, team_id, voice, loadout, player_num, gun_id}` → `Player`; re-sends `assign` (and re-compiles/re-pushes `config` if already pushed). A10 `loadout` = `{weapons: [{weapon_id}] \| [{primary}, {secondary}], perk?: perk_id\|null, overrides?}` — a perk and a secondary weapon never both; a pick outside the policy pool is `400 {error: <human reason>}` (e.g. "Heavies are off for this game") | ≤ lobby |
 | `DELETE /api/players/{id}` | → `{ok}` | ≤ lobby |
 | `POST /api/players/{id}/tryout` | `{weapon_id}` → `{ok}` (pushes `tutorial`); `DELETE` same path ends it | kit |
 | `DELETE /api/nodes/{node_id}` | → `{ok}`; operator kick: closes the node's socket (4000), unbinds its player, clears its ready/ack, rotates its key and marks it stale so the next hello for that gun (the real phone) re-hydrates. Use when a stranger squatted a live gun name before its owner's phone connected. 404 for an unknown node | any |

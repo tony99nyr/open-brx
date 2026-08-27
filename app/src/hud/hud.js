@@ -9,6 +9,20 @@ const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
+// A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
+const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE' };
+const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
+const perkEffect = p => { const e = (p && p.effects) || {}; const out = [];
+  if (e.max_armor_add) out.push(`+${e.max_armor_add} ARMOR`); if (e.ammo_mult) out.push(`×${e.ammo_mult} AMMO`); if (e.reload_mult) out.push(`RELOADS ${+(1 / e.reload_mult).toFixed(1)}× FASTER`); if (e.alt_reload) out.push('SIDE BUTTON RELOADS');
+  return out.join(' · ') || 'PASSIVE'; };
+const PERK_GLYPH = {
+  body_armor: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L34 9 V20 C34 29 28 34 20 37 C12 34 6 29 6 20 V9 Z"/><path d="M20 12 V29 M13 20 H27" opacity=".7"/></svg>',
+  extended_mags: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 4 H28 L30 36 H10 Z"/><path d="M15 11 H25 M15 17 H25 M15 23 H25 M15 29 H25" opacity=".7"/></svg>',
+  quick_hands: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="20" cy="23" r="13"/><path d="M20 15 V24 L26 27 M16 4 H24 M20 4 V9" /></svg>',
+  easy_reload: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M31 15 A13 13 0 1 0 33 24"/><path d="M31 6 V15 H22"/></svg>',
+};
+const LOCK_SVG = '<svg class="lockg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>';
+const perkGlyph = id => PERK_GLYPH[id] || '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L24 15 L36 16 L27 24 L30 36 L20 30 L10 36 L13 24 L4 16 L16 15 Z"/></svg>';
 
 export class Hud {
   constructor(root, handlers = {}) {
@@ -17,6 +31,7 @@ export class Hud {
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.cam = false; this.mcUrl = '';
+    this.lo = { tab: 'primary', filter: 'weapons', focus: null };   // LOADOUT browser UI state (which tab / filter / row is in the detail pane)
     this._moment = null; this._momentTimer = null; this._lastTminus = null;
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
@@ -49,14 +64,20 @@ export class Hud {
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
-      st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
+      st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
+      // A10 loadout browser + slot plates
+      st.browsing, st.canPickPrimary, st.canPickSecondary, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus,
+      st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
+      st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && (st.loadout.secondary.weapon_id || st.loadout.secondary.perk_id),
+      !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length)].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
     if (sig !== this.sig) {
       const urlEl = this.hudEl.querySelector('#mcurl');
       const typing = urlEl && typeof document !== 'undefined' && document.activeElement === urlEl;
       if (!typing) {
-        const lst = this.hudEl.querySelector('.list'); const keep = lst ? lst.scrollTop : 0;   // keep the picker's scroll across re-renders
+        const lst = this.hudEl.querySelector('.list, .lolist'); const keep = lst ? lst.scrollTop : 0;   // keep the picker's/browser's scroll across re-renders
         this.sig = sig; this.hudEl.innerHTML = this._structure(st);
-        if (keep) { const l2 = this.hudEl.querySelector('.list'); if (l2) l2.scrollTop = keep; }
+        if (keep) { const l2 = this.hudEl.querySelector('.list, .lolist'); if (l2) l2.scrollTop = keep; }
+        const fo = this.hudEl.querySelector('.lrow.fo'); if (fo && fo.scrollIntoView) { try { fo.scrollIntoView({ block: 'nearest' }); } catch (_) { /* jsdom */ } }
       }
     }
     this._patch(st);
@@ -69,7 +90,10 @@ export class Hud {
     switch (st.phase) {
       case 'idle': return this._idle(st);
       case 'connected': return this._lobby(st, 'connected');
-      case 'kitted': return st.ended && !st.endAck ? this._result(st) : this._lobby(st, st.ended ? 'over' : 'kitted');
+      case 'kitted':
+        if (st.ended && !st.endAck) return this._result(st);
+        if (!st.ended && st.browsing && !this._tryoutShown(st)) return this._loadout(st);
+        return this._lobby(st, st.ended ? 'over' : 'kitted');
       case 'lobby': return this._lobby(st, 'lobby');
       case 'armed': return '';
       case 'live': return this._live(st);
@@ -97,22 +121,24 @@ export class Hud {
     const [nm, tail] = splitGun(st.gun);
     const cs = esc(st.callsign || (mode === 'connected' ? 'LINKED' : 'OPERATOR'));
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
-    const tw = st.tutorial && st.tutorialWeapon ? st.tutorialWeapon : null;
+    const tw = this._tryoutShown(st) ? st.tutorialWeapon : null;
     const twStats = tw && tw.stats ? tw.stats : (tw || {});
     const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
     const tryout = tw ? `<div class="tryout">
         <div class="art" style="background-image:url('assets/weapons/${esc(tw.weapon_id)}.jpg')"></div>
         <div class="meta"><div class="lbl">TRY-OUT · FIRE A FEW ROUNDS</div><div class="nm">${esc((tw.name || tw.weapon_id || '').toUpperCase())}</div>
-          <div class="ln">MAG ${twStats.mag != null ? twStats.mag : (tw.mag != null ? tw.mag : '—')} · RESERVE ${twStats.reserve != null ? twStats.reserve : (tw.reserve != null ? tw.reserve : '—')}${tw.cls ? ' · CLASS ' + esc(String(tw.cls)) : ''}</div>
-          ${bar('DMG', twStats.dmg)}${bar('ROF', twStats.rof != null ? twStats.rof : twStats.rpm)}${bar('RNG', twStats.rng)}</div></div>` : '';
+          <div class="ln">MAG ${twStats.mag != null ? twStats.mag : (tw.mag != null ? tw.mag : '—')} · RESERVE ${twStats.reserve != null ? twStats.reserve : (tw.reserve != null ? tw.reserve : '—')}${tw.role ? ' · ' + esc(roleName(tw)) : ''}</div>
+          ${bar('DMG', twStats.dmg)}${bar('ROF', twStats.rof != null ? twStats.rof : twStats.rpm)}${(twStats.htk != null ? twStats.htk : tw.htk) != null ? `<div class="htkl" data-htk="1">HITS TO KILL ${twStats.htk != null ? twStats.htk : tw.htk}</div>` : ''}</div>
+        <div class="tact"><button class="lobtn ghost" data-act="onTryDone"><span class="unskew">DONE</span></button><div class="small">Keeps the gun armed with this weapon.</div></div></div>` : '';
     // Ammo is unknown until the game is pushed/armed — say so in words instead of showing "MAG — · RESERVE —".
     const _mag = st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : null);
     const _res = st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : null);
-    const ammoLine = (_mag == null && _res == null) ? 'SET AT ARM TIME'
+    const ammoLine = (_mag == null && _res == null) ? 'GOES TO YOUR GUN AT ARM TIME'
       : `MAG ${_mag != null ? _mag : '—'} · RESERVE ${_res != null ? _res : '—'}`;
     const plates = st.player ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
-        <div class="plate wart"><div class="thumb" style="background-image:url('assets/weapons/${esc(st.weaponId || '')}.jpg')"></div><div class="in"><div class="h">${esc(st.weapon)}</div><div class="s">${ammoLine}</div></div></div>
-        <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">AR ${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div></div>` : '';
+        ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}
+        <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div>
+        ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
     let foot, status;
     if (mode === 'connected') {
       foot = st.wsState === 'bound'
@@ -132,6 +158,79 @@ export class Hud {
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
       <div class="top"><span class="cs">${cs}</span><span class="row">${team}<span class="gid">${nm}-${tail}</span></span></div>${plates}
       <div class="tr">${status}</div><div class="foot">${foot}</div></div>`;
+  }
+
+  _tryoutShown(st) { return !!(st.tutorial && st.tutorialWeapon && st.tryoutSeen !== st.tutorialWeapon.weapon_id); }
+
+  // ---------- A10: slot plates + the LOADOUT browser (docs/spec/loadout.md §4.5) ----------
+  _slotPlate(st, slot, mode, ammoLine) {
+    const lo = st.loadout || {}; const item = slot === 'primary' ? lo.primary : lo.secondary;
+    const rule = st.policy ? (slot === 'primary' ? st.policy.primary : st.policy.secondary) : null;
+    const can = slot === 'primary' ? st.canPickPrimary : st.canPickSecondary;
+    const locked = mode === 'kitted' && st.policy && !can && rule && rule.choice !== 'player';
+    const k = slot.toUpperCase();
+    let art = '', h = '', sub = '';
+    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = 'PERK · ' + esc(perkEffect(item)); }
+    else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `MAG ${item.clip != null ? item.clip : '—'} · RESERVE ${item.reserve != null ? item.reserve : '—'}`; }
+    else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = rule && rule.choice === 'off' ? 'NO SECONDARY THIS GAME' : 'ALT-FIRE DOES NOTHING'; }
+    if (locked) sub = (rule.choice === 'fixed' ? 'FIXED FOR THIS GAME' : rule.choice === 'off' ? 'NO SECONDARY THIS GAME' : 'SET BY THE HOST');
+    const lock = locked ? `<span class="lock" aria-label="locked">${LOCK_SVG}</span>` : (can ? '<span class="cue">▸</span>' : '');
+    return `<div class="plate wart slot ${can ? 'tap' : ''} ${locked ? 'locked' : ''}" ${can ? `data-act="onOpenLoadout" data-arg="${slot}"` : ''}>${art}<div class="in"><div class="k">${k}${lock}</div><div class="h">${h.toUpperCase()}</div><div class="s">${sub}</div></div></div>`;
+  }
+
+  /** Rows for a tab: [{key, kind, id, row, allowed}] in catalog order, filtered to the player's pool. */
+  _loRows(st, tab) {
+    const cat = st.catalog || { weapons: [], perks: [] }; const rule = st.policy ? st.policy[tab] : null;
+    if (tab === 'primary') { const ok = new Set((rule && rule.allowed_ids) || []); return (cat.weapons || []).filter(w => ok.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })); }
+    const okW = new Set((rule && rule.allowed_weapon_ids) || []), okP = new Set((rule && rule.allowed_perk_ids) || []);
+    const kinds = (rule && rule.kinds) || ['weapon', 'perk'];
+    if (this.lo.filter === 'perks') return kinds.includes('perk') ? (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p })) : [];
+    return kinds.includes('weapon') ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];
+  }
+  _loadout(st) {
+    const tab = this.lo.tab === 'secondary' ? 'secondary' : 'primary';
+    const lo = st.loadout || {}; const equipped = tab === 'primary' ? lo.primary : lo.secondary;
+    const eqKey = equipped ? (equipped.kind === 'perk' ? 'perk:' + equipped.perk_id : 'weapon:' + equipped.weapon_id) : (tab === 'secondary' ? 'none' : null);
+    const can = tab === 'primary' ? st.canPickPrimary : st.canPickSecondary;
+    const rule = st.policy ? st.policy[tab] : null;
+    const pend = st.pendingPick && st.pendingPick.slot === tab ? (st.pendingPick.kind === 'none' ? 'none' : `${st.pendingPick.kind}:${st.pendingPick.id}`) : null;
+    const ack = st.loadoutAck && st.loadoutAck.slot === tab ? st.loadoutAck : null;
+    const rows = this._loRows(st, tab);
+    const tabBtn = (t, item) => { const on = t === tab; const r = st.policy ? st.policy[t] : null; const lk = st.policy && !(t === 'primary' ? st.canPickPrimary : st.canPickSecondary) && r && r.choice !== 'player';
+      const nm = item ? item.name : (t === 'secondary' ? 'NONE' : '—');
+      return `<button class="lotab ${on ? 'on' : ''} ${lk ? 'locked' : ''}" ${lk ? 'disabled aria-disabled="true"' : ''} data-act="onLoTab" data-arg="${t}"><span class="unskew"><span class="k">${t.toUpperCase()}${lk ? ' ' + LOCK_SVG : ''}</span><span class="v">${esc(nm).toUpperCase()}</span></span></button>`; };
+    const name = r => r.kind === 'perk' ? r.row.name : r.row.name;
+    const focusKey = (this.lo.focus && rows.some(r => r.key === this.lo.focus)) ? this.lo.focus : (eqKey && rows.some(r => r.key === eqKey) ? eqKey : (rows[0] ? rows[0].key : null));
+    const focus = rows.find(r => r.key === focusKey) || null;
+    let list = '';
+    if (!can) {
+      const why = rule && rule.choice === 'fixed' ? 'Fixed for this game — the host set it in Mission Control.' : rule && rule.choice === 'off' ? 'No secondary this game.' : 'The host assigns this slot from Mission Control.';
+      list = `<div class="lolock"><div class="big">${LOCK_SVG} SET BY THE HOST</div><div class="s">${why}</div>${equipped ? `<div class="cur">${esc(equipped.name).toUpperCase()}</div>` : ''}</div>`;
+    } else {
+      const nCount = { weapons: ((rule && rule.allowed_weapon_ids) || []).length, perks: ((rule && rule.allowed_perk_ids) || []).length };
+      const filt = tab === 'secondary' ? `<div class="lofilt">${['weapons', 'perks'].filter(f => !rule || !rule.kinds || rule.kinds.includes(f === 'perks' ? 'perk' : 'weapon')).map(f => `<button class="fch ${this.lo.filter === f ? 'on' : ''}" data-act="onLoFilter" data-arg="${f}"><span class="unskew">${f.toUpperCase()} · ${nCount[f]}</span></button>`).join('')}<button class="fch none ${eqKey === 'none' && pend == null ? 'on' : ''} ${pend === 'none' ? 'pend' : ''}" data-act="onLoNone"><span class="unskew">NONE${eqKey === 'none' ? ' ✓' : ''}</span></button></div>` : '';
+      const head = tab === 'primary' ? `<div class="locount">${rows.length} WEAPON${rows.length === 1 ? '' : 'S'} · SCROLL FOR MORE</div>` : '';
+      list = head + filt + (rows.length ? rows.map(r => {
+        const eq = r.key === eqKey && !pend, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key);
+        const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
+        const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
+        return `<div class="lrow ${eq ? 'eq' : ''} ${pn ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : pn ? '…' : ''}</span></div>`;
+      }).join('') : '<div class="small" style="padding:14px 4px">Nothing to pick here for this game.</div>');
+    }
+    // detail pane
+    let detail = '';
+    if (focus) {
+      const r = focus.row;
+      const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
+      if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
+      else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${bar('DMG', r.dmg)}${bar('ROF', r.rpm != null ? r.rpm : r.rof)}${r.htk != null ? `<div class="ln htk">HITS TO KILL <b>${r.htk}</b></div>` : ''}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
+    } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? 'Pick a second weapon or a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
+    const ackChip = ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? 'EQUIPPED ✓' : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
+    const canTry = can && focus && focus.kind === 'weapon';
+    return `<div class="lobby lo"><div class="scan"></div><div class="edgeglow"></div>
+      <div class="lotop">${tabBtn('primary', lo.primary)}${tabBtn('secondary', lo.secondary)}<span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span></div>
+      <div class="lobody"><div class="lolist" data-tab="${tab}">${list}</div><div class="lodetail">${detail}</div></div>
+      <div class="lobar"><span class="ackslot">${ackChip}</span>${canTry ? `<button class="lobtn try" data-act="onTryIt"><span class="unskew">TRY IT ▸</span></button>` : ''}<button class="lobtn done" data-act="onLoDone"><span class="unskew">CLOSE</span></button></div></div>`;
   }
 
   /** End-of-match result: banner + this player's line, OK -> the 'over' screen (bench request 2026-08-25). */

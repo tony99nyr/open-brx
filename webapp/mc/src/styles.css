@@ -43,3 +43,15 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
 /* ≥44px touch target without changing the visual size: extend the hit box vertically */
 .hit44 { position: relative; }
 .hit44::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+
+/* Kit-out on a tablet: the roster becomes a horizontal chip strip above the detail (loadout.md §5) */
+@media (max-width: 900px) {
+  .kit-roster { max-width: none !important; flex: 1 1 100% !important; }
+  .kit-roster-rows { flex-direction: row !important; overflow-x: auto; flex-wrap: nowrap; scroll-snap-type: x proximity; -webkit-mask-image: linear-gradient(90deg,#000 90%,transparent); mask-image: linear-gradient(90deg,#000 90%,transparent); }
+  .kit-roster-rows .kit-row { scroll-snap-align: start; }
+  .kit-roster-rows .kit-row { flex: 0 0 210px; }
+  .kit-roster-rows form { flex: 0 0 180px; }
+}
+/* horizontal shelves (saved games): fade the cut edge so the overflow is discoverable */
+.shelf-x { -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 56px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 56px),transparent); scroll-snap-type: x proximity; }
+.shelf-x > * { scroll-snap-align: start; }

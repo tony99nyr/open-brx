@@ -4,7 +4,20 @@ export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'r
 export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';
 
 export interface WeaponSel { weapon_id: string }
-export interface Loadout { weapons: WeaponSel[]; overrides?: { max_hp?: number; max_armor?: number } }
+/** contracts A9 / docs/spec/loadout.md §2 — weapons[] is canonical: [primary] or [primary, secondary]; `perk` excludes a secondary weapon. */
+export interface Loadout { weapons: WeaponSel[]; perk?: string | null; overrides?: { max_hp?: number; max_armor?: number } }
+
+export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
+export type ItemKind = 'weapon' | 'perk';
+export interface SlotRule {
+  choice: SlotChoice; kinds: ItemKind[];
+  exclude_tags: string[]; exclude_ids: string[]; only_ids: string[];
+  fixed_id?: string | null;
+}
+export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
+export interface LoadoutPolicy { preset: LoadoutPreset; hud_select: boolean; primary: SlotRule; secondary: SlotRule }
+/** allowed ids per slot, catalog order — computed server-side (loadout.md §3.2) */
+export interface LoadoutPool { primary: string[]; secondary_weapons: string[]; secondary_perks: string[] }
 
 export interface Team { team_id: string; name: string; color: string; tid: number }
 
@@ -35,6 +48,7 @@ export interface GameConfig {
   health: Health;
   teams: Team[];
   led?: Record<string, unknown>;
+  loadout_policy: LoadoutPolicy;
 }
 
 export interface ScanRow {
@@ -128,7 +142,8 @@ export interface State {
   config_warnings?: string[];
   players: Player[];
   teams: Team[];
-  kit: { kitted: number; total: number; trying: Record<string, string> };
+  kit: { kitted: number; total: number; trying: Record<string, string>; browsing: Record<string, number> };
+  loadout_pool: LoadoutPool;
   lobby: { ready: number; total: number; pushed: boolean; acks: Record<string, { ok: boolean; gun_echo?: string; err?: string }> };
   start?: StartView;
   live?: LiveView;
@@ -144,6 +159,25 @@ export interface WeaponView {
   weapon_id: string; name: string; cls: string; clip: number; mags: number; reserve: number;
   reload_s: number; dmg: number; rpm: number; rng: number; verified: boolean;
   desc?: string;
+  role: string;        // assault | cqb | marksman | support | power — the human class label
+  tags: string[];      // heavy | sniper | … — what loadout rules match on
+  htk?: number;        // hits to kill at the default health config (weapons.json) — replaces the RANGE bar (t41 is 75 on every gun)
+  caution?: string;    // human copy for a weapon with a known live problem (energy_launcher: zero damage in the shipped $SIR row)
+}
+
+export interface PerkView {
+  perk_id: string; name: string; desc: string; tags: string[];
+  mechanism: 'passive' | 'slot_frame';
+  effects: { max_armor_add?: number; ammo_mult?: number; reload_mult?: number; alt_reload?: boolean };
+  verified: boolean; hidden?: boolean;
+}
+
+/** loadout.md §8 — a whole GameConfig saved under a name on the MC host ("mode creation"). */
+export interface SavedGame {
+  preset_id: string; name: string; desc: string; builtin: boolean;
+  created_t: number; updated_t: number;
+  config: GameConfig;
+  weapon_tuning?: Record<string, unknown>;   // RESERVED — future weapon-tuning spec
 }
 
 /** The surface both the real client and the in-browser mock implement. */
@@ -155,6 +189,11 @@ export interface Api {
   setPhase(phase: string): Promise<unknown>;
   getModes(): Promise<ModeInfo[]>;
   getWeapons(): Promise<WeaponView[]>;
+  getPerks(): Promise<PerkView[]>;
+  getPresets(): Promise<SavedGame[]>;
+  savePreset(p: { name: string; desc?: string; config?: GameConfig; replace?: boolean }): Promise<SavedGame>;
+  deletePreset(id: string): Promise<void>;
+  applyPreset(id: string): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;

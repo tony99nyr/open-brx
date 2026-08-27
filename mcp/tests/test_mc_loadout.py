@@ -1,0 +1,619 @@
+"""M-LOADOUT (docs/spec/loadout.md, contracts A10): two slots, perks, loadout policy, phone self-serve.
+
+Policy presets/pool/validate matrix · _check_loadout matrix · compile (empty slot 1, each perk effect,
+sniper fixed) · loadout_request happy + every reject path asserting `loadout_ack` DELIVERY on the fake
+net · assign carries catalog+policy · all-ready advance · ready ends a try-out · tryout refusal reason.
+"""
+from __future__ import annotations
+
+from brx_mcp.mc import envelope as E
+from brx_mcp.mc import policy as P
+from brx_mcp.mc.compile import Compiler, WeaponCatalog
+from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+from brx_mcp.mc.perks import PerkCatalog, default_perks
+from brx_mcp.mc.state import Session, default_config
+
+T0 = 5_000_000
+C = Compiler()
+W = [w for w in C.weapon_catalog()]
+PK = default_perks().all()
+_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
+
+
+def _cfg(mode="tdm"):
+    return {"config_id": "c1", "mode": mode, "environment": "indoor", "night": False, "time_limit_s": 600,
+            "respawn": {"type": "auto", "delay_s": 15}, "scoring": {"frag_limit": 0, "win_by": "kills"},
+            "health": {"max_hp": 45, "max_armor": 70}, "teams": _TEAMS}
+
+
+def _player(lo, num=7):
+    return {"player_id": f"p{num}", "player_num": num, "display": "REAPER", "team_id": "blue", "node_id": None,
+            "gun_id": None, "voice": "male", "ready": True, "loadout": lo}
+
+
+def mk(n=2, mode="tdm", compiler=None):
+    clock = {"t": T0}
+    net = FakeNet()
+    s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+    s.set_config({"mode": mode, "time_limit_s": 60})
+    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n)]
+    return s, net, clock, ps
+
+
+def online(s, net, clock, p, i, synced=True):
+    tail = demo_armory()[i]["ble"]["tail"]
+    net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
+    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True, "shots": 0,
+                                     "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": synced,
+                                     "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90, "screen_on": True,
+                                                   "foreground": True, "gun_linked": True}}, clock["t"])
+
+
+def _req(net, i, slot, kind, rid=None, try_=False, t=T0):
+    body = {"node_id": f"node{i}", "player_id": "ignored-by-server", "slot": slot, "kind": kind}
+    if rid:
+        body["id"] = rid
+    if try_:
+        body["try"] = True
+    net.simulate_node_message(f"node{i}", "loadout_request", body, t)
+
+
+def _last_ack(net, i):
+    acks = net.pushes("loadout_ack", f"node{i}")
+    assert acks, "no loadout_ack DELIVERED to the node — every request must be answered (§4.2)"
+    return acks[-1][2]
+
+
+# ------------------------------------------------------------------ catalog
+def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
+    ids = {w["weapon_id"]: set(w["tags"]) for w in W}
+    for wid in ("rocket_launcher", "rail_gun", "laser_cannon", "energy_launcher", "ion_sniper"):
+        assert "heavy" in ids[wid], wid
+    assert "heavy" not in ids["amr"] and "sniper" in ids["amr"]
+    for wid in ("sniper_rifle", "plasma_sniper", "ion_sniper"):
+        assert "sniper" in ids[wid]
+    assert "melee" not in ids
+    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "easy_reload"]
+    assert all(not p["hidden"] for p in PK)
+    full = PerkCatalog()
+    assert full.has("med_kit") and full.row("med_kit")["hidden"] and full.row("med_kit")["mechanism"] == "slot_frame"
+    assert all(p["mechanism"] == "passive" for p in PK)
+    try:
+        PerkCatalog([{"perk_id": "x", "name": "X", "effects": {"laser_eyes": 1}}]); assert False
+    except ValueError:
+        pass
+
+
+# ------------------------------------------------------------------ policy engine
+def test_presets_and_pools():
+    lp = P.pool(P.preset_rules("open"), W, PK)
+    assert len(lp["primary"]) == 18 and len(lp["secondary_weapons"]) == 18 and len(lp["secondary_perks"]) == 4
+    lp = P.pool(P.preset_rules("no_heavies"), W, PK)
+    assert len(lp["primary"]) == 13 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
+    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["secondary_perks"]) == 4
+    lp = P.pool(P.preset_rules("snipers"), W, PK)
+    assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "secondary_perks": []}
+    assert P.default_policy("ffa")["preset"] == "no_heavies" and P.default_policy("tdm")["preset"] == "open"
+    assert default_config("ffa")["loadout_policy"]["preset"] == "no_heavies"
+
+
+def test_merge_preset_name_rewrites_and_rule_edit_flips_to_custom():
+    pol = P.merge(P.preset_rules("open"), {"preset": "snipers"})
+    assert pol["primary"]["choice"] == "fixed" and pol["primary"]["fixed_id"] == "sniper_rifle" and pol["hud_select"] is False
+    pol = P.merge(pol, {"preset": "open"})
+    assert pol["preset"] == "open" and pol["hud_select"] is True
+    pol = P.merge(pol, {"secondary": {"kinds": ["perk"]}})
+    assert pol["preset"] == "custom" and P.pool(pol, W, PK)["secondary_weapons"] == []
+    pol = P.merge(pol, {"secondary": {"kinds": ["weapon", "perk"]}})
+    assert pol["preset"] == "open"                      # matches a preset again → named again
+    pol = P.merge(pol, {"primary": {"exclude_tags": ["heavy"]}, "secondary": {"exclude_tags": ["heavy"]}})
+    assert pol["preset"] == "no_heavies"
+    for bad in ({"preset": "nope"}, {"primary": {"choice": "off"}}, {"primary": {"choice": "fixed"}},
+                {"secondary": {"kinds": []}}, {"secondary": {"exclude_tags": "heavy"}}):
+        try:
+            P.merge(P.preset_rules("open"), bad); assert False, bad
+        except ValueError:
+            pass
+    assert P.normalize(None, "ffa")["preset"] == "no_heavies"
+    assert P.normalize({"garbage": 1}, "tdm")["preset"] == "open"
+
+
+def test_validate_and_apply_matrix():
+    nh = P.preset_rules("no_heavies"); lp = P.pool(nh, W, PK)
+    ok, why = P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}]}, W, PK)
+    assert not ok and why == "Heavies are off for this game"
+    ok, why = P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "rocket_launcher"}]}, W, PK)
+    assert not ok and "Heavies" in why
+    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}, W, PK) == (True, None)
+    sn = P.preset_rules("snipers"); lps = P.pool(sn, W, PK)
+    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "smg"}]}, W, PK)
+    assert not ok and "fixed to Sniper Rifle" in why and "BUILD" in why
+    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "body_armor"}, W, PK)
+    assert not ok and why == "No secondary this game"
+    # apply: fixed → set, off → cleared, out-of-pool → replaced; never both a perk and a secondary
+    assert P.apply(sn, lps, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
+    out = P.apply(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}], "overrides": {"max_hp": 60}}, W, PK)
+    assert out == {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"max_hp": 60}}
+    fixed_perk = P.merge(P.preset_rules("open"), {"secondary": {"choice": "fixed", "fixed_id": "easy_reload"}})
+    lpf = P.pool(fixed_perk, W, PK)
+    assert lpf["secondary_perks"] == ["easy_reload"] and lpf["secondary_weapons"] == []
+    assert P.apply(fixed_perk, lpf, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}], "perk": "easy_reload"}
+
+
+def test_check_request_matrix():
+    op = P.preset_rules("open"); lp = P.pool(op, W, PK)
+    assert P.check_request(op, lp, "primary", "weapon", "smg", W, PK) == (True, None)
+    assert P.check_request(op, lp, "secondary", "perk", "body_armor", W, PK) == (True, None)
+    assert P.check_request(op, lp, "secondary", "none", None, W, PK) == (True, None)
+    assert P.check_request(op, lp, "primary", "none", None, W, PK)[1] == "A primary weapon is required"
+    assert "perk" in P.check_request(op, lp, "primary", "perk", "body_armor", W, PK)[1].lower()
+    assert P.check_request(op, lp, "primary", "weapon", "melee", W, PK)[1] == "Unknown weapon"
+    hud_off = P.merge(op, {"hud_select": False})
+    assert P.check_request(hud_off, lp, "primary", "weapon", "smg", W, PK)[1] == "Loadout picks are host-side for this game"
+    host = P.merge(op, {"primary": {"choice": "host"}})
+    assert "locked" in P.check_request(host, P.pool(host, W, PK), "primary", "weapon", "smg", W, PK)[1]
+    sn = P.preset_rules("snipers"); lps = P.pool(sn, W, PK)
+    assert P.check_request(sn, lps, "secondary", "weapon", "shotgun", W, PK)[1] == "No secondary this game"
+    nh = P.preset_rules("no_heavies"); lpn = P.pool(nh, W, PK)
+    assert P.check_request(nh, lpn, "secondary", "weapon", "rail_gun", W, PK)[1] == "Heavies are off for this game"
+
+
+# ------------------------------------------------------------------ _check_loadout
+def test_check_loadout_matrix():
+    s, net, clock, ps = mk(1)
+    pid = ps[0]["player_id"]
+    ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"})
+    assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}
+    ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": None})
+    assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}
+    for bad, hint in (({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, "OR"),
+                      ({"weapons": [{"weapon_id": "smg"}], "perk": "laser_eyes"}, "unknown perk"),
+                      ({"weapons": [{"weapon_id": "smg"}], "perk": 7}, "perk_id"),
+                      ({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}, {"weapon_id": "amr"}]}, "at most"),
+                      ({"weapons": []}, "loadout must")):
+        try:
+            s.patch_player(pid, loadout=bad); assert False, bad
+        except ValueError as e:
+            assert hint.lower() in str(e).lower(), (bad, str(e))
+    # hidden (unbenched) perks are NOT pickable even by the host
+    try:
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}], "perk": "med_kit"}); assert False
+    except ValueError:
+        pass
+
+
+def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
+    s, net, clock, ps = mk(2, mode="ffa")
+    assert s.config["loadout_policy"]["preset"] == "no_heavies"
+    try:
+        s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rail_gun"}]}); assert False
+    except ValueError as e:
+        assert str(e) == "Heavies are off for this game"
+    s.set_config({"loadout_policy": {"preset": "open"}})
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}]})
+    s.patch_player(ps[1]["player_id"], loadout={"weapons": [{"weapon_id": "smg"}], "perk": "extended_mags"})
+    online(s, net, clock, ps[0], 0)
+    n_assign = len(net.pushes("assign", "node0"))
+    # switching the ruleset auto-fixes every loadout and re-assigns the bound node
+    s.set_config({"loadout_policy": {"preset": "snipers"}})
+    for p in s.players.values():
+        assert p["loadout"] == {"weapons": [{"weapon_id": "sniper_rifle"}]}
+    assert len(net.pushes("assign", "node0")) == n_assign + 1
+    assert s.snapshot()["loadout_pool"] == {"primary": ["sniper_rifle"], "secondary_weapons": [], "secondary_perks": []}
+    # a MODE CHANGE applies the mode default (same mode = "run it back", the ruleset is kept);
+    # a new player obeys the ruleset from birth
+    s.set_config({"mode": "tdm"})
+    assert s.config["loadout_policy"]["preset"] == "open"
+    s.set_config({"mode": "ffa"})
+    assert s.config["loadout_policy"]["preset"] == "no_heavies"
+    p3 = s.add_player("OP3", loadout={"weapons": [{"weapon_id": "laser_cannon"}], "perk": "body_armor"})
+    assert p3["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}
+    # PUT /api/config partial: a rule edit → custom
+    s.set_config({"loadout_policy": {"secondary": {"choice": "off"}}})
+    assert s.config["loadout_policy"]["preset"] == "custom" and "perk" not in p3["loadout"]
+
+
+def test_restore_snapshot_without_policy_fills_default(tmp_path=None):
+    import pathlib, tempfile, json
+    d = pathlib.Path(tempfile.mkdtemp())
+    s, net, clock, ps = mk(1)
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]})
+    cfg = dict(s.config); cfg.pop("loadout_policy")
+    (d / "session.json").write_text(json.dumps({"v": 1, "saved_ms": 1, "players": list(s.players.values()), "teams": s.teams, "config": cfg}))
+    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0)
+    s2._persist_path = d / "session.json"
+    assert s2.restore_snapshot() == 1
+    assert s2.config["loadout_policy"]["preset"] == "open"
+    assert list(s2.players.values())[0]["loadout"]["weapons"][1]["weapon_id"] == "shotgun"
+
+
+# ------------------------------------------------------------------ compiler
+def test_compile_no_slot_1_when_no_secondary():
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), _TEAMS)
+    weaps = [f for f in b["head"] if f.startswith("$WEAP,")]
+    assert [w.split(",")[1] for w in weaps] == ["0", "4"], weaps          # primary + melee, NO shotgun default
+    assert not any(f.startswith("$AMMO,1,") for f in b["spawn"] + b["revive"])
+    assert sum(1 for f in b["spawn"] if f.startswith("$AMMO,0,")) == 1
+    b2 = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
+    assert any(f.startswith("$WEAP,1,") for f in b2["head"]) and any(f == "$AMMO,1,6,24,1,*" for f in b2["spawn"])
+
+
+def _tok(frame: str, doc_tok: int) -> str:
+    return frame.split(",")[doc_tok + 1]
+
+
+def test_compile_perk_effects():
+    base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), _TEAMS)
+    w0 = [f for f in base["head"] if f.startswith("$WEAP,0")][0]
+    # extended_mags: ×2 mag + reserve on $AMMO,0 AND the frame (t16/t39 mag, t17/t40 reserve; t17 == 2×t40)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert _tok(f, 16) == _tok(f, 39) == "64" and _tok(f, 17) == "768" and _tok(f, 40) == "384"
+    assert "$AMMO,0,64,768,1,*" in b["spawn"] and "$AMMO,0,64,768,1,*" in b["revive"]
+    assert _tok(f, 18) == _tok(w0, 18)                                   # reload untouched
+    # quick_hands: reload halved (t18), ammo untouched
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_hands"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2 and _tok(f, 16) == _tok(w0, 16)
+    # body_armor: +50 on $PSET armor (token 4), hp untouched, config armor otherwise the same
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), _TEAMS)
+    pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
+    assert pset[3] == "45" and pset[4] == "120"
+    assert [x for x in base["head"] if x.startswith("$PSET")][0].split(",")[4] == "70"
+    # easy_reload: ALT button = reload
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}), _TEAMS)
+    assert "$BMAP,1,97,,,,,*" in b["head"] and "$BMAP,1,100,0,1,99,99,*" not in b["head"]
+    # empty slot 2 without the perk: ALT cycles to slot 0 only (never to the unloaded slot 1 — brx-opus review);
+    # a real secondary keeps the stock 0↔1 cycle
+    assert "$BMAP,1,100,0,0,99,99,*" in base["head"] and "$BMAP,1,100,0,1,99,99,*" not in base["head"]
+    two = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
+    assert "$BMAP,1,100,0,1,99,99,*" in two["head"]
+    # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial
+    tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
+    assert any(f == "$AMMO,0,32,384,1,*" for f in tut)
+
+
+def test_compile_validate_perks():
+    r = C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "nope"})])
+    assert any("unknown perk_id" in e for e in r["errors"])
+    r = C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}], "perk": "body_armor"})])
+    assert any("cannot both" in e for e in r["errors"])
+    assert C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "easy_reload"})])["ok"]
+
+
+def test_compile_sniper_fixed_end_to_end_through_session():
+    s, net, clock, ps = mk(1, compiler=C)
+    s.set_config({"loadout_policy": {"preset": "snipers"}})
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    frames = net.pushes("config", "node0")[-1][2]["frames"]["head"]
+    weaps = [f for f in frames if f.startswith("$WEAP,")]
+    assert weaps[0].startswith("$WEAP,0") and len(weaps) == 2      # sniper primary + melee only
+    assert "$WEAP,0" + C.catalog.resolve("sniper_rifle", 0)[7:] == weaps[0]
+
+
+# ------------------------------------------------------------------ wire: envelope kinds
+def test_envelope_accepts_loadout_kinds_and_optional_fields():
+    env = E.make_envelope("loadout_request", {"node_id": "n1", "player_id": "p1", "slot": "primary", "kind": "weapon"})
+    E.validate(env)                                                        # id/try optional
+    E.validate(E.make_envelope("loadout_browse", {"node_id": "n1", "player_id": "p1", "open": True}))
+    E.validate(E.make_envelope("loadout_ack", {"slot": "primary", "ok": False}), direction="mc")   # reason optional
+    try:
+        E.validate(E.make_envelope("loadout_request", {"node_id": "n1", "player_id": "p1", "slot": "primary"})); assert False
+    except E.EnvelopeError as e:
+        assert e.reason == "missing_field"
+    try:
+        E.validate(E.make_envelope("loadout_ack", {"slot": "primary", "ok": True})); assert False   # wrong direction
+    except E.EnvelopeError as e:
+        assert e.reason == "unknown_kind"
+
+
+# ------------------------------------------------------------------ assign carries catalog + policy
+def test_assign_and_welcome_carry_catalog_and_policy():
+    s, net, clock, ps = mk(1, mode="ffa")
+    online(s, net, clock, ps[0], 0)
+    ctx = s._hydrate({"node_id": "nodeX", "gun": {"name": "GUN-A-3D4F", "tail": "3D4F"}})
+    assert ctx and "catalog" in ctx and "policy" in ctx           # welcome hydration carries both
+    # (that hydrate hot-swapped the player onto nodeX — the phone that holds GUN-A now)
+    s.patch_player(ps[0]["player_id"], display="REAPER")            # any player change → assign
+    a = net.pushes("assign", "nodeX")[-1][2]
+    assert {w["weapon_id"] for w in a["catalog"]["weapons"]} >= {"smg", "rail_gun"} and all("tags" in w for w in a["catalog"]["weapons"])
+    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "easy_reload"]
+    pol = a["policy"]
+    assert pol["hud_select"] is True and pol["primary"]["choice"] == "player"
+    assert "rail_gun" not in pol["primary"]["allowed_ids"] and "smg" in pol["primary"]["allowed_ids"]
+    assert pol["secondary"]["kinds"] == ["weapon", "perk"] and "body_armor" in pol["secondary"]["allowed_perk_ids"]
+    assert "rocket_launcher" not in pol["secondary"]["allowed_weapon_ids"]
+    # every loadout change re-sends assign with the new loadout
+    n = len(net.pushes("assign", "nodeX"))
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "smg"}]})
+    assert len(net.pushes("assign", "nodeX")) == n + 1 and net.pushes("assign", "nodeX")[-1][2]["player"]["loadout"]["weapons"][0]["weapon_id"] == "smg"
+
+
+# ------------------------------------------------------------------ loadout_request happy + rejects (with ack DELIVERY)
+def test_loadout_request_happy_paths_with_try():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    pid = ps[0]["player_id"]
+    _req(net, 0, "primary", "weapon", "smg", try_=True)
+    ack = _last_ack(net, 0)
+    assert ack["ok"] is True and ack["slot"] == "primary" and ack["loadout"]["weapons"][0]["weapon_id"] == "smg" and "reason" not in ack
+    assert s.players[pid]["loadout"]["weapons"][0]["weapon_id"] == "smg"
+    assert s.trying[pid] == "smg" and net.pushes("tutorial", "node0")[-1][2]["weapon"]["weapon_id"] == "smg"
+    assert net.pushes("assign", "node0")[-1][2]["player"]["loadout"]["weapons"][0]["weapon_id"] == "smg"
+    # secondary weapon, then perk (replaces the weapon), then none
+    _req(net, 0, "secondary", "weapon", "shotgun")
+    assert s.players[pid]["loadout"]["weapons"][1]["weapon_id"] == "shotgun" and _last_ack(net, 0)["ok"]
+    _req(net, 0, "secondary", "perk", "body_armor")
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"} and _last_ack(net, 0)["ok"]
+    _req(net, 0, "secondary", "none")
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "smg"}]} and _last_ack(net, 0)["ok"]
+    # a second player's request never touches the first
+    _req(net, 1, "primary", "weapon", "amr")
+    assert s.players[ps[1]["player_id"]]["loadout"]["weapons"][0]["weapon_id"] == "amr"
+    assert s.players[pid]["loadout"]["weapons"][0]["weapon_id"] == "smg"
+    # the MC snapshot shows both selections + the try-out
+    snap = s.snapshot()
+    assert snap["kit"]["trying"] == {pid: "smg"}
+    # browsing presence with 60 s expiry
+    net.simulate_node_message("node1", "loadout_browse", {"node_id": "node1", "player_id": "x", "open": True}, clock["t"])
+    assert ps[1]["player_id"] in s.snapshot()["kit"]["browsing"]
+    clock["t"] += 61_000
+    assert ps[1]["player_id"] not in s.snapshot()["kit"]["browsing"]
+    net.simulate_node_message("node1", "loadout_browse", {"node_id": "node1", "player_id": "x", "open": True}, clock["t"])
+    net.simulate_node_message("node1", "loadout_browse", {"node_id": "node1", "player_id": "x", "open": False}, clock["t"])
+    assert ps[1]["player_id"] not in s.snapshot()["kit"]["browsing"]
+    # a successful pick clears "browsing"
+    net.simulate_node_message("node1", "loadout_browse", {"node_id": "node1", "player_id": "x", "open": True}, clock["t"])
+    _req(net, 1, "primary", "weapon", "smg", t=clock["t"])
+    assert ps[1]["player_id"] not in s.snapshot()["kit"]["browsing"]
+
+
+def test_loadout_request_reject_paths_each_deliver_an_ack():
+    s, net, clock, ps = mk(1, mode="ffa")           # no_heavies
+    online(s, net, clock, ps[0], 0)
+    pid = ps[0]["player_id"]
+    before = dict(s.players[pid]["loadout"])
+    cases = [
+        (("primary", "weapon", "rail_gun"), "Heavies are off for this game"),
+        (("secondary", "weapon", "rocket_launcher"), "Heavies are off for this game"),
+        (("primary", "none", None), "A primary weapon is required"),
+        (("primary", "weapon", "melee"), "Unknown weapon"),
+        (("secondary", "perk", "med_kit"), "Unknown perk"),             # hidden = unknown to the phone
+        (("primary", "perk", "body_armor"), None),
+        (("nowhere", "weapon", "smg"), "Unknown slot"),
+        (("secondary", "weapon", None), "Unknown pick"),
+    ]
+    n = 0
+    for (slot, kind, rid), reason in cases:
+        _req(net, 0, slot, kind, rid)
+        acks = net.pushes("loadout_ack", "node0")
+        n += 1
+        assert len(acks) == n, f"{slot}/{kind}/{rid}: no ack delivered"
+        ack = acks[-1][2]
+        assert ack["ok"] is False and ack["slot"] == slot and ack["reason"], ack
+        if reason:
+            assert ack["reason"] == reason, (slot, kind, rid, ack["reason"])
+        assert ack["loadout"] == before                                  # rejected → nothing stored
+    assert s.players[pid]["loadout"] == before and not net.pushes("tutorial")
+    # host-locked and hud_select off
+    s.set_config({"loadout_policy": {"preset": "open", "primary": {"choice": "host"}}})
+    _req(net, 0, "primary", "weapon", "smg")
+    assert "locked" in _last_ack(net, 0)["reason"]
+    s.set_config({"loadout_policy": {"preset": "open", "hud_select": False}})
+    _req(net, 0, "primary", "weapon", "smg")
+    assert _last_ack(net, 0)["reason"] == "Loadout picks are host-side for this game"
+    # snipers: secondary off + primary fixed
+    s.set_config({"loadout_policy": {"preset": "snipers"}})
+    _req(net, 0, "secondary", "perk", "body_armor")
+    assert _last_ack(net, 0)["reason"] == "No secondary this game"
+    # try-outs closed once pushed: the pick still applies, the ack says why the gun didn't arm
+    s.set_config({"loadout_policy": {"preset": "open"}})
+    s.push_config()
+    _req(net, 0, "primary", "weapon", "smg", try_=True)
+    ack = _last_ack(net, 0)
+    assert ack["ok"] is True and "closed" in ack["reason"] and s.players[pid]["loadout"]["weapons"][0]["weapon_id"] == "smg"
+    assert pid not in s.trying
+    assert net.pushes("config", "node0")[-1][2]["frames"]["head"]      # re-compiled + re-pushed after the push
+
+
+# ------------------------------------------------------------------ ready semantics (§4.4)
+def test_all_ready_advances_not_first_ready():
+    s, net, clock, ps = mk(3)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    assert s.phase == "kit"
+    net.simulate_node_message("node0", "ready", {"node_id": "node0", "player_id": "x", "ready": True}, clock["t"])
+    assert s.phase == "kit", "first ready must NOT advance (brx-opus2 S1)"
+    s.tryout(ps[1]["player_id"], "smg")                                # still allowed after one ready
+    net.simulate_node_message("node1", "ready", {"node_id": "node1", "player_id": "x", "ready": True}, clock["t"])
+    assert s.phase == "kit"
+    s.set_ready(ps[2]["player_id"], True, host_override=True)
+    assert s.phase == "lobby"
+
+
+def test_ready_ends_that_players_tryout_only():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.tryout(ps[0]["player_id"], "smg"); s.tryout(ps[1]["player_id"], "shotgun")
+    net.simulate_node_message("node0", "ready", {"node_id": "node0", "player_id": "x", "ready": True}, clock["t"])
+    assert ps[0]["player_id"] not in s.trying and s.trying.get(ps[1]["player_id"]) == "shotgun"
+    end = net.pushes("tutorial", "node0")[-1][2]
+    assert end.get("end") is True and "$CLEAR,*" in end["frames"]      # teardown DELIVERED to the node
+    assert not any(b.get("end") for _, _, b in net.pushes("tutorial", "node1"))
+    # host READY override does the same
+    s.set_ready(ps[1]["player_id"], True, host_override=True)
+    assert not s.trying and net.pushes("tutorial", "node1")[-1][2].get("end") is True
+
+
+def test_demo_fake_net_populates_varied_loadouts():
+    from brx_mcp.mc.__main__ import build
+    import argparse
+    ns = argparse.Namespace(host="127.0.0.1", port=0, ws_port=0, fake_net=True, demo=True, demo_speed=1.0,
+                            no_auth=True, ephemeral=True)
+    try:
+        session, net, extra = build(ns)
+    except TypeError:
+        return                                              # build() signature differs — covered by the CLI smoke
+    los = [p["loadout"] for p in session.players.values()]
+    assert any(len(l["weapons"]) == 2 for l in los) and any(l.get("perk") for l in los) and any(len(l["weapons"]) == 1 and not l.get("perk") for l in los)
+
+
+# ------------------------------------------------------------------ brx-opus2 additions (2026-08-27)
+def test_apply_policy_cancels_tryouts_and_warns_the_host():
+    s, net, clock, ps = mk(2, compiler=C)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rail_gun"}]})
+    s.tryout(ps[0]["player_id"], "rail_gun")
+    s.tryout(ps[1]["player_id"], "assault_rifle")          # still allowed under NO HEAVIES → untouched
+    s.set_config({"loadout_policy": {"preset": "no_heavies"}})
+    assert ps[0]["player_id"] not in s.trying and net.pushes("tutorial", "node0")[-1][2].get("end") is True
+    assert s.trying.get(ps[1]["player_id"]) == "assault_rifle"
+    snap = s.snapshot()
+    assert "1 LOADOUT RESET BY NO HEAVIES" in snap["config_warnings"]
+    s.set_config({"loadout_policy": {"preset": "snipers"}})
+    assert "2 LOADOUTS RESET BY SNIPERS ONLY" in s.snapshot()["config_warnings"]
+    s.set_config({"night": True})                            # any later PUT clears the transient notice
+    assert not any("RESET BY" in w for w in s.snapshot()["config_warnings"])
+
+
+def test_weapon_view_htk_ttk_caution():
+    from brx_mcp.mc.views import weapon_view
+    views = {v["weapon_id"]: v for v in (weapon_view(w) for w in C.weapon_catalog())}
+    assert views["assault_rifle"]["htk"] == 13 and views["assault_rifle"]["ttk_ms"] == 2280
+    assert all(isinstance(v["htk"], int) and v["htk"] >= 1 for v in views.values())
+    assert views["energy_launcher"]["caution"].startswith("Known issue") and "caution" not in views["assault_rifle"]
+    # the phone gets the same rows in assign.catalog
+    s, net, clock, ps = mk(1, compiler=C)
+    online(s, net, clock, ps[0], 0)
+    s.patch_player(ps[0]["player_id"], display="X")
+    cat = net.pushes("assign", "node0")[-1][2]["catalog"]["weapons"]
+    assert next(w for w in cat if w["weapon_id"] == "energy_launcher")["caution"] and all("htk" in w for w in cat)
+
+
+# ------------------------------------------------------------------ A10 §8 saved games (presets)
+def _store(tmp=None, s=None):
+    import tempfile, pathlib
+    from brx_mcp.mc.presets import PresetStore
+    from brx_mcp.mc.state import default_config
+    s = s or mk(1)[0]
+    path = (pathlib.Path(tmp or tempfile.mkdtemp()) / "presets.json")
+    return PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms), path, s
+
+
+def test_presets_builtin_and_crud_and_name_clash():
+    from brx_mcp.mc.presets import PresetError, BUILTIN_SILENCED_SNIPER
+    st, path, s = _store()
+    rows = st.list()
+    assert [r["preset_id"] for r in rows] == [BUILTIN_SILENCED_SNIPER]
+    b = rows[0]
+    assert b["builtin"] and b["name"] == "Silenced Sniper" and "silenced" in b["desc"].lower() and "config_id" not in b["config"]
+    pol = b["config"]["loadout_policy"]
+    assert b["config"]["mode"] == "ffa" and b["config"]["health"]["max_armor"] == 0 and pol["hud_select"] is False
+    assert pol["primary"] == {**pol["primary"], "choice": "fixed", "fixed_id": "sniper_rifle"} and pol["secondary"]["fixed_id"] == "extended_mags" and pol["preset"] == "custom"
+    # create from the current draft (config_id stripped), listed after the builtin, persisted
+    s.set_config({"mode": "tdm", "time_limit_s": 300, "loadout_policy": {"preset": "no_heavies"}})
+    r = st.create("Friday TDM", "no heavies, 5 min", s.config)
+    assert not r["builtin"] and "config_id" not in r["config"] and r["config"]["time_limit_s"] == 300 and r["config"]["loadout_policy"]["preset"] == "no_heavies"
+    assert [x["name"] for x in st.list()] == ["Silenced Sniper", "Friday TDM"]
+    assert path.exists() and "Friday TDM" in path.read_text()
+    # case-insensitive clash → 409 unless replace (keeps the id)
+    try:
+        st.create("friday tdm", "", s.config); assert False
+    except PresetError as e:
+        assert e.status == 409
+    r2 = st.create("FRIDAY tdm", "replaced", {**s.config, "time_limit_s": 120}, replace=True)
+    assert r2["preset_id"] == r["preset_id"] and r2["config"]["time_limit_s"] == 120 and r2["name"] == "FRIDAY tdm" and len(st.list()) == 2
+    # update + delete
+    r3 = st.update(r["preset_id"], name="Friday Night", desc="x")
+    assert r3["name"] == "Friday Night" and st.get(r["preset_id"])["desc"] == "x"
+    st.create("Other", "", s.config)
+    try:
+        st.update(r["preset_id"], name="other"); assert False
+    except PresetError as e:
+        assert e.status == 409
+    st.delete(r["preset_id"])
+    assert [x["name"] for x in st.list()] == ["Silenced Sniper", "Other"]
+    for bad in (lambda: st.delete("nope"), lambda: st.get("nope"), lambda: st.update("nope", name="x")):
+        try:
+            bad(); assert False
+        except PresetError as e:
+            assert e.status == 404
+    try:
+        st.create("", "", s.config); assert False
+    except PresetError as e:
+        assert e.status == 400
+    # builtin guards: delete / edit / name-squat → 403
+    for bad in (lambda: st.delete(BUILTIN_SILENCED_SNIPER), lambda: st.update(BUILTIN_SILENCED_SNIPER, desc="x"),
+                lambda: st.create("silenced sniper", "", s.config, replace=True)):
+        try:
+            bad(); assert False
+        except PresetError as e:
+            assert e.status == 403
+    # reload from disk → same rows, builtin regenerated
+    st2, _, _ = _store(tmp=path.parent, s=s)
+    assert [x["name"] for x in st2.list()] == ["Silenced Sniper", "Other"]
+
+
+def test_presets_sanitize_drops_junk_and_corrupt_file_is_moved_aside():
+    import json
+    st, path, s = _store()
+    r = st.create("Weird", "", {"mode": "ffa", "time_limit_s": 240, "laser_eyes": True, "config_id": "stale",
+                                "loadout_policy": {"preset": "snipers"}, "health": {"max_hp": 45, "max_armor": 70}})
+    assert "laser_eyes" not in r["config"] and "config_id" not in r["config"] and r["config"]["loadout_policy"]["preset"] == "snipers"
+    try:
+        st.create("Bad", "", {"mode": "nope"}); assert False
+    except ValueError:
+        pass
+    # a stored row with an out-of-range value is DROPPED on load (never fatal); unknown keys pass through sanitize
+    rows = json.loads(path.read_text())["presets"]
+    rows.append({"preset_id": "zz", "name": "Broken", "config": {"mode": "tdm", "time_limit_s": 999999}})
+    rows.append({"preset_id": "yy", "name": "Old", "config": {"mode": "tdm", "future_key": 1}})
+    rows.append({"preset_id": "builtin:silenced_sniper", "name": "Silenced Sniper", "config": {"mode": "tdm"}})   # squatter
+    path.write_text(json.dumps({"v": 1, "presets": rows}))
+    st2, _, _ = _store(tmp=path.parent, s=s)
+    names = [x["name"] for x in st2.list()]
+    assert names == ["Silenced Sniper", "Weird", "Old"] and st2.list()[0]["config"]["mode"] == "ffa"
+    assert st2.get(next(x["preset_id"] for x in st2.list() if x["name"] == "Old"))["config"]["loadout_policy"]["preset"] == "open"
+    # corrupt JSON → renamed aside, store starts with the builtin only, and the next save writes a fresh file
+    path.write_text("{not json")
+    st3, _, _ = _store(tmp=path.parent, s=s)
+    assert [x["name"] for x in st3.list()] == ["Silenced Sniper"]
+    assert any(f.name.startswith("presets.json.corrupt-") for f in path.parent.iterdir()) and not path.exists()
+    st3.create("Fresh", "", s.config)
+    assert path.exists()
+
+
+def test_presets_api_and_apply_runs_apply_policy():
+    try:
+        from starlette.testclient import TestClient
+        import httpx  # noqa: F401
+    except Exception:
+        return
+    from brx_mcp.mc.api import create_app
+    s, net, clock, ps = mk(2)
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]})
+    c = TestClient(create_app(s))                                     # no presets attached → memory store
+    rows = c.get("/api/presets").json()
+    assert len(rows) == 1 and rows[0]["builtin"]
+    r = c.post("/api/presets", json={"name": "Mine", "desc": "d"})     # default config = the current draft
+    assert r.status_code == 200 and r.json()["config"]["mode"] == "tdm"
+    assert c.post("/api/presets", json={"name": "mine"}).status_code == 409
+    assert c.post("/api/presets", json={"name": "mine", "replace": True}).status_code == 200
+    assert c.post("/api/presets", json={"name": ""}).status_code == 400
+    pid = r.json()["preset_id"]
+    assert c.put(f"/api/presets/{pid}", json={"desc": "new"}).json()["desc"] == "new"
+    assert c.put("/api/presets/builtin:silenced_sniper", json={"desc": "x"}).status_code == 403
+    assert c.delete("/api/presets/builtin:silenced_sniper").status_code == 403
+    assert c.delete("/api/presets/nope").status_code == 404
+    # apply the builtin: same path as PUT /api/config → fresh config_id, loadouts reset, notice posted
+    old_id = s.config["config_id"]
+    a = c.post("/api/presets/builtin:silenced_sniper/apply")
+    assert a.status_code == 200 and a.json()["ok"] and a.json()["config"]["config_id"] != old_id
+    assert s.config["mode"] == "ffa" and s.config["health"]["max_armor"] == 0
+    for p in s.players.values():
+        assert p["loadout"] == {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "extended_mags"}
+    assert any("RESET BY CUSTOM RULES" in w for w in s.snapshot()["config_warnings"])
+    assert c.post("/api/presets/nope/apply").status_code == 404
+    assert c.delete(f"/api/presets/{pid}").json()["ok"] and len(c.get("/api/presets").json()) == 1

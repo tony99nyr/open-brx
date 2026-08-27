@@ -1,5 +1,6 @@
 // Demo data from the design export (guns renamed GUN-A…GUN-H — real sticker ids never enter the repo).
-import type { GameConfig, ModeInfo, Team, WeaponView } from '../api/types';
+import type { GameConfig, ModeInfo, PerkView, Team, WeaponView } from '../api/types';
+import { defaultPolicy } from './policy';
 
 export const TEAMS: Team[] = [
   { team_id: 'blue', name: 'BLUE TEAM', color: 'blue', tid: 1 },
@@ -8,22 +9,359 @@ export const TEAMS: Team[] = [
   { team_id: 'green', name: 'GREEN TEAM', color: 'green', tid: 3 },
 ];
 
-const W: [string, string, number, number, number, number, number, number][] = [
-  ['Assault Rifle', 'AR', 32, 12, 1.4, 55, 85, 55], ['Burst Rifle', 'AR', 36, 6, 1.7, 65, 70, 80],
-  ['Sniper Rifle', 'SNIPER', 4, 6, 1.7, 90, 20, 100], ['Shotgun', 'SHOTGUN', 6, 4, 0.4, 85, 25, 25],
-  ['SMG', 'SMG', 72, 4, 2.5, 35, 95, 40], ['AMR', 'SNIPER', 14, 4, 1.4, 85, 55, 85],
-  ['Energy Launcher', 'HEAVY', 1, 6, 1.4, 100, 10, 55], ['Rail Gun', 'HEAVY', 1, 6, 2.4, 100, 10, 85],
-  ['Rocket Launcher', 'HEAVY', 2, 4, 1.2, 100, 12, 60], ['Laser Cannon', 'HEAVY', 4, 2, 2.0, 95, 18, 85],
-  ['Charge Rifle', 'LMG', 100, 2, 2.5, 80, 60, 60], ['Bolt Rifle', 'AR', 18, 10, 2.0, 60, 50, 65],
-  ['Plasma Sniper', 'SNIPER', 10, 8, 2.0, 85, 30, 90], ['Force Rifle', 'AR', 36, 4, 1.7, 55, 75, 60],
-  ['Stinger', 'AR', 18, 4, 1.7, 80, 45, 70], ['Energy Rifle', 'LMG', 300, 2, 2.4, 40, 90, 50],
-  ['Suppressor', 'SMG', 48, 6, 2.0, 75, 65, 55], ['Ion Sniper', 'SNIPER', 2, 6, 2.0, 85, 15, 90],
-];
+// GENERATED from mcp/brx_mcp/mc/weapons.json (python: see git log) — the demo must show the SHIPPED numbers, not the design-export ones (review 2026-08-27 #3).
+const RAW = [
+ {
+  "weapon_id": "assault_rifle",
+  "name": "Assault Rifle",
+  "desc": "The anchor \u2014 its frame is the one every other weapon is measured against. 13 hits at 190ms with 32 up and 384 in reserve: 32 kills without resupply, the deepest pool in the arsenal, and the slowest kill in it.",
+  "role": "assault",
+  "mag": 32,
+  "reserve": 384,
+  "reload_ms": 1400,
+  "dmg": 8,
+  "rof": 39,
+  "rng": 75,
+  "htk": 13,
+  "verified": false,
+  "cls": "0",
+  "tags": [
+   "assault"
+  ]
+ },
+ {
+  "weapon_id": "burst_rifle",
+  "name": "Burst Rifle",
+  "desc": "A real three-round burst \u2014 one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
+  "role": "assault",
+  "mag": 36,
+  "reserve": 216,
+  "reload_ms": 1700,
+  "dmg": 8,
+  "rof": 100,
+  "rng": 75,
+  "htk": 13,
+  "verified": true,
+  "cls": "0",
+  "tags": [
+   "assault"
+  ]
+ },
+ {
+  "weapon_id": "force_rifle",
+  "name": "Force Rifle",
+  "desc": "The burst rifle's heavier twin: same three-round pull, more per round. 12 hits instead of 13 and a faster kill, paid for with two-thirds the reserve and a slower five-part reload.",
+  "role": "assault",
+  "mag": 36,
+  "reserve": 144,
+  "reload_ms": 1700,
+  "dmg": 9,
+  "rof": 75,
+  "rng": 75,
+  "htk": 12,
+  "verified": false,
+  "cls": "0",
+  "tags": [
+   "assault"
+  ]
+ },
+ {
+  "weapon_id": "bolt_rifle",
+  "name": "Bolt Rifle",
+  "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back \u2014 22 kills from a full kit for operators who would rather aim than hold.",
+  "role": "assault",
+  "mag": 18,
+  "reserve": 180,
+  "reload_ms": 2000,
+  "dmg": 11,
+  "rof": 33,
+  "rng": 75,
+  "htk": 9,
+  "verified": true,
+  "cls": "0",
+  "tags": [
+   "assault"
+  ]
+ },
+ {
+  "weapon_id": "smg",
+  "name": "SMG",
+  "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag \u2014 four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+  "role": "cqb",
+  "mag": 72,
+  "reserve": 288,
+  "reload_ms": 2500,
+  "dmg": 7,
+  "rof": 54,
+  "rng": 75,
+  "htk": 15,
+  "verified": false,
+  "cls": "1",
+  "tags": [
+   "cqb"
+  ]
+ },
+ {
+  "weapon_id": "shotgun",
+  "name": "Shotgun",
+  "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload \u2014 sustained pressure from the shallowest ammo pool outside the power tier.",
+  "role": "cqb",
+  "mag": 6,
+  "reserve": 24,
+  "reload_ms": 400,
+  "dmg": 39,
+  "rof": 9,
+  "rng": 75,
+  "htk": 3,
+  "verified": false,
+  "cls": "3",
+  "tags": [
+   "cqb"
+  ]
+ },
+ {
+  "weapon_id": "stinger",
+  "name": "Stinger",
+  "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve \u2014 eight hits to drop, twenty kills to spend, and nothing held back for range.",
+  "role": "cqb",
+  "mag": 18,
+  "reserve": 144,
+  "reload_ms": 1700,
+  "dmg": 13,
+  "rof": 30,
+  "rng": 75,
+  "htk": 8,
+  "verified": false,
+  "cls": "6",
+  "tags": [
+   "cqb"
+  ]
+ },
+ {
+  "weapon_id": "sniper_rifle",
+  "name": "Sniper Rifle",
+  "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it \u2014 the fewest hits to a kill outside the power tier, and no margin for a miss.",
+  "role": "marksman",
+  "mag": 4,
+  "reserve": 24,
+  "reload_ms": 1700,
+  "dmg": 52,
+  "rof": 5,
+  "rng": 75,
+  "htk": 2,
+  "verified": false,
+  "cls": "2",
+  "tags": [
+   "marksman",
+   "sniper"
+  ]
+ },
+ {
+  "weapon_id": "plasma_sniper",
+  "name": "Plasma Sniper",
+  "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back \u2014 lean on it and it overheats.",
+  "role": "marksman",
+  "mag": 10,
+  "reserve": 80,
+  "reload_ms": 2000,
+  "dmg": 22,
+  "rof": 19,
+  "rng": 75,
+  "htk": 5,
+  "verified": false,
+  "cls": "2",
+  "tags": [
+   "marksman",
+   "sniper"
+  ]
+ },
+ {
+  "weapon_id": "amr",
+  "name": "AMR",
+  "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind \u2014 the hardest-hitting automatic and the shallowest.",
+  "role": "support",
+  "mag": 14,
+  "reserve": 56,
+  "reload_ms": 1400,
+  "dmg": 21,
+  "rof": 19,
+  "rng": 75,
+  "htk": 5,
+  "verified": false,
+  "cls": "4",
+  "tags": [
+   "support",
+   "sniper"
+  ]
+ },
+ {
+  "weapon_id": "suppressor",
+  "name": "Suppressor",
+  "desc": "Quiet, not silent, and no muzzle flash \u2014 the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
+  "role": "support",
+  "mag": 48,
+  "reserve": 384,
+  "reload_ms": 2000,
+  "dmg": 7,
+  "rof": 47,
+  "rng": 75,
+  "htk": 15,
+  "verified": false,
+  "cls": "1",
+  "tags": [
+   "support"
+  ]
+ },
+ {
+  "weapon_id": "energy_rifle",
+  "name": "Energy Rifle",
+  "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit \u2014 the largest ammo pool in the game, on the smallest per-hit number.",
+  "role": "support",
+  "mag": 300,
+  "reserve": 600,
+  "reload_ms": 2400,
+  "dmg": 8,
+  "rof": 38,
+  "rng": 75,
+  "htk": 13,
+  "verified": false,
+  "cls": "5",
+  "tags": [
+   "support"
+  ]
+ },
+ {
+  "weapon_id": "charge_rifle",
+  "name": "Charge Rifle",
+  "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage \u2014 two hits to a kill and a heat budget that ends the party if you rush it; twelve up, twelve back.",
+  "role": "support",
+  "mag": 12,
+  "reserve": 12,
+  "reload_ms": 2500,
+  "dmg": 87,
+  "rof": 6,
+  "rng": 75,
+  "htk": 2,
+  "verified": false,
+  "cls": "5",
+  "tags": [
+   "support"
+  ]
+ },
+ {
+  "weapon_id": "rocket_launcher",
+  "name": "Rocket Launcher",
+  "desc": "Point, pull, erase. 115 a hit \u2014 a full-health operator in one \u2014 on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
+  "role": "power",
+  "mag": 2,
+  "reserve": 2,
+  "reload_ms": 2600,
+  "dmg": 100,
+  "rof": 8,
+  "rng": 75,
+  "htk": 1,
+  "verified": false,
+  "cls": "9",
+  "tags": [
+   "power",
+   "heavy"
+  ]
+ },
+ {
+  "weapon_id": "rail_gun",
+  "name": "Rail Gun",
+  "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total \u2014 everyone within earshot hears the spool.",
+  "role": "power",
+  "mag": 2,
+  "reserve": 2,
+  "reload_ms": 2400,
+  "dmg": 100,
+  "rof": 6,
+  "rng": 75,
+  "htk": 1,
+  "verified": false,
+  "cls": "7",
+  "tags": [
+   "power",
+   "heavy"
+  ]
+ },
+ {
+  "weapon_id": "laser_cannon",
+  "name": "Laser Cannon",
+  "desc": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble.",
+  "role": "power",
+  "mag": 2,
+  "reserve": 2,
+  "reload_ms": 1600,
+  "dmg": 100,
+  "rof": 5,
+  "rng": 75,
+  "htk": 1,
+  "verified": false,
+  "cls": "4",
+  "tags": [
+   "power",
+   "heavy"
+  ]
+ },
+ {
+  "weapon_id": "energy_launcher",
+  "name": "Energy Launcher",
+  "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier \u2014 four kills, spent quietly.",
+  "role": "power",
+  "mag": 2,
+  "reserve": 2,
+  "reload_ms": 1400,
+  "dmg": 100,
+  "rof": 5,
+  "rng": 75,
+  "htk": 1,
+  "verified": false,
+  "cls": "9",
+  "tags": [
+   "power",
+   "heavy"
+  ]
+ },
+ {
+  "weapon_id": "ion_sniper",
+  "name": "Ion Sniper",
+  "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back \u2014 the power tier's only weapon that looks and sounds like a marksman rifle.",
+  "role": "power",
+  "mag": 2,
+  "reserve": 2,
+  "reload_ms": 2000,
+  "dmg": 100,
+  "rof": 5,
+  "rng": 75,
+  "htk": 1,
+  "verified": false,
+  "cls": "2",
+  "tags": [
+   "power",
+   "heavy",
+   "sniper"
+  ]
+ }
+] as const;
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-export const WEAPONS: WeaponView[] = W.map(([name, cls, clip, mags, reload_s, dmg, rpm, rng]) => ({
-  weapon_id: slug(name), name, cls, clip, mags, reserve: clip * mags, reload_s, dmg, rpm, rng,
-  verified: name === 'Assault Rifle' || name === 'Charge Rifle',
+const SNIPERS = new Set(['sniper_rifle', 'plasma_sniper', 'ion_sniper', 'amr']);
+const CAUTION: Record<string, string> = { energy_launcher: 'Known issue: deals no damage in our shipped config (weapon-design.md) — avoid until fixed' };
+export const WEAPONS: WeaponView[] = RAW.map(r => ({
+  weapon_id: r.weapon_id, name: r.name, desc: r.desc, cls: r.cls, role: r.role,
+  tags: r.tags.length ? [...r.tags] : [r.role === 'power' ? 'heavy' : r.role, ...(SNIPERS.has(r.weapon_id) ? ['sniper'] : [])],
+  clip: r.mag, mags: Math.max(1, Math.round(r.reserve / Math.max(r.mag, 1))), reserve: r.reserve, reload_s: Math.round(r.reload_ms / 100) / 10,
+  dmg: r.dmg, rpm: r.rof, rng: r.rng, htk: r.htk, verified: r.verified, caution: CAUTION[r.weapon_id],
 }));
+
+// mirrors mcp/brx_mcp/mc/perks.json (loadout.md §1.2) — v1 is passive-only; slot-frame perks stay hidden until benched.
+export const PERKS: PerkView[] = [
+  { perk_id: 'body_armor', name: 'Body Armor', desc: 'Start every life with 50 extra armor. Armor soaks hits before health does.', tags: ['passive'], mechanism: 'passive', effects: { max_armor_add: 50 }, verified: true },
+  { perk_id: 'extended_mags', name: 'Extended Mags', desc: 'Double the magazine and the reserve on your primary. Fewer reloads, longer fights.', tags: ['passive'], mechanism: 'passive', effects: { ammo_mult: 2 }, verified: true },
+  { perk_id: 'quick_hands', name: 'Quick Hands', desc: 'Reload your primary in half the time.', tags: ['passive'], mechanism: 'passive', effects: { reload_mult: 0.5 }, verified: false },
+  { perk_id: 'easy_reload', name: 'Easy Reload', desc: 'The orange alt-fire button reloads — no lever pull. For players who struggle with the mechanic.', tags: ['passive'], mechanism: 'passive', effects: { alt_reload: true }, verified: true },
+];
 
 const base = (mode: string, over: Partial<GameConfig> = {}): GameConfig => ({
   config_id: `cfg_${mode}`,
@@ -35,6 +373,7 @@ const base = (mode: string, over: Partial<GameConfig> = {}): GameConfig => ({
   scoring: { frag_limit: 25, win_by: 'kills' },
   health: { max_hp: 45, max_armor: 70 },
   teams: [TEAMS[0], TEAMS[1]],
+  loadout_policy: defaultPolicy(mode),
   ...over,
 });
 

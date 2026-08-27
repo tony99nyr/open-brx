@@ -59,7 +59,8 @@ class WeaponSel(TypedDict):
 
 
 class Loadout(TypedDict):
-    weapons: list[WeaponSel]
+    weapons: list[WeaponSel]              # [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10)
+    perk: NotRequired[str | None]         # perk_id in slot 2 — mutually exclusive with a secondary weapon (loadout.md §2)
     overrides: NotRequired[dict]
 
 
@@ -105,6 +106,39 @@ class Health(TypedDict):
     max_armor: int
 
 
+class SlotRule(TypedDict):
+    choice: Literal["player", "host", "fixed", "off"]
+    kinds: list[str]                      # "weapon" | "perk"; primary is always ["weapon"]
+    exclude_tags: list[str]
+    exclude_ids: list[str]
+    only_ids: list[str]
+    fixed_id: str | None
+
+
+class LoadoutPolicy(TypedDict):
+    preset: Literal["open", "no_heavies", "snipers", "custom"]
+    hud_select: bool
+    primary: SlotRule
+    secondary: SlotRule
+
+
+class LoadoutPool(TypedDict):
+    primary: list[str]
+    secondary_weapons: list[str]
+    secondary_perks: list[str]
+
+
+class PerkView(TypedDict):
+    perk_id: str
+    name: str
+    desc: str
+    tags: list[str]
+    mechanism: Literal["passive", "slot_frame"]
+    effects: dict
+    verified: bool
+    hidden: bool
+
+
 class GameConfig(TypedDict):
     config_id: str
     mode: str
@@ -117,6 +151,7 @@ class GameConfig(TypedDict):
     teams: list[Team]
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
+    loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
 
 
 class FrameBundle(TypedDict):
@@ -140,6 +175,9 @@ class Weapon(TypedDict):
     weap_frame: str
     icon: NotRequired[str]
     verified: NotRequired[bool]
+    tags: NotRequired[list[str]]   # A10 policy vocabulary (loadout.md §1.1)
+    role: NotRequired[str]
+    caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
 
 
 # ---- §4 events ----
@@ -246,7 +284,7 @@ class Envelope(TypedDict):
 
 
 NODE_KINDS = {"hello", "bind", "event", "event_batch", "status", "ack_config", "time_req",
-              "log_offer", "log_data", "ready"}
+              "log_offer", "log_data", "ready", "loadout_request", "loadout_browse"}   # A10: loadout_*
 MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "control",
-            "time_res", "pull_log", "ack", "apply", "score"}
+            "time_res", "pull_log", "ack", "apply", "score", "loadout_ack"}             # A10: loadout_ack
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall"}

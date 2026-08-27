@@ -12,6 +12,7 @@ import time
 import uuid
 from typing import Any, Callable
 
+from . import policy as _policy
 from .scoring import Scorer
 from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, STALE_AFTER_MS, SYNC_FRESH_MS, GameConfig, Player,
                     ReadinessRow, ReadinessSnapshot, ScanRow, Team)
@@ -57,7 +58,8 @@ def default_config(mode: str = "tdm") -> GameConfig:
             "time_limit_s": 600, "respawn": dict(m["respawn"]),
             "scoring": {"frag_limit": m["frag_limit"], "win_by": m["win_by"]},
             "health": {"max_hp": 45, "max_armor": 70},
-            "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]]}
+            "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]],
+            "loadout_policy": _policy.default_policy(mode)}      # A10: ffa → no_heavies, else open
 
 
 class Session:
@@ -79,6 +81,9 @@ class Session:
         self.scan_rows: list[ScanRow] = []
         self.lan = lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""}
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
+        self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
+        self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
+        self.presets = None                       # A10 §8: PresetStore, attached by __main__/create_app (memory store when absent)
         self.lobby_pushed = False
         self.acks: dict[str, dict] = {}
         self.bundles: dict[str, dict] = {}
@@ -146,6 +151,10 @@ class Session:
                 self.teams = snap["teams"]
             if snap.get("config"):
                 self.config = snap["config"]
+            self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
+            for pl in self.players.values():                      # a pre-A10 snapshot has no `perk` key; fine
+                pl["loadout"] = _policy.apply(self.config["loadout_policy"], self.loadout_pool(), pl.get("loadout") or {"weapons": []},
+                                              *self._catalog_rows())
             self._gun_index()
             return len(self.players)
         except Exception:
@@ -187,6 +196,86 @@ class Session:
         except Exception:
             pass
 
+    # ---------- A10 loadout policy / catalog ----------
+    def _catalog_rows(self) -> tuple[list[dict], list[dict]]:
+        """(visible weapons, visible perks) — the rows the policy engine filters by tag."""
+        try:
+            weapons = [w for w in self.compiler.weapon_catalog() if isinstance(w, dict)]
+        except Exception:
+            weapons = []
+        pc = getattr(self.compiler, "perk_catalog", None)
+        try:
+            perks = [r for r in pc()] if callable(pc) else []
+        except Exception:
+            perks = []
+        return weapons, perks
+
+    def policy(self) -> dict:
+        pol = self.config.get("loadout_policy")
+        if not pol:
+            pol = self.config["loadout_policy"] = _policy.default_policy(self.config["mode"])
+        return pol
+
+    def loadout_pool(self) -> dict:
+        weapons, perks = self._catalog_rows()
+        return _policy.pool(self.policy(), weapons, perks)
+
+    def _catalog_views(self) -> dict:
+        """`assign.catalog` — what the phone browses (visible weapons as WeaponView + visible perks)."""
+        from .views import weapon_view                   # one view builder for HTTP and the wire
+        weapons, perks = self._catalog_rows()
+        return {"weapons": [weapon_view(w) for w in weapons], "perks": perks}
+
+    def _assign_body(self, p: Player) -> dict:
+        return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
+                "catalog": self._catalog_views(), "policy": _policy.node_view(self.policy(), self.loadout_pool())}
+
+    def apply_policy(self) -> list[str]:
+        """§3.3: force every loadout to obey the policy (fixed → set, off → cleared, out-of-pool → replaced).
+        Returns the ids of the players whose loadout changed; each gets a fresh `assign` (and a re-push
+        if the lobby was already pushed) exactly like a PATCH."""
+        weapons, perks = self._catalog_rows()
+        lp = self.loadout_pool()
+        changed: list[str] = []
+        for pl in self.players.values():
+            new = _policy.apply(self.policy(), lp, pl.get("loadout") or {"weapons": []}, weapons, perks)
+            if new != pl.get("loadout"):
+                pl["loadout"] = new
+                changed.append(pl["player_id"])
+        for pid in changed:
+            pl = self.players[pid]
+            if pid in self.trying:                       # an in-flight try-out of a weapon the ruleset just took away
+                self.tryout(pid, None)                   # → tutorial {end} teardown on the node
+            if pl.get("node_id"):
+                self.net.push(pl["node_id"], "assign", self._assign_body(pl))
+                if self.lobby_pushed:
+                    self._push_config_to(pl)
+        if changed:
+            label = _policy.PRESET_LABELS.get(self.policy().get("preset"), "THE LOADOUT RULES")
+            self._policy_notice = f"{len(changed)} LOADOUT{'S' if len(changed) != 1 else ''} RESET BY {label}"
+        return changed
+
+    def _prune_browsing(self) -> None:
+        now = self.now_ms()
+        for pid, t in list(self.browsing.items()):
+            if now - t > 60_000 or pid not in self.players:
+                self.browsing.pop(pid, None)
+
+    def _all_ready(self) -> bool:
+        return bool(self.players) and all(p.get("ready") for p in self.players.values())
+
+    def _on_ready(self, pid: str, ready: bool) -> None:
+        """Shared ready semantics (§4.4): ready ENDS that player's try-out (the gun must not stay armed with
+        identity 0) and kit → lobby advances only when EVERY rostered player is ready."""
+        p = self.players[pid]
+        p["ready"] = ready
+        if ready:
+            self.browsing.pop(pid, None)
+            if pid in self.trying:
+                self.tryout(pid, None)
+        if self.phase == "kit" and ready and self._all_ready():
+            self.phase = "lobby"
+
     # ---------- roster ----------
     def _next_num(self) -> int:
         used = {p["player_num"] for p in self.players.values()}
@@ -222,9 +311,11 @@ class Session:
                 if p["team_id"] in counts:
                     counts[p["team_id"]] += 1
             team_id = min(counts, key=lambda k: (counts[k], list(counts).index(k)))
+        lo = self._check_loadout(loadout) if loadout else {"weapons": [{"weapon_id": "assault_rifle"}]}
+        lo = _policy.apply(self.policy(), self.loadout_pool(), lo, *self._catalog_rows())   # §3.3: a new player obeys the ruleset
         p: Player = {"player_id": pid, "player_num": self._next_num(), "display": display.strip().upper() or f"OPERATOR {pid[:4]}",
                      "team_id": team_id, "node_id": None, "gun_id": gun_id,
-                     "loadout": loadout or {"weapons": [{"weapon_id": "assault_rifle"}]}, "voice": voice, "ready": False}
+                     "loadout": lo, "voice": voice, "ready": False}
         self.players[pid] = p
         if self.scorer:
             self.scorer.register_player(pid, p)      # A5.6 late joiner: scorable in the running match
@@ -256,6 +347,10 @@ class Session:
             fields["team_id"] = self._check_team(fields["team_id"])
         if "loadout" in fields and fields["loadout"] is not None:
             fields["loadout"] = self._check_loadout(fields["loadout"])
+            weapons, perks = self._catalog_rows()
+            ok, reason = _policy.validate_loadout(self.policy(), self.loadout_pool(), fields["loadout"], weapons, perks)
+            if not ok:
+                raise ValueError(reason)               # human copy — the UI shows it as-is (loadout.md §3.3)
         if "voice" in fields and fields["voice"] is not None:
             v = fields["voice"]
             if not isinstance(v, str) or v not in self._voice_ids():
@@ -311,9 +406,12 @@ class Session:
         return ids
 
     def _check_loadout(self, lo) -> dict:
-        """Loadout must be {weapons: [{weapon_id: str}, …], overrides?: {max_hp?, max_armor?}}; ids from the catalog when known."""
+        """Loadout must be {weapons: [{weapon_id}] | [{primary}, {secondary}], perk?: perk_id, overrides?: {max_hp?, max_armor?}};
+        ids from the catalog when known; a perk and a secondary weapon never both fill slot 2 (loadout.md §2)."""
         if not isinstance(lo, dict) or not isinstance(lo.get("weapons"), list) or not lo["weapons"]:
             raise ValueError("loadout must be {weapons: [{weapon_id}, ...]}")
+        if len(lo["weapons"]) > 2:
+            raise ValueError("loadout.weapons holds at most a primary and a secondary")
         known: set[str] = set()
         cat = getattr(self.compiler, "weapon_catalog", None)
         if callable(cat):
@@ -329,6 +427,16 @@ class Session:
                 raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
             weapons.append({"weapon_id": w["weapon_id"]})
         out: dict = {"weapons": weapons}
+        perk = lo.get("perk")
+        if perk is not None and perk != "":
+            if not isinstance(perk, str):
+                raise ValueError("loadout.perk must be a perk_id string or null")
+            _, perks = self._catalog_rows()
+            if perks and perk not in {r.get("perk_id") for r in perks}:
+                raise ValueError(f"unknown perk_id {perk!r}")
+            if len(weapons) > 1:
+                raise ValueError("slot 2 is one thing: a secondary weapon OR a perk, not both")
+            out["perk"] = perk
         ov = lo.get("overrides")
         if ov is not None:
             if not isinstance(ov, dict):
@@ -349,12 +457,12 @@ class Session:
         p = self.players.pop(pid)
         if p.get("node_id"):
             self.node_player.pop(p["node_id"], None)
-        self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None)
+        self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
         self._changed()
 
     def _after_player_change(self, p: Player, new: bool = False):
         if p.get("node_id"):
-            self.net.push(p["node_id"], "assign", {"player": p, "team": self.team(p["team_id"]), "roster": self.roster()})
+            self.net.push(p["node_id"], "assign", self._assign_body(p))
             if self.lobby_pushed:
                 self._push_config_to(p)
                 if self.start_info:
@@ -378,9 +486,7 @@ class Session:
             nv = self.nodes.get(nid or "", {})
             if not nv.get("synced"):
                 raise ValueError("node clock not synced — cannot ready")
-        p["ready"] = ready
-        if self.phase in ("kit",) and ready:
-            self.phase = "lobby"
+        self._on_ready(pid, ready)                     # A10 §4.4: ends the try-out; all-ready advances
         self._changed()
         return p
 
@@ -389,7 +495,7 @@ class Session:
         return [{**m, "defaults": default_config(m["mode"])} for m in MODES]
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
-                    "health", "teams", "led", "player_num_base"}
+                    "health", "teams", "led", "player_num_base", "loadout_policy"}
 
     def set_config(self, patch: dict) -> dict:
         if not isinstance(patch, dict):
@@ -408,7 +514,40 @@ class Session:
         mode = patch.get("mode", self.config["mode"])
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
+        self._policy_notice = None                           # transient: cleared on every config PUT
         cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
+        cfg = self._merge_config(cfg, patch, mode)
+        cfg["config_id"] = uuid.uuid4().hex[:8]
+        self.config = cfg
+        self.teams = list(cfg["teams"])
+        for p in self.players.values():
+            if p["team_id"] not in {t["team_id"] for t in self.teams}:
+                p["team_id"] = self.teams[0]["team_id"] if self.teams else None
+        if self.phase == "muster":
+            self.phase = "build"
+        if self.lobby_pushed:
+            self.lobby_pushed = False
+            self.acks = {}
+        self.apply_policy()                                  # §3.3: every loadout obeys the (new) ruleset
+        res = self._validate()
+        self._changed()
+        return {"ok": res["ok"], "errors": res["errors"], "config": self.config}
+
+    def sanitize_config(self, raw: dict) -> GameConfig:
+        """A10 §8: the PUT /api/config validator as a pure function — a stored preset config is rebuilt from the
+        mode's defaults + every known key of `raw` (unknown keys dropped, bad values raise ValueError). No session
+        state is touched. `config_id` is stripped (assigned fresh on apply)."""
+        if not isinstance(raw, dict):
+            raise ValueError("config must be an object")
+        mode = raw.get("mode", "tdm")
+        if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
+            raise ValueError(f"unknown mode {mode!r}")
+        cfg = self._merge_config(default_config(mode), raw, mode)
+        cfg.pop("config_id", None)
+        return cfg
+
+    def _merge_config(self, cfg: dict, patch: dict, mode: str) -> dict:
+        """Whitelist + range-check every key of `patch` onto `cfg` (A8.3). Pure; raises ValueError."""
         for k, v in patch.items():
             if k not in self._CONFIG_KEYS:
                 continue                         # ignore unknown / client-injected keys
@@ -456,22 +595,14 @@ class Session:
                 if not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= MAX_PLAYERS):
                     raise ValueError("player_num_base must be 1..63")
                 cfg[k] = v
+            elif k == "loadout_policy":
+                # A10 §3: a preset name rewrites the rules; a rule edit that matches no preset → custom
+                cfg[k] = _policy.merge(cfg.get("loadout_policy") or _policy.default_policy(mode), v)
+            elif k == "config_id":
+                continue                                     # never client-set; minted by set_config
             else:
                 cfg[k] = v
-        cfg["config_id"] = uuid.uuid4().hex[:8]
-        self.config = cfg
-        self.teams = list(cfg["teams"])
-        for p in self.players.values():
-            if p["team_id"] not in {t["team_id"] for t in self.teams}:
-                p["team_id"] = self.teams[0]["team_id"] if self.teams else None
-        if self.phase == "muster":
-            self.phase = "build"
-        if self.lobby_pushed:
-            self.lobby_pushed = False
-            self.acks = {}
-        res = self._validate()
-        self._changed()
-        return {"ok": res["ok"], "errors": res["errors"], "config": self.config}
+        return cfg
 
     def _validate(self) -> dict:
         try:
@@ -480,6 +611,8 @@ class Session:
             res = {"ok": False, "errors": [f"validate failed: {e}"]}
         self.config_errors = list(res.get("errors", []))
         self.config_warnings = list(res.get("warnings", []))
+        if self._policy_notice:
+            self.config_warnings.append(self._policy_notice)     # A10: the host sees the overwrite
         return res
 
     # ---------- nodes ----------
@@ -600,7 +733,7 @@ class Session:
         if not p:
             return None
         self._bind(hello["node_id"], p)
-        node = {"player": p, "team": self.team(p["team_id"]), "roster": self.roster()}
+        node = self._assign_body(p)                          # A10: welcome carries catalog + policy too
         if self.lobby_pushed:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
                 self.bundles[p["player_id"]] = self.compiler.compile(self.config, p, self.teams)
@@ -671,9 +804,14 @@ class Session:
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
         pid = self.node_player.get(nid)   # authoritative binding, not a client-supplied player_id
         if kind == "ready" and pid in self.players:
-            self.players[pid]["ready"] = bool(body.get("ready"))
-            if self.phase == "kit" and body.get("ready"):
-                self.phase = "lobby"
+            self._on_ready(pid, bool(body.get("ready")))     # A10 §4.4
+        elif kind == "loadout_request" and pid in self.players:
+            self._on_loadout_request(nid, pid, body)
+        elif kind == "loadout_browse" and pid in self.players:
+            if body.get("open"):
+                self.browsing[pid] = t_recv
+            else:
+                self.browsing.pop(pid, None)
         elif kind == "ack_config" and pid in self.players:
             self.acks[pid] = {"ok": bool(body.get("ok")), "gun_echo": body.get("gun_echo"), "err": body.get("err")}
             if body.get("ok") and body.get("gun_echo"):
@@ -760,6 +898,37 @@ class Session:
         return self.scan_rows
 
     # ---------- kit-out ----------
+    def _on_loadout_request(self, nid: str, pid: str, body: dict) -> None:
+        """A10 §4.2: validate against the policy → apply → re-assign → optional try-out → ALWAYS `loadout_ack`."""
+        p = self.players[pid]
+        slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
+        rid = body.get("id") if isinstance(body.get("id"), str) else None
+        weapons, perks = self._catalog_rows()
+        ok, reason = _policy.check_request(self.policy(), self.loadout_pool(), slot, kind, rid, weapons, perks)
+        if ok:
+            new = _policy.set_slot(p.get("loadout") or {"weapons": []}, slot, kind, rid)
+            try:
+                new = self._check_loadout(new)
+            except ValueError as e:
+                ok, reason = False, str(e)
+        if ok:
+            p["loadout"] = new
+            self.browsing.pop(pid, None)
+            self.net.push(nid, "assign", self._assign_body(p))
+            if self.lobby_pushed:
+                self._push_config_to(p)
+            self._validate()
+            if body.get("try") and kind == "weapon" and rid:
+                try:
+                    self.tryout(pid, rid)
+                except (ValueError, KeyError) as e:
+                    self.net.push(nid, "loadout_ack", {"slot": slot, "ok": True, "reason": str(e), "loadout": p["loadout"]})
+                    self._changed()
+                    return
+        self.net.push(nid, "loadout_ack", {"slot": slot, "ok": bool(ok), **({"reason": reason} if reason else {}),
+                                           "loadout": p["loadout"]})
+        self._changed()
+
     def tryout(self, pid: str, weapon_id: str | None) -> None:
         p = self.players[pid]
         if weapon_id is None:
@@ -771,8 +940,8 @@ class Session:
                     "$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"]})
             self._changed()
             return
-        if any(nv.get("arm_state") in ("lobby", "armed", "live") for nv in self.nodes.values()):
-            raise ValueError("try-outs disabled once any node is in LOBBY (interim safety rule)")
+        if self.lobby_pushed or self.phase in ("armed", "live"):
+            raise ValueError("Try-outs are closed — the game has been pushed to the guns")   # A10 §4.4 (was: any node in LOBBY)
         w = next((w for w in self.compiler.weapon_catalog() if w["weapon_id"] == weapon_id), None)
         if not w:
             raise KeyError(weapon_id)
@@ -978,6 +1147,7 @@ class Session:
         self.acks = {}
         self.bundles = {}
         self.trying = {}
+        self.browsing = {}
         self.synced_at_lobby = {}
         if keep_roster:
             for p in self.players.values():
@@ -987,7 +1157,7 @@ class Session:
             for p in self.players.values():
                 if p.get("node_id"):
                     try:
-                        self.net.push(p["node_id"], "assign", {"player": p, "team": self.team(p["team_id"]), "roster": self.roster()})
+                        self.net.push(p["node_id"], "assign", self._assign_body(p))
                     except Exception:
                         pass
         else:
@@ -1007,6 +1177,7 @@ class Session:
     def snapshot(self) -> dict:
         now = self.now_ms()
         kitted = sum(1 for p in self.players.values() if p.get("node_id"))
+        self._prune_browsing()
         live = None
         if self.scorer and self.phase in ("armed", "live", "recap"):
             tl = self.config.get("time_limit_s")
@@ -1027,7 +1198,8 @@ class Session:
                 "readiness": self.readiness(), "config": self.config, "config_errors": self.config_errors,
                 "config_warnings": self.config_warnings,
                 "players": list(self.players.values()), "teams": self.teams,
-                "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying)},
+                "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying), "browsing": dict(self.browsing)},
+                "loadout_pool": self.loadout_pool(),
                 "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
                           "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,

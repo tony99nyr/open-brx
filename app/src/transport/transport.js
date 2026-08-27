@@ -6,7 +6,7 @@ import * as E from './envelope.js';
 import { Ring, defaultStorage } from './ring.js';
 import { Clock } from './clock.js';
 
-const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feedback', 'control', 'apply', 'score', 'time_res', 'pull_log']);
+const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feedback', 'control', 'apply', 'score', 'time_res', 'pull_log', 'loadout_ack']);
 
 export class Transport {
   /**
@@ -81,7 +81,7 @@ export class Transport {
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
     return this._sendKind('status', full);
   }
-  /** Non-fact uplink: ready | ack_config | log_offer | log_data. Sent iff bound. */
+  /** Non-fact uplink: ready | ack_config | log_offer | log_data | loadout_request | loadout_browse. Sent iff bound. */
   report(kind, body = {}) {
     if (this.state !== 'bound') return false;
     return this._sendKind(kind, { node_id: this.nodeId, ...body });

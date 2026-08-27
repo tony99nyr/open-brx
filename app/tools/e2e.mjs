@@ -235,6 +235,106 @@ await step('END TRY-OUT clears the panel', async () => {
   await until(async () => (await hudA.locator('.tryout').count()) === 0, 6000, 'panel gone');
 });
 
+// ═══ F3b · LOADOUT v2 (docs/spec/loadout.md §6): rules, phone self-serve picks, perks, locks, saved games ═══
+flow('F3b loadout');
+let cfgBeforeRules = null;
+await step('(a) BUILD: NO HEAVIES preset → Kit arsenal "13 OF 18", Rocket tile disabled', async () => {
+  cfgBeforeRules = (await st()).config;
+  await mc.click('text=BUILD');
+  await mc.click('button[role="radio"]:has-text("NO HEAVIES")');
+  await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'preset no_heavies');
+  await mc.click('text=KIT');
+  await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
+  await until(async () => (await mc.locator('text=13 OF 18').count()) > 0, 6000, 'arsenal header 13 OF 18');
+  const dis = await mc.locator('div[role="button"][aria-label*="Rocket"]').first().getAttribute('aria-disabled');
+  expect(dis === 'true', 'Rocket Launcher tile is not aria-disabled under NO HEAVIES');
+  await shot(mc, 'kit-no-heavies');
+});
+await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ → MC roster shows SMG (ack + catalog DELIVERED)', async () => {
+  await hudA.click('.plate.slot.tap[data-arg="primary"]');
+  await until(async () => (await hudA.locator('.lo').count()) > 0, 5000, 'loadout browser open');
+  await hudA.click('.lrow[data-arg="weapon:smg"]');
+  await until(async () => (await hudA.locator('.ackchip.ok').count()) > 0, 6000, 'EQUIPPED chip');
+  const ack = await hudA.evaluate(() => window.brx.engine.loadoutAck);
+  expect(ack && ack.ok && ack.key === 'weapon:smg', 'loadout_ack was not delivered for weapon:smg: ' + JSON.stringify(ack));
+  const cat = await hudA.evaluate(() => (window.brx.engine.catalog || {}).weapons?.length || 0);
+  expect(cat >= 18, 'assign did not carry the catalog (weapons=' + cat + ')');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('SMG'), 6000, 'MC roster line shows SMG');
+  await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
+});
+await step('(c) hudA TRY IT → MC TRYING SMG → try-out panel; DONE returns to the browser', async () => {
+  await hudA.click('.lobtn.try');
+  await until(async () => (await mc.locator('text=TRYING SMG').count()) > 0, 6000, 'MC TRYING chip');
+  await until(async () => (await hudA.locator('.tryout').count()) > 0, 6000, 'try-out panel');
+  await hudA.click('[data-act="onTryDone"]');
+  await until(async () => (await hudA.locator('.lo .lolist').count()) > 0, 5000, 'browser back after DONE');
+});
+await step('(d) hudA SECONDARY → PERKS → Body Armor → MC card + roster show BODY ARMOR', async () => {
+  await hudA.click('.lotab[data-arg="secondary"]');
+  await hudA.click('.fch[data-arg="perks"]');
+  await hudA.click('.lrow[data-arg="perk:body_armor"]');
+  await until(async () => { const a = await hudA.evaluate(() => window.brx.engine.loadoutAck); return a && a.ok && a.key === 'perk:body_armor'; }, 6000, 'ack for the perk');
+  await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).loadout.perk === 'body_armor', 5000, 'server loadout.perk');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('◆ BODY ARMOR'), 6000, 'roster ◆ BODY ARMOR');
+  expect((await mc.locator('text=BODY ARMOR').count()) >= 2, 'secondary card does not show BODY ARMOR');
+  await shot(hudA, 'hudA-loadout-perk'); await shot(mc, 'kit-phone-perk');
+});
+await step('(e) no heavy is listed on the phone under NO HEAVIES', async () => {
+  await hudA.click('.lotab[data-arg="primary"]');
+  await until(async () => (await hudA.locator('.lrow').count()) === 13, 5000, '13 rows');
+  expect((await hudA.locator('.lrow[data-arg="weapon:rocket_launcher"]').count()) === 0, 'rocket launcher listed under NO HEAVIES');
+});
+await step('(f) READY UP while a try-out is armed ends it; first ready does NOT advance to lobby', async () => {
+  await hudA.click('.lrow[data-arg="weapon:shotgun"]');
+  await until(async () => { const a = await hudA.evaluate(() => window.brx.engine.loadoutAck); return a && a.ok && a.key === 'weapon:shotgun'; }, 6000, 'shotgun equipped');
+  await hudA.click('.lobtn.try');
+  await until(async () => (await mc.locator('text=TRYING SHOTGUN').count()) > 0, 6000, 'MC TRYING SHOTGUN');
+  await until(async () => (await hudA.locator('.tryout').count()) > 0, 8000, 'try-out panel (it wins the screen over the browser)');
+  await until(async () => (await hudA.locator('[data-act="onReady"]').count()) > 0, 5000, 'READY UP visible under the panel');
+  await hudA.locator('[data-act="onReady"]').first().dispatchEvent('click');   // the HUD re-renders on the ack-chip timer; a stability-gated click races it
+  await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).ready === true, 6000, 'ALPHA ready');
+  await until(async () => (await mc.locator('text=TRYING SHOTGUN').count()) === 0, 6000, 'MC TRYING chip cleared by ready');
+  await until(async () => (await hudA.locator('.tryout').count()) === 0, 6000, 'hudA try-out panel torn down');
+  await sleep(600);
+  expect((await st()).phase === 'kit', 'phase advanced to lobby on the FIRST ready (regression)');
+  await hudA.locator('[data-act="onReady"]').first().dispatchEvent('click');   // un-ready again so F4 readies both from a clean state
+  await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).ready === false, 6000, 'ALPHA un-ready');
+});
+await step('(g) BUILD: SNIPERS preset → both phones padlocked "FIXED FOR THIS GAME"; MC shows the LOADOUTS RESET warning', async () => {
+  await mc.click('text=BUILD');
+  await mc.click('button[role="radio"]:has-text("SNIPERS")');
+  await until(async () => (await st()).config.loadout_policy.preset === 'snipers', 6000, 'preset snipers');
+  for (const [pg, nm] of [[hudA, 'hudA'], [hudB, 'hudB']]) {
+    await until(async () => (await pg.locator('.plate.slot.locked').count()) === 2, 8000, nm + ' locked plates');
+    expect((await pg.locator('text=FIXED FOR THIS GAME').count()) > 0, nm + ' missing FIXED FOR THIS GAME');
+  }
+  await until(async () => (await mc.locator('text=/LOADOUTS? RESET BY SNIPERS ONLY/').count()) > 0, 6000, 'reset warning');
+  await shot(mc, 'build-snipers-reset'); await shot(hudA, 'hudA-locked-snipers');
+});
+await step('(h) SAVED GAMES: load Silenced Sniper → ACTIVE; SAVE AS "e2e test" → card; two-step delete', async () => {
+  const r = await fetch(MC + '/api/presets');
+  if (r.status === 404) { findings.push({ kind: 'skipped', where: 'build', what: '/api/presets not up yet — saved-games step skipped' }); return; }
+  await mc.locator('div[role="button"]:has-text("SILENCED SNIPER")').first().click();
+  await until(async () => { const c = (await st()).config; return c.mode === 'ffa' && c.loadout_policy.primary.fixed_id === 'sniper_rifle'; }, 6000, 'preset applied');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("SILENCED SNIPER") >> text=ACTIVE').count()) > 0, 6000, 'ACTIVE tag');
+  await mc.click('text=+ SAVE AS');
+  await mc.fill('input[aria-label="saved game name"]', 'e2e test');
+  await mc.click('button:has-text("SAVE")');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("E2E TEST")').count()) > 0, 6000, 'saved card');
+  await shot(mc, 'build-saved-games');
+  await mc.click('button[aria-label="delete e2e test"]');
+  await mc.click('button:has-text("CONFIRM DELETE")');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("E2E TEST")').count()) === 0, 6000, 'card removed');
+});
+await step('restore OPEN rules + the run config so the match flow continues unchanged', async () => {
+  const c = cfgBeforeRules;
+  await api('PUT', '/api/config', { mode: c.mode, environment: c.environment, night: c.night, time_limit_s: c.time_limit_s, respawn: c.respawn, scoring: c.scoring, health: c.health, teams: c.teams, loadout_policy: { preset: 'open' } });
+  await api('PATCH', `/api/players/${pB.player_id}`, { team_id: 'yellow', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } });
+  await api('PATCH', `/api/players/${pA.player_id}`, { loadout: { weapons: [{ weapon_id: 'smg' }] } });
+  await until(async () => { const s = await st(); return s.config.loadout_policy.preset === 'open' && s.players.find(p => p.player_id === pA.player_id).loadout.weapons[0].weapon_id === 'smg'; }, 6000, 'restored');
+  await mc.click('text=KIT');
+});
+
 // ═══ F4 · ready → push → armed → reschedule → abort ═══
 flow('F4 lobby-armed');
 await step('both HUDs tap READY UP', async () => {

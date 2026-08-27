@@ -16,6 +16,7 @@ from typing import Any
 
 from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC
 from ..protocol import PANIC_SEQUENCE
+from .perks import PerkCatalog
 from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team, Weapon
 
 VOL_PLAY = 69  # house rule — 30 is inaudible for game audio
@@ -82,10 +83,13 @@ class WeaponCatalog:
             out.append({
                 "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
                 "desc": w.get("desc", ""),
+                "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
                 "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
-                          "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"]},
+                          "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
+                          "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms")},   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
                 "weap_frame": self.resolve(w["weapon_id"], 0),
                 "verified": bool(w.get("verified", False)),
+                **({"caution": w["caution"]} if w.get("caution") else {}),  # A10: known live problem, human copy
             })
         return out
 
@@ -111,7 +115,17 @@ class WeaponCatalog:
     SAMPLES = {"ar": WEAPON_TAILS.get("ar", WEAPON_TAILS["primary"]),
                "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"])}
 
-    def resolve(self, weapon_id: str, slot: int) -> str:
+    @staticmethod
+    def _mods(mods: dict | None, mag: int, reserve: int, reload_ms: int) -> tuple[int, int, int]:
+        """Apply passive-perk knobs (loadout.md §2): `ammo_mult` scales mag + reserve, `reload_mult`
+        scales reload_ms. Integers, never below 1 round / 0 ms."""
+        if not mods:
+            return mag, reserve, reload_ms
+        am = float(mods.get("ammo_mult") or 1)
+        rm = float(mods.get("reload_mult") or 1)
+        return max(1, int(round(mag * am))), int(round(reserve * am)), max(0, int(round(reload_ms * rm)))
+
+    def resolve(self, weapon_id: str, slot: int, mods: dict | None = None) -> str:
         """`$WEAP` frame for a slot, built from the weapon's OWN captured Callsign frame.
 
         Every weapon carries `capture.frame` — the real frame Battle Company sent for that gun, pulled
@@ -133,8 +147,9 @@ class WeaponCatalog:
         if not frame:                                  # legacy template path
             base = w.get("base", "ar")
             p = f"$WEAP,{slot}{WEAPON_TAILS[base]}".split(",")
-            p[_W_MAG] = str(w["mag"]); p[_W_CLIPSTART] = str(w["mag"])
-            p[_W_RESERVE] = str(w["reserve"]); p[_W_RELOAD] = str(w["reload_ms"])
+            _mag, _res, _rel = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+            p[_W_MAG] = str(_mag); p[_W_CLIPSTART] = str(_mag)
+            p[_W_RESERVE] = str(_res); p[_W_RELOAD] = str(_rel)
             return ",".join(p)
         p = frame.split(",")
         p[1] = str(slot)
@@ -148,10 +163,10 @@ class WeaponCatalog:
             put("dmg", int(wire["dmg"]))
         if wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
-        mag, reserve = int(w["mag"]), int(w["reserve"])
+        mag, reserve, reload_ms = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
         put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40
-        put("reload", int(w["reload_ms"]))
+        put("reload", reload_ms)
         for key, ov in (w.get("overrides") or {}).items():
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])
@@ -204,16 +219,23 @@ class WeaponCatalog:
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
-    def spawn_ammo(self, weapon_id: str) -> tuple[int, int]:
+    def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
         w = self._row(weapon_id)
-        return int(w["mag"]), int(w["reserve"])
+        mag, reserve, _ = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+        return mag, reserve
 
 
 class Compiler:
     """Implements interfaces.Compiler."""
 
-    def __init__(self, catalog: WeaponCatalog | None = None) -> None:
+    def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None) -> None:
         self.catalog = catalog or WeaponCatalog()
+        self.perks = perks or PerkCatalog()
+
+    def _perk_effects(self, player: Player | None) -> dict:
+        """The passive knobs of the player's slot-2 perk (loadout.md §1.2/§2); {} when none."""
+        pid = ((player or {}).get("loadout") or {}).get("perk")
+        return self.perks.effects(pid) if pid else {}
 
     # -- helpers -----------------------------------------------------------
     def _to_gc(self, config: GameConfig, player: Player | None = None) -> _GC:
@@ -222,6 +244,7 @@ class Compiler:
         catalog, not the dataclass, so primary/secondary are left at their defaults."""
         led = config.get("led") or {}
         ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor (modes §1.1)
+        fx = self._perk_effects(player)
         return _GC(
             mode=config["mode"],
             game_time_s=config["time_limit_s"] or 0,
@@ -234,7 +257,9 @@ class Compiler:
             leds=(led.get("mode", "team") != "off") and not config.get("night", False),
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
             hp=int(ov.get("max_hp", config["health"]["max_hp"])),
-            armor=int(ov.get("max_armor", config["health"]["max_armor"])),
+            # body_armor perk: +N on $PSET armor (loadout.md §2) — capped at the wire's 255
+            armor=min(255, int(ov.get("max_armor", config["health"]["max_armor"])) + int(fx.get("max_armor_add") or 0)),
+            alt_reload=bool(fx.get("alt_reload")),          # easy_reload perk: $BMAP,1,97
         )
 
     @staticmethod
@@ -243,10 +268,12 @@ class Compiler:
         tm = by_id.get(player.get("team_id") or "")
         return int(tm["tid"]) if tm else 0
 
-    def _weapon_ids(self, player: Player) -> tuple[str, str]:
+    def _weapon_ids(self, player: Player) -> tuple[str, str | None]:
+        """(primary, secondary-or-None). A10: no silent default secondary — an empty slot 1 is what the host
+        asked for (ALT then falls back to reload; hardware-verified, loadout.md §2)."""
         w = player.get("loadout", {}).get("weapons", [])
         primary = w[0]["weapon_id"] if len(w) > 0 else "assault_rifle"
-        secondary = w[1]["weapon_id"] if len(w) > 1 else "shotgun"
+        secondary = w[1]["weapon_id"] if len(w) > 1 else None
         return primary, secondary
 
     # -- Compiler Protocol -------------------------------------------------
@@ -257,17 +284,29 @@ class Compiler:
             raise ValueError(f"player_num {pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
         tid = self._tid(player, teams)
         w0, w1 = self._weapon_ids(player)
+        fx = self._perk_effects(player)                    # passive perk knobs act on the PRIMARY only
+        mods = {k: fx[k] for k in ("ammo_mult", "reload_mult") if fx.get(k)}
 
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         head = [f"$VOL,{VOL_PLAY},0,*", "$CLEAR,*", "$START,*",
                 gc._gset(), gc._pset(pnum),
-                self.catalog.resolve(w0, 0), self.catalog.resolve(w1, 1),
-                self.catalog.resolve("melee", 4)]
-        head += list(_SIR_TABLE) + list(gc._bmap()) + gc._led_frames() + [f"$TID,{tid},*"]
+                self.catalog.resolve(w0, 0, mods)]
+        if w1:
+            head.append(self.catalog.resolve(w1, 1))        # slot 1 only when a secondary exists (A10)
+        head.append(self.catalog.resolve("melee", 4))
+        bmap = list(gc._bmap())
+        if not w1 and not gc.alt_reload:
+            # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
+            # button-map state on real guns (brx-opus review 2026-08-27). Cycle only to slot 0 instead, so ALT is a
+            # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: bench-tomorrow.md.
+            bmap = [("$BMAP,1,100,0,0,99,99,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
+        head += list(_SIR_TABLE) + bmap + gc._led_frames() + [f"$TID,{tid},*"]
 
-        pmag, pres = self.catalog.spawn_ammo(w0)
-        smag, sres = self.catalog.spawn_ammo(w1)
-        ammo = [f"$AMMO,0,{pmag},{pres},1,*", f"$AMMO,1,{smag},{sres},1,*"]
+        pmag, pres = self.catalog.spawn_ammo(w0, mods)
+        ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
+        if w1:
+            smag, sres = self.catalog.spawn_ammo(w1)
+            ammo.append(f"$AMMO,1,{smag},{sres},1,*")
 
         # spawn = $PLAYX,0 -> $SPAWN -> $AMMOs -> $BMAP,0,0 (the T-0 tail; M-START wraps VA81 + $SFLASH)
         spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"]
@@ -374,11 +413,17 @@ class Compiler:
         if mode in {"domination", "koth", "ctf", "cs", "bomb"} and not opts.get("station_source"):
             errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set opts.station_source")
 
-        # unknown weapon ids
+        # unknown weapon / perk ids; a perk never rides with a secondary weapon (loadout.md §2)
         for p in roster:
-            for w in p.get("loadout", {}).get("weapons", []):
+            lo = p.get("loadout", {}) or {}
+            for w in lo.get("weapons", []):
                 if w["weapon_id"] not in self.catalog._by_id:
                     errors.append(f"unknown weapon_id {w['weapon_id']!r}")
+            perk = lo.get("perk")
+            if perk and not self.perks.has(perk):
+                errors.append(f"unknown perk_id {perk!r}")
+            if perk and len(lo.get("weapons", [])) > 1:
+                errors.append(f"{p.get('display', p.get('player_id'))}: a perk and a secondary weapon cannot both fill slot 2")
 
         # a weapon must be able to kill on one magazine: mag >= ceil(pool / dmg).
         # `docs/weapon-design.md` §2.1 — the rail gun and energy launcher shipped at mag 1 needing 2 hits,
@@ -472,6 +517,10 @@ class Compiler:
 
     def weapon_catalog(self) -> list[Weapon]:
         return self.catalog.all()
+
+    def perk_catalog(self) -> list[dict]:
+        """Visible perks (loadout.md §1.2) — `PerkView` rows."""
+        return self.perks.all()
 
     def award_medals(self, rows: list[ScoreRow], kills: list[dict]) -> dict[str, list[str]]:
         """§5b award rules → {player_id: [medal_id]}. Exact per-player (A4.1)."""

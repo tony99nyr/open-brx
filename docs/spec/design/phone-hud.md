@@ -16,7 +16,7 @@ a glance, in sun or dark, while the player is moving and getting shot at.
 |---|---|
 | **IDLE** | "Set my gun" connect screen (B1) |
 | **CONNECTED** | gun named; "waiting for kit-out from Mission Control" |
-| **KITTED** | your loadout (weapon, team, name, **#number** 1–63) + the big **READY-UP** toggle (ready-up is a KITTED action) |
+| **KITTED** | your loadout (weapon, team, name, **#number** 1–63) + the big **READY-UP** toggle (ready-up is a KITTED action). *2026-08-27:* the loadout plates are **two tappable slots** (PRIMARY / SECONDARY) that open the **LOADOUT browser** (B6) when the host's rules allow; locked slots show a padlock + "Set by the host" |
 | **LOBBY** | "armed-pending": gun configured, waiting for the host's start — team + name + number, no controls |
 | **ARMED** | full-screen **countdown** (T-minus); the gun is also beeping |
 | **LIVE / ALIVE** | the **HUD** (B2) |
@@ -64,6 +64,14 @@ Read HP/ammo/respawn without the phone becoming a flashlight. Its own screen (se
 Behind a small **info button**: raw BLE link state, last frames, battery, timings, node/gun ids — a
 field-debug panel + a **"save / share log"** action (the host can pull it). Utilitarian, dense, monospace
 is fine; it's for fixing problems, not for play.
+
+### B6 · Loadout browser (self-serve kitting; loadout.md §4.5) — *added 2026-08-27*
+The one exception to "no self-select on the phone": when the host's rules allow, a player picks their own
+weapons/perk. Tab bar `PRIMARY | SECONDARY`; the **list on the left** (rows ≥44 px: thumb, name, class, MAG;
+the secondary tab adds `WEAPONS · PERKS · NONE` chips), **art + stats on the right**, a persistent bottom bar
+`TRY IT` (weapons only — MC arms the gun for a few rounds) + `DONE`. **Tap a row = equipped** (MC confirms;
+a rejected pick shows the host's reason in plain words). Only what the rules allow is listed — a player never
+sees a greyed-out weapon they can't have. Must read at 844×390 and a short viewport, in sun and blackout.
 
 ## Deliverables to iterate
 B1 connect · B2 HUD in **both sun and blackout** · B3 death/respawn · the ARMED countdown · the KITTED

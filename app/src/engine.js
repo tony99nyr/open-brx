@@ -70,6 +70,13 @@ export class Engine {
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
     this.tutorial = false; this.tutorialWeapon = null;
+    // A10 — self-serve kitting (docs/spec/loadout.md §4)
+    this.catalog = null;            // {weapons: WeaponView[], perks: PerkView[]} — arrives in `assign`
+    this.policy = null;             // {hud_select, primary:{choice, allowed_ids}, secondary:{choice, kinds, allowed_weapon_ids, allowed_perk_ids}}
+    this.browsing = false;          // the HUD's LOADOUT browser is open (reported to MC as loadout_browse)
+    this.loadoutAck = null;         // MC's verdict on the last pick: {slot, ok, reason, t} — tick() clears it after ~4 s
+    this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at}
+    this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
     this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
     this._headRewritten = false;
@@ -96,6 +103,7 @@ export class Engine {
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: this.now(),
         endedMatches: this.endedMatches.slice(-8), configPending: this.configPending, pendingTeardown: this.pendingTeardown,
+        catalog: this.catalog, policy: this.policy,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -107,7 +115,8 @@ export class Engine {
       if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
       Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
-        spawned: !!s.spawned, ended: !!s.ended, endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null });
+        spawned: !!s.spawned, ended: !!s.ended, endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
+        catalog: s.catalog || null, policy: s.policy || null });
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (_) { /* ignore */ }
@@ -140,8 +149,12 @@ export class Engine {
   get weaponName() {
     const ws = this.player && this.player.loadout && this.player.loadout.weapons;
     const w = ws && (ws[this.activeSlot] || ws[0]);
-    return w ? String(w.weapon_id).replace(/_/g, ' ').toUpperCase() : 'PRIMARY';
+    if (!w) return 'PRIMARY';
+    const row = this.weaponRow(w.weapon_id);
+    return (row && row.name ? row.name : String(w.weapon_id).replace(/_/g, ' ')).toUpperCase();
   }
+  weaponRow(id) { const c = this.catalog; return (c && c.weapons && c.weapons.find(w => w.weapon_id === id)) || null; }
+  perkRow(id) { const c = this.catalog; return (c && c.perks && c.perks.find(w => w.perk_id === id)) || null; }
   armState() { return this.phase; }
 
   // ---------- BLE link ----------
@@ -186,6 +199,8 @@ export class Engine {
     if (node.roster) this.roster = node.roster;
     if (node.config) this.config = node.config;
     if (node.frames) this.frames = node.frames;
+    if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
+    if (node.policy) this.policy = node.policy;
     if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
     if (node.match_id) this.matchId = node.match_id;
     if (node.config && node.config.night != null) this.night = !!node.config.night;
@@ -203,6 +218,7 @@ export class Engine {
       case 'assign': return this._assign(body);
       case 'config': return this._applyConfig(body, 'config');
       case 'tutorial': return this._tutorial(body);
+      case 'loadout_ack': return this._loadoutAck(body);
       case 'start': return this.startAt(body);
       case 'feedback': return this.feedback(body, t);
       case 'control': return this.control(body);
@@ -219,15 +235,20 @@ export class Engine {
     }
   }
 
-  _assign({ player, team, roster }) {
+  _assign({ player, team, roster, catalog, policy }) {
+    if (catalog) this.catalog = catalog;
+    if (policy) this.policy = policy;
     if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();
+    if (this.browsing && !this.canPick('primary') && !this.canPick('secondary')) this.browse(false);   // A10: rules locked both slots while the browser was open
   }
 
   _applyConfig({ config, frames, roster }, why) {
-    this.config = config || this.config; this.frames = frames || this.frames; if (roster) this.roster = roster;
+    this.config = config || this.config;
+    this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
+    this.frames = frames || this.frames; if (roster) this.roster = roster;
     if (config && config.night != null) this.night = !!config.night;
     this.tutorial = false; this.tutorialWeapon = null;
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
@@ -258,20 +279,75 @@ export class Engine {
     }
     this.tutorial = true;
     this.tutorialWeapon = weapon || null;    // shown on the HUD: image + details of what's being tried
+    this.tryoutSeen = null;                  // a fresh try-out always shows its panel
     this._write(frames, 'tutorial');
     this._changed();
+  }
+
+  // ---------- A10 self-serve kitting (docs/spec/loadout.md §4) ----------
+  /** The player's rights on a slot, from MC's per-player policy (never computed locally). */
+  slotRule(slot) {
+    const p = this.policy; if (!p) return null;
+    return slot === 'primary' ? p.primary : p.secondary;
+  }
+  canPick(slot) {
+    const p = this.policy, r = this.slotRule(slot);
+    return !!(p && p.hud_select && r && r.choice === 'player' && this.phase === 'kitted' && !this.ended);
+  }
+  /** Tap a row = equip. `tryIt` (weapons only) also asks MC for the try-out. Returns false if the slot isn't ours. */
+  requestLoadout(slot, kind, id = null, tryIt = false) {
+    if (!this.canPick(slot)) { this.log(`pick refused locally: ${slot} is not player-choice`, 'le'); return false; }
+    if (slot === 'primary' && kind !== 'weapon') return false;
+    if (kind === 'none' && slot !== 'secondary') return false;
+    const body = { player_id: this.player && this.player.player_id, slot, kind };
+    if (kind !== 'none') body.id = id;
+    if (tryIt && kind === 'weapon') body.try = true;
+    this.pendingPick = { slot, kind, id: kind === 'none' ? null : id, at: this.now() };
+    this.loadoutAck = null;
+    this.report('loadout_request', body);
+    this._changed(); return true;
+  }
+  browse(open) {
+    open = !!open;
+    if (this.browsing === open) return;
+    this.browsing = open;
+    this.report('loadout_browse', { player_id: this.player && this.player.player_id, open });
+    this._changed();
+  }
+  _loadoutAck({ slot, ok, reason, loadout }) {
+    if (loadout && this.player) this.player.loadout = loadout;   // MC's echo is the truth (applies on ok AND on a reject → reverts the optimistic row)
+    const pk = this.pendingPick;
+    this.loadoutAck = { slot, ok: !!ok, reason: reason || null, t: this.now(), key: pk ? (pk.kind === 'none' ? 'none' : `${pk.kind}:${pk.id}`) : null };
+    this.pendingPick = null;
+    this._changed();
+  }
+  /** DONE on the try-out panel: hide it (the gun stays armed until MC ends the try-out or the player readies). */
+  dismissTryout() { if (this.tutorial && this.tutorialWeapon) { this.tryoutSeen = this.tutorialWeapon.weapon_id; this._changed(); } }
+  /** Structured loadout for the HUD: catalog rows (or id-only stubs when the catalog hasn't arrived). */
+  loadoutView() {
+    const lo = (this.player && this.player.loadout) || {};
+    const ws = lo.weapons || [];
+    const stub = id => ({ weapon_id: id, name: String(id).replace(/_/g, ' ') });
+    const wrow = id => ({ kind: 'weapon', ...(this.weaponRow(id) || stub(id)) });
+    const primary = ws[0] ? wrow(ws[0].weapon_id) : null;
+    let secondary = null;
+    if (ws[1]) secondary = wrow(ws[1].weapon_id);
+    else if (lo.perk) secondary = { kind: 'perk', ...(this.perkRow(lo.perk) || { perk_id: lo.perk, name: String(lo.perk).replace(/_/g, ' '), effects: {} }) };
+    return { primary, secondary };
   }
 
   setReady(ready) {
     if (this.phase !== 'kitted') return false;
     if (ready && !this.isSynced()) { this.log('cannot ready: clock not synced', 'le'); return false; }
     this.ready = !!ready;
+    if (this.ready) this.browse(false);   // READY UP commits the kit — the browser closes (loadout.md §4.5)
     this.report('ready', { player_id: this.player && this.player.player_id, ready: this.ready });
     this._changed(); return true;
   }
 
   // ---------- start (M-START) ----------
   startAt(body) {
+    this.browse(false);
     if (!body || !body.go_live_t) return { ok: false, reason: 'bad_start' };
     if (body.match_id && this.endedMatches.includes(body.match_id)) { this.log('start for an already-ended match — ignored', 'li'); return { ok: false, reason: 'match_ended' }; }
     if (this.start && body.seq != null && this.start.seq != null && body.seq < this.start.seq) return { ok: false, reason: 'stale_seq' };
@@ -323,6 +399,8 @@ export class Engine {
   tick() {
     const now = this.now();
     this._checkEcho();
+    if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
+    if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row
     if (this.phase === 'armed' && this.start) {
       const rem = this.goLiveT - now;
       // Runway cues are EDGE-triggered: fire only when crossing the threshold from above. With a runway shorter
@@ -630,6 +708,9 @@ export class Engine {
       weaponId: this.player && this.player.loadout && this.player.loadout.weapons && this.player.loadout.weapons[0] ? this.player.loadout.weapons[0].weapon_id : null, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       moment: this.moment, ended: this.ended, endAck: this.endAck, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
+      // A10 self-serve kitting
+      catalog: this.catalog, policy: this.policy, loadout: this.loadoutView(), browsing: this.browsing, loadoutAck: this.loadoutAck, pendingPick: this.pendingPick,
+      canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), tryoutSeen: this.tryoutSeen,
     };
   }
 }

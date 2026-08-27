@@ -595,7 +595,8 @@ its native ESP32 stack.
    literal templates + the pre-config probe set (`$PHONE`, `$STOP→$PHONE→$VERSION`, CONNECTED/KITTED
    only); echo capture → `ack_config{gun_echo}` / `no_echo`; caps + respawn + clock from `GameConfig`.
 4. **Wire Transport** (M-NET): `hello{seq_next}`/`welcome` re-hydration/`bind`/`assign`/`config`/
-   `event`/`event_batch`/`status`/`ack_config`/`feedback`/`control`/`tutorial`/`start`; the persisted
+   `event`/`event_batch`/`status`/`ack_config`/`feedback`/`control`/`tutorial`/`start`; A10 `loadout_request`/
+   `loadout_browse` up and `loadout_ack` down, `assign.catalog` + `assign.policy` (docs/spec/loadout.md §4); the persisted
    context (§3.7) and the bounded persisted event ring + reconnect flush; `match_id` stamping.
 5. **Rebuild the HUD** to §4: STATE band, scaled bars+numerals, match clock, killer-name line from
    `roster`, `#num`, stat row with honest "— MC" + last-synced age, preflight chip, full lifecycle

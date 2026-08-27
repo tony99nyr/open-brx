@@ -15,9 +15,9 @@ export const MAX_LOG_CHUNK_BYTES = 48 * 1024;
 
 export const PERSISTED_EVENT_TYPES = new Set(['hit_taken', 'death', 'respawn', 'team_change']);
 export const NODE_KINDS = new Set(['hello', 'bind', 'event', 'event_batch', 'status', 'ack_config',
-  'time_req', 'log_offer', 'log_data', 'ready']);
+  'time_req', 'log_offer', 'log_data', 'ready', 'loadout_request', 'loadout_browse']);   // A10: phone self-serve kitting
 export const MC_KINDS = new Set(['welcome', 'assign', 'tutorial', 'config', 'start', 'feedback',
-  'control', 'time_res', 'pull_log', 'ack', 'apply', 'score']);
+  'control', 'time_res', 'pull_log', 'ack', 'apply', 'score', 'loadout_ack']);
 export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
 
 const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
@@ -30,12 +30,15 @@ const REQUIRED = {
   ack_config: ['config_id', 'ok'], time_req: ['t_node'],
   log_offer: ['node_id', 'bytes', 'lines'], log_data: ['node_id', 'seq', 'chunk', 'last'],
   ready: ['node_id', 'player_id', 'ready'],
+  // A10 (docs/spec/loadout.md §4): id / try / reason / loadout stay OPTIONAL — a required field that is missing DROPS the frame
+  loadout_request: ['node_id', 'player_id', 'slot', 'kind'], loadout_browse: ['node_id', 'player_id', 'open'],
   welcome: ['session_id', 'server_t', 'seq_hi'], assign: ['player', 'team', 'roster'],
   tutorial: ['frames'],   // weapon optional: an end-of-try-out push carries {end, frames} only (2026-08-26)
   config: ['config', 'frames', 'roster'],
   start: ['match_id', 'go_live_t', 'config_id', 'seq', 'countdown_s'],
   feedback: ['player_id', 'kind', 't'], control: ['cmd'], time_res: ['t_node', 'server_t'],
   pull_log: [], ack: ['seq_hi'], apply: ['frames'], score: ['player_id'],
+  loadout_ack: ['slot', 'ok'],
 };
 const EVENT_REQUIRED = { hit_taken: ['shooter_num', 'shooter_team', 'dmg'], death: ['shooter_num', 'shooter_team'], respawn: [], team_change: ['tid'] };
 

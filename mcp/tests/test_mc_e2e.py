@@ -390,3 +390,41 @@ def test_abort_start_lists_unreachable_node():
         run(go())
     finally:
         _st.STALE_AFTER_MS = old_stale
+
+
+# --------------------------------------------------------------- A10 phone self-serve loadout over the REAL stack
+def test_phone_loadout_request_roundtrip_real_stack():
+    """loadout.md §4: a real MockNode picks a primary with `try`, gets `loadout_ack` + `assign` + `tutorial`
+    DELIVERED over the WebSocket; a heavy under NO HEAVIES is refused with the human reason; READY closes the
+    try-out on the node; nobody advances to LOBBY until everyone is ready."""
+    if not HAVE_WS:
+        return skip("loadout_request")
+
+    async def go():
+        async with Stack(mode="ffa", time_limit_s=30) as s:            # ffa → NO HEAVIES
+            a = s.add_player("REAPER", "GUN-A")
+            b = s.add_player("VIPER", "GUN-B")
+            na = await s.connect_node("GUN-A")
+            nb = await s.connect_node("GUN-B")
+            assert await until(lambda: na.player_id == a["player_id"] and nb.player_id == b["player_id"])
+            na.send_loadout_request("primary", "weapon", "smg", try_=True)
+            assert await until(lambda: len(na.loadout_acks) >= 1), "loadout_ack never reached the node"
+            ack = na.loadout_acks[-1]
+            assert ack["ok"] is True and ack["loadout"]["weapons"][0]["weapon_id"] == "smg"
+            assert await until(lambda: (na.context.get("player") or {}).get("loadout", {}).get("weapons", [{}])[0].get("weapon_id") == "smg"), "assign with the new loadout never arrived"
+            assert na.context.get("catalog") and na.context.get("policy") and "rail_gun" not in na.context["policy"]["primary"]["allowed_ids"]
+            assert await until(lambda: s.session.trying.get(a["player_id"]) == "smg")
+            na.send_loadout_request("secondary", "weapon", "rail_gun")
+            assert await until(lambda: len(na.loadout_acks) >= 2)
+            assert na.loadout_acks[-1]["ok"] is False and na.loadout_acks[-1]["reason"] == "Heavies are off for this game"
+            na.send_loadout_request("secondary", "perk", "body_armor")
+            assert await until(lambda: len(na.loadout_acks) >= 3 and na.loadout_acks[-1]["ok"])
+            assert s.session.players[a["player_id"]]["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}
+            na.send_ready(True)
+            assert await until(lambda: a["player_id"] not in s.session.trying), "ready did not end the try-out"
+            await asyncio.sleep(0.2)
+            assert s.session.phase == "kit", "first ready must not advance to LOBBY"
+            nb.send_ready(True)
+            assert await until(lambda: s.session.phase == "lobby")
+            await na.close(); await nb.close()
+    run(go())
