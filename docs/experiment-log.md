@@ -2743,6 +2743,86 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — team gating measured for DAMAGE (closes an open correction); `$PSET` t5 = shield cap
+
+Autonomous (emitter + BLE, operator away, `$VOL,3`), victim Tactix-FE30 on `$TID,1`, mains. Every cell
+re-armed from `$CLEAR`, and **`$HIR` counted separately from `$HP`** — that separation is what made the
+mechanism visible.
+
+**Read this against `protocol/brx-protocol.md` §5, which already establishes** that support functions
+are team-gated, that drain order is shields -> armour -> HP, and that fn 11 adds shields. Those are
+**reproduced here, not discovered** — an independent second measurement on a different rig. What
+follows is flagged as either REPRODUCED or NEW.
+
+#### The full four-team x function matrix (NEW for damage)
+
+`brx-protocol.md` §5 carries an explicit correction saying the generalisation of team-gating to
+**damage** at `$GSET` t1=0 was *unsupported*. This run measures it directly and closes that gap.
+
+| function | team 0 | **team 1 (= victim's own)** | team 2 | team 3 |
+|---|---|---|---|---|
+| fn 1 plain damage | lands | **`$HIR`=0, nothing** | lands | lands |
+| fn 2 armour-pierce | lands | **`$HIR`=0, nothing** | lands | lands |
+| fn 11 shield grant | `$HIR`=0 | lands | `$HIR`=0 | `$HIR`=0 |
+| fn 9 grant-family | `$HIR`=0 | lands | `$HIR`=0 | `$HIR`=0 |
+
+- **NEW — damage is team-gated at t1=0**, symmetrically with support: damage only from an enemy team,
+  support only from your own. The open correction in `brx-protocol.md` §5 can now be resolved.
+- **NEW — the rejection emits no `$HIR` whatsoever.** A blocked shot is not "received and not applied";
+  it never reaches the wire.
+- REPRODUCED — support functions land only from a same-team source.
+
+> **Consequence for Mission Control:** a friendly-fire or mis-aimed support shot **cannot be logged,
+> scored or displayed** — nothing reaches BLE. Any feature wanting to show "you shot your teammate"
+> is not implementable from gun telemetry while t1=0.
+
+This also retro-explains a dead end earlier the same night: a shield sweep that appeared to prove
+"`$PSET` shield is inert" was firing from team 2. The function was fine; the *team* was wrong. That run
+carried no in-run control, which is precisely why it was uninterpretable — it was discarded, not
+published.
+
+#### `$GSET` t1 = friendly fire — REPRODUCED, independently
+
+Single-variable sweep of all 8 tokens against a friendly (team 1) damage shot, baseline
+`$GSET,0,0,1,0,1,0,50,1`: **only t1=1** let it land (`$HIR`=2, armour 70 -> 30); all seven others left
+`$HIR`=0. Trailing enemy-damage control still landed. This matches the APK metadata label and the
+2026-08-26 bench result — a third independent confirmation, and it pins the *mechanism*: t1 works by
+admitting the frame at all, not by scoring it differently.
+
+#### `$PSET` t5 is a shield CAPACITY (NEW)
+
+§5 records fn 11 adding shields (0->50->70) but does not identify what bounds it. It is `$PSET` t5, and
+**the spawn shield is always 0** — t5 is a ceiling to be filled, never a starting pool.
+
+| `$PSET` t5 | offered 500 (10 x 50) | reached |
+|---|---|---|
+| 70 | 500 | **70** (saturates) |
+| 150 | 500 | **150** (saturates) |
+| 255 | 500 | **255** |
+| 300 | 500 | **300** |
+| 600 | 500 | **500** — climbed 250/300/350/400/450/500, never plateaued |
+
+The t5=600 row is the control that proves the cap is real rather than an artifact of how much was
+offered: when the ceiling exceeds the offer you get exactly the offer, with no plateau. **Shield is
+therefore also wider than 8 bits**, completing A10b-prime across all three pools.
+
+#### Two smaller confirmations
+
+- **fn 2 is true armour-piercing** (NEW as a direct measurement): two 20-damage hits took HP 45 -> 5
+  with armour untouched at 70. It bypasses shield and armour rather than consuming them.
+- **Drain order** REPRODUCED: shield 150, four 30-damage hits -> `150/120/90/60/30`, HP and armour
+  untouched.
+- **Multi-sensor double-count (NEW):** one cell logged **3 `$HIR` for 2 shots** and applied damage 3x.
+  A single shot seen by two sensors counts twice — the mechanism behind the operator being killed by
+  his own reflected IR at the bench.
+
+#### Follow-on
+
+Q12 gets **more** serious: the shield is a real, damage-absorbing pool with a configurable ceiling, and
+our own code discards it (`protocol.py` parses only tok(1); `app/src/engine.js` drops the third token).
+We are throwing away a mechanic the hardware fully implements.
+
+
 ### 2026-08-27 — A10b-prime CLOSED: `$PSET` pools are NOT 8-bit (armor + HP verified live to 1000)
 
 The loadout policy layer caps pools at 255 on the assumption that the wire field is a byte. **It is not.**

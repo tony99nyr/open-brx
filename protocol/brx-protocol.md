@@ -47,7 +47,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 > single shots, armor 200 so nothing clipped). **t7=0 disables crits entirely; 100 doubles.** The
 > shipped value is 50, which is why crit had looked like a fixed ×1.5. Non-crit damage is untouched.
 > Tokens 2,3,4,5,6,8 showed **no** effect on damage / friendly fire / crit and remain unknown.
-| `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
+| `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. **Token 5 is a shield CAPACITY, not a starting pool** — the spawn shield is always 0 and is filled only by an fn-11 grant, saturating at t5 (bench 2026-08-27). **None of the three is 8-bit**: all store and decrement exactly to at least 1000, clamping at zero with no wrap, so a 255 cap is a policy choice and not a device limit. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, **100=weapon-cycle (verified on hardware 2026-08-23)**. Note: with only one `$WEAP` slot loaded, function 100 has nothing to cycle to and **falls back to reloading** — which looks like a wrong mapping but is not. Load a secondary to see it switch. |
@@ -84,7 +84,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (SHIELD-ISOLATED 2026-08-26: **0 = headset FRONT, 1 = headset BACK, 4 = gun body** — point-blank floods mis-attribute; see the tok1 sensor map section), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = the RAW magnitude from the IR word (= the shooter's `$WEAP` `t5`; **applied** damage = magnitude × the victim's `$SIR`-function multiplier × 1.5-if-crit — §7r), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
+| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (SHIELD-ISOLATED 2026-08-26: **0 = headset FRONT, 1 = headset BACK, 4 = gun body** — point-blank floods mis-attribute; see the tok1 sensor map section), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = the RAW magnitude from the IR word (= the shooter's `$WEAP` `t5`; **applied** damage = magnitude × the victim's `$SIR`-function multiplier × (1 + `$GSET` t7/100) if crit — §7r; the 1.5 in earlier drafts was only true because the shipped config uses t7=50), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
 | `$HP,<hp>,<armor>,<shield>,*` | Health update (tokens verified §7r) | `$HP,0,0,0` = player died (or turned zombie in Survival); arrives in the same ms as its `$HIR` |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
@@ -109,14 +109,25 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 >   **`10` respawn + add HP** (HP 15→35→45, +magnitude, clamps, deals no damage) ·
 >   **`11` add shields** (0→50→70) · **`13` add armor** (0→30→60→70, **overflow spills into shields**).
 > - **Damage drain order confirmed on the wire: shields → armor → HP.**
-> - **⚠ Support functions (10/11/13) are TEAM-GATED in firmware** — they register **only from a
->   same-team source** (3/3 as the victim's team; 0/3 as any other) whenever `$GSET` token 1 = 0.
->   ⚠️ **Correction:** an earlier draft of this bullet said "bench exp 4 proved damage is NOT
->   friendly-fire gated under either `$GSET` token 1 value". That is **wrong** and contradicts this
->   file's own `$GSET` row — the measured matrix shows **t1=0 blocks same-team damage AND enemy
->   heals; t1=1 allows everything**. Exp-4 ran at **t1=1** and saw same-team damage land, which is
->   exactly the t1=1 row; only the generalisation to t1=0 was unsupported. So a medic gun enforces
->   "allies only" in hardware whenever friendly fire is off.
+> - **⚠ ALL functions are TEAM-GATED in firmware, by polarity** — measured as a full four-team x
+>   function matrix (bench 2026-08-27, `$GSET` t1=0, victim `$TID,1`, `$HIR` counted separately from
+>   `$HP`):
+>
+>   | function | team 0 | **team 1 (victim's own)** | team 2 | team 3 |
+>   |---|---|---|---|---|
+>   | fn 1 damage, fn 2 armour-pierce | lands | **rejected** | lands | lands |
+>   | fn 9 / 11 support grants | rejected | **lands** | rejected | rejected |
+>
+>   **Damage applies only from an enemy team; support only from your own.** Support-side gating was
+>   established 2026-08-26 (3/3 same-team, 0/3 otherwise); the damage side is measured here.
+> - **The rejection emits NO `$HIR` AT ALL.** A team-blocked shot is not "received and not applied" —
+>   it never reaches BLE. **Consequence: friendly fire and mis-aimed support are invisible to Mission
+>   Control** and cannot be logged or scored from gun telemetry while t1=0.
+>   ✅ **RESOLVED 2026-08-27.** An earlier draft claimed "damage is NOT friendly-fire gated under
+>   either `$GSET` token 1 value"; that was wrong, and the generalisation to t1=0 was then flagged as
+>   unsupported. It is now **measured**: at t1=0, same-team damage is rejected outright (`$HIR`=0)
+>   while teams 0/2/3 land normally — see the matrix above. A medic gun enforces "allies only", and a
+>   weapon enforces "enemies only", in hardware whenever friendly fire is off.
 > - **`<soundID>` fires on the victim.** Heard at the bench: `VA16` = "armor suit", `VA8C` =
 >   "shields online" (effect masks the first word), `H29` = a quiet sustained stim-pack medical sound.
 
@@ -126,7 +137,7 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 | `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle — **fn 36 = ×1.25 damage** (bench-measured; "pass-through" was a guess) |
 | `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle — **fn 37 = ×2 damage** (bench-measured) |
 | `$SIR,1,0,H29,10,0,0,1,,*` | Respawn + add HP |
-| `$SIR,2,1,VA8C,11,0,0,1,,*` | Add shields |
+| `$SIR,2,1,VA8C,11,0,0,1,,*` | Add shields — **adds `magnitude` per hit, saturating at `$PSET` token 5**; the spawn shield is always 0, so t5 is a ceiling to be filled, never a starting pool (bench 2026-08-27) |
 | `$SIR,3,0,VA16,13,0,0,1,,*` | Add armor |
 | `$SIR,6,0,H02,1,0,90,1,40,*` | Rail Gun |
 | `$SIR,8,0,,38,0,0,1,,*` | Charge Rifle |
