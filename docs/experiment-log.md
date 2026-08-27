@@ -2615,11 +2615,18 @@ Tony, unprompted: *"the headset does always flash green on death. it slowly blin
 disconnected. it goes team color to match tagger. those are native behaviors that work even in our game
 modes."*
 
-| headset LED | meaning | who drives it |
+⚠️ **REFINED by Tony minutes later — my first table was wrong about green and about when team colour
+shows.** His words: *"im not sure full behavior. it will go red/blue to match color until you start the
+game and then it will go dark during the game. it blinks green on hit and flashes/stays green on kill."*
+
+| headset LED | when | confidence |
 |---|---|---|
-| **slow rainbow blink** | **DISCONNECTED / not paired to a tagger** | the headset itself |
-| **team colour** | matched to its tagger's `$TID` | headset, synced from the gun |
-| **green flash** | **death** | the headset |
+| **slow rainbow blink** | **DISCONNECTED / not paired** | good — repeatable, and the useful one |
+| **team colour (red/blue)** | **PRE-GAME ONLY** — it goes **DARK once the game starts** | good |
+| **dark** | during play | good |
+| **blinks green** | **on a HIT** | Tony flags his own uncertainty |
+| **flashes / stays green** | **on a KILL** | Tony flags his own uncertainty |
+| ~~green flash = death~~ | — | **withdrawn** — my misreading of his first description |
 
 ### Why this matters more than it looks
 1. **It is a free visual gate for B18b.** A dark/unpaired headset **silently blocks a gun from joining a
@@ -2630,8 +2637,14 @@ modes."*
    in our config needs to reproduce green-on-death or team colour.
 3. **The headset syncs team colour from the tagger**, so a gun↔headset channel carries team state. That
    is a link we have never characterised and do not drive.
-4. **Green-on-death is the headset's own**, and is distinct from `$SFLASH` (the *shooter's* green-sight
-   kill-confirm, §7o). Same colour, opposite actors — the feedback engine (B18) must not conflate them.
+4. ⚠️ **My "green-on-death is distinct from `$SFLASH`" claim is WITHDRAWN.** Green now looks like the
+   **hit/kill feedback family** — blink on hit, hold on kill — which is *exactly* `$SFLASH` territory
+   (§7o: the shooter's green-sight kill-confirm, one per kill scored). So rather than "opposite actors",
+   green is plausibly **one coherent feedback system** the headset participates in. **Open question:
+   whose hit and whose kill** — the wearer's, or the wearer's target's? That single answer decides
+   whether B18 needs to drive anything here at all, or whether the hardware already does it.
+5. **Team colour is pre-game only.** A game head that expects the headset lit during play is wrong;
+   dark-during-play is native.
 
 ⇒ Headset LEDs are **not** something we need to build. The open LED work (P13/P17/life-mode) is about
 the **gun's** LEDs only.
