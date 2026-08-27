@@ -1,5 +1,12 @@
 # Bench plan — IR + nRF hardware (✅ ARRIVED 2026-08-26)
 
+> **⚠️ SUPERSEDED for session planning (2026-08-26 overnight).** Sessions 0, 1, 1½b/1½c and 2 are
+> **DONE** — the toolchain works, the IR word is bench-verified (B13), U7 is closed, the U bits turned
+> out to be the `$SIR` subtype, and a stock tagger **accepts fully synthetic shots from our emitter**
+> (B4's gating proof). **For what to actually do next, use [`bench-tomorrow.md`](bench-tomorrow.md).**
+> This file remains the reference for *how* to wire and flash the rig, and for the sessions still open:
+> **1½a (U2 `t41` range)**, **1½d (crit flag in the wild)**, **3 (IR range walk-back)** and **4 (nRF)**.
+
 > **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
 
 Ready-to-run playbook for the incoming kit. Do the sessions in order; each has a **goal**, **wiring**,
@@ -46,7 +53,7 @@ just powered) at the VS1838B from ~1 m and **fire**.
 ```
 RAW 1 edges=52 us=[2000,500,1000,500,500,500, ... ]
 DECODE bits=25 val=0011101010100000100100001
-SHOT player=42 team=2 dmg=9 bullet=3 crit=0 parityOK=1
+SHOT player=42 team=2 dmg=9 proto=3 crit=0 parityOK=1
 ```
 - **PASS (core):** `DECODE bits=25` and `parityOK=1` on clean shots, and the **green LED blinks** each shot.
 - If `bits=26` or `parityOK=0` on every shot → the sync-strip threshold is off; check the first `us=[...]`
@@ -56,7 +63,7 @@ SHOT player=42 team=2 dmg=9 bullet=3 crit=0 parityOK=1
 **Field verification (B13 — do this to trust the decode):**
 1. **Team:** fire from a red gun, then a blue gun → the `team=` field changes. Note which value = which team
    (reconcile with `$TID`: 1=blue, 2=yellow, 0=red — the IR encoding may differ; record the mapping).
-2. **Weapon:** switch weapons on the gun, fire each → `bullet=` and/or `dmg=` change. Build the map.
+2. **Weapon:** switch weapons on the gun, fire each → `proto=` and/or `dmg=` change. Build the map.
 3. **Player id (P2):** the `player=` field is a **6-bit shooter id**. It only varies if guns have **distinct
    ids** — set them first via the USB `SETUP` console (see `brx-protocol.md` §7c; QUERY `PlayerID` reads 0
    by default). Fire from two differently-id'd guns → `player=` differs. **This is the per-player
@@ -91,10 +98,9 @@ receiver, not a second tagger.** Same rig as Session 1, no rewiring.
 (caps any future double-damage powerup). **PASS:** `dmg=` tracks `$WEAP` t5 exactly, as BLE `$HIR` tok5 does.
 
 **1½c — where does the IR *protocol type* live?** BLE `$HIR` tok2 carries it (0 standard, 10 rocket,
-11 gas, 13 melee — §7r). The decoded word (`brx-ir-protocol.md`) has a 4-bit **B** (bullet/weapon) and
+11 gas, 13 melee — §7r). The decoded word (`brx-ir-protocol.md`) has a 4-bit **B** (now known: the IR protocol / DamageType) and
 2 unknown **U** bits. Fire each of those weapon types at the receiver and watch which bits move.
-**This is the last structural gap in the IR word** — and the special-weapons IR types (heal gun, EMP)
-have to fit into whatever field it turns out to be, so Session 2's emit side depends on the answer.
+*(Answered 2026-08-26: the U bits are the `$SIR` **subtype**, so B+U form the table's composite key.)*
 
 **1½d — is the crit flag ever set?** We have never observed a crit on the BLE side. Fire everything,
 watch `crit=`. Cheap; either it is dead in stock play or we just found a mechanic.

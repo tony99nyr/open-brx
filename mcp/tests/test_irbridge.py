@@ -115,11 +115,11 @@ from brx_mcp.irbridge import pulses_to_bits, decode_word, encode_word, bits_to_p
 
 
 def test_encode_decode_word_roundtrip():
-    bits = encode_word(player=42, team=2, damage=9, bullet=3, crit=1)
+    bits = encode_word(player=42, team=2, damage=9, proto=3, crit=1)
     assert len(bits) == 25
     d = decode_word(bits)
     assert d["player"] == 42 and d["team"] == 2 and d["damage"] == 9
-    assert d["bullet"] == 3 and d["crit"] == 1
+    assert d["proto"] == 3 and d["crit"] == 1
     assert d["parity_valid"] and d["complete"]
 
 

@@ -40,7 +40,7 @@ a pair that happens to differ.
 | **Z** | 2 | 23–24 | **computed parity** over bits 0–22 (see below) | 4/4 frames match the rule |
 
 **B and U together are the `$SIR` composite key `<protocol, subtype>`** — the exact index a `$SIR`
-row is looked up by. 4 bits × 2 bits = **64 addressable effect cells, and the table is ours to write
+row is looked up by. 4 bits and 2 bits — 16 × 4 = **64 addressable effect cells, and the table is ours to write
 over BLE.** A victim registers an IR event **only if a row exists for that cell**; with no row the hit
 is silently dropped (this is why an incomplete table produced repeated false negatives on the bench).
 
@@ -49,7 +49,8 @@ is silently dropped (this is why an incomplete table produced repeated false neg
 > the limit, because both halves of the key are assignable and the row's **function** is what decides
 > the effect. Stock BRX occupies `0` standard, `8` charge, `10` rocket, `11` gas, `13` melee,
 > `15` grenade beacon; everything else is free, and even occupied protocols are re-definable per game
-> since we push the table.
+> since we push the table. ⚠️ "Everything else is free" is too strong: `brx-protocol.md` §5 also
+> ships rows on protocols **1, 2, 3, 6 and 9**, so the genuinely unused values are 4, 5, 7, 12 and 14.
 
 4+6+2+8+1+2+2 = **25 bits** (node1 reads a 26th "Z2" pulse only to confirm it is short — the
 end-of-frame check, not a data bit).
@@ -107,7 +108,9 @@ end-of-frame check, not a data bit).
 2. ✅ **DONE 2026-08-26** — P and T matched the armory registry; **B and D pinned by pushing known
    `$WEAP` frames over BLE** (AR t5=9, rocket t3=10/t5=115) and watching only the expected bits move.
 3. ✅ **DONE 2026-08-26** — parity holds on 4/4 frames, and the *rule* behind it is now known.
-4. ⬜ **NEXT** — wire the emit side (`ir_emit.ino`) and test whether a gun accepts our re-emitted word.
+4. ✅ **DONE 2026-08-26** — emit side wired and **a stock tagger accepted a fully synthetic word**
+   (invented player 42 / team 2 / damage 33 landed as a real `$HIR` and killed the player). B4's
+   gating proof.
 
 **Capture gotcha (our rig, not the protocol):** `ir_capture.ino` prints a long `RAW` line per frame,
 and at 115200 that takes ~15 ms — any shot landing inside that window is captured truncated. The

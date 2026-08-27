@@ -420,5 +420,5 @@ awardMedals(rows, kills)  -> {player_id: medal_id[]}
   over" on our guns, else pick another end sting.
 - **`revive` vs `$HLOOP`** — §1.1 drops `$HLOOP,0,0` from the mid-match revive; confirm on hardware
   that a respawned gun's headset LED comes back correctly without it.
-- **Shield pool (P16)** — inactive until activated; `$PSET` shield token stays best-effort. Health
+- **Shield pool (P16 — CLOSED 2026-08-26)** — the pool is granted **only by an IR `$SIR` function-11 event**, never by a BLE write; the `$PSET` shield token does nothing on its own. Drain order is shields → armor → HP. Health
   overrides use armor+HP only for now.

@@ -89,7 +89,7 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   closed)** — armor held through 30 s idle, so Halo-shields are **host-driven** (node refills). 🧪
   **`$PB*` enums are v4.30; ours is v4.32 (P12).**
 - ✅ **Health writes CONFIRMED** — `$LIFE` and `$BUMP` are **both additive grants clamped at max** (exp-log
-  #33); heal/boost/(armor-)overshield work today. ⚠️ **shield pool is inactive until activated (P16)** —
+  #33); heal/boost/(armor-)overshield work today. ⚠️ **the shield pool is granted ONLY by an IR `$SIR` fn-11 event, never by `$PSET`** (P16 closed 2026-08-26) —
   refill armor+HP, not shields, for now.
 
 ### Power / physical
@@ -148,13 +148,13 @@ Mechanics: `game-modes.md` §Health/regen. All **T0** — no props.
 
 | Variant | Tier | Limit / why |
 |---|---|---|
-| **Halo regenerating health** | ✅ T0 | Per-node, no P2. **Host-driven only** — regen tested, armor does NOT self-recover (P11 closed); node refills via additive `$LIFE`/`$BUMP` after a no-damage timer. Refill armor+HP (shields inactive — P16). |
-| **Overshield / medic** | ✅ T0 (armor) | Host grants additive `$LIFE`. ⚠️ **shield pool inactive until activated (P16)** — use an armor overshield today. |
+| **Halo regenerating health** | ✅ T0 | Per-node, no P2. **Host-driven only** — regen tested, armor does NOT self-recover (P11 closed); node refills via additive `$LIFE`/`$BUMP` after a no-damage timer. Refill armor+HP over BLE; the shield pool needs an IR fn-11 grant (P16 closed 2026-08-26), which a Companion/station can emit. |
+| **Overshield / medic** | ✅ T0 (armor) | Host grants additive `$LIFE`. ⚠️ **the shield pool is IR-only** — `$PSET` shield does nothing; grant it with a `$SIR` fn-11 event (P16 closed 2026-08-26), or use an armor overshield over BLE. |
 | **Syphon (health-on-kill)** | ✅ T0 | Routes to the *exact* killer — `$HIR` tok3 gives the shooter's player_num over BLE (P2 closed). The only limit is **LAN coverage** (a node must hear the hit), not identity. |
 
 **Bottom line:** host-driven regen/heal/medic (armor+HP) are the cleanest modes we have (T0, per-node,
 additive writes confirmed). Syphon now resolves the exact killer over BLE (P2 closed); shield-pool
-effects still wait on P16.
+effects need an IR emitter to grant the shield pool (P16 closed 2026-08-26: `$SIR` fn-11) — buildable now that the emitter exists.
 
 ### Objective family — Domination / King-of-the-Hill / CTF / Assault
 Mechanics: `game-modes.md` catalog. These are inherently **contested-place** modes.
@@ -205,7 +205,7 @@ The phone's superpower is the **touchscreen**; its ceiling is IR.
 **Resolved this session (exp-log #33–40):** G-2 health writes (additive-clamped, no native regen), G-1
 grenade (mode map + Hill/Respawn beacon decode = G6), G8 (`$GREN` can't config objective modes), G7
 (grenade USB-C power-only), P2 (per-player id over BLE → FFA scoring + Syphon exact-killer, §7p/§7q).
-**Still pending (hardware tests that unlock things):** P16 (shield activation),
+**Still pending (hardware tests that unlock things):** ~~P16 (shield activation)~~ ✅ closed 2026-08-26 — IR `$SIR` fn-11 event,
 G9 (CTF team-assign), G10 (thrown-blast `$GREN`). All tracked in `FOLLOWUPS.md`.
 (P9 native teams + P10 damage/armor were **resolved on the bench 2026-08-26**.)
 

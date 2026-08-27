@@ -59,7 +59,7 @@ rather than a prerequisite for FFA scoring. This one result can delete a hardwar
 
 ## 2. Does `$WEAP` `t5` actually mean damage? 🟡
 
-> ✅ **PASSED — 2026-08-26 (WSL/Windows session).** `t5` **is** the applied damage — **exact, 4-of-4**
+> ✅ **PASSED — 2026-08-26 (WSL/Windows session).** ~~`t5` **is** the applied damage — **exact, 4-of-4**~~ ⚠️ **CORRECTED 2026-08-26: `t5` is the RAW magnitude**; applied = magnitude × the victim's `$SIR`-function multiplier × 1.5-if-crit. The 4-of-4 held because all four keyed to plain-damage rows
 > across the range (AR 9→armor −9; Shotgun `T01` 45→−45; Sniper 80→70 absorbed +10 HP; Rocket 115→
 > instant kill). The manual's M-4=24 was stale; the AR really deals 9. `weapons.md` ✓ restored + caveat
 > dropped; `protocol-classes.md` `t5` resolved. Bonus decodes: `$HIR` **tok2 = shooter IR protocol**
@@ -110,8 +110,10 @@ visual half is still open. **Either way stop describing the green sight as "ours
 > ✅ **PASSED — 2026-08-26.** `$TID` is **masked to 2 bits** (effective team = `$TID & 3`). **All four masked teams (0–3) are usable** — a
 > re-armed re-run caught 5 clean `$HIR,4,0,0,2,24,0,0` registrations from a `$TID,2` shooter, so
 > **native team count = FOUR**; the earlier team-2 silences were a bench-script re-setup race. >4 squads
-> → MC logical teams. **FF sub-open now CLOSED:** friendly fire is **not IR-enforced** — same-team damage
-> lands under `$GSET` token1=0 AND 1, so it's app-side (our MC scorer handles it). **All four experiments
+> → MC logical teams. ~~**FF sub-open now CLOSED:** friendly fire is **not IR-enforced**~~ ⚠️ **OVERTURNED 2026-08-26**:
+> this run was at **FF=1**, which is exactly the t1=1 row of the measured matrix; the generalisation
+> to t1=0 was unsupported. **`$GSET` token 1 IS firmware-enforced friendly fire** — t1=0 blocks
+> same-team damage *and* enemy heals. See `brx-protocol.md` §`$GSET`, FOLLOWUPS P9. **All four experiments
 > fully resolved.** See exp-log + `brx-protocol.md` `$TID` row.
 
 **Question.** 2 teams (TDM) and 3 (Supremacy) are confirmed. How many distinct `$TID` values does

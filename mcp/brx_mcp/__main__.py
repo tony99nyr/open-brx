@@ -861,7 +861,7 @@ def _ir_capture(port: str | None, seconds: float) -> None:
         s = f.shot()                      # field-decode (brx-ir-protocol.md)
         if s["complete"]:
             line += (f"  ->  player={s['player']} team={s['team']} dmg={s['damage']}"
-                     f" bullet={s['bullet']} crit={s['crit']}"
+                     f" proto={s['proto']} subtype={s['subtype']} crit={s['crit']}"
                      f" parity={'ok' if s['parity_valid'] else 'BAD'}")
         print(line)
     # diff consecutive distinct bit strings — surfaces type/team/mode fields

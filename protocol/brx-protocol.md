@@ -105,17 +105,21 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 >   **`11` add shields** (0→50→70) · **`13` add armor** (0→30→60→70, **overflow spills into shields**).
 > - **Damage drain order confirmed on the wire: shields → armor → HP.**
 > - **⚠ Support functions (10/11/13) are TEAM-GATED in firmware** — they register **only from a
->   same-team source** (3/3 as the victim's team; 0/3 as any other). This is a **per-function** gate:
->   bench exp 4 proved *damage* is NOT friendly-fire gated under either `$GSET` token 1 value. So a
->   medic gun enforces "allies only" in hardware, with no host logic.
+>   same-team source** (3/3 as the victim's team; 0/3 as any other) whenever `$GSET` token 1 = 0.
+>   ⚠️ **Correction:** an earlier draft of this bullet said "bench exp 4 proved damage is NOT
+>   friendly-fire gated under either `$GSET` token 1 value". That is **wrong** and contradicts this
+>   file's own `$GSET` row — the measured matrix shows **t1=0 blocks same-team damage AND enemy
+>   heals; t1=1 allows everything**. Exp-4 ran at **t1=1** and saw same-team damage land, which is
+>   exactly the t1=1 row; only the generalisation to t1=0 was unsupported. So a medic gun enforces
+>   "allies only" in hardware whenever friendly fire is off.
 > - **`<soundID>` fires on the victim.** Heard at the bench: `VA16` = "armor suit", `VA8C` =
 >   "shields online" (effect masks the first word), `H29` = a quiet sustained stim-pack medical sound.
 
 | Example | Interpretation |
 |---|---|
 | `$SIR,0,0,,1,0,0,1,,*` | Standard weapons (AR, Energy Rifle, Ion Sniper, Laser Cannon, Plasma Sniper, Shotgun, SMG, Stinger, Suppressor) — damage shields→armor→HP |
-| `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle (pass-through damage) |
-| `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle |
+| `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle — **fn 36 = ×1.25 damage** (bench-measured; "pass-through" was a guess) |
+| `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle — **fn 37 = ×2 damage** (bench-measured) |
 | `$SIR,1,0,H29,10,0,0,1,,*` | Respawn + add HP |
 | `$SIR,2,1,VA8C,11,0,0,1,,*` | Add shields |
 | `$SIR,3,0,VA16,13,0,0,1,,*` | Add armor |
@@ -530,7 +534,7 @@ Shield stayed 0 throughout this capture — untested.
 << $LCD,0,0,0,1,1,1,*
 ```
 
-### `$HIR,<irProto>,<t2>,<t3>,<t4>,<t5>,<t6>,<t7>,*`
+### `$HIR,<sensor>,<irProto>,<player>,<team>,<magnitude>,<crit>,<subtype>,*`
 
 Observed forms: `$HIR,0,0,1,1,9,0,3,*` and `$HIR,4,0,1,1,9,0,3,*`. Only the **first token
 varies** across this capture — the IR protocol id, matching `$SIR`'s first field.
@@ -538,9 +542,12 @@ Protocol `0` hits drained **18** armor each; protocol `4` hits drained **9**.
 Token 5 was `9` in both, so it is **not** simply the damage value — the `$SIR` table's
 mapping of protocol → effect is what determines damage.
 > **Corrected (§7r, 2026-08-26): token 5 = the RAW magnitude in the IR word** (= the shooter's `$WEAP`
-> `t5`). This old capture's "protocol 0 → 18 vs protocol 4 → 9" split is now cleanly explained: both had
-> raw magnitude 9, but the two protocols' `$SIR` rows applied different **function multipliers** (×2 → 18
-> vs ×1 → 9). So the **applied** damage = magnitude × the `$SIR`-function multiplier × 1.5-if-crit — see §7r. Shooter-ID semantics could not be
+> `t5`), and the **applied** damage = magnitude × the `$SIR`-function multiplier × 1.5-if-crit — see §7r.
+> ⚠️ **The old "protocol 0 → 18 vs protocol 4 → 9" split is NOT explained by that**, and a first attempt
+> to explain it that way was wrong: in these two frames (`$HIR,0,0,1,1,9,0,3` / `$HIR,4,0,1,1,9,0,3`)
+> the varying token is **token 1, the SENSOR** — `irProto` (token 2) is **0 in both**. The "protocol 4"
+> reading predates the token-1 = sensor decode and is retracted here. **The 18-vs-9 damage split
+> remains unexplained.** Shooter-ID semantics could not be
 confirmed from this capture (both players sat on default ids) — **now resolved, see §7k.**
 
 ### Death and respawn — host-driven

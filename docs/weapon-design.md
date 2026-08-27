@@ -42,8 +42,9 @@ Hardware-true, from `brx-protocol.md` §7r and the 2026-08-26 damage experiment:
   shows the victim's `$SIR` row can multiply the incoming magnitude (×1.25, ×2), bypass armor
   entirely, or apply it to a pool instead of subtracting it — and that a **shield** pool exists above
   armor. Everything in §0–§5 assumes a standard-damage row against a shieldless victim.
-- **`t5` is the applied damage, exactly.** `$HIR` token 5 reports it back. Confirmed across four
-  weapons on the bench.
+- **`t5` is the RAW magnitude, not the applied damage** — `$HIR` token 5 echoes the magnitude, and the
+  victim's `$SIR` row decides what lands (§6.2). The earlier "applied damage, exactly, four weapons"
+  reading held only because all four keyed to plain-damage rows.
 - The stock Assault Rifle deals **9**, not the manual's 24. The manual is stale.
 - Damage drains **shields → armor → HP**; armor overflow spills into shields (§6.1).
 
@@ -428,7 +429,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | Confirm the multiplier values with a logged bench entry (U10). |
 | ~~U10~~ | ~~Do the multipliers behave the same through the shipped rows?~~ ✅ **CLOSED 2026-08-26 — yes, identically.** `<0,1>` → 25, `<0,3>` → 40, `<0,0>`/`<8,0>`/`<6,0>` → 20 at magnitude 20; **`<9,3>` → 0**. Full table and the hit-count artifact that hid it: §6.2. | — | done — the fix decision is now open, not the measurement |
-| ~~U11~~ | ~~Which status function is the stun/EMP?~~ ✅ **CLOSED 2026-08-26 — it is function 23.** 5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0`; the fn-1 control never did; it fires under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. `$ALCD` t2 is normally always 100 with the slot preserved, so zeroing t2 *and* the slot is the "live gun, nothing loaded" state. See §6.3. | — | done |
+| ~~U11~~ | ~~Which status function is the stun/EMP?~~ ✅ **CLOSED 2026-08-26 — it is function 23.** 5/5 reps; the fn-1 control never fired it; it works under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. It clears `$ALCD` **token 2 (100→0)** — the weapon *ready* flag — while **ammo and health are preserved**, and it **self-clears on a ~6–8 s firmware timer** (`$SPAWN` overrides early). ~~5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0` … zeroing t2 *and* the slot is the "live gun, nothing loaded" state.~~ *(That all-zeros reading came from a victim with no loadout configured — superseded, see §6.3.)* | — | done |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
 | **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
@@ -666,8 +667,9 @@ than a number tweak:
 | **Overshielder** | 14 / 21 | overshield: healthy allies gain a shield buffer that drains first |
 
 Plus **fn 13/15/20/22** (armor only), **fn 11** (shields only — the sole way shields enter the game),
-and **fn 18**, which grants shields *at a cost of 4 HP* — a conversion, and the most interesting
-single row in the table for a risk/reward support weapon.
+and **fn 18**, a further shields-only grant. (⚠️ An earlier draft called fn 18 a conversion costing
+4 HP; re-measured on a clean baseline it leaves **HP and armor untouched** — the apparent cost was a
+shifted baseline.)
 
 **Status effects — one now has an observable effect.** A whole family registers a `$HIR` and moves no
 pool: enemy-side **3, 8, 23, 24, 25, 26, 27, 28, 35**; friendly-side **31, 32, 34** **[two-sided map]**.
@@ -675,23 +677,31 @@ These are the stun/EMP candidates, and until now the problem was that a stun loo
 row from the host side, because the effect is on the victim's *ability to fire*.
 
 **✅ Function 23 is a weapon disable — the EMP is real** (experiment-log 2026-08-26). Enemy-side fn 23
-strips the victim's gun to unloaded: **5/5 reps** produced `$ALCD,0,0,0,0,0`, the fn-1 control never
-did, and it fires under **protocols 0/5/7/10 alike** — so the effect belongs to the *function*, not the
-protocol. `$ALCD` token 2 is normally **always 100** with the slot preserved (a merely-dry gun reads
-`0,100,<slot>,<reserve>,0`), so zeroing token 2 *and* the slot is the "live gun with nothing loaded"
-state: it cannot fire.
+clears the victim's weapon **ready flag**: `$ALCD` token 2 goes **100 → 0**, 5/5 reps, while the fn-1
+control never did, and it fires under **protocols 0/5/7/10 alike** — so the effect belongs to the
+*function*, not the protocol.
+
+⚠️ **Corrected:** an earlier draft of this section said the disable produced `$ALCD,0,0,0,0,0` and
+"strips the gun to unloaded". With a real loadout the frame is **`$ALCD,32,0,0,192,0`** — **ammo is
+preserved** (mag 32, reserve 192 intact) and **only token 2 changes**. The all-zeros reading came from
+a victim that had no weapon/ammo configured at all. Health is untouched too.
 
 Design consequences:
 
 - **`$SIR,<proto>,<sub>,,23` is an EMP.** Author it on **protocol 7** to keep it off the damage
   protocols, and any weapon keyed to that cell becomes a disabler.
-- **Recovery is host-driven** — no self-recovery observed in 25 s. The victim comes back by
-  re-pushing `$AMMO`, which means **the stun duration is ours to set**, per game, in software.
+- **Recovery is a ~6–8 s FIRMWARE TIMER — it self-clears.** Sampled with an `$AMMO` re-push as a read
+  probe (which forces an `$ALCD` without clearing the flag): disabled at 2.5 s and 5.3 s, **ready by
+  8.0 s, 3/3 reps identical**. This matches the FSET sound envelope `EmpStart → EmpLoop → EmpEnd`.
+  ⚠️ An earlier draft said recovery was host-driven via an `$AMMO` re-push — **`$AMMO` does not clear
+  it**, nor does a `$WEAP` re-push. **`$SPAWN` does**, so we have a native duration *and* an early
+  override (note `$SPAWN` also restores health).
 - Weapon category 10 ("Stun") from the APK is now buildable, and `$STUN`-over-BLE being a proven
   no-op stops mattering: the effect was always meant to arrive over IR, not over the serial link.
-- **Inference (untested):** a disable that empties the magazine should compose with the ammo economy
-  in §2 — a stunned player is not just idle, they have burned a reload. Worth confirming before any
-  mode leans on it.
+- ~~Inference: a stunned player has burned a reload.~~ **Withdrawn** — the magazine is *not* emptied
+  (ammo is preserved), so a stun costs downtime only, not ammo.
+- ⚠️ **Still unconfirmed by a human:** that the trigger genuinely does nothing during the window.
+  `$ALCD` t2 is a strong proxy, but no one has pulled a trigger mid-EMP. See `bench-tomorrow.md` 1.2.
 
 Two clean negatives worth carrying **[two-sided map]**: **all 16 protocols accept damage** given a fn-1
 row, so there is no protocol whitelist and the 4-bit field is not a scarce resource; and the **`$SIR`

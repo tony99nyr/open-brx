@@ -26,6 +26,12 @@ VOL_PLAY = 69  # house rule — 30 is inaudible for game audio
 # does. So damage is a property of the (weapon, table) PAIR, never of the weapon alone.
 _SIR_NO_POOL = frozenset({3, 8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})  # registers a $HIR, moves no pool
 _SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                                     # lands t5 x this
+_SIR_ARMOR_PIERCING = frozenset({2, 6})           # bypasses armor AND shields -> straight to bare HP
+_SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "damage" weapon here HELPS the target
+# ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
+# warned about, because the failure we are guarding against (a weapon that cannot hurt anyone, or
+# worse, heals what it shoots) lives precisely in the functions we have NOT characterised.
+_SIR_PLAIN_DAMAGE = frozenset({1, 4, 5, 7, 29, 30, 33, 38})
 
 
 def _sir_index(table) -> dict[tuple[str, str], int]:
@@ -35,7 +41,7 @@ def _sir_index(table) -> dict[tuple[str, str], int]:
         t = row.strip().lstrip("$").rstrip("*").rstrip(",").split(",")
         if len(t) > 4 and t[0] == "SIR":
             try:
-                out[(t[1] or "0", t[2] or "0")] = int(t[4])
+                out[(t[1] or "0", t[2] or "0")] = int(t[4] or 0)
             except ValueError:
                 continue
     return out
@@ -410,14 +416,20 @@ class Compiler:
         # warning; the test name records the intent.
         sir = _sir_index(_SIR_TABLE)
         T = self.catalog._T
+        # KeyError here is a CODE bug, not bad data — raise loudly rather than letting every
+        # weapon `continue` and silently turn the whole guard into a no-op.
+        _pi, _si = T["proto"] + 1, T["subtype"] + 1
         flagged: set[str] = set()
         for p in roster:
             for w in (p.get("loadout", {}) or {}).get("weapons", []):
                 wid = w.get("weapon_id")
                 if wid not in self.catalog._by_id or wid in flagged:
                     continue
-                frame = self.catalog.resolve(wid, 0).split(",")
-                key = (frame[T["proto"] + 1] or "0", frame[T["subtype"] + 1] or "0")
+                try:
+                    frame = self.catalog.resolve(wid, 0).split(",")
+                    key = (frame[_pi] or "0", frame[_si] or "0")
+                except (IndexError, ValueError):
+                    continue   # a malformed catalog row is another check's problem, not a crash here
                 fn = sir.get(key)
                 if fn is None:
                     flagged.add(wid)
@@ -427,12 +439,29 @@ class Compiler:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
                                     f"hit but moves no pool: the weapon DEALS NO DAMAGE (weapon-design.md §6.2)")
+                elif fn in _SIR_GRANT:
+                    flagged.add(wid)
+                    dual = " (16/17/20/21 are DUAL-POLARITY: they still damage enemies, 17/21 armor-piercing)" \
+                           if fn in (16, 17, 20, 21) else ""
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a GRANT "
+                                    f"(heal/armor/shield): it HEALS an ally it hits{dual} "
+                                    f"(weapon-design.md §6.2)")
                 elif fn in _SIR_MULTIPLIER:
                     flagged.add(wid)
                     mult = _SIR_MULTIPLIER[fn]
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}: it lands "
                                     f"{mult}x its $WEAP t5, so the published htk/ttk_ms (computed on raw t5) "
                                     f"are wrong for it (weapon-design.md §6.2)")
+                elif fn in _SIR_ARMOR_PIERCING:
+                    flagged.add(wid)
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "
+                                    f"bypasses armor and shields, so htk is ceil(hp/dmg), not ceil(pool/dmg) "
+                                    f"(weapon-design.md §6.2)")
+                elif fn not in _SIR_PLAIN_DAMAGE:
+                    flagged.add(wid)
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which is NOT in the "
+                                    f"bench-confirmed plain-damage set {sorted(_SIR_PLAIN_DAMAGE)}: its effect "
+                                    f"on the victim is uncharacterised (weapon-design.md §6.2)")
 
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
         if (config.get("scoring", {}).get("frag_limit") or 0) > 0 and not covered:

@@ -15,24 +15,24 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 >   with a complete two-sided function map: damage / armor-piercing (fn 2,6) / **×1.25 (fn 36)** /
 >   **×2 (fn 37)** / heal variants / add-armor / add-shield / **dual-polarity heal-ally+damage-enemy**
 >   (fn 16,17,20…) / status-only ids. The IR damage field is a **magnitude** whose meaning the row's
->   function sets. **B (type) field is only 4 bits — ~10 free custom slots** (real design constraint).
+>   function sets. **B = the DamageType enum**; with the 2-bit subtype it forms the `$SIR` composite key (16 x 4 = 64 cells, all writable by us). *(An earlier "~10 free slots is a real design constraint" framing is retracted — see `brx-ir-protocol.md`.)*
 > - **P16 CLOSED — shields DO activate** (IR event, never a BLE pool value; drain shields→armor→HP).
 >   **Crit is a real ×1.5** (echoes $HIR tok6). **U7 CLOSED** (damage field = 8 bits, 0–255).
 > - **FF CORRECTED: `$GSET` token 1 IS friendlyFire and IS firmware-enforced BOTH directions**
 >   (t1=0 blocks same-team damage AND enemy heals — four-cell matrix, replicated). The earlier
 >   "host-side only" reading generalised an FF=1 observation; the evidence always agreed.
 > - **A DEAD gun accepts NO IR** (448-word brute force) → respawn stations **arm the living** (B12).
-> - Also closed: P4 ($AS/$UP silent on v4.32) · B5 (mcp 2.0 port was already done).
+> - Also closed: P4 **in part** — `$AS`/`$UP` are proven **silent** (no reply to 7 shapes on v4.32), but their *effect* was never probed · B5 (mcp 2.0 port was already done).
 > - Rig lore: phone cameras can't see a ~5 mA IR LED; VS1838B AGC saturates point-blank (attenuate for
 >   loopback); the capture sketch's RAW print truncates frames landing in its ~15 ms window.
 
 > **⚡ LATEST (2026-08-26) — the protocol map is essentially DONE and the arsenal is real.**
 > Bench-proven on live taggers, all committed with evidence + instruments:
-> - **$WEAP**: t5=exact applied damage · t14=fire interval · t15=850 constant (never write) ·
+> - **$WEAP**: t5=the RAW magnitude (applied = magnitude x the victim's $SIR-function multiplier x 1.5-if-crit — corrected overnight) · t14=fire interval · t15=850 constant (never write) ·
 >   **t20=FIRE MODE** (0 auto / 7 single-bolt / 9 burst / 2·3·14 charge variants / 13 melee — proven
 >   by one-field flip) · t23=burst cycle · **overheat = t24+t35 GATED by t37/t38** (transplantable).
 > - **$HIR fully decoded**: tok1 sensor (0=headset FRONT dome, 1=BACK dome, 4=gun — shield-isolated),
->   tok2=IR-protocol echo, tok3=shooter pid, tok4=effective team, tok5=damage, tok7=subtype.
+>   tok2=IR-protocol echo, tok3=shooter pid, tok4=effective team, tok5=the RAW magnitude (NOT applied damage), tok7=subtype.
 > - **$TID & 3 → four usable teams**; ~~friendly fire is NOT firmware-enforced~~ **[CORRECTED overnight: `$GSET` t1 IS
 >   firmware-enforced FF — see the LATEST block above]**; $SFLASH latches green unconditionally; $STUN direct = no-op; a bare
 >   $WEAP re-push RESETS ammo (pickups must re-send $AMMO); mapped damage types play their $SIR
@@ -52,15 +52,11 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 >   as the measuring instrument, which removes the screamer/arming-race failure mode that
 >   contaminated U2. Prefer the instrument method over any two-gun A/B where the question is
 >   "what did the shooter emit".
-> - **Next bench session menu (methods in FOLLOWUPS):** (0) bench-plan Session 0+1 — ESP32 smoke
->   test + first real IR capture, confirms B13's source-derived decode on our own bench;
->   (1) **U2 t41 range — by IR instrument** (fixed-distance receiver, `ir-range` detect%/decode% at
->   t41=100 vs 5; supersedes the fresh-fleet two-gun A/B); (2) bench-plan Session 2 — IR **emit**,
->   the Utility Box (B4) unlock and the only route to objective stations now that the grenade is
->   proven sealed (G7/G8); (3) t37-vs-t38 semantics — two varied-value overheat probes;
->   (4) sensor-map field-distance validation; then $BUT/$GREN alt-fire + heal/stun damage-type enum
->   probes for special weapons. **Bench tools**: `mcp/tools/` (hittest = the one-script two-gun
->   pattern; raw_weapon/firemode_probe/sendframes/weapon_range/…).
+> - **➡️ NEXT BENCH SESSION: [`docs/bench-tomorrow.md`](bench-tomorrow.md)** — the authoritative list of
+>   what still needs a human, grouped to minimise re-rigging, with a one-hour path and a
+>   **do-not-re-run** list. It supersedes the Session 0/1/2 menu that used to sit here: those are
+>   **done** (B13 closed, emit hardware-proven). **Bench tools**: `mcp/tools/` (`hittest` = the
+>   one-script two-gun pattern; raw_weapon/firemode_probe/sendframes/weapon_range/…).
 > - **⚠ Fleet ops rules, learned the hard way:** POWER-REST the guns (two day-long-powered taggers
 >   went "screamer": advertise-but-won't-link / connect-then-drop); headsets ON and settled or the
 >   gun silently refuses; one script owning both guns + ONE audible GO beats any window choreography;

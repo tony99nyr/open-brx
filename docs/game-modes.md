@@ -173,16 +173,16 @@ directly: **`$LIFE,addedHP,addedArmor,addedShields`** and **`$BUMP,hP,armor,shie
 additive grants clamped at max** (hardware-confirmed, exp-log #33; neither is an absolute-set). The APK
 exposes shield/regen tokens (`maxShields`, `RepairRegenTick`, `ShieldOnHeal`, `MedicHeal`,
 `ActivateShield`, …), **but the live test found NO native armor regen** (armor held through 30 s idle),
-so any "regen" must be **host-driven** (node watches `$HP`, refills). Also: the **shield pool is inactive
-until activated** (stayed 0 despite `$PSET` shield=99 — followup P16); armor+HP are the working pools
+so any "regen" must be **host-driven** (node watches `$HP`, refills). Also: the **shield pool is grantable
+only by an IR `$SIR` fn-11 event** — `$PSET` shield=99 does nothing, which is why it stayed 0 (P16 CLOSED 2026-08-26); over BLE alone, armor+HP are the working pools
 today. So health mechanics need **only Mission Control + the per-player nodes** — no stations, no
 broadcast — but refill armor/HP, not shields, for now.
 
 | Variant | Mechanic | How (Tier 0) | Caveat |
 |---|---|---|---|
 | **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | node watches the `$HIR`→`$HP,0` kill attribution, then sends `$LIFE`/`$BUMP` to the **killer's** gun | routes to the **exact** killer — `$HIR` tok3 gives the shooter's player_num over BLE (P2 closed), so the heal reaches the right gun even in shared-team play. |
-| **Halo shields (regen after no-damage)** | health/shield refills to full after T s without taking damage | **host-driven** — node watches its own gun's `$HP` stream and sends `$LIFE`/`$BUMP` (additive, clamped at max) to refill once no decrease for T s. **No P2 needed.** | ✅ writes confirmed (exp-log #33). **Not native:** regen was tested and armor does **not** self-recover — it must be host-driven. Shields-as-a-pool are inactive until activated (P16), so refill **armor+HP** today. |
-| **Overshield / powerup pickup** | grab an item → temporary extra shields | node grants `$LIFE,0,0,<shields>` on the pickup event | ⚠️ **shields inactive until activated (P16)** — grants to the shield pool may not take today; use an **armor** overshield until shield-activation is worked out |
+| **Halo shields (regen after no-damage)** | health/shield refills to full after T s without taking damage | **host-driven** — node watches its own gun's `$HP` stream and sends `$LIFE`/`$BUMP` (additive, clamped at max) to refill once no decrease for T s. **No P2 needed.** | ✅ writes confirmed (exp-log #33). **Not native:** regen was tested and armor does **not** self-recover — it must be host-driven. The shield pool is grantable only by an IR `$SIR` fn-11 event (P16 closed 2026-08-26), so a BLE-only node refills **armor+HP**; a Companion or station with an emitter can refill shields too. |
+| **Overshield / powerup pickup** | grab an item → temporary extra shields | node grants `$LIFE,0,0,<shields>` on the pickup event | ⚠️ **`$LIFE` cannot fill the shield pool** — shields are granted ONLY by an IR `$SIR` fn-11 event (P16 closed 2026-08-26). Use an **armor** overshield over BLE, or emit fn-11 from a Companion/station for a true overshield |
 | **Medic / Lifesteal support role** | a role heals teammates | node grants `$LIFE` (armor/HP) to the healed gun; `MedicHeal`/`ActivateShield` are APK ability types | role logic like General/VIP |
 
 **Bottom line:** syphon, Halo-style regenerating health, (armor-based) overshields, and medic roles are

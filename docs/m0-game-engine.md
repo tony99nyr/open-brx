@@ -22,7 +22,7 @@ Every operator-settable knob, mapped to the BRX frame(s) that apply it:
 | Kid mode | `kid_mode` (health floor, no FF, soft crits) | preset |
 | Friendly fire | `friendly_fire` | `$GSET` token 1 |
 | Crit modifier | `crit_modifier` | `$GSET` token 7 |
-| Starting HP / armor / shield | `hp`, `armor`, `shield` | `$PSET` tokens 3–5 (shield ⚠ P16) |
+| Starting HP / armor / shield | `hp`, `armor`, `shield` | `$PSET` tokens 3–5 (⚠ the **shield** token does nothing — the pool is IR-only, P16) |
 | Primary / secondary weapon | `primary`, `secondary` | `$WEAP` slots 0/1 (+ melee slot 4) |
 | Class | `game_class` (assault/heavy/scout/guardian) | preset loadout |
 | Teams | `teams` (player→team) | `$TID` |
@@ -35,7 +35,7 @@ The Mission Control config→frames compiler now lives in **`mcp/brx_mcp/mc/comp
 `GameConfig` + roster into a per-player **`FrameBundle`** the node writes verbatim.
 
 ⚠ **Unconfirmed:** LEDs-off (`$GLED`) is a best-effort guess (P17); shields are inactive until
-activated (P16) — set `armor`/`hp`, not `shield`, for now.
+granted only by an IR `$SIR` function-11 event (P16 CLOSED 2026-08-26) — over BLE set `armor`/`hp`, not `shield`; a Companion/station with an IR emitter can grant real shields.
 
 ## Modes (`modes/`)
 

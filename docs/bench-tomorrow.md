@@ -89,6 +89,8 @@ That closes the melee gap, finishes the special-weapons tier, opens the objectiv
 last weapon token.
 
 ## Do NOT re-run (already answered overnight)
-B13 · B4 emit proof · U7 · P16 · P4 · B5 · the `$SIR` function map (both polarities) · crit ×1.5 and
+B13 · B4 emit proof · U7 · P16 · B5 · the `$SIR` function map (both polarities) · crit ×1.5 and
 its multiplicative stacking with fn 36/37 · `$GSET` t1 = enforced friendly fire · dead guns accept no
 IR · `$HIR` tok5 = raw magnitude · AP bypasses shields · heals clamp · `$SPAWN` clears the EMP · the EMP's ~6–8 s self-clearing duration · `$GREN` emits a second IR protocol.
+
+*(P4 is only half closed: `$AS`/`$UP` are proven **silent** — no reply on v4.32 — but their **effect** was never probed. If you have a spare minute it belongs in Group 1.)*

@@ -1,5 +1,8 @@
 # Hardware verification checklist
 
+> **Human-blocked items now live in [`bench-tomorrow.md`](bench-tomorrow.md)** — that's the list to
+> work from on bench day; this file remains the durable per-session checklist.
+
 Everything built/claimed in software that needs **Tony + a tagger** to confirm (Claude can't run BLE/IR
 here). Grouped by what a single session unlocks. Check off as verified; move failures to FOLLOWUPS with
 the observed behaviour. **This is the to-do list for your next hardware session(s).**
@@ -100,7 +103,7 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 `$LIFE` writes are confirmed (exp-log #33); the *modes* on top aren't yet run live.
 - ⬜ **Syphon** (`play ffa … syphon=1`) — killer's armor climbs on a kill (watch `$HP` on next hit).
 - ⬜ **Regen** (`… regen=1`) — after `regen_delay_s` with no damage, armor refills to full; re-arms on new damage; **no spurious heal on respawn** (the fix we made).
-- ⚠ **Shields** — `shield=` / any shield-pool effect: **P16** — shields read 0 despite `$PSET` shield=99. Confirm whether shields can be activated at all; until then use **armor**, not shield.
+- ⚠ **Shields** — `shield=` / any shield-pool effect: **P16** — shields read 0 despite `$PSET` shield=99. ~~Confirm whether shields can be activated at all~~ ✅ **P16 CLOSED 2026-08-26 — yes, via an IR `$SIR` function-11 event, never a BLE pool value** (drain order shields→armor→HP); until then use **armor**, not shield.
 
 ## Session C — environment / config knobs (1 tagger, ~10 min)
 - ⬜ **Night mode / LEDs off** — `leds=0` sends a **guessed** `$GLED` (P17). Does it actually turn the LEDs off? Try effect=StopIR vs all-zeros vs brightness=0.

@@ -118,8 +118,8 @@ MARK_ONE_US = 750    # a payload mark > this is a 1, else 0
 MARK_MIN_US = 200    # ignore glitches shorter than this
 PAYLOAD_BITS = 25
 _IR_FIELDS = {
-    "bullet": (0, 4), "player": (4, 10), "team": (10, 12), "damage": (12, 20),
-    "crit": (20, 21), "unknown": (21, 23), "parity": (23, 25),
+    "proto": (0, 4), "player": (4, 10), "team": (10, 12), "damage": (12, 20),
+    "crit": (20, 21), "subtype": (21, 23), "parity": (23, 25),
 }
 
 
@@ -152,8 +152,8 @@ def decode_word(bits: str) -> dict:
     z0 = b[23] if len(b) > 23 else ""
     z1 = b[24] if len(b) > 24 else ""
     return {
-        "bullet": seg("bullet"), "player": seg("player"), "team": seg("team"),
-        "damage": seg("damage"), "crit": seg("crit"), "unknown": seg("unknown"),
+        "proto": seg("proto"), "player": seg("player"), "team": seg("team"),
+        "damage": seg("damage"), "crit": seg("crit"), "subtype": seg("subtype"),
         "parity_bits": z0 + z1,
         "parity_valid": bool(z0) and bool(z1) and z0 != z1,
         # stronger than the z0!=z1 accept test: does Z match the bench-derived
@@ -169,22 +169,38 @@ def payload_parity(payload: str) -> str:
     """The 2-bit Z trailer for a 23-bit payload (bits 0..22), BENCH-DERIVED 2026-08-26.
 
     Measured on R0BAS across three distinct words (damage 22 / 9 / 0): an ODD number
-    of 1s in the payload yields Z='01', an EVEN number yields Z='10'. Z0 != Z1 always,
-    which is why node1's cheap `Z1 != Z0` accept test works — but the full rule is a
-    parity, and an emitted frame MUST carry the right one or a gun should reject it.
+    of 1s in the payload yields Z='01', an EVEN number yields Z='10'.
+
+    NOTE (measured 2026-08-26, same session): the gun does **not** enforce this parity —
+    it only requires Z0 != Z1. A deliberately-wrong-but-differing Z registered 8/8; Z=00
+    and Z=11 registered 0/8. So computing it is fidelity to what real BRX frames carry,
+    not an acceptance requirement. See protocol/brx-ir-protocol.md.
+
+    Only the first 23 bits are payload; anything longer is truncated so that passing a
+    full 25-bit word (which would otherwise include the old Z and invert the result)
+    still yields the correct trailer.
     """
-    return "01" if payload.count("1") % 2 else "10"
+    return "01" if payload[:23].count("1") % 2 else "10"
 
 
-def encode_word(player=0, team=0, damage=0, bullet=0, crit=0, unknown=0, parity=None) -> str:
+def encode_word(player=0, team=0, damage=0, proto=0, crit=0, subtype=0, parity=None,
+                bullet=None, unknown=None) -> str:
     """Build a 25-bit payload. `parity` defaults to the bench-derived parity computed
     over the payload (see payload_parity); pass an explicit 2-bit Z only to construct
     a deliberately-malformed frame for tests. Field layout is bench-CONFIRMED
-    (2026-08-26): pushing $WEAP t5 9 vs 22 moved only bits 12..19."""
+    (2026-08-26): pushing $WEAP t5 9 vs 22 moved only bits 12..19.
+
+    `proto` (the IR protocol / $WEAP t3) and `subtype` ($SIR subtype / t4) were called
+    `bullet` and `unknown` before the bench identified them; both old names still work."""
+    if bullet is not None:
+        proto = bullet
+    if unknown is not None:
+        subtype = unknown
+
     def f(v, n):
         return format(v & ((1 << n) - 1), f"0{n}b")
-    payload = (f(bullet, 4) + f(player, 6) + f(team, 2) + f(damage, 8)
-               + f(crit, 1) + f(unknown, 2))
+    payload = (f(proto, 4) + f(player, 6) + f(team, 2) + f(damage, 8)
+               + f(crit, 1) + f(subtype, 2))
     if parity is None:
         parity = payload_parity(payload)
     else:

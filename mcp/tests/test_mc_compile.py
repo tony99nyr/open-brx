@@ -391,6 +391,34 @@ def test_sir_guard_flags_a_weapon_with_no_row_at_all():
     assert any("NO ROW" in w for w in r["warnings"]), r["warnings"]
 
 
+def test_sir_guard_flags_the_uncharacterised_and_helpful_functions():
+    """The guard is an ALLOW-LIST on purpose.
+
+    Only the bench-confirmed plain-damage set {1,4,5,7,29,30,33,38} is silent. Everything else
+    warns — because the failure we are guarding against (a weapon that cannot hurt anyone, or one
+    that HEALS what it shoots) lives precisely in the functions nobody has characterised. The
+    shipped `_SIR_TABLE` only exercises fns {1,24,36,37,38}, so these branches are unreachable
+    without repointing the table.
+    """
+    import brx_mcp.mc.compile as CM
+    base = [r for r in CM._SIR_TABLE if not r.startswith("$SIR,0,0,")]
+
+    def warns_for(fn):
+        orig = CM._SIR_TABLE
+        try:
+            CM._SIR_TABLE = tuple(base + [f"$SIR,0,0,,{fn},0,0,1,,*"])
+            return " ".join(C.validate(_cfg(), [_player(weapons=("assault_rifle",))])["warnings"])
+        finally:
+            CM._SIR_TABLE = orig
+
+    assert "a GRANT" in warns_for(11), "fn 11 adds SHIELDS — it would heal the target"
+    dual = warns_for(16)
+    assert "a GRANT" in dual and "DUAL-POLARITY" in dual, "fn 16 heals allies but still damages enemies"
+    assert "ARMOR-PIERCING" in warns_for(2), "fn 2 bypasses armor AND shields — htk is ceil(hp/dmg)"
+    assert "uncharacterised" in warns_for(99), "an unknown function must never pass silently"
+    assert warns_for(1) == "" or "assault_rifle" not in warns_for(1), "fn 1 is plain damage: stay quiet"
+
+
 def test_sir_guard_reports_each_weapon_once():
     a, b = _player(num=7, weapons=("energy_launcher",)), _player(num=8, weapons=("energy_launcher",))
     warns = [w for w in C.validate(_cfg(), [a, b])["warnings"] if "energy_launcher" in w]

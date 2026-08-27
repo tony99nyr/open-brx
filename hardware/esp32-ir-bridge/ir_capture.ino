@@ -119,13 +119,15 @@ void printFrame() {
   Serial.print(" val=");
   Serial.println(bits);
   if (!syncSeen) Serial.println("# no 2ms sync (leading mark too short) — not a BRX frame");
-  // field decode per protocol/brx-ir-protocol.md: B4 P6 T2 D8 C1 U2 Z2 (25 bits)
+  // field decode per protocol/brx-ir-protocol.md (25 bits):
+  //   B4 = IR protocol / DamageType ($WEAP t3) | P6 player | T2 team | D8 MAGNITUDE
+  //   C1 crit | U2 = $SIR SUBTYPE ($WEAP t4) | Z2 parity  (B/U were once "bullet"/"unknown")
   if (nbits >= 25) {
     char z0 = bits[23], z1 = bits[24];
     Serial.print("SHOT player="); Serial.print(bitsVal(bits, 4, 10));
     Serial.print(" team=");       Serial.print(bitsVal(bits, 10, 12));
     Serial.print(" dmg=");        Serial.print(bitsVal(bits, 12, 20));
-    Serial.print(" bullet=");     Serial.print(bitsVal(bits, 0, 4));
+    Serial.print(" proto=");      Serial.print(bitsVal(bits, 0, 4));
     Serial.print(" crit=");       Serial.print(bitsVal(bits, 20, 21));
     Serial.print(" parityOK=");   Serial.println(z0 != z1 ? 1 : 0);
   }

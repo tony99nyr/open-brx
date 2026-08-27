@@ -1708,9 +1708,12 @@ R0BAS's armory record (`player_id: 0`, `field_id: 1`).
 2. **`Z` is a computed parity over bits 0–22**, not just a differing pair:
    **odd count of 1s → `Z=01`, even → `Z=10`.** 4/4 frames obey it. node1's cheap `Z1 != Z0` test never
    fails on a real frame, which is why the weaker rule looked sufficient from source.
-   → `irbridge.payload_parity()` added; `encode_word()` now computes parity by default (it previously
-   defaulted to a fixed `"01"`, which would have emitted invalid frames on the Utility Box);
+   → `irbridge.payload_parity()` added; `encode_word()` now computes parity by default;
    `decode_word()` reports `parity_matches`. 19/19 irbridge tests green.
+   ⚠️ **CORRECTED later the same session:** this entry said a fixed `"01"` "would have emitted invalid
+   frames". **It would not have.** The gun enforces only **`Z0 != Z1`** — a deliberately-wrong-but-
+   differing Z registered **8/8**, while `Z=00` and `Z=11` registered **0/8**. Computing the parity is
+   fidelity to what genuine BRX frames carry, not an acceptance requirement. Measurement below.
 
 **U7 (damage ceiling) CLOSED as a side effect:** the damage field is 8 bits, read 115 directly off the
 wire. Max 255, so a 2× powerup is expressible on anything up to 127.
@@ -2029,6 +2032,12 @@ protocol=13   player=7   team=1   magnitude=90   crit=0   subtype=1   parity ok
    distinguishes the domes (0 front / 1 back / 4 gun) — **one back-dome swing would settle it.**
 
 ### 🔴 GAP: our compiled game head does not enable melee
+> ⚠️ **SUPERSEDED the same night.** Two independent reviews of the Callsign captures found our melee
+> surface is **byte-identical** to the app's — `$WEAP,4` character-for-character, all three `$SIR,13,*`
+> rows, `$GSET` with `gyroscope=1`, and all seven `$BMAP` rows including **`$BMAP,8,4`** (gyro → melee).
+> So the candidate causes below are **refuted**: it is a runtime/state/trial issue, not a frame.
+> `$WEAP` t7–t11 are empty in *every* captured frame *and* ours, so P1's "dormant" call stands.
+> See FOLLOWUPS **K4** for the one-swing bench test.
 Stock native games have it; ours don't. Candidate causes, in order:
 - **`$WEAP` secondary-fire block (t7–t11)** — `secondaryDamageType` would carry **13**. This is the
   same mechanism as Tony's **K2** ask (secondary weapon / perk on ALT), so the two are one problem.
@@ -2199,3 +2208,67 @@ signalling — useful if the Utility Box learns to speak it, not a replacement f
 each) but **all were split by the capture sketch's RAW-print latency**, so no full word was recovered.
 ⇒ **Needs a sketch tweak (raise `IDLE_GAP_US`, or drop the per-frame RAW print) to capture a
 30+ bit word intact.** If it is arg-drivable, the gun becomes a programmable accessory emitter.
+
+## 2026-08-26 (bench, unattended) — the SHIPPED `_SIR_TABLE` measured weapon-by-weapon
+
+Recorded late: `docs/weapon-design.md` §6.2 cited this run before it was written up here. The numbers
+below are the primary evidence for the multiplier/Energy-Launcher findings.
+
+**Method:** push the real `gameconfig._SIR_TABLE` **verbatim** to the victim, then fire **one** IR word
+per case carrying that weapon's actual `<t3, t4, t5>`. Three trials per row, **`hits == 1` verified on
+every trial** — without that check a ×2 multiplier is indistinguishable from two registered hits, which
+is exactly what fooled the first pass (Bolt/AMR looked broken, Burst looked fine; same cause).
+
+```
+row (weapon key)              magnitude   trials (hits : per-hit damage)
+fn 1   synthetic baseline     20          1:[20]  1:[20]  1:[20]
+fn 36  synthetic              20          1:[25]  1:[25]  1:[25]     = x1.25
+fn 37  synthetic              20          1:[40]  1:[40]  1:[40]     = x2
+SHIPPED <0,0> -> fn 1         20          1:[20]  1:[20]  1:[20]     the other 12 weapons
+SHIPPED <0,1> -> fn 36        20          1:[25]  1:[25]  1:[25]     Force Rifle, Sniper Rifle
+SHIPPED <0,3> -> fn 37        20          1:[40]  1:[40]  1:[40]     Burst, Bolt, AMR
+SHIPPED <9,3> -> fn 24        20          1:[0]   1:[0]   1:[0]      *** ENERGY LAUNCHER: ZERO ***
+SHIPPED <8,0> -> fn 38        20          1:[20]  ...                Charge Rifle: normal 1x
+SHIPPED <6,0> -> fn 1         20          1:[20]  ...                Rail Gun: normal 1x
+SHIPPED <13,3>                20          1:[20]  ...                melee: normal 1x
+```
+Trailing known-good control passed.
+
+⇒ **The multipliers behave identically through the shipped rows as through a synthetic one**, and the
+**Energy Launcher cannot damage anyone** in any game we currently ship — its `<9,3>` key lands on
+`$SIR,9,3,,24`, a status function that moves no pool.
+
+**Scope note (honest):** the fn-38 / fn-1 / no-pool *classifications* come from the protocol-5 function
+sweeps in the earlier entry; what this run adds is that the **shipped keys route to those functions and
+produce the same numbers**. The `<9,3>` zero and the two multiplier ratios are measured here directly.
+
+
+## 2026-08-26 (bench) — is the IR parity ENFORCED? (the measurement behind the correction)
+
+Recorded late: this run is cited by `protocol/brx-ir-protocol.md` and by `irbridge.payload_parity()`'s
+docstring, but was never written into the primary evidence record. Emitting at R0BAS, **8 shots per
+variant**, everything else held constant:
+
+| Z bits sent | registered |
+|---|---|
+| rule-correct (`01` for this word) | **8 / 8** |
+| deliberately wrong but differing (`10`) | **8 / 8** |
+| `00` | **0 / 8** |
+| `11` | **0 / 8** |
+
+⇒ **the gun's acceptance test is exactly `Z0 != Z1`** — either differing pair lands, equal pairs are
+rejected outright. The odd/even parity rule derived earlier is still a true description of what
+*genuine* BRX frames carry (4/4 captured words obey it, and `decode_word().parity_matches` is a useful
+tell for distinguishing our traffic from a real gun's), but it is **not** an acceptance gate.
+
+This corrects the B13 entry above, which asserted that a fixed `"01"` parity "would have emitted
+invalid frames".
+
+## 2026-08-26 — free IR-protocol slots: the "~10 free" figure is wrong
+
+Three different counts were circulating. The accurate one: the 4-bit protocol field holds **0–15**, and
+BRX ships `$SIR` rows on **0, 1, 2, 3, 6, 8, 9, 10, 11, 13** plus **15** for the grenade beacon — so the
+genuinely unused values are **4, 5, 7, 12 and 14**. Earlier notes in this log saying "~10 free custom
+slots, a real design constraint" are **superseded twice over**: the count was wrong, and scarcity is not
+the constraint anyway — the protocol field pairs with the 2-bit subtype to form the `$SIR` key
+(**16 × 4 = 64 cells**), and we push the table, so occupied protocols are re-definable per game.
