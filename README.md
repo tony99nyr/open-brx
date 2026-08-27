@@ -85,9 +85,10 @@ claude mcp add brx -- python -m brx_mcp
 
 > **What works today:** the command above ran a full TDM on two real taggers — scoring, respawn,
 > frag limit, correct winner (`docs/experiment-log.md`, "FIRST LIVE M0 GAME"). The **phone-node +
-> field Wi-Fi** path that lifts the BLE-range limit has been run **one phone at a time, at the
-> bench**; a field full of phones, a router-hosted LAN and a dispersed start have not been run at all
-> — see [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the exact line.
+> field Wi-Fi** path that lifts the BLE-range limit has only been run **one phone at a time at a
+> bench, and not through a whole match**; a field of phones, a router-hosted LAN and a dispersed
+> start have not been run at all — see
+> [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the line-by-line.
 
 > **You do not need the phone app for any of the above** — the quickstart is laptop-to-guns over BLE.
 > The phone node is what lifts the BLE-range limit later. **There is no published build of it yet**;
@@ -131,8 +132,8 @@ Full prerequisites, signing notes, and what's generated vs committed: **[`app/RE
 
 M1 Identify ✅ → M2 Control ✅ → M3 Protocol depth (`$WEAP` map, sound bank, **per-player id over BLE**) ✅ →
 M4 Pilot game (per-player node + Mission Control + live scoreboard) — **built + tested in software**
-(a full test suite incl. 12 full-stack e2e); the **MC↔phone path is bench-proven one phone at a time,
-but a whole field of them is not** (next: a live muster, `docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of
+(a full test suite incl. 12 full-stack e2e); the **MC↔phone path has run one phone at a time at a
+bench, not a whole match and never a field** (next: a live muster, `docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of
 record: **`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.
 
 ## License

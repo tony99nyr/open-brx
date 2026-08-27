@@ -12,8 +12,8 @@ connections, states the limit on each one, and cites where the fact comes from.
 
 > **Short answer, if you own taggers and a laptop:** you can play **today**, in one room, with the
 > laptop driving the guns directly over BLE — that path is proven on hardware (§3, Tier 0). What you
-> cannot yet do is take it to a real field with phones, because that half has only ever been run one
-> phone at a time at a bench (§7).
+> cannot yet do is take it to a real field with phones: that half has only ever been run one phone at
+> a time at a bench, and not through a whole match (§7).
 
 ---
 
@@ -94,7 +94,7 @@ queue locally until it returns.
 | Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | `spec/net.md`; ADR-0002 |
 | Operator ↔ Mission Control | HTTP, localhost or LAN | `:8765` UI, `:8766` node socket | `field-runbook-mc.md` §0 |
 | Gun → gun | **IR**, line of sight | the only player-to-player channel | `protocol/brx-ir-protocol.md` |
-| Laptop ↔ gun | BLE | **setup and recap only** — never during play | ADR-0001 §Context 5 |
+| Laptop ↔ gun | BLE | in **this** (Tier-1) topology, setup and recap only — never during play. In Tier 0 (§3) the laptop *does* hold gun links all match. | ADR-0001 §Context 5 |
 | Laptop ↔ gun | **USB** | one-time armory setup per gun | `spec/README.md` phase 0 |
 
 ### Counting limits
@@ -103,7 +103,7 @@ queue locally until it returns.
 |---|---|---|
 | Guns per BLE radio | **~5–7 links at ~10–30 m** | ADR-0002 §Context 1 |
 | Guns per phone node | **exactly 1** | ADR-0001; the link rides one player |
-| Players per game | **63** | `$PSET` player id, 1–63; 0 reserved |
+| Players per game | **63** | the gun accepts `$PSET` ids **0–63**; Open BRX reserves 0, so 1–63 are playable (`mc/types.py`) |
 | Native teams | **4** | `$TID` is masked to 2 bits |
 
 > ⚠️ **A documented disagreement.** ADR-0002 says one BLE central holds "~5–7 links at ~10–30 m";
@@ -131,7 +131,7 @@ flowchart TB
     L0 <-->|BLE| g3
     L0 <-->|BLE| g4
   end
-  subgraph T1["TIER 1 — phones as nodes ⚠ ONE PHONE PROVEN, A FIELD OF THEM NOT"]
+  subgraph T1["TIER 1 — phones as nodes ⚠ ONE PHONE PART-WAY, NEVER A FIELD"]
     direction LR
     L1["Laptop = Mission Control<br/>+ field Wi-Fi"]
     p1["phone"]
@@ -156,9 +156,9 @@ scoring, respawn, frag limit, correct winner, BLE holding the whole match
 (FOLLOWUPS B10). The constraint is that **everyone stays in the laptop's BLE range** — a room, a
 yard, a small field.
 
-**Tier 1 is what buys you a real field**, and it is the thinly-tested half. One phone through the
-whole chain — phone ↔ MC ↔ gun — has run at the bench. A *field* of them, on a router-hosted LAN,
-with a dispersed timed start, has not. See §7 for the line-by-line.
+**Tier 1 is what buys you a real field**, and it is the thinly-tested half. At the bench, one phone
+has gone as far as MC pushing a weapon try-out that fired a real gun — but not a whole match, and
+never a *field* of phones on a router-hosted LAN with a dispersed timed start. See §7 line-by-line.
 
 ---
 
@@ -181,6 +181,9 @@ flowchart LR
   H["7 · RECAP<br/>players return, nodes flush,<br/>MC reconciles"]
   A --> B --> C --> D --> E --> F --> G --> H
 ```
+
+In order: **0 armory** (USB, once per gun) → **1 muster** → **2 build** → **3 kit** → **4 lobby** →
+**5 dispersed start** → **6 live play** → **7 recap**.
 
 The interesting phase is **5**. The match starts on a wall-clock time agreed in advance, and each
 node counts itself down. No "go" signal crosses the field, because at T-0 there may be no network
@@ -234,15 +237,15 @@ provisional until every node has flushed.
 | Synchronised start across guns | ✅ 3 guns (FOLLOWUPS B10) |
 | Config survives BLE drop; power-cycle wipes it | ✅ bench |
 | One phone ↔ one gun over BLE | ✅ single-gun bench |
-| **One** phone ↔ MC ↔ gun, at the bench | ✅ real phone→MC→gun sessions, 2026-08-25/26 (`HANDOFF.md` §Where the project stands; `experiment-log.md`) |
+| **One** phone ↔ MC ↔ gun, at the bench | ⚠ reached hello → roster bind → an MC-pushed **try-out that fired the real gun**. The lobby config push was "next when we stopped" (`experiment-log.md`) — so: not a whole match. |
 | **More than one phone** on the MC LAN | ⬜ never run |
 | A router-hosted field LAN (rather than the bench) | ⬜ never run |
 | A dispersed, time-synced start on a real field | ⬜ never run |
-| The **local timed end** | ⬜ "not yet exercised" (`spec/node.md` §3.9) |
+| The **local timed end** | ⬜ "not exercised yet" (`experiment-log.md`; `verification-checklist.md`) |
 | Store-and-forward recovery across a real outage | ⬜ never run |
 | Hold-across-disperse for 5 min | ⚠ only 2 min done (`brx-protocol.md` §7r) |
 | iOS BLE on a locked phone; phone auto-rejoin | ⬜ never run |
-| The ESP32 Companion and the Utility Box | ⬜ **do not exist** — every link involving them is paper |
+| The ESP32 Companion and the Utility Box | ⚠ **neither is built** — but the Utility Box's IR emit is hardware-proven: a stock tagger accepted a fully synthetic shot from an ESP32 + LED rig (`FOLLOWUPS.md` B4/B13). The Companion is spec only. |
 
 > ⚠️ **Other docs summarise this differently** — `HANDOFF.md` calls the phone path "field-verified"
 > (while noting soak/scale certification is still open), whereas `README.md` and
