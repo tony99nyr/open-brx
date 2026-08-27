@@ -561,14 +561,25 @@ damage applied has never been tested.
 
 **And it cannot be settled from the existing data, which is the real lesson here.** The fn-24 evidence
 records no `$HIR` tokens at all — only pool deltas and what the operator heard. So that dataset
-neither supports nor kills the sensor hypothesis; it simply cannot speak to it. The same is true of
-most pool measurements in the function map.
+neither supports nor kills the sensor hypothesis; it simply cannot speak to it.
 
-> **Method rule going forward: record `$HIR` token 1 alongside every pool measurement.** It costs
-> nothing at capture time and it is the difference between a dataset that can answer a question
-> retrospectively and one that has to be re-run. This is the second unstated condition to surface in
-> two days — the protocol qualifier was the first, and it was clearable only because a matrix could be
-> re-run cheaply. A sensor condition on a map that is about to be quoted row by row would not be.
+**What we now do know is the scope of everything else.** A 20-shot check came back **20/20 at the gun
+body** (`$HIR` tok1 = 4), delta 20 every shot, emitter at ~40 cm — the rig cannot produce a dome hit
+at all. So the function map should be read as *"measured at the gun-body sensor"*, the same way it
+carries a protocol. That converts an unknown condition into a known and uniform one, and it makes the
+outstanding question small: **two rows re-measured at a dome**, not the whole map.
+
+> ⚠️ With one limit on how far that reads. At ~40 cm, `$HIR` tok1 plausibly reports which sensor
+> **fired first**, not which was struck — IR floods every receiver at close range. So 20/20 at the gun
+> body does **not** establish that the domes were never illuminated, only that they never report first
+> at this distance. The honest claim is about reporting, not about incidence.
+
+> **Method rule: record the protocol, the `$HIR` token 1, and the firing range beside every pool
+> measurement.** All three started as unstated conditions discovered after the fact — protocol first,
+> then sensor, then distance — and each cost a re-run or left a dataset unable to answer a question
+> retrospectively. Three in two days is a pattern, not bad luck. **The default question for any new
+> claim should be "under what conditions is this true?", asked at capture time rather than
+> reconstructed later**, because only the protocol one turned out cheap to clear.
 
 **Our emitter is not the explanation, and that matters.** The obvious suspicion was that the rig had
 encoded 40 where it meant 20, which would look exactly like a ×2. It didn't: the emitter is
