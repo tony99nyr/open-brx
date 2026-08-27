@@ -160,9 +160,16 @@ provisional until a one-field capture pins them.
 
 - `reserve` = mag × mags from the roster (e.g. AR 32×12). Unlimited-reserve presets (`ar`,`charge`
   today) keep the big sentinel value in the tail; a finite catalog reserve overrides token 40.
-- `WeaponCatalog.resolve(weapon_id, slot) → "$WEAP,<slot>,<tail>"` (called inside `compile`, §1.1) — the tail is the template with
-  `{damage}`/`{rof}`/`{mag}`/`{reserve}`/`{reload}` substituted at tokens 5/15/16/40/18. Sounds
-  (tokens 27, 31–33) default to the AR block unless the weapon defines its own (sound-bank families).
+- `WeaponCatalog.resolve(weapon_id, slot) → "$WEAP,<slot>,<tail>"` (called inside `compile`, §1.1) —
+  **as built, the base is the weapon's OWN captured Callsign frame**, not a shared template, and only
+  the balance tokens are overwritten: `{damage}`/`{fire interval}`/`{mag}`/`{reserve}`/`{reload}` at
+  tokens **5 / 14 / 16+39 / 17+40 / 18**. Sounds (27, 28–29, 31–34) come from the capture, so no weapon
+  defaults to the AR block any more.
+  > ⚠ **Corrected 2026-08-26.** This line previously read "tokens 5/15/16/40/18". **Token 14 is the
+  > fire interval** — bench-proven by a one-field flip; token 15 is an unidentified constant (850 in
+  > every captured frame) and must never be written. **Reserve is token 17**; token 40 is a
+  > half-reserve that every captured frame keeps at `t17 == 2 × t40`. See `docs/weapon-design.md`
+  > appendix for the full written/not-written table.
 - `spawnAmmo(weapon_id) → (mag, reserve)` drives the `$AMMO` frames in `spawn`/`revive` — ammo comes
   from the **selected** weapon, never hardcoded (already true in `gameconfig.py`).
 - **Melee** is always loaded to slot 4 (the app does; `gameconfig.py` matches). Catalog carries it as

@@ -1,5 +1,15 @@
 # Weapon design & balance
 
+> ## 🔴 LIVE BUG IN SHIPPED CONFIG — the Energy Launcher deals **zero damage**
+> Its `$WEAP` key `<t3,t4> = <9,3>` lands on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
+> into **every** game head. Function 24 is a *status* function: it registers a `$HIR` and touches no
+> pool. Bench-measured through the real shipped table, 3/3 trials, **0 damage per hit**
+> (experiment-log 2026-08-26). The weapon is unusable in every game we currently run.
+> Fix options in **§6.2**; it is a bug, not a design question.
+>
+> Four more weapons — **Burst Rifle, Bolt Rifle, AMR** (×2) and **Force Rifle, Sniper Rifle** (×1.25) —
+> deal more than their `t5` for the same reason. Also §6.2.
+
 What our weapons are, why their numbers are what they are, and where every one of them comes from.
 
 **Rewritten 2026-08-26 (second pass).** The first version of this document was built on a
@@ -27,15 +37,19 @@ value here is a number we send in a `$WEAP` frame over BLE.
 Hardware-true, from `brx-protocol.md` §7r and the 2026-08-26 damage experiment:
 
 - The default pool is **115 = 45 HP + 70 armor** (`compile.py`, `health: {max_hp: 45, max_armor: 70}`).
-- **Armor absorbs at face value and spills into HP** — 70 → 46 → 22 → 0, then into HP. No multiplier,
-  no reduction.
+- **Armor absorbs at face value and spills into HP** — 70 → 46 → 22 → 0, then into HP.
+- ⚠ **"No multiplier, no reduction" was true only of the rows we had seen.** The IR work (**§6**)
+  shows the victim's `$SIR` row can multiply the incoming magnitude (×1.25, ×2), bypass armor
+  entirely, or apply it to a pool instead of subtracting it — and that a **shield** pool exists above
+  armor. Everything in §0–§5 assumes a standard-damage row against a shieldless victim.
 - **`t5` is the applied damage, exactly.** `$HIR` token 5 reports it back. Confirmed across four
   weapons on the bench.
 - The stock Assault Rifle deals **9**, not the manual's 24. The manual is stale.
+- Damage drains **shields → armor → HP**; armor overflow spills into shields (§6.1).
 
 | term | formula |
 |---|---|
-| **htk** | `ceil(115 / dmg)` |
+| **htk** | `ceil(115 / dmg)` — see §6.2; this is the raw-`t5` reading and is wrong for five shipped weapons |
 | **cycle** | `t14`, ms between shots (for charge weapons, the charge time) |
 | **TTK** | `(htk-1) × cycle`; charge weapons `htk × cycle`; burst weapons use the burst-average cycle |
 | **burst average** | `(2 × t14 + t23) / 3` — three rounds at `t14` spacing, `t23` between bursts |
@@ -114,6 +128,11 @@ sounds — and moves the numbers.
 ---
 
 ## 2. The rebalance (shipped)
+
+> ⚠ **Read §6.2 with this section.** The table below is computed on raw `t5`. The `$SIR` table MC
+> actually pushes multiplies two of the three subtypes in use, so **five weapons do not deal their
+> `t5`** and four of them fall outside the band once that is applied. The numbers here are correct as
+> *frame* values and as a balance skeleton; they are not the damage that lands.
 
 ### 2.1 Principles
 
@@ -403,18 +422,299 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
-| **U2** | **`t41` range — OPEN with one solid positive**: t41=100 killed at max indoor distance; t41=5 zeros CONTAMINATED by rig degradation (2026-08-26). | the range axis | fresh-fleet same-spot A/B (100 vs 5), counted windows both sides — 10 min. |
+| **U2** | **`t41` range — OPEN with one solid positive**: t41=100 killed at max indoor distance; t41=5 zeros CONTAMINATED by rig degradation (2026-08-26). | the range axis | **IR-instrument A/B** (bench-plan Session 1½a): VS1838B at a fixed distance, `ir-range` detect%/decode% at t41 100 vs 5 + a closing 100 control — no victim gun, ~10 min. Supersedes the two-gun A/B. |
 | **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
-| **U6** | ~~victim behaviour per damage type~~ ✅ **CLOSED 2026-08-26**: mapped types play a distinct victim hit SFX (presentation only); damage is always t5; type echoes in $HIR tok2 (exp-log). | — | done |
-| **U7** | **Damage ceiling in the IR payload** — Jay reports a ~7–8-bit value (≤ 256) (FOLLOWUPS P10). Our max is 115, so nothing is at risk today, but it caps any future double-damage powerup. | future powerups | Confirm on capture. |
+| **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | Confirm the multiplier values with a logged bench entry (U10). |
+| ~~U10~~ | ~~Do the multipliers behave the same through the shipped rows?~~ ✅ **CLOSED 2026-08-26 — yes, identically.** `<0,1>` → 25, `<0,3>` → 40, `<0,0>`/`<8,0>`/`<6,0>` → 20 at magnitude 20; **`<9,3>` → 0**. Full table and the hit-count artifact that hid it: §6.2. | — | done — the fix decision is now open, not the measurement |
+| ~~U11~~ | ~~Which status function is the stun/EMP?~~ ✅ **CLOSED 2026-08-26 — it is function 23.** 5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0`; the fn-1 control never did; it fires under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. `$ALCD` t2 is normally always 100 with the slot preserved, so zeroing t2 *and* the slot is the "live gun, nothing loaded" state. See §6.3. | — | done |
+| **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
 | **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
 
 **Closed since the first pass:** U0 (fire-mode token → `t20`, §4.1) · U3 (`t19` reload type →
 captured, `Shells` on the shotgun) · the burst-token hunt (native burst is `t20 = 9` + `t23`) ·
-`t3` damage type (captured, no longer guessed).
+`t3`/`t4` (captured, no longer guessed — and now known to be the `$SIR` key, **§6**, not just a
+damage-type label).
+
+---
+
+## 6. The `$SIR` layer — damage is a negotiation, not a number
+
+**Added 2026-08-26 (third pass), from the IR-emitter bench sessions.** Everything above this section
+treats a weapon's damage as `t5` and the victim as a passive 115-point pool. That model is now known
+to be incomplete, and in four places actively wrong. This section covers what the IR work opens up
+and what it supersedes.
+
+**Sources.** All of it is bench-measured, in `docs/experiment-log.md` (2026-08-26) and
+`protocol/brx-ir-protocol.md`. The load-bearing entry is **"the COMPLETE two-sided `$SIR` function
+map + crit multiplier + FF enforcement"** — cited below as **[two-sided map]**. It supersedes the
+earlier *"`$SIR` FUNCTION MAP enumerated"* sweep, which fired same-team with FF off and therefore
+silently blocked the entire damage family; the two entries are one experiment run at both
+polarities. Also drawn on: *"THE SPECIAL-WEAPONS TIER IS REAL"* and *"a stock BRX tagger accepted a
+FULLY SYNTHETIC shot"*.
+
+Every function-class result carries a **trailing known-good control**, added after an earlier run
+produced sixteen clean-looking negatives that were a configuration artifact — worth knowing when
+reading any negative result in this area.
+
+### 6.1 The model
+
+The 8-bit field in the IR word we have been calling "damage" is a **magnitude**. What it is applied
+to is decided by the **`$SIR` row** the victim looks up — and that table is ours, pushed over BLE in
+every game head (`gameconfig._SIR_TABLE`, sent by `Compiler.compile()`).
+
+- The row is indexed by the composite key **`<protocol, subtype>`** = `$WEAP` **`t3`,`t4`** =
+  IR-word fields **B**,**U** (`brx-ir-protocol.md`). 4 bits × 2 bits = **64 addressable effect
+  cells**. A hit with no matching row is **silently dropped**.
+- The row's **function** decides the effect: damage, add-HP, add-armor, add-shield, or a status
+  event that touches no pool (experiment-log, *"SPECIAL-WEAPONS TIER"* — *"`D8` is not 'damage' — it
+  is the MAGNITUDE"*).
+- Pools drain **shields → armor → HP**, and armor overflow spills into shields.
+- **Shields are not a BLE-writable pool.** They fill only from an IR function-11 event — which is
+  what closed P16 after `$PSET` shield values had done nothing all session.
+
+So a weapon is a **`<t5, t3, t4>` triple against a table we author**, not a damage number. Two guns
+with identical `t5` can do entirely different things.
+
+### 6.2 ⚠ What this supersedes in this document
+
+Four corrections, in descending order of how much they matter.
+
+**1. §2's balance table is computed on raw `t5`, and five weapons do not deal `t5`.** The table MC
+actually pushes assigns **multiplier functions** to two of the three subtypes in use — `<0,1>` → fn
+36 (**×1.25**) and `<0,3>` → fn 37 (**×2**) **[two-sided map]**. Every weapon whose captured `t4` is 1 or
+3 therefore lands more than its `t5`:
+
+| weapon | t3,t4 | `$SIR` fn | multiplier | t5 | effective | htk shipped | htk real | TTK shipped | **TTK real** |
+|---|---|---|---|---|---|---|---|---|---|
+| Assault Rifle | 0,0 | 1 | standard | 9 | 9 | 13 | 13 | 2.28 | **2.28** |
+| Burst Rifle | 0,3 | 37 | **x2** | 9 | 18 | 13 | 7 | 1.70 | **0.85** ⚠ |
+| Force Rifle | 0,1 | 36 | **x1.25** | 10 | 12.5 | 12 | 10 | 1.65 | **1.35** ⚠ |
+| Bolt Rifle | 0,3 | 37 | **x2** | 13 | 26 | 9 | 5 | 1.80 | **0.90** ⚠ |
+| SMG | 0,0 | 1 | standard | 8 | 8 | 15 | 15 | 1.96 | **1.96** |
+| Shotgun | 0,0 | 1 | standard | 45 | 45 | 3 | 3 | 1.60 | **1.60** |
+| Stinger | 0,0 | 1 | standard | 15 | 15 | 8 | 8 | 1.75 | **1.75** |
+| Sniper Rifle | 0,1 | 36 | **x1.25** | 60 | 75 | 2 | 2 | 1.50 | **1.50** |
+| Plasma Sniper | 0,0 | 1 | standard | 25 | 25 | 5 | 5 | 1.60 | **1.60** |
+| AMR | 0,3 | 37 | **x2** | 24 | 48 | 5 | 3 | 1.60 | **0.80** ⚠ |
+| Suppressor | 0,0 | 1 | standard | 8 | 8 | 15 | 15 | 2.24 | **2.24** |
+| Energy Rifle | 0,0 | 1 | standard | 9 | 9 | 13 | 13 | 2.40 | **2.40** |
+| Charge Rifle | 8,0 | 38 | standard | 100 | 100 | 2 | 2 | 2.50 | **2.50** |
+| Rocket Launcher | 10,0 | 1 | standard | 115 | 115 | 1 | 1 | 0.00 | **0.00** |
+| Rail Gun | 6,0 | 1 | standard | 115 | 115 | 1 | 1 | 1.20 | **1.20** |
+| Laser Cannon | 0,0 | 1 | standard | 115 | 115 | 1 | 1 | 1.50 | **1.50** |
+| Energy Launcher | 9,3 | 24 | **status — no pool change** | 115 | — | 1 | — | 0.00 | **never kills** |
+| Ion Sniper | 0,0 | 1 | standard | 115 | 115 | 1 | 1 | 0.00 | **0.00** |
+
+**Four weapons fall out of the 1.5–3.5 s band once the multiplier is applied**, and the Energy
+Launcher's cell `<9,3>` maps to **fn 24 — a status function that changes no pool**, so as shipped it
+**does no damage at all**. The `htk`/`ttk_ms` fields in `weapons.json` and the band/dominance test in
+`test_mc_compile.py` all use raw `t5` and are wrong for those five rows.
+
+**✅ CONFIRMED ON HARDWARE through the real shipped table** (experiment-log 2026-08-26; the real
+`_SIR_TABLE` pushed verbatim, one IR word per row, three trials each, `hits == 1` verified on every
+trial, trailing known-good control passed):
+
+| shipped row | function | magnitude 20 lands as | weapons on that key |
+|---|---|---|---|
+| `<0,0>` | 1 | **20** (×1) | the other 12 weapons |
+| `<0,1>` | 36 | **25** (×1.25) | Force Rifle, Sniper Rifle |
+| `<0,3>` | 37 | **40** (×2) | Burst Rifle, Bolt Rifle, AMR |
+| `<8,0>` | 38 | **20** (×1) | Charge Rifle |
+| `<6,0>` | 1 | **20** (×1) | Rail Gun |
+| `<9,3>` | 24 | **0 — no damage at all** | **Energy Launcher** |
+
+The multipliers behave identically through the shipped rows as through the synthetic protocol-5 row
+they were first measured on, so the table above is the effective-damage table for the shipped game.
+
+> ⚠ **A measurement artifact worth remembering.** The first pass read the Burst Rifle as unaffected.
+> It was not — the trial had counted *registered hits* rather than per-hit damage, and a ×2 multiplier
+> is indistinguishable from two registered hits unless you check `hits == 1`. Bolt and AMR registered
+> twice and looked wrong; Burst registered once and looked fine. Same bug, opposite appearance.
+
+**Two fixes, and they are not independent.**
+
+1. **Flatten `_SIR_TABLE` to fn 1** everywhere and make multipliers an explicit opt-in per-game
+   modifier. This also fixes the Energy Launcher for free, since `<9,3>` would become a damage row.
+2. **Retune `t5`** for the five multiplied weapons and separately move the Energy Launcher off `<9,3>`
+   (an `overrides` entry on `t3`/`t4`), or change that row's function.
+
+**The recommendation is flatten**, and the deciding argument is asymmetry: flattening restores exactly
+the §2 numbers, which are *already* band-checked and dominance-checked, so it costs **zero retune**.
+Retuning means recomputing five weapons and re-running the dominance check with multipliers folded in —
+and leaves a weapon's real damage depending on *the other player's* config, which is a nasty class of
+bug and invisible to every balance tool we have (`htk`, `ttk_ms` and the band/dominance tests all
+compute on raw `t5`).
+
+**Not applied here.** The Energy Launcher is a bug and must be fixed either way; *which* fix is right
+depends on the flatten decision, so doing it now risks doing it twice. Tony's call — the numbers are
+in.
+
+### 6.2b The worse bug: `validate()` passed it
+
+Before the bench found it, an Energy Launcher loadout returned this from `Compiler.validate()`:
+
+```
+{'ok': True, 'errors': [], 'warnings': []}
+```
+
+A weapon that provably cannot kill anyone armed a live game with **no signal at all** — from the very
+function whose job is to catch that. The `mag ≥ htk` invariant computes on raw `t5`, and the Energy
+Launcher satisfies it (htk 1, mag 2) while dealing nothing. That blind spot is arguably worse than the
+bug it missed.
+
+The root cause is a modelling error, not a missing rule: **damage is a property of the
+`(weapon, $SIR table)` pair, never of the weapon alone.** Every tool we had validated the weapon in
+isolation, so the entire class was invisible.
+
+`validate()` now cross-checks each loadout weapon's `<t3,t4>` against the table MC is about to push
+and warns on three cases:
+
+| case | signature | why it matters |
+|---|---|---|
+| **no row** for that key | every hit **silently dropped** | the quietest failure of the three — it looks exactly like the hardware refusing, and cost several wasted bench trials |
+| function in the **no-pool** family | registers a `$HIR`, moves nothing | the Energy Launcher |
+| function is a **multiplier** (36/37) | lands ×1.25 or ×2 | not broken, but `htk`/`ttk_ms` in `weapons.json` are computed on raw `t5` and are wrong for that weapon |
+
+> ⚠ **Warning-only, deliberately and temporarily.** It cannot be an error while the Energy Launcher is
+> still broken, because no clean pass exists. **Promote the first two cases to errors in the same
+> commit that fixes it** — the code comment and the test name (`..._is_WARNING_ONLY_promote_to_error_
+> with_the_energy_launcher_fix`) both carry the reminder. Under flatten the multiplier warning goes
+> quiet on its own; under retune it is the prompt to recompute the published numbers.
+
+**2. §0's "no multiplier, no reduction" is wrong.** It holds only for a standard-damage row against a
+shieldless victim. The full expression is:
+
+```
+applied = t5 × (row multiplier for <t3,t4>) × (1.5 if crit)   → drains shields, then armor, then HP
+                                                              ...unless the row is armor-piercing,
+                                                              which goes straight to HP
+```
+
+**3. `htk = ceil(115 / dmg)` assumes a standard row, no crit, no shields, and armor present.** Against
+an armor-piercing row the effective pool is **45 (HP only)**; against a shielded target it is larger
+than 115. The `mag ≥ htk` invariant in `validate()` uses the raw-`t5` reading, which is the
+*conservative* direction for standard weapons (it over-estimates htk) but **under**-estimates it for
+armor-piercing — worth revisiting if AP ever ships.
+
+**4. §5's U6 was closed too strongly.** It was marked resolved on 2026-08-26 with *"mapped types play
+a distinct victim hit SFX (presentation only); **damage is always t5**"*. The hit-SFX half is right and
+stands. The parenthetical does not: `t3`/`t4` are the `$SIR` lookup key, and the table we push maps two
+of the three subtypes in use to multiplier functions, so damage is `t5 × the row's multiplier`. That
+earlier test was not wrong — every row it exercised happened to be a standard-damage row (`<0,0>`,
+`<10,0>`, `<6,0>`), which is precisely the set for which "damage is always t5" holds. U6 is re-opened
+in §5 as **U10**.
+
+One thing this *vindicates*: the first pass recommended reverting every weapon's `t4` to 0 because the
+field was unpinned. We never did — re-basing on captured frames preserved it — and `t4` turns out to
+be half the `$SIR` key. Reverting it would have collapsed three distinct effect classes into one.
+
+### 6.3 New weapon axes
+
+Five levers that did not exist in the model above.
+
+**Armor-piercing — a real defensive-layer bypass.** Functions **2, 6** (and **17, 21** on their enemy
+side) hit HP directly: measured **HP 45 → 25 → 5 with armor untouched at 70** **[two-sided map]**. That turns armor from a flat +70 into
+something a weapon class can be built to ignore, and it makes the effective pool weapon-dependent:
+115 for a standard weapon, **45** for an AP one. An AP weapon wants a *lower* `t5` than its TTK
+suggests. Natural fits: the AMR (already `armor-piercing` in its `t3` semantics), the Rail Gun
+(`t3 = 6`), and a dedicated anti-armor pickup.
+
+**Damage multipliers live victim-side.** Fn 36 (×1.25) and 37 (×2) **[two-sided map]** mean a weapon's
+punch can be changed **without touching its frame** — by pushing a different `$SIR` table. That is a
+per-game modifier surface: a "hardcore" table where everything is ×2, a "juggernaut" table where one
+player's protocol is ×0.5. It is also a trap (see §6.2) — the multiplier is invisible at the weapon.
+
+**Dual-polarity weapons: one row, two behaviours.** Functions **16, 17, 20, 21, 22, 23** heal allies
+and damage enemies **[two-sided map]**. This is not a fire-mode toggle and needs no host logic: the same
+emitted word does opposite things depending on the target's team. A "flux beam" — point at a
+teammate to top them up, at an enemy to hurt them — is **one table row**.
+
+It composes with the firmware's own friend/foe gating. Support functions (10/11/13) register **only
+from a same-team source** — heal fired at an enemy is silently dropped (experiment-log,
+*"SPECIAL-WEAPONS TIER"*: 3/3 same-team, 0/N cross-team) — while **damage is not team-gated at all**
+(bench exp 4). `$GSET` token 1 is firmware-enforced, replicated with alternating values **[two-sided map]**:
+
+| `$GSET` t1 | damage same-team | damage enemy | heal from ally | heal from enemy |
+|---|---|---|---|---|
+| **0** (FF off) | **blocked** | lands | lands | **blocked** |
+| **1** (FF on) | lands | lands | lands | lands |
+
+(This also reconciles bench exp 4, which recorded "FF is not firmware-enforced": that run was at
+**t1 = 1** and saw same-team damage land — exactly this table's second row. The evidence agreed all
+along; only the generalisation to t1 = 0 was unsupported.) **A medic gun enforces "allies only" in hardware, with zero host
+logic.**
+
+**Crit is a live mechanic.** The IR word's **C** bit is emittable and echoes on `$HIR` tok6
+(`brx-ir-protocol.md`, bench-verified) — **×1.5 damage**, replicated with alternating legs: at
+magnitude 20, `crit=0` gave per-hit armor deltas of 20 and `crit=1` gave 30 **[two-sided map]**. It reads 0 on every stock
+weapon: not dead, just never set. That is a whole unused axis — a weapon with a crit chance, a
+headshot bonus (recall `$HIR` tok1 == 1 is a headset hit, §7r), or a "marked target" perk. Note the
+existing `$GSET` `criticalShotModifier` (50 in our config) may interact; untested.
+
+**Three overflow flavours make support weapons distinct.** The add-HP functions differ *only* in
+where the overflow goes — **nowhere** (10, 17), **into armor** (9, 12, 16, 19), or **into shields**
+(14, 21) (experiment-log, *"FUNCTION MAP enumerated"*). That is a genuine class distinction rather
+than a number tweak:
+
+| medic type | function | what a full-health ally gets |
+|---|---|---|
+| **Field medic** | 10 | nothing — pure top-up, no waste, no reward for overhealing |
+| **Armorer** | 9 / 12 / 16 / 19 | plate: healthy allies gain armor |
+| **Overshielder** | 14 / 21 | overshield: healthy allies gain a shield buffer that drains first |
+
+Plus **fn 13/15/20/22** (armor only), **fn 11** (shields only — the sole way shields enter the game),
+and **fn 18**, which grants shields *at a cost of 4 HP* — a conversion, and the most interesting
+single row in the table for a risk/reward support weapon.
+
+**Status effects — one now has an observable effect.** A whole family registers a `$HIR` and moves no
+pool: enemy-side **3, 8, 23, 24, 25, 26, 27, 28, 35**; friendly-side **31, 32, 34** **[two-sided map]**.
+These are the stun/EMP candidates, and until now the problem was that a stun looks identical to an inert
+row from the host side, because the effect is on the victim's *ability to fire*.
+
+**✅ Function 23 is a weapon disable — the EMP is real** (experiment-log 2026-08-26). Enemy-side fn 23
+strips the victim's gun to unloaded: **5/5 reps** produced `$ALCD,0,0,0,0,0`, the fn-1 control never
+did, and it fires under **protocols 0/5/7/10 alike** — so the effect belongs to the *function*, not the
+protocol. `$ALCD` token 2 is normally **always 100** with the slot preserved (a merely-dry gun reads
+`0,100,<slot>,<reserve>,0`), so zeroing token 2 *and* the slot is the "live gun with nothing loaded"
+state: it cannot fire.
+
+Design consequences:
+
+- **`$SIR,<proto>,<sub>,,23` is an EMP.** Author it on **protocol 7** to keep it off the damage
+  protocols, and any weapon keyed to that cell becomes a disabler.
+- **Recovery is host-driven** — no self-recovery observed in 25 s. The victim comes back by
+  re-pushing `$AMMO`, which means **the stun duration is ours to set**, per game, in software.
+- Weapon category 10 ("Stun") from the APK is now buildable, and `$STUN`-over-BLE being a proven
+  no-op stops mattering: the effect was always meant to arrive over IR, not over the serial link.
+- **Inference (untested):** a disable that empties the magazine should compose with the ammo economy
+  in §2 — a stunned player is not just idle, they have burned a reload. Worth confirming before any
+  mode leans on it.
+
+Two clean negatives worth carrying **[two-sided map]**: **all 16 protocols accept damage** given a fn-1
+row, so there is no protocol whitelist and the 4-bit field is not a scarce resource; and the **`$SIR`
+row parameters p5–p8 do not scale damage** — five different shapes all landed exactly the magnitude.
+Whatever those parameters do, it is not a multiplier.
+
+### 6.4 What a weapon is now
+
+The design space widened from one number to five independent choices:
+
+| choice | token / field | what it decides |
+|---|---|---|
+| magnitude | `$WEAP` `t5` | how much |
+| effect class | `$SIR` row function for `<t3,t4>` | damage / AP / multiplied / heal / armor / shield / status |
+| polarity | function (dual-polarity set) | whether allies and enemies get different outcomes |
+| crit | IR word **C** bit | ×1.5, per shot, ours to set |
+| fire behaviour | `$WEAP` `t20`, `t23`, `t24`, `t37`/`t38` | full-auto / single / burst / charge / overheat |
+
+None of it needs a Companion or host logic in the loop — the tagger applies the effect natively from
+a table we wrote at game start. The practical consequence for this document is that **§2's single-axis
+balance (damage × cadence × ammo) is now the *floor* of the design, not its ceiling**, and the next
+rebalance should treat the `$SIR` table as a first-class part of a weapon's definition rather than a
+fixed backdrop.
 
 ---
 
@@ -431,6 +731,7 @@ captured, `Shells` on the shotgun) · the burst-token hunt (native burst is `t20
 | `t17` / `t40` | reserve / reserve-half | ✅ always, kept at `t17 == 2 × t40` |
 | `t18` | reload ms | ✅ always |
 | `t15` | the constant **850** in every captured frame | ❌ **never** — unidentified |
-| `t3` `t4` `t19` `t20` `t23` `t24` `t25` `t26` `t27–36` `t41` `t42` | damage type, power type, reload type, **fire mode**, burst, overheat, muzzle flash, all sounds, ranges | ❌ inherited from the capture |
+| `t3` `t4` | the **`$SIR` composite key** — selects the victim-side effect, including multipliers (§6) | ❌ inherited from the capture |
+| `t19` `t20` `t23` `t24` `t25` `t26` `t27–36` `t41` `t42` | reload type, **fire mode**, burst, overheat, muzzle flash, all sounds, ranges | ❌ inherited from the capture |
 | declared `overrides` | one named token per entry, with a stated reason (§3.2) | ✅ where declared |
 | `t7–t13` | secondary fire | ❌ empty on all twenty stock weapons — no BRX weapon has an alt-fire |

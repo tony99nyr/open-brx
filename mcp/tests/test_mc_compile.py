@@ -348,6 +348,55 @@ def test_mag_invariant_reports_each_weapon_once_per_pool():
     assert len(errs) == 1, errs
 
 
+# ---- $SIR effect guard (weapon-design.md §6.2) -----------------------------
+def test_sir_effect_guard_is_WARNING_ONLY_promote_to_error_with_the_energy_launcher_fix():
+    """⚠ INTENTIONALLY A WARNING, TEMPORARILY.
+
+    A weapon's damage is a property of the (weapon, `$SIR` table) PAIR — its `<t3,t4>` keys a row
+    whose FUNCTION decides what the IR magnitude does. The Energy Launcher keys `$SIR,9,3,,24`, a
+    status row, and deals ZERO damage in every game we ship — while passing the mag>=htk invariant
+    clean, because that computes on raw t5.
+
+    Promote the missing-row and no-pool cases to ERRORS in the same commit that fixes the Energy
+    Launcher (flatten `_SIR_TABLE` to fn 1, or move the weapon off `<9,3>`), when a clean pass is
+    achievable. This test name is the reminder; rename it when you do.
+    """
+    r = C.validate(_cfg(), [_player(weapons=("energy_launcher",))])
+    assert r["ok"] is True, "warning-only for now — promote with the Energy Launcher fix"
+    assert not r["errors"]
+    assert any("DEALS NO DAMAGE" in w and "energy_launcher" in w for w in r["warnings"]), r["warnings"]
+
+
+def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
+    r = C.validate(_cfg(), [_player(weapons=("burst_rifle", "sniper_rifle"))])
+    warns = " ".join(r["warnings"])
+    assert "burst_rifle" in warns and "2.0x" in warns, r["warnings"]      # $SIR <0,3> -> fn 37
+    assert "sniper_rifle" in warns and "1.25x" in warns, r["warnings"]    # $SIR <0,1> -> fn 36
+
+
+def test_sir_guard_stays_quiet_for_plain_damage_weapons():
+    r = C.validate(_cfg(), [_player(weapons=("assault_rifle", "shotgun"))])
+    assert not any("$SIR" in w for w in r["warnings"]), r["warnings"]
+
+
+def test_sir_guard_flags_a_weapon_with_no_row_at_all():
+    """The quietest failure of the lot: no row means every hit is silently dropped."""
+    orphan = WeaponCatalog(rows=[{"weapon_id": "orphan", "name": "Orphan", "cls": 0, "mag": 8,
+                                  "reserve": 8, "reload_ms": 1000, "dmg": 1, "rof": 1, "rng": 1,
+                                  "capture": {"src": "t.btsnoop",
+                                              "frame": "$WEAP,0,,100,4,2,40,0,,,,,,,,300,850,8,8,1000,"
+                                                       "0,7,100,100,,0,,,S16,,,,D04,D03,D02,D18,,,,,"
+                                                       "8,4,75,*"}}])
+    r = Compiler(orphan).validate(_cfg(), [_player(weapons=("orphan",))])
+    assert any("NO ROW" in w for w in r["warnings"]), r["warnings"]
+
+
+def test_sir_guard_reports_each_weapon_once():
+    a, b = _player(num=7, weapons=("energy_launcher",)), _player(num=8, weapons=("energy_launcher",))
+    warns = [w for w in C.validate(_cfg(), [a, b])["warnings"] if "energy_launcher" in w]
+    assert len(warns) == 1, warns
+
+
 # ---- medals ---------------------------------------------------------------
 def test_award_medals_basic():
     rows = [

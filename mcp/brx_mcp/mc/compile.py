@@ -20,6 +20,27 @@ from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team,
 
 VOL_PLAY = 69  # house rule — 30 is inaudible for game audio
 
+# ---- $SIR effect classes (bench-measured 2026-08-26; experiment-log "the COMPLETE two-sided $SIR
+# function map + crit multiplier + FF enforcement"). A weapon's <t3,t4> is the composite key into the
+# $SIR table MC pushes in every game head, and the ROW'S FUNCTION decides what the IR word's magnitude
+# does. So damage is a property of the (weapon, table) PAIR, never of the weapon alone.
+_SIR_NO_POOL = frozenset({3, 8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})  # registers a $HIR, moves no pool
+_SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                                     # lands t5 x this
+
+
+def _sir_index(table) -> dict[tuple[str, str], int]:
+    """`$SIR,<proto>,<sub>,<snd>,<fn>,...` → {(proto, sub): fn}."""
+    out: dict[tuple[str, str], int] = {}
+    for row in table:
+        t = row.strip().lstrip("$").rstrip("*").rstrip(",").split(",")
+        if len(t) > 4 and t[0] == "SIR":
+            try:
+                out[(t[1] or "0", t[2] or "0")] = int(t[4])
+            except ValueError:
+                continue
+    return out
+
+
 # $WEAP full-frame token indices (0-based over the comma-split of "$WEAP,<slot>,<tail>"),
 # protocol-classes §WEAP: 5=primaryDamage, 15=rateOfFire, 16=maxClip, 18=reloadSpeed(ms),
 # 39=clipStartingAmmo, 40=ammoReserv, 41=gunRange%.
@@ -149,9 +170,15 @@ class WeaponCatalog:
         return idx
 
     def damage(self, weapon_id: str) -> int:
-        """Per-hit damage the gun will actually apply — `$HIR` token 5 is this value (§7r). Provisional
-        weapons carry it in `wire.dmg`; verified ones have no wire block, so read it back out of their
-        captured tail rather than treating them as unknown."""
+        """The weapon's `$WEAP` t5 — the MAGNITUDE it emits, which is NOT always what lands.
+
+        ⚠ The victim's `$SIR` row for this weapon's `<t3,t4>` decides what the magnitude does: a
+        multiplier row lands t5 x 1.25 or x 2, a status row lands nothing, and a missing row drops the
+        hit entirely (bench 2026-08-26; docs/weapon-design.md §6.2). `validate()` warns about all three.
+        For plain damage rows — the majority — this is the applied damage and `$HIR` token 5 echoes it.
+
+        Rebalanced weapons carry it in `wire.dmg`; untuned ones read it back out of their captured
+        frame rather than being treated as unknown."""
         w = self._row(weapon_id)
         dmg = (w.get("wire") or {}).get("dmg")
         if dmg:
@@ -162,8 +189,12 @@ class WeaponCatalog:
             return 0
 
     def hits_to_kill(self, weapon_id: str, pool: int) -> int:
-        """Hits to drop a `pool`-point target (hp + armor). Armor absorbs at face value and spills into
-        HP — no multiplier — bench-verified §7r. 0 = damage unknown, caller should skip."""
+        """Hits to drop a `pool`-point target (hp + armor), computed on RAW t5.
+
+        Armor absorbs at face value and spills into HP (bench §7r). ⚠ Two things this does not model,
+        both bench-proven 2026-08-26 (docs/weapon-design.md §6): a `$SIR` multiplier row (this
+        over-estimates htk for the five weapons keyed to fn 36/37), and the SHIELD pool, which sits
+        above armor and is granted only by an IR function-11 event. 0 = damage unknown, caller skips."""
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
@@ -366,6 +397,42 @@ class Compiler:
                     errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
                                   f"{self.catalog.damage(wid)} dmg vs {pool} pool "
                                   f"(docs/weapon-design.md §2.1)")
+
+        # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
+        # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy
+        # Launcher (mag 2, htk 1) that lands on $SIR,9,3,,24 — a status row — and deals ZERO damage
+        # in every game we ship. Validating the weapon alone is not enough; the effect lives in the
+        # (weapon, table) pair. Bench-confirmed 2026-08-26, see docs/weapon-design.md §6.2.
+        #
+        # ⚠ WARNING-ONLY BY DESIGN, TEMPORARILY. Promote the first two cases to `errors` in the SAME
+        # commit that fixes the Energy Launcher (flatten _SIR_TABLE to fn 1, or move the weapon off
+        # <9,3>) — at that point a clean pass is achievable. It must not sit here as a permanent
+        # warning; the test name records the intent.
+        sir = _sir_index(_SIR_TABLE)
+        T = self.catalog._T
+        flagged: set[str] = set()
+        for p in roster:
+            for w in (p.get("loadout", {}) or {}).get("weapons", []):
+                wid = w.get("weapon_id")
+                if wid not in self.catalog._by_id or wid in flagged:
+                    continue
+                frame = self.catalog.resolve(wid, 0).split(",")
+                key = (frame[T["proto"] + 1] or "0", frame[T["subtype"] + 1] or "0")
+                fn = sir.get(key)
+                if fn is None:
+                    flagged.add(wid)
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} — NO ROW in the pushed table, so "
+                                    f"every hit is silently dropped (weapon-design.md §6.2)")
+                elif fn in _SIR_NO_POOL:
+                    flagged.add(wid)
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
+                                    f"hit but moves no pool: the weapon DEALS NO DAMAGE (weapon-design.md §6.2)")
+                elif fn in _SIR_MULTIPLIER:
+                    flagged.add(wid)
+                    mult = _SIR_MULTIPLIER[fn]
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}: it lands "
+                                    f"{mult}x its $WEAP t5, so the published htk/ttk_ms (computed on raw t5) "
+                                    f"are wrong for it (weapon-design.md §6.2)")
 
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
         if (config.get("scoring", {}).get("frag_limit") or 0) > 0 and not covered:
