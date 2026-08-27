@@ -1,6 +1,33 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-08-26, end of the marathon Windows/WSL bench + build session. Read `CLAUDE.md`
+**Updated:** 2026-08-27. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
+lore, indexed by symptom; several of those quirks each cost a whole session.
+[`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it;
+[`docs/bench-next-30.md`](bench-next-30.md) is the next session.
+
+> **⚡ 2026-08-27 — a live Supremacy session, and four retractions.**
+> - **K3 CLOSED — the death nova is CAPTURED**: `proto=10 (StandardLethalExplosive), MAG=125,
+>   player/team = the DYING player`. Out-damages the Rocket Launcher, **credits kills to the corpse**
+>   (MC's scorer must expect a `$HIR` naming someone already dead). Replayable from any emitter.
+> - **`$SIR` fn 23 is AUDIO SUPPRESSION, not a stun** — the gun keeps firing and keeps emitting IR, it
+>   just goes silent for ~6–8 s. **`$ALCD` token 2 is the gun's AUDIO LEVEL**, not a ready flag.
+>   **U11 is REOPENED; category 10 "Stun" is still unbuilt.**
+> - **WITHDRAWN: "fns 24–27 deal damage"** (did not reproduce) and **"the function map is
+>   protocol-dependent"** (it is not — identical on 5 and 7).
+> - **`$SIR` functions carry their own victim AUDIO** even with an empty sound column: electrical (3),
+>   shotgun (24), growing hiss (25/26), normal AR (27), gas hiss (28).
+> - **Enum anchors 7 and 8**: the charge weapon emits **protocol 8** (Shrapnel) *alongside* protocol 0 —
+>   a native weapon emits **two protocols per trigger pull** — and the death nova emits **protocol 10**.
+> - **Headset LEDs are autonomous**: **rainbow = disconnected** (now Muster step 0 — a free pre-game gate
+>   for B18b), team colour **pre-game only**, **dark during play is normal**, green blinks on hit / holds
+>   on kill.
+> - **⚠ The stun may not be findable by sweeping.** The effect of an IR hit is decided by the **victim's
+>   `$SIR` row**, not the shooter's word — and a stun that only stops the victim's trigger moves no pool
+>   and emits no BLE frame, so it is invisible to every instrument we have. It needs a human on the
+>   trigger, one candidate at a time.
+> - **`$GREN` is NOT a programmable emitter** — its emission does not track its arguments.
+
+**(Previous header)** 2026-08-26, end of the marathon Windows/WSL bench + build session. Read `CLAUDE.md`
 first, then this, then `docs/FOLLOWUPS.md` (all open work incl. the polish-loop deferred-lows
 ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth:
 `protocol/brx-protocol.md` (§6.1 + the t20/overheat/tok1 sections at the end).
