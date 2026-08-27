@@ -555,3 +555,32 @@ test('A10: catalog + policy survive a persisted reload and a welcome re-hydrate'
   e2.hydrate({ player: h.player, catalog: { weapons: [], perks: [] }, policy: { ...POL, hud_select: false } });
   assert.equal(e2.policy.hud_select, false); assert.equal(e2.catalog.weapons.length, 0);
 });
+
+
+test('A10 §4.1/§4.6: kit_open false → setting-up (no picks); flip true → BRIEFING until BUILD MY KIT; assign.game reaches state', () => {
+  const GAME = { name: 'Silenced Sniper', mode: 'ffa', abbr: 'FFA', loadout_line: 'Everyone carries the Sniper Rifle.', ruleset: 'CUSTOM RULES', hud_select: true };
+  const h = kitA10({ ...POL, kit_open: false });
+  let st = h.eng.state();
+  assert.equal(st.kitOpen, false); assert.equal(st.canPickPrimary, false, 'no picks while MC is setting up');
+  assert.equal(h.eng.requestLoadout('primary', 'weapon', 'smg'), false);
+  assert.equal(h.reports.filter(x => x.k === 'loadout_request').length, 0);
+  h.eng.closeBriefing();                                    // a stale "seen" from an earlier game must not skip the new briefing
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: null, roster: [], policy: { ...POL, kit_open: true }, game: GAME } });
+  st = h.eng.state();
+  assert.equal(st.kitOpen, true); assert.equal(st.briefSeen, false, 'kit just opened → BRIEFING shows'); assert.equal(st.game.name, 'Silenced Sniper');
+  assert.ok(st.canPickPrimary, 'picks allowed once the kit is open');
+  h.eng.closeBriefing(); assert.equal(h.eng.state().briefSeen, true);
+  h.eng.openBriefing(); assert.equal(h.eng.state().briefSeen, false, 'BRIEFING button reopens it');
+  h.eng.closeBriefing();
+  // MC goes back to setting up (host returned to GAMES): browser closes, no picks; re-opening shows the briefing again
+  h.eng.browse(true);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: null, roster: [], policy: { ...POL, kit_open: false }, game: GAME } });
+  assert.equal(h.eng.state().browsing, false); assert.equal(h.eng.state().canPickPrimary, false);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: null, roster: [], policy: { ...POL, kit_open: true }, game: GAME } });
+  assert.equal(h.eng.state().briefSeen, false);
+});
+
+test('A10 §4.1: a policy without kit_open (older MC) leaves the kit open', () => {
+  const h = kitA10(POL);
+  assert.equal(h.eng.state().kitOpen, true); assert.ok(h.eng.canPick('primary'));
+});

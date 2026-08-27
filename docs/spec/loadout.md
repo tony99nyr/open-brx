@@ -116,11 +116,18 @@ assign { player, team, roster,
          catalog: { weapons: WeaponView[], perks: PerkView[] },     // visible rows only; sent on every assign (≈8 KB)
          policy:  { hud_select, primary: { choice, allowed_ids }, secondary: { choice, kinds, allowed_weapon_ids, allowed_perk_ids } } }
 ```
+`policy` also carries **`kit_open: boolean`** — true only while the host is on **KIT** and the lobby is not pushed
+(Tony, 2026-08-27: phones show "Mission Control is setting up the game" until the game is chosen; then the kit
+editor unlocks). MC re-sends `assign` to every bound node whenever the flag flips. `assign` also carries
+**`game`** (§4.6) — what the BRIEFING screen shows.
+
 ### 4.2 `loadout_request` (node → MC) — NEW `NODE_KINDS` entry
 ```jsonc
 loadout_request { node_id, player_id, slot: "primary"|"secondary", kind: "weapon"|"perk"|"none", id?: string, try?: boolean }
 ```
-- MC validates against the policy (slot `choice == "player"`, `hud_select`, id in pool, `kind:"none"` only on secondary).
+- MC validates against the policy (slot `choice == "player"`, `hud_select`, id in pool, `kind:"none"` only on secondary)
+  **and `kit_open`** — before KIT the reason is "Mission Control is still setting up the game"; after the push,
+  "Try-outs are closed — the game has been pushed to the guns".
 - OK → applies to `Player.loadout`, re-sends `assign`, and if `try` (weapons only) starts the **existing** try-out
   (`tutorial` push, `kit.trying[pid] = id`). A try on a player already trying replaces it.
 - Reply always: **`loadout_ack`** (MC → node, NEW `MC_KINDS` entry) `{ slot, ok: boolean, reason?: string, loadout }` —
@@ -147,8 +154,37 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
   **Tap a row = equip** (sends `loadout_request`, row shows ✓ on `loadout_ack`); perks equip on tap, no try.
 - Try-out panel (existing) gains `DONE` → back to the browser. READY UP works from KITTED as before.
 
+### 4.6 Phone: setting-up → BRIEFING → kit editor (Tony, 2026-08-27)
+```jsonc
+assign.game { name, desc,                       // saved-game name/desc when the live config matches one, else the stock mode
+              mode, mode_name, abbr, teams_text, win_text, respawn_text,
+              time_limit_s, respawn, health, environment, night,
+              loadout_line,                     // one human sentence: "You pick your primary (13 to choose from), slot 2: a second weapon or a perk."
+              ruleset, hud_select }             // preset label (OPEN / NO HEAVIES / …) + whether phones may pick
+```
+- **`kit_open:false`** (ARMORY / GAMES): the KITTED screen shows **"MISSION CONTROL IS SETTING UP THE GAME"** —
+  name + number + gun, no plates, no READY UP. Calm, not an error.
+- **flip to `kit_open:true`**: a **BRIEFING** screen — the game's name big, the mode art, `desc`, the rule lines
+  (teams · win · respawn · time · HP/armor · venue) and the `loadout_line` — read at the player's own pace, with one
+  button **`BUILD MY KIT ▸`** that reveals the slot plates + READY UP (§4.5). A `BRIEFING` button on the KITTED
+  screen reopens it any time. Locked rulesets (`hud_select:false` / fixed slots) still get the briefing; the button
+  reads **`SEE MY KIT ▸`** and the plates are padlocked.
+- Mode art on the phone: downscaled copies of `webapp/mc/public/assets/modes/*.jpg` in `app/www/assets/modes/`.
+
 ## 5. MC screens
-- **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,
+- **GAMES** (replaces BUILD in the stepper; Tony 2026-08-27 — "pick tonight's game" is a different job from
+  "define a game"): `YOUR GAMES` row (saved cards: name, base-mode art, one-line summary, EDIT / DUPLICATE; `+ CREATE
+  A GAME`) and `STOCK MODES` row (TDM / FFA / … with defaults; CUSTOMIZE opens the designer with that base). Tap a
+  card → it is the game; a summary panel shows what players get; **VENUE** chips (indoor/outdoor, night — about
+  where you play, not saved into the game; re-asserted after a game is applied); `CONTINUE ▸` to KIT. No forms.
+- **GAME DESIGNER** (a full-width page opened from GAMES via CREATE / EDIT / CUSTOMIZE — authoring, not a phase):
+  one scrolling page — BASE (mode) → RULES (teams, time, score, respawn, health) → LOADOUT (PRIMARY / SECONDARY as
+  two columns: who picks, the allowed pool as a tappable weapon grid with class quick-filters, fixed pick, perks) →
+  NAME & NOTES — with a sticky summary rail (reads like the card will) holding `SAVE` / `SAVE AS NEW` / `PLAY THIS
+  NOW ▸` (saves and jumps to KIT). Edits a DRAFT: nothing touches the live config until PLAY. Pool preview for the
+  draft comes from `POST /api/loadout/pool` (same rule engine). OPEN / NO HEAVIES / SNIPERS are starting templates
+  inside the designer, not match-night choices.
+- *(superseded)* **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,
   `PLAYERS PICK ON PHONE` toggle, per-slot rows (choice Seg + pool summary "15 OF 18 · NO HEAVIES" + fixed picker),
   CUSTOM exposes tag chips + per-weapon include/exclude.
 - **KIT** — roster rows: live state (`PICKING…` / `TRYING SMG` / `READY ✓`) + two loadout chips. Detail: identity

@@ -226,6 +226,20 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except ValueError as e:
             return _err(str(e))
 
+    async def loadout_pool_preview(req):
+        """A10 §5 designer: the pool a DRAFT `loadout_policy` would allow — same rule engine as `State.loadout_pool`,
+        nothing applied. Body `{loadout_policy}` (partial ok: merged onto the mode's default policy)."""
+        from . import policy as _policy
+        b = await body(req)
+        try:
+            pol = _policy.merge(_policy.default_policy(b.get("mode") or s.config.get("mode", "tdm")), b.get("loadout_policy") or {})
+            weapons = [w for w in s.compiler.weapon_catalog() if not w.get("hidden")]
+            pc = getattr(s.compiler, "perk_catalog", None)
+            perks = list(pc()) if callable(pc) else []
+            return JSONResponse({"policy": pol, "pool": _policy.pool(pol, weapons, perks)})
+        except ValueError as e:
+            return _err(str(e))
+
     async def perks(_):
         """A10: visible perks (loadout.md §1.2) — `PerkView[]`."""
         pc = getattr(s.compiler, "perk_catalog", None)
@@ -428,6 +442,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/modes", modes),
         Route("/api/weapons", weapons),
         Route("/api/perks", perks),
+        Route("/api/loadout/pool", loadout_pool_preview, methods=["POST"]),
         Route("/api/presets", presets_list),
         Route("/api/presets", presets_create, methods=["POST"]),
         Route("/api/presets/{pid}", presets_update, methods=["PUT"]),

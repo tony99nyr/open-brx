@@ -194,6 +194,9 @@ export interface Api {
   savePreset(p: { name: string; desc?: string; config?: GameConfig; replace?: boolean }): Promise<SavedGame>;
   deletePreset(id: string): Promise<void>;
   applyPreset(id: string): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
+  updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame>;
+  /** preview the pool a DRAFT policy would allow (designer) — same rule engine, nothing applied */
+  previewPool(policy: Partial<LoadoutPolicy>, mode?: string): Promise<{ policy: LoadoutPolicy; pool: LoadoutPool }>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;

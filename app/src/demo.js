@@ -9,12 +9,14 @@ import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the
 // ?demo&kit&locked policy host/fixed — the padlock states
 // ?demo&kit&reject the fake MC refuses every pick ("Host locked this slot") — the red reason chip
 // ?demo&kit&night  night theme
+// ?demo&kit&setup  kit_open false — "MISSION CONTROL IS SETTING UP THE GAME" (flips open after 7 s so the reveal can be watched)
+// ?demo&kit&brief  lands on the BRIEFING (the default ?demo variants auto-dismiss it so the plates/browser are reachable)
 export function startDemo({ engine, log }) {
   const frames = [];
   engine.writer = fr => { frames.push(...fr); log(`demo gun ← ${fr.length} frame(s)`, 'lr'); };
   engine.now = () => Date.now(); engine.isSynced = () => true;
   const q = (typeof location !== 'undefined') ? new URLSearchParams(location.search) : new URLSearchParams('');
-  const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject');
+  const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
   const player = { player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: 'blue', node_id: null, gun_id: 'GUN-A',
     loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male', ready: false };
@@ -25,6 +27,15 @@ export function startDemo({ engine, log }) {
     ? { hud_select: true, primary: { choice: 'fixed', allowed_ids: ['sniper_rifle'] }, secondary: { choice: 'off', kinds: [], allowed_weapon_ids: [], allowed_perk_ids: [] } }
     : { hud_select: true, primary: { choice: 'player', allowed_ids: notHeavy }, secondary: { choice: 'player', kinds: ['weapon', 'perk'], allowed_weapon_ids: notHeavy, allowed_perk_ids: DEMO_PERKS.map(p => p.perk_id) } };
   if (locked) player.loadout = { weapons: [{ weapon_id: 'sniper_rifle' }] };
+  policy.kit_open = !setup;   // §4.1
+  // §4.6: what the BRIEFING shows (the server's assign.game; here built from the demo config)
+  const game = locked
+    ? { name: 'Silenced Sniper', desc: 'Free-for-all, sniper rifles only, no armor — one shot drops you. Everyone carries Extended Mags.', mode: 'ffa', mode_name: 'FREE-FOR-ALL', abbr: 'FFA',
+        teams_text: 'NONE · ALL VS ALL', win_text: 'FRAG LIMIT / TIME', respawn_text: 'ON · TIMED', time_limit_s: 600, respawn: { type: 'auto', delay_s: 15 }, health: { max_hp: 45, max_armor: 0 },
+        environment: 'outdoor', night: q.has('night'), loadout_line: 'Everyone carries the Sniper Rifle, everyone gets Extended Mags in slot 2.', ruleset: 'CUSTOM RULES', hud_select: false }
+    : { name: 'Team Deathmatch', desc: 'Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.',
+        mode: 'tdm', mode_name: 'TEAM DEATHMATCH', abbr: 'TDM', teams_text: '2–4 TEAMS', win_text: 'SCORE CAP / TIME', respawn_text: 'ON · TIMED', time_limit_s: 600, respawn: { type: 'auto', delay_s: 8 },
+        health: { max_hp: 45, max_armor: 70 }, environment: 'outdoor', night: q.has('night'), loadout_line: `You pick your primary (${notHeavy.length} to choose from), slot 2: a second weapon or a perk.`, ruleset: 'NO HEAVIES', hud_select: true };
   // the fake Mission Control answering loadout_request / loadout_browse
   const prevReport = engine.report;
   const tutorialFor = w => ({ weapon: { ...w, stats: { mag: w.clip, reserve: w.reserve, dmg: w.dmg, rof: w.rpm, rng: w.rng } },
@@ -45,7 +56,7 @@ export function startDemo({ engine, log }) {
       }
       setTimeout(() => {
         engine.onMcMessage({ kind: 'loadout_ack', body: { slot: body.slot, ok, reason, loadout: player.loadout } });
-        if (ok) engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy } });
+        if (ok) engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } });
         if (ok && body.try && w) setTimeout(() => engine.onMcMessage({ kind: 'tutorial', body: tutorialFor(w) }), 250);
       }, 300);
       log(`demo MC ← loadout_request ${body.slot} ${body.kind} ${body.id || ''}${body.try ? ' (try)' : ''}`, 'lr');
@@ -68,7 +79,8 @@ export function startDemo({ engine, log }) {
   // 0 s: gun linked; 1 s: kit-out; 2 s: config; 4 s: start with an 8 s runway
   setTimeout(() => engine.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }), 300);
   setTimeout(() => engine.feedFrame('$VOLTS,8101,3789,82,48,*'), 600);
-  setTimeout(() => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy } }), 1200);
+  setTimeout(() => { engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }); if (!brief && !setup) engine.closeBriefing(); }, 1200);
+  if (setup) setTimeout(() => { policy.kit_open = true; engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }); log('demo MC → kit open (BRIEFING)', 'lk'); }, 7000);
   setTimeout(() => { engine.setWsState('bound'); }, 1300);
   if (kitOnly) { log('demo (kit) — staying in KITTED: open a slot plate to browse the loadout', 'lk'); return { fire, hit, reload, lcd }; }
   setTimeout(() => { engine.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); setTimeout(lcd, 300); }, 2600);

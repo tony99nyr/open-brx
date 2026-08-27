@@ -474,7 +474,9 @@ def test_apply_policy_cancels_tryouts_and_warns_the_host():
     assert "1 LOADOUT RESET BY NO HEAVIES" in snap["config_warnings"]
     s.set_config({"loadout_policy": {"preset": "snipers"}})
     assert "2 LOADOUTS RESET BY SNIPERS ONLY" in s.snapshot()["config_warnings"]
-    s.set_config({"night": True})                            # any later PUT clears the transient notice
+    s.set_config({"night": True})                            # a VENUE-only PUT keeps it (GAMES re-asserts the venue right after apply)
+    assert any("RESET BY" in w for w in s.snapshot()["config_warnings"])
+    s.set_config({"time_limit_s": 300})                      # any other later PUT clears the transient notice
     assert not any("RESET BY" in w for w in s.snapshot()["config_warnings"])
 
 
@@ -617,3 +619,56 @@ def test_presets_api_and_apply_runs_apply_policy():
     assert any("RESET BY CUSTOM RULES" in w for w in s.snapshot()["config_warnings"])
     assert c.post("/api/presets/nope/apply").status_code == 404
     assert c.delete(f"/api/presets/{pid}").json()["ok"] and len(c.get("/api/presets").json()) == 1
+
+
+def test_loadout_pool_preview_route():
+    """A10 §5 designer: POST /api/loadout/pool previews a DRAFT policy's pool without touching the live config."""
+    try:
+        import httpx  # noqa: F401  — Starlette's TestClient needs it; the system python has no extras (skip cleanly)
+        from starlette.testclient import TestClient
+    except ImportError:
+        return
+    from brx_mcp.mc.api import create_app
+    s, _net, _clock, _ps = mk()
+    app = create_app(s)
+    with TestClient(app) as c:
+        before = s.config["loadout_policy"]["preset"]
+        r = c.post("/api/loadout/pool", json={"loadout_policy": {"preset": "no_heavies"}})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["policy"]["preset"] == "no_heavies"
+        assert "rocket_launcher" not in body["pool"]["primary"] and "assault_rifle" in body["pool"]["primary"]
+        r2 = c.post("/api/loadout/pool", json={"loadout_policy": {"primary": {"choice": "fixed", "fixed_id": "sniper_rifle"}, "secondary": {"choice": "off"}}})
+        assert r2.json()["pool"]["primary"] == ["sniper_rifle"] and r2.json()["pool"]["secondary_weapons"] == []
+        assert s.config["loadout_policy"]["preset"] == before          # nothing applied
+        assert c.post("/api/loadout/pool", json={"loadout_policy": {"preset": "nope"}}).status_code == 400
+
+
+def test_kit_open_gates_phone_picks_and_assign_carries_game_brief():
+    """A10 §4.1/§4.6: phones may pick only on KIT before the push; `assign` carries kit_open + a game brief; the
+    flag flipping re-assigns every bound node."""
+    s, net, clock, ps = mk()
+    # the first assign body rides inside `welcome` (hydrate) — FakeNet.simulate_hello returns it
+    s.phase = "build"; s._changed()          # the host is still on GAMES (adding a player had moved the phase on)
+    tail = demo_armory()[0]["ble"]["tail"]
+    hello_body = net.simulate_hello("node0", f"GUN-A-{tail}")
+    online(s, net, clock, ps[0], 0)
+    assert hello_body and hello_body["policy"]["kit_open"] is False
+    assert hello_body["game"]["mode"] == "tdm" and hello_body["game"]["loadout_line"]
+    def latest_policy():
+        a = net.pushes("assign", "node0")
+        assert a, "no assign delivered to node0"
+        return a[-1][2]["policy"], a[-1][2]["game"]
+    _req(net, 0, "primary", "weapon", "smg")
+    ack = _last_ack(net, 0)
+    assert ack["ok"] is False and "setting up" in ack["reason"].lower()
+    n_assign = len(net.pushes("assign", "node0"))
+    if hasattr(s, "set_phase"):
+        s.set_phase("kit")
+    else:
+        s.phase = "kit"; s._changed()
+    assert s.kit_open() is True
+    assert len(net.pushes("assign", "node0")) > n_assign
+    assert latest_policy()[0]["kit_open"] is True
+    _req(net, 0, "primary", "weapon", "smg")
+    assert _last_ack(net, 0)["ok"] is True

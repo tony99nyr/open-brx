@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Api, FeedEntry, ModeInfo, PerkView, Phase, State, WeaponView } from './api/types';
+import type { Api, FeedEntry, ModeInfo, PerkView, Phase, SavedGame, State, WeaponView } from './api/types';
+
+/** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
+export type View = Phase | 'designer';
+/** what the designer opens with: an existing saved game to edit, a stock mode to customise, or the live draft */
+export type DesignerSeed = { game?: SavedGame; mode?: string; fromLive?: boolean };
 import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
 
@@ -13,8 +18,10 @@ export interface Store {
   weapons: WeaponView[];
   perks: PerkView[];
   /** the screen the operator is looking at (free navigation); `state.phase` is the server's phase */
-  view: Phase;
-  setView: (p: Phase) => void;
+  view: View;
+  setView: (p: View) => void;
+  designerSeed: DesignerSeed | null;
+  openDesigner: (seed: DesignerSeed) => void;
   selPlayer: string | null;
   setSelPlayer: (id: string | null) => void;
   error: string | null;
@@ -42,7 +49,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [modes, setModes] = useState<ModeInfo[]>([]);
   const [weapons, setWeapons] = useState<WeaponView[]>([]);
   const [perks, setPerks] = useState<PerkView[]>([]);
-  const [view, setViewRaw] = useState<Phase>('muster');
+  const [view, setViewRaw] = useState<View>('muster');
+  const [designerSeed, setDesignerSeed] = useState<DesignerSeed | null>(null);
   const [selPlayer, setSelPlayer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean>(mock);
@@ -81,12 +89,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView: setViewRaw, selPlayer, setSelPlayer, error, mock,
+    designerSeed, openDesigner: seed => { setDesignerSeed(seed); setViewRaw('designer'); },
     connected: mock ? true : connected, authRequired, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, selPlayer, error, mock, connected, authRequired]);
+  }), [api, state, feed, modes, weapons, perks, view, selPlayer, error, mock, connected, authRequired, designerSeed]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

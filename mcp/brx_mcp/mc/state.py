@@ -103,6 +103,7 @@ class Session:
     def on_change(self, cb): self._listeners.append(cb)
     def on_feed(self, cb): self._feed_listeners.append(cb)
     def _changed(self):
+        self._sync_kit_open()          # A10: phase/push flips re-assign the phones (setting-up ⇄ kit editor)
         for cb in self._listeners:
             cb()
         self._persist()
@@ -226,9 +227,69 @@ class Session:
         weapons, perks = self._catalog_rows()
         return {"weapons": [weapon_view(w) for w in weapons], "perks": perks}
 
+    def kit_open(self) -> bool:
+        """A10 §4.1: phones may browse/pick/try only while the host is on KIT and the lobby is not pushed. Before
+        that the HUD shows "Mission Control is setting up the game" (Tony, 2026-08-27)."""
+        return self.phase == "kit" and not self.lobby_pushed
+
     def _assign_body(self, p: Player) -> dict:
+        pol = _policy.node_view(self.policy(), self.loadout_pool())
+        pol["kit_open"] = self.kit_open()
         return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
-                "catalog": self._catalog_views(), "policy": _policy.node_view(self.policy(), self.loadout_pool())}
+                "catalog": self._catalog_views(), "policy": pol, "game": self.game_brief()}
+
+    def game_brief(self) -> dict:
+        """A10 §4.6: what the phone's BRIEFING screen shows — the chosen game in human terms. Saved-game name/desc
+        when the live config matches one, else the stock mode; rules as short lines; the loadout rules as one line."""
+        cfg = self.config
+        mode = next((m for m in MODES if m["mode"] == cfg.get("mode")), None) or {}
+        pol = self.policy()
+        lp = self.loadout_pool()
+        weapons, perks = self._catalog_rows()
+        wname = lambda wid: next((w["name"] for w in weapons if w["weapon_id"] == wid), None) or next((k["name"] for k in perks if k.get("perk_id") == wid), wid)
+        prim, sec = pol["primary"], pol["secondary"]
+        parts = []
+        if prim["choice"] == "fixed":
+            parts.append(f"Everyone carries the {wname(prim.get('fixed_id'))}")
+        else:
+            n = len(lp["primary"])
+            parts.append(("You pick your primary" if prim["choice"] == "player" and pol.get("hud_select") else "The host picks your primary") + (f" ({n} to choose from)" if prim["choice"] == "player" and pol.get("hud_select") else ""))
+        if sec["choice"] == "off":
+            parts.append("no secondary")
+        elif sec["choice"] == "fixed":
+            parts.append(f"everyone gets {wname(sec.get('fixed_id'))} in slot 2")
+        else:
+            kinds = [k for k in ("weapon", "perk") if k in sec.get("kinds", [])]
+            what = " or ".join({"weapon": "a second weapon", "perk": "a perk"}[k] for k in kinds) or "nothing"
+            parts.append(("slot 2: " + what) if pol.get("hud_select") and sec["choice"] == "player" else f"the host sets slot 2 ({what})")
+        preset_lbl = _policy.PRESET_LABELS.get(pol.get("preset"), "")
+        saved = None
+        try:
+            if getattr(self, "presets", None) is not None:
+                sig = {k: v for k, v in cfg.items() if k != "config_id"}
+                saved = next((r for r in self.presets.list() if {k: v for k, v in r["config"].items() if k != "config_id"} == sig), None)
+        except Exception:
+            saved = None
+        return {
+            "name": (saved or {}).get("name") or mode.get("name") or str(cfg.get("mode", "")).upper(),
+            "desc": (saved or {}).get("desc") or mode.get("brief") or mode.get("desc") or "",
+            "mode": cfg.get("mode"), "mode_name": mode.get("name"), "abbr": mode.get("abbr"),
+            "teams_text": mode.get("teams_text"), "win_text": mode.get("win_text"), "respawn_text": mode.get("respawn_text"),
+            "time_limit_s": cfg.get("time_limit_s"), "respawn": cfg.get("respawn"), "health": cfg.get("health"),
+            "environment": cfg.get("environment"), "night": bool(cfg.get("night")),
+            "loadout_line": ", ".join(parts) + ".", "ruleset": preset_lbl, "hud_select": bool(pol.get("hud_select")),
+        }
+
+    def _sync_kit_open(self) -> None:
+        """Re-send `assign` to every bound node when kit_open flips (phase/push transitions) so the HUD switches
+        between "setting up" and the kit editor without waiting for an unrelated change."""
+        cur = self.kit_open()
+        if cur == getattr(self, "_kit_open_sent", None):
+            return
+        self._kit_open_sent = cur
+        for pl in self.players.values():
+            if pl.get("node_id"):
+                self.net.push(pl["node_id"], "assign", self._assign_body(pl))
 
     def apply_policy(self) -> list[str]:
         """§3.3: force every loadout to obey the policy (fixed → set, off → cleared, out-of-pool → replaced).
@@ -514,7 +575,9 @@ class Session:
         mode = patch.get("mode", self.config["mode"])
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
-        self._policy_notice = None                           # transient: cleared on every config PUT
+        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT (GAMES re-asserts it right after
+            self._policy_notice = None                       # a saved game applies) must not eat the reset notice
+
         cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
         cfg = self._merge_config(cfg, patch, mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
@@ -905,6 +968,10 @@ class Session:
         rid = body.get("id") if isinstance(body.get("id"), str) else None
         weapons, perks = self._catalog_rows()
         ok, reason = _policy.check_request(self.policy(), self.loadout_pool(), slot, kind, rid, weapons, perks)
+        if ok and not self.lobby_pushed and self.phase != "kit":
+            # before KIT the phones are on "setting up" (§4.6); after the push the existing path below still applies
+            # the pick (re-push) and only reports the try-out as closed
+            ok, reason = False, "Mission Control is still setting up the game"
         if ok:
             new = _policy.set_slot(p.get("loadout") or {"weapons": []}, slot, kind, rid)
             try:

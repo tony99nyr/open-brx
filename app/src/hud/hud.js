@@ -67,6 +67,7 @@ export class Hud {
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // A10 loadout browser + slot plates
       st.browsing, st.canPickPrimary, st.canPickSecondary, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus,
+      st.kitOpen, st.briefSeen, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && (st.loadout.secondary.weapon_id || st.loadout.secondary.perk_id),
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length)].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
@@ -92,6 +93,8 @@ export class Hud {
       case 'connected': return this._lobby(st, 'connected');
       case 'kitted':
         if (st.ended && !st.endAck) return this._result(st);
+        if (!st.ended && !st.kitOpen) return this._lobby(st, 'setup');            // §4.1: MC is still picking the game
+        if (!st.ended && !st.briefSeen && !this._tryoutShown(st)) return this._briefing(st);   // §4.6: read the game, then BUILD MY KIT ▸
         if (!st.ended && st.browsing && !this._tryoutShown(st)) return this._loadout(st);
         return this._lobby(st, st.ended ? 'over' : 'kitted');
       case 'lobby': return this._lobby(st, 'lobby');
@@ -135,7 +138,7 @@ export class Hud {
     const _res = st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : null);
     const ammoLine = (_mag == null && _res == null) ? 'GOES TO YOUR GUN AT ARM TIME'
       : `MAG ${_mag != null ? _mag : '—'} · RESERVE ${_res != null ? _res : '—'}`;
-    const plates = st.player ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
+    const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}
         <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div>
         ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
@@ -145,9 +148,13 @@ export class Hud {
         ? `<div class="mclinked"><span class="unskew">MC LINKED ✓ — WAITING FOR KIT-OUT</span></div><div class="note">Mission Control has this gun. Your callsign and loadout arrive with the kit.</div>`
         : `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note">Get on the SAME WI-FI as Mission Control — the app finds it by itself. No luck? Scan the QR on the MC screen or type its address above.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
+    } else if (mode === 'setup') {
+      // §4.1: calm, not an error — the host hasn't picked the game yet
+      foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">MISSION CONTROL IS SETTING UP THE GAME</div><div class="s">Your kit opens as soon as the host picks the game. Nothing to do yet.</div></div></div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
       foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
-      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
       foot = `<button class="ready wait ${st.ready ? 'on' : ''}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓ — HOST SEES YOU' : 'MATCH COMPLETE — READY FOR NEXT'}</span></button><div class="note">${st.ready ? 'Standing by — the next match kits you automatically.' : "Scores reconcile at Mission Control. Tap when you're set for the next match."}</div>`;
       status = `<div class="status">D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>`;
@@ -161,6 +168,32 @@ export class Hud {
   }
 
   _tryoutShown(st) { return !!(st.tutorial && st.tutorialWeapon && st.tryoutSeen !== st.tutorialWeapon.weapon_id); }
+
+  // ---------- A10 §4.6: the BRIEFING — the chosen game, read at the player's own pace ----------
+  _briefing(st) {
+    const g = st.game || {};
+    const mode = g.mode || st.mode || 'tdm';
+    const name = g.name || g.mode_name || String(mode).toUpperCase();
+    const mins = g.time_limit_s ? Math.round(g.time_limit_s / 60) : null;
+    const rs = g.respawn ? (g.respawn.type === 'none' ? 'NONE · LIVES' : `${g.respawn.type === 'scanner' ? 'AT A SCANNER' : 'AUTO'} · ${g.respawn.delay_s}s`) : (g.respawn_text || '—');
+    const hp = g.health ? `${g.health.max_hp} HP · ${g.health.max_armor} ARMOR` : '—';
+    const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
+    const rows = [['TEAMS', g.teams_text || '—'], ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
+    const locked = !st.canPickPrimary && !st.canPickSecondary;
+    const cta = locked ? 'SEE MY KIT ▸' : 'BUILD MY KIT ▸';
+    const sub = locked ? 'Your kit is set by the host — take a look.' : 'Pick your weapons when you are ready.';
+    return `<div class="lobby bf" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
+      <div class="bfart" style="background-image:url('assets/modes/${esc(mode)}.jpg')"></div><div class="bfveil"></div>
+      <div class="bfbody">
+        <div class="bfk r r0">${g.abbr ? `<span class="chip"><span class="unskew">${esc(g.abbr)}</span></span>` : ''}<span class="lab">GAME BRIEFING${g.ruleset ? ' · ' + esc(g.ruleset) : ''}</span></div>
+        <div class="bfname r r1">${esc(String(name).toUpperCase())}</div>
+        ${g.desc ? `<div class="bfdesc r r2">${esc(g.desc)}</div>` : ''}
+        <div class="bfrules r r3">${rows.map(([k, v]) => `<div class="cell"><span class="k">${k}</span><span class="v">${esc(String(v))}</span></div>`).join('')}</div>
+        ${g.loadout_line ? `<div class="bfload r r4"><span class="k">LOADOUT</span><span class="v">${esc(g.loadout_line)}</span></div>` : ''}
+      </div>
+      <div class="bffoot r r5"><span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span>
+        <div class="cta"><button class="ready go" data-act="onBriefDone"><span class="unskew">${cta}</span></button><div class="note">${sub}</div></div></div></div>`;
+  }
 
   // ---------- A10: slot plates + the LOADOUT browser (docs/spec/loadout.md §4.5) ----------
   _slotPlate(st, slot, mode, ammoLine) {

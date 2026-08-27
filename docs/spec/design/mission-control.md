@@ -32,7 +32,20 @@ A red/amber/green **gear grid**, one card per gun.
 - **Global settings:** environment Indoor/Outdoor, **Night** toggle, respawn (type + delay), time limit,
   scoring (frag limit / win condition). LED/environment extras behind a disclosure.
 
-### A2b · Loadout rules (in BUILD, under Global Settings) — *added 2026-08-27, loadout.md §3/§5*
+### A2 (revised 2026-08-27) · GAMES — "pick the game", and A2b · GAME DESIGNER — "define a game"
+Tony: picking tonight's game and defining a game are different jobs; BUILD had both and buried the defining
+controls. **GAMES** (the stepper step): `YOUR GAMES` cards (saved games — name, base-mode art, one generated
+rules line, EDIT / DUPLICATE / delete-with-confirm, `+ CREATE A GAME`), `STOCK MODES` cards (defaults;
+CUSTOMIZE), a **VENUE** strip (indoor/outdoor, night ops — about where you play, never saved into a game), a
+sticky "what the players get" summary rail (name, mode board, rule rows, loadout line, reset notices) and
+`CONTINUE ▸`. No forms. **GAME DESIGNER** (a page, not a phase — opened by CREATE / EDIT / CUSTOMIZE): one
+scrolling page — 1 BASE MODE → 2 RULES → 3 LOADOUT (PRIMARY / SECONDARY columns: who picks, class chips, a
+tappable weapon grid, perks, fixed pick; OPEN / NO HEAVIES / SNIPERS as starting templates) → 4 NAME & NOTES —
+with a sticky rail that reads like the card will and holds `PLAY THIS NOW ▸` / `SAVE` / `SAVE AS NEW`. Edits a
+draft; nothing touches the live game until PLAY. Phones show "setting up the game" until the host CONTINUEs to
+KIT, then the BRIEFING (phone-hud.md B7), then their kit.
+
+### *(superseded)* A2b · Loadout rules (in BUILD, under Global Settings) — *added 2026-08-27, loadout.md §3/§5*
 Preset row `OPEN · NO HEAVIES · SNIPERS · CUSTOM` + a **players pick on phone** toggle, then one block per slot
 (PRIMARY / SECONDARY): who picks (`PLAYER / HOST / FIXED / OFF`), a pool summary the server computes
 ("13 OF 18 WEAPONS · 4 PERKS"), allow-chips per class, a fixed-item picker, and a per-weapon override

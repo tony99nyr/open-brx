@@ -73,6 +73,14 @@ the secondary tab adds `WEAPONS · PERKS · NONE` chips), **art + stats on the r
 a rejected pick shows the host's reason in plain words). Only what the rules allow is listed — a player never
 sees a greyed-out weapon they can't have. Must read at 844×390 and a short viewport, in sun and blackout.
 
+### B7 · Setting up → BRIEFING → kit (loadout.md §4.6) — *added 2026-08-27*
+While the host is still picking the game (`kit_open:false`) the KITTED screen is a calm **"MISSION CONTROL IS
+SETTING UP THE GAME"** — callsign, number, gun, nothing to tap. When the host continues to KIT the phone shows a
+**BRIEFING**: the game's name big, the mode board, the host's notes, the rule lines (teams · win · respawn ·
+time · HP/armor · venue) and one sentence on who carries what — read at the player's own pace, then
+**`BUILD MY KIT ▸`** (or `SEE MY KIT ▸` when the kit is fixed) reveals the slot plates + READY UP. A `BRIEFING`
+button brings it back any time. Blackout rules apply (no white, no flashes).
+
 ## Deliverables to iterate
 B1 connect · B2 HUD in **both sun and blackout** · B3 death/respawn · the ARMED countdown · the KITTED
 ready-up · the "gun relinked" prompt. Keep it one product with Mission Control (shared `tokens.css`).

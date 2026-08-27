@@ -46,6 +46,12 @@ await lo('reject', '?demo&kit&reject', ['[data-act="onOpenLoadout"][data-arg="pr
 await lo('locked', '?demo&kit&locked', [{ shot: 'kitted-locked' }]);
 await lo('night', '?demo&kit&night', ['[data-act="onOpenLoadout"][data-arg="primary"]', { shot: 'loadout-night' }]);
 await lo('short', '?demo&kit', ['[data-act="onOpenLoadout"][data-arg="secondary"]', { shot: 'loadout-short' }], { width: 844, height: 330 });
+// ---- A10 §4.1 / §4.6: setting-up → BRIEFING → kit ----
+await lo('setup', '?demo&kit&setup', [{ shot: 'kitted-setup' }]);
+await lo('brief', '?demo&kit&brief', [{ wait: 900 }, { shot: 'briefing' }, '[data-act="onBriefDone"]', { shot: 'briefing-after' }, '[data-act="onBriefing"]', { shot: 'briefing-reopened' }]);
+await lo('brief-locked', '?demo&kit&brief&locked', [{ wait: 900 }, { shot: 'briefing-locked' }]);
+await lo('brief-night', '?demo&kit&brief&night', [{ shot: 'briefing-night' }]);
+await lo('brief-short', '?demo&kit&brief', [{ wait: 900 }, { shot: 'briefing-short' }], { width: 844, height: 330 });
 console.log('LOGRING', JSON.stringify(await pg.evaluate(() => window.brx.log.slice(0, 30))));
 console.log('CONSOLE', JSON.stringify(logs.slice(0, 15)));
 await b.close(); srv.close();

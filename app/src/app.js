@@ -153,6 +153,9 @@ Object.assign(hud.h, {
     const key = (hud.lo.focus && rows.some(r => r.key === hud.lo.focus)) ? hud.lo.focus : (eq && eq.kind === 'weapon' ? 'weapon:' + eq.weapon_id : (rows[0] && rows[0].key));
     if (!key || !key.startsWith('weapon:')) return; if (engine.requestLoadout(tab, 'weapon', key.slice(7), true)) haptic('tap'); },
   onLoDone: () => { engine.browse(false); haptic('tap'); },
+  // A10 §4.6: BRIEFING → BUILD MY KIT ▸ reveals the plates; BRIEFING on the KITTED screen reopens it
+  onBriefDone: () => { engine.closeBriefing(); haptic('tap'); },
+  onBriefing: () => { engine.openBriefing(); haptic('tap'); },
   onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
   onSetUrl: () => { const el = $('mcurl'); if (el && el.value.trim()) connectMc(el.value.trim()); },
   onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },

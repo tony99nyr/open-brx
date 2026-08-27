@@ -2,7 +2,8 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { CommandBar } from './frame/CommandBar';
 import { Armed } from './screens/Armed';
 import { Armory } from './screens/Armory';
-import { Build } from './screens/Build';
+import { Designer } from './screens/Designer';
+import { Games } from './screens/Games';
 import { Kit } from './screens/Kit';
 import { Live } from './screens/Live';
 import { Lobby } from './screens/Lobby';
@@ -36,7 +37,8 @@ function Screen() {
   }
   switch (view) {
     case 'muster': return <Armory />;
-    case 'build': return <Build />;
+    case 'build': return <Games />;
+    case 'designer': return <Designer />;
     case 'kit': return <Kit />;
     case 'lobby': return <Lobby />;
     case 'armed': return <Armed />;

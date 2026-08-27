@@ -5,8 +5,8 @@ today** (`mcp/brx_mcp/mc/` — `__main__.py`, `api.py`, `state.py`), not the spe
 
 > ⚠️ **Hardware-verified status.** The MC↔phone field path — a MacBook hosting the game over a field
 > Wi-Fi, phones joining as nodes and driving real BRX taggers — has **NOT** yet been run end-to-end on
-> real hardware over a real field LAN. It is proven in software (438 tests incl. 12 full-stack e2e
-> scenarios with mock phones) and in the earlier **single-gun bench** (one phone ↔ one tagger over BLE).
+> real hardware over a real field LAN. It is proven in software (`cd mcp && python3 run_tests.py` — the full suite incl. the full-stack e2e
+> scenarios with mock phones; `cd app && npm run ui:e2e` for the browser suite) and in the earlier **single-gun bench** (one phone ↔ one tagger over BLE).
 > Everything below that touches a real tagger or the field network is **UNVERIFIED** until a live
 > muster confirms it; those steps are tagged **[UNVERIFIED]**. The open hardware items live in
 > `docs/verification-checklist.md`.

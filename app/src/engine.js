@@ -74,6 +74,8 @@ export class Engine {
     this.catalog = null;            // {weapons: WeaponView[], perks: PerkView[]} — arrives in `assign`
     this.policy = null;             // {hud_select, primary:{choice, allowed_ids}, secondary:{choice, kinds, allowed_weapon_ids, allowed_perk_ids}}
     this.browsing = false;          // the HUD's LOADOUT browser is open (reported to MC as loadout_browse)
+    this.game = null;               // A10 §4.6: assign.game — what the BRIEFING screen shows
+    this.briefSeen = false;         // the player tapped BUILD MY KIT ▸ on the briefing (reset when kit_open flips true)
     this.loadoutAck = null;         // MC's verdict on the last pick: {slot, ok, reason, t} — tick() clears it after ~4 s
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at}
     this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
@@ -103,7 +105,7 @@ export class Engine {
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: this.now(),
         endedMatches: this.endedMatches.slice(-8), configPending: this.configPending, pendingTeardown: this.pendingTeardown,
-        catalog: this.catalog, policy: this.policy,
+        catalog: this.catalog, policy: this.policy, game: this.game, briefSeen: this.briefSeen,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -116,7 +118,7 @@ export class Engine {
       Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
         spawned: !!s.spawned, ended: !!s.ended, endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
-        catalog: s.catalog || null, policy: s.policy || null });
+        catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen });
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (_) { /* ignore */ }
@@ -201,6 +203,7 @@ export class Engine {
     if (node.frames) this.frames = node.frames;
     if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
     if (node.policy) this.policy = node.policy;
+    if (node.game) this.game = node.game;
     if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
     if (node.match_id) this.matchId = node.match_id;
     if (node.config && node.config.night != null) this.night = !!node.config.night;
@@ -235,9 +238,13 @@ export class Engine {
     }
   }
 
-  _assign({ player, team, roster, catalog, policy }) {
+  _assign({ player, team, roster, catalog, policy, game }) {
+    const wasOpen = this.kitOpen();
     if (catalog) this.catalog = catalog;
     if (policy) this.policy = policy;
+    if (game) this.game = game;
+    if (!wasOpen && this.kitOpen()) this.briefSeen = false;   // §4.6: the kit just opened — show the BRIEFING, the player taps through
+    if (!this.kitOpen()) this.browse(false);                   // MC went back to setting up: no browser while the kit is closed
     if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
@@ -285,6 +292,11 @@ export class Engine {
   }
 
   // ---------- A10 self-serve kitting (docs/spec/loadout.md §4) ----------
+  /** §4.1: MC opens the kit only while the host is on KIT before the push. No flag (older MC) = open. */
+  kitOpen() { const p = this.policy; return !p || p.kit_open !== false; }
+  /** §4.6: BUILD MY KIT ▸ / BRIEFING */
+  closeBriefing() { if (!this.briefSeen) { this.briefSeen = true; this._changed(); } }
+  openBriefing() { if (this.briefSeen) { this.briefSeen = false; this.browse(false); this._changed(); } }
   /** The player's rights on a slot, from MC's per-player policy (never computed locally). */
   slotRule(slot) {
     const p = this.policy; if (!p) return null;
@@ -292,7 +304,7 @@ export class Engine {
   }
   canPick(slot) {
     const p = this.policy, r = this.slotRule(slot);
-    return !!(p && p.hud_select && r && r.choice === 'player' && this.phase === 'kitted' && !this.ended);
+    return !!(p && p.hud_select && r && r.choice === 'player' && this.phase === 'kitted' && !this.ended && this.kitOpen());
   }
   /** Tap a row = equip. `tryIt` (weapons only) also asks MC for the try-out. Returns false if the slot isn't ours. */
   requestLoadout(slot, kind, id = null, tryIt = false) {
@@ -711,6 +723,7 @@ export class Engine {
       // A10 self-serve kitting
       catalog: this.catalog, policy: this.policy, loadout: this.loadoutView(), browsing: this.browsing, loadoutAck: this.loadoutAck, pendingPick: this.pendingPick,
       canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), tryoutSeen: this.tryoutSeen,
+      game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen,
     };
   }
 }

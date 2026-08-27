@@ -85,6 +85,8 @@ export function createHttpApi(): Api {
     savePreset: p => post('/api/presets', p),
     deletePreset: async id => { await j(`/api/presets/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     applyPreset: id => post(`/api/presets/${encodeURIComponent(id)}/apply`),
+    updatePreset: (id, p) => j(`/api/presets/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(p) }),
+    previewPool: (loadout_policy, mode) => post('/api/loadout/pool', { loadout_policy, mode }),
     putConfig: (partial: Partial<GameConfig>) => j('/api/config', { method: 'PUT', body: JSON.stringify(partial) }),
     addPlayer: p => post('/api/players', p),
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

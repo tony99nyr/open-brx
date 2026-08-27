@@ -253,3 +253,18 @@ export function Progress({ n, total, label, color = T.acc }: { n: number; total:
 export function Blink({ color = T.ok, period = 2.4, size = 7 }: { color?: string; period?: number; size?: number }) {
   return <span style={{ width: size, height: size, background: color, animation: `linkBlink ${period}s infinite`, display: 'inline-block' }} />;
 }
+
+/** Horizontal shelf: fades its cut edge ONLY while it actually overflows (a fade on a shelf that fits dims the last card). */
+export function Shelf({ children, style, className }: { children: ReactNode; style?: Sx; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    check();
+    const ro = new ResizeObserver(check); ro.observe(el);
+    el.addEventListener('scroll', check, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
+  }, []);
+  return <div ref={ref} className={`${className ?? ''} ${over ? 'shelf-x' : ''}`.trim()} style={merge({ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }, style)}>{children}</div>;
+}

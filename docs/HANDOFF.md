@@ -122,7 +122,10 @@ to NO HEAVIES); **players pick + try weapons from the phone** when the rules all
 `tutorial` → `loadout_ack`, MC roster shows PICKING… / TRYING / READY live); v1 perks are passive (Body Armor,
 Extended Mags, Quick Hands, Easy Reload — compiled into the head frames); **saved games** persist a whole
 build under a name (`~/.brx-mcp/presets.json`, builtin "Silenced Sniper"). Per-game weapon tuning (silenced
-fire sound, damage overrides) is deferred (FOLLOWUPS K6). Bench items: `docs/bench-tomorrow.md` (empty
+fire sound, damage overrides) is deferred (FOLLOWUPS K6). **Later the same day:** BUILD became **GAMES** (pick the
+game: saved cards + stock modes + VENUE) plus a separate **GAME DESIGNER** page (define/save a game); phones show
+"setting up the game" until KIT, then a **BRIEFING** screen, then their kit (`assign.policy.kit_open` +
+`assign.game`). Bench items: `docs/bench-tomorrow.md` (empty
 slot 1 + ALT, Body Armor `$PSET`, Extended Mags HUD max, Easy Reload). e2e: `cd app && npm run ui:e2e`.
 
 **Current state (2026-08-25):** the platform is now a Mission Control host on a local Wi-Fi LAN

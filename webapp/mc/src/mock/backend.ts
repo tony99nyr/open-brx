@@ -1,10 +1,10 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, FeedEntry, GameConfig, LiveRow, Loadout, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
+  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
   RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, WeaponView,
 } from '../api/types';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
-import { PRESETS, apply as applyPolicy, pool as poolOf, presetOf, reject } from './policy';
+import { PRESETS, apply as applyPolicy, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 
 const now = () => Date.now();
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
@@ -246,6 +246,26 @@ export class MockBackend implements Api {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
     if (sg.builtin) throw new Error('Built-in games cannot be deleted');
     this.presets = this.presets.filter(x => x !== sg);
+  }
+  async updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame> {
+    const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
+    if (sg.builtin) throw new Error('Built-in games cannot be edited — save a copy under your own name');
+    if (p.name != null) {
+      const nm = p.name.trim(); if (!nm) throw new Error('Give the game a name');
+      const clash = this.presets.find(x => x !== sg && x.name.toLowerCase() === nm.toLowerCase());
+      if (clash) throw new Error(`A saved game called "${clash.name}" already exists`);
+      sg.name = nm;
+    }
+    if (p.desc != null) sg.desc = p.desc;
+    if (p.config) { const { config_id: _c, ...cfg } = clone(p.config); void _c; sg.config = { ...cfg, config_id: '' } as GameConfig; }
+    sg.updated_t = now();
+    return clone(sg);
+  }
+  async previewPool(policy: Partial<LoadoutPolicy>, mode?: string) {
+    const base = policy.preset && policy.preset !== 'custom' ? clone(PRESETS[policy.preset]) : clone(defaultPolicy(mode ?? this.config.mode));
+    const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) } };
+    merged.preset = policy.preset === 'custom' ? 'custom' : presetOf(merged);
+    return { policy: merged, pool: poolOf(merged, WEAPONS, PERKS) };
   }
   async applyPreset(id: string) {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');

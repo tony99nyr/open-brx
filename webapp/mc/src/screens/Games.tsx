@@ -1,0 +1,180 @@
+// GAMES — "pick tonight's game" (docs/spec/loadout.md §5). Replaces BUILD in the stepper. Two rows of cards
+// (YOUR GAMES · STOCK MODES), a summary of what the players will get, the VENUE chips, CONTINUE ▸ to KIT.
+// Defining a game happens in the DESIGNER (opened from here) — this page has no forms.
+import { useCallback, useEffect, useState } from 'react';
+import type { ModeInfo, SavedGame } from '../api/types';
+import { useStore } from '../store';
+import { F, PERK_COLOR, T, TAB } from '../tokens';
+import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
+import { gameSig, rulesLine } from './gameSummary';
+
+const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
+
+export function Games() {
+  const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
+  const [games, setGames] = useState<SavedGame[]>([]);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const reload = useCallback(() => api.getPresets().then(setGames).catch(() => {}), [api]);
+  useEffect(() => { reload(); }, [reload]);
+  if (!state) return null;
+  const cfg = state.config;
+  const sig = gameSig(cfg);
+  const activeSaved = games.find(g => gameSig(g.config) === sig) ?? null;
+  const mode = modes.find(m => m.mode === cfg.mode);
+  const activeStock = !activeSaved && mode && gameSig({ ...mode.defaults, teams: cfg.teams }) === sig ? mode : null;   // stock defaults, untouched
+  const custom = !activeSaved && !activeStock;   // a tuned draft nobody saved yet
+  const venue = { environment: cfg.environment, night: cfg.night };
+
+  const playSaved = async (g: SavedGame) => {
+    const r = await run(() => api.applyPreset(g.preset_id));
+    if (r) await run(() => api.putConfig(venue));   // the venue is tonight's, never the saved game's
+  };
+  const playStock = async (m: ModeInfo) => { await run(() => api.putConfig({ ...m.defaults, ...venue, config_id: cfg.config_id })); };
+  const duplicate = async (g: SavedGame) => {
+    const r = await run(() => api.savePreset({ name: `${g.name} copy`, desc: g.desc, config: g.config }));
+    if (r) { await reload(); openDesigner({ game: r }); }
+  };
+  const remove = async (g: SavedGame) => { await run(() => api.deletePreset(g.preset_id)); setConfirmDel(null); await reload(); };
+
+  return (
+    <div className="screen">
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '14px 28px', marginBottom: 20 }}>
+        <div>
+          <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>[ A2 // GAMES ]</div>
+          <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>Pick the Game</div>
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+          {/* VENUE — where you're playing, not what game it is */}
+          <div role="group" aria-label="venue" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep }}>
+            <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
+            <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => run(() => api.putConfig({ environment: v }))} pad="4px 12px" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => run(() => api.putConfig({ night: v }))} label="night ops" /></span>
+          </div>
+          <PrimaryButton onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ flex: '2 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {/* YOUR GAMES */}
+          <div>
+            <SectionRule label={`YOUR GAMES // ${games.length}`} hint="TAP TO PLAY · EDIT TO CHANGE · CREATE FOR SOMETHING NEW" style={{ marginBottom: 12 }} />
+            <Shelf>
+              {games.map(g => {
+                const on = activeSaved?.preset_id === g.preset_id;
+                const gm = modes.find(m => m.mode === g.config.mode);
+                const del = confirmDel === g.preset_id;
+                return (
+                  <div key={g.preset_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${g.name}`} onClick={() => { if (!on) playSaved(g); }} onKeyDown={onKey(() => { if (!on) playSaved(g); })}
+                    style={{ flex: '0 0 262px', display: 'flex', flexDirection: 'column', gap: 8, padding: 10, cursor: on ? 'default' : 'pointer',
+                      background: on ? 'rgba(196,139,255,.07)' : T.panel, border: `1px solid ${on ? PERK_COLOR : T.line}`, borderTop: `2px solid ${on ? PERK_COLOR : T.line2}` }}>
+                    <StripedSlot height={70} style={{ background: gm && MODE_ART.has(gm.mode) ? `url(assets/modes/${gm.mode}.jpg) center/cover no-repeat` : undefined }}
+                      corner={<>
+                        <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? PERK_COLOR : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{gm?.abbr ?? g.config.mode.toUpperCase()}</span>
+                        {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={PERK_COLOR}>PLAYING</Tag></span>}
+                        {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 8), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
+                      </>} />
+                    <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
+                    <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
+                    <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}`}</div>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+                      {del ? (
+                        <>
+                          <SmallBtn color={T.bad} onClick={() => remove(g)}>CONFIRM DELETE</SmallBtn>
+                          <SmallBtn onClick={() => setConfirmDel(null)}>CANCEL</SmallBtn>
+                        </>
+                      ) : (
+                        <>
+                          {!g.builtin && <SmallBtn onClick={() => openDesigner({ game: g })} label={`edit ${g.name}`}>EDIT</SmallBtn>}
+                          <SmallBtn onClick={() => duplicate(g)} label={`duplicate ${g.name}`}>{g.builtin ? 'MAKE MY OWN' : 'DUPLICATE'}</SmallBtn>
+                          {!g.builtin && <SmallBtn onClick={() => setConfirmDel(g.preset_id)} label={`delete ${g.name}`} color={T.micro}>✕</SmallBtn>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <button type="button" className="hov-acc" onClick={() => openDesigner({ mode: cfg.mode })} aria-label="create a game"
+                style={{ ...BTN_RESET, flex: '0 0 220px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 6, padding: 14, minHeight: 120, background: T.panelDeep, border: `1px dashed ${T.line2}`, cursor: 'pointer', color: T.dim, textAlign: 'left' }}>
+                <span style={{ font: F.osw(700, 22), letterSpacing: '.08em', color: T.ink }}>+ CREATE A GAME</span>
+                <span style={{ font: F.chk(500, 12), lineHeight: 1.45 }}>Start from a stock mode, set the rules and who carries what, save it under a name.</span>
+              </button>
+            </Shelf>
+          </div>
+
+          {/* STOCK MODES */}
+          <div>
+            <SectionRule label="STOCK MODES" hint="TAP TO PLAY WITH DEFAULTS · CUSTOMIZE TO MAKE YOUR OWN" style={{ marginBottom: 12 }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
+              {modes.map(m => {
+                const on = activeStock?.mode === m.mode;
+                const base = !on && cfg.mode === m.mode;   // the current game (saved or tuned) is built on this mode
+                return (
+                  <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${m.name}`} onClick={() => { if (!on) playStock(m); }} onKeyDown={onKey(() => { if (!on) playStock(m); })}
+                    style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : base ? T.line2 : 'transparent'}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: on ? 'default' : 'pointer' }}>
+                    <StripedSlot height={76} caption={MODE_ART.has(m.mode) ? undefined : 'mode art'} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
+                      corner={<>
+                        <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{m.abbr}</span>
+                        {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9}>PLAYING</Tag></span>}
+                        {base && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={T.line2} ink={T.ink}>BASE</Tag></span>}
+                      </>} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
+                      <div style={{ font: F.chk(500, 12), color: T.dim, marginTop: 3 }}>{m.desc}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                      <SmallBtn onClick={() => openDesigner({ mode: m.mode })} label={`customize ${m.name}`}>CUSTOMIZE ▸</SmallBtn>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* THE GAME — what the players will get */}
+        <div style={{ flex: '1 1 330px', maxWidth: 480, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', gap: 0, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${custom ? T.warn : activeSaved ? PERK_COLOR : T.acc}` }}>
+          <div style={{ padding: '14px 18px 0' }}>
+            <div style={{ font: F.mono(600, 9), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
+            <div style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{activeSaved?.name ?? mode?.name ?? cfg.mode}</div>
+          </div>
+          {mode && MODE_ART.has(mode.mode) && (
+            <div style={{ margin: '12px 18px 0', aspectRatio: '2816 / 1536', background: `url(assets/modes/${mode.mode}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line2}` }} />
+          )}
+          <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ font: F.chk(500, 13), lineHeight: 1.55, color: T.body }}>{activeSaved?.desc || mode?.brief}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 5 }}>
+              {[['TEAMS', mode?.teams_text ?? '—'], ['WIN', mode?.win_text ?? '—'], ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF · LIVES' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
+                ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
+                ['LOADOUT', rulesLine(cfg, weapons, perks) || '—'], ['VENUE', `${cfg.environment.toUpperCase()}${cfg.night ? ' · NIGHT OPS' : ''}`]].map(([l, v]) => (
+                <div key={l} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, background: T.panel, border: `1px solid ${T.line}`, padding: '7px 12px' }}>
+                  <span style={{ font: F.mono(500, 9), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
+                  <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', textAlign: 'right', ...TAB }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <GhostButton size={10} pad="8px 14px" onClick={() => openDesigner({ fromLive: true, game: activeSaved ?? undefined })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : 'CUSTOMIZE ▸'}</GhostButton>
+            </div>
+            {(state.config_warnings?.length ?? 0) > 0 && (
+              <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
+              </div>
+            )}
+            {state.config_errors.length > 0 && <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}
+            <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PHONES SHOW "SETTING UP THE GAME" UNTIL YOU CONTINUE TO KIT — THEN THE BRIEFING, THEN THEIR KIT.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmallBtn({ children, onClick, color = T.dim, label }: { children: React.ReactNode; onClick: () => void; color?: string; label?: string }) {
+  return (
+    <button type="button" className="hov-acc" onClick={onClick} aria-label={label}
+      style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.14em', color, border: `1px solid ${color === T.dim ? T.line : color}`, padding: '5px 10px', minHeight: 32, cursor: 'pointer' }}>
+      {children}
+    </button>
+  );
+}

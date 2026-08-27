@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import type { Phase } from '../api/types';
-import { useStore } from '../store';
+import { useStore, type View } from '../store';
 import { F, T } from '../tokens';
 import { HazardButton, GhostButton, PrimaryButton } from '../ui';
 
-const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'BUILD'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'LIVE'], ['recap', 'RECAP']];
-const viewIdx = (p: Phase) => (p === 'armed' ? 3 : PH.findIndex(x => x[0] === p));
+const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'LIVE'], ['recap', 'RECAP']];
+const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : PH.findIndex(x => x[0] === p));
 
 export function CommandBar() {
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, hasToken, setToken } = useStore();
@@ -43,7 +43,7 @@ export function CommandBar() {
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'", background: active ? '#0c1420' : 'transparent',
                   border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, padding: '8px 16px 7px', cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44 }}>
                 <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}</span>
               </button>
             );
           })}
