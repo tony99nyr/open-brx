@@ -74,10 +74,10 @@ export function Games() {
                       corner={<>
                         <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? PERK_COLOR : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{gm?.abbr ?? g.config.mode.toUpperCase()}</span>
                         {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={PERK_COLOR}>PLAYING</Tag></span>}
-                        {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 8), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
+                        {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
                       </>} />
                     <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
-                    <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
+                    <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
                     <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}`}</div>
                     {confirmSwitch === g.preset_id && <div role="status" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ THIS DROPS YOUR UNSAVED TUNED GAME — TAP AGAIN TO PLAY THIS</div>}
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
@@ -139,7 +139,7 @@ export function Games() {
         {/* THE GAME — what the players will get */}
         <div style={{ flex: '1 1 330px', maxWidth: 480, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', gap: 0, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${custom ? T.warn : activeSaved ? PERK_COLOR : T.acc}` }}>
           <div style={{ padding: '14px 18px 0' }}>
-            <div style={{ font: F.mono(600, 9), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
+            <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
             <div style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{activeSaved?.name ?? mode?.name ?? cfg.mode}</div>
           </div>
           {mode && MODE_ART.has(mode.mode) && (
@@ -152,7 +152,7 @@ export function Games() {
                 ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
                 ['LOADOUT', rulesLine(cfg, weapons, perks) || '—'], ['VENUE', `${cfg.environment.toUpperCase()}${cfg.night ? ' · NIGHT OPS' : ''}`]].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, background: T.panel, border: `1px solid ${T.line}`, padding: '7px 12px' }}>
-                  <span style={{ font: F.mono(500, 9), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
+                  <span style={{ font: F.mono(500, 10.5), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
                   <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', textAlign: 'right', ...TAB }}>{v}</span>
                 </div>
               ))}
@@ -166,7 +166,7 @@ export function Games() {
               </div>
             )}
             {state.config_errors.length > 0 && <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}
-            <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). CONTINUE ▸ TAKES THIS GAME TO KIT — PHONES SHOW "SETTING UP" UNTIL THEN, THEN THE BRIEFING, THEN THEIR KIT. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
+            <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). CONTINUE ▸ TAKES THIS GAME TO KIT — PHONES SHOW "SETTING UP" UNTIL THEN, THEN THE BRIEFING, THEN THEIR KIT. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
           </div>
         </div>
       </div>

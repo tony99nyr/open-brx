@@ -131,7 +131,7 @@ export function Designer() {
               <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="health" onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>
               <Row label={<>ARMOR <Hint>0 = ONE-SHOT WITH A SNIPER</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
             </div>
-            <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro, marginTop: 6 }}>VENUE (INDOOR / OUTDOOR, NIGHT OPS) IS SET ON THE GAMES PAGE EACH TIME — IT IS NOT PART OF THE GAME.</div>
+            <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, marginTop: 6 }}>VENUE (INDOOR / OUTDOOR, NIGHT OPS) IS SET ON THE GAMES PAGE EACH TIME — IT IS NOT PART OF THE GAME.</div>
           </section>
 
           {/* 3 LOADOUT */}
@@ -139,14 +139,14 @@ export function Designer() {
             <SectionRule label="3 // LOADOUT — WHO CARRIES WHAT" hint={<span style={{ color: PERK_COLOR }}>{pol.preset === 'custom' ? 'CUSTOM RULES' : TEMPLATES.find(t => t.value === pol.preset)?.label}</span>} style={{ marginBottom: 12 }} />
             {previewOff && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER PREDATES THIS UI — RULES PREVIEW LOCALLY BUT SAVE / PLAY WILL FAIL UNTIL YOU RESTART IT.</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim }} title="A template replaces every loadout rule below, including the phone-picks switch">START FROM</span>
+              <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim }} title="A template replaces every loadout rule below, including the phone-picks switch">START FROM</span>
               <span role="group" aria-label="loadout template" style={{ display: 'flex', gap: 4 }}>
                 {TEMPLATES.map(t => <button key={t.value} type="button" title={t.hint} onClick={() => applyTemplate(t.value)} aria-pressed={pol.preset === t.value} className="hov-acc"
                   style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.12em', padding: '7px 12px', minHeight: 36, cursor: 'pointer', background: pol.preset === t.value ? T.acc : 'transparent', color: pol.preset === t.value ? T.accInk : T.dim, border: `1px solid ${pol.preset === t.value ? T.acc : T.line}` }}>{t.label}</button>)}
               </span>
               <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, font: F.chk(600, 12), letterSpacing: '.1em' }}>PLAYERS PICK ON THEIR PHONE <Toggle on={pol.hud_select} onChange={v => putPol({ hud_select: v })} label="players pick on phone" /></span>
             </div>
-            {!pol.hud_select && <div role="status" style={{ font: F.mono(600, 9.5), letterSpacing: '.12em', color: T.dim, marginBottom: 10 }}>PHONE PICKS ARE OFF — "PLAYER" BELOW MEANS THE HOST KITS THAT SLOT ON THE KIT PAGE; PLAYERS SEE THEIR KIT BUT CANNOT CHANGE IT.</div>}
+            {!pol.hud_select && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.dim, marginBottom: 10 }}>PHONE PICKS ARE OFF — "PLAYER" BELOW MEANS THE HOST KITS THAT SLOT ON THE KIT PAGE; PLAYERS SEE THEIR KIT BUT CANNOT CHANGE IT.</div>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 12 }}>
               <SlotEditor slot="primary" rule={pol.primary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('primary', r)} />
               <SlotEditor slot="secondary" rule={pol.secondary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('secondary', r)} />
@@ -168,18 +168,18 @@ export function Designer() {
         {/* summary rail */}
         <aside style={{ flex: '1 1 300px', maxWidth: 400, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${PERK_COLOR}` }}>
           <div style={{ padding: '14px 18px 0' }}>
-            <div style={{ font: F.mono(600, 9), letterSpacing: '.26em', color: PERK_COLOR }}>THE CARD WILL SAY</div>
+            <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: PERK_COLOR }}>THE CARD WILL SAY</div>
             <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1, color: name.trim() ? T.ink : T.faint }}>{name.trim() || 'UNNAMED GAME'}</div>
           </div>
           {mode && MODE_ART.has(mode.mode) && <div style={{ margin: '12px 18px 0', aspectRatio: '2816 / 1536', background: `url(assets/modes/${mode.mode}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line2}` }} />}
           <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
+            <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
               {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', cfg.scoring.frag_limit ? `${cfg.scoring.frag_limit} SCORE / TIME` : 'TIME'],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
                 ['PRIMARY', pool ? (pol.primary.choice === 'fixed' ? 'FIXED' : `${pool.primary.length} OF ${weapons.length}`) : '…'],
                 ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} WEAPONS · ${pool.secondary_perks.length} PERKS` : '…']].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 9.5), letterSpacing: '.14em' }}>
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 10.5), letterSpacing: '.14em' }}>
                   <span style={{ color: T.micro }}>{l}</span><span style={{ color: T.body, ...TAB, textAlign: 'right' }}>{v}</span>
                 </div>
               ))}
@@ -188,12 +188,12 @@ export function Designer() {
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <PrimaryButton onClick={play} title={name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
-              {!name.trim() && <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
+              {!name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
                 <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} onClick={() => save(false)} title={editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
                 {editing && <GhostButton size={11} pad="9px 12px" onClick={() => save(true)} title="Keep the original, save this as a new game">SAVE AS NEW</GhostButton>}
               </div>
-              {saved && <div role="status" style={{ font: F.mono(600, 9), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
+              {saved && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
             </div>
           </div>
         </aside>
@@ -234,10 +234,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
     <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${sec ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{sec ? 'SECONDARY' : 'PRIMARY'}</span>
-        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 9.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
+        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
+        <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
         <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
           onChange={(v: SlotChoice) => onRule({ choice: v, fixed_id: v === 'fixed' ? (rule.fixed_id ?? allowedW[0] ?? allowedK[0] ?? 'assault_rifle') : rule.fixed_id })} />
         {sec && !off && !fixed && (
@@ -251,13 +251,13 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
       {showWeapons && !fixed && (
         <>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro, marginRight: 4 }}>CLASSES</span>
+            <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro, marginRight: 4 }}>CLASSES</span>
             {TAGS.map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
           </div>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>A CHIP SWITCHES A WHOLE CLASS · TAP A WEAPON TO SWITCH JUST THAT ONE · A PARTIAL CHIP (1/5) MEANS SOME OF ITS WEAPONS ARE OFF</div>
+          <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>A CHIP SWITCHES A WHOLE CLASS · TAP A WEAPON TO SWITCH JUST THAT ONE · A PARTIAL CHIP (1/5) MEANS SOME OF ITS WEAPONS ARE OFF</div>
         </>
       )}
-      {showWeapons && fixed && <div style={{ font: F.mono(600, 9.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
+      {showWeapons && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
       {showWeapons && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(112px,1fr))', gap: 6 }}>
           {weapons.map(w => {
@@ -279,7 +279,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
                 <span style={{ display: 'block', height: 40, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, opacity: on || fixed ? 1 : .25, filter: on || fixed ? undefined : 'grayscale(1)' }} />
                 <span style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline' }}>
                   <span style={{ font: F.chk(700, 10), letterSpacing: '.04em', color: on || fixed ? T.ink : T.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixed && on ? '✓ ' : ''}{w.name}</span>
-                  <span style={{ font: F.mono(600, 7), letterSpacing: '.1em', color: role.color, flex: 'none' }}>{role.label}</span>
+                  <span style={{ font: F.mono(600, 9), letterSpacing: '.1em', color: role.color, flex: 'none' }}>{role.label}</span>
                 </span>
               </button>
             );
@@ -319,4 +319,4 @@ function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?
 function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 52 }}><span style={{ font: F.chk(600, 13), letterSpacing: '.1em' }}>{label}</span>{children}</div>;
 }
-function Hint({ children }: { children: React.ReactNode }) { return <span style={{ font: F.mono(500, 9), color: T.micro, marginLeft: 8 }}>// {children}</span>; }
+function Hint({ children }: { children: React.ReactNode }) { return <span style={{ font: F.mono(500, 10.5), color: T.micro, marginLeft: 8 }}>// {children}</span>; }
