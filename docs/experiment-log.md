@@ -2461,3 +2461,49 @@ audio suppression, which was measured separately and twice.
 **Standing lesson, now twice in one session:** a single well-controlled-looking run is not a result.
 Both the EMP disable and this damage finding survived one careful run each and died on the second.
 The only claims that have held all session are the ones measured 3× with alternating conditions.
+
+## 2026-08-27 (bench, native Supremacy) — 🏆 K3 CAPTURED: the death explosion, and it is protocol 10 @ 125
+
+**The Sentinel's death-nova, off the wire, clean 25-bit words, no stitching:**
+```
+t=29.2s  1010000001010111110100010   proto=10  player=1  team=1  MAG=125  crit=0
+t=29.4s  1010000001010111110110001   proto=10  player=1  team=1  MAG=125  crit=1
+```
+Two frames 0.2 s apart, one with the crit bit set. Tony, independently: *"def drops a grenade, it hurt
+me."*
+
+### What it tells us
+- **Protocol 10 = `StandardLethalExplosive`** — the same type the Rocket Launcher uses. The death
+  emission is an **explosive-class IR word**, which is exactly what "drops a grenade" should look like.
+  An **8th independent hardware anchor** for the DamageType enum.
+- **Magnitude 125 — higher than the Rocket Launcher's 115.** The hardest-hitting single word we have
+  measured from any source.
+- **It carries the DYING player's own id and team** (player 1 = the Sentinel). So the explosion is
+  attributed to the corpse: **a dead player can still get kills.** That is a real scoring consequence —
+  MC's scorer must expect `$HIR` naming a player who is already dead.
+- The crit bit is set on the second frame, so the nova can crit.
+
+⇒ **K3 is closed as a captured, replayable word.** A death-nova is now `emit(proto=10, player=<victim>,
+team=<their team>, magnitude=125)` from any emitter we build — the Utility Box, or a Companion.
+
+### Method — what finally made it work
+Four earlier attempts failed and **none of them failed for a protocol reason**:
+1. operator firing at the bench receiver → his own IR reflected back, killing him mid-window;
+2. our own emitter saturating our own receiver;
+3. frame **splitting** — `ir_capture.ino`'s per-frame `RAW` print takes ~15–20 ms at 115200, long enough
+   for the next frame to start mid-print;
+4. host-side **stitching** of those fragments introduced one-bit misalignments (the giveaway: the same
+   word decoding as `player=28/MAG=44` and `player=14/MAG=22` — exactly 2×).
+
+**Fix (committed): `IDLE_GAP_US` 8000 → 30000, and the RAW dump is now toggleable with `r`.** With RAW
+off the frames arrive whole and decode first time. **Turn RAW off for any capture that matters** — it is
+a debugging aid, not a capture mode. The `player=14` sightings in the stitched runs were misalignment
+artifacts and are withdrawn.
+
+### Also captured this session (native Supremacy, Sentinel)
+The **charge full-auto** emits **two words per shot** — `proto=0` *and* `proto=8`, same player/team/
+magnitude 15. Protocol 8 = `Shrapnel`, and `$SIR,8,0,,38` is the Charge Rifle row: **a 7th enum anchor**,
+and evidence that a native weapon can emit **more than one protocol per trigger pull**.
+
+**Still not captured:** the Sentinel EMP ability word — its frames arrived during the splitting era and
+never decoded. Worth a retry now that RAW can be turned off.

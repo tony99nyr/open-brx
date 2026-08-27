@@ -27,7 +27,11 @@
 
 static const int IR_RX_PIN = 4;          // VS1838B OUT
 static const int STATUS_LED = 6;          // visible LED — blinks when a frame is RECEIVED
-static const uint32_t IDLE_GAP_US = 8000; // frame ends after this much silence
+static const uint32_t IDLE_GAP_US = 30000; // frame ends after this much silence
+                                          // RAISED 2026-08-27: at 8000 a long frame (the $GREN
+                                          // accessory word, a death emission) was being split, and
+                                          // the per-frame RAW print (~15-20ms at 115200) let the
+                                          // next frame start mid-print. 30ms holds whole frames.
                                           // (shots closer than this fuse into one
                                           //  capture — fine for single shots; watch
                                           //  on burst-fire, lower it if two merge)
@@ -38,6 +42,7 @@ volatile uint32_t edges[MAX_EDGES];       // micros() timestamps of each edge
 volatile size_t edgeCount = 0;
 volatile uint32_t lastEdgeUs = 0;
 volatile bool overflow = false;
+static bool rawEnabled = true;    // 'r' toggles — off gives clean back-to-back frame capture
 
 void IRAM_ATTR onEdge() {
   uint32_t now = micros();
@@ -83,7 +88,9 @@ void printFrame() {
   digitalWrite(STATUS_LED, HIGH);  // visible "got a frame" blink
   ledOffAtMs = millis() + LED_HOLD_MS;
   frameCount++;
-  // durations between edges
+  // durations between edges. RAW is the expensive part (~15-20ms at 115200) and is what
+  // splits frames when they arrive back-to-back — send 'r' to toggle it off for clean captures.
+  if (!rawEnabled) { /* skip the RAW dump */ } else {
   Serial.print("RAW ");
   Serial.print(frameCount);
   Serial.print(" edges=");
@@ -98,6 +105,7 @@ void printFrame() {
     Serial.print(d);
   }
   Serial.println("]");
+  }
 
   // decode: marks are the 1st,3rd,5th... gaps. REQUIRE a leading ~2 ms sync (matches
   // the host pulses_to_bits) — without it this isn't a BRX frame. The sync mark at i=1
@@ -158,7 +166,9 @@ void loop() {
   // simple serial commands
   if (Serial.available()) {
     char c = Serial.read();
-    if (c == 's') { Serial.print("# frames="); Serial.println(frameCount); }
+    if (c == 'r') { rawEnabled = !rawEnabled;
+                    Serial.print("# RAW dump "); Serial.println(rawEnabled ? "ON" : "OFF"); }
+    else if (c == 's') { Serial.print("# frames="); Serial.println(frameCount); }
     else if (c == 'c') { frameCount = 0; Serial.println("# cleared"); }
   }
 }

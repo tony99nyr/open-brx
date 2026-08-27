@@ -112,7 +112,7 @@ name but no plan. MacBook + iPhone only (Callsign is iOS, PacketLogger is macOS)
 |---|---|---|
 | **P14** | Is the audio SD card removable/swappable? | **no plan — needs a teardown**; not worth the risk on a 4-gun fleet until there's a spare ([why](capture-runbook.md)) |
 | **G4** | Is grenade `.bin` flashing real? | **no plan possible** — the assumed method is dead (G7). Nothing to try until someone finds a mechanism |
-| **K3** | **Death-explosion** — the headset emits IR when a Supremacy robot dies | mechanism is **expressible today** (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`) — build the weapon and fire it. **Belongs in a bench session, not here** |
+| ~~K3~~ | ✅ **CLOSED 2026-08-27 — CAPTURED.** The Sentinel death-nova is `proto=10 (StandardLethalExplosive), MAG=125, player/team = the DYING player` — replayable from any emitter. Note it out-damages the Rocket Launcher (115) and **credits kills to the corpse**. | ~~mechanism is expressible today~~ (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`) — build the weapon and fire it. **Belongs in a bench session, not here** |
 
 ---
 
