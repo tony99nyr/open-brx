@@ -134,18 +134,18 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 
 ## Session E — the IR bench (when the ESP32 arrives ~Aug 26) — B13
 `hardware/esp32-ir-bridge/` + `hardware/ir-prototype-plan.md`.
-- ⬜ **Capture** — flash `ir_capture.ino`; fire a gun at the VS1838B; frames decode (`ir-capture`); the RX LED blinks.
-- ⬜ **Bit-layout (B13)** — sweep every weapon / team / grenade mode; diff the 25-bit words → map type/team/mode/damage bits.
-- ⬜ **Emit** — flash `ir_emit.ino`; tune timings to captured frames; a stock gun registers a `$HIR`; the TX LED lights.
-- ⬜ **`$SIR` sweep** — catalog every IR type → effect + sound (the Utility Box API).
-- ⬜ **IR RANGE measurement** — full walk-back protocol + data tables in **`hardware/range-experiment.md`**;
+- ✅ **Capture** — DONE 2026-08-26 (exp-log "B13 CLOSED"): timings measured (sync ~1990/992/500), Sony-remote negative control passed.
+- ✅ **Bit-layout (B13)** — DONE: field offsets pinned by pushing known $WEAP frames (dmg 22/9/115, B=10); Z = computed parity (odd→01, even→10).
+- ✅ **Emit** — DONE: 4/4 exact synthesize→transmit→decode round trip, and a STOCK GUN accepts fully synthetic shots (exp-log "LANDMARK").
+- ✅ **`$SIR` sweep** — DONE overnight: the complete two-sided function map (damage/AP/×1.25/×2/heal/armor/shield/dual-polarity/status), 16×4 matrix (exp-log "COMPLETE two-sided").
+- ⬜ 🧍 **needs a human + space** — **IR RANGE measurement** — full walk-back protocol + data tables in **`hardware/range-experiment.md`**;
   quantify each station with **`python -m brx_mcp ir-range <port> 12 10`** (reports detect% + decode%).
   Confirm the grenade respawn beacon's **~18–20 ft** figure and how much **outdoor mode / weapon / angle**
   change it; then characterize OUR emitter (bare LED vs driven+lens). Sets the objective-node coverage spec.
 
 ## Session E½ — sound catalog by-ear (1 tagger, ~10 min)
 `mcp/brx_mcp/sounds.py` — CONFIRMED cues are grounded; the objective callouts are PROVISIONAL.
-- ⬜ **Objective callouts** — `$PLAY` through the `V100–V144` range (the app's CTF/Slayer/KotH voice
+- ⬜ 🧍 **needs a human ear** — **Objective callouts** — `$PLAY` through the `V100–V144` range (the app's CTF/Slayer/KotH voice
   lines) and note which id says what. Pin `OBJECTIVE_TAKEN` (grab), `OBJECTIVE_SCORED` (capture),
   `POINT_CAPTURED` (hill/point) to the right clips (currently V100/V108/V109, best-guess-in-range).
 - ⬜ **Game-over cue** — confirm `VA33` (game over + music) is the one we want on match end (vs `VA85` quiet).
@@ -186,5 +186,5 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ✅ Health-write `$LIFE`/`$BUMP` additive-clamped; no native armor regen (exp-log #33).
 - ✅ Grenade mode map + `$HIR,0,15,0,<team>,<mode>` beacon decode; `$GREN` can't set objective modes (G8);
   grenade USB-C power-only (G7). (exp-log #35–40.)
-- ✅ `$TID` 1=blue, 2=yellow; two-gun damage requires distinct teams *(NOTE 2026-08-26: distinct teams are NOT required for damage — FF is not firmware-enforced; distinct teams still recommended for clean attribution)*; no-power-cycle `$STOP`/`$CLEAR` reset.
+- ✅ `$TID` 1=blue, 2=yellow; two-gun damage requires distinct teams *(NOTE 2026-08-26 overnight, CORRECTED: `$GSET` t1 IS firmware-enforced FF — with t1=0 same-team damage is blocked on the gun; distinct teams required unless FF on)*; no-power-cycle `$STOP`/`$CLEAR` reset.
 - ✅ Remote game start (`$SPAWN`/`$PB*`); config/spawn/live; trigger fires (mag decrements in `$ALCD`).

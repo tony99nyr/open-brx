@@ -81,9 +81,10 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
 - ✅ **Max native team count (P9) — FOUR** (bench exp 4, 2026-08-26): `$TID` masks to 2 bits (`& 3`),
   giving four usable teams **0, 1, 2, 3** (a `$TID,2` shooter lands cross-team hits normally; an earlier
   apparent team-2 anomaly was a bench-script re-setup race). Native small teams work up to 4. *Beyond 4:*
-  FFA + Mission-Control logical teams (any structure). **No hardware friendly-fire protection exists**
-  either way — the gun damages same-team hits under both `$GSET` FF values (bench exp 4), so FF is MC-side
-  scoring (our scorer tracks `friendly_kills`); `$GSET` token 1's gun function is now UNKNOWN.
+  FFA + Mission-Control logical teams (any structure). **On-gun friendly-fire protection works** in
+  native-team mode (`$GSET` `friendlyFire=0` blocks same-team damage + cross-team heals — bench
+  2026-08-26, brx-ir IR emitter); FFA mode has no on-gun FF (one team), so MC penalizes team-kills. MC FF
+  is a policy/scoring layer over the firmware-enforced base.
 - 🧪 **IR damage value (P10)** — needed for damage-weighted scoring. ✅ **Regen is NOT native (P11
   closed)** — armor held through 30 s idle, so Halo-shields are **host-driven** (node refills). 🧪
   **`$PB*` enums are v4.30; ours is v4.32 (P12).**

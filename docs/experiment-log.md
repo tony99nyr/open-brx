@@ -1449,12 +1449,12 @@ read as one continuous green. No wire reply. So the frame decode (§7o) is corre
 companion frame is required, and the engine's `KillConfirm → $SFLASH,*` path is validated end-to-end
 (B18 visual half REAL). Single-send duration not yet isolated (needs one send + a stopwatch).
 
-## 2026-08-26 (bench, handoff experiment 2) — `$HIR` t5 = applied damage (EXACT); armor model pinned; new tok2/tok7 decodes
+## 2026-08-26 (bench, handoff experiment 2) — `$HIR` t5 = raw magnitude (== applied on fn-1 rows); armor model pinned; new tok2/tok7 decodes
 
 Two real guns, victim rebuilt to a full 45/70 before each single shot (`mcp/tools/damage_bench.py`).
 Resolves the `t5`=damage question (was "unresolved" in `weapons.md` / `protocol-classes.md`) and P10.
 
-**`$HIR` token 5 = the applied damage, EXACT — 4 of 4 across the range:**
+**`$HIR` token 5 == the applied damage on all 4 weapons tested** (refined later — see the "tok5 = RAW magnitude" entry below: tok5 is the raw magnitude, which equals applied only on `$SIR` fn-1 rows, as all 4 of these are):
 - AR (`t5`=9) → armor 70→61 (−9). Frame: `$HIR,4,0,5,1,9,0,0`.
 - Shotgun `T01` (45) → armor 70→25 (−45). `$HIR,4,0,5,1,45,0,0`.
 - Sniper (80) → armor 70 absorbed + HP 45→35 (spill). `$HIR,4,0,5,1,80,0,1` (+ a gun-sensor variant `$HIR,0,…`).
@@ -1549,15 +1549,26 @@ exactly what was seen. Not a team-2 property. (Registration-rate-vs-rounds wasn'
 number, so none is stated.)
 
 The 2-bit mask stands on the tok4 evidence (4→0, 63→3, 100→0). The last remaining question — friendly
-fire — is also resolved below (wrinkle a): it is **not** IR-enforced.
+fire — is also resolved below (wrinkle a): `$GSET` token 1 IS `friendlyFire`, **gun-enforced**.
 
-**Sub-open (a) — friendly fire — RESOLVED: FF is NOT IR/firmware-enforced.** Same-team damage landed
-under BOTH `$GSET` token-1 values: FF=0 (the 4v4 / 63v63 phases above) and a follow-up **FF=1** probe
-(both guns team 1, `$GSET` token1=1, several shots → **7 registrations**, `$HIR,4,0,5,1,9,0,0`). So
-same-team hits **always** damage on the wire; the native game's "FF off" must be **app-side bookkeeping**,
-not a gun behaviour — exactly how our MC scorer already works (it tracks `friendly_kills` separately). ⇒
-`$GSET` token 1's on-gun function reverts to **UNKNOWN**: the teardown's `friendlyFire` label names the
-*app setting*, not a gun-enforced behaviour (see the GSET map caveat). All four handoff experiments closed.
+**Sub-open (a) — friendly fire — RESOLVED: `$GSET` token 1 IS `friendlyFire`, and it IS gun-enforced.**
+The exp-4 gun-fired probe (both guns "team 1", FF=1) saw same-team damage land — which is **correct** and
+matches the FF=1 case below; the only error was the inferred *extension* to FF=0 ("lands under 0 AND 1"),
+never cleanly tested (that probe's victim had an **unverified `$TID,1` write** on a degrading gun and may
+have kept team 2). brx-ir settled it on the **four-cell IR emitter** — team bits set **directly in the IR
+word**, no gun-config dependence — replicated **2×, alternating, fresh wound per leg, trailing known-good
+control**:
+
+| `$GSET` t1 | dmg same-team | dmg enemy | heal from ally | heal from enemy |
+|---|---|---|---|---|
+| **0** (FF off) | **blocked** | works | works | **blocked** |
+| **1** (FF on) | works | works | works | works |
+
+So `friendlyFire` behaves **exactly as the teardown labelled it**: FF=0 gates out same-team damage AND
+enemy heals (the friend/foe filter); FF=1 opens the gate. **Nothing measured was retracted — one inference
+sentence was.** This also **un-supersedes** the 2026-08-25 "same-team → zero `$HIR` both ways" observation:
+it was right all along. MC friendly-fire is a policy/scoring layer **over** this firmware-enforced base.
+All four handoff experiments closed.
 
 Handoff experiment 4 **PASSED** — all four BLE-only experiments (§`handoff-ble-experiments-no-ir.md`) closed.
 
@@ -1662,3 +1673,529 @@ earlier. Verdict: rig degradation (R0BAT ~12h powered — the night's SECOND scr
 emitter or receiver side unresolved), so the t41=5 zeros are unattributable. **U2 stays OPEN.**
 Method for a fresh fleet (worth 10 minutes): same-spot A/B, t41 100 vs 5, counted windows both sides.
 Fleet ops rule reinforced: POWER-REST GUNS — a day-long bench session degrades them below usability.
+
+## 2026-08-26 (bench) — 🎯 B13 CLOSED: the BRX IR word is bench-verified, and the parity rule is cracked
+
+First IR capture rig ever run on this project: ESP32-S3-N16R8 + VS1838B on GPIO4, three wires, no
+breadboard-mounted MCU. Session 0 (toolchain) and Session 1 (capture) of `bench-plan-hardware.md`
+both PASS. Host side driven straight from `python -m brx_mcp ir-capture COM7 <secs>` — **no new
+tooling was needed**, the CLI + `irbridge.py` decoder were already built and waiting.
+
+**Rig validation before any tagger was involved:** a Sony TV remote decoded cleanly as SIRC 12-bit
+(2390 µs header, 1200/600 µs marks, `101010010000`). That proved wiring, ISR edge capture, the
+750 µs bit split and the frame validator all work on real IR — a free negative control.
+
+**Measured BRX timings (R0BAS @ ~1 m):** sync **1988–1991 µs**, one-marks **990–994 µs**,
+zero-marks and spaces **489–512 µs**. The source-derived `~2 ms / 1000 / 500` is exactly right.
+
+**Field layout CONFIRMED by pushing known `$WEAP` frames over BLE and watching which bits move** —
+the strongest form of one-field validation, because the ground truth is independent of the receiver:
+
+| pushed | captured word | decode |
+|---|---|---|
+| (unconfigured) | `0000000000010001011000010` | dmg=**22** |
+| AR, `t5=9` | `0000000000010000100100001` | dmg=**9** |
+| Rocket, `t3=10 t5=115` | `1010000000010111001100010` | dmg=**115**, B=**10** |
+
+Between baseline and AR **only bits 12–19 changed**. `player=0` and `team=1` independently match
+R0BAS's armory record (`player_id: 0`, `field_id: 1`).
+
+**Two corrections to the LaserTagMods-derived table:**
+1. **The 4-bit "B" field is the IR protocol / damage type**, not a bullet type — it carries the same
+   number as `$WEAP` **t3** and the `$HIR` **tok2** echo (rocket → 10). ⚠ **It is only 4 bits**, so the
+   custom-type space for special weapons (heal/EMP) is **0–15 with 0/8/10/11/13/15 already taken** —
+   about ten free slots and no way to widen it. This is a real constraint on the special-weapons design.
+2. **`Z` is a computed parity over bits 0–22**, not just a differing pair:
+   **odd count of 1s → `Z=01`, even → `Z=10`.** 4/4 frames obey it. node1's cheap `Z1 != Z0` test never
+   fails on a real frame, which is why the weaker rule looked sufficient from source.
+   → `irbridge.payload_parity()` added; `encode_word()` now computes parity by default (it previously
+   defaulted to a fixed `"01"`, which would have emitted invalid frames on the Utility Box);
+   `decode_word()` reports `parity_matches`. 19/19 irbridge tests green.
+
+**U7 (damage ceiling) CLOSED as a side effect:** the damage field is 8 bits, read 115 directly off the
+wire. Max 255, so a 2× powerup is expressible on anything up to 127.
+
+**Rig gotcha worth remembering:** `ir_capture.ino`'s per-frame `RAW` print takes ~15 ms at 115200, and
+any shot landing in that window is captured truncated — the symptom is frames that are *prefixes* of
+the real word (16/17/20/21/24 bits). Fire 1–2 s apart, or cut the print, before counted-window work
+(this will matter for the t41 range A/B).
+
+**Also corrected:** FOLLOWUPS still listed **B5** (mcp 2.0 server port) as open — it was fixed in
+`2c963b1` and verifies clean on the Windows venv against `mcp` 2.0.0. Marked done.
+
+**Next:** Session 2 — wire the emitter (2N2222 + 940 nm LED on GPIO5) and find out whether a stock gun
+accepts a word we synthesize. That is the Utility Box (B4) unlock, and the parity rule above is what
+makes a synthesized word legitimate.
+
+## 2026-08-26 (bench) — 🎯 IR EMIT WORKS: full synthesize→transmit→decode round trip, 4/4 exact
+
+Session 2 (first half) of `bench-plan-hardware.md`. Board B (CH343 `5C4C136487`, COM8) running
+`ir_emit.ino` with 2N2222A + 940 nm LED on GPIO5; board A (CH343 `5C93045958`, COM7) running
+`ir_capture.ino` with the VS1838B on GPIO4. Emitter timings first re-tuned from the source defaults
+to **our measured values** (sync 1990, one 992, zero/space 500).
+
+**Result — 4/4 complete frames decoded EXACT:**
+```
+tx: 1010000000010111001100010
+rx: 1010000000010111001100010   player=0 team=1 dmg=115 B=10 parity_matches=True
+```
+Our transmitter emits a word a decoder reads back bit-for-bit, with correct sync, correct mark/space
+timing and correct computed parity. **The emit half of B4 (Utility Box) is proven at the signal level.**
+
+**Diagnostic chain worth remembering (three false alarms, none of them the circuit):**
+1. **Phone camera saw nothing — MEANINGLESS at our drive level.** From 3V3 through 100 Ω with a 50%
+   38 kHz carrier the LED averages **~5 mA**; a TV remote runs 100–500 mA peak. Both phone cameras
+   showed nothing while the circuit was working perfectly. **Do not use a phone camera to judge a
+   low-current IR emitter.**
+2. **Two boards, one data cable.** A charge-only USB-C cable made a board vanish from the bus
+   entirely (not even the native-USB device). Symptom: `Get-CimInstance` shows one CH343 when two
+   are plugged in. Also added a **standalone AUTO-TX mode** to `ir_emit.ino` (`AUTO <bits>`/`AUTO OFF`,
+   or a compile-time `autoBits`) so a board can emit with no host attached — which a deployed Utility
+   Box needs anyway, and which unblocks a one-cable bench.
+3. **VS1838B AGC saturates at point-blank.** At a few inches the receiver dropped out mid-burst and
+   the sketch reported each piece as a separate frame (fragments that were *prefixes* of the real
+   word). **Aiming the LED away from the receiver fixed it instantly — 0/8 complete → 4/4 exact.**
+   Counter-intuitive but firm: for loopback work, attenuate. The gun at 1 m never showed this.
+
+**Measured back from our own emitter:** sync 2020–2070 µs, one-marks 1013–1040, zero/space 460–535 —
+i.e. the receiver reads **~30 µs longer than programmed** (carrier gating + demod latency). Still well
+inside the 750 µs decision threshold, and within ~4% of a real gun's received signature (990/500), so
+no re-tune is warranted before the gun-acceptance test.
+
+**Next:** point the emitter at R0BAS's headset and watch for a `$HIR` over BLE. That is the actual
+Session 2 pass/fail — does a *stock gun* accept a word we made up.
+
+## 2026-08-26 (bench) — 🏆 LANDMARK: a stock BRX tagger accepted a FULLY SYNTHETIC shot from our hardware
+
+Session 2 of `bench-plan-hardware.md` — **PASS**. The emitter (board B, 2N2222A + 940 nm LED on GPIO5)
+was aimed at R0BAS from ~40 cm and told to transmit a word that **no BRX device has ever emitted**:
+
+```
+signature word  0000101010100010000100010   →  player=42  team=2  damage=33  protocol=0
+```
+
+Chosen to be unforgeable as a coincidence: every gun on the bench has player id **0** (so 42 can only be
+ours), team 2 makes it an enemy of R0BAS's team 1 (no friendly-fire ambiguity), and **no weapon in our
+catalog does 33 damage**.
+
+**R0BAS's own BLE stream, verbatim:**
+```
+rx $HIR,4,0,42,2,33,0,0,*      rx $HP,45,37,0,*
+rx $HIR,4,0,42,2,33,0,0,*      rx $HP,45,4,0,*
+rx $HIR,4,0,42,2,33,0,0,*      rx $HP,16,0,0,*
+rx $HIR,4,0,42,2,33,0,0,*      rx $HP,0,0,0,*
+rx $LCD,0,0,0,0,0,0,*
+```
+tok3=**42**, tok4=**2**, tok5=**33** — our invented attribution and damage, echoed back by a stock
+tagger. (Tony, mid-test, unprompted: *"you killed me!!!"* — the first confirmation arrived physically,
+before the log did.)
+
+**The armor model reproduced exactly** (P10): armor 70→37→4 absorbing 1:1, then overflow into HP
+45→16→0. Four hits × 33 = 132 vs a 115 pool. Death on the fourth.
+
+**What this unlocks — this is the B4 (Utility Box) gating result.** We can now emit *any* BRX tag from
+$20 of parts: respawn stations, capture points, hills, supply drops, perk emitters, the medic heal-gun
+and EMP. Everything the sealed grenade refused to give us (G7 no data port, G8 objective modes locked)
+is now ours to build, with **full per-player attribution** — the emitted word carries a player id, so a
+station knows exactly who tagged it.
+
+**Note:** `$HIR` tok1 = **4 (gun body)**, not 0 (front dome), even though the LED was aimed at the
+headset. At 40 cm the beam is wide enough to wash over both; the gun-body sensor won. Worth controlling
+for when the Utility Box's aiming geometry matters.
+
+**Harness bugs to avoid repeating (mine, both cost a run):** `ConnectionManager` has **no `drain()`** —
+a `hasattr` guard silently returned an empty list and reported a false negative on a run that had
+actually killed the player. And **`get_events()` returns a dict** (`alias`/`events`/`last_seq`/
+`truncated`), not a list — iterating it yields key names. Use `get_events(alias, since_seq)['events']`.
+
+## 2026-08-26 (bench) — 🏆 THE SPECIAL-WEAPONS TIER IS REAL: medic, armor and SHIELDS all proven over IR
+
+Fully automated closed loop (emit IR from our ESP32 + read the victim's BLE stream), no human in the
+lab. Victim R0BAS, `$TID,1`, full 12-row `$SIR` table from `brx-protocol.md` §5.
+
+### The IR word is now 100% decoded — the last unknown field is the `$SIR` SUBTYPE
+```
+U=0 → $HIR,4,0,42,2,1,0,0    U=1 → $HIR,...,0,1    U=3 → $HIR,...,0,3    U=2 → (ignored)
+```
+The **U bits (21–22) are the `$SIR` subtype**, echoing to **`$HIR` tok7**. Clean control: rows were
+pushed for subtypes 0/1/3 and **only 2 — the one without a row — failed.** Together with B, the
+emitter addresses the exact `<protocol, subtype>` composite key a `$SIR` row is indexed on:
+**16 × 4 = 64 addressable effect slots, all writable by us over BLE.**
+
+### `$SIR` functions, driven from our own emitter — ALL CONFIRMED
+| protocol | fn | effect | measured |
+|---|---|---|---|
+| 0 / 6 / 8 / 10 / 13 | 1 | damage | lands on every protocol **once its row exists**; tok2 echoes the protocol |
+| **1** | **10** | **respawn + add HP** | HP **15 → 35 → 45**, +20/shot = the **damage field is the amount**, clamps at max, **deals no damage** |
+| **3** | **13** | **add armor** | armor **0 → 30 → 60 → 70**, +30/shot, and **overflow spills into SHIELDS** (`$HP,15,70,20`) |
+| **2**/sub 1 | **11** | **add shields** | shield **0 → 50 → 70**, and a follow-up hit drains **shield first** (`$HP,45,70,69`) |
+
+**`D8` is not "damage" — it is the MAGNITUDE.** The `$SIR` function decides what the magnitude is
+applied to: damage, HP, armor or shields.
+
+### 🔴→✅ P16 CLOSED — shields DO activate
+The shield pool that stayed 0 through all of G-2 despite `$PSET` shield=70/99 fills instantly from an
+**IR function-11 event**. Shields are **not** a BLE-writable pool value; they are granted by an IR
+effect. Damage order confirmed on the wire: **shields → armor → HP**.
+
+### NEW FIRMWARE BEHAVIOUR: friendly functions are TEAM-GATED
+`$SIR` fn 10/11/13 register **only from a same-team source**. Heal fired as team 1 at a team-1 victim:
+3/3 hits. The identical word as team 0/2/3: **0 hits, silently dropped.**
+This is an **asymmetry we did not know existed** — bench exp 4 proved *damage* is NOT friendly-fire
+gated in firmware (same-team damage lands under `$GSET` tok1 = 0 and 1). So the gate is **per-function,
+not global**: damage ignores teams, support effects require a match. **A medic gun enforces
+"allies only" in hardware, with zero host logic.**
+
+It also explains three earlier false negatives in this session: every failed heal/armor/shield attempt
+was fired as **team 2 at a team-1 victim**. One cause, three wasted trials, and the emitter was never
+at fault. (Two other false negatives were my own harness: filtering `$HIR` on `,42,` while sweeping the
+player id, and an incomplete 6-row `$SIR` table.)
+
+### The `$SIR` sound field works too
+Tony, listening at the bench during the armor run: *"i heard it say something and then armor, armor"* —
+that is `$SIR,3,0,**VA16**,13`'s sound id playing on the victim. Custom per-effect audio is live.
+
+### What is now buildable
+Medic/heal gun · armor-repair station · shield charger · overshield modes · and every objective
+station (respawn/hill/capture/supply) — from an ESP32, a 2N2222A and a 940 nm LED, with full
+per-player attribution and hardware-enforced friend/foe rules. **No Companion logic required for the
+effect itself** — the tagger applies it natively.
+
+## 2026-08-26 (bench, overnight/unattended) — `$SIR` FUNCTION MAP enumerated; IR cannot revive the dead
+
+Fully autonomous (emitter + BLE, operator away, `$VOL,3`). Victim R0BAS on mains power
+(`$VOLTS,8520,4125,100,100`). Method: for each function, push `$SIR,5,0,,<fn>,0,0,1,,*`, respawn,
+wound to a fixed **HP 15 / armor 0 / shield 0** baseline, then fire **2 IR shots on protocol 5 with
+magnitude 20** and read the resulting `$HP`.
+
+### ❌ A1 — IR CANNOT REVIVE A DEAD PLAYER (important negative for the Utility Box)
+Killed the victim (`$HP,0,0,0`), then fired protocol-1 / function-10 ("respawn + add HP") at it:
+**0 registrations, no HP change, and a follow-up damage probe also got nothing.** A dead gun ignores
+**all** incoming IR.
+
+⇒ A respawn station does **not** work by shooting a corpse back to life. This lines up with **B12**:
+the station's role is to **arm a living tagger** into station-respawn mode *before* it dies (passive
+beacon or the grenade-button press), after which the gun's own respawn path handles the revive. Design
+the Utility Box's respawn node accordingly — it is an **arming** emitter, not a healing one.
+
+### `$SIR` function map (fn → effect on the pools), magnitude 20
+> **⚠ READ THE NEXT ENTRY FIRST — this table is only HALF the map.** Every shot here was fired
+> **same-team with FF off**, which (as the friend/foe matrix later proved) *silently blocks the entire
+> damage family*. So the "no registration" rows below are mostly damage functions that were never
+> allowed to land, not inert values. The complete two-sided map is in the follow-up entry.
+
+| fn | effect | evidence (HP,armor,shield) |
+|---|---|---|
+| 9, 12, 16, 19 | **add HP, overflow → ARMOR** | `15→35`, then `45,10` |
+| **10**, 17 | **add HP, clamp (no overflow)** | `15→35`, then `45,0,0` |
+| 14, 21 | **add HP, overflow → SHIELD** | `15→35`, then `45,0,10` |
+| **13**, 15, 20, 22 | **add ARMOR** | `15,20,0` → `15,40,0` |
+| **11** | **add SHIELD** | `15,0,20` → `15,0,40` |
+| 18 | **add shield, but COSTS 4 HP** | `11,0,20` → `11,0,40` — a *conversion*? worth a closer look |
+| **23, 31, 32, 34** | **register but change NO pool** | `$HIR` fires, `$HP` unchanged at `15,0,0` |
+| 0–8, 24–27, 29, 30, 33, 35–44 | no registration | — |
+| 28 (tear gas per §5), 45 | no registration on protocol 5 | may be protocol-bound |
+
+**So there are three distinct "add HP" flavours** differing only in where the overflow goes (nowhere /
+armor / shield) — that is a real design lever: a medic that tops up armor vs one that grants overshield.
+
+**fn 23/31/32/34 are the stun/EMP candidates.** They produce a `$HIR` (so the event is accepted) but
+touch no pool and emit no other BLE frame. A stun would look exactly like this from the host side —
+the effect would be on the gun's ability to fire, which **cannot be tested without a trigger pull**.
+⇒ **Next bench with a human: set `$SIR,5,0,<sound>,23|31|32|34` and try to fire the victim's trigger
+while the effect is active.** That is the remaining unknown for the EMP weapon (recall `$STUN` over
+BLE is a proven no-op, and the APK lists a weapon category 10 "Stun").
+
+## 2026-08-26 (bench, unattended) — 448-word brute force: a DEAD gun accepts NO IR
+
+Tony's correction ("IR CAN respawn — the grenade does it") sent me back to test this properly instead
+of concluding from one probe. Killed the victim, then emitted **448 distinct IR words** without
+reviving it:
+- **Pass 1 — protocol 15 exhaustively:** subtype 0–3 × team 0–3 × magnitude 0–15 (256 words), i.e.
+  every possible grenade-beacon shape including our decoded Respawn (mag 6) and Hill (mag 8) modes.
+- **Pass 2 — every protocol 0–15 × team 0–3 × magnitude {6, 8, 45}** (192 words).
+- `$SIR` rows pre-pushed for protocol 15 subtypes 0–3 (fn 10) and protocol 1; also tried with a bare
+  table and with **no `$SIR` table at all**.
+
+**Result: zero `$HIR`, zero `$HP`.** (⚠ my script's own verdict line printed "SOMETHING REVIVED IT" —
+that was a **false positive in my detector**: the five "responses" were all `$VOLTS`, the gun's periodic
+30 s battery telemetry. Do not trust a bare "any frame arrived" test on this stream.) The trailing
+control passed — respawn via `$SPAWN` then two clean damage registrations — so the rig was healthy.
+
+**Reconciled with Tony's hardware fact, not against it.** Both are true if the grenade's respawn
+station **arms a living tagger** rather than reviving a corpse — which is exactly what **B12** already
+records (two arming paths: passive pre-game beacon exposure, or the post-start grenade-button press,
+after which the gun's *own* respawn path performs the revive). So: **an IR station cannot resurrect the
+dead; it re-routes how a living player will respawn.** The Utility Box respawn node is an *arming*
+emitter. Still to settle at the bench with the grenade present: capture what it actually beacons and
+replay it (see the ⭐ grenade item in FOLLOWUPS).
+
+### New leads from Tony, same night
+- **KotH gives a RATE-OF-FIRE BOOST to whoever holds the hill — "that must be IR".** Agreed, and it
+  fits the data: a fire-rate buff changes **no health pool**, which is precisely the signature of my
+  **friendly-side no-pool functions (31, 32, 34)**. Those had no explanation until now. A buff
+  delivered by the hill beacon to the holder is the obvious candidate. **Not verifiable without a
+  trigger pull** — needs a human at the bench.
+- **Supremacy robots explode on death, emitting IR from the HEADSET.** ⇒ headset emission is a
+  `$WEAP` **powerType** setting (`PowerType/IRSource` enum has `HeadSetOnly`, `GunAndHead`,
+  `DoubleGunAndHead`) plus the `extraHeadsetDamage` / `extraHeadsetRange*` / `headsetDirection` /
+  `headsetRepeat` fields. A death-nova / suicide-bomber weapon is buildable from existing tokens.
+
+## 2026-08-26 (bench, unattended) — the COMPLETE two-sided `$SIR` function map + crit multiplier + FF enforcement
+
+The companion entry to the half-map above. Every result below was taken with the IR emitter against
+live R0BAS, `$VOL,3`, mains power, and **a trailing known-good control** — added after an earlier run
+produced sixteen clean-looking negatives that turned out to be a configuration artifact.
+
+### Why the first sweep was half a map
+The earlier sweep fired **same-team with FF off**, which silently blocks the entire damage family. Re-run
+as an **enemy**, the missing half appeared. Two sweeps, opposite polarity, same baseline method.
+
+### `$SIR` function classes (magnitude 20, protocol 5, baseline HP45/armor70/shield0)
+| class | function ids | measured behaviour |
+|---|---|---|
+| standard damage | 1, 4, 5, 7, 29, 30, 33, 38 | armor 70→50→30 (−20/hit) |
+| **ARMOR-PIERCING** | **2, 6** (+17, 21 enemy-side) | **HP 45→25→5 with armor untouched at 70** |
+| **×1.25 damage** | **36** | magnitude 20 lands as **25** (armor 70→45→25) |
+| **×2 damage** | **37** | magnitude 20 lands as **40** (armor 70→30→10) |
+| add HP, overflow→ARMOR | 9, 12, 16, 19 | 15→35, then 45 + armor 10 |
+| add HP, clamp | 10, 17 | 15→35→45, no overflow |
+| add HP, overflow→SHIELD | 14, 21 | 15→35, then 45 + shield 10 |
+| add ARMOR | 13, 15, 20, 22 | 0→20→40 (overflow spills to shields) |
+| add SHIELD | 11 | 0→20→40 |
+| add SHIELD | 18 | shield 0→20→40 — ⚠️ an earlier note here said it "costs 4 HP"; that was a contaminated baseline. Re-measured clean: **HP and armor untouched.** |
+| **status — registers, NO pool change** | enemy 3, 8, 23, 24, 25, 26, 27, 28, 35 · friendly 31, 32, 34 | `$HIR` fires, pools unchanged, no other BLE frame |
+
+### DUAL-POLARITY confirmed (same row heals allies, damages enemies)
+Same function, same baseline, only the shooter's team changed — control passed:
+```
+fn=1   friendly 0 hits          | enemy HP 40->20           damage-only
+fn=10  friendly heals           | enemy 0 hits              heal-only
+fn=16  friendly HP 25->45       | enemy HP 40->20           DUAL
+fn=17  friendly heals           | enemy HP 25->5 (AP)       DUAL + armor-piercing
+fn=20  friendly armor 35->55    | enemy armor ->0           DUAL
+fn=36/37 friendly 0 hits        | enemy damage              damage-only
+```
+
+### CRIT = x1.5 damage (replicated, alternating)
+Per-hit armor deltas at magnitude 20: `crit=0 -> [20,20,20]` and `crit=1 -> [30,30,...]`, twice each.
+Crit also echoes on **`$HIR` tok6**. It reads 0 on every stock weapon — never dead, just never set.
+
+### `$GSET` token 1 = friendlyFire, and it IS firmware-enforced
+Replicated 2x with alternating values, fresh wound per leg, control passed:
+
+| `$GSET` t1 | dmg same-team | dmg enemy | heal from ally | heal from enemy |
+|---|---|---|---|---|
+| **0** (FF off) | **blocked** (0, 1) | 3, 3 | 3, 4 | **blocked** (0, 0) |
+| **1** (FF on) | 4, 3 | 3, 3 | 3, 5 | 5, 3 (4/4 in a separate tiebreak) |
+
+**Reconciling with exp-4** (which recorded "FF is not IR/firmware-enforced"): that bench ran at **FF=1**
+and saw same-team damage land — **which is exactly this table's t1=1 row.** The two results agree; only
+the *generalisation to t1=0* was unsupported. No contradiction in the evidence, just in the conclusion.
+
+### Clean negatives
+- **All 16 protocols accept damage** with a fn-1 row — there is no protocol whitelist.
+- **`$SIR` params p5-p8 do NOT scale damage** — `0,0,1,-` / `0,50,1,-` / `0,100,2,60` / `0,200,2,60` /
+  `50,100,2,60` all landed exactly 20. Whatever `90,1,40` and `100,2,60` do, it isn't a multiplier.
+- **`$AS` / `$UP` are silent** on v4.32 across seven shapes — neither is a query (P4).
+
+### CONSEQUENCE FOR THE SHIPPED GAME (raised by brx-opus2, verified in the next entry)
+`gameconfig._SIR_TABLE` — pushed by `Compiler.compile()` into **every** game head — contains
+`$SIR,0,1,,36` (x1.25), `$SIR,0,3,,37` (x2) and `$SIR,9,3,,24` (**status, no pool change**). Weapons are
+keyed to those rows by their `t3,t4`: Force Rifle + Sniper Rifle are `0,1`; Burst Rifle, Bolt Rifle and
+AMR are `0,3`; **Energy Launcher is `9,3`**.
+
+## 2026-08-26 (bench, late) — MELEE captured off the wire from NATIVE mode; our BLE config can't melee
+
+Tony swung a melee at the VS1838B. **It did not work under our BLE-pushed config** — he had to reboot
+the gun into a **native on-gun game** to get a melee at all. Four swings, one clean 25-bit capture:
+
+```
+1101000111010101101000110
+protocol=13   player=7   team=1   magnitude=90   crit=0   subtype=1   parity ok
+```
+
+**Three findings:**
+
+1. **Protocol 13 = `MeleeDamage`** — a **seventh** hardware anchor for the DamageType enum, and the
+   first captured from a *genuine Battle Company emission* rather than inferred from a `$SIR` row or
+   produced by our own emitter. The B-field-is-DamageType mapping is now beyond reasonable doubt.
+2. **Subtype 1 = Rifle Bash.** The shipped `_SIR_TABLE` has `$SIR,13,0,H50` (Energy Blade),
+   **`$SIR,13,1,H57` (Rifle Bash)**, `$SIR,13,3,H49` (War Hammer). So the U-bits/subtype field is
+   confirmed on **real hardware emissions**, not just our synthesized words.
+3. **Melee magnitude = 90** — most of a 115 pool in one swing. Note it does **not** one-shot on its own,
+   so Tony's "halo assassinate" (one-hit kill on a BACK head sensor) must come from somewhere else:
+   either a back-sensor bonus, or the back dome routing to a different `$SIR` cell. `$HIR` tok1
+   distinguishes the domes (0 front / 1 back / 4 gun) — **one back-dome swing would settle it.**
+
+### 🔴 GAP: our compiled game head does not enable melee
+Stock native games have it; ours don't. Candidate causes, in order:
+- **`$WEAP` secondary-fire block (t7–t11)** — `secondaryDamageType` would carry **13**. This is the
+  same mechanism as Tony's **K2** ask (secondary weapon / perk on ALT), so the two are one problem.
+- **`$BMAP`** — `gameconfig._BMAP` may not map a melee action; note the firmware has a "disabled"
+  trigger chirp when `$BMAP` is absent, so button mapping is load-bearing.
+- **`$WEAP` t20 = 13** is the *fire mode* for a dedicated melee weapon, which is NOT what we want here —
+  native mode gives bash **alongside** a rifle, i.e. a secondary action.
+
+⇒ **Making melee work is probably the same fix as making ALT-fire perks work.** High value: it is a
+stock feature we currently lose, and it is the direct route to K2.
+
+### Headset emission — cannot be forced over BLE
+`$IRTX` (5 shapes), `$HFIRE` (5), `$MELEE` (4) and `$BHIT` (2) produced **zero IR**, with a
+receiver control passing immediately before and after the run (RAW=1, RAW=3). `$MELEE,255,*` does
+return **`$BUT,4,0,*`** (a button notification), so it is not wholly inert — it just does not fire the
+emitter. **Melee remains the only known way to make a tagger emit from the headset**, and it needs the
+physical action plus a native game.
+
+## 2026-08-26 (bench, unattended) — tok5 is the RAW magnitude · AP bypasses EVERY pool · heals clamp · the EMP survives an $AMMO re-push
+
+Clean `$PSET` baseline (45 HP / 70 armor / 70 shield), consecutive-frame pool deltas so the numbers are
+baseline-independent, trailing known-good control passed.
+
+### 🔴 `$HIR` tok5 = the RAW magnitude, NOT the applied damage (corrects §7r / P10)
+| row | magnitude sent | `$HIR` tok5 | actual pool delta |
+|---|---|---|---|
+| `<0,0>` fn 1 | 20 | **20** | −20 |
+| `<0,1>` fn 36 | 20 | **20** | **−25** |
+| `<0,3>` fn 37 | 20 | **20** | **−40** |
+
+tok5 simply echoes the IR word's magnitude field. **Crit multiplies on top** (2026-08-26 night, 3/3 per
+cell at magnitude 20): fn 1 crit=1 → 30 (×1.5), fn 37 crit=0 → 40 (×2), **fn 37 crit=1 → 60 (×3)**. So the
+full rule, in one place:
+
+> **applied damage = magnitude × `$SIR`-function multiplier × (1.5 if the crit bit is set)** — fn 1 = ×1,
+> fn 36 = ×1.25, fn 37 = ×2. `$HIR` tok5 carries only the **magnitude**.
+
+The earlier "tok5 = applied damage, EXACT" finding was correct for everything it tested — **all four of
+those weapons key to fn-1 rows** (mult 1, crit 0), where raw and applied are the same number. ⇒ **Never
+use tok5 for damage-weighted scoring.** Derive from the `$HP` delta. (Our node path already does, so
+nothing shipped is wrong — but the protocol doc was.)
+
+### 🔴 ARMOR-PIERCING bypasses SHIELDS as well as armor
+```
+shields granted -> $HP,45,70,70
+then AP (fn 2)  -> $HP,25,70,70 -> $HP,5,70,70
+```
+HP fell 45→25→5 with **armor unchanged at 70 and shield unchanged at 70**. AP ignores *every* protective
+pool, not just armor — so an AP weapon's effective target pool is the bare HP value (45 by default),
+regardless of how much armor or shield the victim is carrying. That is a far stronger weapon axis than
+"ignores armor" implied.
+
+### Heals CLAMP — no overheal
+Magnitude **200** into each grant function: HP fn 10 → 45 (max), armor fn 13 → 70 with the overflow
+filling shields to **70** (their max), shield fn 11 → 70. Nothing exceeds a pool ceiling, so a big
+magnitude is a *fill*, not a stack.
+
+### The fn-23 disable SURVIVES an `$AMMO` re-push
+After the EMP, `$ALCD` reads `0,0,0,0,0`. Pushing `$AMMO,0,32,192,1,*` **does not clear it** — `$ALCD`
+still reports all zeros afterwards. So recovery is not a simple ammo write; the disable is a deeper
+state (candidates for the next bench: `$WEAP` re-push, `$SPAWN`, or a physical reload). **This makes the
+stun stickier than assumed** — worth knowing before designing an EMP with a short intended duration.
+
+### No status function is a damage-over-time
+Each of enemy-side 3, 8, 23, 24–28, 35 and friendly-side 31, 32, 34 fired once, then 18 s of stream
+watched: **no HP ticks without further shots.** If poison / cryo / incendiary exist as `$SIR` functions,
+they do not drain the health pools over time.
+
+### `$BHIT` is echoed, not applied
+Four shapes sent; each came back on the event stream but produced **no `$HP` change**. (Caveat: the
+echo may be our own TX frame in the buffer — the useful fact is that no damage was applied.)
+
+## 2026-08-26 (bench, unattended) — EMP fully specified · crit MULTIPLIES with the damage multiplier
+
+Clean baseline (`$PSET` 45/70/70 + a real AR `$WEAP` + `$AMMO,0,32,192`), so `$ALCD` has meaningful
+content. Trailing known-good control passed.
+
+### ✅ THE EMP IS NOW FULLY SPECIFIED
+**⚠️ Correcting an earlier reading in this log:** the disable frame is **`$ALCD,32,0,0,192,0`**, *not*
+`0,0,0,0,0`. The all-zeros version only appeared because that earlier victim had no weapon/ammo
+configured. With a real loadout:
+
+- **Ammo is PRESERVED** (mag 32, reserve 192 both intact).
+- **Only `$ALCD` token 2 changes: 100 → 0.** brx-opus's source read has t2 always 100 in normal
+  operation, so t2 is a *ready/enabled* flag. **fn 23 clears the ready flag — it does not strip ammo.**
+
+**Recovery matrix — what actually clears it:**
+| attempted recovery | `$ALCD` after | cleared? |
+|---|---|---|
+| `$AMMO` re-push | `32,0,0,192,0` | ❌ |
+| `$WEAP` re-push | `32,0,0,192,0` | ❌ |
+| `$WEAP` + `$AMMO` | `32,0,0,192,0` | ❌ |
+| **`$SPAWN`** | **`32,100,0,384,0`** | ✅ |
+| `$SPAWN` + `$AMMO` | `32,100,…` | ✅ |
+| `$BMAP` re-push | (silent) | ❌ |
+| full `$CLEAR`/`$START`/re-arm | `32,100,…` | ✅ |
+
+⇒ **`$SPAWN` is the antidote.** So an EMP's duration **is** ours to control: the victim stays disabled
+until MC or the Companion sends `$SPAWN`. That is a clean, fully host-timed stun — and it needs no new
+protocol work. (Note `$SPAWN` also restores health, so a "stun only" needs the pools re-set after, or a
+different recovery to be found.)
+
+### ✅ CRIT MULTIPLIES WITH THE `$SIR` MULTIPLIER (3/3 per cell, magnitude 20)
+```
+fn 1  <0,0>  crit=0 -> [20] [20] [20]      1x
+fn 1  <0,0>  crit=1 -> [30] [30] [30]      x1.5
+fn 37 <0,3>  crit=0 -> [40] [40] [40]      x2
+fn 37 <0,3>  crit=1 -> [60] [60] [60]      x3   ( = x2 * x1.5 )
+```
+They **compose multiplicatively**. A magnitude-20 word can land as 60 damage — over half a default
+pool — from the crit bit and a table row alone, with no change to `$WEAP` t5. Worth remembering when
+balancing: the shipped `t5` is a floor, not the damage.
+
+### fn 18 is a plain add-SHIELD (correction)
+3 reps: shield 0→20→40 with **HP 45 and armor 70 untouched**. The earlier "costs 4 HP" note came from a
+baseline that had already shifted; there is no HP cost.
+
+## 2026-08-26 (bench, unattended) — EMP is a ~6–8 s FIRMWARE-TIMED stun · `$GREN` emits a SECOND IR protocol
+
+### ✅ EMP FULLY SPECIFIED — it self-clears on a firmware timer
+`$ALCD` only streams on ammo events, so an idle watch proves nothing (my first 75 s null was
+**inconclusive, not negative**). Using an `$AMMO` re-push as a *read probe* — proven earlier to force an
+`$ALCD` without clearing the disable — token 2 (100 = ready, 0 = disabled) reads:
+
+```
+before EMP  100        right after  0        t=+20/40/60/90s  100
+```
+Narrowed, 3/3 reps identical:
+```
+rep0  2.5s:DISABLED  5.3s:DISABLED  8.0s:READY
+rep1  2.5s:DISABLED  5.3s:DISABLED  8.1s:READY
+rep2  2.5s:DISABLED  5.3s:DISABLED  8.0s:READY
+```
+⇒ **the disable lasts ~6–8 s and ends by itself.** This confirms brx-opus's prediction from the FSET
+sound envelope (**EmpStart → EmpLoop → EmpEnd** = a begin/loop/**end** timed effect). `$SPAWN` still
+clears it early, so we have both a native duration and an override.
+
+**Full EMP recipe:** `$SIR,7,<sub>,<sound>,23` on the victim + emit protocol 7 → target's weapon goes
+not-ready for ~6–8 s, ammo preserved, health untouched, self-recovering. Category 10 "Stun" is
+buildable today. (Still unconfirmed by a human: that the trigger genuinely does nothing during the
+window — `$ALCD` t2 is a strong proxy but a trigger pull is the real test. → bench list.)
+
+### 🆕 `$GREN` EMITS IR — a SECOND, UNDOCUMENTED BRX IR PROTOCOL
+This **overturns my own earlier conclusion in this log** that IR emission can't be forced over BLE.
+That held for `$IRTX` / `$HFIRE` / `$MELEE` (all zero IR, receiver controls passing) — but **`$GREN`
+emitted on 8/8 probes**, against a **20 s idle baseline of exactly 0 ambient frames**.
+
+It is **not** the 25-bit shot word:
+```
+0000001010000010000000000000        28 bits
+00000010100000100000000000000001    32 bits
+```
+Same physical layer (~2029 µs sync, ~500/1000 µs marks) but a **longer frame with invalid shot-parity**.
+Our 25-bit field map produces nonsense on it.
+
+**What it is (brx-opus, from source):** the **gun→grenade accessory-CONFIG channel**. `$GREN` configures
+a paired *thrown* grenade's blast type (`GrenadeType` = FlashBang/Gas/Confusion/Molotov), pairing is
+done by aiming the gun and pulling the trigger, and the grenade hardware carries an IR **receiver**
+alongside its emitters. So BRX has **three IR things**: (a) the 25-bit shot word, (b) the grenade state
+beacon — which rides *inside* the shot format as protocol 15, and (c) **this**, which nothing public
+decodes.
+
+**Scope honestly (brx-opus's caution, and it's right):** this does **not** let a gun "shoot" an
+arbitrary damage or station word. It emits the accessory format, so its value is gun→accessory
+signalling — useful if the Utility Box learns to speak it, not a replacement for our own emitter.
+
+**Open:** does the emitted word track `$GREN`'s arguments? Frames appeared for every arg shape (2–4
+each) but **all were split by the capture sketch's RAW-print latency**, so no full word was recovered.
+⇒ **Needs a sketch tweak (raise `IDLE_GAP_US`, or drop the per-frame RAW print) to capture a
+30+ bit word intact.** If it is arg-drivable, the gun becomes a programmable accessory emitter.

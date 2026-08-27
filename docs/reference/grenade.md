@@ -233,7 +233,7 @@ Two different questions:
   device); `$GREN` only configures a **paired thrown grenade's blast type** (`GrenadeType`), not the
   objective `operationMode`. So there is no over-the-wire mode tuning for the objective modes.
 - **New *effective* modes built around the grenade? Yes — this is the whole architecture.** The grenade,
-  like the gun, **keeps no game state** — it's an IR objective/effect *emitter*. Its native modes
+  like the gun, **keeps no game state** *(and bench 2026-08-26: a DEAD gun accepts NO IR at all — 448-word brute force — so a respawn station **arms the LIVING**, it never revives a corpse; see B12's two arming paths)* — it's an IR objective/effect *emitter*. Its native modes
   (Frag / Assault / Hill / Respawn / CTF) and blast types (FlashBang/Gas/Confusion/Molotov)
   are raw **IR primitives**; what they *mean* is decided by our host + nodes. So we layer any new
   ruleset on top without touching the grenade:

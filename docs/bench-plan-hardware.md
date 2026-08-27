@@ -1,4 +1,4 @@
-# Bench plan — IR + nRF hardware (arriving 2026-08-26)
+# Bench plan — IR + nRF hardware (✅ ARRIVED 2026-08-26)
 
 > **Update 2026-08-25 — P2 is CLOSED over pure BLE** (`protocol/brx-protocol.md` §7p/§7q): `$PSET` token 1 sets the gun's player id (0–63) and `$HIR` token 3 reports the shooter's id on every hit, bench-verified both directions. No USB `SETUP`, no IR receiver needed for per-player attribution. References to P2 below are historical.
 
@@ -6,9 +6,13 @@ Ready-to-run playbook for the incoming kit. Do the sessions in order; each has a
 **flash/run**, **expected output**, and a **pass/fail** line. Ground truth: `protocol/brx-ir-protocol.md`
 (IR word), `hardware/ir-breadboard.svg` (wiring), `hardware/bench-shopping-list.md` (parts + power).
 
-**Arriving:** ELEGOO 235-pc kit (breadboard/jumpers/2N2222/resistors/caps/LEDs) · CHANZON 940nm IR
-(emitters + **VS1838B** receivers) · 2× **ESP32-S3-DevKitC-1** · Aideepen 3× **nRF24L01+PA/LNA** + 3×
-adapter boards (overnight).
+**✅ In hand (2026-08-26, unopened at time of writing):** ELEGOO 235-pc kit
+(breadboard/jumpers/2N2222/resistors/caps/LEDs) · CHANZON 940nm IR (emitters + **VS1838B** receivers) ·
+2× **ESP32-S3-DevKitC-1** · Aideepen 3× **nRF24L01+PA/LNA** + 3× adapter boards.
+**Unbox check before Session 0:** confirm the CHANZON pack really contains the **VS1838B/HX1838 38 kHz
+demodulating** receivers (they sit next to bare 940 nm photodiode receivers in the same bag and look
+similar — only the 3-pin demodulator works with `ir_capture.ino`), and that both ESP32-S3 boards are
+DevKitC-1 (two USB-C ports: use the one silkscreened **UART**).
 
 **Safety / mandates:** never modify stock BRX firmware. Panic on any tagger: `$CLEAR,*` then `$SP,99,*`.
 Headsets **ON** or guns won't join (§7m). Volume **69** for real games. Keep headset PINs out of the repo.
@@ -63,6 +67,39 @@ SHOT player=42 team=2 dmg=9 bullet=3 crit=0 parityOK=1
 
 **Deliverable:** append to `docs/experiment-log.md` — the field map (which bits are team/weapon/player/dmg),
 and whether player-id decodes per-gun. Update `protocol/brx-ir-protocol.md` if the bench differs from source.
+
+---
+
+## Session 1½ — THE RECEIVER AS AN INSTRUMENT (~25 min) · needs: Session 1 rig, ONE gun
+
+**Why this session exists (added 2026-08-26, after the kit landed):** every contaminated bench result
+we have came from the **victim gun** — screamer degradation, arming races, re-setup windows (U2 died
+exactly this way; see exp-log "U2 attempt CONTAMINATED"). A VS1838B on an ESP32 can't scream, can't
+half-arm, and reports a hard count. **Wherever the question is "what did the SHOOTER emit", use the
+receiver, not a second tagger.** Same rig as Session 1, no rewiring.
+
+**1½a — U2: does `t41` change emitted range?** (supersedes the fresh-fleet two-gun A/B in FOLLOWUPS)
+- Tape-mark ONE spot at a measured distance. Receiver fixed, gun at the mark, same aim both legs.
+- Push the sniper frame with `t41=100`; `python -m brx_mcp ir-range <port> 12 10` → record detect% / decode%.
+- Re-push identical frame with **only** `t41=5`; same spot, same count. Re-push `t41=100` as a closing
+  control (the control leg is the whole point — it is what would have caught the last rig degradation).
+- **PASS:** detect% differs materially between legs with the bracketing controls agreeing. **NULL:**
+  all three legs equal → `t41` does not drive emitted IR range (a real, publishable answer too).
+
+**1½b — U7: the damage ceiling.** Read the `D8` field directly off the wire across AR (9) / shotgun
+(45) / sniper (80) / rocket (115). Confirms the 8-bit field and whether a >115 value is even emittable
+(caps any future double-damage powerup). **PASS:** `dmg=` tracks `$WEAP` t5 exactly, as BLE `$HIR` tok5 does.
+
+**1½c — where does the IR *protocol type* live?** BLE `$HIR` tok2 carries it (0 standard, 10 rocket,
+11 gas, 13 melee — §7r). The decoded word (`brx-ir-protocol.md`) has a 4-bit **B** (bullet/weapon) and
+2 unknown **U** bits. Fire each of those weapon types at the receiver and watch which bits move.
+**This is the last structural gap in the IR word** — and the special-weapons IR types (heal gun, EMP)
+have to fit into whatever field it turns out to be, so Session 2's emit side depends on the answer.
+
+**1½d — is the crit flag ever set?** We have never observed a crit on the BLE side. Fire everything,
+watch `crit=`. Cheap; either it is dead in stock play or we just found a mechanic.
+
+**Deliverable:** one exp-log entry closing U2 + U7 and naming the protocol-type bits.
 
 ---
 
@@ -128,12 +165,24 @@ feedback over plain BLE**: per kill it sends **`$SFLASH,*`** (green-sight flash)
 
 ---
 
-## Order of leverage (if bench time is short)
-1. **Session 1 (IR capture + field decode)** — unlocks B13 + P2 (the shot's player id), uses only the IR
-   kit. Highest value, especially now that P2 is the last stock-feel gap.
-2. **Session 2 (IR emit)** — unlocks the Utility Box (B4).
-3. **Session 4 (nRF)** — prove the radios; the gun-mesh tap is exploratory and now **only** a P2 route.
-   *(The Callsign BLE capture that used to sit here is done — §7o / RESULTS.)*
+## Order of leverage (revised 2026-08-26, kit in hand)
+
+P2 is closed and feedback is BLE-native, so the *reasons* below are not the ones this plan was
+originally written with. Current ranking:
+
+1. **Session 0 + 1 (smoke test + IR capture)** — B13 is decoded from LaserTagMods source but has never
+   been seen on our own bench; nothing downstream (emit, stations) is trustworthy until it is.
+2. **Session 1½ (receiver as instrument)** — closes **U2** and **U7** and names the protocol-type bits,
+   using one gun and no victim tagger. Highest answers-per-minute on the whole board right now.
+3. **Session 2 (IR emit)** — **the prize.** With the grenade proven sealed (G7 USB-C is power-only,
+   G8 `$GREN` objective-drive negative), an emitter we control is the *only* route to objective
+   stations, respawn stations, pickups, and the medic/EMP emitters — i.e. all of B4 and the
+   special-weapons tier.
+4. **Session 3 (IR range walk-back)** — station placement numbers; do it once the emit side works.
+5. **Session 4 step 1 (nRF ping/pong)** — proves our RF24 stack, ~30 min, worth banking.
+6. **Session 4 step 2 (tap the gun mesh)** — D1/D4, the multikill kill-confirm. Unknown
+   channel/address/CRC/rate: a lottery ticket. **Time-box 30 min and walk away.** Highest-upside
+   unknown left, but on no critical path.
 
 ## What's already hardened & ready
 - `ir_capture.ino` / `ir_emit.ino` — reviewed + fixed (sync strip + field decode; emit sync; no frame-long

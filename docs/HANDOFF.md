@@ -5,6 +5,27 @@ first, then this, then `docs/FOLLOWUPS.md` (all open work incl. the polish-loop 
 ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth:
 `protocol/brx-protocol.md` (§6.1 + the t20/overheat/tok1 sections at the end).
 
+> **⚡ LATEST (2026-08-26 overnight) — THE IR TRANSCEIVER IS NOW A GENERAL-PURPOSE INSTRUMENT.**
+> (exp-log entries from "B13 CLOSED" onward — all bench-measured, controls passed, replicated)
+> - **B13 CLOSED**: BRX IR word bench-verified (sync ~1990 µs, marks 992/500; field offsets pinned by
+>   pushing known $WEAP frames) and the **Z trailer is computed parity** (odd 1s→01, even→10).
+> - **🏆 A stock tagger accepts fully synthetic shots** from our ESP32+LED rig (invented player/team/
+>   damage land as real $HIR) — the Utility Box (B4) emit side is PROVEN. Emitter has standalone AUTO-TX.
+> - **$SIR is a programmable 16-protocol × 4-subtype effects matrix (64 cells, all writable over BLE)**
+>   with a complete two-sided function map: damage / armor-piercing (fn 2,6) / **×1.25 (fn 36)** /
+>   **×2 (fn 37)** / heal variants / add-armor / add-shield / **dual-polarity heal-ally+damage-enemy**
+>   (fn 16,17,20…) / status-only ids. The IR damage field is a **magnitude** whose meaning the row's
+>   function sets. **B (type) field is only 4 bits — ~10 free custom slots** (real design constraint).
+> - **P16 CLOSED — shields DO activate** (IR event, never a BLE pool value; drain shields→armor→HP).
+>   **Crit is a real ×1.5** (echoes $HIR tok6). **U7 CLOSED** (damage field = 8 bits, 0–255).
+> - **FF CORRECTED: `$GSET` token 1 IS friendlyFire and IS firmware-enforced BOTH directions**
+>   (t1=0 blocks same-team damage AND enemy heals — four-cell matrix, replicated). The earlier
+>   "host-side only" reading generalised an FF=1 observation; the evidence always agreed.
+> - **A DEAD gun accepts NO IR** (448-word brute force) → respawn stations **arm the living** (B12).
+> - Also closed: P4 ($AS/$UP silent on v4.32) · B5 (mcp 2.0 port was already done).
+> - Rig lore: phone cameras can't see a ~5 mA IR LED; VS1838B AGC saturates point-blank (attenuate for
+>   loopback); the capture sketch's RAW print truncates frames landing in its ~15 ms window.
+
 > **⚡ LATEST (2026-08-26) — the protocol map is essentially DONE and the arsenal is real.**
 > Bench-proven on live taggers, all committed with evidence + instruments:
 > - **$WEAP**: t5=exact applied damage · t14=fire interval · t15=850 constant (never write) ·
@@ -12,8 +33,8 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 >   by one-field flip) · t23=burst cycle · **overheat = t24+t35 GATED by t37/t38** (transplantable).
 > - **$HIR fully decoded**: tok1 sensor (0=headset FRONT dome, 1=BACK dome, 4=gun — shield-isolated),
 >   tok2=IR-protocol echo, tok3=shooter pid, tok4=effective team, tok5=damage, tok7=subtype.
-> - **$TID & 3 → four usable teams**; **friendly fire is NOT firmware-enforced** (host-side, as our
->   scorer already models); $SFLASH latches green unconditionally; $STUN direct = no-op; a bare
+> - **$TID & 3 → four usable teams**; ~~friendly fire is NOT firmware-enforced~~ **[CORRECTED overnight: `$GSET` t1 IS
+>   firmware-enforced FF — see the LATEST block above]**; $SFLASH latches green unconditionally; $STUN direct = no-op; a bare
 >   $WEAP re-push RESETS ammo (pickups must re-send $AMMO); mapped damage types play their $SIR
 >   sound on the victim (the heal/EMP audio path works).
 > - **All 20 Callsign weapons captured** (`docs/reference/weapons.md`, raw btsnoops in
@@ -23,9 +44,21 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 >   guards, device-first muster (claim a phone+gun in one gesture), dynamic game-state top bar,
 >   weapon-range verdict system on Kit, auto log-pull at match end. Suites: mcp 499/499 (both
 >   pythons), app 37/37, e2e 42/42. Windows MC: double-click `C:\Users\Tony\.brx-mcp\mc-start.bat`.
-> - **Next bench session menu (methods in FOLLOWUPS):** (1) U2 t41 range — fresh-fleet same-spot
->   A/B 100-vs-5, counted both sides; (2) t37-vs-t38 semantics — two varied-value overheat probes;
->   (3) sensor-map field-distance validation; then $BUT/$GREN alt-fire + heal/stun damage-type enum
+> - **🔌 THE IR + nRF KIT HAS ARRIVED (2026-08-26)** — ELEGOO 235-pc, CHANZON 940nm + VS1838B,
+>   2× ESP32-S3-DevKitC-1, Aideepen 3× nRF24L01+PA/LNA + adapters. Playbook:
+>   **`docs/bench-plan-hardware.md`** (sketches `hardware/esp32-ir-bridge/`, wiring
+>   `hardware/ir-breadboard.svg`, host decoder `brx_mcp/irbridge.py`, CLI `ir-capture`/`ir-emit`/`ir-range`).
+>   **This changes the method for several open items:** a VS1838B receiver replaces the *victim gun*
+>   as the measuring instrument, which removes the screamer/arming-race failure mode that
+>   contaminated U2. Prefer the instrument method over any two-gun A/B where the question is
+>   "what did the shooter emit".
+> - **Next bench session menu (methods in FOLLOWUPS):** (0) bench-plan Session 0+1 — ESP32 smoke
+>   test + first real IR capture, confirms B13's source-derived decode on our own bench;
+>   (1) **U2 t41 range — by IR instrument** (fixed-distance receiver, `ir-range` detect%/decode% at
+>   t41=100 vs 5; supersedes the fresh-fleet two-gun A/B); (2) bench-plan Session 2 — IR **emit**,
+>   the Utility Box (B4) unlock and the only route to objective stations now that the grenade is
+>   proven sealed (G7/G8); (3) t37-vs-t38 semantics — two varied-value overheat probes;
+>   (4) sensor-map field-distance validation; then $BUT/$GREN alt-fire + heal/stun damage-type enum
 >   probes for special weapons. **Bench tools**: `mcp/tools/` (hittest = the one-script two-gun
 >   pattern; raw_weapon/firemode_probe/sendframes/weapon_range/…).
 > - **⚠ Fleet ops rules, learned the hard way:** POWER-REST the guns (two day-long-powered taggers
@@ -46,7 +79,7 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 > (**B10**) — the old "pilot-only" call is dead. (4) **The BRX IR shot protocol is decoded**
 > (`protocol/brx-ir-protocol.md`) — per-player id is in the IR.
 >
-> **UPDATE 2026-08-25 (later): P2 is CLOSED — `$PSET` token 1 sets the player id, `$HIR` token 3 reads it (§7p/§7q). No stock-feel gap remains over pure BLE; the IR/nRF bench is for stations, not attribution.**
+> **UPDATE 2026-08-25 (later): P2 is CLOSED — `$PSET` token 1 sets the player id, `$HIR` token 3 reads it (§7p/§7q). No stock-feel gap remains over pure BLE; the IR/nRF bench is for stations, not attribution.** *(and by 08-26 overnight the IR rig outgrew even that — it's now a general-purpose protocol instrument; see the top block)*
 > ~~**Per-player attribution (P2) is now the ONLY stock-feel gap over pure BLE**~~ (`$HIR` names the
 > shooter's *team*, not the player). Re-scope the IR/nRF bench around that alone — not around
 > feedback, which BLE now covers. Bench plan: `docs/bench-plan-hardware.md`.
@@ -140,7 +173,7 @@ without deciding the transport question first.
 The framing that once lived here — *"the nRF radio is the new critical path"* — is **dead.**
 Per-player attribution is BLE-native (`$PSET` token 1 sets player_num, `$HIR` token 3 reports the
 shooter — §7p/§7q), and native kill feedback (green sight + announcer) is host-driven over plain BLE
-(§7o). Neither needs nRF, IR, or USB `SETUP`. The IR/nRF bench is now only about **objective
+(§7o). Neither needs nRF, IR, or USB `SETUP`. ~~The IR/nRF bench is now only about~~ *(08-26: the rig became a general-purpose instrument — closed U7/P16/FF/the $SIR map in one night)* **objective
 stations**, not attribution or feedback.
 
 Out-of-range field play is still solved the way the official system does it — a device **on each
