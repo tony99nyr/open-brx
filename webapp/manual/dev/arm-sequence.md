@@ -49,7 +49,7 @@ Source: protocol/brx-protocol.md §7r
 3. After the game's respawn delay (the app's own timer — ~10 s in the capture; 👥 community: a per-death ramp capping at 45/90 s) the host sends `$SPAWN,,*`.
 4. Gun echoes `$LCD,45,70,0,0,36,216,*` — HP, armor **and ammo** restored with no `$AMMO` needed.
 5. **A dead gun ignores all incoming IR** — 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can.
-Source: protocol/brx-protocol.md §7f, §7j(community ramp), §7q; docs/experiment-log.md (2026-08-26 448-word brute force)
+Source: protocol/brx-protocol.md §7f, §7j(community ramp), §7q (dead gun cannot fire); docs/experiment-log.md 2026-08-26 ("448-word brute force: a DEAD gun accepts NO IR")
 
 ## After a BLE drop, re-send the whole head.
 Re-sending the full sequence (`$CLEAR`→`$START`→…→`$SPAWN,,*`→`$AMMO`) on a fresh link brought a gun back in every bench case.

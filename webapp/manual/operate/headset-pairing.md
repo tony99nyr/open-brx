@@ -7,7 +7,7 @@ Source: docs/reference/brx-manual-notes.md
 
 ## Normal pairing (every day)
 1. Gun on, then headset on. The headset LEDs cycle rainbow while searching. 📖✅
-2. Wait. Usually seconds; up to **3 minutes** with many taggers and phones around. 📖
+2. Wait. Pairing can take up to **3 minutes** with many taggers and Bluetooth devices around. 📖
 3. When the LEDs settle to the gun's team colour, you are paired. ✅
 Source: docs/reference/brx-manual-notes.md, docs/experiment-log.md (2026-08-27 headset LED entry)
 
@@ -26,21 +26,20 @@ Source: docs/experiment-log.md (2026-08-27), docs/field-process.md, docs/gotchas
 4. Wait for the voice line **"PAIRING MODE"**. 👥
 5. **Pull the trigger once** → "HEADSET CONNECTED"; the headset LEDs stop cycling. 👥
 6. A second trigger pull announces "device paired". Release the headset button. 👥
-Credit: contributed to the BRX owner community; this is the procedure behind the mysterious "PAIRING MODE" voice line.
-Source: docs/reference/community-notes.md
+Source: docs/reference/community-notes.md (Gen-3 headset re-pair procedure — contributed to the BRX owner community; it is the procedure behind the "PAIRING MODE" voice line)
 
 ## Alternative: 'install accessory' route
-Boot the gun holding **RIGHT + SELECT** ("install accessory"), power the headset, press its button once. Owners use this route as well — same idea, different hold.
-Source: docs/reference/community-notes.md
+Boot the gun holding **RIGHT** ("install accessory"), power the headset, press its button once. Same boot mode as pairing a grenade or sidearm.
+Source: docs/reference/brx-extended-user-guide.md (accessory pairing), docs/reference/community-notes.md
 
 Firmware updates can un-pair everything. Owners report the v4.30 update wipes settings and breaks headset pairing until you re-run setup; Battle Company's own fix involved a temporary downgrade. Re-pair after any firmware update before a game day. Details in *Firmware & Sounds*.
 Source: docs/reference/community-notes.md
 
 ## Headset troubleshooting
 - **The gun charges a weapon but nothing happens on the trigger.** Classic headset-lockout symptom. Look at the headset: rainbow = re-pair it. 👥✅
-- **The phone app connects, then drops within a couple of seconds.** The app requires a paired headset and silently disconnects without one — the gun is fine. Get the headset lit before opening the app. ✅
-- **Only some guns joined the phone game.** A gun with a dark or unpaired headset refuses to join with no error. Eyeball every headset before you start. ✅
+- **The phone app connects, then drops within a couple of seconds.** The app requires a paired headset and silently disconnects without one — the gun is fine. Get the headset lit before opening the app. ✅ (
+- **Only some guns joined the phone game.** A gun whose headset is powered off or unpaired (slow rainbow) refuses to join with no error. Eyeball every headset before you start — before the game a paired headset shows team colour; it only goes dark once play begins. ✅
 - **It paired yesterday and not today.** Headset battery. It charges from any USB 5 V. 📖
-Source: docs/reference/community-notes.md, protocol/brx-protocol.md §7m, docs/gotchas.md, docs/field-process.md
+Source: protocol/brx-protocol.md §7m) · docs/reference/community-notes.md, protocol/brx-protocol.md §7m, docs/gotchas.md, docs/field-process.md
 
 _[image OPS-06: ]_

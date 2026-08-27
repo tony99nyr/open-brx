@@ -1,7 +1,7 @@
 # 01 · Meet the BRX  (section slug: /manual/hardware)
 **Last verified:** 2026-08-27
 **Audience:** new owners, event hosts and tinkerers who want to know exactly what they are holding before they turn it on · **Goal of this section:** name every part of the tagger, headset and accessories, explain what each light and port means, and set the mental model (a dumb, stateless IR instrument) that every later section builds on.
-**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — nothing unconfirmed is published; see Research backlog at the end.
+**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — only confirmed facts are published; see Research backlog at the end.
 
 **Credits used throughout this section:** Battle Company (BRX Manual V7, BRX Extended User Guide 2018 — linked, not rehosted) · LaserTagMods (JEDGE/JBOX — the original protocol discovery) · the BRX owners' community · Jay / Extreme Laser Tag And More! (grenade and accessory videos).
 
@@ -23,7 +23,7 @@ _A rifle-form laser tagger, a wireless sensor headset, and a smart grenade — a
 - **2,000+** — sound effects and voice lines stored on the tagger (2,166 ids catalogued) ✅
 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/callsign-extract/ (sound bank)
 
-[cards] "The system, in three objects" — 3 cards:
+[cards] "The system, in three objects"
 - **Tagger** — the rifle. Emits IR, carries a hit sensor on its body, the speaker, the sound bank, the battery, the radio (Bluetooth) and all the game logic for a stock game. 📖 ✅
 - **Headset** — the head-worn sensor band. Catches most incoming tags (it is the bigger target), lights up for feedback, links wirelessly to its own tagger, and gates whether the tagger is allowed to fire. 📖 ✅
 - **Smart Grenade** — an optional IR broadcaster with a button and a status LED. Throwable blast weapon *or* a portable objective (respawn point, hill, flag). ✅
@@ -46,7 +46,7 @@ _Every button, port, emitter and light on the rifle — and what it is actually 
 
 [diagram HW-02] Annotated tagger anatomy — labels overlaid in HTML as hotspots (see Images table).
 
-[cards] "Controls at a glance" — 6 cards:
+[cards] "Controls at a glance"
 - **Trigger** — fires; before a game it also cycles weapons/characters and confirms menu picks. Has a mechanical switch you can continuity-test if it stops firing. 📖 👥
 - **Reload handle** (right side, screws on) — pull to reload; **pulling it is also how a stock game starts**. A small mechanical switch sits under two screws beneath it. 📖
 - **ALT button** (orange) — cycles perks pre-game; **hold 3 s** toggles indoor/outdoor mode. 📖
@@ -100,7 +100,7 @@ src: protocol/brx-ir-protocol.md, docs/reference/lasertagmods.md
 
 [callout:warn] **You cannot see the beam.** A phone camera will not show a low-power 38 kHz IR emitter — both cameras showing nothing is consistent with a working gun. Use a receiver (or another tagger) to test, never a camera. ✅ src: docs/gotchas.md
 
-[cards] "Where you can be tagged" — 3 cards:
+[cards] "Where you can be tagged"
 - **Headset domes** — the primary target. Our bench distinguishes a **front** and a **back** dome on the wire; Battle Company sells front/left/right sensor boards as spares. ✅ 👥
 - **Gun body sensor** — a hit sensor on the rifle itself. ✅ 📖
 - **Which sensor caught it is reported** — at field distance, the tagger knows whether a tag landed front, back or on the gun. Point-blank, IR floods every receiver and the distinction is unreliable. ✅
@@ -127,7 +127,7 @@ _The gun's LED bank and the headset's ring — read them like a dashboard._
 - Segments going out | **A life gauge**: the three LEDs act as a segmented bar that drains as you take damage | ✅
 - Manual's description | "LED indicator shows ammo & health" | 📖
 - Slow blink in team colour | An externally-hosted game that has not switched on the life gauge | ✅
-src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7i, docs/experiment-log.md (LED life mode, 2026-08-27)
+src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7r (LEDs slow-blink team colour in an app-derived config), docs/experiment-log.md (LED life mode, 2026-08-27)
 
 [diagram HW-10] (gun LED gauge states — see Images table)
 
@@ -161,7 +161,7 @@ _A wireless sensor band that decides whether your tagger is allowed to shoot._
 
 [image HW-03] (see Images table)
 
-[cards] "What's on the headset" — 6 cards:
+[cards] "What's on the headset"
 - **Sensor domes** — IR receivers around the band; the wire reports **front** vs **back** dome hits separately. ✅
 - **Green hit LEDs** — 3 W, four directions, daylight-visible. 📖
 - **RGB ring** — WS2812B addressable LEDs for team colour, rainbow-when-unpaired and feedback. 👥 ✅
@@ -172,7 +172,7 @@ src: protocol/brx-protocol.md §"$HIR token 1", docs/reference/brx-extended-user
 
 [table] Headset facts — columns: Item | Detail | Confidence
 - Link to tagger | Wireless; pairs automatically after power-on. Can take **up to 3 minutes** with many taggers/BT devices around | 📖
-- Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects. Booted with **no** headset → tagger shoots fine locally | 📖 ✅
+- Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects | 📖
 - Apps need it | The official phone app silently disconnects a tagger that has no linked headset; an externally-hosted game cannot hold a link to a headset-less gun either | ✅
 - Battery | Single **18650** lithium cell (v2 headsets); charges from **any USB 5 V** source; v1 has a slide compartment | 👥 📖
 - Firmware | Reported by the tagger as `hds.59` on our units | ✅
@@ -198,11 +198,11 @@ _A 7.4 V two-cell pack with one nasty surprise: the connector polarity is backwa
 - Live readout on the wire: a pack voltage, cell voltage and state-of-charge % every ~30 s (e.g. 7.52 V pack / 3.96 V cell / 43 %) ✅
 src: docs/reference/community-notes.md, docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/experiment-log.md (2026-08-24)
 
-[callout:warn] **POLARITY IS REVERSED.** Battle Company wires the pack connector opposite to the usual convention. Verify with a meter before wiring any replacement pack, external charger or adapter — getting it wrong can destroy the mainboard. 👥 src: docs/reference/community-notes.md
+[callout:warn] **POLARITY IS REVERSED.** Battle Company wires the pack connector opposite to the usual convention. Verify with a meter before wiring any replacement pack, external charger or adapter — getting it wrong risks damaging the tagger. 👥 src: docs/reference/community-notes.md (Battery / power)
 
 [image HW-06] (battery pack + connector — see Images table)
 
-[cards] "Power habits that keep a fleet alive" — 4 cards:
+[cards] "Power habits that keep a fleet alive"
 - **Charge outside the gun** — community practice: splice a BRX AC adapter onto a spare connector, keep a stack of charged packs, swap in the field. 👥
 - **Keep them topped up** — the stock firmware **stops re-pairing Bluetooth below a battery threshold**, which quietly drops players out of hosted games. 👥
 - **Rest the guns between sessions** — a tagger left powered all day can enter the "screamer" state (loud buzz, refuses connections) until rebooted and rested. 👥 ✅
@@ -249,7 +249,7 @@ _What each add-on physically is. How to use them lives in the Accessories & Stat
 
 [image HW-07] (see Images table)
 
-[cards] "Smart Grenade — anatomy" — 6 cards ✅:
+[cards] "Smart Grenade — anatomy" ✅
 - **Top button** — power on, mode setup (hold), and manual detonation / respawn trigger.
 - **Safety clip** — pop it to power up.
 - **3 IR emitters + 1 emitter/receiver** — it *broadcasts* over IR (state beacons every few seconds) and *receives* shots (it flashes white when hit).
@@ -296,7 +296,7 @@ _One page to print._
 - MCU: PJRC Teensy ✅
 - Battery: 7.4 V ~2,200 mAh Li-ion (2-cell, reversed polarity) or 6×AA; ~8 h play 📖 👥
 - Manufacturer: Laser Tag Pro / Battle Company, Oak Creek, WI 📖
-src: all reference docs listed under Sources
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1 §7c + docs/experiment-log.md 2026-08-23 (USB console — Teensy MCU), protocol/brx-protocol.md §7o (sight flash)
 
 [spec-sheet] BRX headset:
 - Sensors: IR receiver domes around the band (front/back distinguished on the wire) ✅
@@ -374,3 +374,4 @@ Nothing below appears on the site. Each item is published only once confirmed; c
 - **Headset sensor count and placement.** Battle Company sells front/left/right sensor boards; our wire decode distinguishes front and back. A definitive dome map is still owed. src: protocol/brx-protocol.md §"$HIR token 1", docs/reference/community-notes.md
 - **Grenade firmware updates.** Owners report `.bin` updates exist, but the grenade's USB-C exposed no data interface on our bench — the update path is unknown. src: docs/reference/grenade.md
 - **Images:** no IDs removed. HW-10 (gun LED gauge) description and prompt edited to drop the "shifted colour in the last frame" (held, see life-gauge item above).
+- Whether a tagger booted with **no** headset fires locally: the manual says it does; owners report post-2018 firmware refuses — contradicted, held (docs/reference/brx-manual-notes.md, docs/reference/community-notes.md).

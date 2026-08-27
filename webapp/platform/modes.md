@@ -3,10 +3,10 @@ _Every mode we know the BRX can run — classified by the gear it needs._
 Last verified: 2026-08-27
 
 ## Two tier axes, kept separate.
-*Infrastructure* tiers say what gear a mode needs (Mission Control alone → + props → + broadcast). *Spend* tiers (next page) say what each budget adds. A mode's infrastructure tier maps to whichever spend tier supplies that gear.
+*Infrastructure* tiers say what gear a mode needs (laptop-only → + props → + broadcast). *Spend* tiers (next page) say what each budget adds. A mode's infrastructure tier maps to whichever spend tier supplies that gear.
 Source: docs/game-modes.md §Three infrastructure tiers
 
-## Mission Control alone — no props, no broadcast
+## Laptop-only with `brx-mcp` — no props, no broadcast
 (engines built 🧪; TDM ✅ on 2 guns; FFA / Infection / LMS engines sim-proven, not yet run on real guns)
 - **Team Deathmatch** — two to four teams; team kills or elimination. ✅ 2026-08-25
 - **Free For All** — everyone vs everyone; exact per-player attribution over BLE (shooter id rides in every hit). 🧪

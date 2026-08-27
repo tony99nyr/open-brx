@@ -2,17 +2,15 @@
 _Video game inspired tactical laser tag — open and self-hosted._
 Last verified: 2026-08-27
 
-- Eyebrow: **The Open BRX platform**
-- H1: **Video game inspired tactical laser tag — open and self-hosted.**
-- Sub: An open-source (MIT) platform that turns stock Battle Company BRX taggers into a fully orchestrated laser-tag system — game modes, live scoring, objectives, power-ups, effects and a laptop Mission Control. No subscription, no location lock, no venue Wi-Fi required. Stock firmware is never touched.
-- Primary CTA: "See what's proven" → `/platform/status` · Secondary CTA: "What can I build for $0?" → `/platform/build-tiers`
-- Background: [image PLAT-01] (night-game hero)
-✅ (pitch is the project's adopted one-liner)
+## Video game inspired tactical laser tag — open and self-hosted.
+An open-source (MIT) platform that turns stock Battle Company BRX taggers into an orchestrated laser-tag system: game modes, live scoring and custom weapons from a laptop today, with a laptop Mission Control and a phone HUD under construction. No subscription, no location lock, no venue Wi-Fi required. Stock firmware is never touched.
 Source: docs/VISION.md §Naming, README.md
+
+_[image PLAT-01: ]_
 
 - **$0** to run your first orchestrated match (a laptop + the guns you own) ✅
 - **2 taggers** ran a full scored Team Deathmatch on 2026-08-25; **3-gun** synchronised start proven ✅
-- **63** player ids per game · **4** native hardware teams ✅
+- **63** player slots per game (wire ids 1–63; the gun accepts 0–63, 0 reserved) · **4** native hardware teams ✅
 - **~$15** BOM for the Companion rider (specified, not built) 📐
 - **2,166** sound ids decoded in the tagger's bank ✅
 Source: docs/architecture-topology.md §3 + §7, docs/build-tiers.md, hardware/brx-companion-spec.md, protocol/callsign-extract/sound-bank.md

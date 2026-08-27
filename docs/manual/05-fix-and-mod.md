@@ -1,7 +1,7 @@
 # 05 · Fix, mod & accessorise  (section slug: /manual/fix)
 **Last verified:** 2026-08-27
 **Audience:** BRX owners whose tagger is misbehaving right now, owners about to open one up, and modders deciding what to bolt on · **Goal of this section:** get a broken tagger back into a game in under five minutes with symptom-first ladders; document the repairs and mods the community actually does (with credit); catalogue accessories and where owners gather; answer the ten questions every owner asks.
-**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — nothing unconfirmed is published; see Research backlog at the end.
+**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — only confirmed facts are published; see Research backlog at the end.
 
 **Sourcing rule for this section:** every fact is restated in our own words with credit — Battle Company (the V7 manual and the 2018 Extended User Guide), LaserTagMods (JEDGE/JBOX), Jay of *Extreme Laser Tag And More!*, and the BRX owners' community. Link to official PDFs and original videos; never rehost them. Community members other than public creators are credited as "the owner community".
 
@@ -17,8 +17,8 @@ _Symptom first. Start at the top of the ladder that matches what you see — the
 src: docs/gotchas.md · docs/reference/community-notes.md · docs/reference/brx-manual-notes.md
 
 [callout:info]
-**Three things to know before any ladder.** (1) The tagger keeps no game state — if it isn't in a started game it won't shoot at anyone. (2) Since a 2018/2019 firmware revision, the gun locks when its headset disconnects *mid-game* (anti-cheat); a gun booted with no headset at all fires fine. (3) A dead player's trigger does nothing but click — that's a game rule, not a fault. 📖✅
-src: docs/reference/brx-manual-notes.md (Headset §) · protocol/brx-protocol.md §7r · docs/experiment-log.md (2026-08-25 "dead gun can't fire")
+**Three things to know before any ladder.** (1) The tagger keeps no game state — if it isn't in a started game it won't shoot at anyone. ✅ (2) The gun locks when its headset disconnects *mid-game* (anti-cheat). 📖 (3) A dead player's trigger does nothing but click — that's a game rule, not a fault. ✅
+src: protocol/brx-protocol.md §7n §7r · docs/reference/brx-manual-notes.md (Headset §) · docs/experiment-log.md (2026-08-25 "dead gun can't fire")
 
 [symptom-ladder]  **"Won't fire" — the ladder**
 1. **Is the headset slow-blinking a rainbow?** → yes → It's disconnected. The gun refuses to join or fire until the headset links. Power the headset on, wait for it to settle to team colour (up to 3 minutes in a room full of Bluetooth), or re-pair (→ *Headset, pairing & Bluetooth*). ✅📖
@@ -37,7 +37,7 @@ src: docs/gotchas.md ("Sending commands") · docs/experiment-log.md 2026-08-25 (
 
 [symptom-ladder]  **"Won't power on" / "powers off by itself"**
 1. **Did you hold a button while sliding the switch?** → yes → SELECT-at-boot puts the gun in USB disk mode with **no startup sound** — it looks dead but is waiting for a computer. LEFT-at-boot is target mode, RIGHT-at-boot is accessory pairing. Power off, power on with nothing held. 📖
-2. **Is the battery charged?** → no → The charger LED goes red → green; a full 2 h charge gives ~8 h of play. Use the 8.4 V two-cell smart charger for the gun (the headset takes any 5 V USB). 📖
+2. **Is the battery charged?** → no → The charger LED is red while charging and goes green when full; a full charge gives ~8 h of play. Use the 8.4 V two-cell smart charger for the gun (the headset takes any 5 V USB). 📖
 3. **Using AAs?** → The optional 6×AA tray takes **non-rechargeable** cells only — the manual says never use rechargeable AAs. 📖
 4. **Replacement pack or rebuilt connector?** → Battle Company wires the battery connector with polarity **reversed** from the usual convention. Verify with a meter before plugging in — a reversed pack can damage the board. 👥
 5. **Random on/off, especially when jostled?** → The slide **power switch** is a known mechanical failure. Contact/switch cleaner buys time; replacement is the fix (→ *Repairs*). 👥
@@ -46,8 +46,8 @@ src: docs/gotchas.md ("Sending commands") · docs/experiment-log.md 2026-08-25 (
 📖👥 · src: docs/reference/brx-extended-user-guide.md (USB disk mode, battery) · docs/reference/brx-manual-notes.md · docs/reference/community-notes.md (Battery / power; Common failures)
 
 [stat-row]
-~8 h play per charge (📖) · 2–4 h to recharge (📖) · up to 3 min for a headset to auto-pair in a crowded room (📖) · ~1 in 3 — how often a Bluetooth connection attempt succeeds first time, official app included (✅)
-src: docs/reference/brx-manual-notes.md · docs/reference/brx-extended-user-guide.md · docs/gotchas.md ("Connection failed")
+~8 h play per charge (📖) · charger LED red → green when full (📖) · up to 3 min for a headset to auto-pair in a crowded room (📖) · establishing a Bluetooth link is intermittent, official app included — retrying is the fix (✅)
+src: docs/reference/brx-manual-notes.md · docs/reference/brx-extended-user-guide.md · docs/gotchas.md ("Connection failed") · docs/experiment-log.md 2026-08-23 (link held 73.8 s once up)
 
 ---
 
@@ -61,10 +61,9 @@ src: docs/experiment-log.md 2026-08-27 (headset LED) · docs/reference/community
 [table]  **Headset LED language (what the colours mean)**
 | Headset shows | Meaning | Confidence |
 |---|---|---|
-| Slow rainbow blink | Disconnected / not paired — the gun will not join or fire | ✅ owner-observed, repeatable |
+| Slow rainbow blink / LEDs cycling colours at power-on | Disconnected / not paired — waiting to pair; the gun will not join or fire | ✅ owner-observed, repeatable · 👥 |
 | Solid team colour (red/blue) | Paired, pre-game only | ✅ |
 | Dark | Normal during play — not a fault | ✅ |
-| LEDs cycling colours at power-on | Waiting to pair | 👥 |
 ✅👥 · src: docs/experiment-log.md 2026-08-27 · docs/reference/community-notes.md (Gen-3 re-pair)
 
 [symptom-ladder]  **"Headset not detected" / "keeps dropping"**
@@ -98,7 +97,7 @@ src: docs/reference/community-notes.md (SCREAMERS) · docs/experiment-log.md 202
 [symptom-ladder]  **"Can't pair / connect my phone"**
 1. **Android 11 or newer?** → The official Callsign app works only on Android 10 and older. Use an older Android device. 👥
 2. **Is the headset linked (not rainbow)?** → no → Callsign connects to a headset-less tagger and silently disconnects about a second later; you cannot create a game until the app's top-right icon is green and reads "connected". The gun answers other clients fine — the app is enforcing the headset. ✅
-3. **"Connection failed" once?** → Try again. A Bluetooth link succeeds roughly one attempt in three, with the official app too; retrying *is* the fix, not a sign of a broken stack. ✅
+3. **"Connection failed" once?** → Try again. Establishing a Bluetooth link is intermittent, with the official app too, and the link holds once it is up; retrying *is* the fix, not a sign of a broken stack. ✅
 4. **Reconnecting right after the gun dropped you?** → Back off at least 5 seconds after a gun-initiated disconnect, or the new session comes up dead. ✅
 5. **Gun is admin-locked?** → Locked taggers cannot host. Unlock (LEFT+RIGHT 3 s). 👥
 6. **Gen-1 tagger?** → It uses Bluetooth *Classic*, advertises as `LTP-alpha`, default pair code `0001`, and needs the headset connected for Bluetooth to work at all. Gen-2/3 advertise as `Tactix-XXXX` over BLE with no PIN. 📖✅
@@ -155,7 +154,7 @@ src: docs/reference/community-notes.md ("Scoping / sighting & outdoor play")
 👥📖✅ · src: docs/reference/community-notes.md (Audio) · docs/reference/brx-extended-user-guide.md (SELECT menu) · CLAUDE.md volume rule / docs/experiment-log.md · docs/reference/brx-manual-notes.md
 
 [symptom-ladder]  **"Battery dies fast" / "won't charge" / replacing a pack**
-1. **Charger LED never goes green?** → Confirm it's the 8.4 V two-cell smart charger (headset: any 5 V USB). ~2–4 h to full. 📖
+1. **Charger LED never goes green?** → Confirm it's the 8.4 V two-cell smart charger (headset: any 5 V USB). The LED is red while charging and green when full. 📖
 2. **Bluetooth stops holding as the day goes on?** → Firmware won't re-pair BLE below a battery threshold. Top up, or swap packs. 👥
 3. **Buying a replacement pack?** → Stock is a **7.4 V, ~2200 mAh Li-ion** with a 2-pin connector. Marketplace packs often have a 3-pin connector; the third (thermistor) pin is ignored by the BRX. **Check polarity — Battle Company's is reversed from the usual convention.** 👥
 4. **Want to charge spares without the gun?** → Owners splice a BRX AC adapter onto a battery connector and charge packs on the bench, then hot-swap in the field (one screw near the reload switch opens the gun's battery bay; the v1 headset has a slide compartment). 👥📖
@@ -164,7 +163,7 @@ src: docs/reference/community-notes.md ("Scoping / sighting & outdoor play")
 📖👥✅ · src: docs/reference/brx-extended-user-guide.md (Battery) · docs/reference/community-notes.md (Hardware / power) · protocol/brx-protocol.md (QUERY record) · docs/experiment-log.md §17 ($VOLTS)
 
 [callout:warn]
-**Lithium + reversed polarity = the two ways owners kill boards.** Unplug the battery before any work inside the shell, meter the connector before plugging a non-stock pack, and never use rechargeable AAs in the AA tray. 👥📖
+**A live pack during a mod fries the mainboard; reversed polarity risks damage.** Unplug the battery before any work inside the shell, meter the connector before plugging a non-stock pack, and never use rechargeable AAs in the AA tray. 👥📖
 src: docs/reference/community-notes.md · docs/reference/brx-manual-notes.md
 
 ---
@@ -298,7 +297,7 @@ Smart grenade held in hand, top button and LED visible, LED lit blue. ✅
 
 [spec-sheet]  **Batteries & chargers**
 - Gun pack: 7.4 V ~2200 mAh Li-ion, 2-pin connector, **reversed polarity vs. convention** 👥
-- Gun charger: 8.4 V two-cell smart charger; LED red → green; ~2–4 h 📖
+- Gun charger: 8.4 V two-cell smart charger; LED red while charging → green when full 📖
 - Headset: single 18650 (v2); any 5 V USB charger 📖👥
 - Runtime: ~8 h play per charge 📖
 - Alternative: 6×AA tray, **non-rechargeable only** 📖
@@ -399,6 +398,9 @@ _Items removed from the pages above because they are unconfirmed, hedged, or con
 - **Reload-handle model variants** — "older and newer BRX handles differ; one owner printed the wrong version"; no way to tell which you have. Removed the gotcha from the reload-button mod card, "version-specific" from the print-parts table, and "model-version specific" from the FAQ. src: hardware/print-files.md · docs/reference/community-notes.md.
 - **Smart grenade firmware update path** — the official guide says PROGRAM-button → disk mode like other accessories, but on our bench the grenade's USB-C exposed no data interface and it has no PROGRAM pin. Contradicted; grenade removed from the accessory-firmware step, from the "other accessories" firmware sentence, and the "USB-C is charge-only" quirk held. src: docs/reference/brx-extended-user-guide.md vs docs/reference/grenade.md (G7).
 - **"Install accessory" boot = RIGHT vs RIGHT+SELECT** — some owners report RIGHT+SELECT; official says RIGHT. Published RIGHT only; the variant is held. src: docs/reference/community-notes.md.
+- **Gun charge time: ~2 h vs 2–4 h** — the V7 manual says ~2 h, the Extended User Guide 2–4 h. Neither published; the diagnose ladder, stat strip, battery ladder and charger spec-sheet state only the charger LED behaviour (red → green) both agree on. src: docs/reference/brx-manual-notes.md · docs/reference/brx-extended-user-guide.md.
+- **"~1 in 3" BLE connection attempts succeed** — an operator impression (no counted trial in the log); published only as "establishing a link is intermittent; retry". src: docs/gotchas.md ("Connection failed") · docs/experiment-log.md 2026-08-23 (#5).
+- **When the headset-drop firing lockout arrived ("since a 2018/2019 firmware revision")** — community-dated; the mid-game lockout itself was never controlled for on the bench. Date removed from the diagnose callout; the lockout stays as 📖. src: docs/reference/community-notes.md (won't-fire ladder) · docs/experiment-log.md (headset lockout "never controlled for").
 - **Callsign on iOS works fine** — "reportedly" only; held. Android ≤10 stays published. src: docs/reference/community-notes.md (Ecosystem).
 - **Why rechargeable AAs are banned (lower cell voltage → won't boot / drops out)** — our reasoning, not the manual's; the manual only says never use them. Reason held, rule published. src: docs/reference/brx-manual-notes.md.
 - **"Headsets usually don't survive water"** — no concrete report behind it; held (gun recoveries stay). src: docs/reference/community-notes.md (Common failures).

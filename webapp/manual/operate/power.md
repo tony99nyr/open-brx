@@ -10,7 +10,7 @@ Last verified: 2026-08-27
 - **Fallback:** the gun can run on an optional 6×AA holder — **alkaline only, never rechargeable AAs.** 📖
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md
 
-Battery polarity is REVERSED from the usual convention. If you ever replace the pack, build spares, or wire an external charger, verify polarity with a meter before connecting — a reversed pack can destroy the mainboard. Some aftermarket packs have a 3-pin connector; the BRX ignores the third (thermistor) pin.
+Battery polarity is REVERSED from the usual convention. If you ever replace the pack, build spares, or wire an external charger, verify polarity with a meter before connecting — a reversed pack risks damaging the tagger. Some aftermarket packs have a 3-pin connector; the BRX ignores the third (thermistor) pin.
 Source: docs/reference/community-notes.md
 
 Two ports, do not confuse them. The round charging port takes the charger. The micro-USB "Programing Port" next to it is for firmware and sound updates only (see *Firmware & Sounds*) — it is not a charging input.

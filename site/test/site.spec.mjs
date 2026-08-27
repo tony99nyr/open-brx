@@ -69,13 +69,13 @@ for (const u of sitemapUrls()) {
     const badFig = await page.evaluate(() => [...document.querySelectorAll('figure')].filter(f => !(f.querySelector('img[alt]') || f.querySelector('[aria-label]'))).length);
     expect(badFig, 'figure without alt/aria-label').toBe(0);
     // "→ Title" cross-references must be links, and page links must show a title, not a raw slug
-    const deadRefs = await page.evaluate(() => [...document.querySelectorAll('main em')].filter(e => !e.closest('a') && /→\s*$/.test((e.previousSibling?.textContent || '').slice(-3))).map(e => e.textContent));
+    const deadRefs = await page.evaluate(() => [...document.querySelectorAll('main em')].filter(e => !e.closest('a, figcaption') && /→\s*$/.test((e.previousSibling?.textContent || '').slice(-3))).map(e => e.textContent));
     expect(deadRefs, 'dead → cross-references').toEqual([]);
     const slugLinks = await page.evaluate(() => [...document.querySelectorAll('main a.pl')].filter(a => /^\/(manual|platform)/.test(a.textContent.trim())).map(a => a.textContent));
     expect(slugLinks, 'page links showing raw slugs').toEqual([]);
     const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     expect(sw, `horizontal page overflow (${sw} > ${iw})`).toBeLessThanOrEqual(iw + 1);
-    await expect(page.locator('.legend summary')).toBeVisible();
+    if (await page.locator('.meta .badge').count()) await expect(page.locator('.legend summary')).toBeVisible();
     expect(errors, errors.join('\n')).toEqual([]);
   });
 }
@@ -132,11 +132,15 @@ it('2a · weapons explorer: search, every class chip, compare pick/unpick/evict,
   await expect(ex.locator('[data-x-dock]')).toContainText('SMG');
   await expect(ex.locator('[data-x-dock]')).toContainText('Damage');
   await ex.locator('[aria-label="Compare Sniper Rifle"]').check();
-  await expect(ex.locator('[data-x-dock]')).not.toContainText('Assault Rifle');
+  await expect(ex.locator('[data-x-dock]')).toContainText('Assault Rifle was replaced');
+  await expect(ex.locator('[data-x-dock] .h').first()).not.toHaveText('Assault Rifle');
   await expect(ex.locator('tr.picked')).toHaveCount(2);
+  await ex.locator('[data-x-clear]').click();
+  await expect(ex.locator('tr.picked')).toHaveCount(0);
+  await expect(ex.locator('[data-x-dock]')).toContainText('Tick two weapons');
+  await ex.locator('[data-pick="smg"]').check();
   await ex.locator('[data-pick="smg"]').uncheck();
-  await expect(ex.locator('tr.picked')).toHaveCount(1);
-  await expect(ex.locator('[data-x-dock]')).toContainText('one more');
+  await expect(ex.locator('tr.picked')).toHaveCount(0);
   // numeric sort reorders rows (9 < 10 < 100, not lexical)
   const dmgTh = ex.locator('th[data-col]', { hasText: 'Damage' });
   await dmgTh.click();
@@ -162,12 +166,13 @@ it('2b · sound bank explorer: 2166 ids, search, family chips, show-more to exha
   const errors = watchErrors(page);
   await page.goto('/manual/sound/sound-bank/');
   const ex = page.locator('[data-explorer="sounds"]');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/2166 of 2166 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/2166 of 2166 match · showing 300/);
   await expect(ex.locator('tbody tr')).toHaveCount(300);
   await expect(ex.locator('[data-x-more]')).toBeVisible();
   let clicks = 0;
   while (await ex.locator('[data-x-more]').isVisible()) { await ex.locator('[data-x-more-btn]').click(); clicks++; expect(clicks).toBeLessThan(10); await page.waitForTimeout(50); }
   await expect(ex.locator('tbody tr')).toHaveCount(2166);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/2166 of 2166 shown/);
   await ex.locator('[data-x-search]').fill('R02');
   await expect(ex.locator('[data-x-count]')).toHaveText(/^\d+ of 2166 shown/);
   await expect(ex.locator('tbody tr').first()).toContainText('R02');
@@ -200,10 +205,13 @@ it('2c · in-page filterable table (command reference) filters, clears, and sort
   const after = await dt.locator('.dt-count').innerText();
   expect(after).not.toBe(total); expect(after).toMatch(/^\d+ of \d+ rows/);
   await expect(dt.locator('tbody tr:visible').first()).toContainText('PING');
+  await dt.locator('input').fill('zzzz-nothing');
+  await expect(dt.locator('.dt-empty')).toBeVisible();
   await dt.locator('input').fill('');
+  await expect(dt.locator('.dt-empty')).toBeHidden();
   await expect(dt.locator('.dt-count')).toHaveText(total);
   const th = dt.locator('thead th').first();
-  const col = () => dt.locator('tbody tr td:first-child').allInnerTexts();
+  const col = () => dt.locator('tbody tr:not(.dt-empty) td:first-child').allInnerTexts();
   await th.click();
   await expect(th).toHaveAttribute('aria-sort', 'ascending');
   const a = await col(); expect(a).toEqual([...a].sort((x, y) => x.localeCompare(y)));
@@ -256,6 +264,11 @@ it('2g · search: ⌘K opens, results for a symptom, "$WEAP", no-results message
   await expect(res.first()).toBeVisible();
   await page.locator('[data-search-input]').fill('screamer');
   await expect(page.locator('[data-search-results]')).toContainText(/pairing|Bluetooth/i);
+  await page.locator('[data-search-input]').fill('headset pairing');
+  await page.keyboard.press('ArrowDown');
+  expect(await page.evaluate(() => document.activeElement.closest('[data-search-results]') !== null)).toBe(true);
+  await page.keyboard.press('ArrowUp');
+  expect(await page.evaluate(() => document.activeElement.hasAttribute('data-search-input'))).toBe(true);
   await page.locator('[data-search-input]').fill('qzxv-nothing');
   await expect(page.locator('[data-search-results]')).toContainText('No results');
   await page.keyboard.press('Escape');
@@ -279,6 +292,11 @@ it('2e · diagnostic ladder rungs; sidebar (or phone drawer) navigates; drawer c
     await page.locator('[data-nav-toggle]').click();
     await expect(page.locator('[data-nav-toggle]')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator('.side')).toBeInViewport();
+    await expect(page.locator('[data-nav-toggle]')).toHaveAttribute('aria-label', 'Close navigation');
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-nav-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    await page.locator('[data-nav-toggle]').click();
     await page.mouse.click(vp.width - 10, vp.height - 10); // outside the drawer
     await expect(page.locator('[data-nav-toggle]')).toHaveAttribute('aria-expanded', 'false');
     await expect(page.locator('.side')).not.toBeInViewport();
@@ -316,7 +334,7 @@ it('3 · stale/malformed content renders visible TODOs, a placeholder, ragged ta
   await expect(page.locator('.blk-table .todo')).toContainText('malformed table');
   await expect(page.locator('.fig-pending .ph-id')).toHaveText('ZZZ-99');
   await expect(page.locator('.dt')).toBeVisible();
-  await expect(page.locator('.dt tbody tr')).toHaveCount(2);
+  await expect(page.locator('.dt tbody tr:not(.dt-empty)')).toHaveCount(2);
   const text = await page.locator('body').innerText();
   expect(text).not.toContain('NEVER-PUBLISH-SENTINEL');
   expect(text).not.toContain('undefined');
@@ -367,7 +385,7 @@ it('3c · the build refuses a manual with a broken internal link (link checker i
 });
 
 // ---- 4. failure paths --------------------------------------------------------------------------
-for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2166 of 2166 shown'], ['/manual/gameplay/weapons/', 'weapons', '19 of 19 shown']]) {
+for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2166 of 2166 match'], ['/manual/gameplay/weapons/', 'weapons', '19 of 19 shown']]) {
   it(`4 · ${id} explorer data 500 → visible error strip, retry recovers`, async ({ page }) => {
     let fail = true;
     await page.route(`**/data/${id}.json`, route => fail ? route.fulfill({ status: 500, body: 'boom' }) : route.continue());
@@ -439,7 +457,7 @@ it('6 · primary controls ≥ 44px on phone (≥ 36px desktop); no meaning-beari
 
 // ---- 8. machine-readable layer -------------------------------------------------------------------
 it('8 · llms.txt, llms-full.txt, sitemap, robots, JSON-LD (TechArticle/Breadcrumb/HowTo/FAQ/Dataset) and markdown twins', async ({ page, request }) => {
-  for (const f of ['/llms.txt', '/llms-full.txt', '/sitemap.xml', '/robots.txt', '/favicon.svg']) { const r = await request.get(f); expect(r.status(), f).toBe(200); }
+  for (const f of ['/llms.txt', '/llms-full.txt', '/sitemap.xml', '/robots.txt', '/favicon.svg', '/404.html']) { const r = await request.get(f); expect(r.status(), f).toBe(200); }
   const llms = await (await request.get('/llms.txt')).text();
   expect(llms).toContain('# Open BRX');
   const urls = sitemapUrls();

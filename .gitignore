@@ -9,3 +9,7 @@ build/
 
 # site generator
 site/node_modules/
+site/test-results/
+site/test/out-stale/
+site/test/tmp-*/
+site/playwright-report/

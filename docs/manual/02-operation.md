@@ -1,7 +1,7 @@
 # 02 · Operating the BRX  (section slug: /manual/operate)
 **Last verified:** 2026-08-27
 **Audience:** a new or returning BRX owner with stock kit — tagger, headset, maybe a grenade and the Callsign app — who wants to charge it, set it up, and run a game today. No Open BRX software required. · **Goal of this section:** get from "box on the table" to "a game running and understood", and make every button-hold, LED and voice line on the stock kit mean something. Anything that needs a laptop, a cable, or the BLE protocol is pointed at the developer section, not explained here.
-**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — nothing unconfirmed is published; see Research backlog at the end.
+**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — only confirmed facts are published; see Research backlog at the end.
 
 > **Credits for this section.** Restated (never copied) from Battle Company's *BRX Manual V7* and the 2018 *BRX Extended User Guide*; the BRX owner community (the BRX Elite Owners group); Jay at **Extreme Laser Tag And More!** (grenade operation videos); and **LaserTagMods** (JEDGE/JBOX) for the protocol discovery that underpins the bench-verified items. Link the official PDFs — do not rehost them.
 
@@ -17,7 +17,7 @@ _From the box to the first "TARGET MODE" voice line in about fifteen minutes (pl
 [steps] "First power-on checklist"
 1. **Charge first.** Gun: plug the two-cell 8.4 V smart charger into the *charging* port (not the micro-USB "Programing Port" beside it). Charger LED red → green when full; a full charge gives roughly 8 h of play. Headset: any USB 5 V supply. 📖
 2. **Power on the gun** with the slide switch by the barrel. You should hear a startup sound; a "pop" from the speaker at boot means audio is alive. If it boots **silently**, you were holding SELECT — that is USB disk mode; power off and try again. 📖👥
-3. **Power on the headset.** Its LEDs cycle through colours ("rainbow") while it is unpaired, then settle. Pairing is automatic and normally quick, but can take up to **3 minutes** in a room full of taggers and phones. 📖✅
+3. **Power on the headset.** Its LEDs cycle through colours ("rainbow") while it is unpaired, then settle. Pairing is automatic; it can take up to **3 minutes** with many taggers and Bluetooth devices around. 📖✅
 4. **Watch the headset settle.** A slow rainbow blink that never stops = not paired — see *Pairing the Headset*. Once paired it shows the gun's team colour. ✅
 5. **Set indoor or outdoor mode** (hold ALT 3 s) for where you will play — it changes IR range and LED brightness and persists across power cycles. 📖
 6. **Sight the laser** in target mode before the first real game (hold LEFT while powering on). 📖
@@ -50,7 +50,7 @@ _Two ports on the gun, two kinds of charger, one polarity trap._
 - **Fallback:** the gun can run on an optional 6×AA holder — **alkaline only, never rechargeable AAs.** 📖
 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md
 
-[callout:warn] Battery polarity is REVERSED from the usual convention. If you ever replace the pack, build spares, or wire an external charger, verify polarity with a meter before connecting — a reversed pack can destroy the mainboard. Some aftermarket packs have a 3-pin connector; the BRX ignores the third (thermistor) pin. 👥 src: docs/reference/community-notes.md
+[callout:warn] Battery polarity is REVERSED from the usual convention. If you ever replace the pack, build spares, or wire an external charger, verify polarity with a meter before connecting — a reversed pack risks damaging the tagger. Some aftermarket packs have a 3-pin connector; the BRX ignores the third (thermistor) pin. 👥 src: docs/reference/community-notes.md
 
 [callout:warn] Two ports, do not confuse them. The round charging port takes the charger. The micro-USB "Programing Port" next to it is for firmware and sound updates only (see *Firmware & Sounds*) — it is not a charging input. 📖 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
 
@@ -87,7 +87,7 @@ src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.
 | Game time | Off · 5 · 10 · 15 · 20 · 30 min | 📖 |
 | Respawn | Off · 15 · 30 · 60 s · Ramp 45 · Ramp 90 | "Ramp" grows the penalty with each death, up to the cap 📖👥 |
 | Volume | 1 – 5 | 📖 |
-src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md (respawn delay ramps)
 
 [callout:info] These variables are remembered **per game mode** and live on the gun. They are not the same numbers the Callsign app uses — the app keeps its own clock and respawn timer on the phone and never writes these to the gun. 📖✅ src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7n
 
@@ -173,7 +173,7 @@ _The single most common cause of "my gun won't fire" — and the fix for it._
 
 [steps] "Normal pairing (every day)"
 1. Gun on, then headset on. The headset LEDs cycle rainbow while searching. 📖✅
-2. Wait. Usually seconds; up to **3 minutes** with many taggers and phones around. 📖
+2. Wait. Pairing can take up to **3 minutes** with many taggers and Bluetooth devices around. 📖
 3. When the LEDs settle to the gun's team colour, you are paired. ✅
 src: docs/reference/brx-manual-notes.md, docs/experiment-log.md (2026-08-27 headset LED entry)
 
@@ -192,16 +192,16 @@ src: docs/experiment-log.md (2026-08-27), docs/field-process.md, docs/gotchas.md
 4. Wait for the voice line **"PAIRING MODE"**. 👥
 5. **Pull the trigger once** → "HEADSET CONNECTED"; the headset LEDs stop cycling. 👥
 6. A second trigger pull announces "device paired". Release the headset button. 👥
-Credit: contributed to the BRX owner community; this is the procedure behind the mysterious "PAIRING MODE" voice line. src: docs/reference/community-notes.md
+src: docs/reference/community-notes.md (Gen-3 headset re-pair procedure — contributed to the BRX owner community; it is the procedure behind the "PAIRING MODE" voice line)
 
-[accordion] "Alternative: 'install accessory' route" — Boot the gun holding **RIGHT + SELECT** ("install accessory"), power the headset, press its button once. Owners use this route as well — same idea, different hold. 👥 src: docs/reference/community-notes.md
+[accordion] "Alternative: 'install accessory' route" — Boot the gun holding **RIGHT** ("install accessory"), power the headset, press its button once. Same boot mode as pairing a grenade or sidearm. 📖👥 src: docs/reference/brx-extended-user-guide.md (accessory pairing), docs/reference/community-notes.md
 
 [callout:warn] Firmware updates can un-pair everything. Owners report the v4.30 update wipes settings and breaks headset pairing until you re-run setup; Battle Company's own fix involved a temporary downgrade. Re-pair after any firmware update before a game day. Details in *Firmware & Sounds*. 👥 src: docs/reference/community-notes.md
 
 [faq] "Headset troubleshooting"
 - **The gun charges a weapon but nothing happens on the trigger.** Classic headset-lockout symptom. Look at the headset: rainbow = re-pair it. 👥✅
-- **The phone app connects, then drops within a couple of seconds.** The app requires a paired headset and silently disconnects without one — the gun is fine. Get the headset lit before opening the app. ✅
-- **Only some guns joined the phone game.** A gun with a dark or unpaired headset refuses to join with no error. Eyeball every headset before you start. ✅
+- **The phone app connects, then drops within a couple of seconds.** The app requires a paired headset and silently disconnects without one — the gun is fine. Get the headset lit before opening the app. ✅ (src: protocol/brx-protocol.md §7m)
+- **Only some guns joined the phone game.** A gun whose headset is powered off or unpaired (slow rainbow) refuses to join with no error. Eyeball every headset before you start — before the game a paired headset shows team colour; it only goes dark once play begins. ✅
 - **It paired yesterday and not today.** Headset battery. It charges from any USB 5 V. 📖
 src: docs/reference/community-notes.md, protocol/brx-protocol.md §7m, docs/gotchas.md, docs/field-process.md
 
@@ -453,6 +453,8 @@ Nothing below appears on the site. Each item moves up into a page block only whe
 - **Gun charge time: 2 h or 2–4 h.** V7 manual says ~2 h; Extended Guide says 2–4 h. Number removed from Quick Start step 1 and the "Power at a glance" sheet (the ~8 h run time both agree on is kept). src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
 - **Headset green blink / hold = hit / kill, and whose.** Seen on the bench, but not yet pinned whether it is the wearer's hit/kill or the wearer being hit. Rows removed from "Reading the headset LEDs" and "During play"; OPS-06 trimmed from four states to three; LED-decoder idea trimmed. One clean two-player session will settle it. src: docs/experiment-log.md (2026-08-27 headset LED entry)
 - **On-gun volume 1–5 → internal 0–100 mapping.** The 60/70/80/90/100 mapping is a field estimate, not a measurement. Removed from the game-variables table and the Callsign stat-row; "Volume translator" interactive idea dropped. The 1–5 range itself (📖) and the app's 69 (✅) stay. src: docs/experiment-log.md (on-gun volume estimate), protocol/brx-protocol.md §7b
+- **"Install accessory" boot = RIGHT vs RIGHT+SELECT.** Owners report RIGHT+SELECT; the Extended User Guide says RIGHT alone. Published RIGHT only (📖); the RIGHT+SELECT variant is held. src: docs/reference/community-notes.md (Re-pair headset), docs/reference/brx-extended-user-guide.md (accessory pairing)
+- **Headset pairing "usually takes seconds".** Not in any source — only the "up to 3 minutes with many taggers/BT devices" figure is official; removed from Quick Start step 3 and the Normal pairing steps. src: docs/reference/brx-manual-notes.md (Headset)
 - **Firing with no headset at boot.** V7 manual: a gun booted with no headset shoots without one. Owners: post-2018 firmware stops firing whenever the headset is off. Clause removed from the Pairing page callout; only the lock-on-loss behaviour (both agree) is published. Collecting firmware-version/behaviour pairs. src: docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
 - **Respawn station arming.** Does the passive station beacon arm a gun by itself, or only the button press / headset-and-trigger? Does a gun armed mid-game stay in station mode for the rest of the match? Owner-reported, not bench-confirmed (the mid-game button-press arming step is published as 👥). src: docs/reference/grenade.md
 - **The screamer's root cause.** Bluetooth-refuses-to-hold reproduced after a full day powered; the "loud buzz" failure and the exact battery threshold are owner reports only. src: docs/reference/community-notes.md (SCREAMERS), docs/experiment-log.md (2026-08-26 U6)

@@ -9,7 +9,7 @@ Source: docs/build-tiers.md
 - Laptop in BLE range drives the guns directly — a room, a yard, a small field
 - Configure + start a game, spawn, live hit/death tracking, host-driven respawn, synchronised start ✅
 - TDM ✅; FFA / Infection / LMS engines 🧪; laptop scoreboard 🧪
-- Custom weapons (`$WEAP`: damage, rate, mag, reload type, per-fire sounds — all 20 Callsign weapons captured and rebalanced) ✅
+- Custom weapons (`$WEAP`: damage, rate, mag, reload type, per-fire sounds — all 19 Callsign weapons captured (20 frames) and rebalanced) ✅
 - Diagnostics (firmware, battery, per-tagger health) ✅
 - Custom on-tagger sound packs over USB ✅
 - Grenade objectives: Hill / Respawn / Assault / CTF / CS bomb ✅ (CTF team-assign open)

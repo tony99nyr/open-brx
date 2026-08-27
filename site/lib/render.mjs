@@ -31,9 +31,11 @@ function crossRefs(html, ctx) {
   // "→ <em>Page title</em>" written by the manual authors → a link when a page (or section) with that title exists
   if (!ctx?.titles) return html;
   return html.replace(/(→|&rarr;)\s*<em>([^<]+)<\/em>/g, (m, arrow, title) => {
-    const key = title.toLowerCase().replace(/[`*"“”]/g, '').replace(/\s+/g, ' ').trim();
-    const slug = ctx.titles.get(key) || ctx.titles.get(key.split(/[:—–(]/)[0].trim());
-    return slug ? `${arrow} <a href="${slug}/">${esc(title)}</a>` : m;
+    const key = title.replace(/&amp;/g, '&').toLowerCase().replace(/[`*"“”]/g, '').replace(/\s+/g, ' ').trim();
+    const first = key.split(/[:—–(/]/)[0].trim();
+    let slug = ctx.titles.get(key) || ctx.titles.get(first) || ctx.aliases?.get(key) || ctx.aliases?.get(first);
+    if (!slug) { for (const [k, v] of ctx.titles) if (k.startsWith(first + ' ') || k.startsWith(first + ',') || k === first) { slug = v; break; } }
+    return slug ? `${arrow} <a href="${slug}/">${title}</a>` : m;
   });
 }
 export function md(text, ctx) {
@@ -104,7 +106,8 @@ function figure(b, ctx) {
     ? `<img src="/img/${esc(file)}" alt="${esc(meta?.what || cap)}" loading="lazy">`
     : `<div class="ph ph-${kind}" role="img" aria-label="${esc(meta?.what || cap)}"><span class="ph-id">${esc(id)}</span><span class="ph-kind">${kind === 'photo' ? 'photo pending' : kind === 'svg' ? 'diagram pending' : 'illustration pending'}</span></div>`;
   const ratio = (meta?.prompt || meta?.what || '').match(/\b(21:9|16:9|4:3|1:1|3:2)\b/)?.[1] || '16:9';
-  return `<figure class="fig fig-${kind}${file ? '' : ' fig-pending'}" id="${esc(id)}" style="--ratio:${ratio.replace(':', '/')}">${body}<figcaption>${inline(cap, ctx)}</figcaption></figure>`;
+  // captions describe a picture's flow ("A → *B*"); those arrows are not cross-references
+  return `<figure class="fig fig-${kind}${file ? '' : ' fig-pending'}" id="${esc(id)}" style="--ratio:${ratio.replace(':', '/')}">${body}<figcaption>${inline(cap, { ...ctx, titles: null, aliases: null })}</figcaption></figure>`;
 }
 
 function ladder(b, ctx) {
@@ -185,7 +188,7 @@ export function renderBlock(b, ctx) {
     case 'code': return wrap(b, '', `${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
     case 'bit-field': return wrap(b, '', `${blockHead(b, ctx)}<div class="bitfield">${md(body, ctx)}</div>${srcLine(b)}`);
     case 'symptom-ladder': return wrap(b, '', `${blockHead(b, ctx)}${ladder(b, ctx)}${srcLine(b)}`);
-    case 'quote': return wrap(b, '', `<blockquote>${inline(b.head, ctx)}${md(body, ctx)}</blockquote>${srcLine(b)}`);
+    case 'quote': return wrap(b, '', `<blockquote>${b.title ? `<p class="q">“${inline(b.title, ctx)}”</p>` : ''}${b.head ? `<footer class="q-by">— ${inline(b.head, ctx)}</footer>` : ''}${md(body, ctx)}</blockquote>${srcLine(b)}`);
     case 'stat-row': return wrap(b, '', `${blockHead(b, ctx)}${statRow(b, ctx)}${srcLine(b)}`);
     case 'under-construction': return wrap(b, '', underConstruction(b, ctx));
     default: return wrap(b, 'blk-unknown', `<span class="todo" data-todo="unknown block type">TODO: content — unknown block type “${esc(b.type)}”</span>${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);

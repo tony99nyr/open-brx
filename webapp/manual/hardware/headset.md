@@ -8,7 +8,6 @@ Source: docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
 _[image HW-03: (see Images table)]_
 
 ## What's on the headset
-6 cards:
 - **Sensor domes** — IR receivers around the band; the wire reports **front** vs **back** dome hits separately. ✅
 - **Green hit LEDs** — 3 W, four directions, daylight-visible. 📖
 - **RGB ring** — WS2812B addressable LEDs for team colour, rainbow-when-unpaired and feedback. 👥 ✅
@@ -21,7 +20,7 @@ Headset facts
 | col 1 | col 2 | col 3 |
 |---|---|---|
 | Link to tagger | Wireless; pairs automatically after power-on. Can take **up to 3 minutes** with many taggers/BT devices around | 📖 |
-| Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects. Booted with **no** headset → tagger shoots fine locally | 📖 ✅ |
+| Anti-cheat lockout | Headset drops after game start → tagger locks until it reconnects | 📖 |
 | Apps need it | The official phone app silently disconnects a tagger that has no linked headset; an externally-hosted game cannot hold a link to a headset-less gun either | ✅ |
 | Battery | Single **18650** lithium cell (v2 headsets); charges from **any USB 5 V** source; v1 has a slide compartment | 👥 📖 |
 | Firmware | Reported by the tagger as `hds.59` on our units | ✅ |

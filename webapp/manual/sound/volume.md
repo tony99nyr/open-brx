@@ -22,10 +22,9 @@ Measured with a microphone harness: at volume 100 the gun's sounds peak at 7–3
 Source: docs/experiment-log.md #6, protocol/brx-protocol.md
 
 ## Practical levels
-- **Indoors:** around 75. 100 is painfully loud in a room. ✅
-- **Outdoors:** around 85. ✅
+- **Play:** 69 — the value the official iOS app sets on connect; the Android app sends 100. ✅
 - **Bench / diagnostics:** 30 or lower keeps the neighbours happy and still confirms the command path (the gun echoes its state; you just won't hear it). ✅
-Source: protocol/brx-protocol.md, docs/experiment-log.md, CLAUDE.md
+Source: protocol/brx-protocol.md, docs/experiment-log.md #6, CLAUDE.md
 
 ## Safety.
 The boot chime plays at the gun's stored level before any host can lower it, so a gun last used at 100 is loud at the next power-on — set volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep can be uncomfortable held to the ear at 100; 69 is the value the official iOS app ships with for a reason.

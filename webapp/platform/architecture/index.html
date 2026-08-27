@@ -103,9 +103,9 @@
 </thead>
 <tbody><tr>
 <td>Guns per BLE radio</td>
-<td><strong>~5–7 links at ~10–30 m</strong> (planning number; an uncited estimate — nobody has run the test)</td>
+<td><strong>3 proven</strong> — three guns held on one laptop radio for a synchronised start; the maximum is untested</td>
 <td>one central radio shares connection events</td>
-<td>⚠ estimate</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> 3 guns (FOLLOWUPS B10) · max unmeasured</td>
 </tr>
 <tr>
 <td>Guns per phone node</td>
@@ -116,7 +116,7 @@
 <tr>
 <td>Players per game</td>
 <td><strong>63</strong></td>
-<td><code>$PSET</code> player id 1–63; 0 reserved</td>
+<td>the gun accepts <code>$PSET</code> ids 0–63 (<span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> bench); Open BRX reserves wire id 0, so a match has ids 1–63 (<code>docs/spec/contracts.md</code> A5.1)</td>
 <td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
 </tr>
 <tr>
@@ -132,7 +132,7 @@
 <td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
 </tr>
 </tbody></table></div>
-<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §2, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Team structure, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0002-laptop-mission-control-host.md" rel="noopener">docs/adr/0002-laptop-mission-control-host.md</a></p></section>
+<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §2 + §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B10, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/contracts.md" rel="noopener">docs/spec/contracts.md</a> A5.1, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7p, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Team structure</p></section>
 <section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="PLAT-07" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Tier 0 vs Tier 1 side-by-side with the wall"><span class="ph-id">PLAT-07</span><span class="ph-kind">diagram pending</span></div><figcaption>left: <strong>Tier 0, laptop only</strong> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (laptop ↔ 4 guns over BLE); right: <strong>Tier 1, phones as nodes</strong> <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> (laptop = Mission Control + field Wi-Fi, dashed to phones; each phone solid BLE to one gun). The wall between them is labelled <em>&quot;everyone must stay within ~10–30 m of the laptop.&quot;</em></figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §3</p></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="tier-0-is-real-today-tier-1-is-what-buys-you-a-field-and-it-"><strong class="co-title">Tier 0 is real today; Tier 1 is what buys you a field — and it has never been run on one.</strong><p>A full Team Deathmatch ran end to end on two real taggers on 2026-08-25 (scoring, respawn, frag limit, correct winner, BLE holding the whole match), and a three-gun synchronised start is hardware-proven. The phone-node path has been proven only as <em>one phone → Mission Control → one gun at the bench</em> (2026-08-25 night); a multi-phone match over a real field Wi-Fi, a dispersed timed start, and store-and-forward recovery after real coverage loss have not been run. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>/<span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §3 + §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> "first phone→MC→gun path on real hardware"</p></aside></section>
 <section class="blk blk-timeline" data-type="timeline"><h2 id="which-links-are-up-phase-by-phase">Which links are up, phase by phase</h2><p class="lead">(<span class="img-ref ph-inline" title="diagram pending">PLAT-08</span>)</p><ol start="0">

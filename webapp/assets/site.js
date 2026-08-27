@@ -14,8 +14,10 @@
 
   // ---- mobile nav ----
   const navBtn = $('[data-nav-toggle]');
-  navBtn?.addEventListener('click', () => { const open = document.body.classList.toggle('nav-open'); navBtn.setAttribute('aria-expanded', String(open)); });
-  document.addEventListener('click', e => { if (document.body.classList.contains('nav-open') && !e.target.closest('.side, [data-nav-toggle]')) { document.body.classList.remove('nav-open'); navBtn?.setAttribute('aria-expanded', 'false'); } });
+  const setNav = open => { document.body.classList.toggle('nav-open', open); navBtn?.setAttribute('aria-expanded', String(open)); navBtn?.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation'); };
+  navBtn?.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
+  document.addEventListener('click', e => { if (document.body.classList.contains('nav-open') && !e.target.closest('.side, [data-nav-toggle]')) setNav(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) setNav(false); });
 
   // ---- copy buttons on code blocks ----
   $$('pre').forEach(pre => {
@@ -33,7 +35,8 @@
     const input = $('input', dt), count = $('.dt-count', dt), table = $('table', dt);
     if (!table) return;
     const rows = $$('tbody tr', table);
-    const apply = () => { const q = input.value.trim().toLowerCase(); let n = 0; rows.forEach(r => { const hit = !q || r.innerText.toLowerCase().includes(q); r.hidden = !hit; if (hit) n++; }); count.textContent = q ? `${n} of ${rows.length} rows` : `${rows.length} rows`; };
+    const empty = document.createElement('tr'); empty.className = 'dt-empty'; empty.hidden = true; empty.innerHTML = `<td colspan="${table.tHead?.rows[0]?.cells.length || 1}" class="muted">No rows match.</td>`; table.tBodies[0].appendChild(empty);
+    const apply = () => { const q = input.value.trim().toLowerCase(); let n = 0; rows.forEach(r => { const hit = !q || r.innerText.toLowerCase().includes(q); r.hidden = !hit; if (hit) n++; }); empty.hidden = n > 0; count.textContent = q ? `${n} of ${rows.length} rows` : `${rows.length} rows`; };
     input.addEventListener('input', apply);
     sortable(table);
   });
@@ -43,7 +46,7 @@
       const go = () => {
         const dir = th.getAttribute('aria-sort') === 'ascending' ? 'descending' : 'ascending';
         $$('thead th', table).forEach(x => x.setAttribute('aria-sort', 'none')); th.setAttribute('aria-sort', dir);
-        const tb = table.tBodies[0]; const rs = [...tb.rows];
+        const tb = table.tBodies[0]; const rs = [...tb.rows].filter(r => !r.classList.contains('dt-empty'));
         const val = r => (r.cells[i]?.innerText || '').trim(); const num = s => Number(s.replace(/[^0-9.-]/g, ''));
         rs.sort((a, b) => { const x = val(a), y = val(b); const nx = num(x), ny = num(y); const c = (x !== '' && y !== '' && !isNaN(nx) && !isNaN(ny) && /^[-\d.,\s%]+$/.test(x) && /^[-\d.,\s%]+$/.test(y)) ? nx - ny : x.localeCompare(y); return dir === 'ascending' ? c : -c; });
         rs.forEach(r => tb.appendChild(r));
@@ -66,6 +69,16 @@
   const closeSearch = () => { modal.hidden = true; };
   $('[data-search-open]')?.addEventListener('click', openSearch);
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); modal.hidden ? openSearch() : closeSearch(); } if (e.key === 'Escape' && !modal.hidden) closeSearch(); });
+  sInput?.addEventListener('keydown', e => {
+    const links = $$('a', sRes); if (!links.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); links[0].focus(); }
+    if (e.key === 'Enter') { e.preventDefault(); links[0].click(); }
+  });
+  sRes?.addEventListener('keydown', e => {
+    const links = $$('a', sRes); const i = links.indexOf(document.activeElement); if (i < 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); (links[i + 1] || links[0]).focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); (i === 0 ? sInput : links[i - 1]).focus(); }
+  });
   modal?.addEventListener('click', e => { if (e.target === modal) closeSearch(); });
   function runSearch() {
     const fold = s => String(s).toLowerCase().replace(/[’'`]/g, '');
@@ -81,7 +94,7 @@
   $$('[data-explorer]').forEach(ex => {
     const kind = ex.dataset.explorer, src = ex.dataset.src;
     const search = $('[data-x-search]', ex), chips = $('[data-x-chips]', ex), count = $('[data-x-count]', ex), err = $('[data-x-error]', ex), table = $('[data-x-table]', ex), more = $('[data-x-more]', ex), moreBtn = $('[data-x-more-btn]', ex), dock = $('[data-x-dock]', ex);
-    let rows = [], facet = 'all', limit = 300, picked = [], sortCol = -1, sortDir = 1;
+    let rows = [], facet = 'all', limit = 300, picked = [], sortCol = -1, sortDir = 1, evicted = null;
     const cfg = kind === 'weapons' ? {
       facetKey: 'role', facets: r => r.role, cols: [
         ['', r => `<label class="pick"><input type="checkbox" aria-label="Compare ${esc(r.name ?? r.id)}" data-pick="${esc(r.id)}"${picked.includes(r.id) ? ' checked' : ''}></label>`, null],
@@ -108,7 +121,7 @@
       const f = filtered(); const show = f.slice(0, limit);
       table.tHead.innerHTML = `<tr>${cfg.cols.map((c, i) => c[2] ? `<th data-sort="1" tabindex="0" aria-sort="${sortCol === i ? (sortDir > 0 ? 'ascending' : 'descending') : 'none'}" data-col="${i}">${esc(c[0])}</th>` : `<th>${esc(c[0])}</th>`).join('')}</tr>`;
       table.tBodies[0].innerHTML = show.map(r => `<tr${picked.includes(r.id) ? ' class="picked"' : ''}>${cfg.cols.map(c => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cfg.cols.length}" class="muted">No matches.</td></tr>`;
-      count.textContent = `${f.length} of ${rows.length} shown`;
+      count.textContent = show.length < f.length ? `${f.length} of ${rows.length} match · showing ${show.length}` : `${f.length} of ${rows.length} shown`;
       more.hidden = f.length <= limit; if (!more.hidden) moreBtn.textContent = `Show more (${f.length - limit} hidden)`;
       renderDock();
     }
@@ -116,11 +129,13 @@
       if (kind !== 'weapons') { dock.hidden = true; return; }
       dock.hidden = false;
       const ws = picked.map(id => rows.find(r => r.id === id)).filter(Boolean);
+      const clearBtn = '<button type="button" class="x-clear" data-x-clear>Clear picks</button>';
+      const note = evicted ? `<span class="muted"> · ${esc(evicted)} was replaced</span>` : '';
       if (ws.length === 0) { dock.innerHTML = '<span class="muted">Tick two weapons to compare them side by side.</span>'; return; }
-      if (ws.length === 1) { dock.innerHTML = `<strong>${esc(ws[0].name ?? ws[0].id)}</strong> picked — tick one more to compare.`; return; }
+      if (ws.length === 1) { dock.innerHTML = `<strong>${esc(ws[0].name ?? ws[0].id)}</strong> picked — tick one more to compare.${note} ${clearBtn}`; return; }
       const [a, b] = ws; const stat = [['Damage', 'dmg', 1], ['Cycle ms', 'cycle_ms', -1], ['Magazine', 'mag', 1], ['Reserve', 'reserve', 1], ['Reload ms', 'reload_ms', -1], ['Hits to kill', 'htk', -1], ['Time to kill ms', 'ttk_ms', -1]];
       const bar = (v, max, lead) => `<div class="bar${lead ? ' lead' : ''}"><i style="width:${max ? Math.round((v / max) * 100) : 0}%"></i></div>`;
-      dock.innerHTML = `<div class="cmp"><span class="k"></span><span class="h">${esc(a.name ?? a.id)}</span><span class="h">${esc(b.name ?? b.id)}</span>` + stat.map(([label, k, better]) => { const va = Number(a[k] ?? 0) || 0, vb = Number(b[k] ?? 0) || 0, max = Math.max(va, vb) || 1; const la = better > 0 ? va > vb : va < vb, lb = better > 0 ? vb > va : vb < va; return `<span class="k">${label}</span><span>${esc(va)}${bar(va, max, la)}</span><span>${esc(vb)}${bar(vb, max, lb)}</span>`; }).join('') + `</div><p class="muted" style="margin:8px 0 0">Values as sent by the app when each weapon was armed; green = better for that stat.</p>`;
+      dock.innerHTML = `<div class="x-dock-bar"><strong>${esc(a.name ?? a.id)}</strong> vs <strong>${esc(b.name ?? b.id)}</strong>${note} ${clearBtn}</div><div class="cmp"><span class="k"></span><span class="h">${esc(a.name ?? a.id)}</span><span class="h">${esc(b.name ?? b.id)}</span>` + stat.map(([label, k, better]) => { const va = Number(a[k] ?? 0) || 0, vb = Number(b[k] ?? 0) || 0, max = Math.max(va, vb) || 1; const la = better > 0 ? va > vb : va < vb, lb = better > 0 ? vb > va : vb < va; return `<span class="k">${label}</span><span>${esc(va)}${bar(va, max, la)}</span><span>${esc(vb)}${bar(vb, max, lb)}</span>`; }).join('') + `</div><p class="muted" style="margin:8px 0 0">Values as sent by the app when each weapon was armed; green = better for that stat.</p>`;
     }
     async function load() {
       err.hidden = true; count.textContent = 'loading…';
@@ -137,7 +152,8 @@
     search.addEventListener('input', () => { limit = 300; render(); });
     moreBtn.addEventListener('click', () => { limit += 500; render(); });
     $('[data-x-retry]', ex).addEventListener('click', load);
-    table.addEventListener('change', e => { const cb = e.target.closest('[data-pick]'); if (!cb) return; const id = cb.dataset.pick; if (cb.checked) { picked.push(id); if (picked.length > 2) picked.shift(); } else picked = picked.filter(x => x !== id); render(); });
+    table.addEventListener('change', e => { const cb = e.target.closest('[data-pick]'); if (!cb) return; const id = cb.dataset.pick; evicted = null; if (cb.checked) { picked.push(id); if (picked.length > 2) { const gone = picked.shift(); evicted = rows.find(r => r.id === gone)?.name ?? gone; } } else picked = picked.filter(x => x !== id); render(); });
+    dock.addEventListener('click', e => { if (e.target.closest('[data-x-clear]')) { picked = []; evicted = null; render(); } });
     table.addEventListener('click', async e => { const b = e.target.closest('[data-copy]'); if (!b) return; try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'copied'; b.dataset.done = '1'; } catch { b.textContent = 'copy failed'; } setTimeout(() => { b.textContent = 'copy $PLAY'; delete b.dataset.done; }, 1500); });
     load();
   });

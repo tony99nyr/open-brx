@@ -30,7 +30,6 @@ A phone camera will not show a low-power 38 kHz IR emitter — both cameras show
 Source: docs/gotchas.md
 
 ## Where you can be tagged
-3 cards:
 - **Headset domes** — the primary target. Our bench distinguishes a **front** and a **back** dome on the wire; Battle Company sells front/left/right sensor boards as spares. ✅ 👥
 - **Gun body sensor** — a hit sensor on the rifle itself. ✅ 📖
 - **Which sensor caught it is reported** — at field distance, the tagger knows whether a tag landed front, back or on the gun. Point-blank, IR floods every receiver and the distinction is unreliable. ✅

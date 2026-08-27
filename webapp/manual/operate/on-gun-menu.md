@@ -18,7 +18,7 @@ Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-gui
 | Game time | Off · 5 · 10 · 15 · 20 · 30 min | 📖 |
 | Respawn | Off · 15 · 30 · 60 s · Ramp 45 · Ramp 90 | "Ramp" grows the penalty with each death, up to the cap 📖👥 |
 | Volume | 1 – 5 | 📖 |
-Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
+Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md (respawn delay ramps)
 
 These variables are remembered **per game mode** and live on the gun. They are not the same numbers the Callsign app uses — the app keeps its own clock and respawn timer on the phone and never writes these to the gun.
 Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7n

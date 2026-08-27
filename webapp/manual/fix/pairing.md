@@ -8,10 +8,9 @@ Source: docs/experiment-log.md 2026-08-27 (headset LED) · docs/reference/commun
 ## Headset LED language (what the colours mean)
 | Headset shows | Meaning | Confidence |
 |---|---|---|
-| Slow rainbow blink | Disconnected / not paired — the gun will not join or fire | ✅ owner-observed, repeatable |
+| Slow rainbow blink / LEDs cycling colours at power-on | Disconnected / not paired — waiting to pair; the gun will not join or fire | ✅ owner-observed, repeatable · 👥 |
 | Solid team colour (red/blue) | Paired, pre-game only | ✅ |
 | Dark | Normal during play — not a fault | ✅ |
-| LEDs cycling colours at power-on | Waiting to pair | 👥 |
 Source: docs/experiment-log.md 2026-08-27 · docs/reference/community-notes.md (Gen-3 re-pair)
 
 ## "Headset not detected" / "keeps dropping"
@@ -44,7 +43,7 @@ Source: docs/reference/community-notes.md (SCREAMERS) · docs/experiment-log.md 
 ## "Can't pair / connect my phone"
 1. **Android 11 or newer?** → The official Callsign app works only on Android 10 and older. Use an older Android device. 👥
 2. **Is the headset linked (not rainbow)?** → no → Callsign connects to a headset-less tagger and silently disconnects about a second later; you cannot create a game until the app's top-right icon is green and reads "connected". The gun answers other clients fine — the app is enforcing the headset. ✅
-3. **"Connection failed" once?** → Try again. A Bluetooth link succeeds roughly one attempt in three, with the official app too; retrying *is* the fix, not a sign of a broken stack. ✅
+3. **"Connection failed" once?** → Try again. Establishing a Bluetooth link is intermittent, with the official app too, and the link holds once it is up; retrying *is* the fix, not a sign of a broken stack. ✅
 4. **Reconnecting right after the gun dropped you?** → Back off at least 5 seconds after a gun-initiated disconnect, or the new session comes up dead. ✅
 5. **Gun is admin-locked?** → Locked taggers cannot host. Unlock (LEFT+RIGHT 3 s). 👥
 6. **Gen-1 tagger?** → It uses Bluetooth *Classic*, advertises as `LTP-alpha`, default pair code `0001`, and needs the headset connected for Bluetooth to work at all. Gen-2/3 advertise as `Tactix-XXXX` over BLE with no PIN. 📖✅

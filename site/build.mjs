@@ -43,7 +43,8 @@ const norm = s => String(s).toLowerCase().replace(/[`*"“”]/g, '').replace(/\
 const titles = new Map(); const slugTitles = new Map();
 for (const p of pages) { titles.set(norm(p.title), p.slug); slugTitles.set(p.slug, p.title.replace(/[`*]/g, '')); }
 for (const s of sections) { if (!titles.has(norm(s.title))) titles.set(norm(s.title), s.slug); if (!slugTitles.has(s.slug)) slugTitles.set(s.slug, s.title); }
-const ctx = { site: SITE, slugs, images: manual.images, imageFiles, titles, slugTitles };
+const aliases = new Map([['platform section', '/platform'], ['platform', '/platform'], ['developer', '/manual/dev'], ['developer section', '/manual/dev'], ['ir protocol', '/manual/dev/ir'], ['developer / ir protocol', '/manual/dev/ir'], ['sound', '/manual/sound'], ['sound section', '/manual/sound'], ['repairs', '/manual/fix/repairs'], ['mods', '/manual/fix/mods'], ['accessories: stations', '/manual/fix/accessories'], ['firmware & sounds', '/manual/sound/firmware'], ['firmware', '/manual/sound/firmware'], ['gameplay', '/manual/gameplay'], ['hardware', '/manual/hardware'], ['troubleshooting', '/manual/fix/diagnose'], ['diagnose', '/manual/fix/diagnose']].filter(([, v]) => slugs.has(v)));
+const ctx = { site: SITE, slugs, images: manual.images, imageFiles, titles, slugTitles, aliases };
 
 // ---- nav / sidebar ------------------------------------------------------------------------
 const manualSections = sections.filter(s => s.slug.startsWith('/manual'));
@@ -123,7 +124,7 @@ function renderOne(page, opts = {}) {
   sitemap.push(page.slug);
   const rows = page.blocks.flatMap(b => b.body.filter(l => l.startsWith('|') && !/^\|\s*-/.test(l)).map(l => l.split('|')[1]?.replace(/[`*]/g, '').trim()).filter(Boolean));
   const heads = page.blocks.filter(b => b.title).map(b => b.title.replace(/[`*]/g, ''));
-  const faqs = page.blocks.flatMap(b => b.body.filter(l => /^\s*(?:[-*]|\d+\.)\s+\*\*/.test(l)).map(l => l.replace(/^\s*(?:[-*]|\d+\.)\s+\*\*(.+?)\*\*.*$/, '$1').replace(/[`*]/g, '')));
+  const faqs = page.blocks.flatMap(b => [...(b.head + '\n' + b.body.join('\n')).matchAll(/\*\*([^*\n]{2,60})\*\*/g)].map(m => m[1].replace(/[`]/g, '').replace(/[.:—–-]\s*$/, '').trim()));
   searchIndex.push({ url: page.slug + (page.slug === '/' ? '' : '/'), title: page.title.replace(/[`*]/g, ''), section: page.section.title || 'Open BRX', subtitle: page.subtitle || '', heads, terms: [...new Set([...rows, ...faqs])].slice(0, 400) });
 }
 for (const page of pages) renderOne(page);
@@ -145,6 +146,8 @@ for (const s of manualSections) {
 // ---- assets, data, machine-readable layer ------------------------------------------------
 for (const f of fs.readdirSync(path.join(HERE, 'assets'))) write(`assets/${f}`, fs.readFileSync(path.join(HERE, 'assets', f)));
 for (const [id, f] of Object.entries(imageFiles)) write(`img/${f}`, fs.readFileSync(path.join(imgDir, f)));
+write('404.html', renderShell({ title: 'Page not found — Open BRX', description: 'That page does not exist.', slug: '/404', section: {}, body: `<article class="page"><header class="page-head"><h1>Page not found</h1><p class="subtitle">That URL isn't part of the manual. The sections are one tap away.</p></header><section class="blk"><div class="cards"><ul><li><a href="/manual/"><strong>The BRX Manual</strong><br>Hardware, operation, gameplay, sound, fixes, protocol.</a></li><li><a href="/platform/"><strong>The Open BRX platform</strong><br>What we're building on the BRX.</a></li></ul></div></section></article>`, sidebar: '', toc: '', breadcrumbs: [], jsonld: null }, ctx));
+write('404.md', '# Page not found\n\nThat URL is not part of the manual. Start at https://open-brx.iamrossi.workers.dev/manual/\n');
 write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#0c1016"/><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="#39b4ff" stroke-width="2" stroke-linecap="round"/></svg>`);
 write('data/search.json', JSON.stringify(searchIndex));
 write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
@@ -182,4 +185,4 @@ if (problems.length) {
   fs.writeFileSync(manifestPath, JSON.stringify({ built: NOW, ok: false, problems, pages: sitemap.length, files: [...written].sort() }, null, 1));
   console.error(`\n${problems.length} problem(s):\n` + problems.map(p => '  ' + p).join('\n')); process.exit(1);
 }
-fs.writeFileSync(manifestPath, JSON.stringify({ built: NOW, ok: true, sourceStamp: sourceStamp(MANUAL), sources: sourceFiles(MANUAL).map(p => path.relative(REPO, p)), pages: sitemap.length, htmlFiles: [...written].filter(f => f.endsWith('.html')).length, files: [...written].sort() }, null, 1));
+fs.writeFileSync(manifestPath, JSON.stringify({ built: NOW, ok: true, sourceStamp: sourceStamp(MANUAL), sources: sourceFiles(MANUAL).map(p => path.relative(REPO, p)), pages: sitemap.length, htmlFiles: [...written].filter(f => f.endsWith('.html') && f !== '404.html').length, files: [...written].sort() }, null, 1));

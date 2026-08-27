@@ -26,7 +26,7 @@ Source: docs/reference/community-notes.md ("Scoping / sighting & outdoor play")
 Source: docs/reference/community-notes.md (Audio) · docs/reference/brx-extended-user-guide.md (SELECT menu) · CLAUDE.md volume rule / docs/experiment-log.md · docs/reference/brx-manual-notes.md
 
 ## "Battery dies fast" / "won't charge" / replacing a pack
-1. **Charger LED never goes green?** → Confirm it's the 8.4 V two-cell smart charger (headset: any 5 V USB). ~2–4 h to full. 📖
+1. **Charger LED never goes green?** → Confirm it's the 8.4 V two-cell smart charger (headset: any 5 V USB). The LED is red while charging and green when full. 📖
 2. **Bluetooth stops holding as the day goes on?** → Firmware won't re-pair BLE below a battery threshold. Top up, or swap packs. 👥
 3. **Buying a replacement pack?** → Stock is a **7.4 V, ~2200 mAh Li-ion** with a 2-pin connector. Marketplace packs often have a 3-pin connector; the third (thermistor) pin is ignored by the BRX. **Check polarity — Battle Company's is reversed from the usual convention.** 👥
 4. **Want to charge spares without the gun?** → Owners splice a BRX AC adapter onto a battery connector and charge packs on the bench, then hot-swap in the field (one screw near the reload switch opens the gun's battery bay; the v1 headset has a slide compartment). 👥📖
@@ -34,5 +34,5 @@ Source: docs/reference/community-notes.md (Audio) · docs/reference/brx-extended
 6. **Want a live reading?** → The USB console `QUERY` shows gun and headset volts; a battery frame also appears over Bluetooth. ✅
 Source: docs/reference/brx-extended-user-guide.md (Battery) · docs/reference/community-notes.md (Hardware / power) · protocol/brx-protocol.md (QUERY record) · docs/experiment-log.md §17 ($VOLTS)
 
-**Lithium + reversed polarity = the two ways owners kill boards.** Unplug the battery before any work inside the shell, meter the connector before plugging a non-stock pack, and never use rechargeable AAs in the AA tray. 👥📖
+**A live pack during a mod fries the mainboard; reversed polarity risks damage.** Unplug the battery before any work inside the shell, meter the connector before plugging a non-stock pack, and never use rechargeable AAs in the AA tray. 👥📖
 Source: docs/reference/community-notes.md · docs/reference/brx-manual-notes.md

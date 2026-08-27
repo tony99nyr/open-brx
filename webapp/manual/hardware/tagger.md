@@ -5,7 +5,6 @@ Last verified: 2026-08-27
 _[diagram HW-02: Annotated tagger anatomy — labels overlaid in HTML as hotspots (see Images table).]_
 
 ## Controls at a glance
-6 cards:
 - **Trigger** — fires; before a game it also cycles weapons/characters and confirms menu picks. Has a mechanical switch you can continuity-test if it stops firing. 📖 👥
 - **Reload handle** (right side, screws on) — pull to reload; **pulling it is also how a stock game starts**. A small mechanical switch sits under two screws beneath it. 📖
 - **ALT button** (orange) — cycles perks pre-game; **hold 3 s** toggles indoor/outdoor mode. 📖

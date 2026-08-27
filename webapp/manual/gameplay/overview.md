@@ -2,7 +2,7 @@
 _Two arsenals, three ways to run a game, and one damage model underneath all of it_
 Last verified: 2026-08-27
 
-The BRX runs games three ways: **from the gun's own menu** (no phone — 7 modes, 5–7 stock guns, 9 Supremacy characters), **from the Callsign app** (14 mode families, a 20-weapon arsenal, QR pickups, perks and killstreaks), or **from a host of your own** (Open BRX — any rule you can write over hits, teams, health and spawns). All three push the same primitives into the same firmware: the gun keeps no game state, so "mode" is always whoever is talking to it.
+The BRX runs games three ways: **from the gun's own menu** (no phone — 7 modes, 5–7 stock guns, 9 Supremacy characters), **from the Callsign app** (14 mode families, a 19-weapon arsenal, QR pickups, perks and killstreaks), or **from a host of your own** (Open BRX — any rule you can write over hits, teams, health and spawns). All three push the same primitives into the same firmware: the gun keeps no game state, so "mode" is always whoever is talking to it.
 Source: docs/game-modes.md, protocol/callsign-extract/protocol-classes.md (§What's moddable), docs/reference/brx-manual-notes.md
 
 - **19** weapons in the Callsign app arsenal, from **20** captured frames (every one read off the wire) ✅
@@ -13,7 +13,7 @@ Source: docs/game-modes.md, protocol/callsign-extract/protocol-classes.md (§Wha
 - **5** Smart Grenade objective modes, set by a button and a colour ✅
 Source: docs/reference/weapons.md, docs/reference/brx-extended-user-guide.md, protocol/callsign-extract/apk-harvest.md, docs/weapon-design.md §0, docs/game-modes.md §Team structure, docs/reference/grenade.md
 
-- **The arsenal** — all 20 Callsign weapons with damage, cycle, clip, reserve, heat, reload and fire mode. → `/manual/gameplay/weapons`
+- **The arsenal** — all 19 Callsign weapons (20 captured frames) with damage, cycle, clip, reserve, heat, reload and fire mode. → `/manual/gameplay/weapons`
 - **Health, armor & damage** — what a hit subtracts, what armor does, why nothing regenerates on its own. → `/manual/gameplay/health`
 - **How a kill actually works** — the 25-bit word of light, the three sensors that catch it, the green flash that confirms it. → `/manual/gameplay/how-a-kill-works`
 - **Native modes & settings** — every gun-menu and Callsign mode, with the exact setting values. → `/manual/gameplay/modes`
@@ -23,5 +23,5 @@ Source: docs/reference/weapons.md, docs/reference/brx-extended-user-guide.md, pr
 Source: this section
 
 ## Two arsenals, one gun.
-The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 …) are presets the firmware carries for phoneless play. The Callsign app's 20 weapons are *sent* to the gun over Bluetooth at game start — the same 6 weapon slots, filled with different numbers. This section documents the Callsign 20 in full because we captured every one of them on the wire; the gun-menu five are listed from the manual.
+The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 …) are presets the firmware carries for phoneless play. The Callsign app's 19 weapons are *sent* to the gun over Bluetooth at game start — the same 6 weapon slots, filled with different numbers. This section documents the Callsign 19 in full because we captured every one of them on the wire (20 frames); the gun-menu five are listed from the manual.
 Source: docs/reference/brx-manual-notes.md §Stock weapons, docs/reference/weapons.md, protocol/callsign-extract/protocol-classes.md §What's moddable

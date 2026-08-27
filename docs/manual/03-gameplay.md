@@ -1,7 +1,7 @@
 # 03 · Gameplay  (section slug: /manual/gameplay)
 **Last verified:** 2026-08-27
 **Audience:** BRX owners and hosts who want to know what the system can *play* — every weapon, how health and kills actually work, every native mode and its settings, the classes/perks the app models, the grenade's objective modes, and a taste of what Open BRX adds on top. · **Goal of this section:** be the one place that lists the complete Callsign arsenal with real numbers, explains the damage model in player terms, and enumerates every stock mode and setting — so nobody has to scroll a carousel or dig through PDFs again.
-**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — nothing unconfirmed is published; see Research backlog at the end.
+**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — only confirmed facts are published; see Research backlog at the end.
 
 > **Credit:** protocol discovery by **LaserTagMods** (JEDGE/JBOX); on-gun mode/weapon facts restated from Battle Company's V7 Quick Manual and 2018 Extended User Guide; grenade mode basics from *Extreme Laser Tag And More!*; sound-bank prefix map shared by the owner community. Facts are restated, never copied.
 
@@ -10,7 +10,7 @@
 ### Page: What the BRX can play  (`/manual/gameplay/overview`)
 _Two arsenals, three ways to run a game, and one damage model underneath all of it_
 
-[hero] The BRX runs games three ways: **from the gun's own menu** (no phone — 7 modes, 5–7 stock guns, 9 Supremacy characters), **from the Callsign app** (14 mode families, a 20-weapon arsenal, QR pickups, perks and killstreaks), or **from a host of your own** (Open BRX — any rule you can write over hits, teams, health and spawns). All three push the same primitives into the same firmware: the gun keeps no game state, so "mode" is always whoever is talking to it. ✅🔍📖 `src: docs/game-modes.md, protocol/callsign-extract/protocol-classes.md (§What's moddable), docs/reference/brx-manual-notes.md`
+[hero] The BRX runs games three ways: **from the gun's own menu** (no phone — 7 modes, 5–7 stock guns, 9 Supremacy characters), **from the Callsign app** (14 mode families, a 19-weapon arsenal, QR pickups, perks and killstreaks), or **from a host of your own** (Open BRX — any rule you can write over hits, teams, health and spawns). All three push the same primitives into the same firmware: the gun keeps no game state, so "mode" is always whoever is talking to it. ✅🔍📖 `src: docs/game-modes.md, protocol/callsign-extract/protocol-classes.md (§What's moddable), docs/reference/brx-manual-notes.md`
 
 [stat-row]
 - **19** weapons in the Callsign app arsenal, from **20** captured frames (every one read off the wire) ✅
@@ -22,7 +22,7 @@ _Two arsenals, three ways to run a game, and one damage model underneath all of 
 `src: docs/reference/weapons.md, docs/reference/brx-extended-user-guide.md, protocol/callsign-extract/apk-harvest.md, docs/weapon-design.md §0, docs/game-modes.md §Team structure, docs/reference/grenade.md`
 
 [cards]
-- **The arsenal** — all 20 Callsign weapons with damage, cycle, clip, reserve, heat, reload and fire mode. → `/manual/gameplay/weapons`
+- **The arsenal** — all 19 Callsign weapons (20 captured frames) with damage, cycle, clip, reserve, heat, reload and fire mode. → `/manual/gameplay/weapons`
 - **Health, armor & damage** — what a hit subtracts, what armor does, why nothing regenerates on its own. → `/manual/gameplay/health`
 - **How a kill actually works** — the 25-bit word of light, the three sensors that catch it, the green flash that confirms it. → `/manual/gameplay/how-a-kill-works`
 - **Native modes & settings** — every gun-menu and Callsign mode, with the exact setting values. → `/manual/gameplay/modes`
@@ -31,7 +31,7 @@ _Two arsenals, three ways to run a game, and one damage model underneath all of 
 - **Beyond stock: the Open BRX catalog** — Extraction, Counter-Strike, Syphon, and the infrastructure tiers. → `/manual/gameplay/open-brx-modes`
 ✅ `src: this section`
 
-[callout:info] **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 …) are presets the firmware carries for phoneless play. The Callsign app's 20 weapons are *sent* to the gun over Bluetooth at game start — the same 6 weapon slots, filled with different numbers. This section documents the Callsign 20 in full because we captured every one of them on the wire; the gun-menu five are listed from the manual. 📖✅ `src: docs/reference/brx-manual-notes.md §Stock weapons, docs/reference/weapons.md, protocol/callsign-extract/protocol-classes.md §What's moddable`
+[callout:info] **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 …) are presets the firmware carries for phoneless play. The Callsign app's 19 weapons are *sent* to the gun over Bluetooth at game start — the same 6 weapon slots, filled with different numbers. This section documents the Callsign 19 in full because we captured every one of them on the wire (20 frames); the gun-menu five are listed from the manual. 📖✅ `src: docs/reference/brx-manual-notes.md §Stock weapons, docs/reference/weapons.md, protocol/callsign-extract/protocol-classes.md §What's moddable`
 
 ---
 
@@ -40,7 +40,7 @@ _Every weapon the official app can hand you (19 weapons, 20 captured frames), wi
 
 [callout:info] **How to read the numbers.** *Damage* is the raw magnitude the weapon puts in every shot (what your victim's gun subtracts before any class multiplier). *Cycle* is milliseconds between shots — for charge weapons it is the charge time. *Reserve* is total spare rounds (the app shows it as magazines; mags × clip = reserve). *Heat* is added per shot only on weapons that can overheat. *Hits to kill* is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots resolve as standard damage on the victim's effect table. ✅ `src: docs/reference/weapons.md (column notes), docs/weapon-design.md §0–§1.2`
 
-[data-table:filterable] **The Callsign 20** — filters: class · fire mode · overheats · one-shot. Sort by any column.
+[data-table:filterable] **The Callsign 19** — filters: class · fire mode · overheats · one-shot. Sort by any column.
 
 | Weapon | Class (Open BRX role) | Fire mode | Damage | Cycle ms | RPM (derived) | Clip | Reserve (mags) | Heat/shot | Reload s | Range | Hits to kill @115 | Fire sound |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---|
@@ -109,7 +109,7 @@ _Every weapon the official app can hand you (19 weapons, 20 captured frames), wi
 
 [callout:info] **The app's own weapon categories** (its UI grouping, not a wire field): Rifle · SMG · Sniper · Shotgun · Heavy · Energy · Support · Power · Exotic · Launcher · Stun, plus Ability and Melee. Which category each weapon sits in is not encoded in anything the gun receives, so the table above uses Open BRX's role grouping instead. 🔍 `src: protocol/callsign-extract/weapon-categories-config.json, protocol/callsign-extract/config-facts.md`
 
-[callout:tip] **No stock weapon has an alt-fire.** The secondary-fire fields are empty on all 20; the orange ALT button cycles perks/abilities in modes that have them. And every weapon is *data*: a host can send its own weapon definition into any of the gun's 6 slots — damage, rate, clip, reload, burst, overheat, sounds — which is exactly what Open BRX does. ✅🔍 `src: docs/reference/weapons.md (tokens 7–11), protocol/callsign-extract/protocol-classes.md §What's moddable`
+[callout:tip] **No stock weapon has an alt-fire.** The secondary-fire fields are empty on all 20 captured frames; the orange ALT button cycles perks/abilities in modes that have them. And every weapon is *data*: a host can send its own weapon definition into any of the gun's 6 slots — damage, rate, clip, reload, burst, overheat, sounds — which is exactly what Open BRX does. ✅🔍 `src: docs/reference/weapons.md (tokens 7–11), protocol/callsign-extract/protocol-classes.md §What's moddable`
 
 [table] **The gun-menu weapons (phoneless play)** — the manual's stock presets, as printed. Note the damage scale differs from the Callsign numbers above (the manual's M-4 says 24; the app's Assault Rifle sends 9).
 
@@ -147,13 +147,13 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 |---|---|---|
 | Default pool? | 45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health. | ✅ 📖 |
 | Does armor reduce damage? | No — it *is* extra hit points that drain first. Damage per hit is not reduced by armor. | ✅ |
-| Do I heal over time? | **No.** Armor sat at 18/70 for 30 s of idle on the bench and never moved. Any "regen" you experience comes from a class ability, a medic, or a host that refills you. | ✅ |
+| Do I heal over time? | **No.** On the bench (pools set to 99/99) armor was shot down to 18 and sat there through 18 s and then 12 s of idle without moving. Any "regen" you experience comes from a class ability, a medic, or a host that refills you. | ✅ |
 | What is a shield? | A third pool above armor, used by Nexus-style classes (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event — a phone cannot simply set it. | ✅ 📖 |
 | Can a medic heal me? | Yes — the Supremacy Medic's medi-gel pulse is a heal *shot*; community confirms it heals by shooting teammates. A host can also grant health directly. | 📖 👥 ✅ |
 | Do heals overfill? | No — a heal adds to the pool and clamps at the maximum. | ✅ |
 | Head shots? | The headset carries two sensors (front and back domes) and the gun body a third; a crit flag exists in every shot (×1.5 damage) but no stock weapon sets it. | ✅ |
 | Can friendly fire hurt me? | Only if the game enables it. With friendly fire off the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. | ✅ 📖 |
-`src: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)`
+`src: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-26 ("CRIT = x1.5 damage", replicated), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)`
 
 [callout:info] **Heals and boosts are "add", never "set".** When a phone or host grants health to a live gun, the grant is *added* to the current pool and clamped at the maximum — you cannot be set to a lower number this way, and a grant to a full-health player does nothing. This is why Halo-style regenerating shields, health-on-kill and medic roles are all built by a host watching your pool and topping it up. ✅ `src: docs/experiment-log.md #33 "SEMANTICS + REGEN nailed", docs/game-modes.md §Health/regen variants`
 
@@ -164,10 +164,10 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 | Setting | Gun-menu values (V7 manual / Extended Guide) | Callsign app values |
 |---|---|---|
 | Lives | a count, or unlimited | a number, or **Unlimited** |
-| Respawn time | Off · 15 · 30 · 60 s · **Ramp 45** · **Ramp 90** (penalty grows per death) | a number in seconds (e.g. 15) |
+| Respawn time | Off · 15 · 30 · 60 s · **Ramp 45** · **Ramp 90** (penalty grows per death 👥) | a number in seconds (e.g. 15) |
 | Respawn type | self-respawn on the gun, or at a **respawn station** (grenade) once armed | **Scanner** (respawn at a QR / station) · **Auto** (timed) |
 | Game time | Off · 5 · 10 · 15 · 20 · 30 min | a number in minutes |
-📖🔍 `src: docs/reference/brx-manual-notes.md §Game modes, docs/reference/brx-extended-user-guide.md ($GSET stream), docs/reference/callsign-ui.md §GAME SETTINGS, docs/reference/community-notes.md §Game-mode design ideas (ramps)`
+📖🔍👥 `src: docs/reference/brx-manual-notes.md §Game modes, docs/reference/brx-extended-user-guide.md ($GSET stream), docs/reference/callsign-ui.md §GAME SETTINGS, docs/reference/community-notes.md §Game-mode design ideas (ramps)`
 
 [quote] "Taking damage while in the respawn state is disliked" — a recurring community balance note about stock BRX. The gun menu's Ramp 45 / Ramp 90 respawn options grow the wait with each death. 👥📖 `src: docs/reference/community-notes.md §Balance notes, docs/reference/brx-manual-notes.md §Game modes`
 
@@ -409,7 +409,7 @@ _Because the gun keeps no game state, any rule you can write over hits, teams, h
 
 | Tier | What you add | Modes in the catalog |
 |---|---|---|
-| **Tier 0 — Mission Control alone** (taggers + a laptop/phone you own) | nothing | FFA · Team Death Match · Survival/Infection · The Swarm · Generals · Commander · Supremacy · Last Man Standing · **Syphon** (health on kill) · **Halo-style regenerating health** · overshield / medic roles · small-scale **Extraction** · grenade-site **Counter-Strike** |
+| **Tier 0 — laptop-only with `brx-mcp`** (taggers + a laptop you own) | nothing | FFA · Team Death Match · Survival/Infection · The Swarm · Generals · Commander · Supremacy · Last Man Standing · **Syphon** (health on kill) · **Halo-style regenerating health** · overshield / medic roles · small-scale **Extraction** · grenade-site **Counter-Strike** |
 | **Tier 1 — + props** (objective stations, flags, QR codes — or the grenade) | contested places | Domination · King of the Hill / Territory · Capture the Flag (standard, one-sided, centre-flag) · Assault · Team Arena · VIP escort · Hostage rescue · a real **Extraction point** |
 | **Tier 2 — + broadcast** (a live field-wide downlink; location on each node) | live global awareness | Battle Royale · live scoreboards and "flag taken!" callouts on a big no-WiFi field · hidden multi-extracts |
 ✅ `src: docs/game-modes.md §The three infrastructure tiers + §Catalog + §Custom/advanced modes, docs/mode-limits.md`

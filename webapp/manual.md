@@ -6,13 +6,13 @@ Battle Company's quick manual and the 2018 Extended Guide are partial and scatte
 
 _[image HOME-03: manual-hub header: tagger + headset laid out flat, overhead, editorial (REAL PHOTO)]_
 
-Six section cards (thumbnail = the section's hero image, title, one line, page count):
-1. **Meet the BRX** — anatomy, buttons, LEDs, generations, the headset, the grenade, spec sheet → `/manual/hardware`
-2. **Operating the BRX** — quick start, charging, indoor/outdoor, sighting, pairing, the Callsign app → `/manual/operate`
-3. **Gameplay** — all 20 weapons with real stats, health & damage, native modes, perks, grenade modes → `/manual/gameplay`
-4. **Sound, voice & updates** — how audio works, the Sound Bank Explorer, custom sound packs, firmware → `/manual/sound`
-5. **Fix, mod & accessorise** — symptom-indexed troubleshooting, repairs, mods, accessories, community, FAQ → `/manual/fix`
-6. **Developer reference** — the BLE + IR protocol, every command, the `$WEAP` map, the serial console, `brx-mcp` → `/manual/dev`
+## Sections
+- **Meet the BRX** — anatomy, buttons, LEDs, generations, the headset, the grenade, spec sheet. → `/manual/hardware`
+- **Operating the BRX** — quick start, charging, indoor/outdoor, sighting, pairing, the Callsign app. → `/manual/operate`
+- **Gameplay** — all 19 weapons with real stats, health & damage, native modes, perks, grenade modes. → `/manual/gameplay`
+- **Sound, voice & updates** — how audio works, the Sound Bank Explorer, custom sound packs, firmware. → `/manual/sound`
+- **Fix, mod & accessorise** — symptom-indexed troubleshooting, repairs, mods, accessories, community, FAQ. → `/manual/fix`
+- **Developer reference** — the BLE + IR protocol, every command, the `$WEAP` map, the serial console, `brx-mcp`. → `/manual/dev`
 
 ## Fast paths
 "Won't fire" · "Headset pairing" · "Battery & polarity" · "Custom sounds over USB" · "Weapon stats" · "Sound id lookup" (each links to its page)

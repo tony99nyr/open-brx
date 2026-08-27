@@ -25,10 +25,10 @@ Source: docs/reference/community-notes.md
 
 ## Known issues and Battle Company-verified fixes
 - **Headset won't pair after an update.** BC-verified recovery: downgrade to `BCgunV2_02e.bin`, run `SETUP` from the USB serial console, re-pair the headset, then re-upgrade to `BCgunV2_08b.bin`.
-- **Re-pair a headset** without the downgrade: boot the gun holding **RIGHT + SELECT** ("install accessory"), power the headset, press its button once.
+- **Re-pair a headset** without the downgrade: boot the gun holding **RIGHT** ("install accessory"), power the headset, press its button once.
 - **Admin lock blocks hosting.** Locked taggers (LEFT+RIGHT 3 s, or LEFT+RIGHT+SELECT 3 s) can't host; v4.30 adds hold-SELECT to unlock.
 - **Version you're on:** the serial console's `QUERY` reports it; the guns on our bench run **v4.32**.
-Source: docs/reference/community-notes.md · docs/reference/community-notes.md · docs/reference/community-notes.md · docs/HANDOFF.md
+Source: docs/reference/community-notes.md · docs/reference/brx-extended-user-guide.md (accessory pairing), docs/reference/community-notes.md · docs/reference/community-notes.md · docs/HANDOFF.md
 
 ## Factory restore
 - Battle Company's USB updater package = the reference firmware `.BIN` + the matching `AUDIO` set. Restoring both from that package returns a tagger to stock regardless of what packs were installed. 📖👥

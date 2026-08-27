@@ -25,12 +25,12 @@ Source: docs/architecture-topology.md §2, protocol/brx-protocol.md §7r, docs/s
 ## Counting limits
 | Thing | Limit | Why | Status |
 |---|---|---|---|
-| Guns per BLE radio | **~5–7 links at ~10–30 m** (planning number; an uncited estimate — nobody has run the test) | one central radio shares connection events | ⚠ estimate |
+| Guns per BLE radio | **3 proven** — three guns held on one laptop radio for a synchronised start; the maximum is untested | one central radio shares connection events | ✅ 3 guns (FOLLOWUPS B10) · max unmeasured |
 | Guns per phone node | **exactly 1** | the link rides one player | ✅ design |
-| Players per game | **63** | `$PSET` player id 1–63; 0 reserved | ✅ |
+| Players per game | **63** | the gun accepts `$PSET` ids 0–63 (✅ bench); Open BRX reserves wire id 0, so a match has ids 1–63 (`docs/spec/contracts.md` A5.1) | ✅ |
 | Native hardware teams | **4** | `$TID` is masked to 2 bits | ✅ bench 2026-08-26 |
 | Teams beyond 4 | unlimited *logical* teams | MC scores by roster; players wear armbands; no on-gun friendly-fire protection in that mode | 🧪 |
-Source: docs/architecture-topology.md §2, docs/game-modes.md §Team structure, docs/adr/0002-laptop-mission-control-host.md
+Source: docs/architecture-topology.md §2 + §7, docs/FOLLOWUPS.md B10, docs/spec/contracts.md A5.1, protocol/brx-protocol.md §7p, docs/game-modes.md §Team structure
 
 _[diagram PLAT-07: left: **Tier 0, laptop only** ✅ (laptop ↔ 4 guns over BLE); right: **Tier 1, phones as nodes** 🧪 (laptop = Mission Control + field Wi-Fi, dashed to phones; each phone solid BLE to one gun). The wall between them is labelled *"everyone must stay within ~10–30 m of the laptop."*]_
 

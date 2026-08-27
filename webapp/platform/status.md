@@ -15,7 +15,7 @@ Source: docs/architecture-topology.md §7, docs/FOLLOWUPS.md B15
 | Exact per-player attribution over BLE (`$PSET` id → `$HIR` shooter) | ✅ | 2026-08-25, protocol §7p/§7q |
 | Native kill feedback from our stack: green-sight flash (`$SFLASH`) + announcer (`$PLAY` slot 4) | ✅ | 2026-08-25 / 26 |
 | Four native teams; firmware-enforced friendly fire; live team flip | ✅ | 2026-08-26 |
-| `$WEAP` map: damage, fire interval, fire modes (auto / single / burst / charge / melee), overheat; all 20 Callsign weapons captured | ✅ | 2026-08-26 |
+| `$WEAP` map: damage, fire interval, fire modes (auto / single / burst / charge / melee), overheat; all 19 Callsign weapons captured (20 frames) | ✅ | 2026-08-26 |
 | Config survives a BLE drop; a power-cycle wipes it (re-push tell) | ✅ | 2026-08-25 |
 | Headset must be on or the gun won't join; rainbow blink = disconnected | ✅ | 2026-08-25 / 27 |
 | Smart Grenade: 5 native modes, Hill/Respawn beacons readable, no BLE config | ✅ | exp-log #33–40 |
@@ -45,15 +45,9 @@ Source: docs/architecture-topology.md §7, docs/verification-checklist.md, docs/
 - **M6 · Companion + scale** — ESP32 Companions on the same contracts; mesh for instant field-wide feedback; 20+ guns. 📐
 Source: README.md §Roadmap
 
-## Mission Control milestones (the spec's ladder, `docs/spec/README.md` §8)
-- **M1 Node loop** — single-gun autonomous node + HUD; two-node game. ✅ done
-- **M2 LAN + MC skeleton** — transport, platform gates, QR join, readiness board, compiler. 🧪 built
-- **M3 Full kit-out + tutorial + lobby** for 2–4 guns. 🧪 built (try-out ✅ on one gun)
-- **M4 Timed dispersed start + timed end + coverage-zone feedback** on a real field. 🧪 built, never run on a field
-- **M5 Recap + medals + export.** 🧪 built
-- **M6 Companion parity + mesh.** 📐
+## Mission Control and the phone HUD — 🚧 under construction; details when they have run on a real field.
 Source: docs/spec/README.md §8
 
 ## What we will not claim yet.
-Nobody has run a multi-phone match on a real field, a dispersed start where players walk out of range before T-0, or a store-and-forward recovery after real coverage loss. The "5–7 guns per radio" figure is an uncited estimate. FFA / Infection / LMS have not been played on real guns (their logic is sim-proven). The Companion and the Utility Box are not built. See *Honest gaps* below for the full list.
-Source: docs/architecture-topology.md §7, docs/verification-checklist.md
+Nobody has run a multi-phone match on a real field, a dispersed start where players walk out of range before T-0, or a store-and-forward recovery after real coverage loss. Three guns on one laptop radio is the most we have held at once; the maximum is untested. FFA / Infection / LMS have not been played on real guns (their logic is sim-proven). The Companion and the Utility Box are not built. See *Honest gaps* below for the full list.
+Source: docs/architecture-topology.md §7, docs/FOLLOWUPS.md B10, docs/verification-checklist.md

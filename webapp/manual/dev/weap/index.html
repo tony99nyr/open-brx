@@ -36,7 +36,7 @@
 <p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/weap.md">View as Markdown</a></p>
 <details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
 </header>
-<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="a-weapon-is-data-not-firmware"><strong class="co-title">A weapon is data, not firmware.</strong><p>The gun has no weapons baked in; the host sends a full <code>$WEAP</code> frame into one of <strong>six slots (0–5)</strong>. The field <em>names</em> come from the Callsign app&#39;s metadata (declaration order = wire order); the <em>positions and meanings</em> below were then pinned by capturing twenty stock weapons with the operator naming each one, and by flipping single tokens on a live gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6, §6.1</p></aside></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="a-weapon-is-data-not-firmware"><strong class="co-title">A weapon is data, not firmware.</strong><p>The gun has no weapons baked in; the host sends a full <code>$WEAP</code> frame into one of <strong>six slots (0–5)</strong>. The field <em>names</em> come from the Callsign app&#39;s metadata (declaration order = wire order); the <em>positions and meanings</em> below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6, §6.1</p></aside></section>
 <section class="blk blk-code" data-type="code"><pre><code class="language-text"># Two known-good frames (slot 0 Assault Rifle, slot 1 Charge Rifle):
 $WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*
 $WEAP,1,,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*
@@ -101,7 +101,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>primaryDamage</td>
 <td>24</td>
 <td>150</td>
-<td><strong>The raw magnitude put in the IR word</strong> (= <code>$HIR</code> token 5). Applied damage depends on the victim&#39;s <code>$SIR</code> row. The stock AR actually emits 9; the sample&#39;s 24 is the manual&#39;s stale anchor.</td>
+<td><strong>The raw magnitude put in the IR word</strong> (= <code>$HIR</code> token 5). Applied damage depends on the victim&#39;s <code>$SIR</code> row. The stock AR actually emits 9; the sample&#39;s 24 is the manual&#39;s stale anchor (§7r addendum).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
 </tr>
 <tr>
@@ -117,7 +117,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance</td>
 <td>—</td>
 <td>—</td>
-<td><strong>Dormant</strong>: empty on all 20 stock weapons. No stock BRX weapon has a secondary fire mode.</td>
+<td><strong>Dormant</strong>: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
 </tr>
 <tr>
@@ -141,8 +141,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td><strong>fire interval / charge time (ms)</strong></td>
 <td>100</td>
 <td>1250</td>
-<td><strong>Proven by one-field flip</strong>: a sniper with t14=1250 fired exactly one shot per second. Stock cadences: burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><strong>Proven by one-field flip</strong>: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (<span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span>): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (flip) <span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> (cadence list)</td>
 </tr>
 <tr>
 <td>15</td>
@@ -325,7 +325,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>overheat param A</td>
 <td>—</td>
 <td>20</td>
-<td><strong>Gate for the overheat system</strong> (with t38): transplanting <code>20,150</code> onto the SMG brought its dead heat gauge alive and the trigger locked at the top.</td>
+<td><strong>Gate for the overheat system</strong> (with t38): transplanting <code>20,150</code> onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip — at these values the 72-round magazine empties before a hard lockout.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (gate)</td>
 </tr>
 <tr>
@@ -369,7 +369,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (correlation)</td>
 </tr>
 </tbody></table></div>
-</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP exact token positions + cap14–cap24 sections), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1 and the t20 / overheat sections, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 $WEAP token probes; charge modes; overheat solved)</p></section>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 $WEAP token probes; charge modes; overheat solved)</p></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="two-positions-that-bit-us"><strong class="co-title">Two positions that bit us.</strong><p>(1) The metadata&#39;s field order has <code>rateOfFire</code> before <code>weaponSwapDelay</code>; the wire has the <em>rate</em> at <strong>t14</strong> and the constant 850 at t15 — a compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (cap17, cap18)</p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="stock-weapon-signatures">Stock weapon signatures</h2><p class="lead">(fire sound → weapon → behaviour, as named by the operator at capture)</p><div class="table-wrap"><table>
 <thead>

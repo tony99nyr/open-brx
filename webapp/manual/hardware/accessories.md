@@ -5,7 +5,7 @@ Last verified: 2026-08-27
 _[image HW-07: (see Images table)]_
 
 ## Smart Grenade — anatomy
-6 cards ✅:
+✅
 - **Top button** — power on, mode setup (hold), and manual detonation / respawn trigger.
 - **Safety clip** — pop it to power up.
 - **3 IR emitters + 1 emitter/receiver** — it *broadcasts* over IR (state beacons every few seconds) and *receives* shots (it flashes white when hit).

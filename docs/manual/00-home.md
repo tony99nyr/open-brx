@@ -2,7 +2,7 @@
 **Last verified:** 2026-08-27
 **Audience:** everyone who lands here — mostly BRX owners from search, then players/clubs/modders/devs.
 **Goal:** in 5 seconds, say what this is; in 10, get an owner to the answer they came for; leave the platform door open.
-**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported — nothing unconfirmed is published
+**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported — only confirmed facts are published
 **Status legend (platform):** ✅ proven on real hardware · 🧪 built + software-tested · 📐 specified only
 
 ## Pages
@@ -19,35 +19,32 @@ src: docs/VISION.md, README.md
 - **The Open BRX platform** — Run Team Deathmatch and more on stock guns from a laptop today with `brx-mcp` — proven on real hardware. The rest — a mission-control console, a phone HUD per gun, an ESP32 rider — is under construction. ✅🚧 → `/platform`
 src: docs/README.md, docs/architecture-topology.md
 
-[stat-row] 4 big numbers:
+[stat-row]
 - **2,166** sound ids decoded 🔍 (protocol/callsign-extract/sound-bank.md)
 - **19** weapons, every stat on the wire 🔍✅ (docs/reference/weapons.md — 20 captured frames; the 20th is the default secondary, which is the Shotgun)
-- **63** players per game, 4 native teams ✅ (`$PSET` id 1–63; `$TID` 2-bit) (docs/architecture-topology.md §2)
+- **63** player slots per game, 4 native teams ✅ (the gun accepts `$PSET` ids 0–63; Open BRX reserves 0, so ids 1–63 are playable; `$TID` 2-bit) (docs/spec/contracts.md A5.1, docs/architecture-topology.md §2)
 - **0** firmware modifications — ever ✅ (CLAUDE.md hard rule)
 
 [callout:info] **Only what we know.** Every fact on this site says where it came from: ✅ verified on our bench, 📖 from Battle Company's docs, 🔍 decoded from the Callsign app, 👥 community-reported. If something isn't confirmed, it isn't here yet — the manual grows as the research does.
 src: docs/site/BRIEF-open-brx-site.md §2
 
-[cards] "Start here if you…" — 4 cards linking into the manual:
-- "…just got a BRX" → `/manual/operate/quick-start`
-- "…can't get the headset to pair" → `/manual/fix/pairing`
-- "…want custom sounds" → `/manual/sound/custom-sounds`
-- "…want to write code that talks to the gun" → `/manual/dev/brx-mcp`
+[cards] "Start here if you…"
+- **…just got a BRX** → `/manual/operate/quick-start`
+- **…can't get the headset to pair** → `/manual/fix/pairing`
+- **…want custom sounds** → `/manual/sound/custom-sounds`
+- **…want to write code that talks to the gun** → `/manual/dev/brx-mcp`
 src: content/02, 04, 05, 06
 
 [image HOME-02] "How it's wired" teaser diagram (SVG — a phone on each gun, a laptop at the base, IR between guns; solid vs dashed links)
-[cards] "What the platform does today" — 3 cards with status badges:
-- **Play now, laptop-only** ✅ — `python -m brx_mcp play tdm <gun1> <gun2>` ran a full Team Deathmatch on two real taggers on 2026-08-25: scoring, respawn, frag limit, correct winner. Everyone stays in the laptop's BLE range (a room, a yard).
-- **Mission Control + the phone HUD** 🚧 — a laptop console that authors the game and a phone on each gun that runs it over field Wi-Fi, so players aren't tied to the laptop's BLE range. Under construction — details when it's been run on a real field.
-- **The Companion** 🚧 — a ~$15 ESP32 rider that reconstructs the gun's own kill flash and killstreak audio over BLE, no phone needed. Under construction — specified, bench kit in hand.
+[cards] "What the platform does today"
+- **Play now, laptop-only** ✅ — `python -m brx_mcp play tdm <gun1> <gun2>` ran a full Team Deathmatch on two real taggers on 2026-08-25: scoring, respawn, frag limit, correct winner. Everyone stays in the laptop's BLE range (a room, a yard). → `/manual/dev/brx-mcp`
+- **Mission Control + the phone HUD** 🚧 — a laptop console that authors the game and a phone on each gun that runs it over field Wi-Fi. Under construction. → `/platform/pieces`
+- **The Companion** 🚧 — a ~$15 ESP32 rider that reconstructs the gun's own kill flash and killstreak audio over BLE, no phone needed. Under construction. → `/platform/pieces`
 src: docs/architecture-topology.md §3, §7; README.md; docs/VISION.md
 
-[quote] "Protocol discovery and the tagger-rider concept originate with LaserTagMods (JEDGE / JBOX). Open BRX is a fresh, independent implementation — no code copied — but it stands on that work." — Credits, `/credits`
+[quote] "Protocol discovery and the tagger-rider concept originate with LaserTagMods (JEDGE / JBOX). Open BRX is a fresh, independent implementation — no code copied — but it stands on that work."
+→ `/credits`
 src: README.md
-
-[cards] "Latest from the bench" — 3 most recent dated entries, pulled from `/changelog` (design the slot; content comes from the changelog page).
-
-Footer: Manual sections · Platform · GitHub · Credits · "Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company." · MIT.
 
 ---
 
@@ -58,13 +55,13 @@ _The Ultimate BRX Manual — everything about the tagger and headset, in one pla
 [image HOME-03] manual-hub header: tagger + headset laid out flat, overhead, editorial (REAL PHOTO)
 src: docs/VISION.md §"The definitive BRX manual"
 
-[cards] Six section cards (thumbnail = the section's hero image, title, one line, page count):
-1. **Meet the BRX** — anatomy, buttons, LEDs, generations, the headset, the grenade, spec sheet → `/manual/hardware`
-2. **Operating the BRX** — quick start, charging, indoor/outdoor, sighting, pairing, the Callsign app → `/manual/operate`
-3. **Gameplay** — all 20 weapons with real stats, health & damage, native modes, perks, grenade modes → `/manual/gameplay`
-4. **Sound, voice & updates** — how audio works, the Sound Bank Explorer, custom sound packs, firmware → `/manual/sound`
-5. **Fix, mod & accessorise** — symptom-indexed troubleshooting, repairs, mods, accessories, community, FAQ → `/manual/fix`
-6. **Developer reference** — the BLE + IR protocol, every command, the `$WEAP` map, the serial console, `brx-mcp` → `/manual/dev`
+[cards] "Sections"
+- **Meet the BRX** — anatomy, buttons, LEDs, generations, the headset, the grenade, spec sheet. → `/manual/hardware`
+- **Operating the BRX** — quick start, charging, indoor/outdoor, sighting, pairing, the Callsign app. → `/manual/operate`
+- **Gameplay** — all 19 weapons with real stats, health & damage, native modes, perks, grenade modes. → `/manual/gameplay`
+- **Sound, voice & updates** — how audio works, the Sound Bank Explorer, custom sound packs, firmware. → `/manual/sound`
+- **Fix, mod & accessorise** — symptom-indexed troubleshooting, repairs, mods, accessories, community, FAQ. → `/manual/fix`
+- **Developer reference** — the BLE + IR protocol, every command, the `$WEAP` map, the serial console, `brx-mcp`. → `/manual/dev`
 
 [cards] "Fast paths" — "Won't fire" · "Headset pairing" · "Battery & polarity" · "Custom sounds over USB" · "Weapon stats" · "Sound id lookup" (each links to its page)
 

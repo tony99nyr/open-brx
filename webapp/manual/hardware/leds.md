@@ -14,7 +14,7 @@ Gun LEDs
 | Segments going out | **A life gauge**: the three LEDs act as a segmented bar that drains as you take damage | ✅ |
 | Manual's description | "LED indicator shows ammo & health" | 📖 |
 | Slow blink in team colour | An externally-hosted game that has not switched on the life gauge | ✅ |
-Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7i, docs/experiment-log.md (LED life mode, 2026-08-27)
+Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7r (LEDs slow-blink team colour in an app-derived config), docs/experiment-log.md (LED life mode, 2026-08-27)
 
 _[diagram HW-10: (gun LED gauge states — see Images table)]_
 

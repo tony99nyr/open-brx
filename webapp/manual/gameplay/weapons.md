@@ -6,7 +6,7 @@ Last verified: 2026-08-27
 *Damage* is the raw magnitude the weapon puts in every shot (what your victim's gun subtracts before any class multiplier). *Cycle* is milliseconds between shots — for charge weapons it is the charge time. *Reserve* is total spare rounds (the app shows it as magazines; mags × clip = reserve). *Heat* is added per shot only on weapons that can overheat. *Hits to kill* is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots resolve as standard damage on the victim's effect table.
 Source: docs/reference/weapons.md (column notes), docs/weapon-design.md §0–§1.2
 
-## The Callsign 20
+## The Callsign 19
 filters: class · fire mode · overheats · one-shot. Sort by any column.
 | Weapon | Class (Open BRX role) | Fire mode | Damage | Cycle ms | RPM (derived) | Clip | Reserve (mags) | Heat/shot | Reload s | Range | Hits to kill @115 | Fire sound |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---|
@@ -83,7 +83,7 @@ Source: protocol/brx-protocol.md §"$WEAP t20 — FIRE MODE", docs/weapon-design
 Source: protocol/callsign-extract/weapon-categories-config.json, protocol/callsign-extract/config-facts.md
 
 ## No stock weapon has an alt-fire.
-The secondary-fire fields are empty on all 20; the orange ALT button cycles perks/abilities in modes that have them. And every weapon is *data*: a host can send its own weapon definition into any of the gun's 6 slots — damage, rate, clip, reload, burst, overheat, sounds — which is exactly what Open BRX does.
+The secondary-fire fields are empty on all 20 captured frames; the orange ALT button cycles perks/abilities in modes that have them. And every weapon is *data*: a host can send its own weapon definition into any of the gun's 6 slots — damage, rate, clip, reload, burst, overheat, sounds — which is exactly what Open BRX does.
 Source: docs/reference/weapons.md (tokens 7–11), protocol/callsign-extract/protocol-classes.md §What's moddable
 
 ## The gun-menu weapons (phoneless play)

@@ -1,7 +1,7 @@
 # 06 · Developer reference  (section slug: /manual/dev)
 **Last verified:** 2026-08-27
 **Audience:** developers, modders and integrators who want to drive a BRX from their own code — an ESP32 rider, a laptop, a phone app, a base station · **Goal of this section:** the complete interoperability spec for the BRX tagger + headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and a copy-paste path from `pip install` to a live game — with the confidence of every fact stated per row.
-**Provenance legend:** ✅ verified on our bench · 🔍 decoded from the Callsign APK · 👥 community / LaserTagMods — nothing unconfirmed is published; see Research backlog at the end.
+**Provenance legend:** ✅ verified on our bench · 🔍 decoded from the Callsign APK · 👥 community / LaserTagMods — only confirmed facts are published; see Research backlog at the end.
 
 > **Credit, first.** The BRX serial protocol was discovered and proven by **LaserTagMods** (the JEDGE / JBOX / NRFL-Bases projects, github.com/LaserTagMods). Everything on these pages is an independent, clean-room restatement — verified on our own taggers, decoded from public app metadata, or captured off the air — and contains no Battle Company code or assets. If you build on this, credit them too.
 
@@ -14,7 +14,8 @@
 ### Page: Transport, framing & safety  (`/manual/dev/transport`)
 _How you reach the gun, what a frame looks like, and why nothing here can brick one_
 
-[hero] Headline: "One text protocol, three ways in." Sub: The BRX speaks a plain ASCII, comma-delimited command language on a hardware UART. Gen1 exposes it over Bluetooth Classic, Gen2/3 over BLE, and the community drives it from a wire — the frames are identical on all three. Background: DEV-01. ✅ src: protocol/brx-protocol.md §1, §7c
+[hero] **One text protocol, three ways in.** The BRX speaks a plain ASCII, comma-delimited command language on a hardware UART. Gen1 exposes it over Bluetooth Classic, Gen2/3 over BLE, and the community drives it from a wire — the frames are identical on all three. ✅ src: protocol/brx-protocol.md §1, §7c
+[image DEV-01]
 
 [callout:info] **Who found this.** Protocol discovery for the BRX platform is the work of **LaserTagMods** (JEDGE / JBOX). This page restates their findings independently, with our own bench verification noted per row. 👥 src: protocol/brx-protocol.md (header, §7d), README.md
 
@@ -25,7 +26,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 | Gen2/3 | BLE — Nordic UART Service (NUS) | UART bridge at 115200 behind the radio | Connect from any BLE central: laptop (bleak), ESP32, phone. No pairing/PIN. | ✅ |
 | Any | Hardware UART inside the gun | 115200 | What JEDGE drives directly (`Serial1`). No external accessory port exists on the BRX — a wired tap means opening the gun. Untested by us. | 👥 |
 | Any | Micro-USB "Programing Port" | USB CDC (baud ignored) | **Not** the `$` protocol — a separate `QUERY`/`SETUP` console. See the Serial console page. | ✅ |
-✅/👥 src: protocol/brx-protocol.md §1, §7c
+✅👥 src: protocol/brx-protocol.md §1, §7c
 
 [spec-sheet] **BLE — Nordic UART Service UUIDs**
 - Service: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
@@ -40,7 +41,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 
 [diagram DEV-02] Link topology: host ↔ BLE NUS ↔ tagger ↔ (proprietary link) headset; tagger → IR → other tagger; USB console on the side. ✅ src: protocol/brx-protocol.md §1, §7c, §7r
 
-[bit-field] **Frame anatomy** (render as an annotated string, not bits)
+[bit-field] **Frame anatomy**
 `$` + `COMMAND` + (`,` + token)* + `,*`
 - ASCII, comma-delimited tokens. Starts with `$COMMAND`, ends with `,*`.
 - **Empty tokens are legal and meaningful** — consecutive commas mean "leave unchanged / not applicable". `$SPAWN,,*` (one empty token) is a different command from `$SPAWN,*`.
@@ -52,7 +53,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 [diagram DEV-03] Annotated frame anatomy. ✅ src: protocol/brx-protocol.md §2
 
 [steps] **Waking a gun and holding the link**
-1. Connect and subscribe to the TX notify characteristic. Establishing a link succeeds roughly **1 attempt in 3** (the official app behaves the same); retry — that *is* the fix.
+1. Connect and subscribe to the TX notify characteristic. Establishing a link is **intermittent** (the official app behaves the same) and the link holds once it is up; retry — that *is* the fix.
 2. On a **fresh power-up**, send `$STOP,*` then `$PHONE,*` (after a power-cycle `$PHONE,*` alone wakes it). A just-booted gun ignores a bare `$VERSION,*` until then.
 3. `$PHONE,*` opens the **event tap**: the gun says "phone connected", answers `$BUT,3,0,*`, streams button events and `$VOLTS` telemetry, and locks its on-gun menu until a game is configured or it is power-cycled.
 4. Idle taggers are **silent**: outside app mode no unsolicited messages are sent — no button, trigger or hit traffic.
@@ -222,7 +223,7 @@ $BMAP,0,0,,,,,*            <-- trigger re-mapped AFTER spawn
 3. After the game's respawn delay (the app's own timer — ~10 s in the capture; 👥 community: a per-death ramp capping at 45/90 s) the host sends `$SPAWN,,*`.
 4. Gun echoes `$LCD,45,70,0,0,36,216,*` — HP, armor **and ammo** restored with no `$AMMO` needed.
 5. **A dead gun ignores all incoming IR** — 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can.
-✅ src: protocol/brx-protocol.md §7f, §7j(community ramp), §7q; docs/experiment-log.md (2026-08-26 448-word brute force)
+✅ src: protocol/brx-protocol.md §7f, §7j(community ramp), §7q (dead gun cannot fire); docs/experiment-log.md 2026-08-26 ("448-word brute force: a DEAD gun accepts NO IR")
 
 [callout:warn] **After a BLE drop, re-send the whole head.** Re-sending the full sequence (`$CLEAR`→`$START`→…→`$SPAWN,,*`→`$AMMO`) on a fresh link brought a gun back in every bench case. ✅ src: protocol/brx-protocol.md §7r and §7r addendum
 
@@ -247,7 +248,7 @@ $PLAY,VSF,4,6,JAY,,,,*     # victory sting (slot 1) + "victory" announcer (slot 
 ### Page: `$WEAP` — the weapon definition  (`/manual/dev/weap`)
 _Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type_
 
-[callout:info] **A weapon is data, not firmware.** The gun has no weapons baked in; the host sends a full `$WEAP` frame into one of **six slots (0–5)**. The field *names* come from the Callsign app's metadata (declaration order = wire order); the *positions and meanings* below were then pinned by capturing twenty stock weapons with the operator naming each one, and by flipping single tokens on a live gun. 🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP), protocol/brx-protocol.md §6, §6.1
+[callout:info] **A weapon is data, not firmware.** The gun has no weapons baked in; the host sends a full `$WEAP` frame into one of **six slots (0–5)**. The field *names* come from the Callsign app's metadata (declaration order = wire order); the *positions and meanings* below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun. 🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP), protocol/brx-protocol.md §6, §6.1
 
 [code text] (copy-to-clipboard)
 ```text
@@ -269,12 +270,12 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 2 | — | 100 | 100 | — (unknown) | — |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard · 1 MedicHeal · 2 ActivateShield · 3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb · 10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. | ✅ (position) 🔍 (enum names) |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. | 🔍 |
-| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor. | ✅ |
+| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (§7r addendum). | ✅ |
 | 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (×1.5). | 🔍 |
-| 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | — | — | **Dormant**: empty on all 20 stock weapons. No stock BRX weapon has a secondary fire mode. | 🔍 |
+| 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | — | — | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. | 🔍 |
 | 12 | extraHeadsetDamage | — | — | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
 | 13 | extraHeadsetRangeOutdoor | — | — | 80 on the same three weapons. | ✅ (correlation) |
-| 14 | **fire interval / charge time (ms)** | 100 | 1250 | **Proven by one-field flip**: a sniper with t14=1250 fired exactly one shot per second. Stock cadences: burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time. | ✅ |
+| 14 | **fire interval / charge time (ms)** | 100 | 1250 | **Proven by one-field flip**: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (🔍): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time. | ✅ (flip) 🔍 (cadence list) |
 | 15 | — | 850 | 850 | — (unknown) | — |
 | 16 | maxClip | 32 | 100 | Magazine size. | ✅ |
 | 17 | maxAmmo | 32768 | 32768 | Always `2 × t40` in captured frames (or 32768 as an unlimited flag). Not an independent knob. | ✅ (correlation) |
@@ -297,13 +298,13 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 34 | noAmmo_SoundName | D18 | A73 | | 🔍 |
 | 35 | weaponFeatureA | — | C19 | **Overheat sound** (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122). | ✅ |
 | 36 | weaponFeatureB | — | C04 | Second feature sound. | 🔍 |
-| 37 | overheat param A | — | 20 | **Gate for the overheat system** (with t38): transplanting `20,150` onto the SMG brought its dead heat gauge alive and the trigger locked at the top. | ✅ (gate) |
+| 37 | overheat param A | — | 20 | **Gate for the overheat system** (with t38): transplanting `20,150` onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip — at these values the 72-round magazine empties before a hard lockout. | ✅ (gate) |
 | 38 | overheat param B | — | 150 | See t37. | ✅ (gate) |
 | 39 | clipStartingAmmo | 32 | 100 | Equals t16 in every captured frame. | ✅ (correlation) |
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. | 🔍 |
 | 41 | — | 75 | 75 | — (unknown) | — |
 | 42 | extraHeadsetRangeIndoor | — | — | 30/30/40 on the three t1=2 weapons. | ✅ (correlation) |
-🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections), protocol/brx-protocol.md §6.1 and the t20 / overheat sections, docs/experiment-log.md (2026-08-26 `$WEAP` token probes; charge modes; overheat solved)
+🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 `$WEAP` token probes; charge modes; overheat solved)
 
 [callout:warn] **Two positions that bit us.** (1) The metadata's field order has `rateOfFire` before `weaponSwapDelay`; the wire has the *rate* at **t14** and the constant 850 at t15 — a compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons. ✅ src: protocol/brx-protocol.md §6.1; protocol/callsign-extract/protocol-classes.md (cap17, cap18)
 
@@ -729,7 +730,7 @@ claude mcp add brx -- python.exe -m brx_mcp
 | Resources: `protocol_doc`, `known_devices`, `capture` | The protocol reference, the device registry, capture files |
 ✅ src: mcp/brx_mcp/server.py
 
-[callout:tip] **Platform notes.** macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic — `bleak` is BLE-only, so pair in the OS and use the serial port (guide todo). Captures and the device registry live in `~/.brx-mcp/`. ✅ src: README.md; CLAUDE.md; docs/gotchas.md
+[callout:tip] **Platform notes.** macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic — `bleak` is BLE-only, so pair in the OS and use the serial port. Captures and the device registry live in `~/.brx-mcp/`. ✅ src: README.md; CLAUDE.md; docs/gotchas.md
 
 [steps] **Recommended first session (safe order)**
 1. `scan` → note the address. `identify` → confirm `$PONG` and read the `$VERSION` reply.
@@ -843,6 +844,7 @@ Everything below was removed from the pages above because it is unconfirmed, sin
 - **`$TIME`** — APK-listed notification, never observed; meaning unknown.
 - **Gen1 reply prefix** — brx-protocol.md §2 says Gen1 *may* prefix replies as `$!DFP,PONG,*`; not verified on a Gen1 unit.
 - **On-gun volume menu ↔ `$VOL`** — the 1–5 menu ≈ `$VOL` 60/70/80/90/100 is a field estimate (brx-protocol.md §3), not measured.
+- **"~1 in 3" BLE connection attempts succeed** — an operator impression, never counted (experiment-log 2026-08-23 #5, gotchas.md). Published only as "establishment is intermittent; retry".
 
 **Field-map positions blanked to `— (unknown)`**
 - **`$WEAP` t2** — 100 on every stock gun, 90 on melee/gas-melee; function unknown.

@@ -35,7 +35,7 @@ Source: docs/reference/brx-extended-user-guide.md · docs/reference/community-no
 
 ## Batteries & chargers
 - Gun pack: 7.4 V ~2200 mAh Li-ion, 2-pin connector, **reversed polarity vs. convention** 👥
-- Gun charger: 8.4 V two-cell smart charger; LED red → green; ~2–4 h 📖
+- Gun charger: 8.4 V two-cell smart charger; LED red while charging → green when full 📖
 - Headset: single 18650 (v2); any 5 V USB charger 📖👥
 - Runtime: ~8 h play per charge 📖
 - Alternative: 6×AA tray, **non-rechargeable only** 📖

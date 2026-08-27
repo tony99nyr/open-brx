@@ -15,7 +15,6 @@ Four numbers that define the BRX:
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/callsign-extract/ (sound bank)
 
 ## The system, in three objects
-3 cards:
 - **Tagger** — the rifle. Emits IR, carries a hit sensor on its body, the speaker, the sound bank, the battery, the radio (Bluetooth) and all the game logic for a stock game. 📖 ✅
 - **Headset** — the head-worn sensor band. Catches most incoming tags (it is the bigger target), lights up for feedback, links wirelessly to its own tagger, and gates whether the tagger is allowed to fire. 📖 ✅
 - **Smart Grenade** — an optional IR broadcaster with a button and a status LED. Throwable blast weapon *or* a portable objective (respawn point, hill, flag). ✅

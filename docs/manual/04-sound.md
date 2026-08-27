@@ -1,7 +1,7 @@
 # 04 · Sound, voice & updates  (section slug: /manual/sound)
 **Last verified:** 2026-08-27
 **Audience:** BRX owners who want to understand, tune or replace what their tagger says; event hosts setting volume for a venue; developers driving audio over Bluetooth. · **Goal of this section:** explain the BRX audio system end-to-end (who plays what, how loud, and how to change it), publish the first complete searchable map of the 2166-id sound bank, and document the USB sound-pack and firmware update path with Battle Company's updater as the factory restore.
-**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — nothing unconfirmed is published; see Research backlog at the end.
+**Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — only confirmed facts are published; see Research backlog at the end.
 
 **Credits used throughout this section:** Battle Company (BRX Manual V7, BRX Extended User Guide 2018 — link, don't rehost) · **David Knox** (the "DK BRX Audio File Names" meaning map, shared with the owner community) · the BRX owner community (sound-filename lists, swap reports) · LaserTagMods / JEDGE (protocol discovery). Sound clips are Battle Company's copyright: the site ships **ids, durations and meanings only**, never audio files.
 
@@ -276,7 +276,7 @@ _The same USB disk carries the firmware — here's the official procedure and th
 
 [accordion] **Known issues and Battle Company-verified fixes**
 - **Headset won't pair after an update.** BC-verified recovery: downgrade to `BCgunV2_02e.bin`, run `SETUP` from the USB serial console, re-pair the headset, then re-upgrade to `BCgunV2_08b.bin`. 👥 `src: docs/reference/community-notes.md`
-- **Re-pair a headset** without the downgrade: boot the gun holding **RIGHT + SELECT** ("install accessory"), power the headset, press its button once. 👥 `src: docs/reference/community-notes.md`
+- **Re-pair a headset** without the downgrade: boot the gun holding **RIGHT** ("install accessory"), power the headset, press its button once. 📖👥 `src: docs/reference/brx-extended-user-guide.md (accessory pairing), docs/reference/community-notes.md`
 - **Admin lock blocks hosting.** Locked taggers (LEFT+RIGHT 3 s, or LEFT+RIGHT+SELECT 3 s) can't host; v4.30 adds hold-SELECT to unlock. 👥 `src: docs/reference/community-notes.md`
 - **Version you're on:** the serial console's `QUERY` reports it; the guns on our bench run **v4.32**. ✅ `src: docs/HANDOFF.md`
 
@@ -308,10 +308,9 @@ _On-gun 1–5, protocol 0–100, and why "30" is silence_
 [callout:warn] **30 is not "quiet", it is silent for weapon audio.** Measured with a microphone harness: at volume 100 the gun's sounds peak at 7–37× the room noise floor; at 30 nothing rises above room noise. Volume 45 is barely audible. Use **≥ 65** to hear a tagger reliably and **69** for play. ✅ `src: docs/experiment-log.md` #6, protocol/brx-protocol.md
 
 [cards] **Practical levels**
-- **Indoors:** around 75. 100 is painfully loud in a room. ✅
-- **Outdoors:** around 85. ✅
+- **Play:** 69 — the value the official iOS app sets on connect; the Android app sends 100. ✅
 - **Bench / diagnostics:** 30 or lower keeps the neighbours happy and still confirms the command path (the gun echoes its state; you just won't hear it). ✅
-`src: protocol/brx-protocol.md`, docs/experiment-log.md, CLAUDE.md
+`src: protocol/brx-protocol.md`, docs/experiment-log.md #6, CLAUDE.md
 
 [callout:info] **Safety.** The boot chime plays at the gun's stored level before any host can lower it, so a gun last used at 100 is loud at the next power-on — set volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep can be uncomfortable held to the ear at 100; 69 is the value the official iOS app ships with for a reason. ✅ `src: docs/sound-architecture.md`, docs/experiment-log.md
 
@@ -403,5 +402,7 @@ Nothing below appears on the site. Each item moves into the pages above only onc
 - **Grenade firmware updates.** Contradicted: the Extended User Guide lists the grenade among PROGRAM-button USB-updatable accessories; the grenade on our bench exposes no USB data interface in any state and no PROGRAM pin. Grenade removed from the firmware page's device list and steps title. `src: docs/reference/brx-extended-user-guide.md`, docs/reference/grenade.md, docs/FOLLOWUPS.md G4/G7
 - **On-gun menu volume 1–5 → `$VOL` 0–100 mapping.** L1≈60 · L2≈70 · L3≈80 · L4≈90 · L5≈100 is a field estimate, evenly spaced, never measured with a meter. Table row, "Level 3 is 80" headline, the menu-level parentheticals in Practical levels, the volume mapper's level readout, and the level ticks in SND-06 all removed. A `$VOL` sweep against a mic would settle it. `src: protocol/brx-protocol.md`, docs/experiment-log.md
 - **"Level 3–4 is what players typically pick."** Uncited observation; removed from Practical levels. `src: protocol/brx-protocol.md`
+- **Indoor ~75 / outdoor ~85 `$VOL` defaults.** A field-tested estimate, not a measurement — the only instrumented volume data is 100 vs 30 with a microphone. Removed from Practical levels. `src: protocol/brx-protocol.md` (`$VOL` row), docs/experiment-log.md #6 and #33 (field estimate)
+- **"Install accessory" boot = RIGHT vs RIGHT+SELECT.** Owners report RIGHT+SELECT; the Extended User Guide says RIGHT. Published RIGHT only in the firmware page's re-pair item. `src: docs/reference/community-notes.md`, docs/reference/brx-extended-user-guide.md
 - **`$ALCD` second token = current audio level.** Fell to 0 under hit function 23 and recovered 5 → 9 → 31 → 100 over ~6–8 s while the operator heard the same; one ear plus one meter, not double-instrumented. Accordion removed. `src: docs/experiment-log.md` 2026-08-27
 - **Images:** no image IDs removed. SND-06 revised (menu-level tick marks dropped from the description and the prompt) because they illustrated the held volume mapping.

@@ -11,7 +11,7 @@ Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-gui
 ## First power-on checklist
 1. **Charge first.** Gun: plug the two-cell 8.4 V smart charger into the *charging* port (not the micro-USB "Programing Port" beside it). Charger LED red → green when full; a full charge gives roughly 8 h of play. Headset: any USB 5 V supply. 📖
 2. **Power on the gun** with the slide switch by the barrel. You should hear a startup sound; a "pop" from the speaker at boot means audio is alive. If it boots **silently**, you were holding SELECT — that is USB disk mode; power off and try again. 📖👥
-3. **Power on the headset.** Its LEDs cycle through colours ("rainbow") while it is unpaired, then settle. Pairing is automatic and normally quick, but can take up to **3 minutes** in a room full of taggers and phones. 📖✅
+3. **Power on the headset.** Its LEDs cycle through colours ("rainbow") while it is unpaired, then settle. Pairing is automatic; it can take up to **3 minutes** with many taggers and Bluetooth devices around. 📖✅
 4. **Watch the headset settle.** A slow rainbow blink that never stops = not paired — see *Pairing the Headset*. Once paired it shows the gun's team colour. ✅
 5. **Set indoor or outdoor mode** (hold ALT 3 s) for where you will play — it changes IR range and LED brightness and persists across power cycles. 📖
 6. **Sight the laser** in target mode before the first real game (hold LEFT while powering on). 📖

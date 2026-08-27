@@ -13,7 +13,7 @@ Source: docs/reference/edge-brp.md, docs/VISION.md §Can we supersede Edge
 | **Cloud** | global accounts, matchmaking, cross-venue leaderboards | none in the loop; optional hosted service is a future idea ❌ |
 | **Game modes** | 35 preset + unlimited custom | TDM ✅ · FFA / Infection / LMS / CS / Domination / KotH / CTF / **Extraction** engines 🧪 |
 | **Novel modes** | Battle Royale, Arcade | **Extraction (raid-and-extract)** — Edge has nothing like it 🧪; BR specified 📐 |
-| **Weapons / classes / abilities** | 90+ weapons, 15 abilities, 9 melee, classes | full `$WEAP` control; all 20 Callsign weapons captured + rebalanced; perks (Body Armor, Extended Mags, Quick Hands, Easy Reload) ✅/🧪 |
+| **Weapons / classes / abilities** | 90+ weapons, 15 abilities, 9 melee, classes | full `$WEAP` control; all 19 Callsign weapons captured (20 frames) + rebalanced; perks (Body Armor, Extended Mags, Quick Hands, Easy Reload) ✅/🧪 |
 | **Killstreaks / medals / announcer** | 15+ COD-style streaks | first-blood, multikill, streaks driven to the gun's own speaker + green-sight flash ✅ (mechanism) / 🧪 (in-match) |
 | **Live scoring + recap** | real-time, leaderboards, history | live board with staleness + recap/CSV 🧪; eventually-consistent by design |
 | **Per-player HUD** | CallSign phone app (iOS + Android) | BRX Combat HUD — native, blackout night mode ✅ single-gun |

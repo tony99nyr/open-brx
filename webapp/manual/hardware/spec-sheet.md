@@ -17,7 +17,7 @@ BRX tagger:
 - MCU: PJRC Teensy ✅
 - Battery: 7.4 V ~2,200 mAh Li-ion (2-cell, reversed polarity) or 6×AA; ~8 h play 📖 👥
 - Manufacturer: Laser Tag Pro / Battle Company, Oak Creek, WI 📖
-Source: all reference docs listed under Sources
+Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1 §7c + docs/experiment-log.md 2026-08-23 (USB console — Teensy MCU), protocol/brx-protocol.md §7o (sight flash)
 
 BRX headset:
 - Sensors: IR receiver domes around the band (front/back distinguished on the wire) ✅

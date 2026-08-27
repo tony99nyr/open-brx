@@ -1,7 +1,7 @@
 {
- "built": "2026-08-27T20:39:12.224Z",
+ "built": "2026-08-27T20:54:25.374Z",
  "ok": true,
- "sourceStamp": 1787863131049.244,
+ "sourceStamp": 1787864065343.8262,
  "sources": [
   "site/build.mjs",
   "site/lib/data.mjs",
@@ -26,6 +26,8 @@
  "pages": 73,
  "htmlFiles": 73,
  "files": [
+  "404.html",
+  "404.md",
   "assets/site.css",
   "assets/site.js",
   "changelog.md",

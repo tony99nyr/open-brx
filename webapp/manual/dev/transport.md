@@ -2,8 +2,11 @@
 _How you reach the gun, what a frame looks like, and why nothing here can brick one_
 Last verified: 2026-08-27
 
-Headline: "One text protocol, three ways in." Sub: The BRX speaks a plain ASCII, comma-delimited command language on a hardware UART. Gen1 exposes it over Bluetooth Classic, Gen2/3 over BLE, and the community drives it from a wire — the frames are identical on all three. Background: DEV-01.
+## One text protocol, three ways in.
+The BRX speaks a plain ASCII, comma-delimited command language on a hardware UART. Gen1 exposes it over Bluetooth Classic, Gen2/3 over BLE, and the community drives it from a wire — the frames are identical on all three.
 Source: protocol/brx-protocol.md §1, §7c
+
+_[image DEV-01: ]_
 
 ## Who found this.
 Protocol discovery for the BRX platform is the work of **LaserTagMods** (JEDGE / JBOX). This page restates their findings independently, with our own bench verification noted per row.
@@ -16,7 +19,6 @@ Source: protocol/brx-protocol.md (header, §7d), README.md
 | Gen2/3 | BLE — Nordic UART Service (NUS) | UART bridge at 115200 behind the radio | Connect from any BLE central: laptop (bleak), ESP32, phone. No pairing/PIN. | ✅ |
 | Any | Hardware UART inside the gun | 115200 | What JEDGE drives directly (`Serial1`). No external accessory port exists on the BRX — a wired tap means opening the gun. Untested by us. | 👥 |
 | Any | Micro-USB "Programing Port" | USB CDC (baud ignored) | **Not** the `$` protocol — a separate `QUERY`/`SETUP` console. See the Serial console page. | ✅ |
-✅/
 Source: protocol/brx-protocol.md §1, §7c
 
 ## BLE — Nordic UART Service UUIDs
@@ -35,7 +37,6 @@ Source: protocol/brx-protocol.md §1
 _[diagram DEV-02: Link topology: host ↔ BLE NUS ↔ tagger ↔ (proprietary link) headset; tagger → IR → other tagger; USB console on the side.]_
 
 ## Frame anatomy
-(render as an annotated string, not bits)
 `$` + `COMMAND` + (`,` + token)* + `,*`
 - ASCII, comma-delimited tokens. Starts with `$COMMAND`, ends with `,*`.
 - **Empty tokens are legal and meaningful** — consecutive commas mean "leave unchanged / not applicable". `$SPAWN,,*` (one empty token) is a different command from `$SPAWN,*`.
@@ -47,7 +48,7 @@ Source: protocol/brx-protocol.md §2, §7e; mcp/brx_mcp/protocol.py
 _[diagram DEV-03: Annotated frame anatomy.]_
 
 ## Waking a gun and holding the link
-1. Connect and subscribe to the TX notify characteristic. Establishing a link succeeds roughly **1 attempt in 3** (the official app behaves the same); retry — that *is* the fix.
+1. Connect and subscribe to the TX notify characteristic. Establishing a link is **intermittent** (the official app behaves the same) and the link holds once it is up; retry — that *is* the fix.
 2. On a **fresh power-up**, send `$STOP,*` then `$PHONE,*` (after a power-cycle `$PHONE,*` alone wakes it). A just-booted gun ignores a bare `$VERSION,*` until then.
 3. `$PHONE,*` opens the **event tap**: the gun says "phone connected", answers `$BUT,3,0,*`, streams button events and `$VOLTS` telemetry, and locks its on-gun menu until a game is configured or it is power-cycled.
 4. Idle taggers are **silent**: outside app mode no unsolicited messages are sent — no button, trigger or hit traffic.

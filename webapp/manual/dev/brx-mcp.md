@@ -66,7 +66,7 @@ Source: mcp/brx_mcp/__main__.py (dispatch table)
 Source: mcp/brx_mcp/server.py
 
 ## Platform notes.
-macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic — `bleak` is BLE-only, so pair in the OS and use the serial port (guide todo). Captures and the device registry live in `~/.brx-mcp/`.
+macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic — `bleak` is BLE-only, so pair in the OS and use the serial port. Captures and the device registry live in `~/.brx-mcp/`.
 Source: README.md; CLAUDE.md; docs/gotchas.md
 
 ## Recommended first session (safe order)
