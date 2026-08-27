@@ -2768,6 +2768,10 @@ meaningless.
 **Result: of every function in the status class, only fn 23 touches BLE at all.** Because the positive
 control fired, these are **true negatives, not a blind instrument**.
 
+> ⚠️ **Same scope caveat: protocol 0 only.** "Clean" here means *no BLE-visible frame beyond the hit
+> pair, on protocol 0* — it is **not** a claim that these functions are inert, and specifically not a
+> claim they move no pool on other protocols.
+
 **Two things follow.**
 
 1. **The stun, if it exists, is invisible to BLE.** Whatever fn 3 / 8 / 24-28 / 35 do, they do it
@@ -2847,6 +2851,12 @@ Software encoding was verified instead, and is correct.
 
 41 functions x 2 teams, autonomous, `$VOL,3`, victim Tactix-FE30 `$TID,1`, hp45/armour70/shield-cap70,
 magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counted separately from `$HP`.
+
+> ⚠️ **SCOPE — this map was measured on IR PROTOCOL 0 ONLY.** Every cell used row `<0,subtype>` and a
+> word with B=0. It was written up without stating that, which overclaims: `c9c4a3f` reports **fn 24
+> dealing damage on protocol 7** (armour 70 -> 30) where it moves no pool on protocol 0. **So
+> "status class" below means "status-class *on protocol 0*"** — membership must not be read as "inert
+> in general". A protocol x function re-test is the way to settle how far the classes travel.
 
 **Trailing control passed.** The fn 1 and fn 11 cells were re-measured *after* all 41 cells and
 reproduced their opening rows exactly (`HIR=2 $HP,45,30,0` and `HIR=2 $HP,45,70,40`). The rig did not
