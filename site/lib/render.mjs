@@ -25,7 +25,14 @@ function linkSlugs(html, slugs) {
 }
 
 export function md(text, ctx) {
+  // an [image ID] / [diagram ID] reference embedded in prose → an inline placeholder chip (or the image link)
+  text = text.replace(/\[(image|diagram)\s+([A-Z]+-\d+[a-z]?)\]/g, (m, kind, id) => {
+    const file = ctx?.imageFiles?.[id];
+    return file ? `<a class="img-ref" href="/img/${esc(file)}">${esc(id)}</a>` : `<span class="img-ref ph-inline" title="${kind} pending">${esc(id)}</span>`;
+  });
   let html = marked.parse(text);
+  // a "src: …" fragment that survived inside a table cell is provenance noise, not content
+  html = html.replace(/(<td>[^<]*?)\s*(?:<code>)?src:\s*[^<]*(?:<\/code>)?(\s*<\/td>)/g, '$1$2');
   html = badgesInline(html);
   if (ctx?.slugs) html = linkSlugs(html, ctx.slugs);
   return html;
@@ -50,13 +57,23 @@ function splitLead(item) {
 
 function srcLine(b) {
   if (!b.src.length) return '';
-  const html = b.src.join(' · ').replace(/((?:[\w-]+\/)+[\w.-]+\.(?:md|py|json|css|ts|toml|txt))/g,
+  const html = b.src.join(' · ').replace(/\bsrc:\s*/g, '').replace(/((?:[\w-]+\/)+[\w.-]+\.(?:md|py|json|css|ts|toml|txt))/g,
     (m, p) => `<a href="${REPO_URL}/blob/main/${p}" rel="noopener">${esc(p)}</a>`);
   return `<p class="src"><span>Source:</span> ${html.replace(/`/g, '')}</p>`;
 }
+export function assignIds(page) {
+  const seen = new Map();
+  const NO_ANCHOR = new Set(['image', 'diagram', 'quote', 'prose']);
+  for (const b of page.blocks) {
+    const t = b.title || (b.type === 'under-construction' ? (b.head.split('—')[0] || '') : '');
+    if (!t.trim() || NO_ANCHOR.has(b.type)) { b.id = null; continue; }
+    const base = slugify(t); const n = (seen.get(base) || 0) + 1; seen.set(base, n);
+    b.id = n === 1 ? base : `${base}-${n}`;
+  }
+}
 function blockHead(b, ctx) {
   let h = '';
-  if (b.title) h += `<h2 id="${slugify(b.title)}">${inline(b.title, ctx)}</h2>`;
+  if (b.title) h += `<h2 id="${b.id || slugify(b.title)}">${inline(b.title, ctx)}</h2>`;
   if (b.head) h += `<p class="lead">${inline(b.head, ctx)}</p>`;
   return h;
 }
@@ -71,7 +88,8 @@ function figure(b, ctx) {
   const body = file
     ? `<img src="/img/${esc(file)}" alt="${esc(meta?.what || cap)}" loading="lazy">`
     : `<div class="ph ph-${kind}" role="img" aria-label="${esc(meta?.what || cap)}"><span class="ph-id">${esc(id)}</span><span class="ph-kind">${kind === 'photo' ? 'photo pending' : kind === 'svg' ? 'diagram pending' : 'illustration pending'}</span></div>`;
-  return `<figure class="fig fig-${kind}${file ? '' : ' fig-pending'}" id="${esc(id)}">${body}<figcaption>${inline(cap, ctx)}</figcaption></figure>`;
+  const ratio = (meta?.prompt || meta?.what || '').match(/\b(21:9|16:9|4:3|1:1|3:2)\b/)?.[1] || '16:9';
+  return `<figure class="fig fig-${kind}${file ? '' : ' fig-pending'}" id="${esc(id)}" style="--ratio:${ratio.replace(':', '/')}">${body}<figcaption>${inline(cap, ctx)}</figcaption></figure>`;
 }
 
 function ladder(b, ctx) {
@@ -101,10 +119,31 @@ function specSheet(b, ctx) {
   return `<dl>${items.map(it => { const [k, v] = splitLead(it); return `<dt>${inline(k, ctx)}</dt><dd>${md(v || '', ctx)}</dd>`; }).join('')}</dl>`;
 }
 
+// A [table] whose head says "columns: A | B | C" and whose body is a list of "a | b | c" items → real table.
+function listTable(b, ctx) {
+  if (b.body.some(l => l.startsWith('|'))) return null;
+  const cm = (b.head || '').match(/columns?:\s*(.+)$/i);
+  const items = listItems(b.body);
+  if (!items.length || !items.every(it => it.includes('|'))) return null;
+  const cols = cm ? cm[1].split('|').map(s => s.trim()).filter(Boolean) : null;
+  if (cm) b.head = b.head.slice(0, cm.index).replace(/[—–-]\s*$/, '').trim();
+  const rows = items.map(it => it.split('|').map(s => s.trim()));
+  const n = cols ? cols.length : Math.max(...rows.map(r => r.length));
+  const head = cols ? `<thead><tr>${cols.map(c => `<th>${inline(c, ctx)}</th>`).join('')}</tr></thead>` : '';
+  return `<table>${head}<tbody>${rows.map(r => `<tr>${Array.from({ length: n }, (_, i) => `<td>${inline(r[i] || '', ctx)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+// A markdown table whose rows don't match the header width is malformed content → visible TODO chip.
+function tableWarning(b) {
+  const rows = b.body.filter(l => l.trim().startsWith('|')).map(l => l.trim().replace(/^\||\|$/g, '').split('|').length);
+  if (rows.length < 2) return '';
+  const bad = rows.slice(2).filter(n => n !== rows[0]).length;
+  return bad ? `<span class="todo" data-todo="malformed table">TODO: content — malformed table: ${bad} row${bad > 1 ? 's' : ''} don't match the ${rows[0]}-column header</span>` : '';
+}
 function dataTable(b, ctx) {
   const table = md(b.body.join('\n'), ctx);
   const n = (b.body.filter(l => l.startsWith('|')).length - 2);
-  return `<div class="dt" data-rows="${Math.max(n, 0)}"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">${Math.max(n, 0)} rows</span></div><div class="table-wrap">${table}</div></div>`;
+  return `${tableWarning(b)}<div class="dt" data-rows="${Math.max(n, 0)}"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">${Math.max(n, 0)} rows</span></div><div class="table-wrap">${table}</div></div>`;
 }
 
 function underConstruction(b, ctx) {
@@ -112,17 +151,17 @@ function underConstruction(b, ctx) {
   const one = first.replace(/^\s*[-*]\s*/, '').replace(/^\*\*What:\*\*\s*/, '');
   const title = b.title || b.head.split('—')[0];
   const status = (b.head.match(/[✅🧪📐🚧]+/gu) || ['🚧']).join('');
-  return `<div class="uc"><div class="uc-head"><span class="uc-mark" aria-hidden="true">🚧</span><h2 id="${slugify(title)}">${inline(title, ctx)}</h2>${badgesInline(esc(status))}</div><p>${inline(one, ctx)}</p><p class="uc-note">Under construction — details when it has run on real hardware.</p></div>`;
+  return `<div class="uc"><div class="uc-head"><span class="uc-mark" aria-hidden="true">🚧</span><h2 id="${b.id || slugify(title)}">${inline(title, ctx)}</h2>${badgesInline(esc(status))}</div><p>${inline(one, ctx)}</p><p class="uc-note">Under construction — details when it has run on real hardware.</p></div>`;
 }
 
 export function renderBlock(b, ctx) {
   const body = b.body.join('\n');
   switch (b.type) {
-    case 'hero': return wrap(b, '', `<p class="hero-text">${inline(b.head, ctx)}</p>${md(body, ctx)}${srcLine(b)}`);
-    case 'callout': { const k = (b.mod || 'info').split('|')[0]; return wrap(b, `co-${k}`, `<aside class="callout ${k}" role="note">${b.title ? `<strong class="co-title">${inline(b.title, ctx)}</strong>` : ''}${b.head ? `<p>${inline(b.head, ctx)}</p>` : ''}${md(body, ctx)}${srcLine(b)}</aside>`); }
+    case 'hero': return wrap(b, '', `<p class="hero-text"${b.id ? ` id="${b.id}"` : ''}>${b.title ? `<strong>${inline(b.title, ctx)}</strong> ` : ''}${inline(b.head, ctx)}</p>${md(body, ctx)}${srcLine(b)}`);
+    case 'callout': { const k = (b.mod || 'info').split('|')[0]; return wrap(b, `co-${k}`, `<aside class="callout ${k}" role="note"${b.id ? ` id="${b.id}"` : ''}>${b.title ? `<strong class="co-title">${inline(b.title, ctx)}</strong>` : ''}${b.head ? `<p>${inline(b.head, ctx)}</p>` : ''}${md(body, ctx)}${srcLine(b)}</aside>`); }
     case 'steps': return wrap(b, '', `${blockHead(b, ctx)}<div class="steps">${md(body, ctx)}</div>${srcLine(b)}`);
     case 'cards': return wrap(b, '', `${blockHead(b, ctx)}<div class="cards">${md(body, ctx)}</div>${srcLine(b)}`);
-    case 'table': case 'compare': case 'timeline': case 'pricing-tiers': return wrap(b, '', `${blockHead(b, ctx)}<div class="table-wrap">${md(body, ctx)}</div>${srcLine(b)}`);
+    case 'table': case 'compare': case 'timeline': case 'pricing-tiers': { const lt = listTable(b, ctx); return wrap(b, '', `${blockHead(b, ctx)}${tableWarning(b)}<div class="table-wrap">${lt ?? md(body, ctx)}</div>${srcLine(b)}`); }
     case 'data-table': return wrap(b, '', `${blockHead(b, ctx)}${dataTable(b, ctx)}${srcLine(b)}`);
     case 'spec-sheet': return wrap(b, '', `${blockHead(b, ctx)}${specSheet(b, ctx)}${srcLine(b)}`);
     case 'accordion': return wrap(b, '', `${blockHead(b, ctx)}${details(b, ctx)}${srcLine(b)}`);
@@ -134,7 +173,7 @@ export function renderBlock(b, ctx) {
     case 'quote': return wrap(b, '', `<blockquote>${inline(b.head, ctx)}${md(body, ctx)}</blockquote>${srcLine(b)}`);
     case 'stat-row': return wrap(b, '', `${blockHead(b, ctx)}${statRow(b, ctx)}${srcLine(b)}`);
     case 'under-construction': return wrap(b, '', underConstruction(b, ctx));
-    default: return wrap(b, 'blk-unknown', `<span class="todo" data-todo="unknown block type">TODO: content — unknown block [${esc(b.type)}]</span>${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
+    default: return wrap(b, 'blk-unknown', `<span class="todo" data-todo="unknown block type">TODO: content — unknown block type “${esc(b.type)}”</span>${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
   }
 }
 
@@ -175,7 +214,7 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
 <div class="layout${sidebar ? ' has-side' : ''}${toc ? ' has-toc' : ''}">
   ${sidebar ? `<nav class="side" id="side" aria-label="Manual sections">${sidebar}</nav>` : ''}
   <main id="main" class="main">
-    ${breadcrumbs.length > 1 ? `<nav class="crumbs" aria-label="Breadcrumb">${crumbs}</nav>` : ''}
+    ${breadcrumbs.length > 1 && slug !== '/' ? `<nav class="crumbs" aria-label="Breadcrumb">${crumbs}</nav>` : ''}
     ${body}
   </main>
   ${toc ? `<aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p>${toc}</div></aside>` : ''}
@@ -191,14 +230,19 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
 }
 
 export function pageBody(page, ctx, extras = {}) {
+  assignIds(page);
   const blocks = page.blocks.map(b => extras.replaceBlock?.(b) ?? renderBlock(b, ctx)).join('\n');
   const prov = new Set(page.blocks.flatMap(b => b.badges));
   const lv = page.section.lastVerified;
+  if (page.slug === '/') {
+    // Home: the pitch is the H1; no badge row, no crumbs
+    return `<article class="page"><header class="page-head"><h1 class="pitch">${inline(page.subtitle || page.title, ctx)}</h1><p class="meta">${lv ? `<span class="lv">Manual last verified <time datetime="${lv}">${lv}</time></span>` : ''}<a class="md-link" href="/index.md">View as Markdown</a></p></header>${blocks}${extras.after || ''}</article>`;
+  }
   return `<article class="page">
 <header class="page-head">
 <h1>${inline(page.title, ctx)}</h1>
 ${page.subtitle ? `<p class="subtitle">${inline(page.subtitle, ctx)}</p>` : ''}
-<p class="meta">${[...prov].map(badge).join('')}${lv ? `<span class="lv">Last verified <time datetime="${lv}">${lv}</time></span>` : ''}<a class="md-link" href="${page.slug === '/' ? '/index' : page.slug}.md">View as Markdown</a></p>
+<p class="meta">${[...prov].map(badge).join('')}${lv ? `<span class="lv">Last verified <time datetime="${lv}">${lv}</time></span>` : ''}<a class="md-link" href="${page.slug}.md">View as Markdown</a></p>
 </header>
 ${blocks}
 ${extras.after || ''}
@@ -206,9 +250,8 @@ ${extras.after || ''}
 }
 
 export function tocFor(page) {
-  const hs = page.blocks.filter(b => b.title && b.type !== 'under-construction').map(b => `<li><a href="#${slugify(b.title)}">${esc(b.title.replace(/[`*]/g, ''))}</a></li>`);
-  const uc = page.blocks.filter(b => b.type === 'under-construction').map(b => { const t = b.title || b.head.split('—')[0]; return `<li><a href="#${slugify(t)}">${esc(t.replace(/[`*]/g, ''))}</a></li>`; });
-  const all = [...hs, ...uc];
+  assignIds(page);
+  const all = page.blocks.filter(b => b.id).map(b => { const t = b.title || b.head.split('—')[0]; return `<li><a href="#${b.id}">${esc(t.replace(/[`*]/g, ''))}</a></li>`; });
   return all.length >= 2 ? `<ol>${all.join('')}</ol>` : '';
 }
 

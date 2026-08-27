@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Events — what the gun tells you — Developer reference — The BRX Manual (Open BRX)</title>
+<meta name="description" content="Hits, health, HUD echoes, buttons and telemetry — and the proof that the gun keeps no game state">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/events/">
+<link rel="alternate" type="text/markdown" href="/manual/dev/events.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Events — what the gun tells you","description":"Hits, health, HUD echoes, buttons and telemetry — and the proof that the gun keeps no game state","url":"https://open-brx.iamrossi.workers.dev/manual/dev/events/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Events — what the gun tells you","item":"https://open-brx.iamrossi.workers.dev/manual/dev/events/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why did earlier captures show shooter id 0,0?","acceptedAnswer":{"@type":"Answer","text":"Every gun sat on the default id. The field was always there; $PSET token 1 is what makes it vary."}},{"@type":"Question","name":"Why is $SFLASH in the victim's capture \"never near a hit\"?","acceptedAnswer":{"@type":"Answer","text":"Because a kill you score is invisible in your own $HIR/$HP stream — correlate it with $BUT trigger bursts."}},{"@type":"Question","name":"Can a dead gun fire?","acceptedAnswer":{"@type":"Answer","text":"No: $BUT,0,1/0 with no $ALCD decrement."}}]},{"@type":"HowTo","name":"Per-player attribution and native kill feedback over BLE — the recipe","step":[{"@type":"HowToStep","position":1,"text":"At arm time give every gun a distinct $PSET token 1 (0–63) and a $TID."},{"@type":"HowToStep","position":2,"text":"On the victim, store <shooterId, shooterTeam> from each $HIR; when $HP,0,0,0 arrives, the stored shooter gets the kill."},{"@type":"HowToStep","position":3,"text":"Send the shooter's gun $SFLASH, (green-sight kill confirm) and $PLAY,,4,6,V3A,,,, (\"kill\" on the announcer slot). The official app does exactly this, three kills → three pairs."},{"@type":"HowToStep","position":4,"text":"Score lines (VB17 \"takes the lead\") go to every gun's announcer slot from its own host. Nothing propagates gun-to-gun; there is no nRF score channel to discover."},{"@type":"HowToStep","position":5,"text":"Game end: $PLAY,VSF,4,6,JAY,,,, on the winner's guns (victory sting + \"victory\")."}]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/" aria-current="true">Manual</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side has-toc">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/" aria-current="page">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/dev/">Developer reference</a><span class="sep">/</span><span aria-current="page">Events — what the gun tells you</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>Events — what the gun tells you</h1>
+<p class="subtitle">Hits, health, HUD echoes, buttons and telemetry — and the proof that the gun keeps no game state</p>
+<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/events.md">View as Markdown</a></p>
+</header>
+<section class="blk blk-bit-field" data-type="bit-field"><h2 id="hir"><code>$HIR,&lt;sensor&gt;,&lt;irProto&gt;,&lt;shooterId&gt;,&lt;shooterTeam&gt;,&lt;magnitude&gt;,&lt;crit&gt;,&lt;subtype&gt;,*</code></h2><p class="lead">(render as labelled token boxes)</p><div class="bitfield"><table>
+<thead>
+<tr>
+<th>tok</th>
+<th>Field</th>
+<th>Values</th>
+<th>Notes</th>
+<th>Conf</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>sensor that caught the IR</td>
+<td>0 headset <strong>front</strong> dome · 1 headset <strong>back</strong> dome · 4 gun body</td>
+<td>Isolated with every other sensor covered. Trust for directional logic <strong>only at field distance</strong> — point-blank floods every receiver and the first to decode reports.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>2</td>
+<td>shooter&#39;s IR protocol</td>
+<td>0 standard · 10 rocket · 13 melee …</td>
+<td>= the shooter&#39;s <code>$WEAP</code> t3 / IR word B field.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>shooter player id</strong></td>
+<td>0–63</td>
+<td>= the shooter&#39;s <code>$PSET</code> token 1. 32/32 hits both directions on two guns with distinct ids.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>shooter team</strong></td>
+<td>0–3</td>
+<td>= the shooter&#39;s effective <code>$TID &amp; 3</code>.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>5</td>
+<td>raw magnitude</td>
+<td>e.g. 9, 45, 80, 115</td>
+<td>The IR word&#39;s D field (= shooter&#39;s t5). <strong>Not the applied damage</strong> where a multiplier row or crit is in play — derive damage from the <code>$HP</code> delta. On a killing blow it can report the victim&#39;s remaining pool instead (overkill clamp).</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>6</td>
+<td>crit flag</td>
+<td>0/1</td>
+<td>Echoes the IR word&#39;s C bit. 0 on every stock weapon.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>7</td>
+<td>subtype</td>
+<td>0–3</td>
+<td>Echoes the IR word&#39;s U field (sniper = 1).</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §4, §7k, §7q, §7r, §7r addendum, tok1 sensor-map section; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-ir-protocol.md" rel="noopener">protocol/brx-ir-protocol.md</a></p></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="not-every-hir-is-damage"><strong class="co-title">Not every <code>$HIR</code> is damage.</strong><p>Pickups, heals and status effects arrive on the same message type — the protocol/subtype tells you which row fired.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7k</p></aside></section>
+<section class="blk blk-table" data-type="table"><h2 id="the-other-events">The other events</h2><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>Decode</th>
+<th>Conf</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>$HP,&lt;hp&gt;,&lt;armor&gt;,&lt;shield&gt;,*</code></td>
+<td>Pools after the hit; same millisecond as its <code>$HIR</code>. <code>$HP,0,0,0</code> = death. Example run at 9/hit: armor 70→61→…→0, then HP 45→43→34→…→0. Writes (<code>$LIFE</code>/<code>$BUMP</code>) do not self-emit <code>$HP</code>.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>$LCD,&lt;hp&gt;,&lt;armor&gt;,&lt;t3&gt;,&lt;t4&gt;,&lt;mag&gt;,&lt;reserve&gt;,*</code></td>
+<td>Health/armor HUD echo on <code>$START</code>/<code>$SPAWN</code>/death. Tokens 3–4: — (unknown).</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>$ALCD,&lt;mag&gt;,&lt;t2&gt;,&lt;slot&gt;,&lt;reserve&gt;,&lt;heat&gt;,*</code></td>
+<td>Ammo/weapon HUD (token 2: — (unknown)): one frame per round fired <em>and</em> per round reloaded; slot changes on alt-fire cycle (0↔1); melee (slot 4) appears as an isolated frame. Heat is a raw level that exceeds 100.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>$BUT,&lt;id&gt;,&lt;state&gt;,*</code></td>
+<td>0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>$VOLTS,&lt;pack_mV&gt;,&lt;cell_mV&gt;,&lt;n3&gt;,&lt;n4&gt;,*</code></td>
+<td>Battery every ~30 s in app mode. <strong>Only reliably returned at good RSSI</strong> — weak-signal guns in a fleet sweep returned none.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>$DISCONNECT,*</code></td>
+<td>The gun is hanging up (headset switched off, or the app closing).</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §4, §7f, §7j, §7q, §7r; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24 fleet sweep); <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a></p></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="the-gun-keeps-no-game-state-proven-three-ways"><strong class="co-title">The gun keeps no game state — proven three ways.</strong><p>(1) Three captures at respawn 5/15/30 s: byte-identical config, nothing on the wire encodes respawn or clock. (2) The complete end-of-game tail is <code>$VOL → $HLED → $STOP → $CLEAR → $PLAY</code> — <strong>the app never asks the gun for a score</strong>. (3) Reconnecting after out-of-range play yields zero frames, and bare <code>$UP,*</code> gets no reply. The phone tallies <code>$HIR</code>/<code>$HP</code> live; it is the only place the score ever existed. Anything needing respawn, a clock or scoring needs a host in range for the whole match.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7l, §7n</p></aside></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-08" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Kill attribution sequence with three lifelines: VICTIM GUN, HOST, SHOOTER GUN. Victim → host: `$HIR,4,0,19,2,9,0,3` (×N) then `$HIR` + `$HP,0,0,0` (same ms). Host box: &quot;credit player 19 / team 2&quot;. Host → shooter: `$SFLASH,*` (+0.4 s), `$PLAY,,4,6,V3A,,,,*` (+0.2 s), `$PLAY,,4,6,VB17,,,,*` (lead change only). Host → victim after respawn delay: `$SPAWN,,*`."><span class="ph-id">DEV-08</span><span class="ph-kind">diagram pending</span></div><figcaption>Kill attribution + feedback sequence: victim gun → <code>$HIR,…,&lt;id&gt;,&lt;team&gt;,…</code> + <code>$HP,0,0,0</code> → host credits <code>&lt;id&gt;</code> → host sends shooter gun <code>$SFLASH,*</code> then <code>$PLAY,,4,6,V3A,,,,*</code> (~0.4 s) and, on a lead change, <code>$PLAY,,4,6,VB17,,,,*</code>.</figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7o, §7q</p></section>
+<section class="blk blk-steps" data-type="steps"><h2 id="per-player-attribution-and-native-kill-feedback-over-ble-the">Per-player attribution and native kill feedback over BLE — the recipe</h2><div class="steps"><ol>
+<li>At arm time give every gun a distinct <code>$PSET</code> token 1 (0–63) and a <code>$TID</code>.</li>
+<li>On the victim, store <code>&lt;shooterId, shooterTeam&gt;</code> from each <code>$HIR</code>; when <code>$HP,0,0,0</code> arrives, the stored shooter gets the kill.</li>
+<li>Send the <strong>shooter&#39;s</strong> gun <code>$SFLASH,*</code> (green-sight kill confirm) and <code>$PLAY,,4,6,V3A,,,,*</code> (&quot;kill&quot; on the announcer slot). The official app does exactly this, three kills → three pairs.</li>
+<li>Score lines (<code>VB17</code> &quot;takes the lead&quot;) go to every gun&#39;s announcer slot from its own host. Nothing propagates gun-to-gun; there is no nRF score channel to discover.</li>
+<li>Game end: <code>$PLAY,VSF,4,6,JAY,,,,*</code> on the winner&#39;s guns (victory sting + &quot;victory&quot;).</li>
+</ol>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §4 (kill attribution pattern), §7o, §7p, §7q, §7r</p></section>
+<section class="blk blk-faq" data-type="faq"><div class="faq"><details><summary>Why did earlier captures show shooter id 0,0?</summary><div><p>Every gun sat on the default id. The field was always there; <code>$PSET</code> token 1 is what makes it vary.</p>
+</div></details><details><summary>Why is <code>$SFLASH</code> in the victim&#39;s capture &quot;never near a hit&quot;?</summary><div><p>Because a kill you <em>score</em> is invisible in your own <code>$HIR</code>/<code>$HP</code> stream — correlate it with <code>$BUT</code> trigger bursts.</p>
+</div></details><details><summary>Can a dead gun fire?</summary><div><p>No: <code>$BUT,0,1/0</code> with no <code>$ALCD</code> decrement.</p>
+</div></details></div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7q · <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7o · <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7q</p></section>
+
+</article>
+  </main>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#hir">$HIR,&lt;sensor&gt;,&lt;irProto&gt;,&lt;shooterId&gt;,&lt;shooterTeam&gt;,&lt;magnitude&gt;,&lt;crit&gt;,&lt;subtype&gt;,</a></li><li><a href="#not-every-hir-is-damage">Not every $HIR is damage.</a></li><li><a href="#the-other-events">The other events</a></li><li><a href="#the-gun-keeps-no-game-state-proven-three-ways">The gun keeps no game state — proven three ways.</a></li><li><a href="#per-player-attribution-and-native-kill-feedback-over-ble-the">Per-player attribution and native kill feedback over BLE — the recipe</a></li></ol></div></aside>
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

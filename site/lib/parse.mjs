@@ -13,7 +13,7 @@ export const PROV_EMOJI = Object.fromEntries(Object.entries(PROV).map(([e, k]) =
 const BLOCK_RE = /^\[([a-z][a-z-]*)(?::([a-z|]+))?(?:\s+([A-Za-z0-9-]+))?\]\s*(.*)$/;
 const PAGE_RE = /^### Page:\s*(.+?)\s+\(`(\/[^`]*)`\)\s*(?:—.*)?$/;
 const SECTION_RE = /^#\s+(\d\d)\s*·\s*(.+?)\s+\((?:section )?slugs?:\s*([^)]+)\)/;
-const SRC_RE = /^(?:[✅📖🔍👥🧪📐🚧\s·]*)\s*src:\s*(.*)$/u;
+const SRC_RE = /^(?:[✅📖🔍👥🧪📐🚧\s·]*)\s*`?src:\s*(.*?)`?\s*$/u;
 const IGNORE_H2 = /^## (Images for this section|Interactive ideas|Sources used|Research backlog|Honest gaps|Still cracking)/;
 
 export function badgesIn(text) {
@@ -89,20 +89,26 @@ export function parseManualFile(file) {
   return { section, pages, images };
 }
 
+const SPLIT_SRC = /(?:[;,·]\s*)?(?:[✅📖🔍👥🧪📐🚧]\s*)*`?src:\s*/u;
+function pushSrc(b, s) { for (const part of String(s).split(SPLIT_SRC)) { const c = part.replace(/`/g, '').replace(/[\s;,·]+$/, '').trim(); if (c) b.src.push(c); } }
 function finishBlock(b) {
   // trailing blank lines
   while (b.body.length && !b.body[b.body.length - 1].trim()) b.body.pop();
   while (b.body.length && !b.body[0].trim()) b.body.shift();
   // pull src lines (anywhere at the tail; also a src: inside head)
   const keep = [];
+  const TAIL_SRC = /^(.*?)(?:\s*[·—-]\s*|\s+)?(?:[✅📖🔍👥🧪📐🚧]\s*)*`?src:\s*(.+?)`?\s*$/u;
   for (const l of b.body) {
     const m = l.match(SRC_RE);
-    if (m && !l.trim().startsWith('|') && !l.trim().startsWith('-') && !/^\d+\./.test(l.trim())) b.src.push(m[1].trim());
-    else keep.push(l);
+    if (m && !l.trim().startsWith('|') && !l.trim().startsWith('-') && !/^\d+\./.test(l.trim())) { pushSrc(b, m[1]); continue; }
+    // a src: at the END of a list item / sentence ("… ✅ `src: path`") → strip it into the sources
+    const t = l.match(TAIL_SRC);
+    if (t && !l.trim().startsWith('|') && /src:/.test(l) && t[1].trim()) { pushSrc(b, t[2]); keep.push(t[1].replace(/\s+$/, '')); continue; }
+    keep.push(l);
   }
   b.body = keep;
-  const hs = b.head.match(/\s+(?:[✅📖🔍👥🧪📐🚧]\s*)*src:\s*(.*)$/u);
-  if (hs) { b.src.push(hs[1].trim()); b.head = b.head.slice(0, hs.index).trim(); }
+  const hs = b.head.match(/\s+(?:[✅📖🔍👥🧪📐🚧]\s*)*`?src:\s*(.*?)`?\s*$/u);
+  if (hs) { pushSrc(b, hs[1]); b.head = b.head.slice(0, hs.index).trim(); }
   b.head = b.head.replace(/\(copy-to-clipboard\)/, '').trim();
   b.badges = badgesIn(b.head + '\n' + b.body.join('\n'));
   // a bold lead-in on the head line is the block title

@@ -16,6 +16,14 @@ them so nothing is written twice (brief §9).
 | [`design-round-1-notes.md`](design-round-1-notes.md) | What came back from Claude Design round 1 and the deltas to carry into round 2 (❓ badge removed, 19 weapons, 🚧 pieces, new content paths, deploy target, LLM layer, the short image list). |
 | [`tools/build_images.py`](tools/build_images.py) | Regenerates `images.md` from `../manual/*.md`. |
 
+**The build (it exists).** `site/` at the repo root is the generator: `cd site && npm ci && npm run build`
+renders `docs/manual/*.md` into `webapp/` (pages + `.md` twins + `llms.txt`/`llms-full.txt` + sitemap +
+JSON-LD + the weapons/sound-bank explorer data); `npm test` runs the Playwright suite that implements
+brief §12 (fresh build crawl, every control, stale-content fixture, 500 failure paths, viewports,
+tap-target/tiny-text audits, machine-readable layer) on desktop + phone, and refuses to run if any source is
+newer than the built output. `npm run serve` previews `webapp/` on :4173. Real photos go in
+`docs/manual/img/<ID>.<ext>` and are picked up by ID.
+
 **Where it ships.** `webapp/` is already published as an assets-only Cloudflare Worker via the root
 `wrangler.toml` (git-connected; push to `main` = redeploy). The built site goes into `webapp/`
 (`index.html` = Home, `manual/`, `platform/`, `llms.txt`); site source stays outside the published tree;

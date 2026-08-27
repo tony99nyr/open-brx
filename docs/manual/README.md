@@ -65,7 +65,9 @@ these backlogs rather than restating them.
    line pointing at step 1. If it replaces a held backlog item, delete the backlog line.
 4. **Bump the page's `Last verified:` date** (top of the file) and add a line to the changelog in
    `00-home.md` if it changes something owners care about.
-5. **Push.** The site rebuilds from the file; the markdown twin and `llms-full.txt` update with it.
+5. **Build + verify + push.** `cd site && npm run build && npm test` (the generator reads these files;
+   the suite refuses to run on a stale build), commit `webapp/` with the manual change, push — Cloudflare
+   redeploys. The markdown twin and `llms-full.txt` update with it.
 
 Contradictions: if two sources disagree, publish neither value — backlog both, and put the question in
 `../unknowns.md` under what would settle it.

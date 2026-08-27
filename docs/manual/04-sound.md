@@ -12,7 +12,7 @@
 ### Page: How BRX audio works  (`/manual/sound/how-it-works`)
 _One speaker, two triggers: what the gun plays by itself, and what a host tells it to play_
 
-[hero] Headline: "Every sound is an id." Sub: The BRX plays clips from a 2166-entry bank on its internal storage. The gun fires most of them itself the instant something happens; a connected host (the Callsign app, or Open BRX Mission Control) fires the rest with a single command. Understanding which is which tells you what you can change. ✅ `src: docs/sound-architecture.md`
+[hero] **Every sound is an id.** The BRX plays clips from a 2166-entry bank on its internal storage. The gun fires most of them itself the instant something happens; a connected host (the Callsign app, or Open BRX Mission Control) fires the rest with a single command. Understanding which is which tells you what you can change. ✅ `src: docs/sound-architecture.md`
 
 [callout:info] Two independent questions decide how any sound behaves: **who triggers it** (the gun autonomously vs. a host over Bluetooth) and **how much you can change it** (fixed, re-skinnable by file swap, or fully configurable). The rest of this page is those two cuts. ✅ `src: docs/sound-architecture.md`
 
@@ -54,7 +54,7 @@ Only one sound is truly stuck: the boot chime. ✅ `src: docs/sound-architecture
 ### Page: Voice packs & announcers  (`/manual/sound/voice-packs`)
 _Male, Female, Heavy, Medic, Valkyrie… — every character is a set of sound-bank slots_
 
-[hero] Headline: "A voice pack is seventeen slots." Sub: The BRX doesn't ship "a male voice" and "a female voice" as monolithic packs. A player profile lists one sound id per game event — death alarm, pain, respawn cry, kill line — and the characters you pick in the app are just pre-filled sets of those ids. 🔍 `src: protocol/callsign-extract/protocol-classes.md`
+[hero] **A voice pack is seventeen slots.** The BRX doesn't ship "a male voice" and "a female voice" as monolithic packs. A player profile lists one sound id per game event — death alarm, pain, respawn cry, kill line — and the characters you pick in the app are just pre-filled sets of those ids. 🔍 `src: protocol/callsign-extract/protocol-classes.md`
 
 [table] **The positional voice pack inside the player settings (`$PSET`)** — 🔍 decoded from the app; the trailing tokens of a captured `$PSET` (`…,H44,JAD,V33,…,A10`) fill these slots in order.
 | Slot | Event it fires on |
@@ -128,7 +128,7 @@ Counts computed from the bank file; character names from DK's map. 🔍👥 `src
 ### Page: The sound bank  (`/manual/sound/sound-bank`)
 _All 2166 ids the BRX will play — by family, with durations and the meanings the community has pinned_
 
-[hero] Headline: "2166 sounds. 78 minutes. One list." Sub: The complete inventory of valid sound ids was recovered from the official app's configuration (`Sounds.json`, an id→duration map), not guessed by ear. It is the authoritative set of `$PLAY` arguments and of the file names you'd replace over USB. 🔍 `src: protocol/callsign-extract/sound-bank.md`, docs/experiment-log.md #20
+[hero] **2166 sounds. 78 minutes. One list.** The complete inventory of valid sound ids was recovered from the official app's configuration (`Sounds.json`, an id→duration map), not guessed by ear. It is the authoritative set of `$PLAY` arguments and of the file names you'd replace over USB. 🔍 `src: protocol/callsign-extract/sound-bank.md`, docs/experiment-log.md #20
 
 [stat-row]
 - **2166** ids in the bank
@@ -223,7 +223,7 @@ Sums to 2166. `src: protocol/callsign-extract/Sounds.json` (computed), protocol/
 ### Page: Custom sounds over USB  (`/manual/sound/custom-sounds`)
 _Yes, you can put your own audio on a BRX — no firmware hacking, fully reversible_
 
-[hero] Headline: "The AUDIO folder." Sub: Hold SELECT while powering on with a USB cable attached and the tagger becomes a disk drive: a firmware file at the root and an `AUDIO` folder of per-sound files. Replace a file, replace a sound. This is Battle Company's own update path, confirmed in their Extended User Guide, and the community has used it for Star Wars packs for years. 📖👥 `src: docs/reference/brx-extended-user-guide.md`, docs/reference/community-notes.md
+[hero] **The AUDIO folder.** Hold SELECT while powering on with a USB cable attached and the tagger becomes a disk drive: a firmware file at the root and an `AUDIO` folder of per-sound files. Replace a file, replace a sound. This is Battle Company's own update path, confirmed in their Extended User Guide, and the community has used it for Star Wars packs for years. 📖👥 `src: docs/reference/brx-extended-user-guide.md`, docs/reference/community-notes.md
 
 [callout:warn] **Back up the whole `AUDIO` folder before you change anything.** The originals are Battle Company's; the factory restore is their USB updater package (see Firmware updates). Copying files is slow — budget up to an hour per 250 MB — so don't unplug early. 📖👥 `src: docs/reference/brx-extended-user-guide.md`, docs/reference/community-notes.md
 
@@ -257,7 +257,7 @@ _Yes, you can put your own audio on a BRX — no firmware hacking, fully reversi
 ### Page: Firmware updates & factory restore  (`/manual/sound/firmware`)
 _The same USB disk carries the firmware — here's the official procedure and the traps_
 
-[hero] Headline: "One port, one `.BIN`." Sub: Firmware for the tagger, headset, hatchet, shield and sidearm all update the same way: enter USB disk mode, replace the file at the root. Battle Company's updater package is also your factory restore for both firmware and sounds. 📖 `src: docs/reference/brx-extended-user-guide.md`
+[hero] **One port, one `.BIN`.** Firmware for the tagger, headset, hatchet, shield and sidearm all update the same way: enter USB disk mode, replace the file at the root. Battle Company's updater package is also your factory restore for both firmware and sounds. 📖 `src: docs/reference/brx-extended-user-guide.md`
 
 [steps] **Update tagger firmware (Battle Company's procedure, restated)**
 1. Download the current firmware package from Battle Company. (Link to their official download; the site never rehosts it.) 📖
@@ -294,7 +294,7 @@ _The same USB disk carries the firmware — here's the official procedure and th
 ### Page: Volume  (`/manual/sound/volume`)
 _On-gun 1–5, protocol 0–100, and why "30" is silence_
 
-[hero] Headline: "30 is silence." Sub: The gun menu offers volume 1–5; over Bluetooth the same control is a 0–100 scale — and on that scale the difference between "quiet" and "inaudible" is narrower than you'd think. ✅📖 `src: docs/reference/brx-manual-notes.md`, protocol/brx-protocol.md
+[hero] **30 is silence.** The gun menu offers volume 1–5; over Bluetooth the same control is a 0–100 scale — and on that scale the difference between "quiet" and "inaudible" is narrower than you'd think. ✅📖 `src: docs/reference/brx-manual-notes.md`, protocol/brx-protocol.md
 
 [table] **The scales, side by side**
 | Control | Range | Notes |

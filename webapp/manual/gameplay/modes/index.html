@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Native game modes &amp; their settings — Gameplay — The BRX Manual (Open BRX)</title>
+<meta name="description" content="Everything the gun's own menu and the Callsign app will run, with the exact option values">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/gameplay/modes/">
+<link rel="alternate" type="text/markdown" href="/manual/gameplay/modes.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Native game modes & their settings","description":"Everything the gun's own menu and the Callsign app will run, with the exact option values","url":"https://open-brx.iamrossi.workers.dev/manual/gameplay/modes/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Gameplay","item":"https://open-brx.iamrossi.workers.dev/manual/gameplay/"},{"@type":"ListItem","position":4,"name":"Native game modes & their settings","item":"https://open-brx.iamrossi.workers.dev/manual/gameplay/modes/"}]},{"@type":"HowTo","name":"Starting a gun-menu game","step":[{"@type":"HowToStep","position":1,"text":"Power on (slide switch by the barrel). LEFT/RIGHT cycle modes; trigger selects."},{"@type":"HowToStep","position":2,"text":"D-pad picks team/faction; trigger cycles weapons or characters; ALT cycles perks."},{"@type":"HowToStep","position":3,"text":"D-pad sets lives / time / respawn / volume; SELECT advances. Settings persist as the new defaults."},{"@type":"HowToStep","position":4,"text":"Pull the reload handle to start. Headsets pair automatically after power-on (up to ~3 min with many taggers around)."}]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/" aria-current="true">Manual</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side has-toc">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec" open><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/" aria-current="page">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec"><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/gameplay/">Gameplay</a><span class="sep">/</span><span aria-current="page">Native game modes &amp; their settings</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>Native game modes &amp; their settings</h1>
+<p class="subtitle">Everything the gun&#39;s own menu and the Callsign app will run, with the exact option values</p>
+<p class="meta"><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/gameplay/modes.md">View as Markdown</a></p>
+</header>
+<section class="blk blk-hero" data-type="hero"><p class="hero-text">The gun&#39;s menu offers seven modes with no phone at all; the Callsign app adds objective play (flags, control points, QR pickups, Battle Royale) and premium unlocks. Under both, the tagger itself only fires, gets hit, tracks health and reports — the rules live in the gun menu&#39;s firmware presets or in the app.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a> §Game modes, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/apk-harvest.md" rel="noopener">protocol/callsign-extract/apk-harvest.md</a> §Game modes</p></section>
+<section class="blk blk-table" data-type="table"><h2 id="gun-menu-modes-no-phone">Gun-menu modes (no phone)</h2><p class="lead">the mode LED colour shows what you picked. Modes marked ★ are Callsign-Live unlocks on the gun.</p><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>LED</th>
+<th>Teams</th>
+<th>How it plays</th>
+<th>Weapons / perks</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Free For All</strong></td>
+<td>white</td>
+<td>none — everyone is one team with friendly fire <strong>on</strong></td>
+<td>most kills wins</td>
+<td>M-4, SMG-X3, MG-7, SR-100 · no perks</td>
+</tr>
+<tr>
+<td><strong>Death Match / Team Death Match</strong> ★</td>
+<td>red</td>
+<td>Alpha vs Bravo</td>
+<td>team kills</td>
+<td>M-4, SMG-X3, MG-7, SR-100, TAC-87 · <strong>the only stock mode with the perk row</strong></td>
+</tr>
+<tr>
+<td><strong>Generals</strong> ★</td>
+<td>yellow</td>
+<td>two teams, each with a <strong>General</strong></td>
+<td>the General is the team&#39;s mobile respawn point — revive by pulling the trigger at them; can be lives-limited for seek-and-destroy</td>
+<td>TDM loadouts + perks</td>
+</tr>
+<tr>
+<td><strong>Supremacy</strong> ★</td>
+<td>blue</td>
+<td>3 factions: Resistance (red) · Vanguard (green) · Nexus (blue)</td>
+<td>class-based; 9 characters are the loadout</td>
+<td>no weapon picker — the character <em>is</em> the loadout; abilities on ALT</td>
+</tr>
+<tr>
+<td><strong>Commander</strong> ★</td>
+<td>pink</td>
+<td>faction wars</td>
+<td>Supremacy plus a Commander respawn character</td>
+<td>class loadouts</td>
+</tr>
+<tr>
+<td><strong>Survival (Infection)</strong></td>
+<td>green</td>
+<td>Human vs Infected</td>
+<td>a killed human converts to infected; last human wins</td>
+<td>M-4, SMG-X3, MG-7, SR-100, TAC-87 · no perks</td>
+</tr>
+<tr>
+<td><strong>The Swarm</strong> ★</td>
+<td>orange</td>
+<td>Human vs Infected + a <strong>Hive Queen</strong></td>
+<td>infection where the Queen is the infected respawn point</td>
+<td>class loadouts</td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a> §Game modes, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a> §Game modes + §Per-mode weapons & perks</p></section>
+<section class="blk blk-steps" data-type="steps"><h2 id="starting-a-gun-menu-game">Starting a gun-menu game</h2><div class="steps"><ol>
+<li>Power on (slide switch by the barrel). LEFT/RIGHT cycle modes; <strong>trigger selects</strong>.</li>
+<li>D-pad picks team/faction; trigger cycles weapons or characters; <strong>ALT cycles perks</strong>.</li>
+<li>D-pad sets lives / time / respawn / volume; SELECT advances. Settings persist as the new defaults.</li>
+<li><strong>Pull the reload handle to start.</strong> Headsets pair automatically after power-on (up to ~3 min with many taggers around).</li>
+</ol>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a> §On-gun game flow + §Headset</p></section>
+<section class="blk blk-spec-sheet" data-type="spec-sheet"><h2 id="gun-menu-settings-every-value">Gun-menu settings — every value</h2><dl><dt>Lives:</dt><dd><p>a count, or unlimited</p>
+</dd><dt>Game time:</dt><dd><p>Off · 5 · 10 · 15 · 20 · 30 min</p>
+</dd><dt>Respawn:</dt><dd><p>Off · 15 · 30 · 60 s · Ramp 45 · Ramp 90</p>
+</dd><dt>Volume:</dt><dd><p>1–5</p>
+</dd><dt>Indoor / outdoor:</dt><dd><p>hold ALT 3 s (persists across power-cycles; indoor dims the green hit LEDs, enables the RGB LEDs, shrinks explosion/melee range; bright sun cuts hit radius ~50 %)</p>
+</dd><dt>Region:</dt><dd><p>USA / International (the app&#39;s <code>GunLaserRegion</code> setting) — a factory setting, leave it alone</p>
+</dd></dl><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/apk-harvest.md" rel="noopener">protocol/callsign-extract/apk-harvest.md</a> §Region</p></section>
+<section class="blk blk-table" data-type="table"><h2 id="callsign-app-modes">Callsign app modes</h2><p class="lead">the complete list found in the app, with what each is built from. The app screens group them under categories (Team Arena · Battle Royale · Battle Lines · Faction Wars · Infection) and mode tiles (Arena · Team Arena · Team Snipers · Capture the Flag).</p><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Win rule</th>
+<th>Props</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Free For All</td>
+<td>most kills (Slayer)</td>
+<td>—</td>
+<td>everyone vs everyone</td>
+</tr>
+<tr>
+<td>Team Death Match</td>
+<td>team kills / elimination</td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td>Supremacy</td>
+<td>score / control</td>
+<td>—</td>
+<td>3 factions, class-based</td>
+</tr>
+<tr>
+<td>Survival / Infection</td>
+<td>last human</td>
+<td>—</td>
+<td>kill converts a human</td>
+</tr>
+<tr>
+<td>Last Man Standing</td>
+<td>last alive</td>
+<td>—</td>
+<td>limited lives</td>
+</tr>
+<tr>
+<td>Capture the Flag</td>
+<td>captures</td>
+<td><strong>QR flags</strong></td>
+<td>a flag carrier&#39;s headset blinks; &quot;scary music&quot; plays on the carrier&#39;s tagger</td>
+</tr>
+<tr>
+<td>Domination</td>
+<td>most control-point time</td>
+<td><strong>QR / grenade control points</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>Assault</td>
+<td>objectives armed/held</td>
+<td>QR / grenade objectives</td>
+<td>attackers arm, defenders hold</td>
+</tr>
+<tr>
+<td>Territory (King of the Hill)</td>
+<td>time held</td>
+<td>one zone</td>
+<td></td>
+</tr>
+<tr>
+<td>Team Arena</td>
+<td>kills + captures</td>
+<td><strong>QR weapon pickups + flags</strong></td>
+<td>TDM with pickups</td>
+</tr>
+<tr>
+<td>Battle Royale</td>
+<td>last standing</td>
+<td><strong>GPS</strong> weapon/supply drops, shrinking zone</td>
+<td>no-team option, Low/Medium/Full starting health, show/hide players remaining</td>
+</tr>
+<tr>
+<td>Generals ★</td>
+<td>eliminate the General / kills</td>
+<td>—</td>
+<td>premium unlock</td>
+</tr>
+<tr>
+<td>Commanders ★</td>
+<td>seek-and-destroy the Commander</td>
+<td>—</td>
+<td>premium unlock</td>
+</tr>
+<tr>
+<td>Swarm ★</td>
+<td>last human</td>
+<td>—</td>
+<td>premium unlock</td>
+</tr>
+<tr>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> (★ = paid unlock via the app&#39;s currency/subscription)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/apk-harvest.md" rel="noopener">protocol/callsign-extract/apk-harvest.md</a> §Game modes + §Win conditions + §QR-code stations + §Monetization, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/callsign-ui.md" rel="noopener">docs/reference/callsign-ui.md</a> §Game categories + §Game modes, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a> §Grenade notes (CTF music), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Catalog</p></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="the-app-s-boxes-are-paper"><strong class="co-title">The app&#39;s &quot;boxes&quot; are paper.</strong><p>Respawn points, weapon pickups, capture/control points and supply drops are printed <strong>QR codes</strong> the player scans or fires at — the no-hardware counterpart of LaserTagMods&#39; JBOX utility box. A weapon pickup simply pushes a new weapon into a slot on your gun. Pickup pool seen in the app: Auto Rifle, Burst Rifle, Sniper Rifle, Shotgun, SMG/SAW, Sticky, Rail Gun, Rocket Launcher, Energy Rifle, War Hammer, Strike Rifle (scoped/unscoped), and &quot;other players&quot;.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/apk-harvest.md" rel="noopener">protocol/callsign-extract/apk-harvest.md</a> §QR-code stations + §Weapon spawns</p></aside></section>
+<section class="blk blk-spec-sheet" data-type="spec-sheet"><h2 id="callsign-game-settings-every-field-on-the-screen">Callsign GAME SETTINGS — every field on the screen</h2><dl><dt>Primary weapon / Secondary weapon</dt><dd><p>pickers from the roster; the secondary is removable</p>
+</dd><dt>Weapon respawn:</dt><dd><p>30 sec · 60 sec · 90 sec · 3 min</p>
+</dd><dt>Weapon pick-up:</dt><dd><p>Scan · Player · Both</p>
+</dd><dt>Weapon selection:</dt><dd><p>ON / OFF</p>
+</dd><dt>Outdoor mode:</dt><dd><p>ON / OFF</p>
+</dd><dt>Voice:</dt><dd><p>Male · Female (that is the whole announcer choice in the app)</p>
+</dd><dt>Time:</dt><dd><p>minutes (e.g. 1)</p>
+</dd><dt>Score to win:</dt><dd><p>a number (e.g. 25)</p>
+</dd><dt>Respawn type:</dt><dd><p>Scanner · Auto</p>
+</dd><dt>Respawn time:</dt><dd><p>seconds (e.g. 15)</p>
+</dd><dt>Lives:</dt><dd><p>a count, or Unlimited</p>
+</dd><dt>Create-game step (Battle Royale / no-team modes):</dt><dd><p>Allow Teams · No Teams — Starting Health Low · Medium · Full — Players Remaining Show · Hide</p>
+</dd><dt>App settings (gear):</dt><dd><p>one Sound slider. That&#39;s it.</p>
+</dd></dl><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/callsign-ui.md" rel="noopener">docs/reference/callsign-ui.md</a> §GAME SETTINGS + §CREATE GAME + §App settings</p></section>
+<section class="blk blk-image" data-type="image"><figure class="fig fig-generate fig-pending" id="GAME-08" style="--ratio:1/1"><div class="ph ph-generate" role="img" aria-label="Eleven mode icons as one consistent set: FFA, TDM, Generals, Supremacy, Survival/Infection, Swarm, CTF, Domination, KotH, Battle Royale, Extraction"><span class="ph-id">GAME-08</span><span class="ph-kind">illustration pending</span></div><figcaption>Mode icon set — FFA, TDM, Generals, Supremacy, Survival/Infection, Swarm, CTF, Domination, KotH, Battle Royale, Extraction.</figcaption></figure><p class="src"><span>Source:</span> this section</p></section>
+
+</article>
+  </main>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#gun-menu-modes-no-phone">Gun-menu modes (no phone)</a></li><li><a href="#starting-a-gun-menu-game">Starting a gun-menu game</a></li><li><a href="#gun-menu-settings-every-value">Gun-menu settings — every value</a></li><li><a href="#callsign-app-modes">Callsign app modes</a></li><li><a href="#the-app-s-boxes-are-paper">The app's &quot;boxes&quot; are paper.</a></li><li><a href="#callsign-game-settings-every-field-on-the-screen">Callsign GAME SETTINGS — every field on the screen</a></li></ol></div></aside>
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

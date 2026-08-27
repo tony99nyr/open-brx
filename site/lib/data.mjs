@@ -44,7 +44,8 @@ export function buildWeapons(repo) {
 
 export function buildSounds(repo, manualDir) {
   const bank = JSON.parse(fs.readFileSync(path.join(repo, 'protocol/callsign-extract/Sounds.json'), 'utf8')).SoundsLengthMap;
-  const manual = fs.readFileSync(path.join(manualDir, '04-sound.md'), 'utf8');
+  const soundFile = path.join(manualDir, '04-sound.md');
+  const manual = fs.existsSync(soundFile) ? fs.readFileSync(soundFile, 'utf8') : '';
   const published = manual.split(/^## Research backlog/m)[0];
   // families: any manual table with a "family"/"prefix" column and a meaning/category column
   const fam = {};

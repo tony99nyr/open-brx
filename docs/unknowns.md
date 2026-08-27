@@ -124,7 +124,11 @@ name but no plan. MacBook + iPhone only (Callsign is iOS, PacketLogger is macOS)
 
 ---
 
-## F. NOT unknowns — build work  ·  9 items
+## F. NOT unknowns — build work  ·  10 items
+**⭐ B19 — MC config verification via `$QUERY`** is the newest and the cheapest big win: the gun reads
+its configured state back (identity, pools, voice, every weapon slot), so MC can *verify* a pushed head
+instead of assuming it. See FOLLOWUPS B19.
+
 *No open question; someone just has to do it.* B1 Companion · B4 Utility Box (now unblocked) ·
 B8/G5 grenade state app · B9 manual website · B11 custom connect voice · B14 voice selection ·
 B16 kid mode · B17 tutorial mode · H1–H6 print files.

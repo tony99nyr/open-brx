@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://open-brx.iamrossi.workers.dev/sitemap.xml

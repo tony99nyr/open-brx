@@ -13,7 +13,7 @@
 _Symptom first. Start at the top of the ladder that matches what you see — the headset is the first thing to check._
 
 [hero]
-Title: "It won't fire." Sub: Before you decide it's broken, check the headset, the game state and the locks. Work the ladder in order and stop at the first check that says yes. Confidence for the whole page is shown per block. ✅📖👥
+**It won't fire.** Before you decide it's broken, check the headset, the game state and the locks. Work the ladder in order and stop at the first check that says yes. Confidence for the whole page is shown per block. ✅📖👥
 src: docs/gotchas.md · docs/reference/community-notes.md · docs/reference/brx-manual-notes.md
 
 [callout:info]
@@ -55,7 +55,7 @@ src: docs/reference/brx-manual-notes.md · docs/reference/brx-extended-user-guid
 _The headset gates everything — firing, joining a game, and whether a phone can even hold a connection._
 
 [hero]
-Title: Rainbow means disconnected. Sub: Read the headset LEDs, re-pair when you have to, and understand "screamers" — the after-an-hour failure that ends hosted games. ✅👥
+**Rainbow means disconnected.** Read the headset LEDs, re-pair when you have to, and understand "screamers" — the after-an-hour failure that ends hosted games. ✅👥
 src: docs/experiment-log.md 2026-08-27 (headset LED) · docs/reference/community-notes.md (SCREAMERS)
 
 [table]  **Headset LED language (what the colours mean)**
@@ -173,7 +173,7 @@ src: docs/reference/community-notes.md · docs/reference/brx-manual-notes.md
 _What owners fix themselves, what Battle Company sells, and what's a send-it-back._
 
 [hero]
-Title: BRX repairs are switches, plastic and sensors. Sub: Reload handle, D-pad, power switch, battery bay, sensors and emitter are all reachable; the mainboard is not. Unplug the battery first — every time. 👥📖
+**BRX repairs are switches, plastic and sensors.** Reload handle, D-pad, power switch, battery bay, sensors and emitter are all reachable; the mainboard is not. Unplug the battery first — every time. 👥📖
 src: docs/reference/community-notes.md · docs/reference/brx-manual-notes.md
 
 [callout:warn]  **Before you open anything**
@@ -221,7 +221,7 @@ src: protocol/brx-protocol.md ("QUERY and SETUP")
 _The community norm is "no permanent modification" — everything rides on the phone bracket or clips to the rail._
 
 [hero]
-Title: Bolt on, never cut. Sub: From a reload button to a full ESP32 field host, the proven BRX mods leave the tagger stock and reversible — which is also how the Open BRX Companion is designed. 👥
+**Bolt on, never cut.** From a reload button to a full ESP32 field host, the proven BRX mods leave the tagger stock and reversible — which is also how the Open BRX Companion is designed. 👥
 src: docs/reference/community-notes.md ("Modding landscape") · hardware/brx-companion-spec.md
 
 [cards]  **Mods owners actually run**

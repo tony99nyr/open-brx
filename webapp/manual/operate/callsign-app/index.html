@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Callsign App — Operating the BRX — The BRX Manual (Open BRX)</title>
+<meta name="description" content="Battle Company's official phone app: what it actually does, how a game is built, and the three things nobody tells you.">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/operate/callsign-app/">
+<link rel="alternate" type="text/markdown" href="/manual/operate/callsign-app.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"The Callsign App","description":"Battle Company's official phone app: what it actually does, how a game is built, and the three things nobody tells you.","url":"https://open-brx.iamrossi.workers.dev/manual/operate/callsign-app/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Operating the BRX","item":"https://open-brx.iamrossi.workers.dev/manual/operate/"},{"@type":"ListItem","position":4,"name":"The Callsign App","item":"https://open-brx.iamrossi.workers.dev/manual/operate/callsign-app/"}]},{"@type":"HowTo","name":"Building and starting a game","step":[{"@type":"HowToStep","position":1,"text":"Get the top-right connection icon green (\"connected\"). You cannot create a game until it is — and it will not go green without a paired headset."},{"@type":"HowToStep","position":2,"text":"SELECT A GAME — swipe the category carousel: Team Arena · Battle Royale · Battle Lines · Faction Wars · Infection."},{"@type":"HowToStep","position":3,"text":"SELECT GAME MODE — e.g. under Team Arena: Arena · Team Arena · Team Snipers · Capture the Flag."},{"@type":"HowToStep","position":4,"text":"GAME SETTINGS — primary and secondary weapon, then the rules (table below). Press CREATE. Some modes add a step for teams / starting health / players-remaining display."},{"@type":"HowToStep","position":5,"text":"Lobby — other players join from their phones, pick weapons, and hit ready. Single device? Use Start Offline Game."},{"@type":"HowToStep","position":6,"text":"Host launches — every gun goes live together, and the in-game HUD shows health, shield, ammo and weapon."}]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/" aria-current="true">Manual</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side has-toc">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec" open><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/" aria-current="page">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec"><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/operate/">Operating the BRX</a><span class="sep">/</span><span aria-current="page">The Callsign App</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>The Callsign App</h1>
+<p class="subtitle">Battle Company&#39;s official phone app: what it actually does, how a game is built, and the three things nobody tells you.</p>
+<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/operate/callsign-app.md">View as Markdown</a></p>
+</header>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>What the app is. Callsign turns a phone into the <strong>game host</strong>: it keeps the clock, the score and the respawn timer, and pushes weapons and settings to the gun over Bluetooth. The gun enforces none of the rules — take the phone out of Bluetooth range and nobody respawns and the round never ends.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7g, §7n</p></aside></section>
+<section class="blk blk-stat-row" data-type="stat-row"><ul class="stats"><li><strong>~1 m</strong><span>— keep the phone this close to its gun for the whole match; it is the game engine. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>~1 min</strong><span>— typical wait for a hosted game to appear as joinable on a second phone (it round-trips through the cloud). <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>69 / 100</strong><span>— the internal volume the app sets on the gun when it connects. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>Android ≤ 10</strong><span>— owners report the app only works on older Android; iOS is fine. <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></span></li></ul><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7g, §7b, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a></p></section>
+<section class="blk blk-steps" data-type="steps"><h2 id="building-and-starting-a-game">Building and starting a game</h2><div class="steps"><ol>
+<li>Get the top-right connection icon <strong>green (&quot;connected&quot;)</strong>. You cannot create a game until it is — and it will not go green without a <strong>paired headset</strong>. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li><strong>SELECT A GAME</strong> — swipe the category carousel: Team Arena · Battle Royale · Battle Lines · Faction Wars · Infection. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li><strong>SELECT GAME MODE</strong> — e.g. under Team Arena: Arena · Team Arena · Team Snipers · Capture the Flag. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li><strong>GAME SETTINGS</strong> — primary and secondary weapon, then the rules (table below). Press <strong>CREATE</strong>. Some modes add a step for teams / starting health / players-remaining display. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li><strong>Lobby</strong> — other players join from their phones, pick weapons, and hit ready. Single device? Use <strong>Start Offline Game</strong>. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li><strong>Host launches</strong> — every gun goes live together, and the in-game HUD shows health, shield, ammo and weapon. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+</ol>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/callsign-ui.md" rel="noopener">docs/reference/callsign-ui.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7g, §7m, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-25 cap10/cap11)</p></section>
+<section class="blk blk-table" data-type="table"><h2 id="game-settings-the-app-exposes">Game settings the app exposes</h2><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Choices</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Primary / Secondary weapon</td>
+<td>~18-weapon roster (Assault Rifle, Sniper, Shotgun, SMG, Rail Gun, Rocket Launcher…); secondary removable</td>
+</tr>
+<tr>
+<td>Weapon respawn</td>
+<td>30 s · 60 s · 90 s · 3 min</td>
+</tr>
+<tr>
+<td>Weapon pick-up</td>
+<td>Scan · Player · Both</td>
+</tr>
+<tr>
+<td>Weapon selection</td>
+<td>on / off</td>
+</tr>
+<tr>
+<td>Outdoor mode</td>
+<td>on / off</td>
+</tr>
+<tr>
+<td>Voice</td>
+<td>Male · Female</td>
+</tr>
+<tr>
+<td>Time</td>
+<td>minutes</td>
+</tr>
+<tr>
+<td>Score to win</td>
+<td>a number</td>
+</tr>
+<tr>
+<td>Respawn type</td>
+<td>Scanner (respawn at a printed QR code) · Auto (timed)</td>
+</tr>
+<tr>
+<td>Respawn time</td>
+<td>seconds</td>
+</tr>
+<tr>
+<td>Lives</td>
+<td>a count, or Unlimited</td>
+</tr>
+<tr>
+<td>Extra step (some modes)</td>
+<td>Allow Teams / No Teams · Starting health Low/Medium/Full · Players remaining Show/Hide</td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/callsign-ui.md" rel="noopener">docs/reference/callsign-ui.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/apk-harvest.md" rel="noopener">protocol/callsign-extract/apk-harvest.md</a></p></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>Field objectives in Callsign are <strong>printed QR codes</strong> — respawn points, weapon pickups, control points and supply drops are all paper you scan or fire at, not boxes.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/apk-harvest.md" rel="noopener">protocol/callsign-extract/apk-harvest.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a></p></aside></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>Volume. The app&#39;s entire global settings screen is one <strong>Sound</strong> slider. On connect it sets the gun to about 69 on its internal 0–100 scale — loud enough for weapon audio indoors and out. Anything much below 50 makes weapon sounds effectively silent; we measured 30 as inaudible over room noise.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/callsign-ui.md" rel="noopener">docs/reference/callsign-ui.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (finding 6), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7b</p></aside></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note"><p>Gotcha 1 — the app renames your gun. Every session Callsign writes the name <strong>&quot;Tactix2&quot;</strong> to the gun. If you have given a gun a custom Bluetooth name with Open BRX tools, opening Callsign on it silently resets that name.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7b</p></aside></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note"><p>Gotcha 2 — &quot;app is flaky&quot; is almost always the headset. With no headset paired the app connects to the gun and drops it about a second later with no message; the icon simply never turns green. Nothing is intermittent — it works exactly when the headset happens to be linked.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7m</p></aside></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note"><p>Gotcha 3 — the firmware warning is soft. Newer guns show <em>&quot;firmware v4.32 … supported until v2.01e&quot;</em>. The gun is <em>ahead</em> of the app&#39;s list, not behind it, and games still run. Do not downgrade firmware to satisfy the message.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (finding 3), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7b</p></aside></section>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note"><p>Player numbers in the app are shown 1–64. The gun stores them 0–63 — only matters if you ever compare app numbers with developer tools.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-25 P2)</p></aside></section>
+
+</article>
+  </main>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#building-and-starting-a-game">Building and starting a game</a></li><li><a href="#game-settings-the-app-exposes">Game settings the app exposes</a></li></ol></div></aside>
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

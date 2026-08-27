@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The USB serial console — QUERY and SETUP — Developer reference — The BRX Manual (Open BRX)</title>
+<meta name="description" content="The micro-USB &quot;Programing Port&quot; is a Teensy serial console with two commands, not the `$` protocol and not SSH">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/serial-console/">
+<link rel="alternate" type="text/markdown" href="/manual/dev/serial-console.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"The USB serial console — QUERY and SETUP","description":"The micro-USB \"Programing Port\" is a Teensy serial console with two commands, not the `$` protocol and not SSH","url":"https://open-brx.iamrossi.workers.dev/manual/dev/serial-console/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"The USB serial console — QUERY and SETUP","item":"https://open-brx.iamrossi.workers.dev/manual/dev/serial-console/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is $QUERY, over BLE the same thing?","acceptedAnswer":{"@type":"Answer","text":"No. Over BLE it returns a $-framed status array with no serial, PIN or version. The device record is USB-only."}},{"@type":"Question","name":"What is the advertised BLE name vs Gun Name?","acceptedAnswer":{"@type":"Answer","text":"Two fields: the advertisement is Tactix-XXXX from the MAC tail; Gun Name is what $NAME writes."}}]},{"@type":"HowTo","name":"SETUP — the provisioning/re-pair path (identity lives here)","step":[{"@type":"HowToStep","position":1,"text":"Run QUERY on both gun and headset-side records first; SETUP on the gun asks for the headset's serial number — that is the gun↔headset pairing mechanism."},{"@type":"HowToStep","position":2,"text":"The \"Factory Defaults\" banner is a mode header, not an action: entering SETUP and power-cycling out changed nothing (field-by-field diff)."},{"@type":"HowToStep","position":3,"text":"The community's \"change tagger ID / re-pair the headset\" procedure is this console (LaserTagMods' headset-pairing note); the identity fields it concerns are the ones QUERY prints: PlayerID, FieldID, Serial Number/Head PIN, Grenade Pin."},{"@type":"HowToStep","position":4,"text":"Only the first prompt (the headset serial) has been walked on our bench. Do it only on a gun you can afford to re-pair."},{"@type":"HowToStep","position":5,"text":"For per-game identity you do not need this: $PSET token 1 over BLE sets the player id each game."}]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/" aria-current="true">Manual</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side has-toc">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/" aria-current="page">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/dev/">Developer reference</a><span class="sep">/</span><span aria-current="page">The USB serial console — QUERY and SETUP</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>The USB serial console — <code>QUERY</code> and <code>SETUP</code></h1>
+<p class="subtitle">The micro-USB &quot;Programing Port&quot; is a Teensy serial console with two commands, not the <code>$</code> protocol and not SSH</p>
+<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/serial-console.md">View as Markdown</a></p>
+</header>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>The BRX has two ports: charging, and a separate micro-USB <strong>&quot;Programing Port&quot;</strong>. Plugged into a computer it enumerates as a <strong>Teensyduino USB Serial</strong> CDC device (Windows <code>COMx</code>, macOS <code>/dev/tty.usbmodem*</code>, Linux <code>/dev/ttyACM*</code>, VID <code>16C0</code>). Baud is ignored. This is what the community means by &quot;PuTTY into the tagger&quot;. The command set came from LaserTagMods&#39; headset-pairing note.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7c; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24 B7)</p></aside></section>
+<section class="blk blk-table" data-type="table"><h2 id="what-the-port-does-and-does-not-do">What the port does and does not do</h2><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Sent</th>
+<th>Result</th>
+<th>Conf</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>$PING,*</code>, <code>$VERSION,*</code>, any <code>$</code> frame</td>
+<td><strong>Echoed back</strong> (local echo on — easy to mistake for a reply); with CR: <code>ERROR</code></td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>?</code>, <code>help</code>, <code>AT</code>, <code>status</code>, …</td>
+<td><code>ERROR</code></td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>QUERY</code> + CR</td>
+<td>Dumps the device record (below). Case-insensitive.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><code>SETUP</code> + CR</td>
+<td>Enters factory provisioning; prompts (EN/中文) for the <strong>headset&#39;s</strong> serial number</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>Hold SELECT while powering on with USB connected</td>
+<td>Mass-storage mode exposing the on-board sound storage (the sound-pack update path) — a different mode from the console</td>
+<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7c; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> ("New sounds ON THE TAGGER")</p></section>
+<section class="blk blk-code" data-type="code"><pre><code class="language-text">QUERY
+Gun Info
+Gun Version: v4.32
+Serial Number/Head PIN: &lt;SERIAL&gt;      &lt;- matches the sticker on the paired headset
+Gun Name: Tactix2                     &lt;- the field $NAME writes
+Headset Version: hds.59               &lt;- reads &#39;?&#39; briefly after a power-cycle until the headset re-handshakes
+Gun: 7.671 VOLTS
+PlayerID 0                            &lt;- device-level player id (separate from the per-game $PSET id)
+FieldID1
+NRFhost 1
+NRFslave 1
+devHost 1                             &lt;- developer/host image, not retail
+Head: 3.837 VOLTS                     &lt;- headset battery
+Head Tested:
+Head BURN in test: 0
+Gun BURN in test: 3hours28minutes
+Grenade Pin: &lt;PIN&gt;
+Laser: 16.9 mW
+PCB-5
+BTchip- 4
+BT central V: devhost.03
+</code></pre>
+<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7c (values are one unit's; PIN/serial redacted)</p></section>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="real-format-quirks"><strong class="co-title">Real-format quirks</strong><p>the parser has to survive: <code>Gun Name</code> is NUL-padded, lines end <code>\r\r\n</code>, <code>Laser</code> can read <code>UNTESTED</code> instead of a number, <code>Grenade Pin</code> is a real non-zero value. <code>brx-mcp</code> ships <code>parse_query()</code> and <code>python -m brx_mcp usb-query [port]</code>, which saves a backup to <code>~/.brx-mcp/device-backups/</code>.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24 B7); <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/protocol.py" rel="noopener">mcp/brx_mcp/protocol.py</a></p></aside></section>
+<section class="blk blk-steps" data-type="steps"><h2 id="setup-the-provisioning-re-pair-path-identity-lives-here"><code>SETUP</code> — the provisioning/re-pair path (identity lives here)</h2><div class="steps"><ol>
+<li>Run <code>QUERY</code> on both gun and headset-side records first; <code>SETUP</code> on the gun asks for the <strong>headset&#39;s</strong> serial number — that is the gun↔headset pairing mechanism.</li>
+<li>The &quot;Factory Defaults&quot; banner is a <strong>mode header, not an action</strong>: entering <code>SETUP</code> and power-cycling out changed nothing (field-by-field diff).</li>
+<li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> The community&#39;s &quot;change tagger ID / re-pair the headset&quot; procedure is this console (LaserTagMods&#39; headset-pairing note); the identity fields it concerns are the ones <code>QUERY</code> prints: <code>PlayerID</code>, <code>FieldID</code>, <code>Serial Number/Head PIN</code>, <code>Grenade Pin</code>.</li>
+<li>Only the first prompt (the headset serial) has been walked on our bench. Do it only on a gun you can afford to re-pair.</li>
+<li>For per-game identity you do not need this: <code>$PSET</code> token 1 over BLE sets the player id each game.</li>
+</ol>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7c, §7p; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24)</p></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="firmware-backup-is-impossible-do-not-reflash"><strong class="co-title">Firmware backup is impossible; do not reflash.</strong><p>Teensy&#39;s HalfKay bootloader is write-only by design, so no image can be read back. Rollback depends entirely on Battle Company supplying the original image. The official app&#39;s version gate (supports &quot;until v2.01e&quot;) is an <em>upper</em> bound; it warns and still runs a game.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7b, §7c</p></aside></section>
+<section class="blk blk-faq" data-type="faq"><div class="faq"><details><summary>Is <code>$QUERY,*</code> over BLE the same thing?</summary><div><p>No. Over BLE it returns a <code>$</code>-framed status array with no serial, PIN or version. The device record is USB-only.</p>
+</div></details><details><summary>What is the advertised BLE name vs <code>Gun Name</code>?</summary><div><p>Two fields: the advertisement is <code>Tactix-XXXX</code> from the MAC tail; <code>Gun Name</code> is what <code>$NAME</code> writes.</p>
+</div></details></div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24) · <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24)</p></section>
+
+</article>
+  </main>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#what-the-port-does-and-does-not-do">What the port does and does not do</a></li><li><a href="#real-format-quirks">Real-format quirks</a></li><li><a href="#setup-the-provisioning-re-pair-path-identity-lives-here">SETUP — the provisioning/re-pair path (identity lives here)</a></li><li><a href="#firmware-backup-is-impossible-do-not-reflash">Firmware backup is impossible; do not reflash.</a></li></ol></div></aside>
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

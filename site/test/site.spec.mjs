@@ -1,0 +1,462 @@
+// ui-build-verify checklist for the Open BRX static site. Every step asserts what a person SEES.
+// Run: npm test (builds first). ONLY=<title fragment> runs matching steps: ONLY=explorer npx playwright test
+import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SITE = path.resolve(HERE, '..');
+const REPO = path.resolve(SITE, '..');
+const WEB = path.join(REPO, 'webapp');
+const STALE = 'http://localhost:4174';
+const only = process.env.ONLY;
+const it = (name, fn) => (only && !name.includes(only) ? test.skip : test)(name, fn);
+const HEDGE = /\b(probably|likely|we think|we believe|reportedly|unconfirmed|unverified|may be|might be|appears to)\b/i;
+const BLOCK_MARKER = /\[[a-z][a-z-]*(?::[a-z|]+)?(?:\s+[A-Za-z0-9-]+)?\]/;
+
+function sitemapUrls() {
+  const xml = fs.readFileSync(path.join(WEB, 'sitemap.xml'), 'utf8');
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => new URL(m[1]).pathname);
+}
+const manifest = () => JSON.parse(fs.readFileSync(path.join(WEB, '.site-manifest.json'), 'utf8'));
+function watchErrors(page, allow = []) {
+  const errors = [];
+  const ok = s => allow.some(a => s.includes(a));
+  page.on('pageerror', e => { const s = 'pageerror: ' + e.message; if (!ok(s)) errors.push(s); });
+  page.on('console', m => { if (m.type() === 'error') { const s = 'console: ' + m.text(); if (!ok(s)) errors.push(s); } });
+  page.on('response', r => { if (r.status() >= 400 && !r.url().includes('fonts.g')) { const s = `http ${r.status()} ${r.url()}`; if (!ok(s)) errors.push(s); } });
+  return errors;
+}
+
+// ---- 0. we are testing the build we think we are ---------------------------------------------
+it('0 · the server on :4173 serves the committed webapp/ output; sitemap ↔ manifest ↔ search index agree', async ({ request }) => {
+  const r = await request.get('/');
+  expect(r.headers()['x-site-root']).toBe(WEB);
+  const m = manifest();
+  expect(m.ok).toBe(true);
+  const urls = sitemapUrls();
+  expect(urls.length).toBe(m.htmlFiles);
+  const idx = await (await request.get('/data/search.json')).json();
+  expect(idx.length).toBe(urls.length);
+  expect(new Set(idx.map(p => p.url.replace(/\/$/, '') || '/'))).toEqual(new Set(urls.map(u => u.replace(/\/$/, '') || '/')));
+});
+
+// ---- 1. fresh build: every page renders (one step per page so a failure names the page) --------
+for (const u of sitemapUrls()) {
+  it(`1 · renders ${u}`, async ({ page }) => {
+    const errors = watchErrors(page);
+    await page.goto(u, { waitUntil: 'networkidle' });
+    await expect(page.locator('h1')).toHaveCount(1);
+    await expect(page.locator('h1').first()).toBeVisible();
+    await expect(page.locator('time[datetime]').first()).toBeAttached();
+    const text = await page.locator('main').innerText();
+    // prose only (code samples legitimately contain [placeholders])
+    const prose = await page.evaluate(() => { const c = document.querySelector('main').cloneNode(true); c.querySelectorAll('pre, code').forEach(e => e.remove()); return c.innerText; });
+    expect(prose, 'raw block marker').not.toMatch(BLOCK_MARKER);
+    expect(text, "shows 'undefined'/NaN").not.toMatch(/\bundefined\b|\bNaN\b/);
+    expect(text, 'raw src: line').not.toMatch(/(^|\s)src:\s/);
+    expect(text, 'leaked held content').not.toContain('Research backlog');
+    expect(text, 'unconfirmed marker').not.toContain('❓');
+    expect(text, 'hedge language').not.toMatch(HEDGE);
+    expect(await page.locator('[data-todo]').count(), 'TODO chip on a real page').toBe(0);
+    // every TOC link resolves to an element on the page; every figure has an accessible name
+    const dangling = await page.evaluate(() => [...document.querySelectorAll('.toc a[href^="#"]')].map(a => a.getAttribute('href').slice(1)).filter(id => !document.getElementById(id)));
+    expect(dangling, 'dangling TOC anchors').toEqual([]);
+    const dupIds = await page.evaluate(() => { const seen = new Set(), d = []; for (const el of document.querySelectorAll('[id]')) { if (seen.has(el.id)) d.push(el.id); seen.add(el.id); } return d; });
+    expect(dupIds, 'duplicate ids').toEqual([]);
+    const badFig = await page.evaluate(() => [...document.querySelectorAll('figure')].filter(f => !(f.querySelector('img[alt]') || f.querySelector('[aria-label]'))).length);
+    expect(badFig, 'figure without alt/aria-label').toBe(0);
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+}
+
+it('1t · TOC follows the reader: clicking a TOC link scrolls to the heading and marks it active', async ({ page }) => {
+  await page.goto('/manual/dev/transport/');
+  const vp = page.viewportSize();
+  test.skip(vp.width < 1100, 'no TOC rail below 1100px');
+  const link = page.locator('.toc a').nth(2);
+  const id = (await link.getAttribute('href')).slice(1);
+  await link.click();
+  await expect(page).toHaveURL(new RegExp(`#${id}$`));
+  await expect(page.locator(`[id="${id}"]`)).toBeInViewport();
+  await expect(page.locator('.toc a.active')).toHaveAttribute('href', `#${id}`);
+});
+
+// ---- 2. click every control --------------------------------------------------------------------
+it('2a · weapons explorer: search, every class chip, compare pick/unpick/evict, sort — the screen changes', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  const errors = watchErrors(page);
+  await page.goto('/manual/gameplay/weapons/');
+  const ex = page.locator('[data-explorer="weapons"]');
+  await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
+  await expect(ex.locator('[data-x-error]')).toBeHidden();
+  await expect(ex.locator('tbody tr')).toHaveCount(19);
+  // search narrows, "no matches" row appears for junk, clearing restores
+  await ex.locator('[data-x-search]').fill('sniper');
+  await expect(ex.locator('[data-x-count]')).toHaveText(/^[1-9] of 19 shown/);
+  await ex.locator('[data-x-search]').fill('zzzz-no-such-weapon');
+  await expect(ex.locator('tbody')).toContainText('No matches');
+  await expect(ex.locator('[data-x-count]')).toHaveText(/^0 of 19 shown/);
+  await ex.locator('[data-x-search]').fill('');
+  await expect(ex.locator('tbody tr')).toHaveCount(19);
+  // every facet chip changes the count and takes aria-pressed; chip set = distinct classes
+  const chips = ex.locator('[data-facet]:not([data-facet="all"])');
+  const roles = await page.evaluate(async () => [...new Set((await (await fetch('/data/weapons.json')).json()).weapons.map(w => w.role))].sort());
+  expect(await chips.allTextContents()).toEqual(roles);
+  for (let i = 0; i < await chips.count(); i++) {
+    const chip = chips.nth(i); await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    await expect(ex.locator('[data-facet="all"]')).toHaveAttribute('aria-pressed', 'false');
+    const txt = await ex.locator('[data-x-count]').innerText();
+    expect(txt).toMatch(/^\d+ of 19 shown/); expect(txt).not.toMatch(/^19 of/); expect(txt).not.toMatch(/^0 of/);
+  }
+  await ex.locator('[data-facet="all"]').click();
+  await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
+  // compare dock states
+  await expect(ex.locator('[data-x-dock]')).toContainText('Tick two weapons');
+  await ex.locator('[data-pick="assault_rifle"]').check();
+  await expect(ex.locator('[data-x-dock]')).toContainText('Assault Rifle');
+  await expect(ex.locator('[data-x-dock]')).toContainText('one more');
+  await ex.locator('[data-pick="smg"]').check();
+  await expect(ex.locator('[data-x-dock] .cmp')).toBeVisible();
+  await expect(ex.locator('[data-x-dock]')).toContainText('SMG');
+  await expect(ex.locator('[data-x-dock]')).toContainText('Damage');
+  await ex.locator('[aria-label="Compare Sniper Rifle"]').check();
+  await expect(ex.locator('[data-x-dock]')).not.toContainText('Assault Rifle');
+  await expect(ex.locator('tr.picked')).toHaveCount(2);
+  await ex.locator('[data-pick="smg"]').uncheck();
+  await expect(ex.locator('tr.picked')).toHaveCount(1);
+  await expect(ex.locator('[data-x-dock]')).toContainText('one more');
+  // numeric sort reorders rows (9 < 10 < 100, not lexical)
+  const dmgTh = ex.locator('th[data-col]', { hasText: 'Damage' });
+  await dmgTh.click();
+  await expect(dmgTh).toHaveAttribute('aria-sort', 'ascending');
+  const asc = (await ex.locator('tbody tr td:nth-child(4)').allInnerTexts()).map(Number);
+  expect(asc).toEqual([...asc].sort((a, b) => a - b));
+  expect(asc[0]).toBeLessThan(asc[asc.length - 1]);
+  await dmgTh.click();
+  await expect(dmgTh).toHaveAttribute('aria-sort', 'descending');
+  const desc = (await ex.locator('tbody tr td:nth-child(4)').allInnerTexts()).map(Number);
+  expect(desc).toEqual([...asc].reverse());
+  // keyboard sort on a text column
+  const nameTh = ex.locator('th[data-col]', { hasText: 'Weapon' });
+  await nameTh.focus(); await page.keyboard.press('Enter');
+  await expect(nameTh).toHaveAttribute('aria-sort', 'ascending');
+  const names = await ex.locator('tbody tr td:nth-child(2) strong').allInnerTexts();
+  expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+it('2b · sound bank explorer: 2166 ids, search, family chips, show-more to exhaustion, copy $PLAY', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  const errors = watchErrors(page);
+  await page.goto('/manual/sound/sound-bank/');
+  const ex = page.locator('[data-explorer="sounds"]');
+  await expect(ex.locator('[data-x-count]')).toHaveText(/2166 of 2166 shown/);
+  await expect(ex.locator('tbody tr')).toHaveCount(300);
+  await expect(ex.locator('[data-x-more]')).toBeVisible();
+  let clicks = 0;
+  while (await ex.locator('[data-x-more]').isVisible()) { await ex.locator('[data-x-more-btn]').click(); clicks++; expect(clicks).toBeLessThan(10); await page.waitForTimeout(50); }
+  await expect(ex.locator('tbody tr')).toHaveCount(2166);
+  await ex.locator('[data-x-search]').fill('R02');
+  await expect(ex.locator('[data-x-count]')).toHaveText(/^\d+ of 2166 shown/);
+  await expect(ex.locator('tbody tr').first()).toContainText('R02');
+  await expect(ex.locator('[data-x-more]')).toBeHidden();
+  await ex.locator('[data-x-search]').fill('');
+  const chips = ex.locator('[data-facet]:not([data-facet="all"])');
+  const fams = await page.evaluate(async () => [...new Set((await (await fetch('/data/sounds.json')).json()).rows.map(r => r.family))].sort());
+  expect(await chips.allTextContents()).toEqual(fams);
+  const chip = ex.locator('[data-facet="VA"]');
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-pressed', 'true');
+  await expect(ex.locator('[data-x-count]')).not.toHaveText(/2166 of 2166/);
+  await expect(ex.locator('tbody tr td:first-child').first()).toContainText(/^VA/);
+  const copy = ex.locator('[data-copy]').first();
+  const cmd = await copy.getAttribute('data-copy');
+  await copy.click();
+  await expect(copy).toHaveText('copied');
+  await expect(copy).toHaveAttribute('data-done', '1');
+  const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => null);
+  if (clip !== null) expect(clip).toBe(cmd);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+it('2c · in-page filterable table (command reference) filters, clears, and sorts rows for real', async ({ page }) => {
+  await page.goto('/manual/dev/commands/');
+  const dt = page.locator('.dt').first();
+  const total = await dt.locator('.dt-count').innerText();
+  expect(total).toMatch(/^\d+ rows$/);
+  await dt.locator('input').fill('PING');
+  const after = await dt.locator('.dt-count').innerText();
+  expect(after).not.toBe(total); expect(after).toMatch(/^\d+ of \d+ rows/);
+  await expect(dt.locator('tbody tr:visible').first()).toContainText('PING');
+  await dt.locator('input').fill('');
+  await expect(dt.locator('.dt-count')).toHaveText(total);
+  const th = dt.locator('thead th').first();
+  const col = () => dt.locator('tbody tr td:first-child').allInnerTexts();
+  await th.click();
+  await expect(th).toHaveAttribute('aria-sort', 'ascending');
+  const a = await col(); expect(a).toEqual([...a].sort((x, y) => x.localeCompare(y)));
+  await th.click();
+  await expect(th).toHaveAttribute('aria-sort', 'descending');
+  expect(await col()).toEqual([...a].reverse());
+});
+
+it('2d · code copy → "copied"; clipboard failure → "copy failed"', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  await page.goto('/manual/dev/transport/');
+  const btn = page.locator('pre .copy-btn').first();
+  await expect(btn).toBeVisible();
+  await btn.click();
+  await expect(btn).toHaveText('copied');
+  await expect(btn).toHaveAttribute('data-done', '1');
+  await page.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('denied')); });
+  await page.waitForTimeout(1900);
+  await btn.click();
+  await expect(btn).toHaveText('copy failed');
+});
+
+it('2f · theme toggle changes the page and persists across navigation', async ({ page }) => {
+  await page.goto('/manual/');
+  const t = page.locator('[data-theme-toggle]');
+  const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await t.click();
+  const mode = await page.evaluate(() => document.documentElement.dataset.theme);
+  expect(['light', 'dark']).toContain(mode);
+  await expect(t).toHaveAttribute('aria-pressed', String(mode === 'light'));
+  const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(after).not.toBe(before);
+  await page.goto('/manual/hardware/leds/');
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(mode);
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(after);
+});
+
+it('2g · search: ⌘K opens, results for a symptom, "$WEAP", no-results message, Escape and backdrop close', async ({ page }) => {
+  await page.goto('/manual/');
+  await page.keyboard.press('Control+k');
+  const modal = page.locator('[data-search-modal]');
+  await expect(modal).toBeVisible();
+  await page.locator('[data-search-input]').fill('headset pairing');
+  const res = page.locator('[data-search-results] a');
+  await expect(res.first()).toBeVisible();
+  await expect(res.first()).toContainText(/Pairing|Headset/i);
+  await page.locator('[data-search-input]').fill('$WEAP');
+  await expect(res.first()).toContainText(/WEAP/i);
+  await page.locator('[data-search-input]').fill('qzxv-nothing');
+  await expect(page.locator('[data-search-results]')).toContainText('No results');
+  await page.keyboard.press('Escape');
+  await expect(modal).toBeHidden();
+  await page.locator('[data-search-open]').click();
+  await expect(modal).toBeVisible();
+  await modal.click({ position: { x: 5, y: 5 } });
+  await expect(modal).toBeHidden();
+});
+
+it('2e · diagnostic ladder rungs; sidebar (or phone drawer) navigates; drawer closes on outside tap', async ({ page }) => {
+  await page.goto('/manual/fix/diagnose/');
+  const rungs = page.locator('.ladder .rung');
+  expect(await rungs.count()).toBeGreaterThan(3);
+  await expect(rungs.first().locator('.check')).toBeVisible();
+  await expect(rungs.first().locator('.chip')).toHaveText(/Yes →|No →/);
+  await expect(rungs.first().locator('.fix')).toBeVisible();
+  const vp = page.viewportSize();
+  if (vp.width < 820) {
+    await expect(page.locator('.side')).not.toBeInViewport();
+    await page.locator('[data-nav-toggle]').click();
+    await expect(page.locator('[data-nav-toggle]')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.side')).toBeInViewport();
+    await page.mouse.click(vp.width - 10, vp.height - 10); // outside the drawer
+    await expect(page.locator('[data-nav-toggle]')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.side')).not.toBeInViewport();
+    await page.locator('[data-nav-toggle]').click();
+  }
+  await expect(page.locator('.side a[aria-current="page"]')).toContainText('Diagnose');
+  await page.locator('.side a', { hasText: 'Repairs' }).first().click();
+  await expect(page).toHaveURL(/\/manual\/fix\/repairs\/$/);
+  await expect(page.locator('h1')).toContainText('Repairs');
+});
+
+it('2h · under-construction policy: five 🚧 cards on /platform/pieces/, brx-mcp in full, no held details leak', async ({ page }) => {
+  await page.goto('/platform/pieces/');
+  await expect(page.locator('.uc')).toHaveCount(5);
+  for (const uc of await page.locator('.uc').all()) {
+    await expect(uc.locator('h2')).toBeVisible();
+    await expect(uc.locator('.uc-note')).toBeVisible();
+    expect(await uc.locator('p:not(.uc-note)').count()).toBe(1);
+  }
+  const text = await page.locator('main').innerText();
+  for (const leak of ['Phases:', 'Core BOM', 'Operator auth', 'ESP-NOW', 'Optional tiers']) expect(text, leak).not.toContain(leak);
+  expect(text).toContain('brx-mcp');
+  await expect(page.locator('.blk-spec-sheet dl').first()).toBeVisible();
+});
+
+// ---- 3. stale/old content: the renderer degrades visibly ---------------------------------------
+it('3 · stale/malformed content renders visible TODOs, a placeholder, ragged tables, and never the backlog', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto(STALE + '/manual/stale/resilience/');
+  await expect(page.locator('h1')).toHaveText('Resilience page');
+  await expect(page.locator('.blk-unknown .todo')).toBeVisible();
+  await expect(page.locator('.blk-unknown .todo')).toContainText('unknown block');
+  await expect(page.locator('.blk-unknown')).toContainText('it still has content');
+  await expect(page.locator('.blk-table .todo')).toBeVisible();
+  await expect(page.locator('.blk-table .todo')).toContainText('malformed table');
+  await expect(page.locator('.fig-pending .ph-id')).toHaveText('ZZZ-99');
+  await expect(page.locator('.dt')).toBeVisible();
+  await expect(page.locator('.dt tbody tr')).toHaveCount(2);
+  const text = await page.locator('body').innerText();
+  expect(text).not.toContain('NEVER-PUBLISH-SENTINEL');
+  expect(text).not.toContain('undefined');
+  await page.goto(STALE + '/manual/stale/');
+  await expect(page.locator('h1')).toContainText('Stale fixture');
+  const full = await page.request.get(STALE + '/llms-full.txt');
+  expect(await full.text()).not.toContain('NEVER-PUBLISH-SENTINEL');
+  const twin = await page.request.get(STALE + '/manual/stale/resilience.md');
+  expect(await twin.text()).not.toContain('NEVER-PUBLISH-SENTINEL');
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+it('3b · old data shape: explorer rows missing fields render em-dashes, never undefined/NaN', async ({ page }) => {
+  await page.route('**/data/weapons.json', async route => {
+    const real = await (await route.fetch()).json();
+    const weapons = real.weapons.map(({ role, dmg, cycle_ms, sound, behaviour, ...rest }) => rest); // an older data file
+    weapons[0] = { id: 'ghost' }; // a row with nothing but an id
+    await route.fulfill({ json: { weapons } });
+  });
+  const errors = watchErrors(page);
+  await page.goto('/manual/gameplay/weapons/');
+  const ex = page.locator('[data-explorer="weapons"]');
+  await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
+  const text = await ex.innerText();
+  expect(text).not.toMatch(/\bundefined\b|\bNaN\b/);
+  expect(text).toContain('—');
+  await ex.locator('[data-pick="ghost"]').check();
+  await ex.locator('[data-pick="smg"]').check();
+  await expect(ex.locator('[data-x-dock] .cmp')).toBeVisible();
+  expect(await ex.locator('[data-x-dock]').innerText()).not.toMatch(/\bundefined\b|\bNaN\b/);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+it('3c · the build refuses a manual with a broken internal link (link checker is a hard gate)', async () => {
+  const dir = fs.mkdtempSync(path.join(SITE, 'test', 'tmp-broken-'));
+  const out = path.join(dir, 'out');
+  try {
+    for (const f of fs.readdirSync(path.join(HERE, 'fixtures/manual-stale'))) fs.copyFileSync(path.join(HERE, 'fixtures/manual-stale', f), path.join(dir, f));
+    fs.appendFileSync(path.join(dir, '00-home.md'), '\n[callout:tip] A link to a page that does not exist: [nope](/manual/nope/). ✅ src: fixture\n');
+    let code = 0, output = '';
+    try { output = execFileSync('node', [path.join(SITE, 'build.mjs'), '--manual', dir, '--out', out], { stdio: 'pipe' }).toString(); }
+    catch (e) { code = e.status; output = String(e.stdout) + String(e.stderr); }
+    expect(code).not.toBe(0);
+    expect(output).toContain('broken link /manual/nope/');
+    const m = JSON.parse(fs.readFileSync(path.join(out, '.site-manifest.json'), 'utf8'));
+    expect(m.ok).toBe(false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---- 4. failure paths --------------------------------------------------------------------------
+for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2166 of 2166 shown'], ['/manual/gameplay/weapons/', 'weapons', '19 of 19 shown']]) {
+  it(`4 · ${id} explorer data 500 → visible error strip, retry recovers`, async ({ page }) => {
+    let fail = true;
+    await page.route(`**/data/${id}.json`, route => fail ? route.fulfill({ status: 500, body: 'boom' }) : route.continue());
+    const errors = watchErrors(page, ['http 500', 'explorer load failed', 'Failed to load resource']);
+    await page.goto(slug);
+    const ex = page.locator(`[data-explorer="${id}"]`);
+    await expect(ex.locator('[data-x-error]')).toBeVisible();
+    await expect(ex.locator('[data-x-count]')).toHaveText('failed');
+    await expect(ex.locator('tbody tr')).toHaveCount(0);
+    fail = false;
+    await ex.locator('[data-x-retry]').click();
+    await expect(ex.locator('[data-x-error]')).toBeHidden();
+    await expect(ex.locator('[data-x-count]')).toHaveText(new RegExp(count));
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+}
+
+it('4b · search index 500 → visible error; typing does not pretend to search', async ({ page }) => {
+  await page.route('**/data/search.json', route => route.fulfill({ status: 500, body: 'boom' }));
+  await page.goto('/manual/');
+  await page.locator('[data-search-open]').click();
+  await expect(page.locator('[data-search-results]')).toContainText(/failed to load/i);
+  await page.locator('[data-search-input]').fill('headset');
+  await expect(page.locator('[data-search-results]')).toContainText(/failed to load/i);
+  await expect(page.locator('[data-search-results] a')).toHaveCount(0);
+});
+
+// ---- 5. viewports ------------------------------------------------------------------------------
+it('5 · no horizontal page overflow on key pages; short landscape phone still usable', async ({ page }) => {
+  const urls = ['/', '/manual/', '/manual/hardware/leds/', '/manual/gameplay/weapons/', '/manual/dev/commands/', '/manual/dev/weap/', '/manual/sound/sound-bank/', '/platform/architecture/'];
+  for (const u of urls) {
+    await page.goto(u, { waitUntil: 'networkidle' });
+    const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    expect(sw, `${u} scrolls horizontally (${sw} > ${iw})`).toBeLessThanOrEqual(iw + 1);
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto('/manual/operate/headset-pairing/');
+  await expect(page.locator('h1')).toBeVisible();
+  await expect(page.locator('.steps ol > li').first()).toBeVisible();
+  const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(sw).toBeLessThanOrEqual(iw + 1);
+});
+
+// ---- 6. audits ---------------------------------------------------------------------------------
+it('6 · primary controls ≥ 44px on phone (≥ 36px desktop); no meaning-bearing text under 11px', async ({ page }) => {
+  const vp = page.viewportSize();
+  const min = vp.width < 820 ? 44 : 36;
+  for (const u of ['/manual/gameplay/weapons/', '/manual/fix/diagnose/', '/manual/sound/sound-bank/', '/manual/dev/transport/', '/manual/dev/commands/', '/']) {
+    await page.goto(u, { waitUntil: 'networkidle' });
+    if (vp.width < 820) await page.locator('[data-nav-toggle]').click();
+    await page.locator('[data-search-open]').click();
+    await page.locator('[data-search-input]').fill('headset');
+    await expect(page.locator('[data-search-results] a').first()).toBeVisible();
+    const small = await page.evaluate(min => {
+      const sel = 'header button, header a, .dt-bar input, .chips button, [data-x-more-btn], [data-x-retry], .copy-btn, .x-cell-copy, .md-link, .side a, .side summary, details summary, .search-results a, th[data-sort], .pick, .prevnext a';
+      return [...document.querySelectorAll(sel)].filter(el => el.offsetParent !== null || getComputedStyle(el).position === 'fixed').map(el => { const r = el.getBoundingClientRect(); return { t: (el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 30), h: Math.round(r.height), w: Math.round(r.width) }; }).filter(x => (x.h > 0 || x.w > 0) && (x.h < min || x.w < min));
+    }, min);
+    expect(small, `${u} undersized controls (<${min}px): ${JSON.stringify(small)}`).toEqual([]);
+    await page.keyboard.press('Escape');
+    const tiny = await page.evaluate(() => {
+      const out = new Set();
+      const walker = document.createTreeWalker(document.querySelector('main'), NodeFilter.SHOW_TEXT);
+      let n; while ((n = walker.nextNode())) { if (!n.textContent.trim()) continue; const el = n.parentElement; if (el.closest('.ph, kbd, [aria-hidden="true"], .toc-h, .kicker')) continue; const fs = parseFloat(getComputedStyle(el).fontSize); if (fs < 11) out.add(`${fs}px: ${n.textContent.trim().slice(0, 30)}`); }
+      return [...out];
+    });
+    expect(tiny, `${u} tiny text: ${tiny.join(' | ')}`).toEqual([]);
+  }
+});
+
+// ---- 8. machine-readable layer -------------------------------------------------------------------
+it('8 · llms.txt, llms-full.txt, sitemap, robots, JSON-LD (TechArticle/Breadcrumb/HowTo/FAQ/Dataset) and markdown twins', async ({ page, request }) => {
+  for (const f of ['/llms.txt', '/llms-full.txt', '/sitemap.xml', '/robots.txt', '/favicon.svg']) { const r = await request.get(f); expect(r.status(), f).toBe(200); }
+  const llms = await (await request.get('/llms.txt')).text();
+  expect(llms).toContain('# Open BRX');
+  const urls = sitemapUrls();
+  for (const u of urls) {
+    const md = await request.get(u === '/' ? '/index.md' : u.replace(/\/$/, '') + '.md');
+    expect(md.status(), `${u} markdown twin`).toBe(200);
+    expect(md.headers()['content-type']).toContain('text/markdown');
+    if (u !== '/') expect(llms, `${u} listed in llms.txt`).toContain(u.replace(/\/$/, '') + '.md');
+  }
+  const full = await (await request.get('/llms-full.txt')).text();
+  expect(full.length).toBeGreaterThan(100_000);
+  expect(full).not.toContain('Research backlog');
+  // twin matches page title
+  await page.goto('/manual/operate/headset-pairing/');
+  const h1 = await page.locator('h1').innerText();
+  const twin = await (await request.get('/manual/operate/headset-pairing.md')).text();
+  expect(twin.split('\n')[0]).toBe('# ' + h1);
+  const graph = JSON.parse(await page.locator('script[type="application/ld+json"]').first().textContent())['@graph'];
+  const types = graph.map(g => g['@type']);
+  expect(types).toEqual(expect.arrayContaining(['TechArticle', 'BreadcrumbList', 'HowTo']));
+  const howto = graph.find(g => g['@type'] === 'HowTo');
+  expect(howto.step.length).toBeGreaterThan(2);
+  expect(JSON.stringify(howto)).not.toMatch(/src:/);
+  await page.goto('/manual/fix/faq/');
+  const faq = JSON.parse(await page.locator('script[type="application/ld+json"]').first().textContent())['@graph'].find(g => g['@type'] === 'FAQPage');
+  expect(faq.mainEntity.length).toBeGreaterThan(5);
+  expect(faq.mainEntity[0].acceptedAnswer.text.length).toBeGreaterThan(10);
+  await page.goto('/manual/sound/sound-bank/');
+  const ds = JSON.parse(await page.locator('script[type="application/ld+json"]').first().textContent())['@graph'].find(g => g['@type'] === 'Dataset');
+  expect(ds.distribution[0].contentUrl).toMatch(/\/data\/sounds\.json$/);
+  expect(await page.locator('link[rel="alternate"][type="text/markdown"]').count()).toBe(1);
+});

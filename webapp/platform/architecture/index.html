@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How it's wired — The Open BRX platform — The BRX Manual (Open BRX)</title>
+<meta name="description" content="Three tiers of hardware that never all talk to each other at once — and why.">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/architecture/">
+<link rel="alternate" type="text/markdown" href="/platform/architecture.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"How it's wired","description":"Three tiers of hardware that never all talk to each other at once — and why.","url":"https://open-brx.iamrossi.workers.dev/platform/architecture/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"How it's wired","item":"https://open-brx.iamrossi.workers.dev/platform/architecture/"}]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/">Manual</a><a href="/platform/" aria-current="true">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side has-toc">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec" open><summary><span class="num">07</span> The Open BRX platform</summary><ul><li><a href="/platform/architecture/" aria-current="page">How it's wired</a></li><li><a href="/platform/pieces/">The pieces</a></li><li><a href="/platform/modes/">Game modes</a></li><li><a href="/platform/build-tiers/">What you can build at each budget</a></li><li><a href="/platform/vs-edge/">Open BRX vs Edge</a></li><li><a href="/platform/status/">Status &amp; roadmap</a></li><li><a href="/platform/get-involved/">Get involved</a></li><li><a href="/platform/faq/">FAQ</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/platform/">Platform</a><span class="sep">/</span><span aria-current="page">How it's wired</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>How it&#39;s wired</h1>
+<p class="subtitle">Three tiers of hardware that never all talk to each other at once — and why.</p>
+<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/platform/architecture.md">View as Markdown</a></p>
+</header>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="read-this-before-trusting-any-diagram"><strong class="co-title">Read this before trusting any diagram.</strong><p>Open BRX is not one program. Every awkward part of the design follows from four non-negotiable facts: stock firmware is never modified; the gun is host-blind about its own kills; native feel and host control are mutually exclusive unless a live host drives the feel; and the field is offline and dispersed.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §1, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0001-companion-rider-architecture.md" rel="noopener">docs/adr/0001-companion-rider-architecture.md</a></p></aside></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="PLAT-06" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="The decision flow that forces a per-player node"><span class="ph-id">PLAT-06</span><span class="ph-kind">diagram pending</span></div><figcaption>flow: <em>We want host-controlled custom modes + full native feel + scoring on stock firmware, offline, dispersed</em> → <strong>Native game</strong> (guns self-fire the green-sight flash + killstreak audio <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>; but no synced start, no custom modes, no host control, no scoring ❌) and <strong>Host-configured game</strong> (custom modes, synced start, scoring <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>; but the guns go quiet — a live host must drive feedback ❌) → <em>Could Mission Control be that live host?</em> <strong>No — players scatter out of BLE range</strong> → <em>Something must hold a BLE link to each gun, in the field, all match</em> → <strong>Decision: a per-player node — a phone today, an ESP32 Companion later.</strong></figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §1</p></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="PLAT-05" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="The match-time topology diagram"><span class="ph-id">PLAT-05</span><span class="ph-kind">diagram pending</span></div><figcaption>(the same diagram as the overview hero, full size, with the legend). <strong>Solid line = must hold. Dashed line = allowed to drop.</strong> The BLE link rides the player and must survive the match; the Wi-Fi link may come and go, and events queue locally until it returns. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>/<span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §2</p></section>
+<section class="blk blk-table" data-type="table"><h2 id="every-link-and-what-limits-it">Every link, and what limits it</h2><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Link</th>
+<th>Transport</th>
+<th>Limit</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Gun ↔ headset</td>
+<td>vendor link</td>
+<td>headset must be present or the gun drops BLE entirely</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> bench</td>
+</tr>
+<tr>
+<td><strong>Node (phone) ↔ gun</strong></td>
+<td><strong>BLE</strong></td>
+<td><strong>exactly one gun per node</strong>; link must hold all match</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> single-gun bench</td>
+</tr>
+<tr>
+<td>Node ↔ Mission Control</td>
+<td>Wi-Fi (WebSocket)</td>
+<td>best-effort; buffered when down</td>
+<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> one node at the bench; never a field</td>
+</tr>
+<tr>
+<td>Operator ↔ Mission Control</td>
+<td>HTTP on localhost / LAN</td>
+<td><code>:8765</code> UI, <code>:8766</code> node socket</td>
+<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+</tr>
+<tr>
+<td>Gun → gun</td>
+<td><strong>IR</strong>, line of sight</td>
+<td>the only player-to-player channel</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>Laptop ↔ gun</td>
+<td>BLE</td>
+<td><strong>setup and recap only</strong> — never during play (Tier 0 excepted)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>Laptop ↔ gun</td>
+<td>USB</td>
+<td>one-time armory setup per gun</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §2, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/net.md" rel="noopener">docs/spec/net.md</a></p></section>
+<section class="blk blk-table" data-type="table"><h2 id="counting-limits">Counting limits</h2><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Thing</th>
+<th>Limit</th>
+<th>Why</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Guns per BLE radio</td>
+<td><strong>~5–7 links at ~10–30 m</strong> (planning number; an uncited estimate — nobody has run the test)</td>
+<td>one central radio shares connection events</td>
+<td>⚠ estimate</td>
+</tr>
+<tr>
+<td>Guns per phone node</td>
+<td><strong>exactly 1</strong></td>
+<td>the link rides one player</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> design</td>
+</tr>
+<tr>
+<td>Players per game</td>
+<td><strong>63</strong></td>
+<td><code>$PSET</code> player id 1–63; 0 reserved</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td>Native hardware teams</td>
+<td><strong>4</strong></td>
+<td><code>$TID</code> is masked to 2 bits</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> bench 2026-08-26</td>
+</tr>
+<tr>
+<td>Teams beyond 4</td>
+<td>unlimited <em>logical</em> teams</td>
+<td>MC scores by roster; players wear armbands; no on-gun friendly-fire protection in that mode</td>
+<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §2, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Team structure, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0002-laptop-mission-control-host.md" rel="noopener">docs/adr/0002-laptop-mission-control-host.md</a></p></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="PLAT-07" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Tier 0 vs Tier 1 side-by-side with the wall"><span class="ph-id">PLAT-07</span><span class="ph-kind">diagram pending</span></div><figcaption>left: <strong>Tier 0, laptop only</strong> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (laptop ↔ 4 guns over BLE); right: <strong>Tier 1, phones as nodes</strong> <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> (laptop = Mission Control + field Wi-Fi, dashed to phones; each phone solid BLE to one gun). The wall between them is labelled <em>&quot;everyone must stay within ~10–30 m of the laptop.&quot;</em></figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §3</p></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="tier-0-is-real-today-tier-1-is-what-buys-you-a-field-and-it-"><strong class="co-title">Tier 0 is real today; Tier 1 is what buys you a field — and it has never been run on one.</strong><p>A full Team Deathmatch ran end to end on two real taggers on 2026-08-25 (scoring, respawn, frag limit, correct winner, BLE holding the whole match), and a three-gun synchronised start is hardware-proven. The phone-node path has been proven only as <em>one phone → Mission Control → one gun at the bench</em> (2026-08-25 night); a multi-phone match over a real field Wi-Fi, a dispersed timed start, and store-and-forward recovery after real coverage loss have not been run. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>/<span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §3 + §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> "first phone→MC→gun path on real hardware"</p></aside></section>
+<section class="blk blk-timeline" data-type="timeline"><h2 id="which-links-are-up-phase-by-phase">Which links are up, phase by phase</h2><p class="lead">(<span class="img-ref ph-inline" title="diagram pending">PLAT-08</span>)</p><div class="table-wrap"><ol start="0">
+<li><strong>Armory</strong> — USB to each gun, one time, at home. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li><strong>Muster</strong> — node↔gun BLE up; node↔MC Wi-Fi up; readiness board (gun battery, firmware, headset, phone battery, clock sync). <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></li>
+<li><strong>Build</strong> — host authors the game; no guns involved. <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></li>
+<li><strong>Kit</strong> — assign player number, name, team, weapon, voice; a weapon try-out pushes real frames so the player can feel it. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (try-out fired a real gun from MC, 2026-08-25)</li>
+<li><strong>Lobby</strong> — players ready up; MC pushes the per-player FrameBundle; each node writes it to its gun and acks with the gun&#39;s echo. <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></li>
+<li><strong>Dispersed start</strong> — MC issues a go-live wall-clock time; players walk out of range; <strong>each node counts down locally — no signal is needed at T-0.</strong> <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></li>
+<li><strong>Live play</strong> — node↔gun BLE up; node↔MC Wi-Fi best-effort; <strong>MC↔gun BLE: never.</strong> <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></li>
+<li><strong>Recap</strong> — players return; nodes flush; MC reconciles winner, K/D, accuracy, medals; exportable CSV. <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></li>
+</ol>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §4, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §3, <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/mc/API.md" rel="noopener">mcp/brx_mcp/mc/API.md</a></p></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="PLAT-09" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="The two-hop kill path"><span class="ph-id">PLAT-09</span><span class="ph-kind">diagram pending</span></div><figcaption>A kill happens in the field → the <strong>victim&#39;s</strong> node sees it instantly (<code>$HP,0</code> + its last <code>$HIR</code>) → the victim&#39;s own HUD, death audio and respawn timer are immediate, no network → the victim&#39;s node must reach MC over field Wi-Fi → MC attributes the kill and sends feedback to the <strong>shooter&#39;s</strong> node → the shooter&#39;s green-sight flash + killstreak audio arrive <em>only when both hops complete</em>.</figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §5, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §3 "Coverage honesty"</p></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="so-on-a-large-field-you-always-know-you-died-you-may-not-lea"><strong class="co-title">So on a large field: you always know you died. You may not learn you got a kill until you walk back into range.</strong><p>Final results are never wrong, only late — kills live in the victims&#39; reports, so a scoreboard is provisional until every node has flushed. Put respawn/base points inside Wi-Fi coverage so every death is a sync point. Instant field-wide feedback is the Companion mesh (M6). <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span>/<span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §5, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §3</p></aside></section>
+<section class="blk blk-table" data-type="table"><h2 id="what-happens-when-things-break">What happens when things break</h2><div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>What happens</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Field Wi-Fi drops</td>
+<td>Nodes keep playing; events queue locally and flush on return</td>
+<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+</tr>
+<tr>
+<td>BLE drops mid-match</td>
+<td>The node re-probes on reconnect; <strong>the gun&#39;s config survives a BLE drop</strong></td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> bench</td>
+</tr>
+<tr>
+<td>Gun is power-cycled</td>
+<td>Config is <strong>wiped</strong>; a zeroed <code>$LCD</code> echo is the node&#39;s tell to re-push</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> bench</td>
+</tr>
+<tr>
+<td>Phone dies</td>
+<td>That player is out — one phone = one gun = one node, no failover</td>
+<td>design</td>
+</tr>
+<tr>
+<td>Node never returns</td>
+<td>Recap stays provisional; that player&#39;s kills are missing</td>
+<td>design</td>
+</tr>
+<tr>
+<td>Headset off or asleep</td>
+<td>The gun silently refuses to join; a disconnected headset slow-blinks rainbow — a free visual muster check</td>
+<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> 2026-08-25 / 27</td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §6, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/HANDOFF.md" rel="noopener">docs/HANDOFF.md</a> 2026-08-27</p></section>
+
+</article>
+  </main>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#read-this-before-trusting-any-diagram">Read this before trusting any diagram.</a></li><li><a href="#every-link-and-what-limits-it">Every link, and what limits it</a></li><li><a href="#counting-limits">Counting limits</a></li><li><a href="#tier-0-is-real-today-tier-1-is-what-buys-you-a-field-and-it-">Tier 0 is real today; Tier 1 is what buys you a field — and it has never been run on one.</a></li><li><a href="#which-links-are-up-phase-by-phase">Which links are up, phase by phase</a></li><li><a href="#so-on-a-large-field-you-always-know-you-died-you-may-not-lea">So on a large field: you always know you died. You may not learn you got a kill until you walk back into range.</a></li><li><a href="#what-happens-when-things-break">What happens when things break</a></li></ol></div></aside>
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

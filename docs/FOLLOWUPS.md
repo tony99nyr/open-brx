@@ -32,6 +32,38 @@ high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 | B14 | **Voice-pack selection in `GameConfig`** (`voice=`) | 🟡 NEW | The official Callsign app lets you **pick a voice** (announcer character); we don't — our `$PSET` voice-pack tail is hardcoded to **Heavy** (`V33/V3I/V3C/V3G/V3E/V37` in `gameconfig.py:_PSET_TAIL`). Add a `voice` field that swaps the 6 voice-event ids (deathAlarm/pain/hitHP/armor/shield/crit + respawn line) to another character. **Data need (P3):** the per-character voice-event id set — sound-bank.md has the prefixes (V0 Fury, V2 Guardian, V3 Heavy, V8 Medic, V9 Raider, VA male…) and examples (Heavy V3I "Get Some", Medic V8W "one shot one kill", V85/83/84 death) but not the full per-event map. Extract the app's voice profiles from the APK, or capture by ear. Fits Tony's "customize everything" requirement. |
 | B11 | **Custom connect/disconnect voice** ("Open BRX connected/disconnected") | 🟡 NEW | Branding polish: **back up + replace** the tagger's "phone connected" / "phone disconnected" audio with "Open BRX connected" / "Open BRX disconnected" via the USB `AUDIO`-folder sound swap (`<ID>.LTP`, `reference/brx-extended-user-guide.md`). First find the sound IDs (probe `$PLAY,<id>` around the connect voice, or diff the bank), archive originals, drop in the new clips. Nice first sound-swap demo. |
 
+### ⭐ B19 — MC config VERIFICATION via `$QUERY` (new 2026-08-27, high value / low effort)
+
+**`$QUERY,*` reads the gun's configured state back over BLE** — player id, team, HP, armor, shield,
+voice, and **every weapon slot's damage + fire sound** (bench-validated one field at a time, see the
+experiment log). `$LCD` returns the *live* pools alongside it. **This turns MC's status from asserted
+into observed.**
+
+What it unlocks, roughly in order of value:
+
+1. **Verify the head landed.** We push ~20 frames and *assume* success. A gun that power-cycles silently
+   loses its config, and today the only tell is a `$SPAWN` echoing `$LCD,0,0,0,0,0,0`. **Read back after
+   arming and diff against what we compiled** — a mismatch means re-push, before the match starts
+   rather than during it.
+2. **Real muster readiness.** The armory/roster screen can show each gun's **actual** loadout, pools and
+   team instead of what we intended. Pairs with the headset **rainbow = disconnected** check (B18b) for
+   a muster that is genuinely verified rather than hopeful.
+3. **Catch drift.** Callsign wiping `$NAME`, a stale head from a previous game, a gun someone
+   power-cycled mid-setup — all become visible.
+4. **Debugging aid.** "Did that frame take?" stops being a guess for every future protocol probe.
+
+**Implementation notes / gotchas:**
+- **Replies arrive SECONDS late.** Query repeatedly until the answer stops changing; never read the
+  first frame back. (This is what first made it look like `$WEAP,*` was the read-back.)
+- The read surface is **`$QUERY` + `$VERSION` only** — `$SIR`, `$BMAP`, `$GSET`, `$PSET`, `$TID`, `$LCD`,
+  `$HP` bare reads are all **silent**. So the `$SIR` table and button map **cannot** be verified this
+  way; the check covers identity, pools, voice and the arsenal.
+- Fields are the *configured* values; `$LCD` is the *current* state. Both are useful and they differ.
+
+**Untested and worth 2 minutes at the bench:** `$QUERY,*` against a gun in a **native** game — it should
+report that character's HP/armor/shield and weapon damage, which would give us Supremacy character
+stats straight off the hardware (part of what P8 is for, with no proxy or Mac).
+
 ## Hardware / 3D printing (no public BRX print library exists — `hardware/print-files.md`)
 
 Major repos (Printables/Thingiverse/STLFinder/Cults) have **zero** BRX-specific models; community

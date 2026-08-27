@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open BRX vs Edge — The Open BRX platform — The BRX Manual (Open BRX)</title>
+<meta name="description" content="What we match, what we beat, what we can't — honestly.">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/vs-edge/">
+<link rel="alternate" type="text/markdown" href="/platform/vs-edge.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Open BRX vs Edge","description":"What we match, what we beat, what we can't — honestly.","url":"https://open-brx.iamrossi.workers.dev/platform/vs-edge/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Open BRX vs Edge","item":"https://open-brx.iamrossi.workers.dev/platform/vs-edge/"}]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/">Manual</a><a href="/platform/" aria-current="true">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec" open><summary><span class="num">07</span> The Open BRX platform</summary><ul><li><a href="/platform/architecture/">How it's wired</a></li><li><a href="/platform/pieces/">The pieces</a></li><li><a href="/platform/modes/">Game modes</a></li><li><a href="/platform/build-tiers/">What you can build at each budget</a></li><li><a href="/platform/vs-edge/" aria-current="page">Open BRX vs Edge</a></li><li><a href="/platform/status/">Status &amp; roadmap</a></li><li><a href="/platform/get-involved/">Get involved</a></li><li><a href="/platform/faq/">FAQ</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/platform/">Platform</a><span class="sep">/</span><span aria-current="page">Open BRX vs Edge</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>Open BRX vs Edge</h1>
+<p class="subtitle">What we match, what we beat, what we can&#39;t — honestly.</p>
+<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/platform/vs-edge.md">View as Markdown</a></p>
+</header>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>Battle Company&#39;s <strong>EDGE</strong> (v7.0, Jan 2026) is a mature commercial Windows engine with years of polish, ~6M players and daily arena use. Open BRX is specs + working software + a bench-proven Tier 0. Facts below are paraphrased from Battle Company&#39;s public pages; nothing is copied. Open BRX is not affiliated with Battle Company.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/edge-brp.md" rel="noopener">docs/reference/edge-brp.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/VISION.md" rel="noopener">docs/VISION.md</a> §Can we supersede Edge</p></aside></section>
+<section class="blk blk-compare" data-type="compare"><div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><strong>Edge + BRP</strong></th>
+<th><strong>Open BRX</strong></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Price</strong></td>
+<td>$599.99 / 6 mo · $1,199.99 / yr · $1,599.99 / yr (Enemies)</td>
+<td><strong>$0 — MIT, self-hosted</strong> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><strong>Licence scope</strong></td>
+<td>one computer, one location</td>
+<td>any laptop, any field <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><strong>Venue network</strong></td>
+<td>taggers connect to Edge over venue Wi-Fi (infrastructure spec unpublished)</td>
+<td><strong>no venue Wi-Fi assumed</strong> — the field is an island; nodes store-and-forward <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+</tr>
+<tr>
+<td><strong>Cloud</strong></td>
+<td>global accounts, matchmaking, cross-venue leaderboards</td>
+<td>none in the loop; optional hosted service is a future idea ❌</td>
+</tr>
+<tr>
+<td><strong>Game modes</strong></td>
+<td>35 preset + unlimited custom</td>
+<td>TDM <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> · FFA / Infection / LMS / CS / Domination / KotH / CTF / <strong>Extraction</strong> engines <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+</tr>
+<tr>
+<td><strong>Novel modes</strong></td>
+<td>Battle Royale, Arcade</td>
+<td><strong>Extraction (raid-and-extract)</strong> — Edge has nothing like it <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span>; BR specified <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></td>
+</tr>
+<tr>
+<td><strong>Weapons / classes / abilities</strong></td>
+<td>90+ weapons, 15 abilities, 9 melee, classes</td>
+<td>full <code>$WEAP</code> control; all 20 Callsign weapons captured + rebalanced; perks (Body Armor, Extended Mags, Quick Hands, Easy Reload) <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>/<span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+</tr>
+<tr>
+<td><strong>Killstreaks / medals / announcer</strong></td>
+<td>15+ COD-style streaks</td>
+<td>first-blood, multikill, streaks driven to the gun&#39;s own speaker + green-sight flash <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (mechanism) / <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> (in-match)</td>
+</tr>
+<tr>
+<td><strong>Live scoring + recap</strong></td>
+<td>real-time, leaderboards, history</td>
+<td>live board with staleness + recap/CSV <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span>; eventually-consistent by design</td>
+</tr>
+<tr>
+<td><strong>Per-player HUD</strong></td>
+<td>CallSign phone app (iOS + Android)</td>
+<td>BRX Combat HUD — native, blackout night mode <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> single-gun</td>
+</tr>
+<tr>
+<td><strong>Props / objectives</strong></td>
+<td>Utility Box: one unit, 20+ roles; &quot;Order Activation&quot; chaining</td>
+<td>Utility Box design: one box, every objective, MC-programmable <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span>; IR emit proven <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><strong>Environmental effects</strong></td>
+<td>Animatronics: lights, smoke, DMX, moving props (closed)</td>
+<td>same event model; <strong>native open DMX + scripting</strong> <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></td>
+</tr>
+<tr>
+<td><strong>Custom sounds</strong></td>
+<td>2000+ on-gun SFX, SD card on BRP</td>
+<td>2,166-id bank decoded <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>; USB sound-pack swap on the BRX <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span>; unlimited via Companion audio <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></td>
+</tr>
+<tr>
+<td><strong>Marketing / monetisation</strong></td>
+<td>Battle Coin, EDGE Store, Message Center, Themes</td>
+<td>none ❌</td>
+</tr>
+<tr>
+<td><strong>&quot;Enemies&quot; module</strong></td>
+<td>headsets that fight unpaired from a gun</td>
+<td>not built ❌ (a differentiating target)</td>
+</tr>
+<tr>
+<td><strong>Hardware niceties (BRP)</strong></td>
+<td>on-gun LCD scoring, hot-swap batteries, flip mag, recoil, sunlight-visible sensors</td>
+<td>can&#39;t retrofit — the BRX is what it is ❌; the phone/Companion adds the HUD</td>
+</tr>
+<tr>
+<td><strong>Maturity / support</strong></td>
+<td>shipping product, daily commercial use</td>
+<td>bench-proven Tier 0, software-tested Tier 1, no field seasons yet ❌</td>
+</tr>
+<tr>
+<td><strong>Moddability</strong></td>
+<td>closed</td>
+<td>open protocol docs, open firmware, open STLs, MIT <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+<tr>
+<td><strong>Firmware</strong></td>
+<td>Battle Company&#39;s</td>
+<td><strong>stock BRX firmware, never modified</strong> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+</tr>
+</tbody></table>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/edge-brp.md" rel="noopener">docs/reference/edge-brp.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/VISION.md" rel="noopener">docs/VISION.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/HANDOFF.md" rel="noopener">docs/HANDOFF.md</a></p></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="the-honest-verdict"><strong class="co-title">The honest verdict.</strong><p>For BRX owners, clubs, meetups and small operators: very viable — we match Edge in software, beat it on cost, openness and no-Wi-Fi field play, and add modes it doesn&#39;t have. As a wholesale replacement for Edge in large commercial arenas: no, not near-term — maturity, cloud accounts, monetisation tooling and hardened prop hardware are real gaps, and Edge itself notes the BRX can be used commercially; the software tier is the gate, not the gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/VISION.md" rel="noopener">docs/VISION.md</a> §Can we supersede Edge</p></aside></section>
+
+</article>
+  </main>
+  
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>
