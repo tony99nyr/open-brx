@@ -2518,12 +2518,27 @@ reproducing?" half of the LED cluster (bench item 4.3), which no wire capture co
 > represented health. it would also slowly deplete in the same way until hp was 0 and it triggered the
 > death grenade and death sound. headset flashes green when dead"*
 
-### The native behaviour
+> ⚠️ **INTERPRETATION CORRECTED same day, by Tony:** *"purple/blue was probably bc of the team sentinel
+> is on. his supremecy color is blue."* Nexus is the **blue** faction, and `$GLED` colour is already
+> known to be **team-derived** (§7i). So **blue is almost certainly his FACTION colour, not "the health
+> pool's colour"** — and my "purple = shields, blue = health" reading below conflates the two.
+>
+> **What is observed (stands):** three LEDs act as a **segmented gauge**; the segments deplete as the
+> protective pools drain; the colour **changes** at the point the protective pools are exhausted; a
+> second depletion then runs to zero, triggering the death nova.
+> **What is inferred (now doubtful):** that the *colours themselves* encode which pool. More likely the
+> **segment count** encodes the pools while the **colour** encodes team/faction — with purple plausibly
+> a "protected" modifier over the faction colour rather than a pool identity.
+> ⇒ **Test:** watch the same sequence on a **red or green** faction character. If the second colour
+> tracks the faction rather than always being blue, the colour is team-derived and the gauge is
+> segment-count only.
+
+### The native behaviour (as observed)
 | element | meaning |
 |---|---|
 | **3 gun LEDs** | a **segmented gauge**, not a status light |
-| **purple** | the **shield/armor** pool — segments extinguish as it drains |
-| **blue** | the **health** pool — shown once purple is exhausted, drains the same way |
+| **purple** | shown while the **shield/armor** pools have charge — segments extinguish as they drain |
+| **blue** | shown after they are exhausted, draining the same way — **but see the correction above: blue is likely the faction colour (Nexus), not a health-pool colour** |
 | pool empty | **death grenade** (proto 10 @ 125, captured above) + death sound |
 | **headset flashes GREEN** | the **death** indication |
 

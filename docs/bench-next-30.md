@@ -29,8 +29,11 @@ Same splitting bug hid this one. I drive `$GREN` over BLE, receiver watching.
 channel / GrenadeType` — **if the bits track the arguments, the gun becomes a programmable emitter.**
 
 ## 3 · P13 — the `$GLED` colour index  ·  10 min  ·  needs your eyes, dim room
-Now has expected answers rather than a blind sweep: **the index must contain a purple and a blue**,
-because native life-mode uses purple for shield/armor and blue for health.
+Now has a sharper target: native life-mode shows **purple while the protective pools have charge, then
+switches colour** when they empty. ⚠️ Tony's own correction: the second colour was **blue, and Nexus is
+the blue faction** — so it is probably the **faction** colour, not a health colour. **Cheap decisive
+test: run the same observation on a RED or GREEN faction character.** If the second colour follows the
+faction, colour = team and the gauge is **segment-count only**.
 Mid-game I sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, one at a time; **say the colour you see.**
 **Pass:** a stable n → colour map, with purple and blue identified.
 **Then P17 in the same breath:** try `$GLED,0,4,0,0,0,,*` (StopIR), all-zeros, and brightness 0 —
@@ -56,4 +59,4 @@ streams) and `$HIR,…,13,…` on a victim.
 ## Do NOT re-run
 fn 23 (audio suppression, measured twice) · the fn 24–27 damage claim (withdrawn, did not reproduce) ·
 protocol-dependence of the function map (none — identical on 5 and 7) · K3 the death nova (captured:
-proto 10, MAG 125, credits the corpse) · LED life-mode *behaviour* (known; only the driving token is open).
+proto 10, MAG 125, credits the corpse) · LED life-mode *behaviour* (the segmented-gauge observation stands; the colour SEMANTICS are open — see above — and the driving token is open).
