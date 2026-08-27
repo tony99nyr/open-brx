@@ -13,12 +13,12 @@ evidence stay in the owning doc. If a row and its source disagree, the source wi
 
 ---
 
-## A. Blocked on TONY AT THE BENCH  ·  18 items
+## A. Blocked on TONY AT THE BENCH  ·  24 items
 
 Nothing here can be cracked from the keyboard — it needs a trigger pulled, a sound heard, a light seen,
 or floor space. This is the biggest category and the highest-value one.
 
-### A1 · Needs a TRIGGER PULL (8)
+### A1 · Needs a TRIGGER or BUTTON PRESS (11)
 | id | unknown | why it matters |
 |---|---|---|
 | **1.2** | Does the EMP (`$SIR` fn 23) actually stop the gun firing? | the only new mechanic whose central claim rests on a **proxy** (`$ALCD` t2), not an observation |
@@ -29,20 +29,25 @@ or floor space. This is the biggest category and the highest-value one.
 | **K1 / 1.4** | Kid auto-reload: `alt_reload` (`$BMAP,1,97`, already ships) vs `$WEAP` t19=5 (`AutoReload`) | two different features; which does Tony want |
 | **U4 / U5** | Reload-chain timing vs `reload_ms`; held-trigger fire sound retrigger vs ring-under | weapon sound design |
 | **t37/t38** | What do the two overheat values (20 vs 150) each mean? | overheat is transplantable but unmapped |
+| **A10a** | Empty **slot-2 button map** `$BMAP,1,100,0,0` — what does an ALT press do with no second weapon? | *(loadout v2, brx-fable)* expect nothing; then fire to prove the gun isn't **wedged** |
+| **A10b** | **Body Armor** — push the head, read `$LCD`, take one hit: does the armor actually absorb? | *(loadout v2)* also answers the field-width question below |
+| **A10d** | **Easy Reload** — ALT press on an empty mag → does it reload? | *(loadout v2)* button + ears |
 
-### A2 · Needs EYES (4) — **the LED cluster, entirely unconfirmed**
+### A2 · Needs EYES (5) — **the LED cluster, entirely unconfirmed**
 | id | unknown | why it matters |
 |---|---|---|
 | **P13** | Is `$GLED` colour a single 0–8 index? | neutral-white FFA + team colours |
 | **P17** | How do you turn the LEDs **OFF**? | night mode currently emits a **best-effort, UNCONFIRMED** frame |
 | — | **LED life mode** — native games show HP on the LEDs; ours slow-blinks team colour | stock feature we lose |
 | — | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | looks broken to a player |
+| **A10c** | **Extended Mags HUD max** — does the HUD's mag/reserve cap match the `$AMMO,0` we write (64/768)? | *(loadout v2)* **eyes only, no trigger** — compare HUD to the frame |
 
-### A3 · Needs EARS (2)
+### A3 · Needs EARS (3)
 | id | unknown |
 |---|---|
 | **P3** | `$PSET` voice-pack token → which line changes (or get it from the API capture, §C) |
 | — | Defeat announcer line (`JAW`/`JAX` sit next to the confirmed `JAY`) |
+| **A10e** | **Quick Hands** — fire a mag dry and reload: does the D-family reload sound **chain clip** against the halved `t18`? | *(loadout v2)* trigger empties the mag, but the unknown is **audible** |
 
 ### A4 · Needs SPACE / a tape measure (4)
 | id | unknown | why it matters |
@@ -51,6 +56,13 @@ or floor space. This is the biggest category and the highest-value one.
 | **2.2** | The **"halo assassinate"** — is a back-dome melee a different word, or the same word on a different sensor? | melee is magnitude 90 and should *not* one-shot |
 | **2.3** | Sensor map (tok1 0/1/4) at field distance | point-blank washes the domes together |
 | **P15** | Max simultaneous BLE connections a phone holds; which `$PLAY` id makes a field-wide alarm | phone-as-station design |
+
+---
+
+### A5 · Protocol field widths (1) — answered by a bench push, not a capture
+| id | unknown | why it matters |
+|---|---|---|
+| **A10b′** | **Does `$PSET` armor accept > 255, and does the gun CLAMP or WRAP?** | our policy layer caps at 255 as an *assumption*; the wire has never been asked. A wrap would make a "tanky" preset silently fragile. Cross-ref `weapon-design.md` `$PSET` notes |
 
 ---
 
@@ -70,7 +82,8 @@ grenade and the whole objective tier opens.*
 ---
 
 ## C. Blocked on a CAPTURE  ·  5 items
-*MacBook + iPhone only — Callsign is iOS, PacketLogger is macOS. Batch these for when the Mac is out.*
+**▶ Method for all of these: [`capture-runbook.md`](capture-runbook.md)** — written 2026-08-27; they had a
+name but no plan. MacBook + iPhone only (Callsign is iOS, PacketLogger is macOS); batch for Mac day.
 
 | id | unknown | note |
 |---|---|---|
@@ -94,11 +107,11 @@ grenade and the whole objective tier opens.*
 ---
 
 ## E. Blocked on PARTS WE DON'T HAVE  ·  3 items
-| id | unknown |
-|---|---|
-| **P14** | Is the audio SD card removable/swappable? (needs teardown) |
-| **G4** | Is grenade `.bin` flashing real? USB-C is power-only and there's no PROGRAM pin, so the assumed method is dead |
-| **K3** | **Death-explosion** — the headset emits IR when a Supremacy robot dies. Mechanism is expressible (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`), untested |
+| id | unknown | plan |
+|---|---|---|
+| **P14** | Is the audio SD card removable/swappable? | **no plan — needs a teardown**; not worth the risk on a 4-gun fleet until there's a spare ([why](capture-runbook.md)) |
+| **G4** | Is grenade `.bin` flashing real? | **no plan possible** — the assumed method is dead (G7). Nothing to try until someone finds a mechanism |
+| **K3** | **Death-explosion** — the headset emits IR when a Supremacy robot dies | mechanism is **expressible today** (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`) — build the weapon and fire it. **Belongs in a bench session, not here** |
 
 ---
 
@@ -130,7 +143,7 @@ that file is already the right home.** Read it before a field day.
 ## Scoreboard
 | category | items |
 |---|---|
-| A · needs Tony at the bench | **18** (8 trigger · 4 eyes · 2 ears · 4 space) |
+| A · needs Tony at the bench | **24** (11 trigger/button · 5 eyes · 3 ears · 4 space · 1 field-width) |
 | B · needs the grenade | 6 |
 | C · needs a capture | 5 |
 | D · hardware in hand, unwired | 4 |
