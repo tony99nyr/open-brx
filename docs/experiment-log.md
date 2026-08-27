@@ -2743,6 +2743,57 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — THE FULL `$SIR` FUNCTION MAP (0-40) x SHOOTER TEAM, control-validated
+
+41 functions x 2 teams, autonomous, `$VOL,3`, victim Tactix-FE30 `$TID,1`, hp45/armour70/shield-cap70,
+magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counted separately from `$HP`.
+
+**Trailing control passed.** The fn 1 and fn 11 cells were re-measured *after* all 41 cells and
+reproduced their opening rows exactly (`HIR=2 $HP,45,30,0` and `HIR=2 $HP,45,70,40`). The rig did not
+degrade across the run, so the whole table is trustworthy. *(Design note: the first draft armed a
+control row but never fired it — a control you do not fire is not a control. Fixed by running it as a
+separate pass.)*
+
+#### The four behavioural classes
+
+| class | functions | signature |
+|---|---|---|
+| **plain damage** | 1, 4, 5, 7, 16, 19, 20, 22, 29, 30, 33, 36, 37, 38 | enemy-only, armour 70 -> 30 (40 dealt) |
+| **armour-piercing** | 2, 6, 17, 21 | enemy-only, HP 45 -> 5, **armour untouched** |
+| **grants** | 11, 12, 13, 14, 18, 19, 20, 21 | friendly (or dual), shield 0 -> 40 |
+| **status — lands, moves nothing** | **3, 8** (enemy) · **9, 10, 15, 31, 32, 34** (friendly) · **23** (dual) · **24, 25, 26, 27, 28, 35** (enemy) | `$HIR` fires, every pool unchanged |
+| **inert** | 0, 39, 40 | no `$HIR` from either team — the range ends at 38 |
+
+#### Why the status class is the stun shortlist
+
+**fn 23 — the one function already proven to be a status effect (audio suppression) — sits in this
+class.** That is the detector validating itself: a known status effect presents exactly as "registers
+a hit, moves no counter". So the other members are strong candidates, and they can only be separated
+by a human, because the remaining difference is what the player *hears, sees or cannot do*.
+
+**Priority for the bench, enemy-polarity (a debuff should come from an enemy):**
+**3, 8, 24, 25, 26, 27, 28, 35.**
+
+#### Two further observations
+
+- **fn 24-27 double-report:** 4 `$HIR` from 2 shots, consistently, where every other function gave
+  exactly 2 — and fn 23 and fn 28 either side gave 2. It is function-dependent, not geometry drift.
+- **fn 24 resolves an old contradiction.** It was once reported as dealing damage, then failed to
+  reproduce, and was retracted. Both are now explained: it *lands* (so it looked real) but *moves no
+  pool* (so damage never reproduced). The retraction was correct; this says what it actually is.
+  Consequence: the **Energy Launcher**, mapped to `<9,3>` -> fn 24 in every shipped game, genuinely
+  does nothing to any pool.
+
+#### ⚠ CONFLICT to resolve, not yet a correction
+
+`brx-protocol.md` records **fn 36 = x1.25** and **fn 37 = x2**, bench-measured. In this sweep both
+behaved as **x1.0** (40 dealt from 2 x 20). The difference is the cell: the original measurement drove
+row `<0,3>` with word subtype 3; this sweep drove `<0,0>` with subtype 0. That suggests the multiplier
+may belong to the **(protocol, subtype) cell rather than the function number** — which would change the
+damage model. **Deliberately not edited into the spec** until a dedicated fn x subtype matrix settles
+it; a single conflicting observation is a reason to test, not to rewrite.
+
+
 ### 2026-08-27 — NEGATIVE: `$PSET` t2 and t6 are invisible to the damage instrument
 
 Swept `$PSET` token 2 over {0,1,2,5,10,50,100} and token 6 over {0,1,25,50,100,200}, two enemy hits
