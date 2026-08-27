@@ -28,7 +28,7 @@ groups is the expensive part, not the tests.
 |---|---|---|---|
 | **1.1** | **K4 — why melee doesn't work in our game** (config is byte-identical to Callsign's, so it's runtime/state) | In **our** compiled game: select **slot 4**, swing hard. Watch the shooter for **`$BUT,8`** and a victim for `$HIR,…,13,…` | `$BUT,8` **+ IR** ⇒ never a bug, trial artifact · `$BUT,8` **no IR** ⇒ slot-4 firing · **no `$BUT,8`** ⇒ gyro mapping not live despite `$BMAP,8,4` being sent (then check whether `$SPAWN` wipes the map) |
 | ~~1.2~~ ✅ | ~~EMP — does the disable actually stop you firing?~~ **DONE 2026-08-27: NO — it silences the gun instead.** Retest the *other* status functions (3, 8, 24–28, 35) for a real stun | Now fully specified from the keyboard: `$ALCD` t2 → 0, **self-clears in ~6–8 s** (3/3 reps), `$SPAWN` clears it early, ammo + health untouched. Only a trigger can confirm the *felt* effect | I fire `$SIR,7,0,,23` at your gun → **try to shoot immediately, then keep trying** | can't fire, then can again after ~6–8 s ⇒ **EMP CLOSED**; also tells us what the player hears (EmpStart/Loop/End) |
-| **1.3** | **Does a stun cost a reload?** | During the ~6–8 s window: does an `$AMMO` re-push let you fire, or must you wait/reload? (`$AMMO` does NOT clear the flag, so probably wait) | tells us the stun's true cost |
+| ~~1.3~~ | ~~Does a stun cost a reload?~~ **MOOT 2026-08-27** — there is no stun. fn 23 preserves ammo and never stops the trigger; it silences the gun. Re-ask if a real stun is ever found | — | — |
 | **1.4** | **K1 — auto-reload for kids.** Two mechanisms, pick one | (a) `GameConfig(alt_reload=True)` → **already ships** (`$BMAP,1,97`, ALT = reload). (b) `$WEAP` **t19 = 5** (`ReloadType.AutoReload`) → fire dry | which one feels right for young kids |
 | **1.5** | **Status functions — what do 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) actually DO?** They register, change no pool, emit no BLE. Not DoTs (proved) | I fire each at you; **report anything you feel/hear/see** — sound, vibration, LED, fire-rate change | naming even one is a new mechanic |
 | **1.6** | **KotH rate-of-fire buff** (your hardware fact) — likely one of the ally-side no-pool fns | While I fire 31/32/34 at you, **hold the trigger and listen for cadence change** | a fire-rate buff = 31/32/34 named |
@@ -98,20 +98,20 @@ Kit a player in MC (or `python -m brx_mcp.mc.mock_node … ` then `pick secondar
 |---|---|---|---|
 | **4.1** | **P13 — is `$GLED` colour a single 0–8 index?** | Mid-game, sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, **one value at a time**, and write down the colour you see for each | a **stable n → colour map**. The FB map claims 0 red … 8 orange and fits 5/6 of our earlier probe — either confirm it or record where it diverges. Colour not changing at all ⇒ token 1 is not the index and colour really is only `$TID`-derived |
 | **4.2** | **P17 — how do you turn the LEDs OFF?** | Mid-game, try in order: `$GLED,0,4,0,0,0,,*` (effect=StopIR — what we ship today, **unconfirmed**), then all-zeros, then brightness/duration = 0 | **LEDs actually go dark and stay dark.** Whichever frame does it becomes night mode's. If none do, night mode cannot darken a gun and `GameConfig(leds=False)` is lying — say so, it's a mode-design constraint |
-| **4.3** | **LED "life mode"** — ✅ **behaviour now KNOWN (2026-08-27, observed):** the 3 gun LEDs are a **segmented gauge** — **purple = shield/armor**, draining segment by segment; then **blue = health**; at zero, the death grenade + death sound; the **headset flashes green on death**. This matches the wire-measured drain order shields→armor→HP exactly. | Only the **driving token** is missing now. Sweep `$GSET` / `$PSET` / `$GLED` effect values in a native game vs ours and find what selects gauge-mode | our compiled head reproduces purple-then-blue segments tracking the pools |
+| **4.3** | **LED "life mode"** — ✅ **behaviour now KNOWN (2026-08-27, observed):** the 3 gun LEDs are a **segmented gauge** — **purple** while the protective pools have charge, draining segment by segment, then a **colour change** (observed blue — but ⚠️ Nexus is the blue *faction*, so the colour is probably team-derived, not a pool identity; test on a red/green faction); at zero, the death grenade + death sound; the **headset flashes green on death**. This matches the wire-measured drain order shields→armor→HP exactly. | Only the **driving token** is missing now. Sweep `$GSET` / `$PSET` / `$GLED` effect values in a native game vs ours and find what selects gauge-mode | our compiled head reproduces purple-then-blue segments tracking the pools |
 | **4.4** | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | In our try-out flow, note what the LEDs do vs a real game | the quieting token, or confirmation that try-out simply isn't spawned (in which case it's a mode fix, not an LED one) |
 
 ---
 
 ## If you only have ONE hour
-**1.1 (melee) → 1.2 (EMP trigger) → 3.1+3.3 (grenade capture + replay) → 2.1 (t41).**
+**Capture the native Sentinel EMP ability (see [`bench-next-30.md`](bench-next-30.md) §1) → 1.1 (melee) → 3.1+3.3 (grenade capture + replay) → 2.1 (t41).** *(1.2 is closed: the trigger pull disproved the disable.)*
 That closes the melee gap, finishes the special-weapons tier, opens the objective tier, and settles the
 last weapon token.
 
 ## Do NOT re-run (already answered overnight)
 B13 · B4 emit proof · U7 · P16 · B5 · the `$SIR` function map (both polarities) · crit ×1.5 and
 its multiplicative stacking with fn 36/37 · `$GSET` t1 = enforced friendly fire · dead guns accept no
-IR · `$HIR` tok5 = raw magnitude · AP bypasses shields · heals clamp · `$SPAWN` clears the EMP · the EMP's ~6–8 s self-clearing duration · `$GREN` emits a second IR protocol.
+IR · `$HIR` tok5 = raw magnitude · AP bypasses shields · heals clamp · `$GREN` emits a second IR protocol · **fn 23 = AUDIO SUPPRESSION, not a stun** (trigger pull disproved the disable) · the `$ALCD` **token 2 audio meter**'s ~6–8 s recovery and the fact `$SPAWN` clears it / `$AMMO` does not — *those are meter facts, not stun facts* · **K3 the death nova** (proto 10, MAG 125, credits the corpse).
 
 *(P4 is only half closed: `$AS`/`$UP` are proven **silent** — no reply on v4.32 — but their **effect** was never probed. If you have a spare minute it belongs in Group 1.)*
 

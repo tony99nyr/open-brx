@@ -747,7 +747,7 @@ $ALCD,<mag>,<100>,<slot>,<reserve>,<0>,*
   frame** that immediately reverts to the weapon in hand, not a run.
   (Corrected after an initial misreading: seeing `4` appear between runs of `0` and `1`
   looks like a cycle position until you know the operator was swinging the gun.)
-- Token 2 was `100` throughout; meaning still unknown.
+- Token 2 was `100` throughout. **⚠ IDENTIFIED 2026-08-27: token 2 is the gun's AUDIO LEVEL** (normally 100). A `$SIR` **function-23** hit drives it to **0** and it recovers over ~6–8 s, during which the operator reported *no sound on trigger pull, then quieter, then normal* — while the gun kept firing and emitting IR normally. **Best explanation from one ear + one meter, not a second independent instrument** — treat as strong but single-sourced.
 - **Token 5 = WEAPON HEAT — decoded 2026-08-26 (cap19 + a re-read of cap16).** It is non-zero in
   **exactly the two captures whose weapon has an overheat mechanic** — the SMG (`G03`, `$WEAP`
   `t24`=5) and the Charge Rifle — and **`0` across 400+ `$ALCD` frames in the twelve other

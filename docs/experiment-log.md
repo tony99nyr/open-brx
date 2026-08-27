@@ -2341,7 +2341,7 @@ got a bit louder and then returned to normal."*
 
 That tracks `$ALCD` **token 2** exactly, sampled across the runs: **0 → 5 → 9 → 31 → 100**.
 
-⇒ **`$ALCD` token 2 is the gun's AUDIO LEVEL**, not a ready flag. It is normally 100. fn 23 drives it to
+⇒ **`$ALCD` token 2 is the gun's AUDIO LEVEL**, not a ready flag. ⚠️ **Confidence note:** this is the *best explanation* of one ear report plus one meter moving together — **not two independent instruments**. It is not on the same footing as the IR frame counts (14/21/14), which are directly measured. A second instrument (e.g. a mic, or `$VOL` sweeps vs t2) would settle it. It is normally 100. fn 23 drives it to
 **0** and it recovers over **~6–8 s**. The old "always 100, so 0 = live gun with nothing loaded" reading
 came from only ever sampling the extremes and never asking what the middle meant.
 

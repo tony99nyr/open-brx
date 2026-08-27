@@ -429,7 +429,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | Confirm the multiplier values with a logged bench entry (U10). |
 | ~~U10~~ | ~~Do the multipliers behave the same through the shipped rows?~~ ✅ **CLOSED 2026-08-26 — yes, identically.** `<0,1>` → 25, `<0,3>` → 40, `<0,0>`/`<8,0>`/`<6,0>` → 20 at magnitude 20; **`<9,3>` → 0**. Full table and the hit-count artifact that hid it: §6.2. | — | done — the fix decision is now open, not the measurement |
-| ~~U11~~ | ~~Which status function is the stun/EMP?~~ ✅ **CLOSED 2026-08-26 — it is function 23.** 5/5 reps; the fn-1 control never fired it; it works under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. It clears `$ALCD` **token 2 (100→0)** — the weapon *ready* flag — while **ammo and health are preserved**, and it **self-clears on a ~6–8 s firmware timer** (`$SPAWN` overrides early). ~~5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0` … zeroing t2 *and* the slot is the "live gun, nothing loaded" state.~~ *(That all-zeros reading came from a victim with no loadout configured — superseded, see §6.3.)* | — | done |
+| **U11′** | **Which status function, if any, is a real STUN? — REOPENED 2026-08-27.** fn 23 is **eliminated**: a trigger pull showed the gun fires and emits IR normally; it is an **audio suppressor**. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. ~~CLOSED 2026-08-26 — it is function 23.~~ 5/5 reps; the fn-1 control never fired it; it works under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. It clears `$ALCD` **token 2 (100→0)** — the weapon *ready* flag — while **ammo and health are preserved**, and it **self-clears on a ~6–8 s firmware timer** (`$SPAWN` overrides early). ~~5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0` … zeroing t2 *and* the slot is the "live gun, nothing loaded" state.~~ *(That all-zeros reading came from a victim with no loadout configured — superseded, see §6.3.)* | — | done |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
 | **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
@@ -691,22 +691,24 @@ control never did, and it fires under **protocols 0/5/7/10 alike** — so the ef
 preserved** (mag 32, reserve 192 intact) and **only token 2 changes**. The all-zeros reading came from
 a victim that had no weapon/ammo configured at all. Health is untouched too.
 
-Design consequences:
+Design consequences — **corrected 2026-08-27, this is NOT a stun:**
 
-- **`$SIR,<proto>,<sub>,,23` is an EMP.** Author it on **protocol 7** to keep it off the damage
-  protocols, and any weapon keyed to that cell becomes a disabler.
-- **Recovery is a ~6–8 s FIRMWARE TIMER — it self-clears.** Sampled with an `$AMMO` re-push as a read
-  probe (which forces an `$ALCD` without clearing the flag): disabled at 2.5 s and 5.3 s, **ready by
-  8.0 s, 3/3 reps identical**. This matches the FSET sound envelope `EmpStart → EmpLoop → EmpEnd`.
-  ⚠️ An earlier draft said recovery was host-driven via an `$AMMO` re-push — **`$AMMO` does not clear
-  it**, nor does a `$WEAP` re-push. **`$SPAWN` does**, so we have a native duration *and* an early
-  override (note `$SPAWN` also restores health).
-- Weapon category 10 ("Stun") from the APK is now buildable, and `$STUN`-over-BLE being a proven
-  no-op stops mattering: the effect was always meant to arrive over IR, not over the serial link.
-- ~~Inference: a stunned player has burned a reload.~~ **Withdrawn** — the magazine is *not* emptied
-  (ammo is preserved), so a stun costs downtime only, not ammo.
-- ⚠️ **Still unconfirmed by a human:** that the trigger genuinely does nothing during the window.
-  `$ALCD` t2 is a strong proxy, but no one has pulled a trigger mid-EMP. See `bench-tomorrow.md` 1.2.
+- **`$SIR,<proto>,<sub>,,23` is an AUDIO SUPPRESSOR**, not a disabler. A weapon keyed to that cell
+  **silences** its target: the victim keeps firing and keeps emitting IR, they just lose their gun's
+  audio for ~6–8 s. A **sensory-disruption** weapon — no fire sound, no reload chain, no overheat cue.
+  ~~`$SIR,<proto>,<sub>,,23` is an EMP … any weapon keyed to that cell becomes a disabler.~~
+- **The ~6–8 s timer, `$SPAWN`-clears-it and `$AMMO`-does-not are all correctly MEASURED — but they
+  describe the `$ALCD` token 2 AUDIO METER, not a disable.** Disabled-looking at 2.5 s and 5.3 s, back
+  to 100 by 8.0 s, 3/3 reps. `$AMMO` and `$WEAP` re-pushes do not move it; `$SPAWN` does (and also
+  restores health).
+- ~~Weapon category 10 ("Stun") is now buildable.~~ **Still UNBUILT.** No `$SIR` function has produced
+  a stun. `$STUN`-over-BLE remains a no-op. **U11 is REOPENED** — the live lead is to capture the
+  **native Sentinel EMP ability** and read its protocol/subtype off the wire.
+- ~~Inference: a stunned player has burned a reload.~~ **Withdrawn** — ammo is preserved.
+- ✅ **A human DID pull the trigger (2026-08-27), and it disproved the disable.** The operator's
+  magazine decremented shot by shot during the effect, and a receiver logged **14 / 21 / 14** IR frames
+  before / during / after — the gun fires and emits normally throughout.
+  ~~Still unconfirmed by a human: that the trigger genuinely does nothing during the window.~~
 
 **Three clean negatives worth carrying** — each one closes a design direction someone would otherwise
 spend a session on:

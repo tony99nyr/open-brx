@@ -12,7 +12,9 @@ Written 2026-08-27 after the Supremacy session. **The rig is already set up and 
 **Why this is first:** we have spent two sessions guessing which `$SIR` function is a stun and got it
 wrong twice. **BRX already knows.** The Sentinel's EMP is a native firmware ability — capture the word
 it emits and the protocol/subtype are simply *told* to us. We tried this earlier and the frames were
-lost to frame-splitting; **that bug is now fixed** (`IDLE_GAP_US` 30 ms + RAW off).
+produced **no decodable word** — raw IR arrived in that window but nothing assembled, so we cannot
+yet say the ability emits IR at all. The splitting bug that would explain it **is now fixed**
+(`IDLE_GAP_US` 30 ms + RAW off).
 
 1. Native **Supremacy**, play **Sentinel**. Receiver ~1 m in front of the muzzle.
 2. I open a capture (RAW off).
@@ -25,7 +27,7 @@ which is a finding in itself — abilities would live on a second protocol we ba
 
 ## 2 · Capture a `$GREN` accessory word intact  ·  5 min  ·  no gun needed
 Same splitting bug hid this one. I drive `$GREN` over BLE, receiver watching.
-**Pass:** one unbroken 28–32 bit word, identical across ≥3 repeats. Then sweep `iRType / operationMode /
+**Pass:** one unbroken word of **≥28 bits, identical across ≥3 repeats** (the earlier 28/32 figures came from *split fragments*, so treat the exact length as unknown until a whole frame lands). Then sweep `iRType / operationMode /
 channel / GrenadeType` — **if the bits track the arguments, the gun becomes a programmable emitter.**
 
 ## 3 · P13 — the `$GLED` colour index  ·  10 min  ·  needs your eyes, dim room

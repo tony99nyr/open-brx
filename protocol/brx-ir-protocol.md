@@ -114,5 +114,4 @@ end-of-frame check, not a data bit).
 
 **Capture gotcha (our rig, not the protocol):** `ir_capture.ino` prints a long `RAW` line per frame,
 and at 115200 that takes ~15 ms — any shot landing inside that window is captured truncated. The
-symptom is a run of frames that are *prefixes* of the real word (16/17/20/21/24 bits). **Fire shots
-~1–2 s apart**, or cut the RAW print, before doing any counted-window work (e.g. the t41 range A/B).
+symptom is a run of frames that are *prefixes* of the real word (16/17/20/21/24 bits). **FIXED 2026-08-27** — `IDLE_GAP_US` raised 8000 → 30000 and the RAW dump is now **toggleable with `r`**. **Send `r` to turn RAW off for any capture that matters**; it is a debugging aid, not a capture mode. This bug silently cost four captures (the `$GREN` accessory word, the Sentinel EMP ability, and two death-nova attempts) before it was found.

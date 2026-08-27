@@ -13,19 +13,19 @@ evidence stay in the owning doc. If a row and its source disagree, the source wi
 
 ---
 
-## A. Blocked on TONY AT THE BENCH  ·  24 items
+## A. Blocked on TONY AT THE BENCH  ·  27 items
 
 Nothing here can be cracked from the keyboard — it needs a trigger pulled, a sound heard, a light seen,
 or floor space. This is the biggest category and the highest-value one.
 
-### A1 · Needs a TRIGGER or BUTTON PRESS (11)
+### A1 · Needs a TRIGGER or BUTTON PRESS (12)
 | id | unknown | why it matters |
 |---|---|---|
 | ~~1.2~~ | ✅ **ANSWERED 2026-08-27 — NO.** fn 23 does not stop the gun firing; it **silences** it (`$ALCD` t2 = audio level, 0 → 100 over ~6–8 s). A sensory-disruption weapon. | the proxy was wrong — see the log |
-| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 eliminated (it is audio suppression) | category 10 "Stun" still unbuilt. **Best lead is no longer a sweep** — capture the **native Sentinel EMP ability** and read its protocol/subtype directly. Its frames were seen but lost to frame-splitting, now fixed |
+| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 eliminated (it is audio suppression) | category 10 "Stun" still unbuilt. **Best lead is no longer a sweep** — capture the **native Sentinel EMP ability** and read its protocol/subtype directly. ⚠️ It has **never been captured**; an attempt during the frame-splitting era produced no decodable word, so we do not actually know it emits IR at all. Splitting is now fixed |
 | **NEW** | **Capture the native Sentinel EMP ability word** | the stun answer, straight from BRX. Rig is ready (RAW toggle) |
-| **NEW** | **Capture a `$GREN` accessory word intact** (28–32 bit format) | same splitting fix applies |
-| **NEW** | **Which token drives LED life mode?** behaviour now known (purple=shield/armor → blue=health, segmented) | a stock feature we lose in every game |
+| **NEW** | **Capture a `$GREN` accessory word intact** — **no gun needed**, host-driven; see D 3½.1, not duplicated here | same splitting fix applies |
+| **NEW** | **Which token drives LED life mode?** *(segmented gauge observed; ⚠️ the COLOUR semantics are open — blue may be the faction colour, not health)* | a stock feature we lose in every game |
 | **1.3** | Does a stun cost the victim a reload? | decides the stun's real cost |
 | **K4 / 1.1** | Why does **melee not work in our compiled game**? | a stock feature we lose; frames are byte-identical to Callsign's, so it is runtime/state |
 | **1.5** | What do status functions 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) *do*? | they register but move no pool and emit nothing — invisible without a human |
@@ -147,7 +147,7 @@ that file is already the right home.** Read it before a field day.
 ## Scoreboard
 | category | items |
 |---|---|
-| A · needs Tony at the bench | **24** (11 trigger/button · 5 eyes · 3 ears · 4 space · 1 field-width) |
+| A · needs Tony at the bench | **27** (12 trigger/button · 6 eyes · 3 ears · 4 space · 1 field-width · 1 capture-at-bench) |
 | B · needs the grenade | 6 |
 | C · needs a capture | 5 |
 | D · hardware in hand, unwired | 4 |
