@@ -465,6 +465,18 @@ Every function-class result carries a **trailing known-good control**, added aft
 produced sixteen clean-looking negatives that were a configuration artifact — worth knowing when
 reading any negative result in this area.
 
+> ⚠️ **Scope: the function classes below were each measured at a SINGLE IR protocol, and at least one
+> does not travel.** The sweeps behind them ran on one protocol per session and the results were
+> written up as properties of the *function*. They are not yet known to be. **fn 24 moved no pool on
+> one protocol and dealt damage (armor 70→30) on protocol 7** — same function, opposite result. So
+> read "fn 6 is armor-piercing" or "fn 16 is dual-polarity" as *"was, on the protocol it was tested
+> on"*, and re-check before building a weapon on one at a different protocol. A full
+> function × protocol matrix is being measured now; this section should be revisited when it lands.
+>
+> The **multiplier** rows are the exception and are safe as stated: `<0,1>` → ×1.25 and `<0,3>` → ×2
+> were verified through the actual shipped rows, on the same protocol (0) as the weapons that use
+> them — so the measurement and the application match.
+
 ### 6.1 The model
 
 The 8-bit field in the IR word we have been calling "damage" is a **magnitude**. What it is applied
