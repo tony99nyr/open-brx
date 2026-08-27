@@ -36,7 +36,7 @@ what the limits are, what's actually proven**) · [`docs/README.md`](docs/README
 | `mcp/` | **brx-mcp** — MCP server + CLI giving direct BLE control (scan/identify/listen/startgame/deathmatch/arena/…) ✅ |
 | `firmware/` | PlatformIO monorepo: bridge/Companion, item-pack, objective-station, effect-node (todo) |
 | `server/` | Game engine — built in **`mcp/brx_mcp/mc/`**: Mission Control rules/modes, scoring, announcer, event log, driving player nodes over the LAN (WebSocket) ✅ |
-| `app/` | **BRX Companion** — the native phone app (Capacitor: one codebase → Android + iOS, native BLE). Build instructions: [`app/README.md`](app/README.md) ✅ |
+| `app/` | **BRX Combat HUD** — the native phone app (Capacitor: one codebase → Android + iOS, native BLE). Build instructions: [`app/README.md`](app/README.md) ✅ |
 | `webapp/` | Static site: Mission Control operator console + `ble-test.html`. **Web Bluetooth is a dev/test harness only** — it has no iOS support and is disabled by default on Android, so the player-facing phone path is `app/` (ADR-0001) |
 | `hardware/` | **`brx-companion-spec.md`** (per-tagger accessory) ✅; STLs, wiring, BOM (todo) |
 | `docs/` | **[`docs/README.md`](docs/README.md)** index — the **[`docs/spec/`](docs/spec/)** product spec (the record), the **[ADRs](docs/adr/)**, followups, and protocol/reference |
@@ -56,6 +56,10 @@ The MCP server runs on **whichever machine owns the Bluetooth radio** — it is 
 (`bleak` + `mcp`) and works identically on **Windows, macOS, and Linux**.
 
 ```bash
+# FIRST: switch each tagger's HEADSET on. A gun with no headset accepts a BLE connection,
+# answers one ping, then silently drops it — every command below will fail.
+# (bench-confirmed: protocol/brx-protocol.md §7r)
+
 # on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
 python -m venv .venv && . .venv/bin/activate   # (Windows: .venv\Scripts\activate)
 pip install -e ./mcp
@@ -69,7 +73,8 @@ python -m brx_mcp listen <addr>   # read-only live console: pull trigger, watch 
 # guns directly over BLE, so everyone has to stay within BLE range of it (a room or a yard).
 python -m brx_mcp play tdm <addr1> <addr2> volume=69   # a real Team Deathmatch, live scoring
 #   modes: tdm ffa infection lms cs domination koth ctf extraction
-#   run `python -m brx_mcp` with no arguments for the full command list
+#   run `python -m brx_mcp --help` for the full command list
+#   (bare `python -m brx_mcp` starts the MCP server and blocks — that is not the help)
 
 # no guns to hand? this needs no hardware at all:
 python -m brx_mcp game-sim tdm                        # narrated demo match in your terminal
@@ -80,11 +85,13 @@ claude mcp add brx -- python -m brx_mcp
 
 > **What works today:** the command above ran a full TDM on two real taggers — scoring, respawn,
 > frag limit, correct winner (`docs/experiment-log.md`, "FIRST LIVE M0 GAME"). The **phone-node +
-> field Wi-Fi** path that lifts the BLE-range limit is built and software-tested but **has not been
-> run on real hardware yet** — see [`docs/architecture-topology.md`](docs/architecture-topology.md) §7.
+> field Wi-Fi** path that lifts the BLE-range limit has been run **one phone at a time, at the
+> bench**; a field full of phones, a router-hosted LAN and a dispersed start have not been run at all
+> — see [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the exact line.
 
-> **Android app:** a prebuilt debug APK lives at `webapp/brx-companion.apk`. It is the per-player
-> node HUD; it needs a running Mission Control to be useful (`docs/field-runbook-mc.md`).
+> **You do not need the phone app for any of the above** — the quickstart is laptop-to-guns over BLE.
+> The phone node is what lifts the BLE-range limit later. **There is no published build of it yet**;
+> you build it yourself (`app/README.md`), which needs a mobile toolchain per platform.
 
 ### Platform notes
 
@@ -124,8 +131,8 @@ Full prerequisites, signing notes, and what's generated vs committed: **[`app/RE
 
 M1 Identify ✅ → M2 Control ✅ → M3 Protocol depth (`$WEAP` map, sound bank, **per-player id over BLE**) ✅ →
 M4 Pilot game (per-player node + Mission Control + live scoreboard) — **built + tested in software**
-(a full test suite incl. 12 full-stack e2e); the **MC↔phone field path is unverified on hardware** (next: a live
-muster, `docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of
+(a full test suite incl. 12 full-stack e2e); the **MC↔phone path is bench-proven one phone at a time,
+but a whole field of them is not** (next: a live muster, `docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of
 record: **`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.
 
 ## License

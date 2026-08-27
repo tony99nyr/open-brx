@@ -7,8 +7,13 @@ Open BRX is not one program. It is **three tiers of hardware that never all talk
 once**, and almost every design decision in this repo follows from that. This page draws the
 connections, states the limit on each one, and cites where the fact comes from.
 
-> **Legend used throughout:** ✅ proven on real hardware · ⬜ specified and software-tested, **not**
+> **Legend:** ✅ proven on real hardware · ⚠ partly proven · ⬜ specified and software-tested, **not**
 > yet run on hardware. The distinction is load-bearing here — see §7.
+
+> **Short answer, if you own taggers and a laptop:** you can play **today**, in one room, with the
+> laptop driving the guns directly over BLE — that path is proven on hardware (§3, Tier 0). What you
+> cannot yet do is take it to a real field with phones, because that half has only ever been run one
+> phone at a time at a bench (§7).
 
 ---
 
@@ -114,7 +119,7 @@ misread.
 
 ```mermaid
 flowchart TB
-  subgraph T0["TIER 0 — laptop only ✅ PROVEN ON HARDWARE"]
+  subgraph T0["TIER 0 — laptop only ✅ PROVEN — 2 guns (3-gun synced start)"]
     direction LR
     L0["Laptop<br/>python -m brx_mcp play tdm ..."]
     g1["gun"]
@@ -126,7 +131,7 @@ flowchart TB
     L0 <-->|BLE| g3
     L0 <-->|BLE| g4
   end
-  subgraph T1["TIER 1 — phones as nodes ⬜ NOT YET RUN ON HARDWARE"]
+  subgraph T1["TIER 1 — phones as nodes ⚠ ONE PHONE PROVEN, A FIELD OF THEM NOT"]
     direction LR
     L1["Laptop = Mission Control<br/>+ field Wi-Fi"]
     p1["phone"]
@@ -151,12 +156,18 @@ scoring, respawn, frag limit, correct winner, BLE holding the whole match
 (FOLLOWUPS B10). The constraint is that **everyone stays in the laptop's BLE range** — a room, a
 yard, a small field.
 
-**Tier 1 is what buys you a real field**, and it is the part that has never been run on hardware.
-See §7.
+**Tier 1 is what buys you a real field**, and it is the thinly-tested half. One phone through the
+whole chain — phone ↔ MC ↔ gun — has run at the bench. A *field* of them, on a router-hosted LAN,
+with a dispersed timed start, has not. See §7 for the line-by-line.
 
 ---
 
 ## 4. Which links are up, phase by phase
+
+The phase names below are this project's own vocabulary, defined in
+[`spec/README.md`](spec/README.md) §3: **armory** = one-time USB setup per gun · **muster** =
+everyone connects and reports ready · **kit** = assigning names, teams and weapons · **lobby** =
+the config is pushed to each gun · a **FrameBundle** is that per-player bundle of gun commands.
 
 ```mermaid
 flowchart LR
@@ -170,8 +181,6 @@ flowchart LR
   H["7 · RECAP<br/>players return, nodes flush,<br/>MC reconciles"]
   A --> B --> C --> D --> E --> F --> G --> H
 ```
-
-Phase definitions: [`spec/README.md`](spec/README.md) §3.
 
 The interesting phase is **5**. The match starts on a wall-clock time agreed in advance, and each
 node counts itself down. No "go" signal crosses the field, because at T-0 there may be no network
@@ -225,13 +234,21 @@ provisional until every node has flushed.
 | Synchronised start across guns | ✅ 3 guns (FOLLOWUPS B10) |
 | Config survives BLE drop; power-cycle wipes it | ✅ bench |
 | One phone ↔ one gun over BLE | ✅ single-gun bench |
-| **Mission Control ↔ phones over a real field Wi-Fi** | ⬜ **never run on hardware** |
-| **A dispersed timed start on a real field** | ⬜ never run |
-| **Store-and-forward recovery after real coverage loss** | ⬜ never run |
+| **One** phone ↔ MC ↔ gun, at the bench | ✅ real phone→MC→gun sessions, 2026-08-25/26 (`HANDOFF.md` §Where the project stands; `experiment-log.md`) |
+| **More than one phone** on the MC LAN | ⬜ never run |
+| A router-hosted field LAN (rather than the bench) | ⬜ never run |
+| A dispersed, time-synced start on a real field | ⬜ never run |
+| The **local timed end** | ⬜ "not yet exercised" (`spec/node.md` §3.9) |
+| Store-and-forward recovery across a real outage | ⬜ never run |
+| Hold-across-disperse for 5 min | ⚠ only 2 min done (`brx-protocol.md` §7r) |
+| iOS BLE on a locked phone; phone auto-rejoin | ⬜ never run |
+| The ESP32 Companion and the Utility Box | ⬜ **do not exist** — every link involving them is paper |
 
-The whole Tier-1 half of §3 is software-tested only. `field-runbook-mc.md` carries the same warning
-at the top and tags the affected steps `[UNVERIFIED]`; the open items are in
-[`verification-checklist.md`](verification-checklist.md).
+> ⚠️ **Other docs summarise this differently** — `HANDOFF.md` calls the phone path "field-verified"
+> (while noting soak/scale certification is still open), whereas `README.md` and
+> [`field-runbook-mc.md`](field-runbook-mc.md) have called it unverified. Both are describing the same
+> thing at different resolutions. The table above is the resolution to trust: **one phone through the
+> whole chain is real; a field full of them is not.**
 
 **A green test suite is not a working field.** That distinction is stated in FOLLOWUPS B15 in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
