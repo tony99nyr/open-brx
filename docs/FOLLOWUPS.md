@@ -339,7 +339,7 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   (a) the victim-side `$SIR` matrix interprets each IR protocol/subtype separately (sound + undecoded
   numeric params — likely modifiers) → per-weapon on-target effects; (b) **medic heal-gun**: custom IR
   protocol + harmless `$SIR` row + Companion reads the `$HIR` tok2 protocol echo and applies +HP —
-  buildable today with attribution; (c) **EMP grenade**: `$STUN` direct command is a NO-OP (probed 4 arg shapes 2026-08-26 — stun is likely IR-delivered via a $SIR row, weapon category 10 'Stun') +
+  buildable today with attribution; (c) **EMP grenade** — ⚠️ **UPDATED 2026-08-27: `$SIR` fn 23 is NOT a stun, it is AUDIO SUPPRESSION** (the gun keeps firing and keeps emitting IR; it just goes silent for ~6–8 s). **No `$SIR` function has produced a stun; U11 is REOPENED.** The live lead is to capture the **native Sentinel EMP ability word** and read its protocol/subtype off the wire. Original note: `$STUN` direct command is a NO-OP (probed 4 arg shapes 2026-08-26 — stun is likely IR-delivered via a $SIR row, weapon category 10 'Stun') +
   `$GREN`/`$BUT` (grenade + alt-fire button notifications, unprobed) — bench-probe these three next
   session; (d) decode the `$SIR` row params (e.g. `90,1,40` / `100,2,60`) — probably damage %/stun.
 

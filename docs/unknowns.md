@@ -22,7 +22,10 @@ or floor space. This is the biggest category and the highest-value one.
 | id | unknown | why it matters |
 |---|---|---|
 | ~~1.2~~ | ✅ **ANSWERED 2026-08-27 — NO.** fn 23 does not stop the gun firing; it **silences** it (`$ALCD` t2 = audio level, 0 → 100 over ~6–8 s). A sensory-disruption weapon. | the proxy was wrong — see the log |
-| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 is eliminated | category 10 "Stun" is still unbuilt; remaining no-pool candidates: enemy-side **3, 8, 24–28, 35** |
+| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 eliminated (it is audio suppression) | category 10 "Stun" still unbuilt. **Best lead is no longer a sweep** — capture the **native Sentinel EMP ability** and read its protocol/subtype directly. Its frames were seen but lost to frame-splitting, now fixed |
+| **NEW** | **Capture the native Sentinel EMP ability word** | the stun answer, straight from BRX. Rig is ready (RAW toggle) |
+| **NEW** | **Capture a `$GREN` accessory word intact** (28–32 bit format) | same splitting fix applies |
+| **NEW** | **Which token drives LED life mode?** behaviour now known (purple=shield/armor → blue=health, segmented) | a stock feature we lose in every game |
 | **1.3** | Does a stun cost the victim a reload? | decides the stun's real cost |
 | **K4 / 1.1** | Why does **melee not work in our compiled game**? | a stock feature we lose; frames are byte-identical to Callsign's, so it is runtime/state |
 | **1.5** | What do status functions 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) *do*? | they register but move no pool and emit nothing — invisible without a human |
@@ -83,7 +86,7 @@ grenade and the whole objective tier opens.*
 ---
 
 ## C. Blocked on a CAPTURE  ·  5 items
-**▶ Method for all of these: [`capture-runbook.md`](capture-runbook.md)** — written 2026-08-27; they had a
+**▶ Next 30-min session: [`bench-next-30.md`](bench-next-30.md).**  ▶ Method for the capture items: [`capture-runbook.md`](capture-runbook.md)** — written 2026-08-27; they had a
 name but no plan. MacBook + iPhone only (Callsign is iOS, PacketLogger is macOS); batch for Mac day.
 
 | id | unknown | note |
