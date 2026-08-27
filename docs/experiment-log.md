@@ -2608,3 +2608,30 @@ function a native Supremacy victim has bound to that protocol, and **we cannot r
 **Next-session correction:** capturing the native EMP is still worth 10 minutes (it pins the protocol,
 and a non-8 answer would be informative), but it should be followed by **trigger-testing the remaining
 status functions**, which is the only method that can actually detect a stun.
+
+## 2026-08-27 (Tony, observed) — the HEADSET LED is autonomous, and rainbow = disconnected
+
+Tony, unprompted: *"the headset does always flash green on death. it slowly blinks rainbow when its
+disconnected. it goes team color to match tagger. those are native behaviors that work even in our game
+modes."*
+
+| headset LED | meaning | who drives it |
+|---|---|---|
+| **slow rainbow blink** | **DISCONNECTED / not paired to a tagger** | the headset itself |
+| **team colour** | matched to its tagger's `$TID` | headset, synced from the gun |
+| **green flash** | **death** | the headset |
+
+### Why this matters more than it looks
+1. **It is a free visual gate for B18b.** A dark/unpaired headset **silently blocks a gun from joining a
+   game** — the real cause of every "only 2 of 3 armed" incident. Until now the only detection was
+   noticing a gun never entered. **Rainbow blink is a pre-game tell visible across a room**, and it costs
+   nothing to use. **Add it to the muster checklist in `field-process.md`: no rainbow before you start.**
+2. **These are native and survive OUR game heads** — we get them free, and must not fight them. Nothing
+   in our config needs to reproduce green-on-death or team colour.
+3. **The headset syncs team colour from the tagger**, so a gun↔headset channel carries team state. That
+   is a link we have never characterised and do not drive.
+4. **Green-on-death is the headset's own**, and is distinct from `$SFLASH` (the *shooter's* green-sight
+   kill-confirm, §7o). Same colour, opposite actors — the feedback engine (B18) must not conflate them.
+
+⇒ Headset LEDs are **not** something we need to build. The open LED work (P13/P17/life-mode) is about
+the **gun's** LEDs only.

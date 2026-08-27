@@ -85,6 +85,13 @@ objective modes — every tagger armed to its station **before** kickoff.
 
 ### Steps
 
+0. **👁 EYEBALL THE HEADSETS FIRST — 5 seconds, saves a whole game.** A headset **slow-blinks RAINBOW
+   when it is disconnected / not paired**, and a gun with a dark or unpaired headset **silently refuses
+   to join** (§7m / B18b) — the real cause of every "only 2 of 3 armed". **Any rainbow = that player will
+   stand there dead all round.** Fix it before you arm anything. A settled headset shows its tagger's
+   **team colour**; it flashes **green on death**. All three are native and work under our game heads
+   too. (Tony, 2026-08-27.)
+
 1. **Roster from the armory.** Pick the guns for this match by their armory identity (sticker id / gun
    name), confirm readiness (battery, headset linked, firmware) via `fleet` / `diagnose`. **[BUILT]** for
    the diagnostics; the readiness dashboard UI is a Mission Control surface (B3, design prototype).
