@@ -559,6 +559,17 @@ front dome, back dome and gun body, and a held gun presents a completely differe
 angle to the emitter than one lying on a bench. Whether the sensor that catches the IR affects the
 damage applied has never been tested.
 
+**And it cannot be settled from the existing data, which is the real lesson here.** The fn-24 evidence
+records no `$HIR` tokens at all — only pool deltas and what the operator heard. So that dataset
+neither supports nor kills the sensor hypothesis; it simply cannot speak to it. The same is true of
+most pool measurements in the function map.
+
+> **Method rule going forward: record `$HIR` token 1 alongside every pool measurement.** It costs
+> nothing at capture time and it is the difference between a dataset that can answer a question
+> retrospectively and one that has to be re-run. This is the second unstated condition to surface in
+> two days — the protocol qualifier was the first, and it was clearable only because a matrix could be
+> re-run cheaply. A sensor condition on a map that is about to be quoted row by row would not be.
+
 **Our emitter is not the explanation, and that matters.** The obvious suspicion was that the rig had
 encoded 40 where it meant 20, which would look exactly like a ×2. It didn't: the emitter is
 *function-agnostic* — it sends 25 bits, and which function the victim applies is decided by the
