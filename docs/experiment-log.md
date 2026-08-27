@@ -2743,6 +2743,42 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — the rig is pinned to the GUN-BODY sensor (20/20) — a scope fact, not a null result
+
+Tested whether the unattended rig can land a **headset-dome** hit, which would have made the sensor
+hypothesis answerable without an operator. **It cannot.**
+
+20 shots of fn 1, magnitude 20, full re-arm between every shot, emitter at its fixed bench position
+(~40 cm, per the rig notes):
+
+| sensor | shots | per-hit delta |
+|---|---|---|
+| **4 — gun body** | **20/20** | 20 every time |
+| 0 / 1 — headset domes | **0** | — |
+
+**What this is worth.** It is not "we learned nothing". It converts an *unknown* condition into a
+**known and uniform** one: **every pool number in the `$SIR` function map was measured at the gun-body
+sensor.** That is a scoping statement that can go into the map now — the same shape as the protocol
+qualifier, but this one cannot be cleared by re-running a cheap matrix. It also makes the follow-up
+cheap: re-measure **two rows** with the emitter aimed at a dome and you know whether the sensor matters
+at all, instead of re-running 50 cells.
+
+**⚠️ Caveat on what `$HIR` tok1 means at close range** (raised by brx-opus2, and it cuts both ways):
+the spec already warns that **point-blank floods mis-attribute**. At this range tok1 may indicate which
+sensor **reported first**, not which was physically struck. So:
+- a uniform tok1=4 here does **not** prove the domes were never illuminated, and
+- had the buckets come back mixed, that would **not** have cleanly demonstrated sensor variation either.
+
+**Therefore: record the firing distance alongside `$HIR` tok1 in every future pool measurement.** Range
+is the same class of unstated condition that protocol and sensor both turned out to be — this is the
+third time tonight an unrecorded condition has surfaced after the fact.
+
+**Method rule now standing (agreed with brx-opus2): record `$HIR` tok1 — and the range — beside every
+pool measurement.** It is the difference between a dataset that can answer a question retrospectively
+and one that has to be re-run. `c9c4a3f` cannot settle the sensor question precisely because it
+recorded no tok1.
+
+
 ### 2026-08-27 — PROTOCOL x FUNCTION MATRIX: the classes DO travel; my scope caveat was over-cautious
 
 **My protocol-0 caveat was the right instinct and the wrong conclusion.** Measured, it dissolves.
@@ -2956,6 +2992,10 @@ Software encoding was verified instead, and is correct.
 41 functions x 2 teams, autonomous, `$VOL,3`, victim Tactix-FE30 `$TID,1`, hp45/armour70/shield-cap70,
 magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counted separately from `$HP`.
 
+> **SCOPE — measured at the GUN-BODY sensor (`$HIR` tok1 = 4), 20/20, emitter at ~40 cm.** Whether a
+> headset-dome hit applies the same pool deltas is **untested** — this rig cannot produce one.
+> Re-measuring two rows with the emitter aimed at a dome would settle it.
+>
 > **SCOPE — measured on IR protocol 0, and since verified to generalise.** Every cell used row
 > `<0,subtype>`. A follow-up matrix (fn {1,3,8,23,24,25,26,27,28,35} x protocols {0,5,7,9,10}) found
 > **not one cell varies by protocol**, so the classes below hold across protocols and may be cited
