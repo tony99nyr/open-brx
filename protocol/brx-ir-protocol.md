@@ -5,30 +5,51 @@ gun's IR carries to another gun's headset), distinct from the BLE serial protoco
 
 **Source & credit:** decoded from **LaserTagMods' `NRFL-Bases/NRFL Bases/Nodes/node1.ino`**
 (github.com/LaserTagMods) — a referee-free domination *base* that receives gun IR and decodes the BRX
-tag. Credit LaserTagMods (JEDGE/JBOX) for the protocol discovery. **Status:** high-confidence from source,
-**not yet verified on our own bench** — confirm against a VS1838B capture (`hardware/ir-prototype-plan.md`,
-`esp32-ir-bridge/ir_capture.ino`) before treating as final.
+tag. Credit LaserTagMods (JEDGE/JBOX) for the protocol discovery.
+
+**Status: ✅ BENCH-VERIFIED 2026-08-26** on our own rig (ESP32-S3 + VS1838B, R0BAS). Timings, bit
+count, field offsets and the parity rule are all confirmed against ground truth pushed over BLE.
+Two corrections to the source-derived table are folded in below: the **B field is the IR
+protocol / damage type** (not a "bullet type"), and the **Z trailer is a computed parity**, not just
+a pair that happens to differ.
 
 ## Frame: ~25-bit word, pulse-width encoded
 
 - **Carrier:** 38 kHz, 940/980 nm (a standard VS1838B/TSOP demod receiver recovers it).
 - **Sync/start:** a **~2 ms LOW pulse** precedes the frame (node1 gates on `pulseIn(pin, LOW) > 1500 µs`,
   "2 ms sync ± 500 µs"). Use it to detect frame start / reject non-BRX IR.
+- **MEASURED on our bench (2026-08-26, R0BAS @ ~1 m):** sync **1988–1991 µs** · one-marks
+  **990–994 µs** · zero-marks **489–512 µs** · spaces **489–512 µs**. The 750 µs split is comfortably
+  centred. ⚠ **The `>1500 µs` sync gate is NOT BRX-unique** — a Sony SIRC remote's 2390 µs header
+  passes it (captured on the same rig). For a station that lives in a room with TVs, bound the sync
+  to roughly **1800–2200 µs** and additionally require 25 bits + the parity rule below.
 - **Bits:** each bit is a LOW pulse read by `pulseIn(pin, LOW, 5000)`. Width encodes value —
   **long (~1000 µs) = 1, short (~500 µs) = 0**, split at a **~750 µs threshold** (node1 compares `> 750`).
   Matches the LaserTagMods "25-bit, 1000/500 µs marks" note in `docs/reference/lasertagmods.md`.
 
 ## Field layout (in transmit order, after sync)
 
-| Field | Bits | Meaning |
-|---|---:|---|
-| **B** | 4 | bullet / weapon type |
-| **P** | 6 | **player id (0–63)** — per-player identity is in every shot |
-| **T** | 2 | team id (4 teams: red / blue / green / yellow) |
-| **D** | 8 | damage amount |
-| **C** | 1 | critical-hit flag |
-| **U** | 2 | unknown / reserved (node1 reads but doesn't use) |
-| **Z** | 2 | parity (Z0 ≠ Z1); a trailing short pulse (<250 µs) then marks end-of-frame |
+| Field | Bits | Offset | Meaning | Bench evidence (2026-08-26) |
+|---|---:|---|---|---|
+| **B** | 4 | 0–3 | **IR protocol / damage type** — the same number as `$WEAP` **t3** and the `$HIR` **tok2** echo. *(node1 called this "bullet type".)* | AR (t3 empty→0) read `0`; rocket (**t3=10**) read **10** |
+| **P** | 6 | 4–9 | **player id (0–63)** — per-player identity is in every shot | read `0`, matching R0BAS's registry `player_id: 0` |
+| **T** | 2 | 10–11 | team id (4 teams) — cf. BLE `$TID & 3` | read `1`, matching R0BAS's registry `field_id: 1` |
+| **D** | 8 | 12–19 | **damage amount** = `$WEAP` **t5** = `$HIR` **tok5** | pushed t5 **22 → 9 → 115**, only these 8 bits moved |
+| **C** | 1 | 20 | **critical-hit flag → echoes `$HIR` tok6`** | emitted `crit=1` → `$HIR,0,0,42,2,1,**1**,0`. Reads 0 on every stock weapon — not dead, just never set. We can emit crits. |
+| **U** | 2 | 21–22 | **`$SIR` SUBTYPE → echoes `$HIR` tok7** *(node1 called this "unknown/reserved")* | rows pushed for subtypes 0/1/3; U=0/1/3 all registered and echoed, **U=2 — the only one without a row — was ignored** |
+| **Z** | 2 | 23–24 | **computed parity** over bits 0–22 (see below) | 4/4 frames match the rule |
+
+**B and U together are the `$SIR` composite key `<protocol, subtype>`** — the exact index a `$SIR`
+row is looked up by. 4 bits × 2 bits = **64 addressable effect cells, and the table is ours to write
+over BLE.** A victim registers an IR event **only if a row exists for that cell**; with no row the hit
+is silently dropped (this is why an incomplete table produced repeated false negatives on the bench).
+
+> **Correction (same session):** an earlier note here called the 4-bit protocol field "a hard
+> constraint" leaving "~10 free slots". That framing was wrong — scarcity of protocol *numbers* is not
+> the limit, because both halves of the key are assignable and the row's **function** is what decides
+> the effect. Stock BRX occupies `0` standard, `8` charge, `10` rocket, `11` gas, `13` melee,
+> `15` grenade beacon; everything else is free, and even occupied protocols are re-definable per game
+> since we push the table.
 
 4+6+2+8+1+2+2 = **25 bits** (node1 reads a 26th "Z2" pulse only to confirm it is short — the
 end-of-frame check, not a data bit).
@@ -37,8 +58,34 @@ end-of-frame check, not a data bit).
   yellow=4 (its own base-side numbering; e.g. Yellow = `T[0] > 750 && T[1] < 750`). Note this is the
   *base's* interpretation — reconcile with the BLE `$TID` team codes (1=blue, 2=yellow, 0=red) when we
   verify on the bench; the raw 2-bit field is what matters.
-- **Parity check:** a frame is accepted as legit BRX only if `Z[1] != Z[0] && Z[2] < 250` — i.e. the two
-  parity bits are never identical and there is no long 3rd parity bit. Good cheap validity filter.
+- **Parity rule — BENCH-DERIVED 2026-08-26 (the source did not give this).** `Z` is not merely a
+  differing pair: it is a **parity over the 23-bit payload (bits 0–22)**.
+
+  > **odd number of 1s → `Z = 01` · even number of 1s → `Z = 10`**
+
+  Verified on four distinct words: damage 22 (4 ones, even → `10`), damage 9 (3, odd → `01`),
+  damage 0 (1, odd → `01`), rocket damage 115 (8, even → `10`). Because the two values are always
+  `01` or `10`, node1's cheap `Z[1] != Z[0]` test never fails on a real frame — which is why the
+  weaker rule appeared sufficient from the source alone.
+
+  **⚠ CORRECTION (tested 2026-08-26, same session): the gun does NOT enforce this parity.** An
+  earlier note here claimed a synthesized word "must carry the correct computed parity or a gun
+  should reject it" — that was inferred, not measured. Emitting at R0BAS, 8 shots per variant:
+
+  | Z sent | registered |
+  |---|---|
+  | rule-correct (`01` here) | **8 / 8** |
+  | deliberately wrong but differing (`10`) | **8 / 8** |
+  | `00` | **0 / 8** |
+  | `11` | **0 / 8** |
+
+  So the gun's actual acceptance test is exactly node1's cheap one — **`Z0 != Z1`**, nothing more.
+  Either differing pair is accepted; equal pairs are rejected outright. The odd/even rule above is
+  still a true description of what **genuine BRX frames emit**, so `encode_word()` keeps computing it
+  for fidelity (and `decode_word()` reports `parity_matches`, useful for telling our traffic from a
+  real gun's) — but it is **not** an acceptance gate, and an emitter that gets it "wrong" still lands.
+- **Frame acceptance (node1's own test):** `Z[1] != Z[0] && Z[2] < 250` — the trailing short pulse
+  (<250 µs) marks end-of-frame. Keep it, but prefer the full parity check above.
 
 ## Why this matters for us
 
@@ -56,7 +103,13 @@ end-of-frame check, not a data bit).
   reveal it. (See `docs/experiment-log.md` "feedback fork" + FOLLOWUPS B18.)
 
 ## Verify-on-bench checklist (before trusting for emit)
-1. Capture a real gun shot on VS1838B → confirm the ~2 ms sync + 25 pulses + ~500/1000 µs marks.
-2. Fire from a known player id / team / weapon → confirm P/T/B fields decode to the expected values.
-3. Confirm the parity rule holds across many shots.
-4. Then wire the emit side (`ir_emit.ino`) and test whether a gun's headset accepts our re-emitted word.
+1. ✅ **DONE 2026-08-26** — captured real R0BAS shots on VS1838B: ~1990 µs sync, 25 bits, 990/500 µs marks.
+2. ✅ **DONE 2026-08-26** — P and T matched the armory registry; **B and D pinned by pushing known
+   `$WEAP` frames over BLE** (AR t5=9, rocket t3=10/t5=115) and watching only the expected bits move.
+3. ✅ **DONE 2026-08-26** — parity holds on 4/4 frames, and the *rule* behind it is now known.
+4. ⬜ **NEXT** — wire the emit side (`ir_emit.ino`) and test whether a gun accepts our re-emitted word.
+
+**Capture gotcha (our rig, not the protocol):** `ir_capture.ino` prints a long `RAW` line per frame,
+and at 115200 that takes ~15 ms — any shot landing inside that window is captured truncated. The
+symptom is a run of frames that are *prefixes* of the real word (16/17/20/21/24 bits). **Fire shots
+~1–2 s apart**, or cut the RAW print, before doing any counted-window work (e.g. the t41 range A/B).

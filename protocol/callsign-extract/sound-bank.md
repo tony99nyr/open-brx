@@ -53,9 +53,9 @@ configures.
 |---|---|
 | `VA20` | "connection established" (1.27s) |
 | `U16` | connect-related (0.43s) |
-| `H29` | respawn/add-HP ($SIR) (1.20s) |
-| `VA8C` | add shields ($SIR) (1.50s) |
-| `VA16` | add armor ($SIR) (0.94s) |
+| `H29` | respawn/add-HP ($SIR) (1.20s) — **heard 2026-08-26: a quiet sustained "stim pack"-style medical sound**, not a voice line. Fits the add-HP role; good as-is for a medic gun. |
+| `VA8C` | add shields ($SIR) (1.50s) — **heard 2026-08-26: says "shields online"** (confirmed). A loud sound effect plays over the word "shields", so only "online" is clear at low volume — if a mode needs it intelligible, layer a `$PLAY` voice line instead of relying on this cue alone. |
+| `VA16` | add armor ($SIR) (0.94s) — **heard 2026-08-26: says "armor suit"** (confirmed twice by ear at the bench) |
 | `V3M` | (played in diag) (0.79s) |
 | `VA81` | countdown/spawn (arena) (2.97s) |
 | `VA2` | tear gas ($SIR) (5.98s) |

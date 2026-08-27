@@ -33,11 +33,24 @@ static const int  CARRIER_RES   = 8;     // 8-bit duty
 static const int  CARRIER_DUTY  = 128;   // ~50%
 static const uint32_t LED_HOLD_MS = 40;  // keep the visible LED on this long (so it's obvious)
 
-// --- BRX timing (TUNE to your captured frames) ------------------------------ //
-static uint32_t MARK_ONE   = 1000;  // logic 1 mark (us)
-static uint32_t MARK_ZERO  = 500;   // logic 0 mark (us)
-static uint32_t BIT_SPACE  = 500;   // inter-bit space (us)
-static uint32_t START_MARK = 2000;  // ~2 ms sync mark — REQUIRED: a stock gun drops a
+// --- STANDALONE AUTO-TX ------------------------------------------------------ //
+// A deployed Utility Box (B4) emits with no PC attached, so auto-TX is real product
+// behaviour, not a bench hack. It also unblocks a one-data-cable bench: flash this,
+// then power the board from any charger / power bank and it keeps transmitting.
+// Empty string = disabled (serial-driven only). Runtime: "AUTO <bits>" / "AUTO OFF".
+static String  autoBits = "";            // e.g. "1010000000010111001100010" (rocket word)
+static uint32_t AUTO_TX_INTERVAL_MS = 400;
+static uint32_t lastAutoMs = 0;
+
+// --- BRX timing — MEASURED on our own bench 2026-08-26 ----------------------- //
+// Captured from R0BAS @ ~1 m with ir_capture.ino (see docs/experiment-log.md):
+//   sync 1988-1991 us | one-mark 990-994 | zero-mark 489-512 | space 489-512
+// These replace the LaserTagMods source defaults (2000/1000/500) — same to within
+// a percent, but now measured rather than assumed.
+static uint32_t MARK_ONE   = 992;   // logic 1 mark (us)  [measured 990-994]
+static uint32_t MARK_ZERO  = 500;   // logic 0 mark (us)  [measured 489-512]
+static uint32_t BIT_SPACE  = 500;   // inter-bit space (us) [measured 489-512]
+static uint32_t START_MARK = 1990;  // ~2 ms sync mark — REQUIRED: a stock gun drops a
 static uint32_t START_SPACE = 500;  // sync-less frame (decoders gate on pulseIn(LOW)>1500us).
 
 inline void carrierOn()  { ledcWrite(IR_TX_PIN, CARRIER_DUTY); }
@@ -84,6 +97,12 @@ void handleLine(String line) {
     Serial.print(" bits="); Serial.println(bits.length());
     return;
   }
+  if (line.startsWith("AUTO")) {
+    String arg = line.substring(4); arg.trim();
+    if (arg == "OFF" || arg.length() == 0) { autoBits = ""; Serial.println("AUTO off"); }
+    else { autoBits = arg; Serial.print("AUTO on bits="); Serial.println(autoBits.length()); }
+    return;
+  }
   if (line.length()) Serial.println("ERR unknown");
 }
 
@@ -95,10 +114,19 @@ void setup() {
   ledcAttach(IR_TX_PIN, CARRIER_HZ, CARRIER_RES);  // v3.x API
   carrierOff();
   Serial.println("# BRX IR emit ready (ESP32-S3, IR LED on GPIO5).");
-  Serial.println("# Commands: TX <bits> | TXN <n> <bits> | PING");
+  Serial.println("# Commands: TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING");
+  if (autoBits.length()) {
+    Serial.print("# AUTO-TX armed, every "); Serial.print(AUTO_TX_INTERVAL_MS);
+    Serial.print(" ms, bits="); Serial.println(autoBits.length());
+  }
 }
 
 void loop() {
+  // standalone: keep emitting with no host attached (see autoBits above)
+  if (autoBits.length() && millis() - lastAutoMs >= AUTO_TX_INTERVAL_MS) {
+    lastAutoMs = millis();
+    sendFrame(autoBits);
+  }
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') { if (buf.length()) { handleLine(buf); buf = ""; } }

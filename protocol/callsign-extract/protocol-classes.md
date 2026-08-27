@@ -34,7 +34,7 @@ Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
 
 | # | field | example | meaning |
 |---|---|---|---|
-| 1 | friendlyFire | 0 | **app-setting label, NOT gun-enforced** (bench exp 4, 2026-08-26): same-team damage lands under both 0 and 1 → FF is app-side bookkeeping; the token's on-gun function is UNKNOWN |
+| 1 | friendlyFire | 0 | **GUN-ENFORCED both directions** (bench 2026-08-26, brx-ir four-cell IR emitter, 2×+control): FF=0 blocks same-team damage AND enemy heals; FF=1 opens the gate — exactly as labelled. (An intermediate same-day gun-probe read it not-enforced but only reached FF=1 with an unverified victim team.) |
 | 2 | outdoorMode | 0 | indoor(0)/outdoor(1) IR range profile |
 | 3 | gunLaserRegion | 1 | gun-laser region/zone |
 | 4 | autoAmbientLight | 0 | auto ambient-light compensation |
@@ -275,11 +275,13 @@ without exception:
 So `t17`/`t40` are the same quantity in different units (or one is derived on send) — **do not treat
 them as two independent knobs.** Likewise `t39 == t16` in every frame (clip starts full).
 
-✅ **`t5` (`primaryDamage`) — RESOLVED (bench exp 2, 2026-08-26).** `t5` **is** the applied damage:
-`$HIR` token 5 equalled `t5` exactly on all four weapons fired (AR 9, Shotgun 45, Sniper 80, Rocket
-115 — `brx-protocol.md` §7r). So the AR really deals **9**; the earlier 2-frame table's **24** was the
-stale manual M-4 anchor, not a wire read. (Weapon stats remain server-fetched, so a given weapon's
-`t5` is whatever the app last sent — but `t5`→applied-damage is now firm.)
+✅ **`t5` (`primaryDamage`) — RESOLVED (bench exp 2, 2026-08-26; refined that night).** `t5` is the
+weapon's **raw magnitude** — the number it puts in the IR word. Exp-2 read `$HIR` token 5 == `t5` on four
+weapons (AR 9, Shotgun 45, Sniper 80, Rocket 115), which held because all four key to `$SIR` **fn-1** rows.
+In general the **applied** damage = `magnitude × the victim's $SIR-function multiplier × (1.5 if crit)`
+(fn 36 = ×1.25, fn 37 = ×2) — so tok5 == applied only on fn-1 rows. The AR really emits **9**; the 2-frame
+table's **24** was the stale manual M-4 anchor. (Weapon stats are server-fetched — a weapon's `t5` is
+whatever the app last sent.)
 
 ### WEAP exact token positions (metadata field names × 2 live frames)
 

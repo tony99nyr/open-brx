@@ -112,3 +112,26 @@ bits). These are the same calls the `diag-game ir` cases use once the bridge is 
   then emit a captured "hit" and confirm a stock gun reports `$HIR` (Phase B).
 - Wire the two `ir.*` diagnostic cases (`diag/cases.py`) to call `IRBridge` so `diag-game <addr> ir`
   runs capture+emit as scored tests.
+
+## Board registry — which ESP32-S3 is which (2026-08-26)
+
+COM numbers move around; the **CH343 bridge chip serial does not**. Identify a board with:
+
+```bash
+powershell.exe -NoProfile -Command "Get-CimInstance Win32_PnPEntity | Where-Object { \$_.Name -match 'COM\d+' } | Select-Object Name, DeviceID | Format-List"
+```
+
+| Board | CH343 chip serial | Role | Sketch | Wiring | Seen as |
+|---|---|---|---|---|---|
+| **A** | `5C93045958` | **RECEIVER** | `ir_capture.ino` | VS1838B: OUT→**GPIO4**, GND→GND, VCC→3V3 | COM7 |
+| **B** | `5C4C136487` | **EMITTER** | `ir_emit.ino` | GPIO**5**→330Ω→2N2222A base · 3V3→100Ω→IR-LED anode · LED cathode→collector · emitter→GND | COM8 |
+
+**Always flash via the `UART` USB-C port**, which enumerates as `USB-Enhanced-SERIAL CH343`
+(`VID_1A86&PID_55D3`). The *other* port is the S3's **native USB** (`VID_303A&PID_4001`) and is a trap:
+it enumerates from ROM whether or not the sketch uses it, so the port appears healthy while
+`Serial` is actually bound to UART0 and nothing answers. Symptom seen on this bench: a `PING` to the
+native port returned 6 bytes of junk (`50%B`) instead of the `# BRX IR emit ready` banner. Using the
+native port requires **Tools → USB CDC On Boot → Enabled**; simpler to just use UART.
+
+**Windows serial ports are exclusive** — close the Arduino Serial Monitor before any `brx_mcp`
+capture/emit, or it fails with `PermissionError(13, 'Access is denied.')`.

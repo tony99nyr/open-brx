@@ -156,19 +156,40 @@ def decode_word(bits: str) -> dict:
         "damage": seg("damage"), "crit": seg("crit"), "unknown": seg("unknown"),
         "parity_bits": z0 + z1,
         "parity_valid": bool(z0) and bool(z1) and z0 != z1,
+        # stronger than the z0!=z1 accept test: does Z match the bench-derived
+        # parity over bits 0..22? (payload_parity, confirmed 2026-08-26)
+        "parity_computed": payload_parity(bits[:23]) if len(bits) >= 23 else "",
+        "parity_matches": (len(bits) >= PAYLOAD_BITS
+                           and z0 + z1 == payload_parity(bits[:23])),
         "nbits": len(bits), "complete": len(bits) >= PAYLOAD_BITS,
     }
 
 
-def encode_word(player=0, team=0, damage=0, bullet=0, crit=0, unknown=0, parity="01") -> str:
-    """Build a 25-bit payload. `parity` defaults to a valid differing pair ('01' →
-    parity_valid); pass explicit 2-bit Z if the bench shows parity is computed from
-    the payload. Field endianness is not yet bench-verified; encode/decode share it."""
+def payload_parity(payload: str) -> str:
+    """The 2-bit Z trailer for a 23-bit payload (bits 0..22), BENCH-DERIVED 2026-08-26.
+
+    Measured on R0BAS across three distinct words (damage 22 / 9 / 0): an ODD number
+    of 1s in the payload yields Z='01', an EVEN number yields Z='10'. Z0 != Z1 always,
+    which is why node1's cheap `Z1 != Z0` accept test works — but the full rule is a
+    parity, and an emitted frame MUST carry the right one or a gun should reject it.
+    """
+    return "01" if payload.count("1") % 2 else "10"
+
+
+def encode_word(player=0, team=0, damage=0, bullet=0, crit=0, unknown=0, parity=None) -> str:
+    """Build a 25-bit payload. `parity` defaults to the bench-derived parity computed
+    over the payload (see payload_parity); pass an explicit 2-bit Z only to construct
+    a deliberately-malformed frame for tests. Field layout is bench-CONFIRMED
+    (2026-08-26): pushing $WEAP t5 9 vs 22 moved only bits 12..19."""
     def f(v, n):
         return format(v & ((1 << n) - 1), f"0{n}b")
-    parity = (parity + "01")[:2]        # tolerate a short/empty parity arg
-    return (f(bullet, 4) + f(player, 6) + f(team, 2) + f(damage, 8)
-            + f(crit, 1) + f(unknown, 2) + parity)
+    payload = (f(bullet, 4) + f(player, 6) + f(team, 2) + f(damage, 8)
+               + f(crit, 1) + f(unknown, 2))
+    if parity is None:
+        parity = payload_parity(payload)
+    else:
+        parity = (parity + "01")[:2]    # tolerate a short/empty explicit parity arg
+    return payload + parity
 
 
 def bits_to_pulses(bits, sync_us=2000, one_us=1000, zero_us=500, space_us=500) -> list[int]:

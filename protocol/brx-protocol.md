@@ -41,7 +41,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$CONNECT,*` | Connection handshake | |
 | `$INIT,*` | Initialize | |
 | `$PHONE,*` | Put tagger in app-controlled mode | Same mode the official app uses |
-| `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. **⚠ `friendlyFire` (token 1) is NOT gun-enforced** (bench exp 4, 2026-08-26: same-team damage lands under both 0 and 1 — FF is app-side bookkeeping; the token's on-gun function is UNKNOWN). Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
+| `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. **`friendlyFire` (token 1) is GUN-ENFORCED** (bench 2026-08-26, brx-ir four-cell IR emitter, 2×+control): FF=0 blocks same-team damage AND enemy heals; FF=1 opens the gate — exactly as labelled. (An intermediate same-day gun-probe read it as not-enforced, but only reached FF=1 with an unverified victim team; MC friendly-fire is a policy/scoring layer over this enforced base.) Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
 | `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
@@ -79,7 +79,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$DISCONNECT,*` | Tagger-initiated disconnect notice (captured) | |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | **Battery telemetry** (verified 2026-08-23) | Periodic (~every 30 s) in app mode. Observed: `$VOLTS,7662,3921,55,70,*` — 7.662 V pack, 3.921 V cell; last two tokens likely charge %/levels (TBC) |
 | `$LCD,<t1..t6>,*` | Display/state echo (observed 2026-08-23) | Seen in reply to `$START,*`: `$LCD,0,0,0,0,0,0,*` — semantics TBD |
-| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (SHIELD-ISOLATED 2026-08-26: **0 = headset FRONT, 1 = headset BACK, 4 = gun body** — point-blank floods mis-attribute; see the tok1 sensor map section), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = damage applied (EXACT = the `$WEAP` `t5` field — §7r bench exp 2), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
+| `$HIR,<sensor>,<irProto>,<shooterPlayerId>,<shooterTeam>,<damage>,,<subtype>,*` | **Hit! Tagger was tagged** | **token 1 = sensor that caught the IR (SHIELD-ISOLATED 2026-08-26: **0 = headset FRONT, 1 = headset BACK, 4 = gun body** — point-blank floods mis-attribute; see the tok1 sensor map section), token 2 = shooter IR protocol (0 = standard, 10 = proto-10 e.g. rocket — §7r), token 3 = shooter player id (0–63, set by `$PSET` token 1), token 4 = shooter team (`$TID`), token 5 = the RAW magnitude from the IR word (= the shooter's `$WEAP` `t5`; **applied** damage = magnitude × the victim's `$SIR`-function multiplier × 1.5-if-crit — §7r), token 7 = weapon subtype echo (sniper = 1)** — hardware-verified (§7k team, §7q player id, §7r sensor/damage/protocol) |
 | `$HP,<hp>,<armor>,<shield>,*` | Health update (tokens verified §7r) | `$HP,0,0,0` = player died (or turned zombie in Survival); arrives in the same ms as its `$HIR` |
 | `$BUT,<id>,<state>,*` | Physical button event (verified 2026-08-23) | id: 0=trigger, 1=alt-fire, 2=reload handle, 3=select, 4=left, 5=right (matches `$BMAP` ids). state: 1=press, 0=release |
 | `$UP,...` | Status/update report (0–6 tokens) | **`$UP,*` bare gets no reply** (§7l). LaserTagMods send it *with* args as `$UP,100,<n>,0,*` — likely a WRITE, not a query |
@@ -92,6 +92,24 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 ## 5. `$SIR` — incoming IR event table (observed)
 
 Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
+
+> **BENCH-PROVEN 2026-08-26 — `$SIR` is a programmable effects matrix we can drive over IR.**
+> Using our own ESP32 emitter (`protocol/brx-ir-protocol.md`) against a live victim:
+>
+> - **`<irProtocol>` = the IR word's B field, `<subtype>` = the IR word's U field.** Together they are
+>   the row's lookup key; the victim **silently ignores any IR event with no matching row**. 64 cells.
+> - **The IR word's 8-bit "damage" field is really a MAGNITUDE** — the row's `<function>` decides what
+>   it applies to. The same 20 means "hurt 20", "heal 20", "armor 20" or "shield 20".
+> - **Functions confirmed on hardware:** `1` damage (works on protocols 0/6/8/10/13) ·
+>   **`10` respawn + add HP** (HP 15→35→45, +magnitude, clamps, deals no damage) ·
+>   **`11` add shields** (0→50→70) · **`13` add armor** (0→30→60→70, **overflow spills into shields**).
+> - **Damage drain order confirmed on the wire: shields → armor → HP.**
+> - **⚠ Support functions (10/11/13) are TEAM-GATED in firmware** — they register **only from a
+>   same-team source** (3/3 as the victim's team; 0/3 as any other). This is a **per-function** gate:
+>   bench exp 4 proved *damage* is NOT friendly-fire gated under either `$GSET` token 1 value. So a
+>   medic gun enforces "allies only" in hardware, with no host logic.
+> - **`<soundID>` fires on the victim.** Heard at the bench: `VA16` = "armor suit", `VA8C` =
+>   "shields online" (effect masks the first word), `H29` = a quiet sustained stim-pack medical sound.
 
 | Example | Interpretation |
 |---|---|
@@ -519,9 +537,10 @@ varies** across this capture — the IR protocol id, matching `$SIR`'s first fie
 Protocol `0` hits drained **18** armor each; protocol `4` hits drained **9**.
 Token 5 was `9` in both, so it is **not** simply the damage value — the `$SIR` table's
 mapping of protocol → effect is what determines damage.
-> **Corrected (§7r, handoff exp 2, 2026-08-26): token 5 IS the applied damage, exact across four
-> weapons.** This old capture's "protocol 0 → 18 vs protocol 4 → 9" split was a `$SIR`-table mapping
-> artifact, not evidence against `t5`; with a full `$SIR` table the delta equals `t5` every time. Shooter-ID semantics could not be
+> **Corrected (§7r, 2026-08-26): token 5 = the RAW magnitude in the IR word** (= the shooter's `$WEAP`
+> `t5`). This old capture's "protocol 0 → 18 vs protocol 4 → 9" split is now cleanly explained: both had
+> raw magnitude 9, but the two protocols' `$SIR` rows applied different **function multipliers** (×2 → 18
+> vs ×1 → 9). So the **applied** damage = magnitude × the `$SIR`-function multiplier × 1.5-if-crit — see §7r. Shooter-ID semantics could not be
 confirmed from this capture (both players sat on default ids) — **now resolved, see §7k.**
 
 ### Death and respawn — host-driven
@@ -1220,8 +1239,9 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
 - **`$HIR` token 1 is the SENSOR that caught the IR, not a damage class.** Aimed shots: headset-only hits →
   `$HIR,1,…`; gun-body hits → `$HIR,4,…`; a third value `0` appeared on unaimed hits (another gun sensor).
   A kill is NOT marked in `$HIR` (no `2`): the kill is `$HP,0,0,0` followed by `$LCD,0,0,0,0,<mag>,<reserve>`.
-  §7q's "4 = armor absorbed / 0 = HP / 2 = kill" reading is **retracted**. Token 5 = damage applied (24 here,
-  = the `$WEAP` damage field).
+  §7q's "4 = armor absorbed / 0 = HP / 2 = kill" reading is **retracted**. Token 5 = the raw magnitude in the
+  IR word (24 here = this config's `$WEAP` `t5`; **applied** = magnitude × the victim's `$SIR`-function
+  multiplier × 1.5-if-crit — see the §7r addendum).
   **tok1 sensor map — RESOLVED by shielded isolation (2026-08-26):** `0` = headset **FRONT** dome,
   `1` = headset **BACK** dome, `4` = gun body (full method in the tok1 sensor-map section at the end of
   this file). A headset/head hit is tok1 ∈ {0,1} (0 vs 1 = front vs back); the earlier bench's "token 1
@@ -1242,7 +1262,7 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
   belong to `$SPAWN`. The T-10 s head re-write (M-START) costs no audio.
 - **A configured-but-unspawned gun ignores IR** — no `$HIR`, no `$HP`, no reaction. Kit-out try-outs are safe.
 - **`$PSET` token 2 is inert**: 0 / 1 / 7 gave byte-identical `$HIR`, identical damage, LEDs, hit grunts.
-- **Live `$TID` write takes effect immediately for hit resolution** (same-team → zero `$HIR` both ways **[⚠ SUPERSEDED 2026-08-26: same-team IR DOES damage — FF is NOT firmware-enforced (§7r FF probe, both GSET token1 values); the 08-25 zero was likely an unspawned/misconfigured gun]**; back to
+- **Live `$TID` write takes effect immediately for hit resolution** (same-team → zero `$HIR` both ways **[✅ CONFIRMED: FF IS firmware-enforced — with `$GSET` friendlyFire=0 a same-team hit does zero damage, so this observation was right. An intermediate 2026-08-26 gun-probe called it superseded, but that probe only reached FF=1 with an unverified victim team; brx-ir's four-cell IR emitter (2×, control) confirmed FF=0 blocks same-team damage AND enemy heals]**; back to
   the other team → damage resumes on the next hit) but does NOT repaint the LEDs — colour is set at `$SPAWN`.
 - **Resync (M-NODE §3.10) verified:** on a fresh link a dead gun volunteers nothing and `$PHONE,*` returns
   nothing (the link is alive — `$VERSION` answers). Trigger while dead → `$BUT,0,1/0` only; reload handle →
@@ -1265,10 +1285,16 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
 
 Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damage_bench.py`):
 
-- **`$HIR` token 5 = the applied damage, EXACT (4/4 across the range).** AR (`t5`=9) → armor −9;
-  Shotgun `T01` (45) → armor −45; Sniper (80) → 70 absorbed + 10 to HP; Rocket (115) → instant kill.
-  So `t5` IS the `$WEAP` damage field and the AR really deals **9** — the manual's "M-4 = 24" was
-  stale. (The 2026-08-25 "24 here" above was simply that day's 24-damage config.) Frames verbatim:
+- **`$HIR` token 5 = the RAW magnitude carried in the IR word** (= the shooter's `$WEAP` `t5`), **not
+  necessarily the applied damage.** ⚠ Refined 2026-08-26 (night, brx-ir emitter) — the **applied**
+  damage is `magnitude × the victim's $SIR-function multiplier × (1.5 if the crit bit is set)`
+  (fn 1 = ×1, fn 36 = ×1.25, fn 37 = ×2; e.g. mag 20 @ fn 37 crit → 20×2×1.5 = 60). Exp-2's 4-weapon
+  read (AR `t5`=9 → armor −9; Shotgun `T01` 45 → −45; Sniper 80 → 70 absorbed +10 HP; Rocket 115 → kill)
+  was **correct for what it tested** — all four key to `$SIR` **fn-1** rows (mult 1, crit 0) where raw ==
+  applied — a scope limit found later, not an error. Where a multiplier row or crit is in play, tok5 ≠
+  applied → **derive damage from the `$HP` delta, never tok5.** It does confirm the AR emits **9** — the
+  manual's "M-4 = 24" was stale. (The 2026-08-25 "24 here" above was that day's 24-magnitude config.)
+  Frames verbatim:
   `$HIR,4,0,5,1,9,0,0` · `$HIR,4,0,5,1,45,0,0` · `$HIR,4,0,5,1,80,0,1` (+ a gun-sensor variant
   `$HIR,0,…`) · `$HIR,4,10,5,1,115,0,0`. Kill-shot anomaly: the shotgun's fatal hit reported
   `$HIR,4,0,5,1,70,0,0` — `70` = the victim's *entire remaining pool*, i.e. an overkill/pool-clamped

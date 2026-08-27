@@ -7,7 +7,25 @@ in chat again. Grounded in our own notes: the nRF24L01 mesh (`docs/reference/las
 
 **Status legend:** ✅ have / arriving · ⬜ recommended, not yet ordered.
 
-## ✅ Confirmed order — arriving 2026-08-26 (placed Aug 24, $16.40)
+## ✅ ARRIVED 2026-08-26 (placed Aug 24, $16.40)
+
+> **Unboxed + verified 2026-08-26 (photos).** Contents confirmed against the plan, plus two traps
+> worth knowing before you wire anything:
+>
+> 1. **The CHANZON bag holds TWO different black receivers.** `IR LED Diode Kit BA0008x20` =
+>    10× 5 mm emitter (clear, 940 nm, 45°) · **5× bare 5 mm IR *receiver* photodiode (black, 940 nm,
+>    30°, 2 legs)** · **5× VS1838B (black, 3–5 V, 70°, 3 legs)**. Only the **3-leg VS1838B**
+>    demodulates the 38 kHz carrier — the 2-leg photodiode will produce nothing with
+>    `ir_capture.ino`. Count legs, not colour.
+> 2. **VS1838B pinout is easy to mirror.** With the **domed/lens face toward you and the legs
+>    pointing down: OUT · GND · VCC, left → right.** The bag label lists the pins in the opposite
+>    reading order (VCC/GND/OUT), so it invites a 180° mistake — and swapping VCC/GND kills the part.
+>    We have 5; still, check twice.
+>
+> **Boards:** ESP32-S3-**N16R8** DevKitC-1 style, two USB-C ports (use the **UART** one to flash).
+> Our sketch pins (RX 4 / TX 5 / status 6) are clear of the octal-PSRAM (33–37) and flash pins.
+> **nRF adapters:** **HW-200** breakout (AMS1117-3.3) — feed its **VCC 5 V** from the ESP32 `5V`/`VIN`
+> pin, never 3V3 (the regulator needs headroom) and **never 5 V to a bare module**.
 
 This box is the **IR bench**, not the nRF tap — no nRF radio in it.
 - **ELEGOO Electronic Fun Kit** (235 pc) — breadboard, jumpers, resistors, transistors (2N2222),
@@ -27,7 +45,7 @@ This box is the **IR bench**, not the nRF tap — no nRF radio in it.
 > *feedback* only** (observe/drive gun-to-gun mesh for feel), off the critical path. The kit was already
 > ordered; treat it as speculative. The **IR bench kit above stays live**.
 
-**Aideepen 3× nRF24L01+PA+LNA (SMA antenna, ~1100m) + 3× breakout adapter (AMS1117-3.3).** Picked over a
+**Aideepen 3× nRF24L01+PA+LNA (SMA antenna, ~1100m) + 3× breakout adapter (AMS1117-3.3).** ✅ **ARRIVED 2026-08-26.** Picked over a
 bare 3-pack (no adapters) and a UMLIFE 5+5 (not overnight) because it **bundles the adapters** *and* ships
 overnight, so the nRF track starts alongside the IR kit. 3 modules = a coordinator + 2 nodes / a TX-RX pair
 + spare — enough to prove the tap and build the first Companion. Buy the 5-pack later for a full mesh.
