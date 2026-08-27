@@ -2369,3 +2369,52 @@ effect, and it is **native firmware behaviour we can emit today**.
 Three void runs preceded this one — a dead baseline, an emitter polluting its own receiver, and a
 `$AMMO` read-probe that mutated the thing it measured. **A control that is merely *present* is not a
 control; it has to be checked before the result is read.** The script now aborts on `baseline < 3`.
+
+## 2026-08-27 (bench) — the `$SIR` function carries its own VICTIM AUDIO · and 24–27 DO damage
+
+**Method that finally worked: Tony holds the gun and does NOT fire.** Three earlier attempts were void
+because firing at a bench receiver a few feet away **reflects your own IR back onto your own headset** —
+which drained his armor, killed him mid-window, and left the gun dead so he couldn't fire in the next
+one. *(New bench hazard, worth remembering: never have the operator fire toward the capture rig.)*
+Listen-only removes it entirely: every `$HIR` in this run is ours, and the pools move only if the
+effect moves them.
+
+`$SIR,7,0,,<fn>` — **note the sound column is EMPTY**, so every sound below is the function's **own
+built-in audio**, not one we assigned.
+
+| fn | what Tony heard | pools (2 words emitted) |
+|---|---|---|
+| **3** | **"like an electrical hit"** | unchanged |
+| **8** | silent hit | unchanged |
+| **23** | silent hit | unchanged · **silences the gun** (see previous entry) |
+| **24** | **"sounds like a shotgun hit"** | **armor 70 → 30 — DAMAGE** |
+| **25** | **"hissing growing sound"** | **DAMAGE** |
+| **26** | same hiss as 25 | **DAMAGE** |
+| **27** | **"normal AR hit"** | **DAMAGE** |
+| **28** | **"different sounding hit + hissing"** | unchanged |
+| **35** | normal hit | unchanged |
+
+### Finding 1 — the function selects a SOUND, not just a pool operation
+With an empty `$SIR` sound column the victim still plays a **distinct, function-specific** cue:
+electrical (3), shotgun (24), a growing hiss (25/26), a hiss with a different impact (28). So a `$SIR`
+row picks an **effect family** — audio included — and the sound column is an *override*, not the source.
+That makes several of these usable as pure **cue** effects.
+
+**28 hissing is a tidy corroboration:** the shipped table's tear-gas row is `$SIR,11,0,VA2,28`. Gas that
+hisses is exactly right, and it was predicted before Tony heard it.
+
+### Finding 2 — ⚠ 24, 25, 26, 27 DEAL DAMAGE, contradicting the earlier sweep
+Last night's enemy-side sweep recorded 24–28 as *"registers a `$HIR`, moves no pool"*. Here they take
+armor **70 → 30** (40 from 2 words at magnitude 20 = **1× damage**).
+
+**The difference between the runs is the PROTOCOL**: the earlier sweep used `$SIR,5,0,,<fn>`, this one
+uses `$SIR,7,0,,<fn>`. Same function id, different protocol, **different behaviour** — which should not
+happen if the protocol is only a lookup key. **No explanation offered; recorded as a contradiction.**
+Both runs had passing controls, so this is not a rig artifact.
+⇒ **The function map is protocol-dependent in some way we do not understand.** Any design leaning on a
+function's behaviour must pin the protocol it was measured on. Re-run the full sweep on ≥2 protocols
+before trusting the classification.
+
+### Still unbuilt
+No function has produced a **stun**. `landed=4` on the damaging rows against 2 emitted words also wants
+explaining (double-registration?) — not chased today.

@@ -1,6 +1,21 @@
 # Docs index
 
-Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
+**New here? Read [`architecture-topology.md`](architecture-topology.md) first** — how the system is
+physically wired, what each link's limits are, and which parts are proven on hardware versus only
+specified. It is the shortest path to understanding why everything else looks the way it does.
+
+Then, by who you are:
+
+| You are… | Read |
+|---|---|
+| **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`build-tiers.md`](build-tiers.md) · the [root README](../README.md) quickstart |
+| **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) |
+| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) |
+| **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
+
+> Much of what follows is the project's own working material — lab notebooks, bench plans, and
+> session handoffs written agent-to-agent. It is kept in the open deliberately, but it is **not**
+> user documentation; the table above is.
 
 ## Spec of record — build against this
 - **[spec/](spec/)** — the **end-to-end product spec**, frozen and reviewed. Read
@@ -8,8 +23,8 @@ Start here. Read `../CLAUDE.md` first for hard rules and environment, then this.
   **[spec/contracts.md](spec/contracts.md)** (the shared data + node↔MC wire, amendments A1–A8 — the
   authority). Modules: [net](spec/net.md) · [armory](spec/armory.md) · [modes](spec/modes.md) ·
   [node](spec/node.md) · [start-sequence](spec/start-sequence.md) · [mission-control](spec/mission-control.md).
-  The software (`mcp/brx_mcp/mc/`, `app/`, `webapp/mc/`) is built + tested against this (438 tests incl.
-  12 full-stack e2e). Design briefs live in [spec/design/](spec/design/).
+  The software (`mcp/brx_mcp/mc/`, `app/`, `webapp/mc/`) is built + tested against this (run
+  `cd mcp && python3 run_tests.py` for the current count, incl. full-stack e2e). Design briefs live in [spec/design/](spec/design/).
 
 ## Status & process
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — the single source of truth for **open work**.

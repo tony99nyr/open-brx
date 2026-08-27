@@ -6,9 +6,11 @@ effects, and a mission-control home base — scaling from 4 taggers to 20+. An o
 self-hosted alternative to Battle Company's Edge software (no subscription, no location lock, and
 it works on large fields without venue WiFi).
 
-**Start here:** [`docs/README.md`](docs/README.md) (index) · [`docs/VISION.md`](docs/VISION.md)
-(what we're building & why) · [`docs/build-tiers.md`](docs/build-tiers.md) (what you can build at
-each budget) · [`docs/game-modes.md`](docs/game-modes.md) (mode catalog).
+**Start here:** [`docs/architecture-topology.md`](docs/architecture-topology.md) (**how it's wired,
+what the limits are, what's actually proven**) · [`docs/README.md`](docs/README.md) (index) ·
+[`docs/VISION.md`](docs/VISION.md) (what we're building & why) ·
+[`docs/build-tiers.md`](docs/build-tiers.md) (what you can build at each budget) ·
+[`docs/game-modes.md`](docs/game-modes.md) (mode catalog).
 
 > **Credit:** Protocol discovery and the tagger-rider ESP32 concept originate with
 > **[LaserTagMods](https://github.com/LaserTagMods)** (JEDGE / JBOX projects). This project is
@@ -63,9 +65,26 @@ python -m brx_mcp scan            # find the tagger (Gen2/3 advertise Nordic UAR
 python -m brx_mcp identify <addr> # $PING → generation check
 python -m brx_mcp listen <addr>   # read-only live console: pull trigger, watch $BUT/$HIR/$HP
 
+# ...and now actually play. This is the hardware-proven Tier-0 path: your laptop drives the
+# guns directly over BLE, so everyone has to stay within BLE range of it (a room or a yard).
+python -m brx_mcp play tdm <addr1> <addr2> volume=69   # a real Team Deathmatch, live scoring
+#   modes: tdm ffa infection lms cs domination koth ctf extraction
+#   run `python -m brx_mcp` with no arguments for the full command list
+
+# no guns to hand? this needs no hardware at all:
+python -m brx_mcp game-sim tdm                        # narrated demo match in your terminal
+
 # register with Claude Code:
 claude mcp add brx -- python -m brx_mcp
 ```
+
+> **What works today:** the command above ran a full TDM on two real taggers — scoring, respawn,
+> frag limit, correct winner (`docs/experiment-log.md`, "FIRST LIVE M0 GAME"). The **phone-node +
+> field Wi-Fi** path that lifts the BLE-range limit is built and software-tested but **has not been
+> run on real hardware yet** — see [`docs/architecture-topology.md`](docs/architecture-topology.md) §7.
+
+> **Android app:** a prebuilt debug APK lives at `webapp/brx-companion.apk`. It is the per-player
+> node HUD; it needs a running Mission Control to be useful (`docs/field-runbook-mc.md`).
 
 ### Platform notes
 
@@ -105,7 +124,7 @@ Full prerequisites, signing notes, and what's generated vs committed: **[`app/RE
 
 M1 Identify ✅ → M2 Control ✅ → M3 Protocol depth (`$WEAP` map, sound bank, **per-player id over BLE**) ✅ →
 M4 Pilot game (per-player node + Mission Control + live scoreboard) — **built + tested in software**
-(438 tests incl. 12 full-stack e2e); the **MC↔phone field path is unverified on hardware** (next: a live
+(a full test suite incl. 12 full-stack e2e); the **MC↔phone field path is unverified on hardware** (next: a live
 muster, `docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of
 record: **`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.
 
