@@ -16,8 +16,29 @@ groups is the expensive part, not the tests.
 - Rig: **board A (`5C93045958`) = receiver** (VS1838B → GPIO4), **board B (`5C4C136487`) = emitter**
   (2N2222A + LED → GPIO5). Flash from the **UART** port; see `hardware/esp32-ir-bridge/README.md`.
 - Close the Arduino Serial Monitor — Windows ports are exclusive.
+- **`$PSET` t2 and t6 need your EARS or EYES** — swept from the keyboard over wide ranges with zero
+  effect on damage, pools, crit, gating or `$HIR`, and `$QUERY` does not echo them. If they do
+  anything it is audio or LED, which is why they are on your list and not mine.
 - **Aim matters**: attenuate for loopback (the VS1838B saturates point-blank), and fire spaced ~1–2 s
   so the capture sketch's RAW print doesn't truncate frames.
+
+---
+
+## ⚠️ READ FIRST — team gating changes how these tests must be run (2026-08-27)
+
+**Every IR shot must be fired from the correct SHOOTER TEAM or it will not register at all.**
+Bench-measured: the receiver discards a frame whose team is wrong for the function's polarity, and
+emits **no `$HIR` whatsoever** — a wrongly-teamed shot is indistinguishable from a broken rig.
+
+| you are testing | fire from |
+|---|---|
+| damage, armour-pierce (fn 1, 2, …) | an **enemy** team (victim on `$TID,1` ⇒ shoot as 0/2/3) |
+| heals, shields, armour, respawn, any grant (fn 9, 10, 11, 13, …) | the **victim's own** team |
+| an unknown function | **both**, and compare — this is how you learn its polarity |
+
+This voided several earlier negatives (fn 24-27, and the stun hunt across 3/8/23-28/35) which had all
+been fired from an enemy team only. **If a test below says "no effect", check the team before
+believing it.**
 
 ---
 

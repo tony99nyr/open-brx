@@ -100,6 +100,27 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | **K6** | **Per-game WEAPON TUNING (damage / fire-sound / rate overrides inside a saved game)** | ⬜ deferred — own spec | Tony's "silenced sniper" wants a fire-sound override. `SavedGame.weapon_tuning` is RESERVED in `docs/spec/loadout.md` §8 (always absent today) so it slots in without a schema change; the builtin "Silenced Sniper" preset ships with the stock sound and says so in its desc. Needs: which `$WEAP` tokens per weapon are host-tunable (t5 dmg, t14 fire interval, t27–t29 sounds — `compile._NAMED`), a per-preset override shape, and the bench for sound ids. |
 
 
+## 🟠 Q13 — friendly fire is INVISIBLE on the wire; MC cannot log or score it (2026-08-27)
+
+**Bench-measured.** When `$GSET` token 1 (friendly fire) = 0, a same-team damage shot is rejected by
+the receiving headset **before it produces any BLE event** — `$HIR` count is 0, not "1 with zero
+damage". The same holds for support grants aimed at an enemy. See `docs/experiment-log.md`
+(2026-08-27) and `protocol/brx-protocol.md` §5.
+
+**Why it matters.** Any MC or Companion feature that wants to react to a friendly-fire event —
+"you tagged a teammate", a teamkill penalty, a griefing counter, an accuracy stat that counts
+misdirected shots — **cannot be built from gun telemetry** while friendly fire is off. The gun does
+not tell us it happened. This is a hardware constraint, not a gap in our parsing.
+
+**Options, if the mechanic is wanted:**
+1. Run games with `$GSET` t1=1 (friendly fire ON) and enforce "no teamkills" as an MC *scoring*
+   policy over events that now do reach the wire — the damage lands, and MC decides what it costs.
+   Costs: real damage is applied to the teammate.
+2. Accept it and design around it — no teamkill feedback at all when t1=0.
+
+**Action:** decide before any mode advertises teamkill feedback. Nothing in the shipped modes depends
+on it today, so this is a design constraint to record rather than a bug to fix.
+
 ## 🔴 Q12 — THE SHIELD POOL IS DISCARDED IN CODE, not just in the spec (2026-08-26)
 
 `$HP` is **three** pools — `$HP,<hp>,<armor>,<shield>` — confirmed on the wire tonight (a shield grant

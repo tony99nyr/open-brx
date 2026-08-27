@@ -2743,6 +2743,39 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — NEGATIVE: `$PSET` t2 and t6 are invisible to the damage instrument
+
+Swept `$PSET` token 2 over {0,1,2,5,10,50,100} and token 6 over {0,1,25,50,100,200}, two enemy hits
+of 20 per cell, re-armed each time. **Every cell identical**: `$HIR`=2, `$HP,45,30,0`, and a
+byte-identical `$HIR,4,0,42,2,20,0,0`. Victim `$PSET` t1 (player id) over {0,7,40,63} likewise
+changed nothing observable — expected, since t1 is the *victim's* id and `$HIR` tok3 carries the
+*shooter's*.
+
+**This is a bounded negative, not a discovery.** It says the IR-damage probe is blind to whatever t2
+and t6 control, and rules out damage, pools, crit, gating and `$HIR` content. `$QUERY,*` does not echo
+them either (its second field is the **team**, not `$PSET` t2). The remaining instruments are **audio
+and LEDs**, both of which need an operator present. Moved to the operator-required list rather than
+left as an open unknown — hammering the same blind instrument harder would not have helped.
+
+### 2026-08-27 — METHOD CORRECTION: earlier function sweeps fired from the wrong team
+
+Team gating (above) invalidates the *method* of several earlier sweeps, so their negatives cannot be
+trusted:
+
+- the fn 24-27 "deals damage" result that **failed to reproduce** under A/B,
+- the stun/EMP hunt across functions 3 / 8 / 23-28 / 35,
+- tonight's first shield run.
+
+All of them fired from **team 2 (enemy)**. Support-polarity functions are **discarded with no `$HIR`**
+from an enemy source, so a support function would present exactly as "no effect" — indistinguishable
+from a function that does nothing. **Those negatives are void, not confirmed.**
+
+Re-running the full function range 0-40 against **both** a friendly (team 1) and an enemy (team 2)
+source, with a known-good damage row kept at `<3,0>` as an in-run control. The cells to watch are
+those that **register `$HIR` but move no pool** — a function that lands and changes no counter is what
+a stun/status effect would look like on the wire.
+
+
 ### 2026-08-27 — team gating measured for DAMAGE (closes an open correction); `$PSET` t5 = shield cap
 
 Autonomous (emitter + BLE, operator away, `$VOL,3`), victim Tactix-FE30 on `$TID,1`, mains. Every cell
