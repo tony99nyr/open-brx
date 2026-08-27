@@ -100,6 +100,28 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | **K6** | **Per-game WEAPON TUNING (damage / fire-sound / rate overrides inside a saved game)** | ⬜ deferred — own spec | Tony's "silenced sniper" wants a fire-sound override. `SavedGame.weapon_tuning` is RESERVED in `docs/spec/loadout.md` §8 (always absent today) so it slots in without a schema change; the builtin "Silenced Sniper" preset ships with the stock sound and says so in its desc. Needs: which `$WEAP` tokens per weapon are host-tunable (t5 dmg, t14 fire interval, t27–t29 sounds — `compile._NAMED`), a per-preset override shape, and the bench for sound ids. |
 
 
+## 🟢 R1 — add a software POWER control to the IR emitter (small, unblocks two tests)
+
+`hardware/esp32-ir-bridge/ir_emit.ino` fixes `CARRIER_DUTY = 128` (~50%) as a **compile-time
+constant**, and the serial interface accepts only `TX` / `TXN` / `AUTO`. So effective range and signal
+strength can only be changed by physically moving the rig.
+
+**Add a `DUTY <0-255>` serial command** (and optionally `PULSES <n>`). One line of parsing next to the
+existing handlers, writing `ledcWrite(IR_TX_PIN, duty)`.
+
+**Why it is worth doing:**
+- **It makes the sensor question answerable unattended.** `$HIR` token 1 (front dome / back dome / gun
+  body) appears to be driven by signal conditions — the spec notes point-blank floods mis-attribute —
+  and this rig currently lands **100% gun-body** hits. Varying duty simulates distance and may let the
+  dome register without anyone re-aiming anything. That question currently blocks explaining two
+  non-reproduced results.
+- **It makes range tests repeatable.** Range work presently means physically moving a breadboard, which
+  is neither precise nor reproducible between sessions.
+
+**Not done here deliberately:** it means reflashing a rig set up by hand while its owner is away, and a
+failed flash takes the bench down with no one able to recover it. Cheap and safe to do **with** an
+operator present; not worth the downside without one.
+
 ## 🟠 Q13 — friendly fire is INVISIBLE on the wire; MC cannot log or score it (2026-08-27)
 
 **Bench-measured.** When `$GSET` token 1 (friendly fire) = 0, a same-team damage shot is rejected by
