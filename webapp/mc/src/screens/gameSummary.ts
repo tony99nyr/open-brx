@@ -1,5 +1,11 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { GameConfig } from '../api/types';
+import type { GameConfig, LoadoutPolicy, SlotRule } from '../api/types';
+
+const rule = (over: Partial<SlotRule> = {}): SlotRule => ({ choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null, ...over });
+/** OPEN — what the server means by "no policy". A config from a session persisted before A10, or served by an older MC,
+ *  has no `loadout_policy` at all; every page must tolerate that (Tony hit "cannot read 'preset' of undefined"). */
+export const DEFAULT_POLICY = (): LoadoutPolicy => ({ preset: 'open', hud_select: true, primary: rule(), secondary: rule({ kinds: ['weapon', 'perk'] }) });
+export const withPolicy = (c: GameConfig): GameConfig => (c.loadout_policy?.primary && c.loadout_policy.secondary ? c : { ...c, loadout_policy: DEFAULT_POLICY() });
 
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 

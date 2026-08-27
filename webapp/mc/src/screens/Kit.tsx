@@ -20,7 +20,7 @@ export function Kit() {
   if (!state) return null;
   const players = state.players;
   const sp = players.find(p => p.player_id === selPlayer) ?? players[0];
-  const pol = state.config.loadout_policy;
+  const pol = state.config.loadout_policy?.primary ? state.config.loadout_policy : undefined;   // older MC / pre-A10 session: no rules
   const pool = state.loadout_pool ?? { primary: weapons.map(w => w.weapon_id), secondary_weapons: weapons.map(w => w.weapon_id), secondary_perks: perks.map(k => k.perk_id) };
   const trying = state.kit.trying;
   const browsing = state.kit.browsing ?? {};

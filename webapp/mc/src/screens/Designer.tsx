@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
-import { gameSig, rulesLine } from './gameSummary';
+import { gameSig, rulesLine, withPolicy } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -30,10 +30,10 @@ export function Designer() {
   const [editing, setEditing] = useState<SavedGame | null>(seed?.game && !seed.game.builtin ? seed.game : null);
   const initial = useMemo<GameConfig | null>(() => {
     if (!state) return null;
-    if (seed?.fromLive) return clone(state.config);
-    if (seed?.game) return clone(seed.game.config);
+    if (seed?.fromLive) return withPolicy(clone(state.config));
+    if (seed?.game) return withPolicy(clone(seed.game.config));
     const m = modes.find(x => x.mode === (seed?.mode ?? state.config.mode));
-    return m ? clone(m.defaults) : clone(state.config);
+    return withPolicy(m ? clone(m.defaults) : clone(state.config));
   }, [seed, modes, state]);
   const [cfg, setCfg] = useState<GameConfig | null>(() => initial);   // the seed is fixed for the page's lifetime
   const [name, setName] = useState(seed?.game?.name && !seed.game.builtin ? seed.game.name : seed?.game?.builtin ? `${seed.game.name} (mine)` : '');
@@ -66,7 +66,7 @@ export function Designer() {
     const r = await run(() => api.previewPool({ preset }, cfg.mode));
     if (r) setCfg(c => c ? { ...c, loadout_policy: r.policy } : c);
   };
-  const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night }); };
+  const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
   const dirty = editing ? gameSig(editing.config) !== gameSig(cfg) || editing.name !== name.trim() || (editing.desc ?? '') !== desc.trim() : true;
 
   const save = async (asNew = false) => {
