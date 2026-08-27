@@ -662,6 +662,8 @@ class Session:
                         hv = merged.get(hk, 0)
                         lo = 1 if hk == "max_hp" else 0
                         if not (isinstance(hv, int) and not isinstance(hv, bool) and lo <= hv <= 255):
+                            # 255 is a POLICY ceiling, not a hardware one -- $PSET pools are
+                            # wider than 8 bits (bench 2026-08-27, see FOLLOWUPS/experiment-log).
                             raise ValueError(f"health.{hk} must be {lo}..255")
                 cfg[k] = merged
             elif k == "teams":

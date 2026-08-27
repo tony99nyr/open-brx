@@ -258,6 +258,10 @@ class Compiler:
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
             hp=int(ov.get("max_hp", config["health"]["max_hp"])),
             # body_armor perk: +N on $PSET armor (loadout.md §2) — capped at the wire's 255
+            # NOTE: 255 is OUR POLICY CEILING, not a device limit. Bench 2026-08-27: $PSET
+            # pools are not 8-bit -- armor/HP/shield store and decrement exactly to at least
+            # 1000, clamping at zero with no wrap. Keep the cap (huge pools make bad games),
+            # but do not "fix" it believing the hardware requires it.
             armor=min(255, int(ov.get("max_armor", config["health"]["max_armor"])) + int(fx.get("max_armor_add") or 0)),
             alt_reload=bool(fx.get("alt_reload")),          # easy_reload perk: $BMAP,1,97
         )
