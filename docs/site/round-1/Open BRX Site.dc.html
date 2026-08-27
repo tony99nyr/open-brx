@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#05070a;font-family:Inter,system-ui,sans-serif;color:#e8eef5;}
+a{color:#39b4ff;text-decoration:none;}
+a:hover{color:#7fd0ff;text-decoration:underline;}
+*{box-sizing:border-box;}
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:32px;padding:48px;">
+  <div style="max-width:900px;">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;letter-spacing:.1em;">TURN 1 · OPEN BRX — TEMPLATES + HOME + COMPONENT SHEET</div>
+    <div style="font-family:Oswald,sans-serif;font-size:28px;font-weight:600;letter-spacing:.02em;margin-top:6px;">Open BRX website — first pass</div>
+    <div style="font-size:13px;color:#8b98a8;margin-top:6px;line-height:1.6;">Facts only from the brief + images.md. Amber <span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content</span> chips mark every slot waiting on the content/*.md files. Image frames follow the images.md manifest (ID · ratio · kind).</div>
+  </div>
+
+  <div style="display:flex;gap:48px;align-items:flex-start;flex-wrap:wrap;">
+
+    <!-- ============ 1a HOME DESKTOP ============ -->
+    <div id="1a" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1a</span><span style="font-size:12px;color:#8b98a8;">T1 · Home — desktop 1280</span></div>
+      <div style="width:1280px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+        <!-- top bar -->
+        <div style="display:flex;align-items:center;gap:24px;padding:0 28px;height:56px;border-bottom:1px solid rgba(232,238,245,.08);background:rgba(12,16,22,.9);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:22px;height:22px;border:2px solid #39b4ff;border-radius:50%;border-left-color:transparent;position:relative;"><div style="position:absolute;left:-5px;top:3px;width:5px;height:12px;border:2px solid #39b4ff;border-right:none;"></div></div>
+            <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:16px;letter-spacing:.06em;">OPEN BRX</span>
+          </div>
+          <div style="display:flex;gap:4px;font-size:13px;font-weight:500;">
+            <span style="padding:8px 12px;color:#e8eef5;border-bottom:2px solid #39b4ff;">Manual</span>
+            <span style="padding:8px 12px;color:#8b98a8;">Platform</span>
+            <span style="padding:8px 12px;color:#8b98a8;">Credits</span>
+            <span style="padding:8px 12px;color:#8b98a8;">Changelog</span>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
+            <div style="display:flex;align-items:center;gap:8px;background:#141b24;border:1px solid rgba(232,238,245,.1);border-radius:6px;padding:7px 12px;width:260px;color:#5f7a93;font-size:13px;">⌕ Search the manual…<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;border:1px solid rgba(232,238,245,.15);border-radius:3px;padding:1px 5px;">⌘K</span></div>
+            <span style="color:#8b98a8;font-size:15px;">◐</span>
+            <span style="color:#8b98a8;font-size:13px;font-weight:500;">GitHub ↗</span>
+          </div>
+        </div>
+        <!-- hero -->
+        <div style="position:relative;aspect-ratio:21/9;background:repeating-linear-gradient(135deg,rgba(57,180,255,.05) 0 1px,transparent 1px 14px),linear-gradient(180deg,#0e141c,#0c1016);border-bottom:1px solid rgba(232,238,245,.08);">
+          <div style="position:absolute;top:14px;right:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;text-align:right;line-height:1.6;">HOME-01 · 21:9 · GENERATE<br>night field, silhouetted players, phone glow</div>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 72px;background:linear-gradient(90deg,rgba(12,16,22,.92) 30%,rgba(12,16,22,.2));">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#39b4ff;letter-spacing:.14em;">OPEN-SOURCE · SELF-HOSTED · REVERSE-ENGINEERED</div>
+            <div style="font-family:Oswald,sans-serif;font-size:56px;font-weight:600;line-height:1.08;max-width:640px;margin-top:14px;text-wrap:pretty;">Video game inspired tactical laser tag — open and self-hosted.</div>
+            <div style="margin-top:14px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content — hero subline from content/00-home.md</span></div>
+            <div style="display:flex;gap:12px;margin-top:26px;">
+              <span style="background:#39b4ff;color:#0c1016;font-weight:600;font-size:14px;border-radius:6px;padding:12px 22px;">Read the manual</span>
+              <span style="border:1px solid rgba(232,238,245,.25);color:#e8eef5;font-weight:600;font-size:14px;border-radius:6px;padding:12px 22px;">Explore the platform</span>
+            </div>
+          </div>
+        </div>
+        <!-- two doors -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:36px 72px 8px;">
+          <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:22px;display:flex;gap:18px;">
+            <div style="position:relative;width:120px;height:120px;flex-shrink:0;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;line-height:1.5;">HOME-05 · 1:1<br>GENERATE · headset dome macro</span></div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;">The Ultimate BRX Manual</div>
+              <div style="font-size:13px;color:#8b98a8;line-height:1.6;">The definitive reference for the Battle Company BRX tagger and headset — anatomy, operation, gameplay, sound, fixes, and the full developer protocol.</div>
+              <div style="margin-top:auto;font-size:13px;font-weight:600;color:#39b4ff;">Open the manual →</div>
+            </div>
+          </div>
+          <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:22px;display:flex;gap:18px;">
+            <div style="position:relative;width:160px;height:120px;flex-shrink:0;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;line-height:1.5;">HOME-04 · 16:9<br>GENERATE · laptop at dusk, two taggers</span></div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;">The Open BRX platform</div>
+              <div style="font-size:13px;color:#8b98a8;line-height:1.6;">Open-source software + hardware that orchestrates BRX taggers — real game modes on stock guns.</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#7ddb8a;background:rgba(125,219,138,.08);border:1px solid rgba(125,219,138,.25);border-radius:999px;padding:3px 10px;">✅ proven on hardware</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#39b4ff;background:rgba(57,180,255,.08);border:1px solid rgba(57,180,255,.25);border-radius:999px;padding:3px 10px;">🧪 software-tested</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#8b98a8;background:rgba(139,152,168,.08);border:1px solid rgba(139,152,168,.25);border-radius:999px;padding:3px 10px;">📐 specified only</span>
+              </div>
+              <div style="margin-top:auto;font-size:13px;font-weight:600;color:#39b4ff;">See what's proven →</div>
+            </div>
+          </div>
+        </div>
+        <!-- stat row -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;padding:28px 72px;">
+          <div style="border-top:2px solid #39b4ff;padding-top:12px;"><div style="font-family:Oswald,sans-serif;font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;">20</div><div style="font-size:12px;color:#8b98a8;margin-top:2px;">weapons, every stat documented</div></div>
+          <div style="border-top:2px solid #39b4ff;padding-top:12px;"><div style="font-family:Oswald,sans-serif;font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;">2,166</div><div style="font-size:12px;color:#8b98a8;margin-top:2px;">sound ids in the explorer</div></div>
+          <div style="border-top:2px solid #39b4ff;padding-top:12px;"><div style="font-family:Oswald,sans-serif;font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;">11</div><div style="font-size:12px;color:#8b98a8;margin-top:2px;">game modes, native + platform</div></div>
+          <div style="border-top:2px solid #39b4ff;padding-top:12px;"><div style="font-family:Oswald,sans-serif;font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;">43</div><div style="font-size:12px;color:#8b98a8;margin-top:2px;">$WEAP tokens, bench-mapped</div></div>
+        </div>
+        <!-- topology teaser HOME-02 (SVG built in site) -->
+        <div style="padding:8px 72px 36px;">
+          <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:24px;">
+            <div style="display:flex;align-items:baseline;gap:12px;"><span style="font-family:Oswald,sans-serif;font-size:18px;font-weight:600;">How it's wired</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;">HOME-02 · SVG built in site · docs/architecture-topology.md §2</span></div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:0;margin-top:20px;padding:10px 0;">
+              <div style="border:1px solid #39b4ff;border-radius:6px;padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#39b4ff;">LAPTOP · base</div>
+              <div style="width:70px;border-top:2px dashed rgba(57,180,255,.5);position:relative;"><span style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;">Wi-Fi</span></div>
+              <div style="border:1px solid rgba(232,238,245,.25);border-radius:6px;padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#e8eef5;">PHONE ×n</div>
+              <div style="width:70px;border-top:2px solid rgba(57,180,255,.7);position:relative;"><span style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;">BLE</span></div>
+              <div style="border:1px solid rgba(232,238,245,.25);border-radius:6px;padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#e8eef5;">GUN</div>
+              <div style="width:70px;border-top:2px dotted rgba(255,176,32,.7);position:relative;"><span style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:9px;color:#ffb020;">IR →</span></div>
+              <div style="border:1px solid rgba(255,176,32,.4);border-radius:6px;padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#ffb020;">GUN</div>
+            </div>
+          </div>
+        </div>
+        <!-- credits footer -->
+        <div style="border-top:1px solid rgba(232,238,245,.08);padding:26px 72px;display:flex;justify-content:space-between;gap:40px;background:#0a0e13;">
+          <div style="font-size:12px;color:#8b98a8;line-height:1.8;max-width:560px;">Protocol discovered by <span style="color:#e8eef5;">LaserTagMods (JEDGE / JBOX)</span> · Hardware by <span style="color:#e8eef5;">Battle Company</span> · Fixes by the owner community.<br>"Open BRX" is descriptive. This site is not affiliated with or endorsed by Battle Company. Official PDFs are linked, never rehosted.</div>
+          <div style="display:flex;gap:24px;font-size:13px;font-weight:500;color:#39b4ff;white-space:nowrap;">Credits · Changelog · GitHub ↗</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 1b HOME PHONE ============ -->
+    <div id="1b" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1b</span><span style="font-size:12px;color:#8b98a8;">T1 · Home — phone 390</span></div>
+      <div style="width:390px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+        <div style="display:flex;align-items:center;gap:12px;padding:0 16px;height:56px;border-bottom:1px solid rgba(232,238,245,.08);">
+          <span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#8b98a8;font-size:18px;margin-left:-12px;">☰</span>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="width:18px;height:18px;border:2px solid #39b4ff;border-radius:50%;border-left-color:transparent;"></div><span style="font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:.06em;">OPEN BRX</span></div>
+          <span style="margin-left:auto;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#8b98a8;font-size:17px;">⌕</span>
+        </div>
+        <div style="position:relative;padding:28px 20px 24px;background:repeating-linear-gradient(135deg,rgba(57,180,255,.05) 0 1px,transparent 1px 14px),linear-gradient(180deg,#0e141c,#0c1016);border-bottom:1px solid rgba(232,238,245,.08);">
+          <div style="position:absolute;top:8px;right:10px;font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;">HOME-01 crop</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#39b4ff;letter-spacing:.14em;">OPEN-SOURCE · SELF-HOSTED</div>
+          <div style="font-family:Oswald,sans-serif;font-size:30px;font-weight:600;line-height:1.12;margin-top:10px;text-wrap:pretty;">Video game inspired tactical laser tag — open and self-hosted.</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:20px;">
+            <span style="background:#39b4ff;color:#0c1016;font-weight:600;font-size:15px;border-radius:8px;padding:14px;text-align:center;">Read the manual</span>
+            <span style="border:1px solid rgba(232,238,245,.25);font-weight:600;font-size:15px;border-radius:8px;padding:14px;text-align:center;">Explore the platform</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;padding:20px;">
+          <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:16px;">
+            <div style="font-family:Oswald,sans-serif;font-size:18px;font-weight:600;">The Ultimate BRX Manual</div>
+            <div style="font-size:13px;color:#8b98a8;line-height:1.55;margin-top:6px;">The definitive reference for the Battle Company BRX tagger and headset.</div>
+            <div style="font-size:13px;font-weight:600;color:#39b4ff;margin-top:10px;min-height:24px;">Open the manual →</div>
+          </div>
+          <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:16px;">
+            <div style="font-family:Oswald,sans-serif;font-size:18px;font-weight:600;">The Open BRX platform</div>
+            <div style="font-size:13px;color:#8b98a8;line-height:1.55;margin-top:6px;">Real game modes on stock guns — open software + hardware.</div>
+            <div style="font-size:13px;font-weight:600;color:#39b4ff;margin-top:10px;min-height:24px;">See what's proven →</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;">
+            <div style="border-top:2px solid #39b4ff;padding-top:8px;"><div style="font-family:Oswald,sans-serif;font-size:24px;font-weight:600;">20</div><div style="font-size:11px;color:#8b98a8;">weapons</div></div>
+            <div style="border-top:2px solid #39b4ff;padding-top:8px;"><div style="font-family:Oswald,sans-serif;font-size:24px;font-weight:600;">2,166</div><div style="font-size:11px;color:#8b98a8;">sound ids</div></div>
+            <div style="border-top:2px solid #39b4ff;padding-top:8px;"><div style="font-family:Oswald,sans-serif;font-size:24px;font-weight:600;">11</div><div style="font-size:11px;color:#8b98a8;">game modes</div></div>
+            <div style="border-top:2px solid #39b4ff;padding-top:8px;"><div style="font-family:Oswald,sans-serif;font-size:24px;font-weight:600;">43</div><div style="font-size:11px;color:#8b98a8;">$WEAP tokens</div></div>
+          </div>
+        </div>
+        <div style="border-top:1px solid rgba(232,238,245,.08);padding:16px 20px;background:#0a0e13;font-size:11px;color:#8b98a8;line-height:1.7;">Protocol by LaserTagMods · Hardware by Battle Company · Not affiliated with or endorsed by Battle Company.</div>
+      </div>
+    </div>
+
+    <!-- ============ 1c MANUAL HUB T2 ============ -->
+    <div id="1c" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1c</span><span style="font-size:12px;color:#8b98a8;">T2 · Section hub — /manual</span></div>
+      <div style="width:1280px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+        <div style="display:flex;align-items:center;gap:24px;padding:0 28px;height:56px;border-bottom:1px solid rgba(232,238,245,.08);">
+          <div style="display:flex;align-items:center;gap:10px;"><div style="width:20px;height:20px;border:2px solid #39b4ff;border-radius:50%;border-left-color:transparent;"></div><span style="font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:.06em;">OPEN BRX</span></div>
+          <span style="font-size:13px;color:#e8eef5;font-weight:500;border-bottom:2px solid #39b4ff;padding:8px 0;">Manual</span><span style="font-size:13px;color:#8b98a8;">Platform</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px;background:#141b24;border:1px solid rgba(232,238,245,.1);border-radius:6px;padding:7px 12px;width:300px;color:#5f7a93;font-size:13px;">⌕ "won't fire", "pairing", a sound id…<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;border:1px solid rgba(232,238,245,.15);border-radius:3px;padding:1px 5px;">⌘K</span></div>
+        </div>
+        <div style="padding:40px 72px;display:grid;grid-template-columns:1fr 300px;gap:48px;">
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;">MANUAL · last verified 2026-08-27</div>
+            <div style="font-family:Oswald,sans-serif;font-size:40px;font-weight:600;margin-top:8px;">The Ultimate BRX Manual</div>
+            <div style="margin-top:10px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content — intro paragraph from content/00-home.md</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px;">
+              <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;color:#39b4ff;">01</span><div><div style="font-family:Oswald,sans-serif;font-size:17px;font-weight:600;">Meet the BRX</div><div style="font-size:12px;color:#8b98a8;margin-top:4px;line-height:1.5;">Anatomy, LEDs, generations, headset, spec sheet.</div></div></div>
+              <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;color:#39b4ff;">02</span><div><div style="font-family:Oswald,sans-serif;font-size:17px;font-weight:600;">Operating the BRX</div><div style="font-size:12px;color:#8b98a8;margin-top:4px;line-height:1.5;">Quick start, pairing, indoor/outdoor, the Callsign app.</div></div></div>
+              <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;color:#39b4ff;">03</span><div><div style="font-family:Oswald,sans-serif;font-size:17px;font-weight:600;">Gameplay</div><div style="font-size:12px;color:#8b98a8;margin-top:4px;line-height:1.5;">Weapons (all 20), health/damage, native modes, perks, grenade modes.</div></div></div>
+              <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;color:#39b4ff;">04</span><div><div style="font-family:Oswald,sans-serif;font-size:17px;font-weight:600;">Sound, voice & updates</div><div style="font-size:12px;color:#8b98a8;margin-top:4px;line-height:1.5;">How audio works, the 2166-id Sound Bank Explorer, USB sound-pack + firmware.</div></div></div>
+              <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;color:#39b4ff;">05</span><div><div style="font-family:Oswald,sans-serif;font-size:17px;font-weight:600;">Fix, mod & accessorise</div><div style="font-size:12px;color:#8b98a8;margin-top:4px;line-height:1.5;">Symptom-indexed troubleshooting, repairs, mods, accessories, community, FAQ.</div></div></div>
+              <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:22px;font-weight:600;color:#39b4ff;">06</span><div><div style="font-family:Oswald,sans-serif;font-size:17px;font-weight:600;">Developer reference</div><div style="font-size:12px;color:#8b98a8;margin-top:4px;line-height:1.5;">BLE + IR protocol, command tables, $WEAP token map, serial console, brx-mcp.</div></div></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:20px;">
+            <div style="position:relative;aspect-ratio:4/3;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:8px;display:flex;align-items:flex-end;padding:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;line-height:1.6;">HOME-03 · 4:3 · REAL PHOTO<br>overhead: gun horizontal, headset beside it, matte black backdrop</span></div>
+            <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:18px;">
+              <div style="font-family:Oswald,sans-serif;font-size:15px;font-weight:600;letter-spacing:.03em;">START HERE IF…</div>
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px;font-size:13px;line-height:1.5;">
+                <div style="display:flex;gap:10px;"><span style="color:#39b4ff;">→</span><span style="color:#c6d2df;">New gun, first game: <span style="color:#39b4ff;font-weight:500;">Quick start</span></span></div>
+                <div style="display:flex;gap:10px;"><span style="color:#39b4ff;">→</span><span style="color:#c6d2df;">Something's broken: <span style="color:#39b4ff;font-weight:500;">Diagnose my tagger</span></span></div>
+                <div style="display:flex;gap:10px;"><span style="color:#39b4ff;">→</span><span style="color:#c6d2df;">You write code: <span style="color:#39b4ff;font-weight:500;">Protocol reference</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 1d REFERENCE T3 ============ -->
+    <div id="1d" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1d</span><span style="font-size:12px;color:#8b98a8;">T3 · Reference — /manual/hardware/anatomy</span></div>
+      <div style="width:1280px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);display:grid;grid-template-columns:250px 1fr 210px;">
+        <!-- sidebar -->
+        <div style="border-right:1px solid rgba(232,238,245,.08);padding:20px 0;background:#0a0e13;font-size:13px;">
+          <div style="padding:0 20px 16px;display:flex;align-items:center;gap:8px;"><div style="width:18px;height:18px;border:2px solid #39b4ff;border-radius:50%;border-left-color:transparent;"></div><span style="font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;">OPEN BRX / MANUAL</span></div>
+          <div style="padding:9px 20px;color:#8b98a8;">01 · Meet the BRX</div>
+          <div style="padding:9px 20px 9px 32px;color:#8b98a8;">Overview</div>
+          <div style="padding:9px 20px 9px 32px;color:#e8eef5;background:rgba(57,180,255,.1);border-left:2px solid #39b4ff;font-weight:500;">Tagger, part by part</div>
+          <div style="padding:6px 20px 6px 44px;color:#5f7a93;font-size:12px;">Controls</div>
+          <div style="padding:6px 20px 6px 44px;color:#5f7a93;font-size:12px;">Lights</div>
+          <div style="padding:6px 20px 6px 44px;color:#5f7a93;font-size:12px;">Ports</div>
+          <div style="padding:9px 20px 9px 32px;color:#8b98a8;">The headset</div>
+          <div style="padding:9px 20px 9px 32px;color:#8b98a8;">Generations</div>
+          <div style="padding:9px 20px 9px 32px;color:#8b98a8;">Spec sheet</div>
+          <div style="padding:9px 20px;color:#8b98a8;margin-top:8px;">02 · Operating the BRX</div>
+          <div style="padding:9px 20px;color:#8b98a8;">03 · Gameplay</div>
+          <div style="padding:9px 20px;color:#8b98a8;">04 · Sound, voice & updates</div>
+          <div style="padding:9px 20px;color:#8b98a8;">05 · Fix, mod & accessorise</div>
+          <div style="padding:9px 20px;color:#8b98a8;">06 · Developer reference</div>
+        </div>
+        <!-- content -->
+        <div style="padding:28px 40px 36px;">
+          <div style="font-size:12px;color:#5f7a93;">Manual / 01 · Meet the BRX / <span style="color:#8b98a8;">Tagger, part by part</span></div>
+          <div style="font-family:Oswald,sans-serif;font-size:34px;font-weight:600;margin-top:12px;">Tagger, part by part</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#7ddb8a;background:rgba(125,219,138,.08);border:1px solid rgba(125,219,138,.25);border-radius:999px;padding:3px 10px;">✅ verified on our bench</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;">last verified 2026-08-27</span>
+            <span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content — subtitle from content/01-hardware.md</span>
+          </div>
+          <!-- HW-02 anatomy with hotspots -->
+          <div style="position:relative;aspect-ratio:16/9;margin-top:24px;background:repeating-linear-gradient(135deg,rgba(57,180,255,.05) 0 1px,transparent 1px 14px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:8px;">
+            <span style="position:absolute;bottom:10px;left:12px;font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;line-height:1.6;">HW-02 · 16:9 · GENERATE<br>unlabeled side-profile tagger render — HTML hotspots overlay</span>
+            <div style="position:absolute;left:22%;top:58%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">trigger</span></div>
+            <div style="position:absolute;left:44%;top:30%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">LED bank</span></div>
+            <div style="position:absolute;left:58%;top:18%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">sight</span></div>
+            <div style="position:absolute;left:82%;top:44%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">emitter</span></div>
+            <div style="position:absolute;left:33%;top:76%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">charging port</span></div>
+            <div style="position:absolute;left:12%;top:34%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">power switch</span></div>
+            <div style="position:absolute;left:62%;top:64%;display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:50%;background:#39b4ff;box-shadow:0 0 0 4px rgba(57,180,255,.2);"></span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c6d2df;background:rgba(12,16,22,.85);border:1px solid rgba(57,180,255,.3);border-radius:4px;padding:2px 7px;">reload handle</span></div>
+          </div>
+          <div style="font-size:12px;color:#5f7a93;margin-top:8px;">Hotspots: trigger · reload handle · ALT · SELECT · LEFT/RIGHT · power switch · emitter · body sensor · LED bank · sight · speaker · charging port · micro-USB</div>
+          <!-- body blocks -->
+          <div style="margin-top:24px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content — block stream from content/01-hardware.md</span></div>
+          <!-- spec-sheet block sample -->
+          <div style="margin-top:20px;background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:8px;padding:20px;">
+            <div style="font-family:Oswald,sans-serif;font-size:14px;font-weight:600;letter-spacing:.04em;color:#8b98a8;">SPEC SHEET · RADIO</div>
+            <div style="display:grid;grid-template-columns:180px 1fr;gap:10px 20px;margin-top:14px;font-size:13px;">
+              <span style="color:#8b98a8;">Gen2/3 link</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;">BLE NUS · write 6E400002 · notify 6E400003 <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#39b4ff;background:rgba(57,180,255,.08);border:1px solid rgba(57,180,255,.25);border-radius:999px;padding:1px 8px;margin-left:6px;">🔍 decoded</span></span>
+              <span style="color:#8b98a8;">Gen1 link</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;">SPP 57600 via HC-05 <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#c9a7e8;background:rgba(201,167,232,.08);border:1px solid rgba(201,167,232,.25);border-radius:999px;padding:1px 8px;margin-left:6px;">👥 community</span></span>
+              <span style="color:#8b98a8;">IR</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;">38 kHz carrier · 25-bit word <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#7ddb8a;background:rgba(125,219,138,.08);border:1px solid rgba(125,219,138,.25);border-radius:999px;padding:1px 8px;margin-left:6px;">✅ verified</span></span>
+            </div>
+            <div style="font-size:11px;color:#5f7a93;margin-top:14px;">source: <span style="color:#39b4ff;">protocol/brx-protocol.md §1, §7c</span></div>
+          </div>
+          <!-- prev/next + feedback -->
+          <div style="display:flex;justify-content:space-between;margin-top:28px;padding-top:20px;border-top:1px solid rgba(232,238,245,.08);font-size:13px;">
+            <span style="color:#8b98a8;">← Overview</span><span style="color:#39b4ff;font-weight:500;">The headset →</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:18px;font-size:12px;color:#8b98a8;">Was this useful? <span style="border:1px solid rgba(232,238,245,.15);border-radius:6px;padding:6px 14px;min-height:20px;">Yes</span><span style="border:1px solid rgba(232,238,245,.15);border-radius:6px;padding:6px 14px;">No</span><span style="margin-left:auto;color:#39b4ff;">Report an error ↗</span></div>
+        </div>
+        <!-- right rail -->
+        <div style="border-left:1px solid rgba(232,238,245,.08);padding:28px 20px;font-size:12px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;letter-spacing:.1em;">ON THIS PAGE</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px;color:#8b98a8;">
+            <span style="color:#39b4ff;border-left:2px solid #39b4ff;padding-left:10px;margin-left:-12px;">Anatomy</span>
+            <span>Controls</span><span>Lights</span><span>Ports</span><span>Body sensor</span><span>Speaker</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 1e WEAPONS T4 ============ -->
+    <div id="1e" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1e</span><span style="font-size:12px;color:#8b98a8;">T4 · Data explorer — /manual/gameplay/weapons (working filters, data pending)</span></div>
+      <div style="width:1280px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+        <div style="padding:28px 40px 0;">
+          <div style="font-size:12px;color:#5f7a93;">Manual / 03 · Gameplay / <span style="color:#8b98a8;">Weapons</span></div>
+          <div style="display:flex;align-items:baseline;gap:16px;margin-top:10px;">
+            <div style="font-family:Oswald,sans-serif;font-size:34px;font-weight:600;">All 20 weapons</div>
+            <span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content — names + stats from content/03-gameplay.md; rows below are structure only</span>
+          </div>
+        </div>
+        <!-- sticky filter bar -->
+        <div style="display:flex;align-items:center;gap:12px;padding:18px 40px;border-bottom:1px solid rgba(232,238,245,.08);background:rgba(12,16,22,.95);margin-top:16px;">
+          <input value="{{q}}" onChange="{{setQ}}" placeholder="Search weapons…" style="background:#141b24;border:1px solid rgba(232,238,245,.12);border-radius:6px;padding:9px 12px;width:230px;color:#e8eef5;font-size:13px;font-family:Inter,sans-serif;outline:none;">
+          <div style="display:flex;gap:6px;">
+            <sc-for list="{{classChips}}" as="c" hint-placeholder-count="7">
+              <button onClick="{{c.pick}}" style="{{c.style}}">{{c.label}}</button>
+            </sc-for>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;font-size:12px;color:#8b98a8;"><span>{{count}} shown</span><span style="border:1px solid rgba(232,238,245,.15);border-radius:6px;padding:6px 12px;font-weight:500;">Export CSV</span></div>
+        </div>
+        <!-- table -->
+        <div style="padding:0 40px 8px;">
+          <div style="display:grid;grid-template-columns:2fr 1.2fr 1.2fr 1fr 1fr 1fr 1.3fr;gap:0 16px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;color:#5f7a93;border-bottom:1px solid rgba(232,238,245,.1);">
+            <span>WEAPON</span><span>CLASS</span><span>FIRE MODE</span><span>DAMAGE</span><span>RATE</span><span>AMMO</span><span>CONFIDENCE</span>
+          </div>
+          <sc-for list="{{rows}}" as="w" hint-placeholder-count="6">
+            <div style="{{w.rowStyle}}">
+              <span style="display:flex;align-items:center;gap:8px;"><input type="checkbox" checked="{{w.compared}}" onChange="{{w.toggle}}" style="accent-color:#39b4ff;width:15px;height:15px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.4);border-radius:3px;padding:1px 6px;">{{w.name}}</span></span>
+              <span style="font-size:12px;color:#c6d2df;">{{w.cls}}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;">—</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;">—</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;">—</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5f7a93;">—</span>
+              <span style="font-size:10px;color:#5f7a93;">pending</span>
+            </div>
+          </sc-for>
+        </div>
+        <!-- comparator dock -->
+        <div style="display:flex;align-items:center;gap:16px;padding:16px 40px;border-top:1px solid rgba(232,238,245,.08);background:#0a0e13;">
+          <span style="font-family:Oswald,sans-serif;font-size:14px;font-weight:600;letter-spacing:.04em;color:#8b98a8;">COMPARATOR</span>
+          <span style="font-size:13px;color:#c6d2df;">{{compareMsg}}</span>
+          <span style="margin-left:auto;font-size:11px;color:#5f7a93;">pick two rows → side-by-side stat bars (real numbers only, when content lands)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 1f T5 PROCEDURE PHONE ============ -->
+    <div id="1f" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1f</span><span style="font-size:12px;color:#8b98a8;">T5 · Procedure — headset re-pair, phone 390</span></div>
+      <div style="width:390px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+        <div style="display:flex;align-items:center;gap:12px;padding:0 16px;height:56px;border-bottom:1px solid rgba(232,238,245,.08);">
+          <span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#8b98a8;font-size:18px;margin-left:-12px;">☰</span>
+          <span style="font-size:12px;color:#5f7a93;">02 · Operate / <span style="color:#8b98a8;">Pairing</span></span>
+          <span style="margin-left:auto;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#8b98a8;font-size:17px;">⌕</span>
+        </div>
+        <div style="padding:20px;">
+          <div style="font-family:Oswald,sans-serif;font-size:26px;font-weight:600;">Re-pair the headset</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: confidence badge</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;">last verified 2026-08-27</span>
+          </div>
+          <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:8px;padding:14px;margin-top:16px;">
+            <div style="font-family:Oswald,sans-serif;font-size:13px;font-weight:600;letter-spacing:.04em;color:#8b98a8;">BEFORE YOU START</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;font-size:13px;color:#c6d2df;">
+              <span>☐ <span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.4);border-radius:3px;padding:1px 6px;">TODO: prerequisites from content/02-operation.md</span></span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px;margin-top:20px;">
+            <div style="display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:30px;font-weight:700;color:#39b4ff;line-height:1;flex-shrink:0;width:34px;">1</span><div style="flex:1;"><div style="font-size:14px;line-height:1.55;color:#e8eef5;">Hold the headset button.</div><div style="position:relative;aspect-ratio:4/3;margin-top:10px;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;">FIX-07 frame 1 · REAL PHOTO · button held</span></div></div></div>
+            <div style="display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:30px;font-weight:700;color:#39b4ff;line-height:1;flex-shrink:0;width:34px;">2</span><div style="flex:1;"><div style="font-size:14px;line-height:1.55;color:#e8eef5;">Boot the tagger while holding RIGHT on the D-pad.</div><div style="position:relative;aspect-ratio:4/3;margin-top:10px;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;">FIX-07 frame 2 · REAL PHOTO · boot holding RIGHT</span></div></div></div>
+            <div style="display:flex;gap:14px;"><span style="font-family:Oswald,sans-serif;font-size:30px;font-weight:700;color:#39b4ff;line-height:1;flex-shrink:0;width:34px;">3</span><div style="flex:1;"><div style="font-size:14px;line-height:1.55;color:#e8eef5;">Pull the trigger.</div><div style="position:relative;aspect-ratio:4/3;margin-top:10px;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;">FIX-07 frame 3 · REAL PHOTO · trigger pull</span></div></div></div>
+          </div>
+          <div style="background:rgba(255,176,32,.06);border:1px solid rgba(255,176,32,.3);border-radius:8px;padding:14px;margin-top:20px;font-size:13px;line-height:1.55;">
+            <span style="color:#ffb020;font-weight:600;">If this fails →</span> <span style="color:#c6d2df;">walk the pairing ladder in</span> <span style="color:#39b4ff;font-weight:500;">Fix / Pairing</span>
+          </div>
+          <div style="font-size:11px;color:#5f7a93;margin-top:16px;">source: <span style="color:#39b4ff;">content/05-fix-and-mod.md · FIX-07</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 1g T6 LADDER PHONE ============ -->
+    <div id="1g" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1g</span><span style="font-size:12px;color:#8b98a8;">T6 · Diagnostic ladder — "won't fire", phone 390</span></div>
+      <div style="width:390px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+        <div style="display:flex;align-items:center;gap:12px;padding:0 16px;height:56px;border-bottom:1px solid rgba(232,238,245,.08);">
+          <span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#8b98a8;font-size:18px;margin-left:-12px;">☰</span>
+          <span style="font-size:12px;color:#5f7a93;">05 · Fix / <span style="color:#8b98a8;">Diagnose</span></span>
+          <span style="margin-left:auto;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#8b98a8;font-size:17px;">⌕</span>
+        </div>
+        <div style="padding:20px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#39b4ff;letter-spacing:.12em;">SYMPTOM</div>
+          <div style="font-family:Oswald,sans-serif;font-size:26px;font-weight:600;margin-top:6px;">My tagger won't fire</div>
+          <div style="margin-top:8px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.5);border-radius:3px;padding:1px 6px;">TODO: content — ladder from content/05-fix-and-mod.md</span></div>
+          <div style="display:flex;flex-direction:column;margin-top:18px;">
+            <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:8px;padding:16px;">
+              <div style="display:flex;gap:10px;align-items:baseline;"><span style="font-family:Oswald,sans-serif;font-size:16px;font-weight:700;color:#39b4ff;">CHECK 1</span></div>
+              <div style="font-size:14px;color:#e8eef5;line-height:1.55;margin-top:6px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.4);border-radius:3px;padding:1px 6px;">TODO: check text</span></div>
+              <div style="display:flex;gap:10px;margin-top:14px;">
+                <span style="flex:1;text-align:center;border:1px solid rgba(125,219,138,.35);color:#7ddb8a;border-radius:8px;padding:12px;font-size:14px;font-weight:600;">Yes → fix</span>
+                <span style="flex:1;text-align:center;border:1px solid rgba(232,238,245,.2);color:#c6d2df;border-radius:8px;padding:12px;font-size:14px;font-weight:600;">No → next</span>
+              </div>
+            </div>
+            <div style="width:2px;height:18px;background:rgba(57,180,255,.4);margin-left:32px;"></div>
+            <div style="background:#141b24;border:1px solid rgba(232,238,245,.09);border-radius:8px;padding:16px;">
+              <div style="font-family:Oswald,sans-serif;font-size:16px;font-weight:700;color:#39b4ff;">CHECK 2</div>
+              <div style="font-size:14px;margin-top:6px;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.4);border-radius:3px;padding:1px 6px;">TODO: check text</span></div>
+              <div style="display:flex;gap:10px;margin-top:14px;">
+                <span style="flex:1;text-align:center;border:1px solid rgba(125,219,138,.35);color:#7ddb8a;border-radius:8px;padding:12px;font-size:14px;font-weight:600;">Yes → fix</span>
+                <span style="flex:1;text-align:center;border:1px solid rgba(232,238,245,.2);color:#c6d2df;border-radius:8px;padding:12px;font-size:14px;font-weight:600;">No → next</span>
+              </div>
+            </div>
+            <div style="width:2px;height:18px;background:rgba(57,180,255,.4);margin-left:32px;"></div>
+            <div style="background:rgba(255,176,32,.06);border:1px solid rgba(255,176,32,.3);border-radius:8px;padding:16px;font-size:13px;line-height:1.55;color:#c6d2df;">Ladder exhausted → <span style="color:#39b4ff;font-weight:500;">ask the community</span> or <span style="color:#39b4ff;font-weight:500;">open a repair guide</span></div>
+          </div>
+          <div style="position:sticky;bottom:0;margin:20px -20px -20px;background:#0a0e13;border-top:1px solid rgba(232,238,245,.1);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;font-size:13px;"><span style="color:#8b98a8;">On this page ▴</span><span style="color:#39b4ff;font-weight:600;">Wizard mode</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 1h COMPONENT SHEET ============ -->
+    <div id="1h" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#0c1016;background:#39b4ff;border-radius:4px;padding:2px 8px;">1h</span><span style="font-size:12px;color:#8b98a8;">Component sheet — §5 blocks + badges, dark & light</span></div>
+      <div style="display:flex;gap:20px;align-items:flex-start;">
+        <!-- DARK -->
+        <div style="width:560px;background:#0c1016;border:1px solid rgba(232,238,245,.09);border-radius:10px;padding:28px;display:flex;flex-direction:column;gap:22px;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;letter-spacing:.12em;">DARK THEME</div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">confidence badges</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#7ddb8a;background:rgba(125,219,138,.08);border:1px solid rgba(125,219,138,.25);border-radius:999px;padding:3px 10px;">✅ verified on our bench</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#8fb6d9;background:rgba(143,182,217,.08);border:1px solid rgba(143,182,217,.25);border-radius:999px;padding:3px 10px;">📖 official docs</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#39b4ff;background:rgba(57,180,255,.08);border:1px solid rgba(57,180,255,.25);border-radius:999px;padding:3px 10px;">🔍 decoded from the app</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#c9a7e8;background:rgba(201,167,232,.08);border:1px solid rgba(201,167,232,.25);border-radius:999px;padding:3px 10px;">👥 community</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#8b98a8;background:rgba(139,152,168,.08);border:1px solid rgba(139,152,168,.25);border-radius:999px;padding:3px 10px;">❓ unconfirmed</span>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#7ddb8a;background:rgba(125,219,138,.08);border:1px solid rgba(125,219,138,.25);border-radius:999px;padding:3px 10px;">✅ proven on hardware</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#39b4ff;background:rgba(57,180,255,.08);border:1px solid rgba(57,180,255,.25);border-radius:999px;padding:3px 10px;">🧪 software-tested</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#8b98a8;background:rgba(139,152,168,.08);border:1px solid rgba(139,152,168,.25);border-radius:999px;padding:3px 10px;">📐 specified only</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">[callout:warn / tip / info]</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:rgba(255,176,32,.06);border:1px solid rgba(255,176,32,.35);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;"><span style="color:#ffb020;font-weight:600;">⚠ Warning</span> <span style="color:#c6d2df;">— amber, for anything that can damage hardware. ≤3 lines.</span></div>
+              <div style="background:rgba(57,180,255,.06);border:1px solid rgba(57,180,255,.35);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;"><span style="color:#39b4ff;font-weight:600;">◆ Tip</span> <span style="color:#c6d2df;">— blue, for the field-tested shortcut.</span></div>
+              <div style="background:rgba(139,152,168,.06);border:1px solid rgba(139,152,168,.3);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;"><span style="color:#8b98a8;font-weight:600;">○ Info</span> <span style="color:#c6d2df;">— neutral context.</span></div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">[code] — frame anatomy (DEV-03)</div>
+            <div style="background:#0a0e13;border:1px solid rgba(232,238,245,.1);border-radius:8px;padding:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;">frame</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#39b4ff;">copy ⧉</span></div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:10px;letter-spacing:.02em;"><span style="color:#39b4ff;">$</span><span style="color:#e8eef5;">PLAY</span><span style="color:#5f7a93;">,</span><span style="background:rgba(255,176,32,.15);border:1px solid rgba(255,176,32,.4);border-radius:3px;padding:0 4px;color:#ffb020;">·</span><span style="color:#5f7a93;">,</span><span style="color:#e8eef5;">4</span><span style="color:#5f7a93;">,</span><span style="color:#e8eef5;">6</span><span style="color:#5f7a93;">,</span><span style="color:#e8eef5;">V3A</span><span style="color:#5f7a93;">,,,,</span><span style="color:#39b4ff;">*</span></div>
+              <div style="font-size:11px;color:#5f7a93;margin-top:8px;">amber = empty token, "leave unchanged" · max ~20-byte BLE chunks</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">[bit-field] — IR word (DEV-06)</div>
+            <div style="display:flex;gap:2px;">
+              <div style="flex:4;background:rgba(57,180,255,.2);border:1px solid rgba(57,180,255,.45);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#9fd8ff;">B·4</div>
+              <div style="flex:6;background:rgba(57,180,255,.12);border:1px solid rgba(57,180,255,.3);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#9fd8ff;">P·6</div>
+              <div style="flex:2;background:rgba(139,152,168,.14);border:1px solid rgba(139,152,168,.35);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#c6d2df;">T·2</div>
+              <div style="flex:8;background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.35);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#ffd27f;">D·8</div>
+              <div style="flex:1;background:rgba(139,152,168,.14);border:1px solid rgba(139,152,168,.35);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#c6d2df;">C</div>
+              <div style="flex:2;background:rgba(139,152,168,.14);border:1px solid rgba(139,152,168,.35);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#c6d2df;">U·2</div>
+              <div style="flex:2;background:rgba(125,219,138,.12);border:1px solid rgba(125,219,138,.35);border-radius:3px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 0;color:#a9e8b1;">Z·2</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;margin-top:4px;"><span>bit 0</span><span>25-bit word · 38 kHz</span><span>bit 24</span></div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">[table] — zebra + confidence column</div>
+            <div style="border:1px solid rgba(232,238,245,.1);border-radius:8px;overflow:hidden;font-size:12px;">
+              <div style="display:grid;grid-template-columns:1fr 1fr 100px;padding:9px 14px;background:#141b24;font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;letter-spacing:.08em;"><span>STATE</span><span>MEANING</span><span>CONF.</span></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 100px;padding:9px 14px;color:#c6d2df;"><span>rainbow cycle</span><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;">TODO</span><span style="color:#7ddb8a;">✅</span></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 100px;padding:9px 14px;background:rgba(232,238,245,.02);color:#c6d2df;"><span>solid blue</span><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;">TODO</span><span style="color:#c9a7e8;">👥</span></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 100px;padding:9px 14px;color:#c6d2df;"><span>green blink</span><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;">TODO</span><span style="color:#8b98a8;">❓</span></div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">[stat-row] · [quote] · source line</div>
+            <div style="display:flex;gap:24px;">
+              <div><div style="font-family:Oswald,sans-serif;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;">2,166</div><div style="font-size:11px;color:#8b98a8;">sound ids</div></div>
+              <div><div style="font-family:Oswald,sans-serif;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;">38 kHz</div><div style="font-size:11px;color:#8b98a8;">IR carrier</div></div>
+              <div><div style="font-family:Oswald,sans-serif;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;">25-bit</div><div style="font-size:11px;color:#8b98a8;">IR word</div></div>
+            </div>
+            <div style="border-left:2px solid #39b4ff;padding:4px 0 4px 14px;margin-top:14px;font-size:13px;color:#c6d2df;font-style:italic;"><span data-todo="1" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#ffb020;border:1px dashed rgba(255,176,32,.4);border-radius:3px;padding:1px 6px;font-style:normal;">TODO: quote + credit</span></div>
+            <div style="font-size:11px;color:#5f7a93;margin-top:12px;">source: <span style="color:#39b4ff;">protocol/brx-ir-protocol.md</span> · every block carries one</div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5f7a93;margin-bottom:8px;">image placeholder treatment</div>
+            <div style="display:flex;gap:8px;">
+              <div style="flex:1;position:relative;aspect-ratio:16/9;background:repeating-linear-gradient(135deg,rgba(57,180,255,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(57,180,255,.3);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#5f7a93;line-height:1.5;">GENERATE · blue dash</span></div>
+              <div style="flex:1;position:relative;aspect-ratio:16/9;background:repeating-linear-gradient(135deg,rgba(255,176,32,.06) 0 1px,transparent 1px 12px),#0e141c;border:1px dashed rgba(255,176,32,.35);border-radius:6px;display:flex;align-items:flex-end;padding:8px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#8a7a5c;line-height:1.5;">REAL PHOTO · amber dash + shot brief</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- LIGHT -->
+        <div style="width:560px;background:#f4f6f9;border:1px solid rgba(16,22,29,.1);border-radius:10px;padding:28px;display:flex;flex-direction:column;gap:22px;color:#10161d;box-shadow:0 24px 60px rgba(0,0,0,.5);">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5c6b7c;letter-spacing:.12em;">LIGHT THEME (daylight, at the field)</div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5c6b7c;margin-bottom:8px;">confidence badges</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#1c7a2e;background:rgba(28,122,46,.07);border:1px solid rgba(28,122,46,.3);border-radius:999px;padding:3px 10px;">✅ verified on our bench</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#3d6a8f;background:rgba(61,106,143,.07);border:1px solid rgba(61,106,143,.3);border-radius:999px;padding:3px 10px;">📖 official docs</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0b78c2;background:rgba(11,120,194,.07);border:1px solid rgba(11,120,194,.3);border-radius:999px;padding:3px 10px;">🔍 decoded from the app</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#7b4fa3;background:rgba(123,79,163,.07);border:1px solid rgba(123,79,163,.3);border-radius:999px;padding:3px 10px;">👥 community</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#5c6b7c;background:rgba(92,107,124,.07);border:1px solid rgba(92,107,124,.3);border-radius:999px;padding:3px 10px;">❓ unconfirmed</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5c6b7c;margin-bottom:8px;">[callout:warn / tip]</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="background:rgba(178,116,0,.06);border:1px solid rgba(178,116,0,.35);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;"><span style="color:#9a6400;font-weight:600;">⚠ Warning</span> <span style="color:#3c4652;">— amber holds AA contrast on light ground.</span></div>
+              <div style="background:rgba(11,120,194,.05);border:1px solid rgba(11,120,194,.3);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;"><span style="color:#0b78c2;font-weight:600;">◆ Tip</span> <span style="color:#3c4652;">— accent shifts darker for daylight.</span></div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5c6b7c;margin-bottom:8px;">[code]</div>
+            <div style="background:#0c1016;border-radius:8px;padding:14px;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#e8eef5;"><span style="color:#39b4ff;">$</span>WEAP<span style="color:#5f7a93;">,…,</span><span style="color:#39b4ff;">*</span> <span style="color:#5f7a93;font-size:11px;">· code stays dark in both themes</span></div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5c6b7c;margin-bottom:8px;">[spec-sheet] + source line</div>
+            <div style="background:#ffffff;border:1px solid rgba(16,22,29,.1);border-radius:8px;padding:16px;">
+              <div style="display:grid;grid-template-columns:130px 1fr;gap:8px 16px;font-size:13px;">
+                <span style="color:#5c6b7c;">IR carrier</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;">38 kHz</span>
+                <span style="color:#5c6b7c;">IR word</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;">25-bit</span>
+              </div>
+              <div style="font-size:11px;color:#5c6b7c;margin-top:10px;">source: <span style="color:#0b78c2;">protocol/brx-ir-protocol.md</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showTodo&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Content&quot;}}">
+class Component extends DCLogic {
+  state = { q: "", cls: "All", picked: [] };
+  classes = ["All", "Assault", "CQB", "Marksman", "Support", "Power", "Melee"];
+  weapons = Array.from({ length: 20 }, (_, i) => ({
+    id: i,
+    name: "TODO: weapon " + String(i + 1).padStart(2, "0"),
+    cls: ["Assault", "CQB", "Marksman", "Support", "Power", "Melee"][i % 6]
+  }));
+  componentDidMount() { this.syncTodo(); }
+  componentDidUpdate() { this.syncTodo(); }
+  syncTodo() {
+    let el = document.getElementById("todo-toggle");
+    if (!el) { el = document.createElement("style"); el.id = "todo-toggle"; document.head.appendChild(el); }
+    el.textContent = (this.props.showTodo ?? true) ? "" : "[data-todo]{display:none !important}";
+  }
+  renderVals() {
+    const { q, cls, picked } = this.state;
+    const filtered = this.weapons.filter(w =>
+      (cls === "All" || w.cls === cls) &&
+      (q === "" || (w.name + " " + w.cls).toLowerCase().includes(q.toLowerCase()))
+    ).slice(0, 8);
+    const base = "font-family:Inter,sans-serif;font-size:12px;font-weight:600;border-radius:999px;padding:8px 14px;cursor:pointer;";
+    return {
+      q,
+      setQ: e => this.setState({ q: e.target.value }),
+      count: filtered.length + " of 20",
+      classChips: this.classes.map(label => ({
+        label,
+        pick: () => this.setState({ cls: label }),
+        style: label === cls
+          ? base + "background:#39b4ff;color:#0c1016;border:1px solid #39b4ff;"
+          : base + "background:transparent;color:#8b98a8;border:1px solid rgba(232,238,245,.15);"
+      })),
+      rows: filtered.map(w => {
+        const on = picked.includes(w.id);
+        return {
+          ...w,
+          compared: on,
+          toggle: () => this.setState(s => ({
+            picked: on ? s.picked.filter(x => x !== w.id) : [...s.picked, w.id].slice(-2)
+          })),
+          rowStyle: {
+            display: "grid", gridTemplateColumns: "2fr 1.2fr 1.2fr 1fr 1fr 1fr 1.3fr",
+            gap: "0 16px", padding: "13px 14px", alignItems: "center",
+            borderBottom: "1px solid rgba(232,238,245,.05)",
+            background: on ? "rgba(57,180,255,.07)" : (w.id % 2 ? "rgba(232,238,245,.015)" : "transparent")
+          }
+        };
+      }),
+      compareMsg: picked.length === 0 ? "No weapons picked yet."
+        : picked.length === 1 ? "1 picked — pick one more to compare."
+        : "2 picked — comparison opens when weapon stats land."
+    };
+  }
+}
+</script>
+</body>
+</html>

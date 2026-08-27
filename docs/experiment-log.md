@@ -2648,3 +2648,57 @@ game and then it will go dark during the game. it blinks green on hit and flashe
 
 ⇒ Headset LEDs are **not** something we need to build. The open LED work (P13/P17/life-mode) is about
 the **gun's** LEDs only.
+
+## 2026-08-27 (unattended) — 🆕 `$QUERY,*` IS A CONFIG READ-BACK over BLE (and P12 is a negative)
+
+Working alone with one gun on BLE, no IR, no operator.
+
+### `$QUERY,*` returns the gun's CONFIGURED state — field map validated one field at a time
+```
+A  pid40 hp45 ar70 sh70 V3I dmg9 R01   $QUERY,40,1,45,70,70,V3I,1,9,R01,0,,0,,0,,…
+B  pid -> 7                            $QUERY,7 ,0,45,70,70,V3I,1,9,R01,…
+C  hp33 ar11 sh22                      $QUERY,7 ,0,33,11,22,V3I,1,9,R01,…
+D  voice -> V7M                        $QUERY,7 ,0,33,11,22,V7M,1,9,R01,…
+E  dmg77 sound S16                     $QUERY,7 ,0,33,11,22,V7M,1,77,S16,…
+F  $TID -> 3                           $QUERY,7 ,3,33,11,22,V7M,1,77,S16,…
+```
+| token | meaning | proved by |
+|---|---:|---|
+| 1 | **player id** (`$PSET` t1) | 40 → 7 |
+| 2 | **team** (`$TID`) | 1 → 0 → 3 |
+| 3 | **HP** | 45 → 33 |
+| 4 | **armor** | 70 → 11 |
+| 5 | **shield** | 70 → 22 |
+| 6 | **voice token** | V3I → V7M |
+| 7 | constant `1` | — |
+| 8 | **weapon damage** (`$WEAP` t5) | 9 → 77 |
+| 9 | **fire sound** (`$WEAP` t27) | R01 → S16 |
+| 10+ | repeating `0,,` pairs | *(inference)* the other weapon slots' damage/sound, empty here |
+
+**`$QUERY` = CONFIGURED · `$LCD` = CURRENT.** In the same breath the gun returned
+`$LCD,45,70,0,0,12,30` (live pools, still the pre-change values because it had not respawned) against
+`$QUERY,…,33,11,22` (the newly configured ones). Two different questions, two different commands.
+
+**⚠ Replies arrive SECONDS LATE.** This is why a first attempt looked like `$WEAP,*` was the read-back —
+a late `$QUERY` reply landed inside the `$WEAP,*` window. **Query repeatedly until the answer stops
+changing**; do not read the first frame that arrives.
+
+### Why this matters
+1. **MC can VERIFY a pushed head** instead of assuming it landed. We push ~20 frames blind today, and
+   have been bitten by a power-cycled gun silently losing its config.
+2. **We can read a NATIVE game's configuration** — put a gun in native Supremacy and `$QUERY,*` should
+   report that character's HP/armor/shield and weapon damage. That is a chunk of what the P8 HTTPS
+   capture was for, with no proxy, no cert and no Mac. **(Untested — needs a native game.)**
+3. **It qualifies P6.** "The gun keeps no score / is never queried" is still true **for score** — that
+   finding came from a full game capture where the app never asked. **Configuration is a different
+   question and the gun answers it.**
+
+### P12 — `$PB*` playbook family: SILENT on v4.32 (negative)
+All twelve shapes — `$PBGAME/$PBWEAP/$PBTEAM/$PBPERK/$PBLIVES/$PBTIME`, bare and with values — plus
+`$INIT`: **no reply, no observable state change.** The FB-captured v4.30 remote-start sequence does not
+respond on our firmware, so those enum tables cannot be mapped this way here.
+
+### Also silent (for the record)
+`$GSET,*` `$PSET,*` `$SIR,*` `$TID,*` `$LCD,*` `$HP,*` — bare reads of the config commands do **not**
+work. `$VERSION,*` does (`$VERSION,v4.32,hds.59,4,,devhost.03`). So the read surface is
+**`$QUERY` + `$VERSION` only.**

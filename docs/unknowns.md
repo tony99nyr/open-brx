@@ -10,6 +10,11 @@ evidence stay in the owning doc. If a row and its source disagree, the source wi
 - **`docs/bench-tomorrow.md`** = the subset that needs Tony, sequenced for a bench session. Use that on
   bench day; use this file to see the whole board.
 - **`docs/FOLLOWUPS.md`** = the detail and the method for each item.
+- **`docs/manual/*.md` → `## Research backlog (held — NOT published)`** = the *manual-facing* view of
+  the same board: every BRX fact that was **held back from the public manual** because it is
+  unconfirmed or contradicted, listed next to the page it would go on, with both values where sources
+  disagree. Confirming an item there means promoting it into the page above it (`manual/README.md` →
+  *How a fact gets in*). Those sections are the detail; this index doesn't restate them.
 
 ---
 

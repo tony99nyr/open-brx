@@ -6,3 +6,6 @@ dist/
 build/
 .DS_Store
 .claude/worktrees/
+
+# site generator
+site/node_modules/

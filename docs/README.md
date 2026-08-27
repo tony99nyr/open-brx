@@ -80,6 +80,14 @@ Then, by who you are:
 - **[../mcp/brx_mcp/mc/API.md](../mcp/brx_mcp/mc/API.md)** — the Mission Control HTTP/WS API.
 - **[../README.md](../README.md)** — `brx-mcp` quickstart (the CLI that drives taggers at the bench).
 
+## The BRX Manual — canonical facts (and the public website built from it)
+- **[manual/](manual/README.md)** — **the manual: every confirmed BRX fact, once, with its source.**
+  Hardware · operation · gameplay/weapons · sound bank · fix/mod · developer/protocol · platform.
+  Known facts only; each file ends with a *Research backlog* of what's held back. **Look here before
+  restating a BRX fact from `reference/` or `protocol/`.** The website is built from these files.
+- **[site/](site/README.md)** — the design package for the website: the Claude Design brief (IA,
+  templates, LLM-SEO, deploy target), and the image manifest (Gemini prompts + real-photo shoot list).
+
 ## Vision & strategy
 - **[VISION.md](VISION.md)** — can we supersede Edge? Capability ceiling, gaps, open-source + business.
 - **[build-tiers.md](build-tiers.md)** — what you can build at each investment level.

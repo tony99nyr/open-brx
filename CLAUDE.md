@@ -7,7 +7,10 @@ model, amendments A1–A8; + the module docs) — the software is built + tested
 decisions: `docs/adr/` (0001 per-player node · 0002 laptop Mission Control + local LAN · 0003 native app
 over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 
-**Start with [`docs/README.md`](docs/README.md)** — the docs index. Before any hardware/protocol
+**Start with [`docs/README.md`](docs/README.md)** — the docs index. **BRX facts: `docs/manual/`** is the
+canonical, confirmed-facts manual (also the source the public website is built from) — read the section
+file there before digging through `reference/`/`protocol/`, and promote new confirmed facts into it
+(`docs/manual/README.md` → *How a fact gets in*). Before any hardware/protocol
 work also read `docs/HANDOFF.md` (current state), `docs/experiment-log.md` (lab notebook — **append
 after every session**), and `docs/FOLLOWUPS.md` (consolidated open work). Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
