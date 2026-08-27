@@ -69,6 +69,25 @@ The known-good `$WEAP,0` assault-rifle string carries a `24` in the damage-suspe
 position — matching the M-4. Forcing each stock weapon via the app (once it works) and
 diffing `$WEAP` outputs against this table is the fastest route to the 44-token map.
 
+## Per-mode weapons & perks (p.6–7) — previously missing from these notes
+
+| Mode | Weapons selectable | Perks (ALT cycles) |
+|---|---|---|
+| Free For All | M-4, SMG-X3, MG-7, SR-100 | none |
+| Team Death Match | M-4, SMG-X3, MG-7, SR-100, TAC-87 | **Grenade Launcher, Med Kit, Concussion Grenade, Extended Mags, Body Armor** |
+| Supremacy | none — 9 characters ARE the loadout | none (abilities are per-character) |
+| Survival (Infection) | M-4, SMG-X3, MG-7, SR-100, TAC-87 | none |
+
+"Please note not all games have perks" (p.5) — TDM is the only stock mode with the perk row.
+
+## Supremacy character ABILITIES (p.6) — native versions of our special-weapons designs
+
+Soldier: secondary shotgun · **Medic: medi-gel heal PULSE (heals allies — a native heal-shot!)** ·
+Heavy: rally (ally attack boost) · Guardian: charge-up plasma + **shield regenerator** ·
+Marauder: adrenaline (RoF boost) · **Sentinel: EMP blast (stuns a GROUP — the native EMP)** ·
+Viper: poison burst rifle + poison grenades · Technician: incendiary rifle + medi-gel
+heal-over-time · Wraith: cryo-rifle + frost grenades (slow enemy attack speed).
+
 ## Supremacy characters (p.6) — $PSET anchors (HP/Armor/Shield triplets)
 
 | Character | Class | Mag | Damage | Health | Armor | Shield |
