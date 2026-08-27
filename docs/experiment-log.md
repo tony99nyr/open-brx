@@ -2403,7 +2403,24 @@ That makes several of these usable as pure **cue** effects.
 **28 hissing is a tidy corroboration:** the shipped table's tear-gas row is `$SIR,11,0,VA2,28`. Gas that
 hisses is exactly right, and it was predicted before Tony heard it.
 
-### Finding 2 — ⚠ 24, 25, 26, 27 DEAL DAMAGE, contradicting the earlier sweep
+### Finding 2 — ⚠️ WITHDRAWN, DID NOT REPRODUCE (same day)
+> A controlled A/B run an hour later — **every function on protocol 5 AND protocol 7, with a passing
+> control at both ends (40 damage each)** — read **0 damage for all nine functions on both protocols**,
+> including 24–27. **The damage below does not reproduce.**
+>
+> The tell is the hit count: the run below logged **4 landed from 2 emitted words** for exactly those
+> four functions, while the A/B logs a clean **2 landed** for all nine. Something extra was reaching the
+> victim, and 70→30 is exactly 2 × 20 — our own magnitude. **Cause unidentified.** The operator was
+> holding a live, armed gun and not firing; a stray trigger touch or a reflection is possible but
+> unproven.
+>
+> ⇒ **Treat 24–27 as NO-POOL until a controlled run says otherwise**, and treat the protocol-dependence
+> claim below as unsupported. The A/B found **no protocol dependence at all**: same result on 5 and 7 for
+> all nine functions.
+>
+> Original text, superseded:
+
+~~Finding 2 — 24, 25, 26, 27 DEAL DAMAGE, contradicting the earlier sweep~~
 Last night's enemy-side sweep recorded 24–28 as *"registers a `$HIR`, moves no pool"*. Here they take
 armor **70 → 30** (40 from 2 words at magnitude 20 = **1× damage**).
 
@@ -2418,3 +2435,29 @@ before trusting the classification.
 ### Still unbuilt
 No function has produced a **stun**. `landed=4` on the damaging rows against 2 emitted words also wants
 explaining (double-registration?) — not chased today.
+
+## 2026-08-27 (bench) — protocol A/B: NO protocol dependence, and the fn 24–27 damage does not reproduce
+
+Wire-only, silent (`$VOL,3`), operator not involved. Nine functions × protocol 5 and 7, **control at
+both ends**.
+
+```
+control proto0/fn1   landed=2  damage=40   OK
+fn 24/25/26/27/3/28/23/8/35   proto5: landed=2 dmg=0   |   proto7: landed=2 dmg=0   same
+control proto0/fn1   landed=2  damage=40   OK
+```
+
+**Two results:**
+1. **No protocol dependence.** Every function behaves identically on 5 and 7. The earlier
+   "same function, different protocol, different behaviour" contradiction is **resolved as
+   non-existent** — one of the two runs was simply wrong.
+2. **The fn 24–27 damage does not reproduce.** 0 damage on both protocols, controls passing either
+   side. Withdrawn above.
+
+**What survives from the listen-only run:** the **sound map** (electrical 3 · shotgun 24 · growing hiss
+25/26 · normal AR 27 · gas hiss 28), which was an ear observation and is untouched by this. And fn 23's
+audio suppression, which was measured separately and twice.
+
+**Standing lesson, now twice in one session:** a single well-controlled-looking run is not a result.
+Both the EMP disable and this damage finding survived one careful run each and died on the second.
+The only claims that have held all session are the ones measured 3× with alternating conditions.
