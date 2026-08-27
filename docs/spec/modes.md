@@ -66,7 +66,9 @@ There is **no team-invariant setup any more**: `$PSET` token 1 is the player's `
 - `_PSET_HEAD` becomes `["PSET", str(player_num), "0"]` with `player_num ∈ 1..63` — **token 2 stays `0`**; it
   has read `0` in every capture and its meaning is unknown (§9). Token 1 = `0` is written **only** by
   `tutorialFrames` (§4): "no identity", which MC never credits — consistent with contracts A5.1.
-- HP/armor/shield come from `health` (or `player.loadout.overrides`); the voice tail from `player.voice`
+- HP/armor come from `health` (or `player.loadout.overrides`); the voice tail from `player.voice`
+  (⚠ the `$PSET` **shield** token is written but **inert** — the pool is granted only by an IR `$SIR`
+  function-11 event, P16 §9. Keep writing it for frame fidelity; do not treat it as a setting.)
   (§5). Volume is **69** for play (30 is inaudible — house rule); the low `$VOL,30` default stays for
   bench probing only.
 - Nothing in `compile` reads a clock or the network — the dispersed-start timing (M-START) wraps
@@ -253,7 +255,7 @@ Families come from `sound-bank.md` §Voice prefixes — each provides a consiste
 - `voiceOptions() → VoiceSet[]` exposes `{id, label, family, sample_id}` for M-MC (the app offers
   only male/female; **we offer the full pack** — callsign-ui §UX, followup B14/P3).
 - `pset(config, voice, player_num) → "$PSET,…"` writes `player_num` at token 1, substitutes
-  HP/armor/shield (tokens 3–5) **and** the voice
+  HP/armor/shield (tokens 3–5 — **the shield token is inert**, see §1.1 and P16 §9) **and** the voice
   family into the tail. The exact per-slot id map per family is **partially known** (the examples
   above); families beyond VA are pinned by the server `voice-profiles` endpoint or a one-profile BLE
   capture (apk-harvest §voice). Ship VA fully, others as best-effort with the known kill/death lines.

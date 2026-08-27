@@ -61,6 +61,36 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | **K4** | **MELEE does not work in our compiled game** (native mode does) | 🔴 NEW — **NOT a config bug** | Tony had to reboot into a native on-gun game to melee (2026-08-26). But two independent capture reviews found **our melee surface is byte-identical to Callsign's**: `$WEAP,4` character-for-character (`…,4,1,90,13,1,90,…M92…` — proto 13, sub 1, magnitude 90, matching the native swing we captured), all three `$SIR,13,*` rows, `$GSET` with `gyroscope=1`, and all seven `$BMAP` rows including **`$BMAP,8,4`** (button 8 = gyro → melee). Callsign sends only `$GLED` and `$PLAY` beyond what we send; neither gates a swing. ⇒ **runtime/state/trial issue, not a frame.** **Bench (one swing):** in *our* compiled game, **select slot 4 and swing hard**, watching the victim for `$HIR,…,13,…` and the shooter for **`$BUT,8`**. `$BUT,8` + no IR ⇒ slot-4 firing. No `$BUT,8` ⇒ the gyro mapping isn't live despite being sent (check whether `$SPAWN` wipes `$BMAP`, since spawn only re-sends `$BMAP,0,0`). |
 
 
+## 🔴 Q12 — THE SHIELD POOL IS DISCARDED IN CODE, not just in the spec (2026-08-26)
+
+`$HP` is **three** pools — `$HP,<hp>,<armor>,<shield>` — confirmed on the wire tonight (a shield grant
+reads `$HP,45,70,70` and the next hit drains **shield first**). brx-opus2 found `docs/spec/node.md`
+documented it as a two-token frame; **the code matches the wrong spec**:
+
+| where | what it does | consequence |
+|---|---|---|
+| `mcp/brx_mcp/protocol.py:93-99` | parses **only `tok(1)`** (hp) | armor *and* shield never reach the parsed event |
+| `app/src/engine.js:450` | `case 'HP': this._onHp(+t[1] \|\| 0, +t[2] \|\| 0)` | reads hp + armor, **drops the shield token** |
+| `app/src/` | **zero** occurrences of `shield` | the phone engine has no concept of the pool at all |
+
+**Why it was harmless until tonight:** nothing could put a value in the shield pool — `$PSET` shield is
+inert (P16). **It stopped being harmless the moment we proved an IR `$SIR` fn-11 event fills it.**
+
+**Failure mode, in order of nastiness:**
+1. A hit **fully absorbed by a shield** changes neither hp nor armor ⇒ the engine sees nothing ⇒ on a
+   strict reading **no `hit_taken` event at all**: no damage, no assist, no "who shot me", nothing in
+   the outbox. A player being shot appears untouched.
+2. `status` carries no shield ⇒ the HUD and MC's board cannot show it.
+3. It fails **open** — everything looks correct until the first shield charger exists.
+
+**Decision needed (Tony's, not ours):** `hit_taken.dmg` should almost certainly **include the shield
+delta** rather than emit `dmg: 0` — a hit that landed is a hit that landed, and `dmg: 0` invites
+`if dmg:` guards downstream to drop the event again, which is the same bug wearing a different hat.
+Both brx-ir and brx-opus2 independently reached that recommendation. Parsing the third token is
+additive and safe; changing the event's meaning is a **contract change** and wants sign-off.
+
+Full write-up: `docs/spec/node.md` §10-Q12.
+
 ## Protocol — still unknown (worth a capture or probe)
 
 | # | Item | Status | Method |

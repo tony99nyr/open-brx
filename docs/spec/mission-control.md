@@ -166,6 +166,12 @@ numbers** (clip / reserve mags / reload s) and the relative **Damage / RPM / Ran
 badges, filter/sort by class or stat. Selecting a weapon sets a `WeaponSel` in the player's `Loadout`
 (ordered → gun slots). Primary + optional secondary (removable), matching Callsign but visually far ahead.
 
+> ⚠ **The bars are not equally meaningful (2026-08-26).** `rng` is the wire's `t41`, which reads
+> **75 on all eighteen guns** — range is not differentiated on the wire at all, so that bar carries no
+> information today. `dmg` is the emitted magnitude (`t5`); five weapons land more or less than it via
+> their `$SIR` row. Showing **hits-to-kill** against the live health config is the honest number —
+> `weapons.json` now carries `htk`/`ttk_ms` per weapon. See `docs/weapon-design.md` §6.2.
+
 **Weapon art (`Weapon.icon?`, contracts §3) is optional in the catalog.** MC **ships a bundled placeholder
 icon set** (class-based silhouettes) as the owner/fallback and renders it wherever `icon` is absent; real
 per-weapon art is TBD and drops in without a schema change (additive `icon` on the `WeaponCatalog`).

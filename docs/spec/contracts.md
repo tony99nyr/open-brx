@@ -80,6 +80,8 @@ GameConfig {
   respawn:     { type: "auto"|"scanner"|"none", delay_s: number },
   scoring:     { frag_limit: number|null, win_by: "kills"|"survival"|"objective"|string }, // frag_limit / survival ends are LAN-covered-only (A4.8)
   health:      { max_hp: number, max_armor: number },   // mode defaults; Loadout may override
+  // No `max_shield`, deliberately: the shield pool is NOT BLE-writable. It is granted only by an IR
+  // $SIR function-11 event (P16, closed 2026-08-26). Damage drains shields -> armor -> HP.
   teams:       Team[],
   led?:        object,                // indoor/outdoor/night LED customization (M-MODES defines shape)
   player_num_base?: number,           // A6.5: first player_num this session hands out (default 1). Two concurrent games on one
@@ -117,6 +119,10 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
 Weapon {
   weapon_id: string, name: string, class: string,
   stats: { damage:number, mag:number, reserve:number, rof:number, reload_ms:number, range?:string },
+  // ⚠ `damage` is the MAGNITUDE the weapon emits ($WEAP t5), not the damage that lands. What lands is
+  // decided by the victim's $SIR row for this weapon's <t3,t4>: a multiplier row lands x1.25 or x2, a
+  // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
+  // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
   weap_frame: string,   // the $WEAP,... template (token positions per callsign-extract)
   icon?: string
 }
@@ -133,6 +139,11 @@ directions 2026-08-25). So attribution is **exact, victim-side, BLE-native** —
 ```jsonc
 Event =
  | { type:"hit_taken",   t, match_id, node_id, player_id, shooter_num, shooter_team, dmg, ir_proto? } // $HIR + the $HP delta it caused
+ |   // ⚠ `dmg` = the hp+armor delta, so it is BLIND TO SHIELDS: a hit a shield fully absorbs moves
+ |   // neither pool and, strictly read, emits no event at all. Latent until a shield-granting station
+ |   // exists (now buildable). Decision pending — node.md §10-Q12. NB `dmg` is deliberately NOT $HIR
+ |   // token 5: tok5 is the RAW magnitude and ignores the $SIR multiplier, so the delta is the correct
+ |   // source and happens to be multiplier-safe already.
  | { type:"death",       t, match_id, node_id, player_id, shooter_num, shooter_team, desync? }         // $HP→0; shooter = last $HIR if fresher than DEATH_LATCH_MS, else 0
  | { type:"respawn",     t, match_id, node_id, player_id, resync? }                                    // resync?: true when forced by the BLE resync policy (node.md §3.10)
  | { type:"team_change", t, match_id, node_id, player_id, tid }                                        // infection: this gun moved to `tid` (A5.8)

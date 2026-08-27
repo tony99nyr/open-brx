@@ -103,14 +103,20 @@ match clock and the local timed end (§3.9). `night` selects blackout defaults (
 
 ### 3.2 Tracking hp / armor / ammo / shooter
 
+> ⚠ **Two pools tracked, three on the wire (2026-08-26).** `$HP` carries `<hp>,<armor>,<shield>` and
+> damage drains **shields → armor → HP**, but the engine, the `status` event and the HUD all model
+> only hp+armor. Nothing is wrong today because shields cannot be granted over BLE at all — the pool
+> fills **only** from an IR `$SIR` function-11 event (P16) — but that is now something we can build.
+> The consequences and the decision are **§10-Q12**; this section is unchanged until it is settled.
+
 Keep the seed's frame handlers (`handleFrame`), which already work on hardware:
 
 | frame | tokens read | engine effect |
 |---|---|---|
-| `$HP,<hp>,<armor>,*` | hp, armor | set `hp`, `armor`; **if `hp==0 && alive && running` → death() (§3.4)** |
+| `$HP,<hp>,<armor>,<shield>,*` | hp, armor, **(shield — not read, see §10-Q12)** | set `hp`, `armor`; **if `hp==0 && alive && running` → death() (§3.4)** |
 | `$LCD,...` | hp, armor, ammo (tok 5) | set `hp`, `armor`, `ammo` — the periodic full-state line; also the **config/spawn echo** (§3.1, §3.10) |
 | `$ALCD,<ammo>,...` | ammo (tok 1) | set `ammo`; **a decrement within a magazine = a shot → `shots++`** (§3.3); an increase = reload/pickup, ignored |
-| `$HIR,<ir_proto>,<t2>,<shooter_num>,<shooter_team>,...` | tok 3 = shooter `player_num`, tok 4 = shooter team; **guard tok 2 ≠ `15`** (grenade/station beacon, not a hit) | latch `{shooter_num, shooter_team, at}` (§3.5). Tok 1 varies (`4` while armor absorbs, `0` for HP-taking hits, `2` on the killing hit — protocol §7q, **unexplained**); log it and carry it as `ir_proto` on `hit_taken` |
+| `$HIR,<ir_proto>,<t2>,<shooter_num>,<shooter_team>,...` | tok 3 = shooter `player_num`, tok 4 = shooter team; **guard tok 2 ≠ `15`** (grenade/station beacon, not a hit) | latch `{shooter_num, shooter_team, at}` (§3.5). **Tok 1 is the SENSOR that caught the IR** — `0` headset FRONT dome, `1` headset BACK dome, `4` gun body (§7r; the old "`4` = armor absorbed / `0` = HP / `2` = kill" reading is **RETRACTED**, and a kill is never marked in `$HIR`). Directional logic only holds at field distance — at point-blank the IR floods every receiver. **Tok 5 is the RAW magnitude, not the damage applied**: applied = magnitude × the victim's `$SIR`-function multiplier × 1.5-if-crit (§7r addendum), so never use tok 5 as a damage source — derive from the `$HP` delta. Log tok 1 and carry it as `ir_proto` on `hit_taken` |
 | `$VOLTS,...` | pack % (**provisional** token — token 3 vs 4 unresolved, §10-Q4) | set `battery` (§4 batt, §5) |
 
 Ammo is **observed**, never asserted — the gun is the source of truth for its own magazine. The node
@@ -622,9 +628,10 @@ property.
   node can observe, or must the node stay DOWN until an `$HP` refill appears? Needs a bench check;
   affects §3.4. (Grenade respawn stations disable self-respawn and need a per-gun IR arming step —
   FOLLOWUPS B12.)
-- **Q3 — dmg accounting.** `hit_taken.dmg` = hp+armor delta. Armor-before-HP order is **confirmed**
-  (protocol §7f/§7q: armor 70→0 at ~9/hit, then HP). Remaining: does a single `$HIR` ever span both
-  pools (armor 7 → HP 43 was one hit), and is that one `hit_taken` with `dmg = 7 + 2`? Assume yes.
+- **Q3 — dmg accounting.** `hit_taken.dmg` = hp+armor delta. Drain order is **shields → armor → HP**
+  (§7r; armor overflow spills into shields on a grant). A single `$HIR` spanning two pools is one
+  `hit_taken` with the summed delta — assume yes. ⚠ **Superseded in part by Q12:** the definition is
+  blind to the shield pool, so a hit a shield fully absorbs produces no delta at all.
 - **Q4 — `$VOLTS` token map.** Seed reads token 3 as pack %; the lab log leans token 4 = cell-voltage
   SoC. A controlled discharge sweep settles which token the HUD/readiness shows.
 - **Q5 — cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from
@@ -633,7 +640,8 @@ property.
   a long event. Measure; consider dimming only the non-STATE zones between firefights.
 - **Q7 — side-effect-free gun state probe (§3.10).** After a BLE reconnect, does anything short of
   `$SPAWN` make the gun report `$LCD` (HP/armor/ammo + "configured")? Blocking for the resync policy.
-- **Q8 — `$HIR` token 1 meaning.** `4` while armor absorbs, `0` for HP-taking hits, `2` on the killing
+- ~~**Q8 — `$HIR` token 1 meaning.**~~ ✅ **CLOSED 2026-08-26 (§7r): tok 1 is the SENSOR** — `0` front dome, `1` back dome, `4` gun body. The reading below is retracted; kept for provenance.
+  ~~**Q8 (retracted).**~~ `4` while armor absorbs, `0` for HP-taking hits, `2` on the killing
   hit (§7q). Effect class or weapon? Carried as `ir_proto` until understood.
 - **Q9 — mid-match `$TID` write (infection).** Does a `$TID` change on a spawned gun change its
   friendly-fire resolution, its LED, both, or neither? Bench: flip one gun mid-game, shoot it from both teams.
@@ -643,3 +651,18 @@ property.
 - **Q11 — does an unspawned head echo with the headset OFF?** The proven headset gate is the `$LCD,45,70`
   echo on `$SPAWN`; if the head's `$LCD,0,0,…` echo also depends on the headset, `ack_config.gun_echo`
   is a valid pre-spawn gate; if not, the gate only exists at T-0.
+- **Q12 — the third pool (NEW, 2026-08-26, blocking any shield-granting station).** The wire has
+  three pools; the node models two. Three consequences, all currently latent:
+  1. **`hit_taken` may not fire at all.** It is defined as "a `$HIR` that drops `$HP`" with
+     `dmg` = the hp+armor delta. A hit a shield fully absorbs moves neither — so on a strict reading
+     there is **no event**: no assist attribution, nothing in the outbox, and a player being shot who
+     looks untouched. It fails *open*, which is why nothing has surfaced yet.
+  2. **`status` carries no shield**, so the HUD and MC's board cannot show it.
+  3. `$HP` is parsed as a 2-token frame (§3.2), so the value is discarded before anything could use it.
+
+  **Decision needed** (not made here): (a) read `$HP` token 3 into engine state and add `shield` to
+  `status`; (b) redefine `hit_taken.dmg` as the **total** pool delta including shields, so a hit that
+  landed always produces an event. The IR bench's recommendation, and this spec's author's, is
+  **both** — and specifically *include* the shield delta rather than emitting `dmg: 0`, because a
+  zero invites `if dmg:` guards downstream to drop the event again, which is the same bug wearing a
+  different hat.
