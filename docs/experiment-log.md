@@ -2507,3 +2507,40 @@ and evidence that a native weapon can emit **more than one protocol per trigger 
 
 **Still not captured:** the Sentinel EMP ability word — its frames arrived during the splitting era and
 never decoded. Worth a retry now that RAW can be turned off.
+
+## 2026-08-27 (bench, observed) — LED LIFE MODE decoded by eye: the gun LEDs are a two-colour pool gauge
+
+Tony, watching a native Supremacy Sentinel while shooting it — this answers the "what are we even
+reproducing?" half of the LED cluster (bench item 4.3), which no wire capture could have given us:
+
+> *"his leds on the gun when hit went purple. the 3 leds represented the amount of shields/armor it had.
+> as i hit it the purple got less and less, once it went down then it went to blue and it probably
+> represented health. it would also slowly deplete in the same way until hp was 0 and it triggered the
+> death grenade and death sound. headset flashes green when dead"*
+
+### The native behaviour
+| element | meaning |
+|---|---|
+| **3 gun LEDs** | a **segmented gauge**, not a status light |
+| **purple** | the **shield/armor** pool — segments extinguish as it drains |
+| **blue** | the **health** pool — shown once purple is exhausted, drains the same way |
+| pool empty | **death grenade** (proto 10 @ 125, captured above) + death sound |
+| **headset flashes GREEN** | the **death** indication |
+
+### Why this matters
+- **It is a two-stage gauge over the pool order we measured on the wire.** Independently, from `$HP`:
+  drain order is **shields → armor → HP**. The LEDs show exactly that sequence — purple (protective
+  pools) first, then blue (health). Two completely different instruments, same model.
+- **It names the colours to hunt in P13.** The `$GLED` colour index (0–8) must contain a **purple** and a
+  **blue**; we now know two of the values are in use and what they mean.
+- **It tells us what to build.** LED life mode = drive `$GLED` colour + lit-segment count from the pool
+  state, switching colour when the protective pools empty. Our compiled head currently slow-blinks the
+  team colour and shows nothing about health — a stock feature we lose in every game we run.
+- **Green-on-death from the headset** is a separate cue from `$SFLASH` (the *shooter's* green-sight
+  kill-confirm, §7o). Same colour, different actor: the victim's headset marks its own death. Worth
+  keeping distinct in the feedback engine (B18).
+
+### Still open in the LED cluster
+**P13** (is colour a single 0–8 index?) and **P17** (how to turn the LEDs OFF) are unchanged — both need
+a lit gun and a `$GLED` sweep. But 4.3's premise is now answered: **we know what the target behaviour
+is.** Only the token that drives it is missing.
