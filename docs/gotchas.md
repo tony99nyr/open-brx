@@ -1,0 +1,147 @@
+# Gotchas — the field lore
+
+**Everything that will waste an hour if you don't know it.** Organised **by symptom**, because when one
+of these bites you, you search for *what you're seeing* — not for what you should have known.
+
+Each entry: **what it looks like → what it actually is → what to do.** Nearly all of these were learned
+by losing a session to them.
+
+---
+
+## Before you start
+
+**"Only 2 of 3 guns joined the game."**
+A gun whose **headset is off, unpaired or flat silently refuses to join** — no error, no voice line.
+This is the single most common cause of a wasted muster. **A headset slow-blinks RAINBOW when
+disconnected** — eyeball every headset before arming (`field-process.md` §Muster step 0). Note a settled
+headset shows team colour **pre-game only** and goes **dark during play** — dark in a game is normal.
+
+**"The gun advertises but won't connect" / "connects then immediately drops."**
+A **"screamer"** — the documented failure of a tagger left powered all day. **POWER-REST the guns
+between sessions.** Never bench-marathon a match-day fleet. Also: BC firmware won't re-pair below a
+battery threshold, so keep them charged.
+
+**"The gun is called Tactix2 again."**
+**Opening the Callsign app wipes an enrolled gun's `$NAME`.** Never open it on our guns. Re-stamp with
+`python -m brx_mcp rename`.
+
+---
+
+## Connecting
+
+**"Connection failed."**
+Establishing a BLE link succeeds roughly **1 attempt in 3** — the official app behaves the same. `ble.py`
+retries 5×, and that retry *is* the fix. **This is not a broken stack**; hours were once lost to that
+theory.
+
+**"Reconnect right after a disconnect comes up dead (NUS TX char missing)."**
+After a **gun-initiated** `$DISCONNECT`, back off **≥5 s** before reconnecting.
+
+**"The board vanished from the bus entirely."**
+A **charge-only USB-C cable**. The board powers up and looks alive while being invisible to the PC. Use
+a cable you have *seen* enumerate.
+
+**"The port is there but nothing answers."**
+You're on the ESP32-S3's **native USB** port (`VID_303A`), which enumerates from ROM whether or not the
+sketch uses it — so it looks healthy while `Serial` is actually bound to UART0. **Use the UART port**
+(`CH343`, `VID_1A86`), or set *USB CDC On Boot → Enabled*.
+
+**`PermissionError(13, 'Access is denied.')` on a COM port.**
+Windows serial ports are **exclusive**. **Close the Arduino Serial Monitor.**
+
+**Address formats.** macOS gives BLE **UUIDs**, Windows/BlueZ give **MACs**. **Never pattern-match on
+address format** — a bug exactly like that shipped once.
+
+---
+
+## Sending commands
+
+**"The gun went live with no ammunition."**
+**`$AMMO` must follow `$SPAWN`.** A magazine loads into a *just-spawned* gun; there is nothing to load
+into otherwise.
+
+**"A weapon pickup silently gave the player a full load."**
+A bare **`$WEAP` re-push RESETS mag/reserve to the frame's baked-in values.** Every pickup/powerup must
+**re-send `$AMMO`** with the intended counts.
+
+**"The trigger just chirps."**
+**`$BMAP` is mandatory** — without it the firmware reports the trigger as *disabled*.
+
+**"I set health and nothing happened."**
+`$LIFE` and `$BUMP` are **additive grants clamped at max**, not absolute sets. And **writes don't
+self-emit `$HP`** — the new value appears on the next hit or HUD refresh.
+
+**"`$SPAWN` cleared the effect, so I'll use it as a reset."**
+It also **restores health**. It is not a clean "clear one thing" tool.
+
+---
+
+## Capturing IR
+
+**"The IR LED isn't lighting — I checked with my phone camera."**
+**A phone camera cannot see a ~5 mA IR LED.** From 3V3 through 100 Ω with a 50% carrier the average is a
+few mA; a TV remote runs 100–500 mA. **Both cameras showing nothing is consistent with a perfectly
+working circuit.** Use the VS1838B to judge, never a camera.
+
+**"Frames arrive as fragments — 16, 17, 20, 21 bits, all prefixes of the real word."**
+The capture sketch's per-frame **`RAW` print takes ~15–20 ms at 115200**, long enough for the next frame
+to start mid-print. **Send `r` to turn the RAW dump OFF for any capture that matters.** This silently
+cost four captures before it was found. (`IDLE_GAP_US` is now 30 ms.)
+
+**"The receiver drops out mid-burst at close range."**
+**VS1838B AGC saturates point-blank.** For loopback work, **attenuate** — aim the emitter away, or add
+distance. Counter-intuitive but firm: a gun at 1 m decodes cleanly where an LED at 5 cm does not.
+
+**"My armor is draining and I keep dying while testing."**
+**You are shooting yourself.** Firing toward a bench receiver reflects your own IR back onto your own
+headset. It drains armor, kills you mid-window, and leaves the gun dead for the next round. **Never fire
+toward the capture rig** — for audio/pool tests, fire away, or don't fire at all.
+
+**"A TV remote decoded as a BRX frame."**
+The `>1500 µs` sync gate is **not BRX-unique** — Sony SIRC's 2390 µs header passes it. BRX sync is
+~1990 µs. For a station in a room with TVs, bound the sync and require 25 bits **plus** the parity rule.
+
+---
+
+## Reading results
+
+**"Silence means nothing changed."**
+No. **`$ALCD` only streams on ammo events** — if nobody fires, you learn nothing. A read-probe that
+*forces* a frame may also **mutate what you're measuring** (`$AMMO` re-push resets the magazine).
+
+**"Zero hits, so the effect didn't register."**
+Check the gun is **alive first** — a **dead gun accepts NO IR at all** (448-word brute force). Silence
+from a corpse is not evidence about your word.
+
+**"Same word, but the player id doubled and so did the damage."**
+A **one-bit misalignment**. If two decodes differ by exactly 2×, you are reading the same frame at two
+offsets — usually from stitching fragments. Fix the capture, don't trust the decode.
+
+---
+
+## Interpreting — the discipline that actually mattered
+
+**A control that is merely *present* is not a control.** It has to be **checked before the result is
+read**. A run whose baseline was empty produced sixteen clean-looking negatives once, and a "verdict"
+line that was pure fiction.
+
+**One well-controlled-looking run is not a result.** Two separate findings survived a careful run each
+and died on the second. Everything that has held was measured **3× with alternating conditions**, or
+came from a human's senses.
+
+**A host-visible field that correlates with a state is not evidence of that state.** `$ALCD` t2 hitting
+0 looked exactly like a weapon disable, had a plausible source-derived mechanism, and was wrong. The
+proxy was never tested against the behaviour it stood in for.
+
+**Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
+`$HIR` tok5 is the **raw magnitude**; applied = magnitude × the row's function multiplier × 1.5 if crit.
+Anything that validates a weapon in isolation is blind to a whole class of bug.
+
+**Your filter can lie.** A `$HIR` filter matching `,42,` reported zero hits on a run that had actually
+killed the player, because the sweep varied the player id.
+
+---
+
+## See also
+`docs/unknowns.md` (what is still open) · `docs/bench-next-30.md` (next session) ·
+`hardware/esp32-ir-bridge/README.md` (board identities and wiring) · `docs/field-process.md` (muster).

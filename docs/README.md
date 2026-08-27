@@ -30,6 +30,7 @@ Then, by who you are:
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — the single source of truth for **open work**.
 - **[HANDOFF.md](HANDOFF.md)** — current cross-machine state; read before a hardware session.
 - **[experiment-log.md](experiment-log.md)** — the shared lab notebook. **Append after every session.**
+- **[`gotchas.md`](gotchas.md)** — **the field lore**: every quirk that wastes an hour, indexed by symptom. Read before a bench session.
 - **[`unknowns.md`](unknowns.md)** — **the index of everything not yet confirmed**, grouped by what
   unblocks it. Start here to see the whole board.
 - **[`bench-next-30.md`](bench-next-30.md)** — the next 30-minute bench session, ordered.

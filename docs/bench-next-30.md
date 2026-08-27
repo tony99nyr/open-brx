@@ -64,7 +64,7 @@ streams) and `$HIR,…,13,…` on a victim.
 
 ---
 
-## Ground rules learned the hard way today
+## Ground rules — the short list (full lore: [`gotchas.md`](gotchas.md))
 - **Never fire toward the bench receiver.** Your own IR reflects back onto your own headset — it drained
   your armor, killed you mid-window and left the gun dead. Cost 3 runs.
 - **RAW dump OFF for any capture that matters** (send `r`). It is a debugging aid; at 115200 its ~15–20 ms
