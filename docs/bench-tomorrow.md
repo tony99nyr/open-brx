@@ -42,6 +42,20 @@ believing it.**
 
 ---
 
+## GROUP 0 — two things that block published numbers (~15 min) 🎯
+
+| # | Goal | Do this | Pass |
+|---|---|---|---|
+| **0.1** | **Settle the DISPUTED fn 36/37 multipliers** — two of our own datasets disagree (x2 vs x1.0) and four hypotheses were tested and refuted. Until this is resolved, **every weapon mapped to fn 36/37 may be dealing base damage** and we must not publish x1.25/x2 | Fire a **real BRX weapon** known to use fn 36/37 at a victim. Compare **`$HIR` token 5** (raw magnitude) against the applied **`$HP` delta** | delta = 2 x tok5 ⇒ multiplier real, our emitter path is at fault · delta = tok5 ⇒ the x1.25/x2 claim is wrong. Either way it reads off stock hardware with **nothing of ours in the signal path** |
+| **0.2** | **Re-aim the emitter at the receiver** so loopback capture works | Point board B's LED at board A's VS1838B, **attenuated** (it saturates point-blank). Then `TX` any word and confirm a DECODE line | a decoded 25-bit word ⇒ we can verify transmitted words over the air, not just in software. Currently the two boards cannot see each other at all |
+
+**The stun shortlist is now evidence-based** — functions that register a `$HIR` but move **no pool**,
+the same signature as fn 23 (the one proven status effect). Enemy-polarity candidates, in priority
+order: **3, 8, 24, 25, 26, 27, 28, 35**. Fire each at a gun you are holding and report what you
+**hear, see, or cannot do** — the wire has told us everything it can.
+
+---
+
 ## GROUP 1 — trigger pulls, gun in hand (~35 min) 🔫
 *One gun, our compiled game, you firing. Highest value first.*
 

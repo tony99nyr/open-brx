@@ -134,8 +134,34 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 | Example | Interpretation |
 |---|---|
 | `$SIR,0,0,,1,0,0,1,,*` | Standard weapons (AR, Energy Rifle, Ion Sniper, Laser Cannon, Plasma Sniper, Shotgun, SMG, Stinger, Suppressor) — damage shields→armor→HP |
-| `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle — **fn 36 = ×1.25 damage** (bench-measured; "pass-through" was a guess) |
-| `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle — **fn 37 = ×2 damage** (bench-measured) |
+| `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle — fn 36 = ×1.25 damage ⚠️ **DISPUTED, see the multiplier note below** |
+| `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle — fn 37 = ×2 damage ⚠️ **DISPUTED, see the multiplier note below** |
+
+> ### ⚠️ DISPUTED 2026-08-27 — the fn 36 / 37 damage multipliers did not reproduce
+>
+> **Do not rely on ×1.25 / ×2 for weapon tuning until this is settled.**
+>
+> Two datasets disagree, both taken on this bench with the same emitter:
+>
+> | | fn 1 (control) | fn 36 | fn 37 |
+> |---|---|---|---|
+> | **earlier 2026-08-27**, row `<0,3>`, magnitude 20 | 20 | — | **40 (×2)**, 3/3; and 60 with crit, consistent with t7=50 |
+> | **later 2026-08-27**, controlled matrix | 20 ✓ | **20 (×1.0)** | **20 (×1.0)** |
+>
+> The later run swept **fn × subtype {0,1,2,3}** and **single-row vs the full 12-row `$SIR` table** —
+> 24 cells in all. Every fn 36 and fn 37 cell read **×1.0**, while the fn 1 control read a correct 20
+> in every arrangement, so the rig was working. Neither *subtype* nor *table arming* explains the
+> discrepancy, and both hypotheses were tested and refuted.
+>
+> The earlier ×2 result was internally consistent (3/3, and it stacked correctly with crit), so it is
+> unlikely to be simple noise — a systematic difference between the runs has not yet been found. The
+> leading untested suspect is the **encoding of the transmitted word itself** (a magnitude that was
+> actually 40 would look exactly like a ×2 multiplier), which would make the multiplier an artefact of
+> our emitter rather than a property of the gun.
+>
+> **To settle it:** capture a *real BRX weapon* known to use fn 36/37 firing at a victim, and compare
+> `$HIR` token 5 (raw magnitude) against the applied `$HP` delta. That reads the multiplier off stock
+> hardware with our emitter out of the loop entirely.
 | `$SIR,1,0,H29,10,0,0,1,,*` | Respawn + add HP |
 | `$SIR,2,1,VA8C,11,0,0,1,,*` | Add shields — **adds `magnitude` per hit, saturating at `$PSET` token 5**; the spawn shield is always 0, so t5 is a ceiling to be filled, never a starting pool (bench 2026-08-27) |
 | `$SIR,3,0,VA16,13,0,0,1,,*` | Add armor |

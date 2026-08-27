@@ -2743,6 +2743,66 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — ⚠️ UNRESOLVED: the fn 36 / 37 damage multipliers did not reproduce
+
+**Kept deliberately, unconfirmed.** This is the most important open thread from the session and it is
+recorded in full — including four hypotheses that were tested and *refuted* — so nobody re-derives it
+from scratch or quietly trusts the older number.
+
+#### The two conflicting datasets, same bench, same emitter, hours apart
+
+| | fn 1 (control) | fn 36 | fn 37 |
+|---|---|---|---|
+| **earlier** (`crack3.py` R2), row `<0,3>`, mag 20, armour 70 | 20 | — | **40 = x2**, 3/3 · and **60** with crit, exactly x1.5 on 40 |
+| **later** (`multsub.py` / `multrepro.py`), mag 20, armour 200 | **20 ✓** | **20 = x1.0** | **20 = x1.0** |
+
+The earlier result is not obviously noise: it was **3/3 at crit=0 and 3/3 at crit=1**, and the crit
+values stacked correctly on a base of 40 (`$GSET` t7=50 -> 60). The later result is not noise either:
+**24 cells**, single verified hit per trial, with the fn 1 control reading a correct 20 in every one.
+
+#### Hypotheses tested and REFUTED
+
+1. **"The multiplier belongs to the (proto, subtype) cell, not the function."**
+   Swept fn 1 / 36 / 37 x subtype {0,1,2,3}. **Every** fn 36 and fn 37 cell read 20. Refuted.
+2. **"It needs the full 12-row `$SIR` table, not a single row."**
+   Ran both arrangements. Both read 20; fn 1 control correct in both. Refuted.
+   *(And on re-reading `crack3.py`, its arming was `[STD, $SIR,0,3,,37]` — two rows, i.e. effectively
+   the full-table arrangement that also reads 20 now.)*
+3. **"Our emitter encoded a magnitude of 40, which would look exactly like x2."**
+   The two scripts' encoders are **byte-identical** — same field order, widths and parity — and
+   `crack3.py` called it with explicit keywords (`damage=20`). Software-verified: mag 20 encodes as
+   `...00010100...`, 25 bits. Refuted.
+4. **"Different arithmetic between the runs."** Both compute an armour delta; the differing baselines
+   (70 vs 200) cancel out. Refuted.
+
+#### What was NOT ruled out
+
+- **Gun state / uptime.** The victim had been powered for many hours by the later runs. Rig degradation
+  is a documented failure mode here, though the trailing control on the big sweep passed cleanly.
+- **A genuine error in the earlier measurement** that its internal consistency masked.
+
+#### How to settle it — take our emitter out of the loop
+
+**Capture a real BRX weapon known to use fn 36/37 firing at a victim, and compare `$HIR` token 5 (the
+raw magnitude) against the applied `$HP` delta.** If stock hardware shows delta = 2 x token 5, the
+multiplier is real and our emitter path is at fault; if delta = token 5, the x1.25/x2 claim is wrong.
+That reads the answer off the gun with nothing of ours in the signal path. **Needs an operator.**
+
+`protocol/brx-protocol.md` §5 now carries a **DISPUTED** banner on both rows. **Do not use x1.25 / x2
+for weapon tuning until this is resolved** — every shipped weapon mapped to fn 36 or 37 may be dealing
+base damage.
+
+### 2026-08-27 — NEGATIVE (rig): IR loopback capture failed — geometry, not encoding
+
+Attempted to verify the transmitted word over the air (emitter -> receiver -> decode), which would have
+tested hypothesis 3 on hardware rather than in software. **No captures on any of 5 words.** The emitter
+is aimed at the victim's headset, not at the receiver; the two boards cannot see each other in the
+current arrangement. Not a decoding failure — nothing arrived at all.
+
+**Needs an operator to re-aim the emitter at the VS1838B** (and attenuate — it saturates point-blank).
+Software encoding was verified instead, and is correct.
+
+
 ### 2026-08-27 — THE FULL `$SIR` FUNCTION MAP (0-40) x SHOOTER TEAM, control-validated
 
 41 functions x 2 teams, autonomous, `$VOL,3`, victim Tactix-FE30 `$TID,1`, hp45/armour70/shield-cap70,
