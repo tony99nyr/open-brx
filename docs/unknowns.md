@@ -21,7 +21,8 @@ or floor space. This is the biggest category and the highest-value one.
 ### A1 · Needs a TRIGGER or BUTTON PRESS (11)
 | id | unknown | why it matters |
 |---|---|---|
-| **1.2** | Does the EMP (`$SIR` fn 23) actually stop the gun firing? | the only new mechanic whose central claim rests on a **proxy** (`$ALCD` t2), not an observation |
+| ~~1.2~~ | ✅ **ANSWERED 2026-08-27 — NO.** fn 23 does not stop the gun firing; it **silences** it (`$ALCD` t2 = audio level, 0 → 100 over ~6–8 s). A sensory-disruption weapon. | the proxy was wrong — see the log |
+| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 is eliminated | category 10 "Stun" is still unbuilt; remaining no-pool candidates: enemy-side **3, 8, 24–28, 35** |
 | **1.3** | Does a stun cost the victim a reload? | decides the stun's real cost |
 | **K4 / 1.1** | Why does **melee not work in our compiled game**? | a stock feature we lose; frames are byte-identical to Callsign's, so it is runtime/state |
 | **1.5** | What do status functions 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) *do*? | they register but move no pool and emit nothing — invisible without a human |

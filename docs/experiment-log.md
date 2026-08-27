@@ -2272,3 +2272,100 @@ genuinely unused values are **4, 5, 7, 12 and 14**. Earlier notes in this log sa
 slots, a real design constraint" are **superseded twice over**: the count was wrong, and scarcity is not
 the constraint anyway — the protocol field pairs with the 2-bit subtype to form the `$SIR` key
 (**16 × 4 = 64 cells**), and we push the table, so occupied protocols are re-definable per game.
+
+## 2026-08-27 (bench, Tony firing) — ❌ RETRACTED: `$SIR` fn 23 is NOT a weapon disable
+
+**The EMP finding from 2026-08-26 is wrong.** It was promoted to CONFIRMED on `$ALCD` token 2 alone —
+a proxy — and flagged at the time as needing a trigger pull. The trigger pull says otherwise.
+
+**Method:** R0BQT armed with `$SIR,7,0,,23`, volume 69. 8 EMP words over ~6 s while Tony held the
+trigger. No `$AMMO` probing this time (the earlier read-probe reset the magazine every 2 s and may
+itself have cleared the effect). Trailing control: 2 plain protocol-0 damage shots.
+
+```
+$ALCD,31,100 -> 31,0 -> 30,0 -> 29,0 -> 28,0 -> 27,5      <- mag 31,30,29,28,27 while t2 = 0
+$HIR x9      $HIR,4,7,42,2,20,0,0     (tok2 = 7: the EMP words landed)
+$HP          45,70,0 unchanged throughout
+control      2x $HIR, $HP 45,50 -> 45,30   (rig reaching the victim fine)
+```
+
+**The magazine decrements while token 2 reads 0.** The gun was counting Tony's shots *during* the
+supposed disable. Tony, independently: *"yeah i could fire fine"*, *"i got hit like normal"*.
+
+⇒ **fn 23 does not disable the weapon.** It registers a hit (protocol echoes on `$HIR` tok2), moves no
+health pool, and briefly drives `$ALCD` token 2 down.
+
+**And token 2 is not a binary ready flag.** Sampled across both runs it reads **100 → 0 → 5 → 9 → 31 →
+100**: a *meter* that dips and refills over ~5–8 s. The earlier "always 100, so 0 means unloaded"
+reading came from only ever sampling the extremes. What it actually measures is **unknown** — it does
+not gate firing. Candidates: a HUD/display element, a hit-feedback indicator, some recharge unrelated
+to the trigger.
+
+### What this invalidates
+- **U11 is REOPENED** — "which status function is the stun/EMP?" is unanswered. fn 23 is eliminated.
+- **The "EMP recipe"** (`$SIR,7,<sub>,<sound>,23`) does **not** produce a stun. Category 10 "Stun"
+  is **not** buildable this way.
+- The `$SPAWN`-clears-it and ~6–8 s self-clear findings describe **token 2's meter**, not a disable.
+
+### What survives
+`$SIR` fn 23 still registers a hit with no pool change, so it remains a usable **"tag without damage"**
+primitive — objective touches, tagging a checkpoint, marking a player. That is genuinely useful; it is
+just not a stun.
+
+### The lesson, recorded because it will recur
+A host-visible field that *correlates* with a state is not evidence of that state. `$ALCD` t2 hitting 0
+looked exactly like a disable and had a plausible mechanism (`brx-opus`'s "live gun, nothing loaded"
+read from the source) — and the source read was itself reasonable. **The proxy was never tested against
+the behaviour it was standing in for.** Everything downstream — the recovery matrix, the ~6–8 s timing,
+the `$SPAWN` antidote — was carefully measured and all of it described the wrong thing.
+
+## 2026-08-27 (bench, Tony firing) — ✅ WHAT fn 23 ACTUALLY IS: audio suppression · `$ALCD` t2 = the gun's VOLUME
+
+Follow-up to the retraction above. Two clean runs with Tony on the trigger settle it.
+
+### The gun keeps shooting — measured on the receiver
+Muzzle at the VS1838B, 15-second windows, **baseline verified non-zero before proceeding** (an earlier
+attempt was void: the baseline read 0 because the operator was reading instructions during the window,
+and my own emitter was polluting the receiver — both fixed here, and the script now aborts on a dead
+baseline rather than producing an interpretable-looking result):
+
+```
+baseline 14  |  during EMP 21  |  recovered 14        (IR frames from Tony's gun)
+```
+**No suppression of the shot.** Every trigger pull emitted IR normally. Combined with the magazine
+decrementing (previous entry), the weapon is **fully functional** during fn 23.
+
+### What it does instead: it SILENCES the gun
+Tony, unprompted, is the whole finding here: *"no sound on trigger pull. definitely went quiet and then
+got a bit louder and then returned to normal."*
+
+That tracks `$ALCD` **token 2** exactly, sampled across the runs: **0 → 5 → 9 → 31 → 100**.
+
+⇒ **`$ALCD` token 2 is the gun's AUDIO LEVEL**, not a ready flag. It is normally 100. fn 23 drives it to
+**0** and it recovers over **~6–8 s**. The old "always 100, so 0 = live gun with nothing loaded" reading
+came from only ever sampling the extremes and never asking what the middle meant.
+
+### So fn 23 is a real, native, emittable mechanic — just not a stun
+| property | value |
+|---|---|
+| registers a hit | ✅ `$HIR` with the protocol echoed on tok2 |
+| health pools | ❌ unchanged (45/70/0 throughout) |
+| trigger | ✅ works |
+| IR output | ✅ normal |
+| **gun audio** | **silenced, recovering over ~6–8 s** |
+
+**A sensory-disruption weapon.** The victim can still fight but loses their gun's audio feedback — no
+fire sound, no reload chain, no overheat cue. In a game that leans on those cues that is a genuine
+effect, and it is **native firmware behaviour we can emit today**.
+
+### Corrections this forces
+- **U11 stays REOPENED** — no `$SIR` function has been shown to stun. Category 10 "Stun" is still unbuilt.
+- The **~6–8 s timer** and **`$SPAWN` clears it** findings are correct but describe **the audio meter**.
+- **`$AMMO` "does not clear it"** likewise — it never cleared audio, and my read-probe was resetting the
+  magazine each sample, which is why the mag column looked incoherent.
+- **Rename it everywhere**: not "the EMP", but **fn 23 = audio suppression / silence**.
+
+### Method note
+Three void runs preceded this one — a dead baseline, an emitter polluting its own receiver, and a
+`$AMMO` read-probe that mutated the thing it measured. **A control that is merely *present* is not a
+control; it has to be checked before the result is read.** The script now aborts on `baseline < 3`.

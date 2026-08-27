@@ -681,7 +681,7 @@ pool: enemy-side **3, 8, 23, 24, 25, 26, 27, 28, 35**; friendly-side **31, 32, 3
 These are the stun/EMP candidates, and until now the problem was that a stun looks identical to an inert
 row from the host side, because the effect is on the victim's *ability to fire*.
 
-**✅ Function 23 is a weapon disable — the EMP is real** (experiment-log 2026-08-26). Enemy-side fn 23
+**❌ RETRACTED 2026-08-27 — function 23 is NOT a weapon disable.** With Tony on the trigger: the magazine decremented shot by shot, and the receiver logged **14 / 21 / 14** IR frames before / during / after — the gun **fires normally**. What it actually does is **silence the gun** (`$ALCD` token 2 = the AUDIO LEVEL, driven 0 → 100 over ~6–8 s; Tony: *"no sound on trigger pull… then a bit louder… then normal"*). A **sensory-disruption** weapon, not a stun — the victim can still fight but loses fire/reload/overheat cues. **Category 10 "Stun" remains unbuilt; U11 is REOPENED.** The original text follows, superseded: ~~Function 23 is a weapon disable — the EMP is real~~ (experiment-log 2026-08-26). Enemy-side fn 23
 clears the victim's weapon **ready flag**: `$ALCD` token 2 goes **100 → 0**, 5/5 reps, while the fn-1
 control never did, and it fires under **protocols 0/5/7/10 alike** — so the effect belongs to the
 *function*, not the protocol.
