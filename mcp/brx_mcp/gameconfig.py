@@ -72,7 +72,7 @@ _BMAP = (
 # which recomputes $AMMO from the SELECTED weapons.
 SPAWN_SEQUENCE = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$AMMO,1,6,12,1,*", "$BMAP,0,0,,,,,*")
 RESPAWN_SEQUENCE = ("$HLOOP,0,0,*", "$SPAWN,,*")
-# Game-over teardown (verified 2026-08-25 on R0BAS): revive so a gun left DEAD at
+# Game-over teardown (verified 2026-08-25 on Tactix-FE30): revive so a gun left DEAD at
 # game end isn't stuck showing the death-glow ($SPAWN restores 45/70), immediately
 # silence the spawn voice ($PLAYX,0), settle the game state ($STOP/$CLEAR), and blank
 # the headset LED. Deliberately does NOT touch $TID — the gun pulses its LAST-GAME

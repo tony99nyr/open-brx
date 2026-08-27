@@ -168,7 +168,7 @@ def decode_word(bits: str) -> dict:
 def payload_parity(payload: str) -> str:
     """The 2-bit Z trailer for a 23-bit payload (bits 0..22), BENCH-DERIVED 2026-08-26.
 
-    Measured on R0BAS across three distinct words (damage 22 / 9 / 0): an ODD number
+    Measured on Tactix-FE30 across three distinct words (damage 22 / 9 / 0): an ODD number
     of 1s in the payload yields Z='01', an EVEN number yields Z='10'.
 
     NOTE (measured 2026-08-26, same session): the gun does **not** enforce this parity —

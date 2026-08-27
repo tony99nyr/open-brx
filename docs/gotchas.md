@@ -49,6 +49,19 @@ sketch uses it — so it looks healthy while `Serial` is actually bound to UART0
 **`PermissionError(13, 'Access is denied.')` on a COM port.**
 Windows serial ports are **exclusive**. **Close the Arduino Serial Monitor.**
 
+**`UnicodeEncodeError: 'charmap' codec can't encode ...` from a bench script.**
+The **Windows console is cp1252**. Any non-ASCII character in a `print()` — a prime, an arrow, an
+em-dash, a box-drawing glyph — **kills the script mid-run**, usually after it has already reconfigured a
+gun. **Keep bench-script output ASCII-only.** (`mcp/tools/weapon_range.py` says so in its docstring;
+the lesson does not travel unless you look.)
+
+**Never write a headset sticker id into the repo.**
+The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
+docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the
+sticker labels belong in conversation only. This leaked 42 times across 8 files before it was caught
+in review, while `webapp/mc/README.md` simultaneously promised "real sticker ids never enter the
+repo" -- grep for the pattern before publishing anything.
+
 **Address formats.** macOS gives BLE **UUIDs**, Windows/BlueZ give **MACs**. **Never pattern-match on
 address format** — a bug exactly like that shipped once.
 

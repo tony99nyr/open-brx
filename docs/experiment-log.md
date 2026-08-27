@@ -944,27 +944,27 @@ No hardware this pass — Tony relaying facts from **Jay's grenade video** (Extr
 ### 2026-08-25 — $VOLTS token4 is variable (cell-voltage SoC); fleet battery unreliable
 Surfaced `$VOLTS` token4 (`level_pct`) in `diagnose`. Data points:
 - cell **3.955 V → t3=43, t4=76**
-- cell **3.675 V → t3=42, t4=29** (R0BP1, this session)
+- cell **3.675 V → t3=42, t4=29** (Tactix-9498, this session)
 **token4 is NOT constant** (earlier "fixed 76" guess was wrong) — it swings strongly with **cell voltage**
 (76 @ 3.96 V → 29 @ 3.68 V), a plausible Li state-of-charge curve; **token3 stayed flat (43→42)** across the
 same swing (and earlier rose 43→44 while charging). **Leaning:** t4 = a finer cell-voltage state-of-charge,
 t3 = a coarser/pack-level metric. Not conclusive — needs a **controlled single-gun charge/discharge sweep**
 watching both tokens to decide which is the "real" charge %.
-**Fleet battery reliability = poor (confirmed):** a 4-gun `fleet` caught battery on only **1/4** (R0BQT not
-found; R0BAS −63 & R0BAT −84 connected but missed `$VOLTS`). The random ~6.6 s client drop vs the 30 s VOLTS
+**Fleet battery reliability = poor (confirmed):** a 4-gun `fleet` caught battery on only **1/4** (Tactix-E20D not
+found; Tactix-FE30 −63 & gun 4 −84 connected but missed `$VOLTS`). The random ~6.6 s client drop vs the 30 s VOLTS
 cadence makes the serial one-shot sweep unreliable → a **persistent-connection fleet** (hold links, collect
-VOLTS as they stream) is the fix for a live dashboard. Not RSSI-pure (R0BP1 −70 got it; R0BAS −63 didn't).
+VOLTS as they stream) is the fix for a live dashboard. Not RSSI-pure (Tactix-9498 −70 got it; Tactix-FE30 −63 didn't).
 
 ### 2026-08-25 — 🎯 FIRST LIVE M0 GAME (Session A) — the engine works on real guns ✅
 Ran `play tdm D9:50:2F:98:FE:30 DF:F5:DA:08:94:98 game_time_s=120 respawn_s=10 frag_limit=3 volume=69`
-(R0BAS team1 vs R0BP1 team2). **Full game, end to end, on real hardware:**
+(Tactix-FE30 team1 vs Tactix-9498 team2). **Full game, end to end, on real hardware:**
 ```
 game live: {...}                       # config-all-then-spawn barrier → both live together (B10)
-🎯 team1: 1   ↻ respawn R0BP1           # R0BAS tagged R0BP1; host-respawn brought it back
-🎯 team2: 1,2,3   ↻ respawn R0BAS ×3    # R0BP1 tagged R0BAS 3×, each respawned
+🎯 team1: 1   ↻ respawn Tactix-9498           # Tactix-FE30 tagged Tactix-9498; host-respawn brought it back
+🎯 team2: 1,2,3   ↻ respawn Tactix-FE30 ×3    # Tactix-9498 tagged Tactix-FE30 3×, each respawned
 🏆 GAME OVER — team2  scores={1:1, 2:3} # frag_limit=3 → correct winner
 ```
-Final scoreboard: R0BAS 1 kill/3 deaths, R0BP1 3 kills/1 death. **Validated: config barrier, real
+Final scoreboard: Tactix-FE30 1 kill/3 deaths, Tactix-9498 3 kills/1 death. **Validated: config barrier, real
 `$HIR`/`$HP,0` kill scoring + team credit, host respawn, frag-limit end + winner — AND the BLE link held
 the entire match (Tier-0 direct BLE sustained a 2-gun game, no mid-game drop).**
 
@@ -976,10 +976,10 @@ stdout/stderr — no glyph can ever crash a command again, and live output strea
 announcer also flushes. (This is the 3rd time this cp1252-glyph class bit us — now killed at the source.)
 Not exercised yet: time-limit end, respawn ramp.
 
-### 2026-08-25 — teardown bug: dead gun left stuck; fixed the game-over sequence (live, on R0BAS)
-After the first live game, the loser (R0BAS, dead at frag-limit) was left **stuck showing the death-glow** —
+### 2026-08-25 — teardown bug: dead gun left stuck; fixed the game-over sequence (live, on Tactix-FE30)
+After the first live game, the loser (Tactix-FE30, dead at frag-limit) was left **stuck showing the death-glow** —
 the old `END_SEQUENCE` (`$HLED,,6` + `$STOP` + `$CLEAR` + `$PLAY,VS6`) never REVIVES a gun that's dead at
-game end. Dialed in the fix live against R0BAS (Tony observing each step):
+game end. Dialed in the fix live against Tactix-FE30 (Tony observing each step):
 - **`$SPAWN,,*` revives** the dead gun (`$LCD,45,70` — HP/armor restored) → clears the death-glow. But it
   re-spawns into a live state: pulls the **team colour** on the tagger + plays the **spawn voice ("GET SOME"**,
   the Heavy `V3I` line).
@@ -1035,7 +1035,7 @@ reality we hit on the bench, all testable via the FakeTagger/FakeConnectionManag
 without hardware; the bench confirms only BLE reliability/timing and physical LED/audio/IR (see the
 EFFICIENT BENCH PLAN in verification-checklist.md).
 
-### 2026-08-25 — D4 probe (bench, R0BAS vs R0BP1): NO shooter-side kill event on BLE
+### 2026-08-25 — D4 probe (bench, Tactix-FE30 vs Tactix-9498): NO shooter-side kill event on BLE
 Armed 2 guns for TDM and logged EVERY rx frame from both while shooting (throwaway `probe_kills.py`).
 Over ~122 s the ONLY rx frame types on ANY stream were: `$BUT` (trigger), `$ALCD` (ammo), `$HIR` (hit,
 victim-side), `$HP` (health, victim-side incl. `$HP,0,0,0` on death), `$VOLTS` (battery). **At the kill,
@@ -1078,7 +1078,7 @@ deferred** — it needs 3 reliably-armed guns, which direct BLE can't deliver to
 > (§7o) proved the **visual is BLE-drivable too** via `$SFLASH`. The rest of this entry (headset gate,
 > HW-proven 3-gun arm, MC-as-scorekeeper) stands. Kept for the record.
 
-Big session, 3 guns (R0BAS/FE30 shooter, R0BP1/9498, R0BQT/E20D). Multiple prior conclusions
+Big session, 3 guns (Tactix-FE30/FE30 shooter, Tactix-9498/9498, Tactix-E20D/E20D). Multiple prior conclusions
 overturned. Order of discovery:
 
 **1. Headset gate (overturns "3-gun BLE arm unreliable").** E20D failed to join twice — root cause
@@ -1257,8 +1257,8 @@ Everything up to "open it in Xcode" is done and reproducible.
 
 ### 2026-08-25 — CONFIRMED: two independent phone nodes run a 2-player game (ADR-0002 proven)
 
-Ran the single-gun **Companion/HUD node** on two phones at once — **Pixel → R0BAT** and
-**iPhone/mac build → R0BQT** — each phone driving **only its own gun** over BLE (no one-phone-two-gun
+Ran the single-gun **Companion/HUD node** on two phones at once — **Pixel → gun 4** and
+**iPhone/mac build → Tactix-E20D** — each phone driving **only its own gun** over BLE (no one-phone-two-gun
 bench rig). Result: **it worked.** Damage registered, **ammo + life totals tracked live**, death
 fired, and **local respawn** re-armed — independently on each phone. This is the ADR-0002
 autonomous-node model validated on hardware: a node owns one gun and runs its full loop with no
@@ -1535,7 +1535,7 @@ Six phases, one AR shot each (`mcp/tools/tid_bench.py`); `$HIR` tok4 = the shoot
 (4→0, 63→3, 100→0), so >4 IDs collapse onto four slots.
 
 **All four masked teams (0–3) are usable — team 2 included.** The decisive re-run: with the victim
-properly re-armed (spawned, team 1, full `$SIR` table), R0BAT on `$TID,2` mag-dumping produced **5 clean
+properly re-armed (spawned, team 1, full `$SIR` table), gun 4 on `$TID,2` mag-dumping produced **5 clean
 registrations, all `$HIR,4,0,0,2,24,0,0`** — a team-2 shooter landing cross-team hits normally. (Nice
 incidental cross-check: tok3=0 and tok5=24 are exactly right for the try-out AR armed there — an
 identity-0 `$PSET` and the catalog 24-damage frame — reconfirming tok3 = shooter id / tok5 = damage.)
@@ -1627,7 +1627,7 @@ still to map — two more transplant probes with varied values.
 
 ## 2026-08-26 (bench) — U6 parked: QT entered the documented "screamer" state
 
-After ~a full day powered, R0BQT stopped holding BLE: two connect-then-drop-mid-config failures,
+After ~a full day powered, Tactix-E20D stopped holding BLE: two connect-then-drop-mid-config failures,
 then connect attempts that hang entirely while the gun ADVERTISES normally (-70 dBm) — battery
 confirmed fine, power cycles only briefly helping. Matches the community-documented **"SCREAMERS"
 behavior (BLE drops / random fail after ~1 hr sessions; B1 hardware notes)** — first time we've
@@ -1637,7 +1637,7 @@ healthy guns; methods written.
 
 ## 2026-08-26 (bench) — U6 CLOSED: damage types = victim-side presentation + wire metadata
 
-Clean single-timeline hit tests (mcp/tools/hittest.py, R0BAS shooting R0BAT), same 9-dmg AR with
+Clean single-timeline hit tests (mcp/tools/hittest.py, Tactix-FE30 shooting gun 4), same 9-dmg AR with
 t3 = 0 / 6 / 10:
 
 - **Damage applied is ALWAYS t5** (9 exactly, every phase — even type 10 whose $SIR row carries
@@ -1669,7 +1669,7 @@ t41 inverted-range test (can't walk to a 300ft floor -> shrink t41 instead): one
 **t41=100 sniper killed from max indoor distance** while the rig was healthy. Then t41=5 read zero
 hits (suggestive!) — but before it could be controlled, registrations died entirely: t41=100 at
 POINT-BLANK, fresh-armed victim, counted window = **0 hits**. A frame that was killing an hour
-earlier. Verdict: rig degradation (R0BAT ~12h powered — the night's SECOND screamer-family failure;
+earlier. Verdict: rig degradation (gun 4 ~12h powered — the night's SECOND screamer-family failure;
 emitter or receiver side unresolved), so the t41=5 zeros are unattributable. **U2 stays OPEN.**
 Method for a fresh fleet (worth 10 minutes): same-spot A/B, t41 100 vs 5, counted windows both sides.
 Fleet ops rule reinforced: POWER-REST GUNS — a day-long bench session degrades them below usability.
@@ -1685,7 +1685,7 @@ tooling was needed**, the CLI + `irbridge.py` decoder were already built and wai
 (2390 µs header, 1200/600 µs marks, `101010010000`). That proved wiring, ISR edge capture, the
 750 µs bit split and the frame validator all work on real IR — a free negative control.
 
-**Measured BRX timings (R0BAS @ ~1 m):** sync **1988–1991 µs**, one-marks **990–994 µs**,
+**Measured BRX timings (Tactix-FE30 @ ~1 m):** sync **1988–1991 µs**, one-marks **990–994 µs**,
 zero-marks and spaces **489–512 µs**. The source-derived `~2 ms / 1000 / 500` is exactly right.
 
 **Field layout CONFIRMED by pushing known `$WEAP` frames over BLE and watching which bits move** —
@@ -1698,7 +1698,7 @@ the strongest form of one-field validation, because the ground truth is independ
 | Rocket, `t3=10 t5=115` | `1010000000010111001100010` | dmg=**115**, B=**10** |
 
 Between baseline and AR **only bits 12–19 changed**. `player=0` and `team=1` independently match
-R0BAS's armory record (`player_id: 0`, `field_id: 1`).
+Tactix-FE30's armory record (`player_id: 0`, `field_id: 1`).
 
 **Two corrections to the LaserTagMods-derived table:**
 1. **The 4-bit "B" field is the IR protocol / damage type**, not a bullet type — it carries the same
@@ -1765,23 +1765,23 @@ i.e. the receiver reads **~30 µs longer than programmed** (carrier gating + dem
 inside the 750 µs decision threshold, and within ~4% of a real gun's received signature (990/500), so
 no re-tune is warranted before the gun-acceptance test.
 
-**Next:** point the emitter at R0BAS's headset and watch for a `$HIR` over BLE. That is the actual
+**Next:** point the emitter at Tactix-FE30's headset and watch for a `$HIR` over BLE. That is the actual
 Session 2 pass/fail — does a *stock gun* accept a word we made up.
 
 ## 2026-08-26 (bench) — 🏆 LANDMARK: a stock BRX tagger accepted a FULLY SYNTHETIC shot from our hardware
 
 Session 2 of `bench-plan-hardware.md` — **PASS**. The emitter (board B, 2N2222A + 940 nm LED on GPIO5)
-was aimed at R0BAS from ~40 cm and told to transmit a word that **no BRX device has ever emitted**:
+was aimed at Tactix-FE30 from ~40 cm and told to transmit a word that **no BRX device has ever emitted**:
 
 ```
 signature word  0000101010100010000100010   →  player=42  team=2  damage=33  protocol=0
 ```
 
 Chosen to be unforgeable as a coincidence: every gun on the bench has player id **0** (so 42 can only be
-ours), team 2 makes it an enemy of R0BAS's team 1 (no friendly-fire ambiguity), and **no weapon in our
+ours), team 2 makes it an enemy of Tactix-FE30's team 1 (no friendly-fire ambiguity), and **no weapon in our
 catalog does 33 damage**.
 
-**R0BAS's own BLE stream, verbatim:**
+**Tactix-FE30's own BLE stream, verbatim:**
 ```
 rx $HIR,4,0,42,2,33,0,0,*      rx $HP,45,37,0,*
 rx $HIR,4,0,42,2,33,0,0,*      rx $HP,45,4,0,*
@@ -1814,7 +1814,7 @@ actually killed the player. And **`get_events()` returns a dict** (`alias`/`even
 ## 2026-08-26 (bench) — 🏆 THE SPECIAL-WEAPONS TIER IS REAL: medic, armor and SHIELDS all proven over IR
 
 Fully automated closed loop (emit IR from our ESP32 + read the victim's BLE stream), no human in the
-lab. Victim R0BAS, `$TID,1`, full 12-row `$SIR` table from `brx-protocol.md` §5.
+lab. Victim Tactix-FE30, `$TID,1`, full 12-row `$SIR` table from `brx-protocol.md` §5.
 
 ### The IR word is now 100% decoded — the last unknown field is the `$SIR` SUBTYPE
 ```
@@ -1866,7 +1866,7 @@ effect itself** — the tagger applies it natively.
 
 ## 2026-08-26 (bench, overnight/unattended) — `$SIR` FUNCTION MAP enumerated; IR cannot revive the dead
 
-Fully autonomous (emitter + BLE, operator away, `$VOL,3`). Victim R0BAS on mains power
+Fully autonomous (emitter + BLE, operator away, `$VOL,3`). Victim Tactix-FE30 on mains power
 (`$VOLTS,8520,4125,100,100`). Method: for each function, push `$SIR,5,0,,<fn>,0,0,1,,*`, respawn,
 wound to a fixed **HP 15 / armor 0 / shield 0** baseline, then fire **2 IR shots on protocol 5 with
 magnitude 20** and read the resulting `$HP`.
@@ -1947,7 +1947,7 @@ replay it (see the ⭐ grenade item in FOLLOWUPS).
 ## 2026-08-26 (bench, unattended) — the COMPLETE two-sided `$SIR` function map + crit multiplier + FF enforcement
 
 The companion entry to the half-map above. Every result below was taken with the IR emitter against
-live R0BAS, `$VOL,3`, mains power, and **a trailing known-good control** — added after an earlier run
+live Tactix-FE30, `$VOL,3`, mains power, and **a trailing known-good control** — added after an earlier run
 produced sixteen clean-looking negatives that turned out to be a configuration artifact.
 
 ### Why the first sweep was half a map
@@ -2246,7 +2246,7 @@ produce the same numbers**. The `<9,3>` zero and the two multiplier ratios are m
 ## 2026-08-26 (bench) — is the IR parity ENFORCED? (the measurement behind the correction)
 
 Recorded late: this run is cited by `protocol/brx-ir-protocol.md` and by `irbridge.payload_parity()`'s
-docstring, but was never written into the primary evidence record. Emitting at R0BAS, **8 shots per
+docstring, but was never written into the primary evidence record. Emitting at Tactix-FE30, **8 shots per
 variant**, everything else held constant:
 
 | Z bits sent | registered |
@@ -2278,7 +2278,7 @@ the constraint anyway — the protocol field pairs with the 2-bit subtype to for
 **The EMP finding from 2026-08-26 is wrong.** It was promoted to CONFIRMED on `$ALCD` token 2 alone —
 a proxy — and flagged at the time as needing a trigger pull. The trigger pull says otherwise.
 
-**Method:** R0BQT armed with `$SIR,7,0,,23`, volume 69. 8 EMP words over ~6 s while Tony held the
+**Method:** Tactix-E20D armed with `$SIR,7,0,,23`, volume 69. 8 EMP words over ~6 s while Tony held the
 trigger. No `$AMMO` probing this time (the earlier read-probe reset the magazine every 2 s and may
 itself have cleared the effect). Trailing control: 2 plain protocol-0 damage shots.
 
@@ -2742,3 +2742,44 @@ changed nothing measurable on any of the three axes. ⇒ **tokens 2, 3, 4, 5, 6,
 do not affect damage, friendly fire or crit, so whatever they do is outside what an IR damage probe can
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
+
+### 2026-08-27 — A10b-prime CLOSED: `$PSET` pools are NOT 8-bit (armor + HP verified live to 1000)
+
+The loadout policy layer caps pools at 255 on the assumption that the wire field is a byte. **It is not.**
+Autonomous run (emitter + BLE, operator away, `$VOL,3`), victim Tactix-FE30 on mains.
+
+**Method.** Push `$PSET` with the pool under test, read it back with `$QUERY,*` (proves the gun *stored*
+it), then land IR damage and read `$HP` (proves the gun *uses* it). Readback alone is not evidence — a
+device can echo a value it later truncates.
+
+**Armor** — one 20-damage hit per row:
+
+| pushed | `$QUERY` echo | `$HP` armor after hit |
+|---|---|---|
+| 254 | 254 | 234 |
+| 255 | 255 | 235 |
+| **256** | **256** | **236** |
+| 512 | 512 | 492 |
+| 1000 | 1000 | 980 |
+
+**HP** — armor 0 so damage lands on HP, 250 per shot:
+
+| pushed | successive `$HP` |
+|---|---|
+| 255 | 5 |
+| **256** | **6** |
+| 300 | 50 |
+| 600 | 350 → 100 → 0 |
+| 1000 | 750 → 500 → 250 → 0 |
+
+**Result: no wrap at the 8-bit boundary, no rollover, and damage clamps at zero rather than
+underflowing.** 256 behaves as 256, not as 0. Both pools are at least 16-bit and decrement exactly.
+
+**So the 255 cap is a policy choice, not a device constraint.** That is a fine thing to keep — huge pools
+make for bad games — but it must not be documented as a hardware limit, and nothing should *silently*
+clamp a configured value to 255 as though the wire required it.
+
+**Shield is NOT settled and is deliberately excluded** from the above. A first run came back all-zeros but
+carried no in-run control, so it could not distinguish "shields behave differently" from "no IR landed" —
+it was discarded rather than written up. See the following entry.
+

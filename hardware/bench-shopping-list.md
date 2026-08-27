@@ -122,7 +122,7 @@ Goal: capture what Callsign sends over BLE (done — see `protocol/brx-protocol.
 | Teensy USB console cable (the `QUERY`/`SETUP` port — worked on COM5) | ✅ |
 | **USB-C cables** (one per ESP32-S3) + a **5V/2A USB charger or power bank** | ✅ likely |
 | multimeter | ✅ |
-| The 4 taggers + headsets (R0BAT/R0BAS/R0BP1/R0BQT) | ✅ |
+| The 4 taggers + headsets (gun 4/Tactix-FE30/Tactix-9498/Tactix-E20D) | ✅ |
 
 ---
 

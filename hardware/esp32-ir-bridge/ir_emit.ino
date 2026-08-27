@@ -43,7 +43,7 @@ static uint32_t AUTO_TX_INTERVAL_MS = 400;
 static uint32_t lastAutoMs = 0;
 
 // --- BRX timing — MEASURED on our own bench 2026-08-26 ----------------------- //
-// Captured from R0BAS @ ~1 m with ir_capture.ino (see docs/experiment-log.md):
+// Captured from Tactix-FE30 @ ~1 m with ir_capture.ino (see docs/experiment-log.md):
 //   sync 1988-1991 us | one-mark 990-994 | zero-mark 489-512 | space 489-512
 // These replace the LaserTagMods source defaults (2000/1000/500) — same to within
 // a percent, but now measured rather than assumed.

@@ -88,7 +88,7 @@ The newest, least-verified work. Do these first while the taggers are out.
 - ❎ **Fleet battery reliability** — superseded by spec A4.9: battery/fw/headset are **node-reported** (each phone holds its own gun); MC's BLE is scan-only presence. No persistent fleet reader.
 - ⬜ **Headset-OFF heuristic** — power a headset off, connect: confirm "reachable but drops with zero frames".
 
-## Session A — M0 live run — ✅ VERIFIED 2026-08-25 (R0BAS vs R0BP1, TDM, frag_limit=3)
+## Session A — M0 live run — ✅ VERIFIED 2026-08-25 (Tactix-FE30 vs Tactix-9498, TDM, frag_limit=3)
 The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full narration in experiment-log.
 - ✅ **`play tdm <A> <B>`** — config-all-then-spawn barrier worked; both guns went live together (B10).
 - ✅ **Kill scoring** — real `$HIR`/`$HP,0` from the guns → the driver credited the right team, scoreboard ticked.

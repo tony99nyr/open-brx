@@ -7,7 +7,7 @@ gun's IR carries to another gun's headset), distinct from the BLE serial protoco
 (github.com/LaserTagMods) — a referee-free domination *base* that receives gun IR and decodes the BRX
 tag. Credit LaserTagMods (JEDGE/JBOX) for the protocol discovery.
 
-**Status: ✅ BENCH-VERIFIED 2026-08-26** on our own rig (ESP32-S3 + VS1838B, R0BAS). Timings, bit
+**Status: ✅ BENCH-VERIFIED 2026-08-26** on our own rig (ESP32-S3 + VS1838B, Tactix-FE30). Timings, bit
 count, field offsets and the parity rule are all confirmed against ground truth pushed over BLE.
 Two corrections to the source-derived table are folded in below: the **B field is the IR
 protocol / damage type** (not a "bullet type"), and the **Z trailer is a computed parity**, not just
@@ -18,7 +18,7 @@ a pair that happens to differ.
 - **Carrier:** 38 kHz, 940/980 nm (a standard VS1838B/TSOP demod receiver recovers it).
 - **Sync/start:** a **~2 ms LOW pulse** precedes the frame (node1 gates on `pulseIn(pin, LOW) > 1500 µs`,
   "2 ms sync ± 500 µs"). Use it to detect frame start / reject non-BRX IR.
-- **MEASURED on our bench (2026-08-26, R0BAS @ ~1 m):** sync **1988–1991 µs** · one-marks
+- **MEASURED on our bench (2026-08-26, Tactix-FE30 @ ~1 m):** sync **1988–1991 µs** · one-marks
   **990–994 µs** · zero-marks **489–512 µs** · spaces **489–512 µs**. The 750 µs split is comfortably
   centred. ⚠ **The `>1500 µs` sync gate is NOT BRX-unique** — a Sony SIRC remote's 2390 µs header
   passes it (captured on the same rig). For a station that lives in a room with TVs, bound the sync
@@ -32,8 +32,8 @@ a pair that happens to differ.
 | Field | Bits | Offset | Meaning | Bench evidence (2026-08-26) |
 |---|---:|---|---|---|
 | **B** | 4 | 0–3 | **IR protocol / damage type** — the same number as `$WEAP` **t3** and the `$HIR` **tok2** echo. *(node1 called this "bullet type".)* | AR (t3 empty→0) read `0`; rocket (**t3=10**) read **10** |
-| **P** | 6 | 4–9 | **player id (0–63)** — per-player identity is in every shot | read `0`, matching R0BAS's registry `player_id: 0` |
-| **T** | 2 | 10–11 | team id (4 teams) — cf. BLE `$TID & 3` | read `1`, matching R0BAS's registry `field_id: 1` |
+| **P** | 6 | 4–9 | **player id (0–63)** — per-player identity is in every shot | read `0`, matching Tactix-FE30's registry `player_id: 0` |
+| **T** | 2 | 10–11 | team id (4 teams) — cf. BLE `$TID & 3` | read `1`, matching Tactix-FE30's registry `field_id: 1` |
 | **D** | 8 | 12–19 | **damage amount** = `$WEAP` **t5** = `$HIR` **tok5** | pushed t5 **22 → 9 → 115**, only these 8 bits moved |
 | **C** | 1 | 20 | **critical-hit flag → echoes `$HIR` tok6`** | emitted `crit=1` → `$HIR,0,0,42,2,1,**1**,0`. Reads 0 on every stock weapon — not dead, just never set. We can emit crits. |
 | **U** | 2 | 21–22 | **`$SIR` SUBTYPE → echoes `$HIR` tok7** *(node1 called this "unknown/reserved")* | rows pushed for subtypes 0/1/3; U=0/1/3 all registered and echoed, **U=2 — the only one without a row — was ignored** |
@@ -71,7 +71,7 @@ end-of-frame check, not a data bit).
 
   **⚠ CORRECTION (tested 2026-08-26, same session): the gun does NOT enforce this parity.** An
   earlier note here claimed a synthesized word "must carry the correct computed parity or a gun
-  should reject it" — that was inferred, not measured. Emitting at R0BAS, 8 shots per variant:
+  should reject it" — that was inferred, not measured. Emitting at Tactix-FE30, 8 shots per variant:
 
   | Z sent | registered |
   |---|---|
@@ -104,7 +104,7 @@ end-of-frame check, not a data bit).
   reveal it. (See `docs/experiment-log.md` "feedback fork" + FOLLOWUPS B18.)
 
 ## Verify-on-bench checklist (before trusting for emit)
-1. ✅ **DONE 2026-08-26** — captured real R0BAS shots on VS1838B: ~1990 µs sync, 25 bits, 990/500 µs marks.
+1. ✅ **DONE 2026-08-26** — captured real Tactix-FE30 shots on VS1838B: ~1990 µs sync, 25 bits, 990/500 µs marks.
 2. ✅ **DONE 2026-08-26** — P and T matched the armory registry; **B and D pinned by pushing known
    `$WEAP` frames over BLE** (AR t5=9, rocket t3=10/t5=115) and watching only the expected bits move.
 3. ✅ **DONE 2026-08-26** — parity holds on 4/4 frames, and the *rule* behind it is now known.

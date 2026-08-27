@@ -11,7 +11,7 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 groups is the expensive part, not the tests.
 
 ## Before you start (5 min)
-- **POWER-REST first** — the fleet ops rule. Use guns that have been off; R0BAS ran all night.
+- **POWER-REST first** — the fleet ops rule. Use guns that have been off; Tactix-FE30 ran all night.
 - **Headsets ON and settled** or the gun silently refuses to join.
 - Rig: **board A (`5C93045958`) = receiver** (VS1838B → GPIO4), **board B (`5C4C136487`) = emitter**
   (2N2222A + LED → GPIO5). Flash from the **UART** port; see `hardware/esp32-ir-bridge/README.md`.
