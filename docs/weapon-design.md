@@ -2,10 +2,15 @@
 
 > ## 🔴 LIVE BUG IN SHIPPED CONFIG — the Energy Launcher deals **zero damage**
 > Its `$WEAP` key `<t3,t4> = <9,3>` lands on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
-> into **every** game head. Function 24 is a *status* function: it registers a `$HIR` and touches no
-> pool. Bench-measured through the real shipped table, 3/3 trials, **0 damage per hit**
-> (experiment-log 2026-08-26). The weapon is unusable in every game we currently run.
+> into **every** game head. Fired through the real shipped table on that key, it landed **0 damage per
+> hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
 > Fix options in **§6.2**; it is a bug, not a design question.
+>
+> ⚠️ **The observation stands; the earlier explanation for it does not.** This banner used to say
+> "function 24 is a status function that touches no pool". A later listen-only run fired **fn 24 on
+> protocol 7 and it dealt damage** (armor 70→30). Same function, different protocol, opposite result.
+> So fn 24 is **not** inert — whatever silences the Energy Launcher is specific to its `<9,3>` cell,
+> and is not yet understood. The bug is real and directly measured; the mechanism is open.
 >
 > Four more weapons — **Burst Rifle, Bolt Rifle, AMR** (×2) and **Force Rifle, Sniper Rifle** (×1.25) —
 > deal more than their `t5` for the same reason. Also §6.2.
@@ -511,11 +516,11 @@ actually pushes assigns **multiplier functions** to two of the three subtypes in
 | Rocket Launcher | 10,0 | 1 | standard | 115 | 115 | 1 | 1 | 0.00 | **0.00** |
 | Rail Gun | 6,0 | 1 | standard | 115 | 115 | 1 | 1 | 1.20 | **1.20** |
 | Laser Cannon | 0,0 | 1 | standard | 115 | 115 | 1 | 1 | 1.50 | **1.50** |
-| Energy Launcher | 9,3 | 24 | **status — no pool change** | 115 | — | 1 | — | 0.00 | **never kills** |
+| Energy Launcher | 9,3 | 24 | **landed 0 — mechanism open** | 115 | — | 1 | — | 0.00 | **never kills** |
 | Ion Sniper | 0,0 | 1 | standard | 115 | 115 | 1 | 1 | 0.00 | **0.00** |
 
 **Four weapons fall out of the 1.5–3.5 s band once the multiplier is applied**, and the Energy
-Launcher's cell `<9,3>` maps to **fn 24 — a status function that changes no pool**, so as shipped it
+Launcher's cell `<9,3>` maps to **fn 24, which landed nothing on that key**, so as shipped it
 **does no damage at all**. The `htk`/`ttk_ms` fields in `weapons.json` and the band/dominance test in
 `test_mc_compile.py` all use raw `t5` and are wrong for those five rows.
 
@@ -717,11 +722,14 @@ spend a session on:
   field is not a scarce resource **[two-sided map]**.
 - **`$SIR` row parameters p5–p8 do not scale damage** — five different shapes all landed exactly the
   magnitude **[two-sided map]**. Whatever they do, it is not a multiplier.
-- **No status function is a damage-over-time.** Each of 3/8/23/24–28/35 and 31/32/34 was fired once and
+- **No function tested is a damage-over-time.** Each of 3/8/23/24–28/35 and 31/32/34 was fired once and
   watched for 18 s: **no HP ticks without further shots** (IR bench, 2026-08-26). So poison, cryo and
   incendiary — all named in the `DamageType` enum and in the manual's perk list — are **not** `$SIR`
   functions that tick a pool. If we want a DoT it has to be host-driven (repeat emissions from a
   station, or a Companion applying `$BHIT` on a timer), not a fire-and-forget effect.
+  > ⚠️ Note this list is no longer a "status function" list: **24, 25, 26 and 27 were later found to
+  > deal damage on protocol 7**, having moved no pool on protocol 5. The DoT negative is unaffected —
+  > none of them ticked — but do not read membership here as "inert".
 
 ### 6.4 What a weapon is now
 
