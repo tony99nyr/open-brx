@@ -2743,6 +2743,61 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — PROTOCOL x FUNCTION MATRIX: the classes DO travel; my scope caveat was over-cautious
+
+**My protocol-0 caveat was the right instinct and the wrong conclusion.** Measured, it dissolves.
+
+fn {1, 3, 8, 23, 24, 25, 26, 27, 28, 35} x protocols {0, 5, 7, 9, 10}, armour 200 (no clipping),
+shield 0, magnitude 20 x2 (= 40 if it damages), enemy team, row `<proto,0>`, re-armed from `$CLEAR`
+every cell.
+
+| fn | proto 0 | proto 5 | proto 7 | proto 9 | proto 10 |
+|---|---|---|---|---|---|
+| **1** (control) | 40 dmg | 40 dmg | 40 dmg | 40 dmg | 40 dmg |
+| 3 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| 8 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| 23 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| **24** | hit/0 | hit/0 | **hit/0** | hit/0 | hit/0 |
+| 25 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| 26 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+
+**Not one cell varies by protocol.** The fn 1 control damages identically on all five (and confirms the
+emitter delivers a faithful magnitude everywhere); every status-class function is pool-neutral on all
+five.
+
+**Conclusions**
+
+1. **The behaviour classes travel.** So the function map can be stated without a protocol qualifier
+   after all — the scope banner I added is **over-cautious and can be relaxed**, which is a perfectly
+   good outcome and cheaper than having carried an overclaim.
+2. **The earlier "dissolved — identical on protocols 5 and 7" retraction is CORRECT**, and now extends
+   to 0, 5, 7, 9 and 10. It was not half-right; it was right.
+3. **`c9c4a3f`'s "fn 24 damages on protocol 7 (armour 70 -> 30)" does NOT reproduce.** fn 24 is
+   pool-neutral on protocol 7 here, 5 protocols x controlled cells.
+
+**⚠️ This is the SECOND non-reproduction from the same measurement context** — the fn 36/37 x2
+multiplier was the first. Two results from operator-present runs failing to reproduce on the unattended
+rig is a **pattern**, not two independent flukes, and it deserves a cause rather than a winner.
+
+**Do not read this as "those measurements were wrong."** Both were carefully taken and internally
+consistent. The systematic difference between the two contexts is the open question, and the candidate
+list is short:
+
+- **Operator present vs absent.** Both non-reproducing results come from runs with Tony **holding the
+  gun**; both re-tests are unattended. A held gun differs physically — orientation, IR incidence angle,
+  body proximity, which sensor is struck.
+- **Gun uptime / state.** The unattended victim has been powered for many hours across these runs;
+  rig degradation is documented here. The trailing control on the big sweep passed, which argues
+  against gross degradation but not against a subtler state difference.
+- **A different physical gun**, if the earlier runs used one — worth confirming before anything else,
+  because it is the cheapest to rule in or out and would explain both at once.
+
+**This is now one question, not two** — *what gun-side condition was present in the operator-present
+runs and absent unattended?* — and the same question U10 asks about the multiplier. Two symptoms with
+one cause is a tidier answer than two oddities, and it is the thing to test next **with Tony present**,
+because operator presence is itself the leading suspect and cannot be reproduced without him.
+
+
 ### 2026-08-27 — INSTRUMENT FAILURE: the `$QUERY` state-diff detector is invalid as built
 
 **Discarded, not interpreted.** Recorded so the same detector is not rebuilt the same way.
@@ -2797,9 +2852,9 @@ meaningless.
 **Result: of every function in the status class, only fn 23 touches BLE at all.** Because the positive
 control fired, these are **true negatives, not a blind instrument**.
 
-> ⚠️ **Same scope caveat: protocol 0 only.** "Clean" here means *no BLE-visible frame beyond the hit
-> pair, on protocol 0* — it is **not** a claim that these functions are inert, and specifically not a
-> claim they move no pool on other protocols.
+> **Scope: measured on protocol 0.** "Clean" means *no BLE-visible frame beyond the hit pair* — it is
+> not a claim of inertness. The protocol matrix has since shown these functions are pool-neutral on
+> protocols 0, 5, 7, 9 and 10 alike, so the wire-silence finding is not protocol-specific either.
 
 **Two things follow.**
 
@@ -2890,11 +2945,11 @@ Software encoding was verified instead, and is correct.
 41 functions x 2 teams, autonomous, `$VOL,3`, victim Tactix-FE30 `$TID,1`, hp45/armour70/shield-cap70,
 magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counted separately from `$HP`.
 
-> ⚠️ **SCOPE — this map was measured on IR PROTOCOL 0 ONLY.** Every cell used row `<0,subtype>` and a
-> word with B=0. It was written up without stating that, which overclaims: `c9c4a3f` reports **fn 24
-> dealing damage on protocol 7** (armour 70 -> 30) where it moves no pool on protocol 0. **So
-> "status class" below means "status-class *on protocol 0*"** — membership must not be read as "inert
-> in general". A protocol x function re-test is the way to settle how far the classes travel.
+> **SCOPE — measured on IR protocol 0, and since verified to generalise.** Every cell used row
+> `<0,subtype>`. A follow-up matrix (fn {1,3,8,23,24,25,26,27,28,35} x protocols {0,5,7,9,10}) found
+> **not one cell varies by protocol**, so the classes below hold across protocols and may be cited
+> without a protocol qualifier. See the matrix entry for the one caveat that remains: `c9c4a3f`'s
+> "fn 24 damages on protocol 7" does **not** reproduce here, and that disagreement is unexplained.
 
 **Trailing control passed.** The fn 1 and fn 11 cells were re-measured *after* all 41 cells and
 reproduced their opening rows exactly (`HIR=2 $HP,45,30,0` and `HIR=2 $HP,45,70,40`). The rig did not
