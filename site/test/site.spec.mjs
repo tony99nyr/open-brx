@@ -49,6 +49,10 @@ for (const u of sitemapUrls()) {
     const errors = watchErrors(page);
     await page.goto(u, { waitUntil: 'networkidle' });
     await expect(page.locator('h1')).toHaveCount(1);
+    const title = await page.title();
+    const segs = title.split(' — ');
+    expect(new Set(segs).size, `doubled <title>: ${title}`).toBe(segs.length);
+    expect(await page.locator('code.language-mermaid').count(), 'mermaid source published').toBe(0);
     await expect(page.locator('h1').first()).toBeVisible();
     await expect(page.locator('time[datetime]').first()).toBeAttached();
     const text = await page.locator('main').innerText();

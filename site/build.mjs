@@ -58,6 +58,15 @@ function sidebarFor(page) {
       sp.map(p => `<li><a href="${p.slug}/"${p.slug === page.slug ? ' aria-current="page"' : ''}>${esc(p.title.replace(/[`*]/g, ''))}</a></li>`).join('') + `</ul></details>`;
   }).join('');
 }
+// "<Page> — <Section> — The BRX Manual (Open BRX)", without repeating a section that is the page itself
+function pageTitle(page) {
+  const t = page.title.replace(/[`*]/g, '');
+  const sec = page.section?.title || '';
+  const parts = [t];
+  if (sec && sec !== t && page.section.slug !== page.slug && page.section.num !== '00') parts.push(sec);
+  parts.push(page.slug.startsWith('/platform') ? 'Open BRX' : 'The BRX Manual (Open BRX)');
+  return parts.join(' — ');
+}
 function crumbsFor(page) {
   const c = [{ title: 'Home', url: '/' }];
   if (page.slug.startsWith('/manual')) c.push({ title: 'Manual', url: '/manual/' });
@@ -114,7 +123,7 @@ function renderOne(page, opts = {}) {
   const body = pageBody(page, ctx, extras);
   const isHome = page.slug === '/';
   const html = renderShell({
-    title: isHome ? 'Open BRX — The Ultimate BRX Manual' : `${page.title.replace(/[`*]/g, '')} — ${page.section.title || 'Open BRX'} — The BRX Manual (Open BRX)`,
+    title: isHome ? 'Open BRX — The Ultimate BRX Manual' : pageTitle(page),
     description: page.subtitle || page.title, slug: page.slug, section: page.section, body,
     sidebar: isHome || page.slug === '/credits' || page.slug === '/changelog' ? '' : sidebarFor(page),
     toc: isHome ? '' : tocFor(page), breadcrumbs: crumbsFor(page), jsonld: jsonldFor(page), klass: isHome ? 'home' : (ex ? 'explorer-page' : ''),
@@ -168,6 +177,7 @@ for (const rel of written) {
     const target = h === '/' ? 'index.html' : h.replace(/^\//, '').replace(/\/?$/, '/index.html');
     if (!written.has(target)) problems.push(`${rel}: broken link ${h}`);
   }
+  if (/class="language-mermaid"|```mermaid/.test(html)) problems.push(`${rel}: a mermaid fence would publish as raw source — draw it as SVG or an [diagram] block`);
   if (/\[[a-z][a-z-]*(?::[a-z|]+)?(?:\s+[A-Za-z0-9-]+)?\]/.test(html.replace(/<code>[^<]*<\/code>/g, '').replace(/<pre[\s\S]*?<\/pre>/g, '').replace(/<script[\s\S]*?<\/script>/g, ''))) problems.push(`${rel}: raw block marker leaked into HTML`);
 }
 // ---- cleanup of stale generated files + manifest -------------------------------------------
