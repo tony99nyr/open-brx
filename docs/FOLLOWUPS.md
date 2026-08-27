@@ -118,9 +118,20 @@ existing handlers, writing `ledcWrite(IR_TX_PIN, duty)`.
 - **It makes range tests repeatable.** Range work presently means physically moving a breadboard, which
   is neither precise nor reproducible between sessions.
 
-**Not done here deliberately:** it means reflashing a rig set up by hand while its owner is away, and a
-failed flash takes the bench down with no one able to recover it. Cheap and safe to do **with** an
-operator present; not worth the downside without one.
+**Not done here deliberately, and the sharper reason is not the flash risk** (brx-opus2): **a bad
+`DUTY` cannot be verified from here.** If the command misbehaves — wrong duty, bad parse, carrier off —
+the symptom is *fewer or no registrations*, which is **indistinguishable from "the effect under test
+isn't there."** That would inject an unverifiable confound into the very instrument being used to
+resolve confounds. That argument holds even if reflashing were zero-risk. (The secondary reason still
+stands: a failed flash takes the bench down with nobody able to recover it.)
+
+**Two things to build in when it is done, so it does not become a fourth unstated condition:**
+1. **Make the rig report its own duty** — echo it on `TX`, or add a `DUTY?` query — so every capture
+   records the value beside protocol / sensor / range instead of relying on memory. The method rule,
+   applied to the instrument itself.
+2. **Re-run the fn 1 control at every duty before trusting anything else at that duty.** Changing duty
+   changes effective range, and range is a known-live variable — so the control is not optional there,
+   it is what proves the rig is still faithful at the new setting.
 
 ## 🟠 Q13 — friendly fire is INVISIBLE on the wire; MC cannot log or score it (2026-08-27)
 

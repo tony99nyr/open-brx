@@ -2743,6 +2743,39 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — K1(b) narrowed: `$WEAP` t19 = 5 (AutoReload) does NOT reload on an empty magazine
+
+Tony asked for **auto-reload for kids who can't work the reload lever**. Two mechanisms exist; one
+already ships (`alt_reload` remaps `$BMAP,1,97` so the orange ALT button reloads). The second — the
+APK's `ReloadType.AutoReload`, ordinal **5**, at `$WEAP` **t19** — was filed as bench-only ("fire dry").
+**Part of it is testable unattended**: if the gun reloads *itself*, the refill must appear on `$ALCD`
+with nobody touching the trigger.
+
+| config | magazine pushed | `$ALCD` mags seen | result |
+|---|---|---|---|
+| t19 = 0 (stock) — control | 0 | [0] | no self-reload |
+| **t19 = 5 AutoReload** | 0 | [0] | **no self-reload** |
+| t19 = 0 (stock) — control | 1 | [1] | no self-reload |
+| **t19 = 5 AutoReload** | 1 | [1] | **no self-reload** |
+
+**Result: AutoReload does not trigger on an empty or near-empty magazine state.**
+
+**This does NOT close K1(b).** It rules out one of the two plausible semantics. AutoReload may still be
+**fire-triggered** — reloading when the trigger is pulled on an empty chamber — which needs a real
+trigger and therefore an operator. What it does is halve the bench test: the operator no longer has to
+check whether the gun reloads on its own while idle, only whether it reloads **when pulled dry**.
+
+**Token indexing note** (this is where the trap was): the documented `$WEAP` token numbers are indexed
+on the **frame tail**, i.e. doc `t1` is the field *after* the slot — so doc **t19 is the 20th token**
+of the frame. Verified against `gameconfig.py`'s `WEAPON_TAILS`: doc `t19` reads **0** on the AR,
+matching "Shotgun 2 = Shells, Melee 10, everything else 0". Counting from `$WEAP` directly lands on
+`1400` and would have written the wrong field.
+
+**Standing recommendation unchanged:** `alt_reload` already ships, is proven, and is a per-tagger
+toggle — it remains the answer for kid-mode today. t19=5 would be *fully automatic* rather than a
+button, which is a different feature, and Tony should pick by feel rather than by which we can build.
+
+
 ### 2026-08-27 — the rig is pinned to the GUN-BODY sensor (20/20) — a scope fact, not a null result
 
 Tested whether the unattended rig can land a **headset-dome** hit, which would have made the sensor
