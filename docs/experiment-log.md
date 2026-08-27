@@ -2743,6 +2743,35 @@ do not affect damage, friendly fire or crit, so whatever they do is outside what
 see (candidates: gyro/melee enablement, LED/idle behaviour, respawn or lives handling on the on-gun
 menu path).
 
+### 2026-08-27 — INSTRUMENT FAILURE: the `$QUERY` state-diff detector is invalid as built
+
+**Discarded, not interpreted.** Recorded so the same detector is not rebuilt the same way.
+
+**Idea.** The frame-capture sweep watched for *emitted* frames. `$QUERY,*` instead *polls* configured
+state — including per-slot weapon damage/sound pairs — so a status effect that disabled a weapon would
+show up in a readback while emitting nothing. Genuinely a different instrument, worth trying.
+
+**It failed its own control.** fn 1 (plain damage) alters no configuration, yet the detector reported
+`CHANGED`. Every reported "change" was a raw **length** difference — 15 -> 29, 15 -> 33, 33 -> 29,
+29 -> 15 tokens — with no meaningful field diff. **`$QUERY` replies are variable-length across reads
+for identical state**, because long replies span multiple BLE notification chunks and the capture
+window does not always catch all of them.
+
+So the "changes" were chunking artefacts. Any cell in that run — positive or negative — is
+uninterpretable, including the cells that read `NO CHANGE`, since a truncated reply can match by
+accident.
+
+**How to build it properly, if it is worth revisiting:**
+1. Compare **parsed fields**, never raw strings.
+2. Require **two identical consecutive reads** before accepting a `$QUERY` as a valid sample.
+3. Widen the reply window and reassemble by chunk rather than by timeout.
+
+**General lesson (already in `gotchas.md` in spirit):** an instrument that has never been shown to
+produce a *true negative on a known-null input* is not yet an instrument. The frame-capture sweep
+earlier the same night carried both a positive and a negative control and passed both — which is the
+only reason its negatives are usable and this run's are not.
+
+
 ### 2026-08-27 — VALIDATED NEGATIVE: fn 23 is the ONLY status function with any BLE signature
 
 **This closes the stun hunt as a keyboard-only problem.** It cannot be cracked without an operator, and

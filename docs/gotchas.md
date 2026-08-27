@@ -82,6 +82,13 @@ sees them), and any replacement inside a **btsnoop** must be **byte-length-neutr
 stores per-packet length fields, so a longer string desynchronises every following packet and the
 capture stops parsing.
 
+**"`$QUERY` says the config changed" — check the reply LENGTH before believing it.**
+`$QUERY,*` replies are **variable-length across reads for identical state**: long replies span several
+BLE notification chunks and a fixed capture window does not always catch them all. Observed 15 / 29 /
+33 tokens for the same unchanged gun. **Never diff `$QUERY` as a raw string** — parse fields, and
+require two identical consecutive reads before treating a sample as valid. A raw-string diff
+manufactures false positives and will happily "detect" an effect that is not there.
+
 **Never write a headset sticker id into the repo.**
 The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
 docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the
