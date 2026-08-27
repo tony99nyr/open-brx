@@ -34,10 +34,10 @@ what the limits are, what's actually proven**) · [`docs/README.md`](docs/README
 |---|---|
 | `protocol/` | Serial command reference + **`callsign-extract/`** (command/field maps, **$WEAP token map**, **2166-id sound bank**, game modes — decoded from the Callsign app) ✅ |
 | `mcp/` | **brx-mcp** — MCP server + CLI giving direct BLE control (scan/identify/listen/startgame/deathmatch/arena/…) ✅ |
-| `firmware/` | PlatformIO monorepo: bridge/Companion, item-pack, objective-station, effect-node (todo) |
-| `server/` | Game engine — built in **`mcp/brx_mcp/mc/`**: Mission Control rules/modes, scoring, announcer, event log, driving player nodes over the LAN (WebSocket) ✅ |
+| ~~`firmware/`~~ | Empty — the only ESP32 code that exists today is the IR bridge in **`hardware/esp32-ir-bridge/`** (`ir_capture.ino`, `ir_emit.ino`, both hardware-proven). Companion / item-pack / objective-station firmware is still to write. |
+| ~~`server/`~~ | Empty — the game engine lives in **`mcp/brx_mcp/mc/`** (Mission Control rules/modes, scoring, announcer, event log, driving player nodes over the LAN) ✅ |
 | `app/` | **BRX Combat HUD** — the native phone app (Capacitor: one codebase → Android + iOS, native BLE). Build instructions: [`app/README.md`](app/README.md) ✅ |
-| `webapp/` | Static site: Mission Control operator console + `ble-test.html`. **Web Bluetooth is a dev/test harness only** — it has no iOS support and is disabled by default on Android, so the player-facing phone path is `app/` (ADR-0001) |
+| `webapp/` | **Generated output — do not hand-edit.** The public site built from `docs/manual/` by `site/`, plus `webapp/mc/` = the Mission Control operator console (Vite/React). Web Bluetooth is not the player path — that is `app/` (ADR-0003) |
 | `hardware/` | **`brx-companion-spec.md`** (per-tagger accessory) ✅; STLs, wiring, BOM (todo) |
 | `docs/` | **[`docs/README.md`](docs/README.md)** index — the **[`docs/spec/`](docs/spec/)** product spec (the record), the **[ADRs](docs/adr/)**, followups, and protocol/reference |
 
@@ -46,9 +46,10 @@ bank, game modes, grenade config) — including **native kill feedback over BLE*
 the `$PLAY` announcer slot, `protocol/brx-protocol.md` §7o), so a host can drive the green-sight
 kill confirm and announcer the same way the official app does. Working `brx-mcp` drives real
 matches, and the whole stack is **built + tested in software** — Mission Control (`mcp/brx_mcp/mc/`,
-WebSocket over the LAN), the native phone node (`app/`), and the web UI (`webapp/mc/`) — 438 tests incl.
-12 full-stack e2e, with **BLE-native per-player identity** (`$PSET`/`$HIR`, §7p/§7q). Next: the first
-hardware muster (`docs/field-runbook-mc.md`). See `docs/FOLLOWUPS.md`.
+WebSocket over the LAN), the native phone node (`app/`), and the web UI (`webapp/mc/`) — a full suite
+incl. 12 full-stack e2e (`cd mcp && python3 run_tests.py`), with **BLE-native per-player identity**
+(`$PSET`/`$HIR`, §7p/§7q). One phone has mustered at the bench; next is the first **multi-phone**
+muster (`docs/field-runbook-mc.md`). See `docs/FOLLOWUPS.md`.
 
 ## brx-mcp quickstart
 
@@ -57,10 +58,11 @@ The MCP server runs on **whichever machine owns the Bluetooth radio** — it is 
 
 ```bash
 # FIRST: switch each tagger's HEADSET on. A gun with no headset accepts a BLE connection,
-# answers one ping, then silently drops it — every command below will fail.
-# (bench-confirmed: protocol/brx-protocol.md §7r)
+# answers one ping, then drops the link — so `scan` and `identify` still look fine
+# while everything that configures or plays a game fails. (protocol/brx-protocol.md §7r)
 
 # on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
+git clone git@github.com:tony99nyr/open-brx.git && cd open-brx
 python -m venv .venv && . .venv/bin/activate   # (Windows: .venv\Scripts\activate)
 pip install -e ./mcp
 
