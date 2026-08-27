@@ -105,3 +105,22 @@ CONTINUE-path walk; voice-preview asserted at the GUN (fakegun.writes); reload t
 short-viewport overlap re-audit; diag-panel content assertions (no PANIC, SHARE LOG ships); runway
 presets. Night sweep lands with the night fix. Rule going forward: every user-reported bug becomes a
 screen-truth e2e step BEFORE the fix is written.
+
+## Round 7 — Tony hit the GAMES/DESIGNER pages live (2026-08-27 evening): "riddled with issues, smells like poor testing"
+What he saw: a crash banner (`cannot read 'preset' of undefined`), every designer tile disabled with "0 OF 18",
+raw class numbers on tiles, template buttons that did nothing. One root cause: **today's UI bundle against an MC
+process started before today's server code** (no `loadout_policy`, no `role`, `/api/loadout/pool` 404). Why no
+test caught it: every test ran the UI and the server from the same tree at the same moment, so "new UI, old
+server" had zero coverage — and the designer swallowed the failed calls (`.catch(() => {})`), so controls looked
+broken instead of saying why. Fixed + guarded:
+- UI tolerates a config without a policy; a stale MC raises a **"THE MC SERVER PREDATES THIS UI — RESTART IT"**
+  banner; the designer's templates are client-side rules (no round-trip to click); a missing pool preview means
+  "everything allowed" with a visible notice; no raw class ids on tiles.
+- e2e **F8b compat-older-server**: the same UI against stripped responses + 404'd A10 routes, walking every page
+  and clicking the designer's controls; proven to fail on the pre-fix bundle.
+- e2e **F8a designer-controls**: every designer control clicked on the real stack, each asserted by what the host
+  SEES (summary text, counts, the rail, the saved card).
+- `ONLY=<step-substring> node tools/e2e.mjs` runs one step in isolation (steps that stand alone self-navigate).
+Rules adopted: (1) a user action whose API call fails must show it — never `.catch(() => {})` on an action;
+(2) every control in a new screen gets a screen-truth assertion before the screen is called done; (3) any UI
+that depends on a new server route gets a compat step against a server without it.

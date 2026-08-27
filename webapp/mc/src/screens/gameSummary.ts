@@ -5,6 +5,12 @@ const rule = (over: Partial<SlotRule> = {}): SlotRule => ({ choice: 'player', ki
 /** OPEN — what the server means by "no policy". A config from a session persisted before A10, or served by an older MC,
  *  has no `loadout_policy` at all; every page must tolerate that (Tony hit "cannot read 'preset' of undefined"). */
 export const DEFAULT_POLICY = (): LoadoutPolicy => ({ preset: 'open', hud_select: true, primary: rule(), secondary: rule({ kinds: ['weapon', 'perk'] }) });
+/** The three starting templates (loadout.md §3.1) — client-side so the designer's START FROM works with no server help. */
+export const TEMPLATE_RULES: Record<'open' | 'no_heavies' | 'snipers', LoadoutPolicy> = {
+  open: { preset: 'open', hud_select: true, primary: rule(), secondary: rule({ kinds: ['weapon', 'perk'] }) },
+  no_heavies: { preset: 'no_heavies', hud_select: true, primary: rule({ exclude_tags: ['heavy'] }), secondary: rule({ kinds: ['weapon', 'perk'], exclude_tags: ['heavy'] }) },
+  snipers: { preset: 'snipers', hud_select: false, primary: rule({ choice: 'fixed', fixed_id: 'sniper_rifle' }), secondary: rule({ choice: 'off', kinds: ['weapon', 'perk'] }) },
+};
 export const withPolicy = (c: GameConfig): GameConfig => (c.loadout_policy?.primary && c.loadout_policy.secondary ? c : { ...c, loadout_policy: DEFAULT_POLICY() });
 
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };

@@ -9,7 +9,7 @@ const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit',
 const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : PH.findIndex(x => x[0] === p));
 
 export function CommandBar() {
-  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, hasToken, setToken } = useStore();
+  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld, hasToken, setToken } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<string | null>(null);
   const [tokDraft, setTokDraft] = useState('');
@@ -25,6 +25,12 @@ export function CommandBar() {
           <span style={{ width: 8, height: 8, background: T.bad, animation: 'linkBlink 1.2s infinite' }} />
           MC OFFLINE — RECONNECTING
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state ? 'SHOWING THE LAST SNAPSHOT — CLOCKS ARE FROZEN' : 'NO SNAPSHOT YET — IS THE SERVER RUNNING?'}</span>
+        </div>
+      )}
+      {serverOld && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,176,32,.12)', borderBottom: `1px solid ${T.warn}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.warn }}>
+          ▲ THE MC SERVER PREDATES THIS UI — RESTART IT (<span style={{ font: F.mono(600, 11), letterSpacing: '.06em' }}>python -m brx_mcp.mc</span>)
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>SAVED GAMES, PERKS AND LOADOUT RULES ARE UNAVAILABLE UNTIL THEN</span>
         </div>
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 26px', padding: '12px 20px 10px' }}>

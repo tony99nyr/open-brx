@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
-import { gameSig, rulesLine, withPolicy } from './gameSummary';
+import { TEMPLATE_RULES, gameSig, rulesLine, withPolicy } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -40,6 +40,7 @@ export function Designer() {
   const [desc, setDesc] = useState(seed?.game?.desc ?? '');
   const [pool, setPool] = useState<LoadoutPool | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [previewOff, setPreviewOff] = useState(false);   // the server has no pool preview (older MC) — counts are "all allowed"
 
   // pool preview for the DRAFT policy — server rule engine, debounced; the server also re-derives the preset name
   const tick = useRef(0);
@@ -51,10 +52,15 @@ export function Designer() {
         if (my !== tick.current) return;
         setPool(r.pool);
         if (r.policy.preset !== cfg.loadout_policy.preset) setCfg(c => c ? { ...c, loadout_policy: { ...c.loadout_policy, preset: r.policy.preset } } : c);
-      }).catch(() => {});
+      }).catch(() => {
+        // no preview route (older MC): show everything allowed rather than a page of dimmed tiles — and SAY so
+        if (my !== tick.current) return;
+        setPreviewOff(true);
+        setPool({ primary: weapons.map(w => w.weapon_id), secondary_weapons: weapons.map(w => w.weapon_id), secondary_perks: perks.map(k => k.perk_id) });
+      });
     }, 120);
     return () => clearTimeout(h);
-  }, [cfg?.loadout_policy, cfg?.mode, api]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg?.loadout_policy, cfg?.mode, api, weapons, perks]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!state || !cfg) return null;
   const mode = modes.find(m => m.mode === cfg.mode);
@@ -62,10 +68,8 @@ export function Designer() {
   const put = (p: Partial<GameConfig>) => setCfg(c => c ? { ...c, ...p } : c);
   const putPol = (p: Partial<LoadoutPolicy>) => setCfg(c => c ? { ...c, loadout_policy: { ...c.loadout_policy, ...p, preset: 'custom' } } : c);
   const putSlot = (slot: 'primary' | 'secondary', r: Partial<SlotRule>) => putPol({ [slot]: { ...pol[slot], ...r } });
-  const applyTemplate = async (preset: LoadoutPreset) => {
-    const r = await run(() => api.previewPool({ preset }, cfg.mode));
-    if (r) setCfg(c => c ? { ...c, loadout_policy: r.policy } : c);
-  };
+  // templates are client-side rules — the click must work with no server round-trip (Tony: "you can't click these")
+  const applyTemplate = (preset: LoadoutPreset) => { if (preset !== 'custom') setCfg(c => c ? { ...c, loadout_policy: clone(TEMPLATE_RULES[preset]) } : c); };
   const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
   const dirty = editing ? gameSig(editing.config) !== gameSig(cfg) || editing.name !== name.trim() || (editing.desc ?? '') !== desc.trim() : true;
 
@@ -134,6 +138,7 @@ export function Designer() {
           {/* 3 LOADOUT */}
           <section>
             <SectionRule label="3 // LOADOUT — WHO CARRIES WHAT" hint={<span style={{ color: PERK_COLOR }}>{pol.preset === 'custom' ? 'CUSTOM RULES' : TEMPLATES.find(t => t.value === pol.preset)?.label}</span>} style={{ marginBottom: 12 }} />
+            {previewOff && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER CAN'T PREVIEW THESE RULES (IT PREDATES THIS UI) — COUNTS SHOW EVERYTHING ALLOWED. RESTART THE SERVER.</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <span style={{ font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim }}>START FROM</span>
               <span role="group" aria-label="loadout template" style={{ display: 'flex', gap: 4 }}>
@@ -209,10 +214,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   const summary = off ? 'OFF — ALT-FIRE DOES NOTHING' : fixed ? `EVERYONE GETS ${(weapons.find(w => w.weapon_id === rule.fixed_id)?.name ?? perks.find(k => k.perk_id === rule.fixed_id)?.name ?? '—').toUpperCase()}`
     : `${allowedW.length} OF ${weapons.length} WEAPONS${sec ? ` · ${allowedK.length} PERKS` : ''}`;
   return (
-    <div style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${sec ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${sec ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{sec ? 'SECONDARY' : 'PRIMARY'}</span>
-        <span style={{ font: F.mono(500, 9.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
+        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 9.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro }}>WHO PICKS</span>

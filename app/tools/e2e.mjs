@@ -19,7 +19,9 @@ let WS = '';   // read from lan.ws_url — the NetServer binds the LAN IP, NOT l
 const results = []; const findings = [];
 let curFlow = 'boot'; let shotN = 0;
 let failN = 0;
+const ONLY = process.env.ONLY;   // ONLY=<substring> runs just the matching step(s) — for steps that stand alone (e.g. F8b compat)
 const step = async (name, fn) => {
+  if (ONLY && !name.includes(ONLY)) return;
   const t0 = Date.now();
   try { await fn(); results.push({ flow: curFlow, name, ok: true, ms: Date.now() - t0 }); console.log(`  ✓ ${name}`); }
   catch (e) {
@@ -574,6 +576,83 @@ await step('EVICT is a two-step confirm and kicks the node', async () => {
   await mc.click('button:has-text("CONFIRM KICK")');
   await until(async () => { const s = await st(); return !s.players.find(p => p.player_id === pA.player_id).node_id; }, 8000, 'ALPHA unbound');
   await until(async () => { const s = await st(); return s.players.find(p => p.player_id === pA.player_id).node_id; }, 20000, 'hudA auto-rejoined after evict');
+});
+
+// ═══ F8a · DESIGNER controls — every control changes what the host SEES (Tony: "you can't click these toggles") ═══
+flow('F8a designer-controls');
+await step('designer-controls: templates, class chips, tiles, who-picks, slot OFF, base, save → each shows on screen', async () => {
+  if (mc.url() === 'about:blank') await mc.goto(MC + '/', { waitUntil: 'networkidle' });   // ONLY= runs skip the boot steps
+  await mc.locator('nav button').nth(1).click();
+  await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
+  const prim = mc.locator('[aria-label="primary slot rules"]'), sec = mc.locator('[aria-label="secondary slot rules"]');
+  const pSum = () => mc.getByTestId('primary-summary').textContent();
+  const sSum = () => mc.getByTestId('secondary-summary').textContent();
+  await until(async () => /13 OF 18/.test(await pSum()), 6000, 'FFA base starts at NO HEAVIES (13 of 18)');
+  await mc.click('button[title="Everything, players pick both slots"]');                     // template OPEN
+  await until(async () => /18 OF 18/.test(await pSum()), 4000, 'OPEN → 18 of 18');
+  await mc.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');  // template SNIPERS
+  await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pSum()) && /OFF/.test(await sSum()), 4000, 'SNIPERS → fixed primary + slot 2 off');
+  await mc.click('button[title="Everything, players pick both slots"]');
+  await prim.locator('button:has-text("HEAVY")').first().click();                             // class chip off
+  await until(async () => /13 OF 18/.test(await pSum()), 4000, 'HEAVY chip off → 13 of 18');
+  await prim.locator('button[aria-label^="Assault Rifle"]').click();                          // one tile off
+  await until(async () => /12 OF 18/.test(await pSum()), 4000, 'tile off → 12 of 18');
+  await prim.locator('button:has-text("FIXED")').click();                                     // who picks: FIXED → single-select
+  await prim.locator('button[aria-label^="SMG"]').click();
+  await until(async () => /EVERYONE GETS SMG/.test(await pSum()), 4000, 'FIXED + tap SMG → everyone gets SMG');
+  await sec.locator('button:has-text("OFF")').click();
+  await until(async () => /OFF — ALT-FIRE/.test(await sSum()), 4000, 'secondary OFF');
+  await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await mc.locator('aside').textContent()), 4000, 'summary rail follows');
+  await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');                  // base switch resets rules
+  await until(async () => /TEAM DEATHMATCH/.test(await mc.locator('aside').textContent()) && /18 OF 18/.test(await pSum()), 4000, 'base → TDM, rules reset');
+  await mc.fill('input[aria-label="game name"]', 'controls test');
+  await mc.click('button:has-text("SAVE GAME")');
+  await until(async () => (await mc.locator('text=SAVED "CONTROLS TEST"').count()) > 0, 6000, 'SAVED status');
+  await shot(mc, 'designer-controls');
+  await mc.click('button:has-text("◂ BACK TO GAMES")');
+  await until(async () => (await mc.locator('div[role="button"][aria-label="play controls test"]').count()) > 0, 6000, 'card on GAMES');
+  await mc.click('button[aria-label="delete controls test"]'); await mc.click('button:has-text("CONFIRM DELETE")');
+  await until(async () => (await mc.locator('div[role="button"][aria-label="play controls test"]').count()) === 0, 6000, 'card gone');
+});
+
+// ═══ F8b · compat: NEW UI against an OLDER / pre-A10 server ═══
+// Tony hit "cannot read properties of undefined (reading 'preset')" with today's bundle on an MC process started
+// before the loadout code landed. Every other step runs UI + server from the same tree, so that mismatch had no
+// coverage. Here the same UI gets stale responses: loadout fields stripped, the A10 routes 404, no live socket.
+flow('F8b compat-older-server');
+await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a server with no loadout fields and no A10 routes', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });   // own context: its 404s are EXPECTED, keep them out of the global audit
+  const pg = await ctx.newPage(); pg.setDefaultTimeout(6000);
+  const errs = [];
+  pg.on('pageerror', e => errs.push('pageerror: ' + String(e.message).slice(0, 160)));
+  pg.on('console', m => { if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errs.push('console: ' + m.text().slice(0, 160)); });
+  const strip = o => { if (o && typeof o === 'object') { delete o.loadout_policy; delete o.loadout_pool; if (o.kit) delete o.kit.browsing; for (const k of Object.keys(o)) strip(o[k]); } return o; };
+  await pg.route('**/api/**', async r => {
+    const u = r.request().url();
+    if (/\/api\/(presets|perks|loadout\/pool)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });   // pre-A10 server
+    const res = await r.fetch(); let body = await res.text();
+    try { body = JSON.stringify(strip(JSON.parse(body))); } catch { /* not JSON */ }
+    await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
+  });
+  await pg.route('**/ui-ws*', r => r.abort());   // no live snapshot stream → the UI seeds from GET /api/state (stripped)
+  await pg.goto(MC + '/', { waitUntil: 'networkidle' });
+  const nav = async i => { await pg.locator('nav button').nth(i).click(); await pg.waitForTimeout(400); };
+  const noCrash = async where => expect((await pg.locator('text=CONSOLE ERROR').count()) === 0, `crash banner on ${where}: ${errs.join(' | ')}`);
+  await nav(1); await noCrash('GAMES');
+  await until(async () => (await pg.locator('text=PREDATES THIS UI').count()) > 0, 6000, 'the "server predates this UI" banner');
+  await until(async () => (await pg.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES rendered');
+  await pg.click('button[aria-label="create a game"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (create)');
+  await until(async () => (await pg.locator('text=CAN\'T PREVIEW THESE RULES').count()) > 0, 6000, 'designer says the server cannot preview');
+  await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');   // templates are client-side: must work here too
+  await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'template applies against a stale server');
+  await pg.click('button[title="Everything, players pick both slots"]');
+  await until(async () => /18 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'pool falls back to all-allowed, tiles not dimmed');
+  expect((await pg.locator('[aria-label="primary slot rules"] button[disabled]').count()) === 0, 'tiles disabled against a stale server');
+  await pg.click('button:has-text("◂ BACK TO GAMES")'); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
+  await nav(2); await noCrash('KIT'); await nav(3); await noCrash('LOBBY'); await nav(0); await noCrash('ARMORY');
+  await pg.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-compat-older-server.png`) });
+  expect(errs.length === 0, 'errors against the stale server: ' + errs.join(' | '));
+  await ctx.close();
 });
 
 // ═══ F9 · UX audit rollup ═══

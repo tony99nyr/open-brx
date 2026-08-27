@@ -47,7 +47,7 @@ export function Games() {
           {/* VENUE — where you're playing, not what game it is */}
           <div role="group" aria-label="venue" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep }}>
             <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
-            <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => run(() => api.putConfig({ environment: v }))} pad="4px 12px" />
+            <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => run(() => api.putConfig({ environment: v }))} pad="9px 14px" />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => run(() => api.putConfig({ night: v }))} label="night ops" /></span>
           </div>
           <PrimaryButton onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
@@ -173,7 +173,7 @@ export function Games() {
 function SmallBtn({ children, onClick, color = T.dim, label }: { children: React.ReactNode; onClick: () => void; color?: string; label?: string }) {
   return (
     <button type="button" className="hov-acc" onClick={onClick} aria-label={label}
-      style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.14em', color, border: `1px solid ${color === T.dim ? T.line : color}`, padding: '5px 10px', minHeight: 32, cursor: 'pointer' }}>
+      style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${color === T.dim ? T.line : color}`, padding: '8px 12px', minHeight: 40, cursor: 'pointer' }}>
       {children}
     </button>
   );

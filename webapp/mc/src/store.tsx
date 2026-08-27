@@ -35,6 +35,8 @@ export interface Store {
   connected: boolean;
   /** the server answered 401 — the operator token is missing or wrong */
   authRequired: boolean;
+  /** the MC process predates this UI: an A10 route (/api/perks, /api/presets) is missing — restart the server */
+  serverOld: boolean;
   hasToken: boolean;
   setToken: (tok: string) => void;
 }
@@ -56,13 +58,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState<boolean>(mock);
   const [authRequired, setAuthRequired] = useState(false);
   const [tokenVersion, setTokenVersion] = useState(0);
+  const [serverOld, setServerOld] = useState(false);
   const followed = useRef<Phase | null>(null);
   const offset = useRef(0);
 
   useEffect(() => {
     api.getModes().then(setModes).catch(() => {});
     api.getWeapons().then(setWeapons).catch(() => {});
-    api.getPerks().then(setPerks).catch(() => {});
+    api.getPerks().then(setPerks).catch(e => { if ((e as { status?: number }).status === 404) setServerOld(true); });   // route missing ⇒ older MC
     const un = api.subscribe(
       s => {
         offset.current = s.t - Date.now();
@@ -90,12 +93,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView: setViewRaw, selPlayer, setSelPlayer, error, mock,
     designerSeed, openDesigner: seed => { setDesignerSeed(seed); setViewRaw('designer'); },
-    connected: mock ? true : connected, authRequired, hasToken: !!getToken(),
+    connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, selPlayer, error, mock, connected, authRequired, designerSeed]);
+  }), [api, state, feed, modes, weapons, perks, view, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

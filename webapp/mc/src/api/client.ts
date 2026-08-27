@@ -31,7 +31,8 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).error ?? msg; } catch { /* ignore */ }
-    throw new Error(msg);
+    const err = new Error(msg) as Error & { status?: number }; err.status = r.status;   // callers can tell a 404 (route missing) from a 400
+    throw err;
   }
   if (method !== 'GET') notifyAuth(false);
   if (r.status === 204) return undefined as T;
