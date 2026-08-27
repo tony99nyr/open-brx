@@ -121,7 +121,34 @@ not tell us it happened. This is a hardware constraint, not a gap in our parsing
 **Action:** decide before any mode advertises teamkill feedback. Nothing in the shipped modes depends
 on it today, so this is a design constraint to record rather than a bug to fix.
 
-## 🔴 Q12 — THE SHIELD POOL IS DISCARDED IN CODE, not just in the spec (2026-08-26)
+## ✅ Q12 — FIXED 2026-08-27 (was: the shield pool is discarded in code)
+
+**Fixed in `mcp/brx_mcp/protocol.py` and `app/src/engine.js`, with regression tests.**
+
+Bench evidence that forced it (`docs/experiment-log.md` 2026-08-27): the shield is a **real,
+damage-absorbing pool** — shield 150 took four 30-damage hits as `150/120/90/60/30` with HP and armour
+**untouched** — and its ceiling is `$PSET` token 5.
+
+**The bug was worse than "the shield isn't displayed".** `_onHp` summed only `hp + armor`, so a hit
+absorbed entirely by the shield computed `dmg === 0`, and the `dmg > 0` guard then dropped the
+`hit_taken` fact **completely**. Against the measured sequence above, **all four hits would have
+emitted nothing at all** — no HUD feedback, no MC event, no score, while the player really was being
+shot.
+
+What changed:
+- `protocol.py` now parses `$HP` as `<hp>,<armor>,<shield>` (it read only `<hp>`).
+- `engine.js` tracks `this.shield`, includes it in the damage total, and reads `$HP`/`$LCD` token 3.
+- Spawn and respawn **zero** the shield, matching hardware: `$PSET` t5 is a capacity filled by an
+  fn-11 grant, never a starting pool. A stale shield would have inflated the next damage computation.
+- Two regression tests in `app/test/engine.test.mjs` (48/48 pass; Python 533/533).
+
+**Still open (design, not code):** whether `hit_taken` should carry the shield delta as a separate
+field so the HUD can distinguish "your shield ate that" from "you took it in the face". The fix above
+makes the event *fire*; it does not yet break out which pool absorbed it.
+
+---
+
+## 🔴 Q12 (original report) — THE SHIELD POOL IS DISCARDED IN CODE, not just in the spec (2026-08-26)
 
 `$HP` is **three** pools — `$HP,<hp>,<armor>,<shield>` — confirmed on the wire tonight (a shield grant
 reads `$HP,45,70,70` and the next hit drains **shield first**). brx-opus2 found `docs/spec/node.md`

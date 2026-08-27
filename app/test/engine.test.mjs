@@ -72,6 +72,31 @@ test('hit_taken + death credit the fresh $HIR shooter', () => {
   assert.equal(death.shooter_num, 19); assert.equal(h.eng.alive, false); assert.equal(h.eng.deaths, 1);
 });
 
+test('Q12: shield-absorbed damage still emits hit_taken (drain order shield->armor->HP)', () => {
+  // Bench 2026-08-27: $HP is <hp>,<armor>,<shield> and damage drains the shield first.
+  // Before the fix the engine summed only hp+armor, so a shield-absorbed hit computed
+  // dmg === 0 and the `dmg > 0` guard dropped the fact entirely -- silent damage.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HP,45,70,150,*');                       // shield granted (fn-11) up to its cap
+  h.frame('$HIR,4,0,19,2,30,0,3,*'); h.frame('$HP,45,70,120,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.ok(hit, 'a hit absorbed entirely by the shield must still emit hit_taken');
+  assert.equal(hit.dmg, 30);
+  assert.equal(h.eng.shield, 120);
+  assert.equal(h.eng.hp, 45); assert.equal(h.eng.armor, 70);
+});
+
+test('Q12: spawn and respawn zero the shield (it is a capacity, never a starting pool)', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HP,45,70,150,*');
+  assert.equal(h.eng.shield, 150);
+  h.frame('$HIR,4,0,19,2,99,0,3,*'); h.frame('$HP,0,0,0,*');   // die with a shield up
+  assert.equal(h.eng.alive, false);
+  h.adv(8000); h.eng.tick();                                   // auto-respawn fires
+  assert.equal(h.eng.alive, true, 'respawn must actually have happened for this to test anything');
+  assert.equal(h.eng.shield, 0, 'a stale shield would inflate the next damage computation');
+});
+
 test('death with a stale latch → shooter_num 0 (DEATH_LATCH_MS)', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.adv(3000);  // latch older than 2 s

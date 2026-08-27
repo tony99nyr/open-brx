@@ -60,7 +60,7 @@ export class Engine {
     this.player = null; this.team = null; this.roster = []; this.config = null; this.frames = null;
     this.start = null;              // {match_id, go_live_t, seq, countdown_s}
     this.matchId = null;
-    this.hp = 0; this.armor = 0; this.ammo = 0; this.reserve = null; this.mag = null;
+    this.hp = 0; this.armor = 0; this.shield = 0; this.ammo = 0; this.reserve = null; this.mag = null;
     this.alive = false; this.deaths = 0; this.shots = 0; this.battery = null; this.fw = null;
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
@@ -402,7 +402,9 @@ export class Engine {
     this._write([...this.frames.spawn, SFLASH], 'spawn');
     this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
-    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.killedBy = null; this.deadAt = 0;
+    // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
+    // grant, never a starting pool (bench 2026-08-27).
+    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0;
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
   }
@@ -447,7 +449,7 @@ export class Engine {
     if (!this.frames) return;
     this._write(this.frames.revive, 'revive');
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
-    this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.deadAt = 0; this.killedBy = null;
+    this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : 'respawned', 'lk');
@@ -537,9 +539,10 @@ export class Engine {
   feedFrame(f) {
     const t = toks(f), cmd = t[0];
     switch (cmd) {
-      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0); break;
+      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined ? (+t[3] || 0) : this.shield); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
+        if (t[3] !== undefined) this.shield = +t[3] || 0;
         if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
@@ -579,10 +582,14 @@ export class Engine {
     if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
   }
 
-  _onHp(hp, armor) {
-    const before = this.hp + this.armor;
-    this.hp = hp; this.armor = armor;
-    const dmg = Math.max(0, before - (hp + armor));
+  _onHp(hp, armor, shield) {
+    // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
+    // total made every shield-absorbed hit compute dmg === 0, which the guard below then
+    // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
+    if (shield === undefined) shield = this.shield;
+    const before = this.hp + this.armor + this.shield;
+    this.hp = hp; this.armor = armor; this.shield = shield;
+    const dmg = Math.max(0, before - (hp + armor + shield));
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num, shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto });
       this.lastHitAt = this.now();
@@ -691,7 +698,7 @@ export class Engine {
   statusBody(preflight = {}) {
     const now = this.now();
     return {
-      hp: this.hp, armor: this.armor, ammo: this.ammo, alive: this.alive, shots: this.shots,
+      hp: this.hp, armor: this.armor, shield: this.shield, ammo: this.ammo, alive: this.alive, shots: this.shots,
       ...(this.phase === 'live' && !this.alive && this.deadAt ? { deadline_s: Math.max(0, Math.ceil((this.respawnDelayMs - (now - this.deadAt)) / 1000)) } : {}),
       ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
       arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),
@@ -709,7 +716,7 @@ export class Engine {
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
-      hp: this.hp, armor: this.armor, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
+      hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,

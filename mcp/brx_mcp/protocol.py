@@ -92,11 +92,21 @@ def parse_event(message: str) -> dict[str, Any]:
         parsed["shooter_player_id"] = tok(3)
         parsed["shooter_team_id"] = tok(4)
     elif name == "HP":
-        hp_raw = tok(1)
-        try:
-            parsed["hp"] = int(hp_raw) if hp_raw else None
-        except ValueError:
-            parsed["hp"] = hp_raw
+        # $HP,<hp>,<armor>,<shield>. All three are real, live pools and the drain
+        # order is shield -> armor -> HP (bench 2026-08-27). Parsing only <hp> made
+        # any damage absorbed by shield or armor invisible -- see FOLLOWUPS Q12.
+        def _pool(i):
+            raw = tok(i)
+            if not raw:
+                return None
+            try:
+                return int(raw)
+            except ValueError:
+                return raw
+
+        parsed["hp"] = _pool(1)
+        parsed["armor"] = _pool(2)
+        parsed["shield"] = _pool(3)
         parsed["died"] = parsed.get("hp") == 0
     elif name == "BUT":
         parsed["button"] = tok(1)
