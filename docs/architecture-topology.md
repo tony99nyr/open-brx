@@ -250,8 +250,8 @@ provisional until every node has flushed.
 > ⚠️ **Other docs summarise this differently** — `HANDOFF.md` calls the phone path "field-verified"
 > (while noting soak/scale certification is still open), whereas `README.md` and
 > [`field-runbook-mc.md`](field-runbook-mc.md) have called it unverified. Both are describing the same
-> thing at different resolutions. The table above is the resolution to trust: **one phone through the
-> whole chain is real; a field full of them is not.**
+> thing at different resolutions. The table above is the resolution to trust: **one phone got as far
+> as a try-out that fired a real gun; nobody has run a whole match, and never a field of phones.**
 
 **A green test suite is not a working field.** That distinction is stated in FOLLOWUPS B15 in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
