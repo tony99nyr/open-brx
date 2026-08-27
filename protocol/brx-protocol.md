@@ -154,10 +154,21 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 > discrepancy, and both hypotheses were tested and refuted.
 >
 > The earlier ×2 result was internally consistent (3/3, and it stacked correctly with crit), so it is
-> unlikely to be simple noise — a systematic difference between the runs has not yet been found. The
-> leading untested suspect is the **encoding of the transmitted word itself** (a magnitude that was
-> actually 40 would look exactly like a ×2 multiplier), which would make the multiplier an artefact of
-> our emitter rather than a property of the gun.
+> unlikely to be simple noise — a systematic difference between the runs has not yet been found.
+>
+> **✅ The emitter is EXONERATED (2026-08-27).** An earlier draft named our own word encoding as the
+> leading suspect — a magnitude that was really 40 would look exactly like ×2. **That is now ruled
+> out.** The emitter is *function-agnostic*: it sends 25 bits, and which function applies is decided
+> entirely by the victim's `$SIR` row. So an encoding fault would corrupt the magnitude identically
+> whatever the function. In the very run that produced the ×2, **fn 1 read 20 and fn 37 read 40 in the
+> same session with the same emitter and the same `damage=20`** — had the emitter been sending 40,
+> fn 1 would have read 40 too. Independently confirmed by the protocol matrix: **fn 1 = exactly ×1.0
+> on protocols 0, 5, 7, 9 and 10.**
+>
+> **So the doubling happened inside the gun**, which makes the earlier measurement *more* credible,
+> not less, and moves the open question to **what gun-side condition switches the multiplier on**.
+> It also means pool deltas measured through this rig (armour-piercing, add-HP, the Energy Launcher's
+> 0/3) are **not** collateral damage from this dispute — magnitudes are delivered faithfully.
 >
 > **To settle it:** capture a *real BRX weapon* known to use fn 36/37 firing at a victim, and compare
 > `$HIR` token 5 (raw magnitude) against the applied `$HP` delta. That reads the multiplier off stock

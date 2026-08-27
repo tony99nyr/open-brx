@@ -2841,10 +2841,19 @@ values stacked correctly on a base of 40 (`$GSET` t7=50 -> 60). The later result
    Ran both arrangements. Both read 20; fn 1 control correct in both. Refuted.
    *(And on re-reading `crack3.py`, its arming was `[STD, $SIR,0,3,,37]` — two rows, i.e. effectively
    the full-table arrangement that also reads 20 now.)*
-3. **"Our emitter encoded a magnitude of 40, which would look exactly like x2."**
-   The two scripts' encoders are **byte-identical** — same field order, widths and parity — and
-   `crack3.py` called it with explicit keywords (`damage=20`). Software-verified: mag 20 encodes as
-   `...00010100...`, 25 bits. Refuted.
+3. **"Our emitter encoded a magnitude of 40, which would look exactly like x2."** — **REFUTED, and
+   decisively.** The two encoders are **byte-identical** and `crack3.py` passed `damage=20` by keyword;
+   mag 20 verified in software as `...00010100...`, 25 bits. **The killer argument is structural:** the
+   emitter is *function-agnostic* — it sends bits, and the function is chosen by the victim's `$SIR`
+   row — so an encoding fault would corrupt the magnitude identically whatever function applied. In the
+   run that produced the x2, **fn 1 read 20 and fn 37 read 40 in the same session, same emitter, same
+   `damage=20`**. Had the emitter sent 40, fn 1 would have read 40. Confirmed again by the protocol
+   matrix: **fn 1 = exactly x1.0 on protocols 0, 5, 7, 9, 10.**
+
+   **This inverts the conclusion.** The doubling happened *inside the gun*, so the earlier 3/3 becomes
+   **more** credible, and the open question is now *what gun-side condition enables the multiplier* —
+   not whether our rig lied. It also means every pool delta measured through this emitter (AP, add-HP,
+   the Energy Launcher's 0/3) is **not** in doubt: magnitudes are delivered faithfully.
 4. **"Different arithmetic between the runs."** Both compute an armour delta; the differing baselines
    (70 vs 200) cancel out. Refuted.
 
