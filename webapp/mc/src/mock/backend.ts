@@ -38,6 +38,7 @@ export class MockBackend implements Api {
   private trying: Record<string, string> = {};
   private browsing: Record<string, number> = {};
   private presets: SavedGame[] = [BUILTIN_SNIPER()];
+  private activePreset: string | null = null;
   private evicted = new Set<string>();
   private pushed = false;
   private acks: State['lobby']['acks'] = {};
@@ -98,6 +99,7 @@ export class MockBackend implements Api {
       players: clone(this.players), teams: clone(TEAMS),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
+      active_preset_id: this.activePreset,
       lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed, acks: clone(this.acks) },
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
@@ -246,6 +248,7 @@ export class MockBackend implements Api {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
     if (sg.builtin) throw new Error('Built-in games cannot be deleted');
     this.presets = this.presets.filter(x => x !== sg);
+    if (this.activePreset === id) { this.activePreset = null; this.emit(); }
   }
   async updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame> {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
@@ -270,11 +273,13 @@ export class MockBackend implements Api {
   async applyPreset(id: string) {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
     const { config_id: _cid, loadout_policy, ...rest } = clone(sg.config); void _cid;
-    // like PUT /api/config with the whole preset: rules go through the same merge (custom preset carries its slots)
-    return this.putConfig({ ...rest, loadout_policy: { ...loadout_policy, preset: 'custom' } });
+    const r = await this.putConfig({ ...rest, loadout_policy: { ...loadout_policy, preset: presetOf(loadout_policy) } });   // the name is re-derived, like the server
+    this.activePreset = id; this.emit();
+    return r;
   }
   async putConfig(partial: Partial<GameConfig>) {
     const prevMode = this.config.mode, prevPol = this.config.loadout_policy;
+    if (Object.keys(partial).some(k => !['environment', 'night', 'config_id'].includes(k))) this.activePreset = null;   // a real edit: no longer that saved game
     this.config = { ...this.config, ...partial, config_id: uid('cfg') };
     if (partial.loadout_policy) {
       // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same

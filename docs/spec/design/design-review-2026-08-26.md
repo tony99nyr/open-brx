@@ -124,3 +124,26 @@ broken instead of saying why. Fixed + guarded:
 Rules adopted: (1) a user action whose API call fails must show it — never `.catch(() => {})` on an action;
 (2) every control in a new screen gets a screen-truth assertion before the screen is called done; (3) any UI
 that depends on a new server route gets a compat step against a server without it.
+
+## Round 8 — reviewer team (3 lenses × adversarial verification; 28 agents) after Tony's "this whole selection is busted"
+24 confirmed. The designer's chips/tiles were dead because the pool came only from a server preview whose
+stale-server fallback ignored the edits — fixed by computing the pool on the client from the rules being edited.
+Then the team found what the suite had missed:
+- **Identity by content**: GAMES marked the wrong saved game PLAYING after DUPLICATE / SAVE AS NEW (a copy is
+  content-identical to its source) → the server now records `active_preset_id` on apply; GAMES prefers it.
+- **A rejected host pick** on KIT was blamed on the phone ("CHANGED FROM THEIR PHONE"), started a try-out of the
+  refused weapon, and the error strip was wiped → the pick is recorded and the try-out fired only after a
+  confirmed write.
+- **The stale-server e2e step never starved the UI**: `page.route` cannot touch the WebSocket, so the snapshot
+  arrived complete → `routeWebSocket` strips it now. Plus: designer controls asserted by what is visible (tile
+  opacity/filter), tap/tiny-text audits on GAMES/DESIGNER/KIT with failures not findings, the Kit gun `<select>`
+  finally driven, tautologies removed, a pre-A10 session fixture booted via `--session-file`, bundle-freshness
+  check at boot, duplicate→play-copy and failed-PATCH steps.
+- **Rule model legibility**: chip ON / ◐ partial (1/5) / OFF with a one-line legend; a hint under WHO PICKS that
+  changes with the choice; FIXED shows candidates at full opacity and "TAP THE WEAPON EVERYONE GETS"; "PERKS ONLY"
+  instead of "0 OF 18 WEAPONS"; slot-2 who-picks in every summary line; "PLAYER picks" reads HOST when phone picks
+  are off; a hand-built NO HEAVIES reads NO HEAVIES; discard guards on BACK TO GAMES and on playing another card
+  while the draft is TUNED — NOT SAVED; PLAY THIS NOW says it won't save an unnamed game; COPY / MAKE MY OWN open a
+  draft (nothing written until SAVE); one verb per situation (CUSTOMIZE stock · EDIT yours · COPY a saved game).
+Refuted: 1 (race-pattern claim). Low, left: stepper "PHASE" shows the browsed tab; tablet rail order; BASE legend
+now in the rail footnote.

@@ -213,6 +213,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def presets_delete(req):
         try:
             s.presets.delete(req.path_params["pid"])
+            if s.active_preset_id == req.path_params["pid"]:
+                s.active_preset_id = None; s._changed()
         except PresetError as e:
             return _perr(e)
         return JSONResponse({"ok": True})
@@ -220,7 +222,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def presets_apply(req):
         try:
             row = s.presets.get(req.path_params["pid"])
-            return JSONResponse(s.set_config(row["config"]))     # same path as PUT /api/config: apply_policy + reset notice
+            return JSONResponse(s.apply_preset(row["preset_id"], row["config"]))   # PUT /api/config path + remembers which game is playing
         except PresetError as e:
             return _perr(e)
         except ValueError as e:

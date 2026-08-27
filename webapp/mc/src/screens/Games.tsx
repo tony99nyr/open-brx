@@ -14,26 +14,28 @@ export function Games() {
   const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
   const [games, setGames] = useState<SavedGame[]>([]);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);   // tapping a card while the draft is TUNED — NOT SAVED (review #16)
   const reload = useCallback(() => api.getPresets().then(setGames).catch(() => {}), [api]);
   useEffect(() => { reload(); }, [reload]);
   if (!state) return null;
   const cfg = state.config;
   const sig = gameSig(cfg);
-  const activeSaved = games.find(g => gameSig(g.config) === sig) ?? null;
+  // identity = the game the server APPLIED (a duplicate is content-identical to its source — review #0); content match is the fallback for an older MC
+  const activeSaved = (state.active_preset_id ? games.find(g => g.preset_id === state.active_preset_id) : null) ?? (state.active_preset_id === undefined ? games.find(g => gameSig(g.config) === sig) : null) ?? null;
   const mode = modes.find(m => m.mode === cfg.mode);
   const activeStock = !activeSaved && mode && gameSig({ ...mode.defaults, teams: cfg.teams }) === sig ? mode : null;   // stock defaults, untouched
   const custom = !activeSaved && !activeStock;   // a tuned draft nobody saved yet
   const venue = { environment: cfg.environment, night: cfg.night };
 
-  const playSaved = async (g: SavedGame) => {
+  // a TUNED (unsaved) draft is discarded by playing something else — ask once (review #16)
+  const guarded = (key: string, go: () => void) => { if (custom && confirmSwitch !== key) { setConfirmSwitch(key); return; } setConfirmSwitch(null); go(); };
+  const playSaved = (g: SavedGame) => guarded(g.preset_id, async () => {
     const r = await run(() => api.applyPreset(g.preset_id));
     if (r) await run(() => api.putConfig(venue));   // the venue is tonight's, never the saved game's
-  };
-  const playStock = async (m: ModeInfo) => { await run(() => api.putConfig({ ...m.defaults, ...venue, config_id: cfg.config_id })); };
-  const duplicate = async (g: SavedGame) => {
-    const r = await run(() => api.savePreset({ name: `${g.name} copy`, desc: g.desc, config: g.config }));
-    if (r) { await reload(); openDesigner({ game: r }); }
-  };
+  });
+  const playStock = (m: ModeInfo) => guarded(m.mode, async () => { await run(() => api.putConfig({ ...m.defaults, ...venue, config_id: cfg.config_id })); });
+  // COPY / MAKE MY OWN open the designer as an UNSAVED draft named after the source — nothing is written until SAVE (review #23)
+  const copyOf = (g: SavedGame) => openDesigner({ game: g, copy: true });
   const remove = async (g: SavedGame) => { await run(() => api.deletePreset(g.preset_id)); setConfirmDel(null); await reload(); };
 
   return (
@@ -77,6 +79,7 @@ export function Games() {
                     <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
                     <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
                     <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}`}</div>
+                    {confirmSwitch === g.preset_id && <div role="status" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ THIS DROPS YOUR UNSAVED TUNED GAME — TAP AGAIN TO PLAY THIS</div>}
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
                       {del ? (
                         <>
@@ -86,7 +89,7 @@ export function Games() {
                       ) : (
                         <>
                           {!g.builtin && <SmallBtn onClick={() => openDesigner({ game: g })} label={`edit ${g.name}`}>EDIT</SmallBtn>}
-                          <SmallBtn onClick={() => duplicate(g)} label={`duplicate ${g.name}`}>{g.builtin ? 'MAKE MY OWN' : 'DUPLICATE'}</SmallBtn>
+                          <SmallBtn onClick={() => copyOf(g)} label={`copy ${g.name}`}>{g.builtin ? 'MAKE MY OWN' : 'COPY'}</SmallBtn>
                           {!g.builtin && <SmallBtn onClick={() => setConfirmDel(g.preset_id)} label={`delete ${g.name}`} color={T.micro}>✕</SmallBtn>}
                         </>
                       )}
@@ -121,6 +124,7 @@ export function Games() {
                     <div style={{ flex: 1 }}>
                       <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
                       <div style={{ font: F.chk(500, 12), color: T.dim, marginTop: 3 }}>{m.desc}</div>
+                      {confirmSwitch === m.mode && <div role="status" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn, marginTop: 6 }}>▲ THIS DROPS YOUR UNSAVED TUNED GAME — TAP AGAIN</div>}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                       <SmallBtn onClick={() => openDesigner({ mode: m.mode })} label={`customize ${m.name}`}>CUSTOMIZE ▸</SmallBtn>
@@ -154,7 +158,7 @@ export function Games() {
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <GhostButton size={10} pad="8px 14px" onClick={() => openDesigner({ fromLive: true, game: activeSaved ?? undefined })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : 'CUSTOMIZE ▸'}</GhostButton>
+              <GhostButton size={10} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton>
             </div>
             {(state.config_warnings?.length ?? 0) > 0 && (
               <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -162,7 +166,7 @@ export function Games() {
               </div>
             )}
             {state.config_errors.length > 0 && <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}
-            <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PHONES SHOW "SETTING UP THE GAME" UNTIL YOU CONTINUE TO KIT — THEN THE BRIEFING, THEN THEIR KIT.</div>
+            <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). CONTINUE ▸ TAKES THIS GAME TO KIT — PHONES SHOW "SETTING UP" UNTIL THEN, THEN THE BRIEFING, THEN THEIR KIT. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
           </div>
         </div>
       </div>

@@ -1,0 +1,87 @@
+{
+ "v": 1,
+ "saved_ms": 1787800000000,
+ "players": [
+  {
+   "player_id": "fx-a",
+   "player_num": 41,
+   "display": "RESTORED-A",
+   "team_id": "blue",
+   "node_id": null,
+   "gun_id": "GUN-A",
+   "loadout": {
+    "weapons": [
+     {
+      "weapon_id": "assault_rifle"
+     }
+    ]
+   },
+   "voice": "male",
+   "ready": false
+  },
+  {
+   "player_id": "fx-b",
+   "player_num": 42,
+   "display": "RESTORED-B",
+   "team_id": "yellow",
+   "node_id": null,
+   "gun_id": "GUN-B",
+   "loadout": {
+    "weapons": [
+     {
+      "weapon_id": "smg"
+     }
+    ]
+   },
+   "voice": "female",
+   "ready": false
+  }
+ ],
+ "teams": [
+  {
+   "team_id": "blue",
+   "name": "BLUE TEAM",
+   "color": "blue",
+   "tid": 1
+  },
+  {
+   "team_id": "yellow",
+   "name": "YELLOW TEAM",
+   "color": "yellow",
+   "tid": 2
+  }
+ ],
+ "config": {
+  "config_id": "pre-a10",
+  "mode": "tdm",
+  "environment": "outdoor",
+  "night": false,
+  "time_limit_s": 600,
+  "respawn": {
+   "type": "auto",
+   "delay_s": 15
+  },
+  "scoring": {
+   "frag_limit": 25,
+   "win_by": "kills"
+  },
+  "health": {
+   "max_hp": 45,
+   "max_armor": 70
+  },
+  "teams": [
+   {
+    "team_id": "blue",
+    "name": "BLUE TEAM",
+    "color": "blue",
+    "tid": 1
+   },
+   {
+    "team_id": "yellow",
+    "name": "YELLOW TEAM",
+    "color": "yellow",
+    "tid": 2
+   }
+  ]
+ }
+}

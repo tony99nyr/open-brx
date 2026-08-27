@@ -98,7 +98,7 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
         return (
           <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on}
             style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, size), letterSpacing: '.14em', padding: pad, background: on ? T.acc : 'transparent',
-              color: on ? T.accInk : T.micro, cursor: on ? 'default' : 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+              color: on ? T.accInk : T.micro, cursor: on ? 'default' : 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
             {o.label}
           </button>
         );
@@ -110,9 +110,10 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
 /** Square toggle. */
 export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
-    <button type="button" className="hit44" onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label}
-      style={{ ...BTN_RESET, width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
-      <span style={{ position: 'absolute', top: 2, left: on ? 22 : 2, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
+    <button type="button" onClick={() => onChange(!on)} role="switch" aria-checked={on} aria-label={label}
+      style={{ ...BTN_RESET, width: 48, height: 36, position: 'relative', display: 'inline-block', cursor: 'pointer' }}>
+      <span style={{ position: 'absolute', left: 4, top: 8, width: 40, height: 20, background: T.inset, border: `1px solid ${on ? T.acc : T.line2}`, boxSizing: 'border-box' }} />
+      <span style={{ position: 'absolute', top: 11, left: on ? 27 : 7, width: 14, height: 14, background: on ? T.acc : T.micro, transition: 'left .12s' }} />
     </button>
   );
 }

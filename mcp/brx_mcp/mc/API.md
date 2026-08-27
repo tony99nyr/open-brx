@@ -22,6 +22,7 @@ Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every 
 (coalesced, ≤4/s), plus `{ "kind": "feed", "entry": <FeedEntry> }` for live events.
 ```jsonc
 State {
+  active_preset_id?: string | null,             // A10 §8: the saved game that was APPLIED (null once the config is edited) — GAMES marks it PLAYING
   session_id, phase, t,                      // server time (Unix ms)
   lan: { mode: "router"|"hotspot"|"unknown", ssid?: string, ip: string, port: number, ws_url: string, qr: string /* same as ws_url */ },
   nodes: NodeView[],                          // every node that ever said hello this session

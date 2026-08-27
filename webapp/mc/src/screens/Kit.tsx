@@ -43,22 +43,25 @@ export function Kit() {
 
   // The host's last write per slot. When choice=player BOTH the phone and the host may write; if the phone lands
   // a pick seconds after the host did, the card would just flip — say so instead (brx-opus2, 2026-08-27).
-  const hostPick = useRef<{ pid: string; slot: Slot; id: string | null; label: string; t: number } | null>(null);
-  const [, bump] = useState(0);
-  useEffect(() => { const h = setInterval(() => { if (hostPick.current && Date.now() - hostPick.current.t > 12_000) { hostPick.current = null; bump(v => v + 1); } }, 1000); return () => clearInterval(h); }, []);
+  const [hostPick, setHostPick] = useState<{ pid: string; slot: Slot; id: string | null; label: string; t: number } | null>(null);
+  useEffect(() => { if (!hostPick) return; const h = setTimeout(() => setHostPick(null), 12_000); return () => clearTimeout(h); }, [hostPick]);
   const setLoadout = async (next: Loadout, tryWeapon?: string, note?: { slot: Slot; id: string | null; label: string }) => {
     if (!sp) return;
-    if (note) { hostPick.current = { pid: sp.player_id, ...note, t: Date.now() }; }
-    await patch({ loadout: { ...(sp.loadout ?? {}), ...next } });
+    const ok = await patch({ loadout: { ...(sp.loadout ?? {}), ...next } });
+    if (ok === undefined) return;   // the server refused (error strip shows why) — no override note, no try-out (review #1)
+    if (note) setHostPick({ pid: sp.player_id, ...note, t: Date.now() });
     if (tryWeapon && !state.lobby.pushed) await run(() => api.tryout(sp.player_id, tryWeapon));
   };
   const pickPrimary = (w: WeaponView) => setLoadout({ weapons: [{ weapon_id: w.weapon_id }, ...(lo.weapons ?? []).slice(1, 2)], perk: lo.perk ?? null }, w.weapon_id, { slot: 'primary', id: w.weapon_id, label: w.name });
   const pickSecondary = (w: WeaponView) => setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }, { weapon_id: w.weapon_id }], perk: null }, w.weapon_id, { slot: 'secondary', id: w.weapon_id, label: w.name });
-  const pickPerk = (k: PerkView) => setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }], perk: k.perk_id }, undefined, { slot: 'secondary', id: k.perk_id, label: k.name });
+  const pickPerk = async (k: PerkView) => {
+    await setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }], perk: k.perk_id }, undefined, { slot: 'secondary', id: k.perk_id, label: k.name });
+    if (sp && trying[sp.player_id]) await run(() => api.endTryout(sp.player_id));   // a perk replaces a tried-out secondary: quiet the gun (e2e lane finding)
+  };
   const clearSecondary = () => setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }], perk: null }, undefined, { slot: 'secondary', id: null, label: 'EMPTY' });
   // did the phone overwrite the host's pick within the hold window?
   const overridden = (s: Slot) => {
-    const h = hostPick.current; if (!h || h.pid !== sp?.player_id || h.slot !== s) return null;
+    const h = hostPick; if (!h || h.pid !== sp?.player_id || h.slot !== s) return null;
     const cur = s === 'primary' ? (primary?.weapon_id ?? null) : (secondaryW?.weapon_id ?? perk?.perk_id ?? null);
     return cur !== h.id ? h : null;
   };
@@ -72,7 +75,7 @@ export function Kit() {
     <button type="button" className="hov-acc" onClick={() => setView('build')} title="Loadout rules are set in BUILD"
       style={{ ...BTN_RESET, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', border: `1px solid ${T.line}`, minHeight: 36, cursor: 'pointer' }}>
       <span style={{ width: 6, height: 6, background: PERK_COLOR }} />
-      <span style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.dim }}>RULES</span>
+      <span style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.dim }}>GAME RULES</span>
       <span style={{ font: F.chk(700, 11), letterSpacing: '.14em' }}>{PRESET_LABEL[pol.preset] ?? pol.preset.toUpperCase()}</span>
       {!pol.hud_select && <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>· PHONE PICKS OFF</span>}
     </button>
@@ -154,7 +157,7 @@ export function Kit() {
                     const col = state.teams.find(tm => tm.team_id === t)?.color ?? teamColor(t);
                     return (
                       <button key={t} type="button" className="hit44" onClick={() => patch({ team_id: t })} aria-pressed={on}
-                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '5px 12px', background: on ? col : 'transparent', color: on ? T.accInk : col, border: `1px solid ${on ? col : T.line}`, cursor: 'pointer', minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '8px 14px', background: on ? col : 'transparent', color: on ? T.accInk : col, border: `1px solid ${on ? col : T.line}`, cursor: 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
                         {t.toUpperCase()}
                       </button>
                     );
@@ -285,7 +288,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
     overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void }) {
   const choice = rule?.choice ?? 'player';
   const locked = choice === 'fixed' || choice === 'off';
-  const right = choice === 'fixed' ? 'FIXED · SET IN BUILD' : choice === 'off' ? 'OFF · SET IN BUILD' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
+  const right = choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
   const isPerk = kind === 'perk' && item && 'perk_id' in item;
   const color = isPerk ? PERK_COLOR : T.acc;
   const empty = kind === 'none';
@@ -303,7 +306,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
           <span style={{ width: 64, height: 44, flex: 'none', border: `1px dashed ${T.line2}`, display: 'grid', placeItems: 'center', font: F.osw(700, 20), color: T.faint }}>—</span>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', color: T.dim }}>{choice === 'off' ? 'OFF' : 'EMPTY'}</span>
-            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? 'Ruleset — no slot 2 this game' : 'Alt-fire does nothing · tap to pick'}</span>
+            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? 'This game has no slot 2 — change it in GAMES' : 'Alt-fire does nothing · tap to pick'}</span>
           </span>
         </div>
       ) : item && 'weapon_id' in item ? (
@@ -345,11 +348,11 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, secKind, setSecKind,
   const choice = rule?.choice ?? 'player';
   const nAllowed = slot === 'primary' ? pool.primary.length : pool.secondary_weapons.length;
   const presetTxt = preset && preset !== 'open' ? ` · ${PRESET_LABEL[preset] ?? preset.toUpperCase()}` : '';
-  const summary = choice === 'fixed' ? 'FIXED BY THE RULESET' : choice === 'off' ? 'OFF FOR THIS GAME'
+  const summary = choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME'
     : slot === 'secondary' && secKind === 'perk' ? `${pool.secondary_perks.length} PERKS${presetTxt}`
     : `${nAllowed} OF ${weapons.length} WEAPONS${presetTxt}`;
   const hint = choice === 'fixed' || choice === 'off'
-    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 32 }}>CHANGE IN BUILD ▸</button>
+    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 32 }}>CHANGE IN GAMES ▸</button>
     : <span>{slot === 'primary' ? 'SELECT TO ARM · TRY-OUT STARTS ON PICK' : 'SELECT · WEAPONS TRY OUT ON PICK'}</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>

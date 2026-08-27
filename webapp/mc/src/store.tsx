@@ -4,7 +4,7 @@ import type { Api, FeedEntry, ModeInfo, PerkView, Phase, SavedGame, State, Weapo
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
 export type View = Phase | 'designer';
 /** what the designer opens with: an existing saved game to edit, a stock mode to customise, or the live draft */
-export type DesignerSeed = { game?: SavedGame; mode?: string; fromLive?: boolean };
+export type DesignerSeed = { game?: SavedGame; mode?: string; fromLive?: boolean; copy?: boolean /* open as an unsaved draft named after `game` */ };
 import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
 

@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
-import { TEMPLATE_RULES, computePool, gameSig, rulesLine, withPolicy } from './gameSummary';
+import { TEMPLATE_RULES, computePool, gameSig, presetOf, rulesLine, withPolicy } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -27,7 +27,7 @@ export function Designer() {
   const seed = designerSeed;
   // SAVE updates this one; builtins save as new. Once a draft is saved, further SAVEs / PLAY update that game
   // (a second POST of the same name 409s — found on the real server).
-  const [editing, setEditing] = useState<SavedGame | null>(seed?.game && !seed.game.builtin ? seed.game : null);
+  const [editing, setEditing] = useState<SavedGame | null>(seed?.game && !seed.game.builtin && !seed.copy ? seed.game : null);
   const initial = useMemo<GameConfig | null>(() => {
     if (!state) return null;
     if (seed?.fromLive) return withPolicy(clone(state.config));
@@ -36,15 +36,16 @@ export function Designer() {
     return withPolicy(m ? clone(m.defaults) : clone(state.config));
   }, [seed, modes, state]);
   const [cfg, setCfg] = useState<GameConfig | null>(() => initial);   // the seed is fixed for the page's lifetime
-  const [name, setName] = useState(seed?.game?.name && !seed.game.builtin ? seed.game.name : seed?.game?.builtin ? `${seed.game.name} (mine)` : '');
+  const [name, setName] = useState(!seed?.game ? '' : seed.copy || seed.game.builtin ? `${seed.game.name} ${seed.game.builtin ? '(mine)' : 'copy'}` : seed.game.name);
   const [desc, setDesc] = useState(seed?.game?.desc ?? '');
   const [saved, setSaved] = useState<string | null>(null);
   const [previewOff, setPreviewOff] = useState(false);   // the server has no pool preview (older MC) — counts are "all allowed"
+  const [confirmLeave, setConfirmLeave] = useState(false);   // BACK with unsaved edits asks once (review #16)
 
   // The pool is computed HERE from the rules being edited — every chip/tile/who-picks change shows instantly and needs
   // no server. (Tony, round 8: a server-only preview with an "all allowed" fallback made HEAVY-off and tile taps do
   // nothing visible.) The server preview only re-derives the preset name (OPEN / NO HEAVIES / … / CUSTOM).
-  const pool: LoadoutPool | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg?.loadout_policy, weapons, perks]);
+  const pool: LoadoutPool | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
   const tick = useRef(0);
   useEffect(() => {
     if (!cfg?.loadout_policy) return;
@@ -63,7 +64,7 @@ export function Designer() {
   const mode = modes.find(m => m.mode === cfg.mode);
   const pol = cfg.loadout_policy;
   const put = (p: Partial<GameConfig>) => setCfg(c => c ? { ...c, ...p } : c);
-  const putPol = (p: Partial<LoadoutPolicy>) => setCfg(c => c ? { ...c, loadout_policy: { ...c.loadout_policy, ...p, preset: 'custom' } } : c);
+  const putPol = (p: Partial<LoadoutPolicy>) => setCfg(c => { if (!c) return c; const lp = { ...c.loadout_policy, ...p }; return { ...c, loadout_policy: { ...lp, preset: presetOf(lp) } }; });   // a hand-built NO HEAVIES reads NO HEAVIES (review #18)
   const putSlot = (slot: 'primary' | 'secondary', r: Partial<SlotRule>) => putPol({ [slot]: { ...pol[slot], ...r } });
   // templates are client-side rules — the click must work with no server round-trip (Tony: "you can't click these")
   const applyTemplate = (preset: LoadoutPreset) => { if (preset !== 'custom') setCfg(c => c ? { ...c, loadout_policy: clone(TEMPLATE_RULES[preset]) } : c); };
@@ -93,8 +94,9 @@ export function Designer() {
           <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>[ A2b // GAME DESIGNER ]</div>
           <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>{editing ? `Edit ${editing.name}` : 'Create a Game'}</div>
         </div>
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-          <GhostButton onClick={() => setView('build')}>◂ BACK TO GAMES</GhostButton>
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+          {confirmLeave && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ UNSAVED CHANGES — TAP AGAIN TO LEAVE WITHOUT SAVING</span>}
+          <GhostButton onClick={() => { if (dirty && !confirmLeave) { setConfirmLeave(true); return; } setView('build'); }}>◂ BACK TO GAMES</GhostButton>
         </div>
       </div>
 
@@ -102,7 +104,7 @@ export function Designer() {
         <div style={{ flex: '2 1 600px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 26 }}>
           {/* 1 BASE */}
           <section>
-            <SectionRule label="1 // BASE MODE" hint="SWITCHING THE BASE RESETS THE RULES BELOW" style={{ marginBottom: 12 }} />
+            <SectionRule label="1 // BASE MODE" hint="SWITCHING THE BASE REPLACES EVERY RULE BELOW WITH THAT MODE'S DEFAULTS" style={{ marginBottom: 12 }} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
               {modes.map(m => {
                 const on = m.mode === cfg.mode;
@@ -137,13 +139,14 @@ export function Designer() {
             <SectionRule label="3 // LOADOUT — WHO CARRIES WHAT" hint={<span style={{ color: PERK_COLOR }}>{pol.preset === 'custom' ? 'CUSTOM RULES' : TEMPLATES.find(t => t.value === pol.preset)?.label}</span>} style={{ marginBottom: 12 }} />
             {previewOff && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn, marginBottom: 10 }}>▲ THE MC SERVER PREDATES THIS UI — RULES PREVIEW LOCALLY BUT SAVE / PLAY WILL FAIL UNTIL YOU RESTART IT.</div>}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim }}>START FROM</span>
+              <span style={{ font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim }} title="A template replaces every loadout rule below, including the phone-picks switch">START FROM</span>
               <span role="group" aria-label="loadout template" style={{ display: 'flex', gap: 4 }}>
                 {TEMPLATES.map(t => <button key={t.value} type="button" title={t.hint} onClick={() => applyTemplate(t.value)} aria-pressed={pol.preset === t.value} className="hov-acc"
                   style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.12em', padding: '7px 12px', minHeight: 36, cursor: 'pointer', background: pol.preset === t.value ? T.acc : 'transparent', color: pol.preset === t.value ? T.accInk : T.dim, border: `1px solid ${pol.preset === t.value ? T.acc : T.line}` }}>{t.label}</button>)}
               </span>
               <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, font: F.chk(600, 12), letterSpacing: '.1em' }}>PLAYERS PICK ON THEIR PHONE <Toggle on={pol.hud_select} onChange={v => putPol({ hud_select: v })} label="players pick on phone" /></span>
             </div>
+            {!pol.hud_select && <div role="status" style={{ font: F.mono(600, 9.5), letterSpacing: '.12em', color: T.dim, marginBottom: 10 }}>PHONE PICKS ARE OFF — "PLAYER" BELOW MEANS THE HOST KITS THAT SLOT ON THE KIT PAGE; PLAYERS SEE THEIR KIT BUT CANNOT CHANGE IT.</div>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 12 }}>
               <SlotEditor slot="primary" rule={pol.primary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('primary', r)} />
               <SlotEditor slot="secondary" rule={pol.secondary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('secondary', r)} />
@@ -154,7 +157,7 @@ export function Designer() {
           <section>
             <SectionRule label="4 // NAME & NOTES" hint="WHAT THE CARD AND THE PLAYERS' BRIEFING WILL SAY" style={{ marginBottom: 12 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: T.panel, border: `1px solid ${T.line}`, padding: 16, maxWidth: 620 }}>
-              <input className="textbox" value={name} onChange={e => setName(e.target.value)} placeholder="GAME NAME · e.g. SILENCED SNIPER" aria-label="game name" maxLength={32}
+              <input className="textbox" value={name} onChange={e => { setName(e.target.value); setSaved(null); }} placeholder="GAME NAME · e.g. SILENCED SNIPER" aria-label="game name" maxLength={32}
                 style={{ font: F.osw(600, 22), letterSpacing: '.06em', borderBottomColor: T.line2, minHeight: 44, textTransform: 'uppercase' }} />
               <textarea className="textbox" value={desc} onChange={e => setDesc(e.target.value)} placeholder="One or two lines the players read in their briefing — what the game is, how to win, what to expect." aria-label="game notes" maxLength={240} rows={3}
                 style={{ font: F.chk(500, 13), lineHeight: 1.5, borderBottomColor: T.line2, resize: 'vertical' }} />
@@ -185,6 +188,7 @@ export function Designer() {
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <PrimaryButton onClick={play} title={name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
+              {!name.trim() && <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
                 <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} onClick={() => save(false)} title={editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
                 {editing && <GhostButton size={11} pad="9px 12px" onClick={() => save(true)} title="Keep the original, save this as a new game">SAVE AS NEW</GhostButton>}
@@ -209,7 +213,23 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   const showWeapons = !off && (!sec || rule.kinds.includes('weapon'));
   const showPerks = sec && !off && rule.kinds.includes('perk');
   const summary = off ? 'OFF — ALT-FIRE DOES NOTHING' : fixed ? `EVERYONE GETS ${(weapons.find(w => w.weapon_id === rule.fixed_id)?.name ?? perks.find(k => k.perk_id === rule.fixed_id)?.name ?? '—').toUpperCase()}`
-    : `${allowedW.length} OF ${weapons.length} WEAPONS${sec ? ` · ${allowedK.length} PERKS` : ''}`;
+    : sec && !rule.kinds.includes('weapon') ? `PERKS ONLY · ${allowedK.length} PERKS`
+    : sec && !rule.kinds.includes('perk') ? `WEAPONS ONLY · ${allowedW.length} OF ${weapons.length}`
+    : `${allowedW.length} OF ${weapons.length} WEAPONS${sec ? ` · ${allowedK.length} PERKS` : ''}`;   // review #22
+  const WHO: Record<string, string> = { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
+  // a class chip is ON / PARTIAL (some of its weapons switched off by id) / OFF
+  const tagState = (tag: string) => {
+    if (rule.exclude_tags.includes(tag)) return 'off';
+    const members = weapons.filter(w => (w.tags ?? []).includes(tag));
+    const n = members.filter(w => allowedW.includes(w.weapon_id)).length;
+    return n === members.length ? 'on' : `${n}/${members.length}`;
+  };
+  const tapTag = (tag: string) => {
+    const st = tagState(tag);
+    if (st === 'on') onRule({ exclude_tags: [...rule.exclude_tags, tag] });                                    // whole class off
+    else onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag),                                    // whole class back ON, incl. members switched off by id
+                  exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
+  };
   return (
     <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${sec ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -217,7 +237,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
         <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 9.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro }}>WHO PICKS</span>
+        <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
         <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
           onChange={(v: SlotChoice) => onRule({ choice: v, fixed_id: v === 'fixed' ? (rule.fixed_id ?? allowedW[0] ?? allowedK[0] ?? 'assault_rifle') : rule.fixed_id })} />
         {sec && !off && !fixed && (
@@ -227,12 +247,17 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
           </span>
         )}
       </div>
+      <div style={{ font: F.chk(500, 11), color: T.dim }}>{WHO[rule.choice]}</div>
       {showWeapons && !fixed && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro, marginRight: 4 }}>CLASSES</span>
-          {TAGS.map(t => <Chip key={t.tag} on={!rule.exclude_tags.includes(t.tag)} color={t.color} onClick={() => onRule({ exclude_tags: toggle(rule.exclude_tags, t.tag) })}>{t.label}</Chip>)}
-        </div>
+        <>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: T.micro, marginRight: 4 }}>CLASSES</span>
+            {TAGS.map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
+          </div>
+          <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>A CHIP SWITCHES A WHOLE CLASS · TAP A WEAPON TO SWITCH JUST THAT ONE · A PARTIAL CHIP (1/5) MEANS SOME OF ITS WEAPONS ARE OFF</div>
+        </>
       )}
+      {showWeapons && fixed && <div style={{ font: F.mono(600, 9.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
       {showWeapons && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(112px,1fr))', gap: 6 }}>
           {weapons.map(w => {
@@ -250,10 +275,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
             return (
               <button key={w.weapon_id} type="button" aria-pressed={on} title={tip} aria-label={`${w.name}${on ? ', allowed' : ', off'}`} className="hov-acc"
                 onClick={() => fixed ? onRule({ fixed_id: w.weapon_id }) : byTag ? allowThroughTag() : onRule({ exclude_ids: toggle(rule.exclude_ids, w.weapon_id) })}
-                style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 4, padding: 5, textAlign: 'left', cursor: 'pointer', background: on ? (fixed ? 'rgba(57,180,255,.1)' : T.panel) : T.panelDeep, border: `1px solid ${on ? (fixed ? T.acc : T.line2) : T.line}`, minHeight: 44 }}>
-                <span style={{ display: 'block', height: 40, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, opacity: on ? 1 : .25, filter: on ? undefined : 'grayscale(1)' }} />
+                style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 4, padding: 5, textAlign: 'left', cursor: 'pointer', background: on ? (fixed ? 'rgba(57,180,255,.12)' : T.panel) : T.panelDeep, border: `${fixed && on ? 2 : 1}px solid ${on ? (fixed ? T.acc : T.line2) : T.line}`, minHeight: 44 }}>
+                <span style={{ display: 'block', height: 40, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, opacity: on || fixed ? 1 : .25, filter: on || fixed ? undefined : 'grayscale(1)' }} />
                 <span style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline' }}>
-                  <span style={{ font: F.chk(700, 10), letterSpacing: '.04em', color: on ? T.ink : T.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
+                  <span style={{ font: F.chk(700, 10), letterSpacing: '.04em', color: on || fixed ? T.ink : T.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixed && on ? '✓ ' : ''}{w.name}</span>
                   <span style={{ font: F.mono(600, 7), letterSpacing: '.1em', color: role.color, flex: 'none' }}>{role.label}</span>
                 </span>
               </button>
@@ -282,11 +307,12 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   );
 }
 
-function Chip({ on, color, onClick, children }: { on: boolean; color: string; onClick: () => void; children: React.ReactNode }) {
+function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?: string; color: string; onClick: () => void; children: React.ReactNode }) {
+  const mixed = on && !!partial;
   return (
-    <button type="button" aria-pressed={on} onClick={onClick} className="hit44"
-      style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.14em', padding: '5px 9px', minHeight: 30, cursor: 'pointer', border: `1px solid ${on ? color : T.line}`, color: on ? T.accInk : T.micro, background: on ? color : 'transparent' }}>
-      {on ? '✓ ' : ''}{children}
+    <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed — tap to allow all` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
+      style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.14em', padding: '7px 10px', minHeight: 36, cursor: 'pointer', border: `1px solid ${on ? color : T.line}`, color: mixed ? color : on ? T.accInk : T.micro, background: mixed ? 'transparent' : on ? color : 'transparent' }}>
+      {mixed ? `◐ ${partial} ` : on ? '✓ ' : ''}{children}
     </button>
   );
 }

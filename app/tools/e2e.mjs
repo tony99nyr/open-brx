@@ -21,7 +21,7 @@ let curFlow = 'boot'; let shotN = 0;
 let failN = 0;
 const ONLY = process.env.ONLY;   // ONLY=<substring> runs just the matching step(s) — for steps that stand alone (e.g. F8b compat)
 const step = async (name, fn) => {
-  if (ONLY && !name.includes(ONLY)) return;
+  if (ONLY && !name.includes(ONLY) && curFlow !== 'F9 ux-audit') return;   // the rollup + report always run
   const t0 = Date.now();
   try { await fn(); results.push({ flow: curFlow, name, ok: true, ms: Date.now() - t0 }); console.log(`  ✓ ${name}`); }
   catch (e) {
@@ -59,6 +59,22 @@ if (await fetch(MC + '/api/state').then(r => r.ok).catch(() => false)) {
   console.error('FATAL: something already listens on 8865 — kill the stale MC first (a previous run left one behind?)');
   process.exit(3);
 }
+// The suite serves git-ignored build artifacts as-is: a stale dist once made a whole run "pass" on old UI code
+// (review #11). Refuse to run when the sources are newer than the bundles (ALLOW_STALE=1 overrides, e.g. mid-edit).
+const newest = (dir) => { let m = 0; const walk = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else m = Math.max(m, fs.statSync(f).mtimeMs); } }; walk(dir); return m; };
+const mcDistDir = path.join(REPO, 'webapp/mc/dist/assets');
+const mcBundle = fs.existsSync(mcDistDir) ? fs.readdirSync(mcDistDir).filter(f => /^index-.*\.js$/.test(f)).map(f => path.join(mcDistDir, f)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] : null;
+const hudBundle = path.join(ROOT, 'www', 'app.js');
+{
+  const stale = [];
+  if (!mcBundle) stale.push('webapp/mc/dist missing — cd webapp/mc && npm run build');
+  else if (newest(path.join(REPO, 'webapp/mc/src')) > fs.statSync(mcBundle).mtimeMs) stale.push('webapp/mc/src is newer than dist — cd webapp/mc && npm run build');
+  if (!fs.existsSync(hudBundle)) stale.push('app/www/app.js missing — cd app && npm run build');
+  else if (newest(path.join(ROOT, 'src')) > fs.statSync(hudBundle).mtimeMs) stale.push('app/src is newer than www/app.js — cd app && npm run build');
+  if (stale.length && !process.env.ALLOW_STALE) { console.error('FATAL: STALE BUNDLE — ' + stale.join('; ')); process.exit(3); }
+  if (stale.length) console.log('WARNING (ALLOW_STALE): ' + stale.join('; '));
+  console.log('serving MC bundle', mcBundle ? path.basename(mcBundle) : '(none)', '· HUD bundle', path.basename(hudBundle));
+}
 const mcLog = fs.openSync(path.join(OUT, 'mc-server.log'), 'w');
 const mcProc = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', '8865', '--ws-port', '8866', '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', mcLog, mcLog] });
 process.on('exit', () => { try { mcProc.kill(); } catch {} });   // the watchdog/timeout path must not leak the server
@@ -76,6 +92,7 @@ console.log('node ws:', WS);
 // ---------- pages + UX collectors ----------
 const browser = await chromium.launch();
 const jsErrors = [];
+let expectHttpErrors = false;   // a step that deliberately provokes a 4xx (F3b j) sets this so the rollup doesn't count it
 const mkPage = async (name, viewport) => {
   // Each page gets its OWN context: pages share localStorage otherwise, so both HUDs helloed with the SAME
   // persisted node_id and the A8 takeover machinery ate them (the hudB-never-binds mystery, 2026-08-26).
@@ -83,8 +100,8 @@ const mkPage = async (name, viewport) => {
   const pg = await ctx.newPage();
   pg.setDefaultTimeout(6000);   // a missing selector fails the STEP in 6 s, not 30 s
   pg.on('pageerror', e => jsErrors.push({ page: name, flow: curFlow, err: String(e.message).slice(0, 200) }));
-  pg.on('console', m => { if (m.type() === 'error') jsErrors.push({ page: name, flow: curFlow, err: 'console: ' + m.text().slice(0, 200) }); });
-  pg.on('response', r => { if (r.status() >= 400) jsErrors.push({ page: name, flow: curFlow, err: `HTTP ${r.status()} ${r.request().method()} ${r.url().slice(-60)}` }); });
+  pg.on('console', m => { if (m.type() === 'error' && !(expectHttpErrors && /Failed to load resource/.test(m.text()))) jsErrors.push({ page: name, flow: curFlow, err: 'console: ' + m.text().slice(0, 200) }); });
+  pg.on('response', r => { if (r.status() >= 400 && !expectHttpErrors) jsErrors.push({ page: name, flow: curFlow, err: `HTTP ${r.status()} ${r.request().method()} ${r.url().slice(-60)}` }); });
   return pg;
 };
 const mc = await mkPage('mc', { width: 1280, height: 800 });
@@ -94,13 +111,15 @@ const shot = async (pg, tag) => pg.screenshot({ path: path.join(OUT, `${String(+
 const hudState = (pg) => pg.evaluate(() => window.brx.engine.state());
 const anim = async (pg, sel) => pg.evaluate(s => { const el = document.querySelector(s); return el ? getComputedStyle(el).animationName : null; }, sel);
 const textAudit = async (pg, screen) => {
+  // the stepper's "01".."06" numerals used to saturate the 6-item cap so nothing real ever surfaced (review #6):
+  // nav is excluded and the list is uncapped
   const tiny = await pg.evaluate(() => { const out = new Set();
     for (const el of document.querySelectorAll('span,div,td,th,button,a,label')) {
-      if (!el.offsetParent || el.children.length) continue;
+      if (!el.offsetParent || el.children.length || el.closest('nav')) continue;
       const t = (el.textContent || '').trim(); if (!t) continue;
       const fs = parseFloat(getComputedStyle(el).fontSize);
       if (fs < 10) out.add(`${Math.round(fs)}px: "${t.slice(0, 30)}"`);
-    } return [...out].slice(0, 6); });
+    } return [...out]; });
   for (const t of tiny) findings.push({ kind: 'tiny-text', where: screen, what: t });
 };
 const overlapAudit = async (pg, screen, sels) => {
@@ -116,12 +135,33 @@ const overlapAudit = async (pg, screen, sels) => {
   for (const w of bad) findings.push({ kind: 'overlap', where: screen, what: w });
   return bad;
 };
-const tapAudit = async (pg, screen) => {
-  const rows = await pg.evaluate(() => [...document.querySelectorAll('button,[role="button"]')]
-    .filter(el => el.offsetParent !== null)
-    .map(el => { const r = el.getBoundingClientRect(); return { t: (el.textContent || el.getAttribute('aria-label') || '?').trim().slice(0, 28), h: Math.round(r.height), w: Math.round(r.width), aria: !!(el.getAttribute('aria-label') || (el.textContent || '').trim()) }; }));
-  for (const r of rows) { if (r.h < 36) findings.push({ kind: 'tap-target', where: `${screen}`, what: `"${r.t}" is ${r.w}x${r.h}px (<36px tall)` }); if (!r.aria) findings.push({ kind: 'a11y', where: screen, what: 'button with no accessible name' }); }
+/** `hard`: on GAMES / DESIGNER / KIT a primary control under 36 px FAILS the step (review #6) — findings only elsewhere. */
+const tapAudit = async (pg, screen, hard = false) => {
+  const rows = await pg.evaluate(hard => [...document.querySelectorAll('button,[role="button"]')]
+    .filter(el => el.offsetParent !== null && !(hard && el.closest('header')))   // hard audits judge the SCREEN's controls, not the shell
+    .map(el => { const r = el.getBoundingClientRect(); return { t: (el.textContent || el.getAttribute('aria-label') || '?').trim().slice(0, 28), h: Math.round(r.height), w: Math.round(r.width), aria: !!(el.getAttribute('aria-label') || (el.textContent || '').trim()) }; }), hard);
+  const small = [];
+  for (const r of rows) { if (r.h < 36) { findings.push({ kind: 'tap-target', where: `${screen}`, what: `"${r.t}" is ${r.w}x${r.h}px (<36px tall)` }); small.push(`"${r.t}" ${r.w}x${r.h}`); } if (!r.aria) findings.push({ kind: 'a11y', where: screen, what: 'button with no accessible name' }); }
+  if (hard && small.length) throw new Error(`${screen}: ${small.length} control(s) under 36 px tall — ${small.slice(0, 8).join(', ')}`);
 };
+/** ONLY= runs skip the boot steps: make sure the MC page is loaded before a standalone step drives it. */
+const ensureMc = async () => { if (mc.url() === 'about:blank') { await mc.goto(MC + '/', { waitUntil: 'networkidle' }); await until(async () => (await mc.locator('nav button').count()) >= 6, 10000, 'MC shell'); } };
+/** Tap a GAMES card. While the draft is TUNED — NOT SAVED the card asks "TAP AGAIN" (review #16): confirm it. */
+const playCard = async (label) => {
+  const card = mc.locator(`div[role="button"][aria-label="play ${label}"]`).first();
+  await card.click();
+  await sleep(250);
+  if ((await mc.locator('text=TAP AGAIN').count()) > 0) await card.click();
+};
+/** DESIGNER → GAMES. With unsaved edits the button asks "TAP AGAIN TO LEAVE" (review #16): confirm it. */
+const backToGames = async (pg = mc) => {
+  await pg.click('button:has-text("◂ BACK TO GAMES")');
+  await sleep(250);
+  if ((await pg.locator('text=TAP AGAIN TO LEAVE').count()) > 0) await pg.click('button:has-text("◂ BACK TO GAMES")');
+  await until(async () => (await pg.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'back on GAMES');
+};
+/** The MC error strip (CommandBar `button[role=alert]` — a dismissable ▲ line). */
+const errStrip = async () => (await mc.locator('button[role="alert"]').allTextContents()).join(' | ');
 
 let guns = [], pA, pB;
 const watchdog = setTimeout(() => { console.log('WATCHDOG: 7 min — aborting'); try { fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ aborted: true, results, findings, jsErrors }, null, 1)); } catch {} process.exit(2); }, 420000);
@@ -140,33 +180,60 @@ await step('scan armory from the UI → rows appear', async () => {
   await until(async () => (await mc.locator(`text=${guns[0].gun_id}`).count()) > 0, 8000, 'armory row rendered');
   await shot(mc, 'armory-scanned'); await tapAudit(mc, 'armory'); await textAudit(mc, 'armory');
 });
-await step('CONTINUE ▸ on Armory advances to Build (dead GO chip regression)', async () => {
+await step('CONTINUE ▸ on Armory advances to GAMES — the GAMES screen renders (dead GO chip regression)', async () => {
   await mc.click('button:has-text("CONTINUE ▸")');
   await until(async () => (await st()).phase === 'build', 6000, 'server phase build');
-  await until(async () => (await st()).phase === 'build', 6000, 'server phase build (GAMES/BUILD screen)');
+  await until(async () => (await mc.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES screen rendered (CREATE A GAME card)');
+  expect((await mc.locator('text=PICK THE GAME').count()) > 0, 'GAMES header missing');
 });
-await step('GAMES: stock mode cards switch the game + the summary rail follows', async () => {
+await step('GAMES: stock mode cards switch the game — PLAYING tag, rail title and LOADOUT row follow (screen truth)', async () => {
   await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().click();
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa applied');
   // the UI snapshot is coalesced (≤4/s): wait until the card itself shows PLAYING before the next click — a card that
   // still believes it is active ignores the tap (`if (!on)`), which is correct app behaviour and a race in a test
   await until(async () => (await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"][aria-pressed="true"]').count()) > 0, 6000, 'FFA card shows PLAYING');
+  expect((await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().textContent()).includes('PLAYING'), 'FFA card has no PLAYING tag');
   await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').first().click();
   await until(async () => (await st()).config.mode === 'tdm', 5000, 'tdm back');
-  await shot(mc, 'games-modes'); await tapAudit(mc, 'games'); await textAudit(mc, 'games');
+  await until(async () => (await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"][aria-pressed="true"]').count()) > 0, 6000, 'TDM card shows PLAYING');
+  const rail = await mc.locator('text=STOCK MODE // PLAYING').locator('xpath=..').textContent();
+  expect(/TEAM DEATHMATCH/.test(rail), 'rail title is not TEAM DEATHMATCH: ' + rail.slice(0, 80));
+  const load = await mc.locator('text=LOADOUT').locator('xpath=..').first().textContent();
+  expect(/OPEN/.test(load) && /PRIMARY: PLAYER PICKS/.test(load) && /SLOT 2:.*WEAPON.*PERK/.test(load), 'LOADOUT row wrong: ' + load);
+  await shot(mc, 'games-modes'); await textAudit(mc, 'games');
+});
+await step('GAMES: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'games', true); });
+await step('GAMES: VENUE seg + NIGHT OPS change the venue → summary VENUE row + server config; venue survives a game switch', async () => {
+  const venue = mc.locator('[role="group"][aria-label="venue"]');
+  await venue.locator('button:has-text("INDOOR")').click();
+  await until(async () => (await st()).config.environment === 'indoor', 5000, 'indoor on the server');
+  await venue.locator('button[aria-label="night ops"]').click();
+  await until(async () => (await st()).config.night === true, 5000, 'night on the server');
+  const row = () => mc.locator('text=VENUE').locator('xpath=..').last().textContent();
+  await until(async () => /INDOOR · NIGHT OPS/.test(await row()), 5000, 'summary VENUE row reads INDOOR · NIGHT OPS');
+  await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().click();      // venue is tonight's, not the game's
+  await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa');
+  await until(async () => (await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"][aria-pressed="true"]').count()) > 0, 6000, 'FFA playing');
+  const c = (await st()).config; expect(c.environment === 'indoor' && c.night === true, 'venue was reset by playing a game: ' + c.environment + '/' + c.night);
+  await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').first().click();
+  await until(async () => (await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"][aria-pressed="true"]').count()) > 0, 6000, 'TDM playing');
+  await venue.locator('button:has-text("OUTDOOR")').click(); await venue.locator('button[aria-label="night ops"]').click();
+  await until(async () => { const c = (await st()).config; return c.environment === 'outdoor' && c.night === false; }, 5000, 'venue restored');
 });
 await step('config: fast respawn + short match for the run', async () => {
   const r = await api('PUT', '/api/config', { time_limit_s: 120, respawn: { type: 'auto', delay_s: 4 } });
   expect(r.ok, 'config PUT failed: ' + JSON.stringify(r.errors));
 });
-await step('CONTINUE ▸ on Build advances to Kit', async () => {
+await step('CONTINUE ▸ on GAMES advances to KIT — the KIT screen renders', async () => {
   await mc.click('button:has-text("CONTINUE ▸")');
   await until(async () => (await st()).phase === 'kit', 6000, 'server phase kit');
+  await until(async () => (await mc.locator('text=KIT EACH PLAYER').count()) > 0 && (await mc.locator('input[aria-label="new operator callsign"]').count()) > 0, 6000, 'KIT screen rendered (header + roster input)');
 });
-await step('guard: PUSH disabled with an empty roster', async () => {
+await step('guard: PUSH CONFIG & ARM exists AND is disabled with an empty roster', async () => {
   await nav(3);
-  const dis = await mc.locator('button:has-text("PUSH CONFIG & ARM")').first().isDisabled().catch(() => null);
-  expect(dis !== false, 'push button clickable with no players');
+  const btn = mc.locator('button:has-text("PUSH CONFIG & ARM")').first();
+  await until(async () => (await btn.count()) > 0, 6000, 'PUSH button rendered');
+  expect((await btn.isDisabled()) === true, 'push button clickable with no players');
   await nav(2);   // back to kit for the join flow
 });
 
@@ -179,12 +246,23 @@ await step('add ALPHA + BRAVO through the roster input', async () => {
     await until(async () => (await st()).players.some(p => p.display === nm), 5000, nm + ' added');
   }
 });
-await step('bind guns to players (API — no Kit UI affordance: logged as a UX finding)', async () => {
-  findings.push({ kind: 'ux', where: 'kit', what: "no way to bind a gun to a player from the Kit screen (rows say NO GUN; only auto-adopt/API can set gun_id)" });
+await step('bind guns through the Kit gun picker; BRAVO to YELLOW via the team chip — rows leave NO GUN', async () => {
   const s = await st(); pA = s.players.find(p => p.display === 'ALPHA'); pB = s.players.find(p => p.display === 'BRAVO');
-  await api('PATCH', `/api/players/${pA.player_id}`, { gun_id: guns[0].gun_id });
-  await api('PATCH', `/api/players/${pB.player_id}`, { gun_id: guns[1].gun_id, team_id: 'yellow' });
+  const row = nm => mc.locator('div[role="button"]:has-text("' + nm + '")').first();
+  await row('ALPHA').click();
+  const sel = mc.locator('select[aria-label="gun for ALPHA"]');
+  const opts = await sel.locator('option').allTextContents();
+  expect(guns.every(g => opts.some(o => o.includes(g.gun_id))), 'gun picker does not list every scanned gun: ' + opts.join(','));
+  await sel.selectOption(guns[0].gun_id);
+  await until(async () => { const t = await row('ALPHA').textContent(); return t.includes(guns[0].gun_id) && !t.includes('NO GUN'); }, 6000, 'ALPHA row shows its gun');
+  await row('BRAVO').click();
+  await mc.locator('select[aria-label="gun for BRAVO"]').selectOption(guns[1].gun_id);
+  await mc.locator('[role="group"][aria-label="team"] button:has-text("YELLOW")').click();
+  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.gun_id === guns[1].gun_id && p.team_id === 'yellow'; }, 6000, 'BRAVO gun + team on the server');
+  expect((await mc.locator('[role="group"][aria-label="team"] button[aria-pressed="true"]').textContent()).includes('YELLOW'), 'YELLOW chip not pressed');
+  await textAudit(mc, 'kit');
 });
+await step('KIT: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'kit', true); });
 await step('hudA joins by TYPING the ws URL (the real join UX)', async () => {
   await hudA.goto(`${HUD}/?gun=${encodeURIComponent(guns[0].gun_id + '-' + guns[0].ble.tail)}`);
   await hudA.fill('#mcurl', WS); await hudA.click('button:has-text("CONNECT")');
@@ -278,7 +356,7 @@ await step('A10 §4.1: host back on GAMES (phase build) → phones show SETTING 
 await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "13 OF 18", Rocket tile disabled', async () => {
   cfgBeforeRules = (await st()).config;
   await nav(1);
-  await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().click();
+  await playCard('FREE-FOR-ALL');            // the run config is TUNED (fast respawn) → the card asks TAP AGAIN
   await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'preset no_heavies');
   await nav(2);
   await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
@@ -339,33 +417,142 @@ await step('(f) READY UP while a try-out is armed ends it; first ready does NOT 
 });
 await step('(g) GAMES: play the saved "Silenced Sniper" → both phones padlocked "FIXED FOR THIS GAME"; MC shows the LOADOUTS RESET notice', async () => {
   await nav(1);
-  await mc.locator('div[role="button"][aria-label="play Silenced Sniper"]').first().click();
+  await playCard('Silenced Sniper');
   await until(async () => { const c = (await st()).config; return c.mode === 'ffa' && c.loadout_policy.primary.choice === 'fixed' && c.loadout_policy.primary.fixed_id === 'sniper_rifle'; }, 6000, 'silenced sniper applied');
   for (const [pg, nm] of [[hudA, 'hudA'], [hudB, 'hudB']]) {
     await until(async () => (await pg.locator('.plate.slot.locked').count()) === 2, 8000, nm + ' locked plates');
     expect((await pg.locator('text=FIXED FOR THIS GAME').count()) > 0, nm + ' missing FIXED FOR THIS GAME');
   }
-  // The "N LOADOUTS RESET BY …" notice: the server clears it on EVERY config PUT (state.py `_policy_notice`), and
-  // Games.tsx re-asserts the VENUE with a PUT right after applyPreset — so the notice is wiped before the host can see it.
-  // Recorded as a finding (MC/server side), not a phone failure.
-  const notice = await until(async () => (await mc.locator('text=/LOADOUTS? RESET BY/i').count()) > 0, 4000, 'reset notice on GAMES').then(() => true).catch(() => false);
-  if (!notice) findings.push({ kind: 'mc', where: 'games', what: 'LOADOUTS RESET notice never visible after playing a saved game: the venue re-assert PUT (Games.tsx playSaved) clears _policy_notice on the server' });
+  // The "N LOADOUTS RESET BY <game name>" notice must survive the venue re-assert PUT (server keeps _policy_notice
+  // across venue-only PUTs; the label is the PLAYING game's name) — a hard assertion, not a finding (review #10)
+  await until(async () => (await mc.locator('text=/LOADOUTS? RESET BY SILENCED SNIPER/i').count()) > 0, 6000, 'the amber "N LOADOUTS RESET BY SILENCED SNIPER" notice on GAMES');
+  expect((await mc.locator('div[role="button"][aria-label="play Silenced Sniper"][aria-pressed="true"]').count()) > 0, 'Silenced Sniper card not marked PLAYING');
   await shot(mc, 'games-snipers-reset'); await shot(hudA, 'hudA-locked-snipers');
 });
-await step('(h) DESIGNER: create a game → SAVE GAME "e2e test" → BACK TO GAMES shows the card → two-step delete', async () => {
-  const r = await fetch(MC + '/api/presets');
-  if (r.status === 404) { findings.push({ kind: 'skipped', where: 'games', what: '/api/presets not up yet — saved-games step skipped' }); return; }
+await step('(g2) KIT under Silenced Sniper: both slot cards read FIXED (locked by the game); tapping the SMG tile leaves the loadout unchanged', async () => {
+  await nav(2);
+  await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
+  await until(async () => (await mc.locator('text=/FIXED (BY THE GAME|· SET IN)/').count()) >= 2, 6000, 'both slot cards read FIXED (locked by the game)');
+  const before = JSON.stringify((await st()).players.find(p => p.player_id === pA.player_id).loadout);
+  const smg = mc.locator('div[role="button"][aria-label*="SMG"]').first();
+  expect((await smg.getAttribute('aria-disabled')) === 'true', 'SMG tile is not aria-disabled under a fixed primary');
+  await smg.click({ force: true });
+  await sleep(700);
+  expect(JSON.stringify((await st()).players.find(p => p.player_id === pA.player_id).loadout) === before, 'tapping a disabled tile changed the loadout');
+  expect((await mc.locator('text=TRYING SMG').count()) === 0, 'a disabled tile started a try-out');
+  await shot(mc, 'kit-fixed-locked');
+});
+await step('(h) DESIGNER: create a game → name + notes → SAVE GAME "e2e test" → BACK TO GAMES shows the card', async () => {
+  await nav(1);
   await mc.click('button[aria-label="create a game"]');
   await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
   await mc.fill('input[aria-label="game name"]', 'e2e test');
+  await mc.fill('textarea[aria-label="game notes"]', 'notes written by the e2e suite');
   await mc.click('button:has-text("SAVE GAME")');
   await until(async () => (await (await fetch(MC + '/api/presets')).json()).some(g => g.name.toLowerCase() === 'e2e test'), 6000, 'preset saved server-side');
-  await mc.click('button:has-text("◂ BACK TO GAMES")');
+  await until(async () => (await mc.locator('text=SAVED "E2E TEST"').count()) > 0, 6000, 'SAVED status in the rail');
+  await backToGames();
   await until(async () => (await mc.locator('div[role="button"][aria-label="play e2e test"]').count()) > 0, 6000, 'saved card on GAMES');
   await shot(mc, 'games-saved');
-  await mc.click('button[aria-label="delete e2e test"]');
-  await mc.click('button:has-text("CONFIRM DELETE")');
-  await until(async () => (await mc.locator('div[role="button"][aria-label="play e2e test"]').count()) === 0, 6000, 'card removed');
+});
+await step('(h2) EDIT pre-fills the designer with the saved name + notes', async () => {
+  await mc.click('button[aria-label="edit e2e test"]');
+  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
+  expect((await mc.inputValue('input[aria-label="game name"]')) === 'e2e test', 'name not pre-filled');
+  expect((await mc.inputValue('textarea[aria-label="game notes"]')) === 'notes written by the e2e suite', 'notes not pre-filled');
+  expect((await mc.locator('text=EDIT E2E TEST').count()) > 0, 'designer header is not EDIT E2E TEST');
+  await backToGames();
+});
+await step('(h3) copy "e2e test" → play the COPY → the copy\'s card is PLAYING and the rail title is the copy (identity by applied id, not content)', async () => {
+  const copyBtn = mc.locator('button[aria-label^="duplicate e2e test"], button[aria-label^="copy e2e test"]').first();
+  expect((await copyBtn.count()) > 0, 'no DUPLICATE / COPY button on the e2e test card');
+  await copyBtn.click();
+  await sleep(600);
+  if ((await mc.locator('input[aria-label="game name"]').count()) > 0) {           // the copy may open in the designer as a draft: save it there
+    if (!/copy/i.test(await mc.inputValue('input[aria-label="game name"]'))) await mc.fill('input[aria-label="game name"]', 'e2e test copy');
+    if ((await mc.locator('button:has-text("SAVE GAME")').count()) > 0) await mc.click('button:has-text("SAVE GAME")'); else await mc.click('button:has-text("SAVE")');
+    await until(async () => (await (await fetch(MC + '/api/presets')).json()).some(g => /^e2e test copy/i.test(g.name)), 6000, 'copy saved');
+    await backToGames();
+  }
+  const copy = (await (await fetch(MC + '/api/presets')).json()).find(g => /^e2e test copy/i.test(g.name));
+  expect(copy, 'no saved copy of e2e test on the server');
+  const card = mc.locator(`div[role="button"][aria-label="play ${copy.name}"]`).first();
+  await until(async () => (await card.count()) > 0, 6000, 'copy card on GAMES');
+  await playCard(copy.name);
+  await until(async () => (await st()).active_preset_id === copy.preset_id, 6000, 'server applied the COPY (active_preset_id)');
+  await until(async () => (await card.getAttribute('aria-pressed')) === 'true', 6000, 'the COPY card is marked PLAYING');
+  expect((await mc.locator('div[role="button"][aria-label="play e2e test"]').first().getAttribute('aria-pressed')) !== 'true', 'the ORIGINAL is still marked PLAYING');
+  const rail = await mc.locator('text=SAVED GAME // PLAYING').locator('xpath=..').textContent();
+  expect(new RegExp(copy.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(rail), 'rail title is not the copy: ' + rail.slice(0, 80));
+  await shot(mc, 'games-play-copy');
+  for (const nm of [copy.name, 'e2e test']) {
+    await mc.click(`button[aria-label="delete ${nm}"]`); await mc.click('button:has-text("CONFIRM DELETE")');
+    await until(async () => (await mc.locator(`div[role="button"][aria-label="play ${nm}"]`).count()) === 0, 6000, nm + ' removed');
+  }
+});
+await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster line; PERKS tab → Extended Mags → card', async () => {
+  await nav(1);
+  await playCard('FREE-FOR-ALL');          // back to NO HEAVIES rules (player picks)
+  await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'no_heavies');
+  await nav(2);
+  await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
+  await mc.locator('div[role="button"]:has-text("SECONDARY")').first().click();
+  await until(async () => (await mc.locator('text=ARSENAL // SECONDARY').count()) > 0, 6000, 'arsenal shows the SECONDARY slot');
+  await mc.locator('button:has-text("WEAPONS")').first().click();            // the arsenal remembers PERKS when a perk is equipped
+  await until(async () => (await mc.locator('div[role="button"][aria-label*="Suppressor"]').count()) > 0, 6000, 'weapon tiles for slot 2');
+  await mc.locator('div[role="button"][aria-label*="Suppressor"]').first().click();
+  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.weapons[1]?.weapon_id === 'suppressor'; }, 6000, 'server slot 2 = suppressor');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('SUPPRESSOR'), 6000, 'SECONDARY card shows SUPPRESSOR');
+  await until(async () => /SUPPRESSOR/.test(await mc.locator('div[role="button"]:has-text("BRAVO")').first().textContent()), 6000, 'roster line shows the secondary');
+  await mc.locator('button:has-text("PERKS")').first().click();
+  await mc.locator('div[role="button"][aria-label="Extended Mags perk"]').first().click();
+  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.perk === 'extended_mags' && p.loadout.weapons.length === 1; }, 6000, 'server perk = extended_mags, slot-2 weapon cleared');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('EXTENDED MAGS'), 6000, 'SECONDARY card shows EXTENDED MAGS');
+  await until(async () => /◆ EXTENDED MAGS/.test(await mc.locator('div[role="button"]:has-text("BRAVO")').first().textContent()), 6000, 'roster ◆ EXTENDED MAGS');
+  // Picking a perk leaves the slot-2 WEAPON try-out running with no END TRY-OUT in sight (the perk hero has none) —
+  // recorded as a UI finding; the host has to re-focus a weapon card to end it.
+  if ((await st()).kit.trying[pB.player_id]) findings.push({ kind: 'ux', where: 'kit', what: 'equipping a perk over a tried-out secondary weapon leaves that try-out armed; the perk hero offers no END TRY-OUT' });
+  await mc.locator('div[role="button"]:has-text("PRIMARY")').first().click();
+  if ((await mc.locator('text=END TRY-OUT').count()) > 0) { await mc.click('text=END TRY-OUT'); }
+  await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
+  await shot(mc, 'kit-secondary-host');
+});
+await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED FROM THEIR PHONE", no try-out of the refused weapon', async () => {
+  await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
+  await mc.locator('div[role="button"]:has-text("PRIMARY")').first().click();
+  const before = JSON.stringify((await st()).players.find(p => p.player_id === pB.player_id).loadout);
+  await mc.route('**/api/players/*', async r => {
+    if (r.request().method() === 'PATCH') return r.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"weapon not allowed by the rules"}' });
+    return r.continue();
+  });
+  expectHttpErrors = true;
+  try {
+    await mc.locator('div[role="button"][aria-label*="Shotgun"]').first().click();
+    await until(async () => /WEAPON NOT ALLOWED BY THE RULES/.test(await errStrip()), 6000, 'the server\'s error in the strip');
+    await sleep(800);
+    expect(/WEAPON NOT ALLOWED BY THE RULES/.test(await errStrip()), 'error strip was wiped by a later call');
+    expect((await mc.locator('text=CHANGED FROM THEIR PHONE').count()) === 0, 'a rejected host pick was blamed on the phone');
+    expect((await mc.locator('text=TRYING SHOTGUN').count()) === 0, 'a try-out started for the refused weapon');
+    expect((await st()).kit.trying[pB.player_id] !== 'shotgun', 'server started a try-out of the refused weapon after the rejected PATCH');
+    expect(JSON.stringify((await st()).players.find(p => p.player_id === pB.player_id).loadout) === before, 'loadout changed despite the 400');
+    await shot(mc, 'kit-rejected-pick');
+  } finally { await mc.unroute('**/api/players/*'); expectHttpErrors = false; }
+  await mc.locator('button[role="alert"]').first().click().catch(() => {});   // dismiss the strip
+});
+await step('(k) DESIGNER: PLAY THIS NOW ▸ saves + applies the draft and lands on KIT', async () => {
+  await nav(1);
+  await mc.click('button[aria-label="customize TEAM DEATHMATCH"]');
+  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
+  const time = mc.locator('input[aria-label="time limit minutes"]');
+  await time.fill('7'); await time.press('Enter');
+  await mc.fill('input[aria-label="game name"]', 'play now test');
+  await mc.click('button:has-text("PLAY THIS NOW")');
+  await until(async () => { const s = await st(); return s.phase === 'kit' && s.config.time_limit_s === 420 && s.config.mode === 'tdm'; }, 8000, 'server: phase kit, TDM, 7 min');
+  await until(async () => (await mc.locator('text=KIT EACH PLAYER').count()) > 0, 6000, 'landed on KIT');
+  const saved = (await (await fetch(MC + '/api/presets')).json()).find(g => g.name === 'play now test');
+  expect(saved, 'PLAY THIS NOW did not save the named game');
+  expect((await st()).active_preset_id === saved.preset_id, 'active_preset_id is not the played game');
+  await fetch(MC + '/api/presets/' + encodeURIComponent(saved.preset_id), { method: 'DELETE' });
 });
 await step('restore OPEN rules + the run config so the match flow continues unchanged', async () => {
   const c = cfgBeforeRules;
@@ -436,8 +623,12 @@ await step('WEAPONS HOT pill on go', async () => {
 });
 await step('BRAVO fires; ALPHA takes hits → TAKING FIRE state', async () => {
   await hudB.evaluate(() => window.fakeGun.fire(3));
+  const s0 = await hudState(hudA); const pool0 = (s0.hp || 0) + (s0.armor || 0);   // armor absorbs first: the POOL must drop
   await hudA.evaluate(n => window.fakeGun.hit(6, n, 2), pB.player_num);
-  await until(async () => (await hudA.locator('.takingfire').count()) > 0 || (await hudState(hudA)).hp < 45 || true, 3000, 'hit registered');
+  let sawFire = false;
+  await until(async () => { if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; const s1 = await hudState(hudA); return (s1.hp || 0) + (s1.armor || 0) < pool0; }, 3000, 'HP/armor dropped after the hit');
+  for (let i = 0; i < 6 && !sawFire; i++) { await sleep(250); if ((await hudA.locator('.takingfire').count()) > 0) sawFire = true; }
+  expect(sawFire, 'TAKING FIRE state never appeared after a hit');
   await shot(hudA, 'hudA-taking-fire');
 });
 await step('NIGHT OPS live layout: stats must not stack on the ammo corner (regression)', async () => {
@@ -579,43 +770,99 @@ await step('EVICT is a two-step confirm and kicks the node', async () => {
 });
 
 // ═══ F8a · DESIGNER controls — every control changes what the host SEES (Tony: "you can't click these toggles") ═══
+// One step per control; each asserts VISIBLE state (tile art opacity/filter, chip fill, summary text), not aria alone.
 flow('F8a designer-controls');
-await step('designer-controls: templates, class chips, tiles, who-picks, slot OFF, base, save → each shows on screen', async () => {
-  if (mc.url() === 'about:blank') await mc.goto(MC + '/', { waitUntil: 'networkidle' });   // ONLY= runs skip the boot steps
+const D = {
+  prim: () => mc.locator('[aria-label="primary slot rules"]'), sec: () => mc.locator('[aria-label="secondary slot rules"]'),
+  pSum: () => mc.getByTestId('primary-summary').textContent(), sSum: () => mc.getByTestId('secondary-summary').textContent(),
+  rail: () => mc.locator('aside').textContent(),
+  /** the art strip is the tile's first span: dimmed = opacity ≤ .3 + a grayscale filter */
+  art: async (name) => mc.locator(`[aria-label="primary slot rules"] button[aria-label^="${name}"] > span`).first().evaluate(el => ({ opacity: parseFloat(getComputedStyle(el).opacity), filter: getComputedStyle(el).filter })),
+  chip: (label) => mc.locator(`[aria-label="primary slot rules"] button:has-text("${label}")`).first(),
+  fill: async (loc) => loc.evaluate(el => getComputedStyle(el).backgroundColor),
+};
+const dimmed = a => a.opacity <= 0.3 && /grayscale/.test(a.filter);
+const lit = a => a.opacity >= 0.95 && !/grayscale\(1\)/.test(a.filter);
+await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (13 OF 18), heavies dimmed, HEAVY chip unfilled', async () => {
+  await ensureMc();
   await mc.locator('nav button').nth(1).click();
   await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  const prim = mc.locator('[aria-label="primary slot rules"]'), sec = mc.locator('[aria-label="secondary slot rules"]');
-  const pSum = () => mc.getByTestId('primary-summary').textContent();
-  const sSum = () => mc.getByTestId('secondary-summary').textContent();
-  await until(async () => /13 OF 18/.test(await pSum()), 6000, 'FFA base starts at NO HEAVIES (13 of 18)');
-  await mc.click('button[title="Everything, players pick both slots"]');                     // template OPEN
-  await until(async () => /18 OF 18/.test(await pSum()), 4000, 'OPEN → 18 of 18');
-  await mc.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');  // template SNIPERS
-  await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pSum()) && /OFF/.test(await sSum()), 4000, 'SNIPERS → fixed primary + slot 2 off');
+  await until(async () => /13 OF 18/.test(await D.pSum()), 6000, 'FFA base starts at NO HEAVIES (13 of 18)');
+  expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')) && dimmed(await D.art('Laser Cannon')), 'heavy tiles are not dimmed under NO HEAVIES');
+  expect(lit(await D.art('Assault Rifle')), 'assault rifle tile should be lit');
+  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false', 'HEAVY chip should read off');
+  expect((await D.fill(D.chip('HEAVY'))) === 'rgba(0, 0, 0, 0)', 'HEAVY chip should be unfilled when off');
+  await shot(mc, 'designer-open'); await textAudit(mc, 'designer');
+});
+await step('DESIGNER: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'designer', true); });
+await step('designer-controls 1: template OPEN → 18 OF 18, heavies lit, HEAVY chip filled', async () => {
   await mc.click('button[title="Everything, players pick both slots"]');
-  await prim.locator('button:has-text("HEAVY")').first().click();                             // class chip off
-  await until(async () => /13 OF 18/.test(await pSum()), 4000, 'HEAVY chip off → 13 of 18');
-  await prim.locator('button[aria-label^="Assault Rifle"]').click();                          // one tile off
-  await until(async () => /12 OF 18/.test(await pSum()), 4000, 'tile off → 12 of 18');
-  expect((await prim.locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not shown as off');
-  expect((await prim.locator('button[aria-label="Rail Gun, off"]').count()) === 1, 'rail gun not shown as off under HEAVY-off');
-  await prim.locator('button[aria-label="Rail Gun, off"]').click();                           // allow one heavy through the chip
-  await until(async () => /13 OF 18/.test(await pSum()) && (await prim.locator('button[aria-label="Rail Gun, allowed"]').count()) === 1, 4000, 'rail gun allowed through the chip → 13 of 18');
-  await prim.locator('button[aria-label="Rail Gun, allowed"]').click();
-  await until(async () => /12 OF 18/.test(await pSum()), 4000, 'and off again → 12 of 18');
-  await prim.locator('button:has-text("FIXED")').click();                                     // who picks: FIXED → single-select
-  await prim.locator('button[aria-label^="SMG"]').click();
-  await until(async () => /EVERYONE GETS SMG/.test(await pSum()), 4000, 'FIXED + tap SMG → everyone gets SMG');
-  await sec.locator('button:has-text("OFF")').click();
-  await until(async () => /OFF — ALT-FIRE/.test(await sSum()), 4000, 'secondary OFF');
-  await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await mc.locator('aside').textContent()), 4000, 'summary rail follows');
-  await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');                  // base switch resets rules
-  await until(async () => /TEAM DEATHMATCH/.test(await mc.locator('aside').textContent()) && /18 OF 18/.test(await pSum()), 4000, 'base → TDM, rules reset');
+  await until(async () => /18 OF 18/.test(await D.pSum()), 4000, 'OPEN → 18 of 18');
+  expect(lit(await D.art('Rocket Launcher')), 'rocket launcher still dimmed after OPEN');
+  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'true' && (await D.fill(D.chip('HEAVY'))) !== 'rgba(0, 0, 0, 0)', 'HEAVY chip not filled/on after OPEN');
+  expect((await mc.locator('button[title="Everything, players pick both slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
+  await shot(mc, 'designer-open-template');
+});
+await step('designer-controls 2: template SNIPERS → PRIMARY "EVERYONE GETS SNIPER RIFLE", only the sniper tile lit, slot 2 OFF, rail follows', async () => {
+  await mc.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');
+  await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await D.pSum()) && /OFF/.test(await D.sSum()), 4000, 'SNIPERS → fixed primary + slot 2 off');
+  expect((await D.prim().locator('button[aria-label="Sniper Rifle, allowed"]').count()) === 1, 'sniper rifle tile not shown as the fixed pick');
+  expect((await D.prim().locator('button[aria-label$=", allowed"]').count()) === 1, 'more than one tile lit under FIXED');
+  expect((await D.prim().locator('button[aria-pressed="true"]:has-text("FIXED")').count()) === 1, 'WHO PICKS does not read FIXED');
+  expect((await D.sec().locator('button[aria-pressed="true"]:has-text("OFF")').count()) === 1, 'slot 2 WHO PICKS does not read OFF');
+  await until(async () => /SNIPER RIFLE FOR EVERYONE/.test(await D.rail()) && /NO SLOT 2/.test(await D.rail()), 4000, 'rail follows the template');
+  await shot(mc, 'designer-snipers');
+});
+await step('designer-controls 3: HEAVY chip off (from OPEN) → 13 OF 18, all five heavy tiles dimmed, nothing else changes', async () => {
+  await mc.click('button[title="Everything, players pick both slots"]');
+  await until(async () => /18 OF 18/.test(await D.pSum()), 4000, 'OPEN again');
+  await D.chip('HEAVY').click();
+  await until(async () => /13 OF 18/.test(await D.pSum()), 4000, 'HEAVY chip off → 13 of 18');
+  for (const n of ['Rocket Launcher', 'Rail Gun', 'Laser Cannon', 'Energy Launcher', 'Ion Sniper']) expect(dimmed(await D.art(n)), n + ' not dimmed after HEAVY off');
+  expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
+  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false' && (await D.fill(D.chip('HEAVY'))) === 'rgba(0, 0, 0, 0)', 'HEAVY chip still filled');
+  await shot(mc, 'designer-heavy-off');
+});
+await step('designer-controls 4: tap the Assault Rifle tile → 12 OF 18, that tile dimmed and labelled off', async () => {
+  await D.prim().locator('button[aria-label^="Assault Rifle"]').click();
+  await until(async () => /12 OF 18/.test(await D.pSum()), 4000, 'tile off → 12 of 18');
+  expect((await D.prim().locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not labelled off');
+  expect(dimmed(await D.art('Assault Rifle')), 'assault rifle tile not dimmed');
+  await shot(mc, 'designer-tile-off');
+});
+await step('designer-controls 5: tap a heavy dimmed by the chip → allowed through (13 OF 18, lit), tap again → off (12)', async () => {
+  await D.prim().locator('button[aria-label="Rail Gun, off"]').click();
+  await until(async () => /13 OF 18/.test(await D.pSum()) && (await D.prim().locator('button[aria-label="Rail Gun, allowed"]').count()) === 1, 4000, 'rail gun allowed through the chip → 13 of 18');
+  expect(lit(await D.art('Rail Gun')), 'rail gun tile not lit after allowing it');
+  expect(dimmed(await D.art('Rocket Launcher')), 'the other heavies should stay dimmed');
+  await shot(mc, 'designer-allow-through-chip');
+  await D.prim().locator('button[aria-label="Rail Gun, allowed"]').click();
+  await until(async () => /12 OF 18/.test(await D.pSum()), 4000, 'and off again → 12 of 18');
+  expect(dimmed(await D.art('Rail Gun')), 'rail gun tile not dimmed after switching it off');
+});
+await step('designer-controls 6: WHO PICKS → FIXED then tap SMG → "EVERYONE GETS SMG", only the SMG tile lit', async () => {
+  await D.prim().locator('button:has-text("FIXED")').click();
+  await D.prim().locator('button[aria-label^="SMG"]').click();
+  await until(async () => /EVERYONE GETS SMG/.test(await D.pSum()), 4000, 'FIXED + tap SMG → everyone gets SMG');
+  expect((await D.prim().locator('button[aria-label="SMG, allowed"]').count()) === 1 && (await D.prim().locator('button[aria-label$=", allowed"]').count()) === 1, 'only the SMG should be lit under FIXED');
+  await shot(mc, 'designer-fixed-smg');
+});
+await step('designer-controls 7: slot 2 OFF → "OFF — ALT-FIRE DOES NOTHING", weapon grid gone, rail reads NO SLOT 2', async () => {
+  await D.sec().locator('button:has-text("OFF")').click();
+  await until(async () => /OFF — ALT-FIRE/.test(await D.sSum()), 4000, 'secondary OFF');
+  expect((await D.sec().locator('button[aria-label$=", allowed"], button[aria-label$=", off"]').count()) === 0, 'slot-2 tiles still shown when OFF');
+  await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await D.rail()), 4000, 'summary rail follows');
+  await shot(mc, 'designer-slot2-off');
+});
+await step('designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (18 OF 18, rail BASE TDM) and SAVE lands the card', async () => {
+  await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');
+  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && /18 OF 18/.test(await D.pSum()), 4000, 'base → TDM, rules reset');
+  expect(lit(await D.art('Rocket Launcher')), 'rules did not reset (rocket still dimmed)');
   await mc.fill('input[aria-label="game name"]', 'controls test');
   await mc.click('button:has-text("SAVE GAME")');
   await until(async () => (await mc.locator('text=SAVED "CONTROLS TEST"').count()) > 0, 6000, 'SAVED status');
-  await shot(mc, 'designer-controls');
-  await mc.click('button:has-text("◂ BACK TO GAMES")');
+  await shot(mc, 'designer-controls-saved');
+  await backToGames();
   await until(async () => (await mc.locator('div[role="button"][aria-label="play controls test"]').count()) > 0, 6000, 'card on GAMES');
   await mc.click('button[aria-label="delete controls test"]'); await mc.click('button:has-text("CONFIRM DELETE")');
   await until(async () => (await mc.locator('div[role="button"][aria-label="play controls test"]').count()) === 0, 6000, 'card gone');
@@ -632,7 +879,8 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   const errs = [];
   pg.on('pageerror', e => errs.push('pageerror: ' + String(e.message).slice(0, 160)));
   pg.on('console', m => { if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errs.push('console: ' + m.text().slice(0, 160)); });
-  const strip = o => { if (o && typeof o === 'object') { delete o.loadout_policy; delete o.loadout_pool; if (o.kit) delete o.kit.browsing; for (const k of Object.keys(o)) strip(o[k]); } return o; };
+  // a faithful pre-A10 shape: no policy, no pool, no browsing, no active preset, no perk on any loadout
+  const strip = o => { if (o && typeof o === 'object') { delete o.loadout_policy; delete o.loadout_pool; delete o.active_preset_id; if (o.kit) delete o.kit.browsing; if (o.loadout && typeof o.loadout === 'object') delete o.loadout.perk; for (const k of Object.keys(o)) strip(o[k]); } return o; };
   await pg.route('**/api/**', async r => {
     const u = r.request().url();
     if (/\/api\/(presets|perks|loadout\/pool)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });   // pre-A10 server
@@ -640,13 +888,25 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
     try { body = JSON.stringify(strip(JSON.parse(body))); } catch { /* not JSON */ }
     await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
   });
-  await pg.route('**/ui-ws*', r => r.abort());   // no live snapshot stream → the UI seeds from GET /api/state (stripped)
+  // page.route() cannot touch the WebSocket — the live snapshot stream used to arrive COMPLETE, so this step never
+  // actually deprived the UI of the loadout fields (review #4). routeWebSocket strips every snapshot frame in flight.
+  let wsFrames = 0;
+  await pg.routeWebSocket('**/ui-ws*', ws => {
+    const server = ws.connectToServer();
+    server.onMessage(m => { try { const j = JSON.parse(String(m)); if (j.kind === 'snapshot') { strip(j.state); wsFrames++; } ws.send(JSON.stringify(j)); } catch { ws.send(m); } });
+    ws.onMessage(m => server.send(m));
+  });
   await pg.goto(MC + '/', { waitUntil: 'networkidle' });
   const nav = async i => { await pg.locator('nav button').nth(i).click(); await pg.waitForTimeout(400); };
   const noCrash = async where => expect((await pg.locator('text=CONSOLE ERROR').count()) === 0, `crash banner on ${where}: ${errs.join(' | ')}`);
+  await until(async () => wsFrames > 0, 8000, 'a stripped snapshot arrived over the WebSocket');
+  const live = await pg.evaluate(() => fetch('/api/state').then(r => r.json()));
+  expect(live.loadout_policy === undefined, 'REST strip failed');
   await nav(1); await noCrash('GAMES');
   await until(async () => (await pg.locator('text=PREDATES THIS UI').count()) > 0, 6000, 'the "server predates this UI" banner');
   await until(async () => (await pg.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES rendered');
+  const loadRow = await pg.locator('text=LOADOUT').locator('xpath=..').first().textContent();
+  expect(/—/.test(loadRow), 'GAMES LOADOUT row should read — with no policy: ' + loadRow);
   await pg.click('button[aria-label="create a game"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (create)');
   await until(async () => (await pg.locator('text=RULES PREVIEW LOCALLY').count()) > 0, 6000, 'designer says the server cannot preview');
   await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');   // templates are client-side: must work here too
@@ -663,11 +923,52 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await prim.locator('button[aria-label="Rocket Launcher, off"]').click();   // a tag-excluded tile is still tappable: allow just this one
   await until(async () => /13 OF 18/.test(await pg.getByTestId('primary-summary').textContent()) && (await prim.locator('button[aria-label="Rocket Launcher, allowed"]').count()) === 1, 4000, 'allowing one heavy through the chip');
   expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
-  await pg.click('button:has-text("◂ BACK TO GAMES")'); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
-  await nav(2); await noCrash('KIT'); await nav(3); await noCrash('LOBBY'); await nav(0); await noCrash('ARMORY');
+  await backToGames(pg); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
+  await nav(2); await noCrash('KIT');
+  await until(async () => (await pg.locator('text=KIT EACH PLAYER').count()) > 0, 6000, 'KIT rendered');
+  expect((await pg.locator('text=GAME RULES').count()) === 0, 'KIT shows a GAME RULES chip with no policy');
+  if ((await pg.locator('div[role="button"]:has-text("ALPHA")').count()) > 0) { await pg.locator('div[role="button"]:has-text("ALPHA")').first().click(); await pg.waitForTimeout(400); await noCrash('KIT (player selected)'); expect((await pg.locator('div[role="button"]:has-text("PRIMARY")').count()) > 0, 'KIT slot cards missing for a selected player'); }
+  await nav(3); await noCrash('LOBBY'); await until(async () => (await pg.locator('button:has-text("PUSH CONFIG & ARM")').count()) > 0, 6000, 'LOBBY rendered');
+  await nav(0); await noCrash('ARMORY');
   await pg.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-compat-older-server.png`) });
   expect(errs.length === 0, 'errors against the stale server: ' + errs.join(' | '));
   await ctx.close();
+});
+
+// ═══ F8c · compat: a session persisted BEFORE A10 restores and every page renders (review #12) ═══
+flow('F8c compat-old-session');
+await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES STOCK MODE // PLAYING, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
+  const MC2 = 'http://127.0.0.1:8867';
+  if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) throw new Error('something already listens on 8867');
+  const tmp = fs.mkdtempSync(path.join(OUT, 'session-'));
+  const sf = path.join(tmp, 'session.json');
+  fs.copyFileSync(path.join(HERE, 'fixtures', 'session-preA10.json'), sf);
+  const log2 = fs.openSync(path.join(OUT, 'mc-server-oldsession.log'), 'w');
+  // NOT --demo: its seeding re-adds GUN-A..H and crashes on the restored players' guns ("gun GUN-A is already assigned",
+  // __main__.py build()) — a server finding, recorded in the report; --ephemeral keeps presets off the host's shelf
+  findings.push({ kind: 'server', where: 'brx_mcp.mc --demo --session-file', what: '--demo seeding collides with restored players (ValueError: gun GUN-A is already assigned) — the demo seed should skip guns a restored player holds' });
+  const proc2 = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--ephemeral', '--no-auth', '--port', '8867', '--ws-port', '8868', '--session-file', sf], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', log2, log2] });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const pg = await ctx.newPage(); pg.setDefaultTimeout(6000);
+  const errs = []; pg.on('pageerror', e => errs.push('pageerror: ' + String(e.message).slice(0, 160)));
+  try {
+    await until(async () => (await fetch(MC2 + '/api/state')).ok, 30000, 'old-session MC');
+    const s2 = await (await fetch(MC2 + '/api/state')).json();
+    expect(s2.players.some(p => p.display === 'RESTORED-A') && s2.players.some(p => p.display === 'RESTORED-B'), 'fixture players not restored: ' + s2.players.map(p => p.display).join(','));
+    expect(s2.config.loadout_policy && s2.config.loadout_policy.preset === 'open', 'restored config did not get a normalised OPEN policy');
+    await pg.goto(MC2 + '/', { waitUntil: 'networkidle' });
+    const nav2 = async i => { await pg.locator('nav button').nth(i).click(); await pg.waitForTimeout(400); };
+    const noCrash = async where => expect((await pg.locator('text=CONSOLE ERROR').count()) === 0, `crash banner on ${where}: ${errs.join(' | ')}`);
+    await nav2(1); await noCrash('GAMES');
+    await until(async () => (await pg.locator('text=STOCK MODE // PLAYING').count()) > 0, 6000, 'GAMES rail STOCK MODE // PLAYING');
+    await nav2(2); await noCrash('KIT');
+    await until(async () => (await pg.locator('div[role="button"]:has-text("RESTORED-A")').count()) > 0, 6000, 'restored roster row on KIT');
+    expect((await pg.locator('div[role="button"]:has-text("RESTORED-A")').first().textContent()).includes('GUN-A'), 'restored row lost its gun');
+    await pg.locator('div[role="button"]:has-text("RESTORED-A")').first().click(); await pg.waitForTimeout(400);
+    expect((await pg.locator('text=GAME RULES').count()) > 0 && (await pg.locator('text=GAME RULES').locator('xpath=..').textContent()).includes('OPEN'), 'GAME RULES chip should read OPEN');
+    await pg.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-compat-old-session.png`) });
+    expect(errs.length === 0, 'errors on the old-session MC: ' + errs.join(' | '));
+  } finally { await ctx.close(); try { proc2.kill(); } catch {} }
 });
 
 // ═══ F9 · UX audit rollup ═══

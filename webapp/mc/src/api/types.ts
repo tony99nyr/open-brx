@@ -144,6 +144,7 @@ export interface State {
   teams: Team[];
   kit: { kitted: number; total: number; trying: Record<string, string>; browsing: Record<string, number> };
   loadout_pool: LoadoutPool;
+  active_preset_id?: string | null;   // the saved game that was applied (null after any real config edit)
   lobby: { ready: number; total: number; pushed: boolean; acks: Record<string, { ok: boolean; gun_echo?: string; err?: string }> };
   start?: StartView;
   live?: LiveView;

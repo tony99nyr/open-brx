@@ -14,3 +14,20 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
 
 Regression canary: if `?demo` never leaves phase `idle`, the boot hung (see the Capacitor thenable-proxy
 incident, FOLLOWUPS 2026-08-26).
+
+## `npm run ui:e2e` — the browser suite (app/tools/e2e.mjs)
+
+Pre-steps (the suite REFUSES to run on stale bundles — a stale dist once "passed" a whole run on old UI code):
+1. `cd webapp/mc && npm run build` — the MC bundle the suite serves (`webapp/mc/dist`).
+2. `cd app && npm run build` — the HUD bundle (`app/www/app.js`, generated).
+3. Nothing may listen on 8865 (the suite's MC) or 8867 (the old-session MC). `pkill -f "brx_mcp.m[c]"` — note the
+   `[c]` trick: a plain pattern self-matches the invoking shell.
+Then `npm run ui:e2e`. `ONLY=<step-substring> npm run ui:e2e` runs matching steps only (stand-alone steps such as
+`designer-controls`, `compat-older-server`, `compat-old-session` self-navigate); the F9 rollup + report always run.
+`ALLOW_STALE=1` skips the bundle-freshness gate (mid-edit only). Shots + `report.md` land in `app/shots/e2e/`.
+
+What the suite guards beyond the happy path: the same UI against a server that predates it (`compat-older-server`:
+snapshots stripped over the WebSocket via `routeWebSocket`, A10 routes 404), a session persisted before A10
+(`compat-old-session`: `--session-file` fixture in `tools/fixtures/`), a rejected host pick (400 on PATCH), the
+designer's every control by VISIBLE state (tile art opacity/filter, chip fill, summary text), and tap targets under
+36 px on GAMES / DESIGNER / KIT as failures, not findings.

@@ -59,7 +59,14 @@ def build(args):
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
     session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
-    if not (args.demo or getattr(args, "ephemeral", False)):
+    restored_from_file = 0
+    if getattr(args, "session_file", None):
+        # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo
+        from pathlib import Path as _P
+        session._persist_path = _P(args.session_file)
+        restored_from_file = session.restore_snapshot()
+        print(f"  session file {args.session_file}: {restored_from_file} player(s) restored")
+    elif not (args.demo or getattr(args, "ephemeral", False)):
         # --demo / --ephemeral runs (e2e, CI) must not inherit or write a bench session:
         # a restored roster with a bare-tail gun_id once stole the e2e fake gun (2026-08-26).
         from pathlib import Path as _P
@@ -117,7 +124,7 @@ def build(args):
         ppath = default_path()
     session.presets = PresetStore(ppath, session.sanitize_config, default_config, _policy.merge, now_ms=session.now_ms)
 
-    if args.demo:
+    if args.demo and not restored_from_file:   # a restored session keeps its roster; demo seeding would re-add GUN-A..H (e2e lane finding)
         session.set_config({"mode": "tdm"})
         # A10 demo loadouts: a secondary weapon, a perk, an empty slot 2, and different primaries, so the
         # Kit page shows every slot-2 state without anyone typing (docs/spec/loadout.md §5)
@@ -148,6 +155,7 @@ def main(argv=None):
     ap.add_argument("--ws-port", type=int, default=8766)
     ap.add_argument("--fake-net", action="store_true", help="in-memory node transport (no phones)")
     ap.add_argument("--ephemeral", action="store_true", help="no session snapshot/restore (tests, throwaway hosts)")
+    ap.add_argument("--session-file", default=None, help="restore from / persist to this session.json instead of ~/.brx-mcp (e2e fixtures)")
     ap.add_argument("--demo", action="store_true", help="seed 8 demo players/guns; with --fake-net, simulate nodes")
     ap.add_argument("--demo-speed", type=float, default=1.0)
     ap.add_argument("--token", default=None, help="operator token (default: random per launch)")

@@ -616,7 +616,7 @@ def test_presets_api_and_apply_runs_apply_policy():
     assert s.config["mode"] == "ffa" and s.config["health"]["max_armor"] == 0
     for p in s.players.values():
         assert p["loadout"] == {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "extended_mags"}
-    assert any("RESET BY CUSTOM RULES" in w for w in s.snapshot()["config_warnings"])
+    assert any("RESET BY SILENCED SNIPER" in w for w in s.snapshot()["config_warnings"])
     assert c.post("/api/presets/nope/apply").status_code == 404
     assert c.delete(f"/api/presets/{pid}").json()["ok"] and len(c.get("/api/presets").json()) == 1
 
@@ -672,3 +672,22 @@ def test_kit_open_gates_phone_picks_and_assign_carries_game_brief():
     assert latest_policy()[0]["kit_open"] is True
     _req(net, 0, "primary", "weapon", "smg")
     assert _last_ack(net, 0)["ok"] is True
+
+
+def test_apply_preset_marks_the_playing_game_and_edits_clear_it():
+    """A10 §8 (review #0): the state remembers WHICH saved game was applied — a duplicate is content-identical to its
+    source, so the UI cannot tell them apart by config. Venue-only PUTs keep it; any real edit clears it."""
+    from brx_mcp.mc.presets import PresetStore
+    s, net, clock, ps = mk()
+    s.presets = PresetStore(None, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms)
+    a = s.presets.create("Alpha", "", s.config)
+    b = s.presets.create("Beta", "", s.config)        # identical config, different game
+    s.apply_preset(b["preset_id"], b["config"])
+    assert s.snapshot()["active_preset_id"] == b["preset_id"] != a["preset_id"]
+    s.set_config({"night": True})                       # venue-only: still playing Beta
+    assert s.snapshot()["active_preset_id"] == b["preset_id"]
+    s.set_config({"time_limit_s": 120})                 # a real edit: no longer Beta
+    assert s.snapshot()["active_preset_id"] is None
+    s.apply_preset(a["preset_id"], a["config"])
+    s.set_config({"loadout_policy": {"preset": "snipers"}})
+    assert s.snapshot()["active_preset_id"] is None

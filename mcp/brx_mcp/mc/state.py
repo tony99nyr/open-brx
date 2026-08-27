@@ -83,6 +83,8 @@ class Session:
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
+        self.active_preset_id: str | None = None  # A10 §8: the saved game that was APPLIED — GAMES marks it PLAYING (content-matching
+                                                  # cannot tell a duplicate from its source: review 2026-08-27 #0)
         self.presets = None                       # A10 §8: PresetStore, attached by __main__/create_app (memory store when absent)
         self.lobby_pushed = False
         self.acks: dict[str, dict] = {}
@@ -134,7 +136,7 @@ class Session:
         try:
             snap = {"v": 1, "saved_ms": self.now_ms(),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
-                    "teams": self.teams, "config": self.config}
+                    "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id}
             tmp = self._persist_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(snap))
             tmp.replace(self._persist_path)
@@ -152,6 +154,7 @@ class Session:
                 self.teams = snap["teams"]
             if snap.get("config"):
                 self.config = snap["config"]
+            self.active_preset_id = snap.get("active_preset_id")
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
             for pl in self.players.values():                      # a pre-A10 snapshot has no `perk` key; fine
                 pl["loadout"] = _policy.apply(self.config["loadout_policy"], self.loadout_pool(), pl.get("loadout") or {"weapons": []},
@@ -313,6 +316,11 @@ class Session:
                     self._push_config_to(pl)
         if changed:
             label = _policy.PRESET_LABELS.get(self.policy().get("preset"), "THE LOADOUT RULES")
+            try:
+                if self.active_preset_id and getattr(self, "presets", None) is not None:
+                    label = self.presets.get(self.active_preset_id)["name"].upper()
+            except Exception:
+                pass
             self._policy_notice = f"{len(changed)} LOADOUT{'S' if len(changed) != 1 else ''} RESET BY {label}"
         return changed
 
@@ -558,9 +566,20 @@ class Session:
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy"}
 
-    def set_config(self, patch: dict) -> dict:
+    def apply_preset(self, preset_id: str, config: dict) -> dict:
+        """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
+        self.active_preset_id = preset_id
+        try:
+            return self.set_config(config, _from_preset=True)
+        except Exception:
+            self.active_preset_id = None
+            raise
+
+    def set_config(self, patch: dict, _from_preset: bool = False) -> dict:
         if not isinstance(patch, dict):
             raise ValueError("config must be an object")
+        if not _from_preset and (set(patch) - {"environment", "night", "config_id"}):
+            self.active_preset_id = None                     # any real edit means the draft is no longer that saved game
         if self.phase == "recap" and not (isinstance(patch, dict) and patch.get("mode")):
             # only an explicit MODE pick on Build (same mode = "run it back", or a new one) rolls the
             # finished session forward; other config edits from stale tabs get a clear error instead
@@ -1267,6 +1286,7 @@ class Session:
                 "players": list(self.players.values()), "teams": self.teams,
                 "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying), "browsing": dict(self.browsing)},
                 "loadout_pool": self.loadout_pool(),
+                "active_preset_id": self.active_preset_id,
                 "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
                           "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,

@@ -177,12 +177,18 @@ assign.game { name, desc,                       // saved-game name/desc when the
   A GAME`) and `STOCK MODES` row (TDM / FFA / … with defaults; CUSTOMIZE opens the designer with that base). Tap a
   card → it is the game; a summary panel shows what players get; **VENUE** chips (indoor/outdoor, night — about
   where you play, not saved into the game; re-asserted after a game is applied); `CONTINUE ▸` to KIT. No forms.
+  `State.active_preset_id` (set by `POST /api/presets/{id}/apply`, cleared by any non-venue `PUT /api/config`) is
+  how GAMES knows which saved game is PLAYING — never by config content (a copy is identical to its source).
+  Verbs: CUSTOMIZE (stock mode) · EDIT (your game) · COPY / MAKE MY OWN (open a draft named after the source;
+  nothing is written until SAVE). Playing another card while the draft is TUNED — NOT SAVED asks once.
 - **GAME DESIGNER** (a full-width page opened from GAMES via CREATE / EDIT / CUSTOMIZE — authoring, not a phase):
   one scrolling page — BASE (mode) → RULES (teams, time, score, respawn, health) → LOADOUT (PRIMARY / SECONDARY as
   two columns: who picks, the allowed pool as a tappable weapon grid with class quick-filters, fixed pick, perks) →
   NAME & NOTES — with a sticky summary rail (reads like the card will) holding `SAVE` / `SAVE AS NEW` / `PLAY THIS
-  NOW ▸` (saves and jumps to KIT). Edits a DRAFT: nothing touches the live config until PLAY. Pool preview for the
-  draft comes from `POST /api/loadout/pool` (same rule engine). OPEN / NO HEAVIES / SNIPERS are starting templates
+  NOW ▸` (saves and jumps to KIT; an unnamed draft plays without being saved, and says so). Edits a DRAFT: nothing
+  touches the live config until PLAY. The pool is computed ON THE CLIENT from the rules being edited (instant,
+  server-independent — the same engine as `policy.py`); `POST /api/loadout/pool` only re-confirms the preset name.
+  Class chips are ON / ◐ partial (n/N) / OFF; a tile dimmed by a chip is still tappable (allows just that weapon). OPEN / NO HEAVIES / SNIPERS are starting templates
   inside the designer, not match-night choices.
 - *(superseded)* **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,
   `PLAYERS PICK ON PHONE` toggle, per-slot rows (choice Seg + pool summary "15 OF 18 · NO HEAVIES" + fixed picker),
