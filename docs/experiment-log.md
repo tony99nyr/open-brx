@@ -2760,8 +2760,11 @@ every cell.
 | **24** | hit/0 | hit/0 | **hit/0** | hit/0 | hit/0 |
 | 25 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
 | 26 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| 27 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| 28 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
+| 35 | hit/0 | hit/0 | hit/0 | hit/0 | hit/0 |
 
-**Not one cell varies by protocol.** The fn 1 control damages identically on all five (and confirms the
+**All 50 cells complete. Not one varies by protocol.** The fn 1 control damages identically on all five (and confirms the
 emitter delivers a faithful magnitude everywhere); every status-class function is pool-neutral on all
 five.
 
@@ -2789,8 +2792,16 @@ list is short:
 - **Gun uptime / state.** The unattended victim has been powered for many hours across these runs;
   rig degradation is documented here. The trailing control on the big sweep passed, which argues
   against gross degradation but not against a subtler state difference.
-- **A different physical gun**, if the earlier runs used one — worth confirming before anything else,
-  because it is the cheapest to rule in or out and would explain both at once.
+- **A different physical gun**, if the earlier runs used one — cheapest to rule in or out and would
+  explain both at once. **Cannot be tested from here:** a scan shows only the one victim powered.
+- **Which SENSOR is struck.** **Every one of my 18 recorded hits landed on `$HIR` token 1 = 4, the GUN
+  BODY** — not once on a headset dome. A gun held by a person is struck at a different angle, and the
+  log does contain plenty of `$HIR,0` (headset front) hits from other sessions, so both paths are real.
+  **This is a candidate, NOT a confirmed cause** — the 2026-08-27 entries record only `$HIR,4`, the
+  same as mine, so the record does not actually show the non-reproducing runs used a different sensor.
+  Its value is that it converts a vague "operator present" into a **precise one-variable test**: aim the
+  same word at the **headset dome** versus the **gun body** and compare. If the sensor changes the
+  applied function, both anomalies are explained by one mechanism and it is a five-minute check.
 
 **This is now one question, not two** — *what gun-side condition was present in the operator-present
 runs and absent unattended?* — and the same question U10 asks about the multiplier. Two symptoms with
