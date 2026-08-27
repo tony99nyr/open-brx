@@ -10,10 +10,19 @@
 > "function 24 is a status function that touches no pool". A later listen-only run fired **fn 24 on
 > protocol 7 and it dealt damage** (armor 70→30). Same function, different protocol, opposite result.
 > So fn 24 is **not** inert — whatever silences the Energy Launcher is specific to its `<9,3>` cell,
-> and is not yet understood. The bug is real and directly measured; the mechanism is open.
+> and is not yet understood. The bug is directly measured; the mechanism is open.
 >
-> Four more weapons — **Burst Rifle, Bolt Rifle, AMR** (×2) and **Force Rifle, Sniper Rifle** (×1.25) —
-> deal more than their `t5` for the same reason. Also §6.2.
+> One caveat on the measurement itself: it came from the **same session** whose multiplier numbers
+> later failed to reproduce (below), so that session's reliability is in question. It is not equally
+> in doubt — the suspected fault there inflates damage rather than zeroing it, and a 0/3 result is a
+> different failure mode — but this deserves a re-confirmation run before anyone acts on the fix.
+>
+> ⚠️ **DISPUTED (2026-08-27): the ×2 / ×1.25 multipliers did not reproduce.** This banner also used to
+> say four more weapons — Burst Rifle, Bolt Rifle, AMR (×2), Force Rifle, Sniper Rifle (×1.25) — deal
+> more than their `t5`. A later controlled matrix read **×1.0 in all 24 cells** with a clean fn 1
+> control (`brx-protocol.md` §5). The leading suspect is our own **emitter's encoding**, which would
+> make the multiplier an artefact of the rig rather than a property of the gun. **Do not tune weapons
+> on ×1.25/×2 until it is settled** — those five may be dealing base damage. §6.2.
 
 What our weapons are, why their numbers are what they are, and where every one of them comes from.
 
@@ -433,7 +442,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | Confirm the multiplier values with a logged bench entry (U10). |
-| ~~U10~~ | ~~Do the multipliers behave the same through the shipped rows?~~ ✅ **CLOSED 2026-08-26 — yes, identically.** `<0,1>` → 25, `<0,3>` → 40, `<0,0>`/`<8,0>`/`<6,0>` → 20 at magnitude 20; **`<9,3>` → 0**. Full table and the hit-count artifact that hid it: §6.2. | — | done — the fix decision is now open, not the measurement |
+| **U10** | **REOPENED 2026-08-27 — do the fn 36/37 multipliers exist at all?** I closed this on a run reading `<0,1>` → 25 and `<0,3>` → 40. A later controlled matrix read **×1.0 in all 24 cells** with a correct fn 1 control. Both runs internally consistent; leading suspect is our emitter's encoding, not the gun. | §2's balance, and whether five weapons need retuning at all | **Take our emitter out of the loop**: capture a *real BRX weapon* known to use fn 36/37 firing at a victim, and compare `$HIR` tok5 (raw magnitude) against the applied `$HP` delta (`brx-protocol.md` §5). |
 | **U11′** | **Which status function, if any, is a real STUN? — REOPENED 2026-08-27.** fn 23 is **eliminated**: a trigger pull showed the gun fires and emits IR normally; it is an **audio suppressor**. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. ~~CLOSED 2026-08-26 — it is function 23.~~ 5/5 reps; the fn-1 control never fired it; it works under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. It clears `$ALCD` **token 2 (100→0)** — the weapon *ready* flag — while **ammo and health are preserved**, and it **self-clears on a ~6–8 s firmware timer** (`$SPAWN` overrides early). ~~5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0` … zeroing t2 *and* the slot is the "live gun, nothing loaded" state.~~ *(That all-zeros reading came from a victim with no loadout configured — superseded, see §6.3.)* | — | done |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
@@ -536,9 +545,13 @@ Launcher's cell `<9,3>` maps to **fn 24, which landed nothing on that key**, so 
 **does no damage at all**. The `htk`/`ttk_ms` fields in `weapons.json` and the band/dominance test in
 `test_mc_compile.py` all use raw `t5` and are wrong for those five rows.
 
-**✅ CONFIRMED ON HARDWARE through the real shipped table** (experiment-log 2026-08-26; the real
-`_SIR_TABLE` pushed verbatim, one IR word per row, three trials each, `hits == 1` verified on every
-trial, trailing known-good control passed):
+**⚠️ DISPUTED — read this table as one of two disagreeing datasets, not as settled.** It was taken
+through the real shipped `_SIR_TABLE`, one IR word per row, three trials each, `hits == 1` verified,
+with a trailing known-good control (experiment-log 2026-08-26). **A later controlled matrix on the
+same bench and emitter read ×1.0 in all 24 multiplier cells**, fn 1 control correct throughout
+(`brx-protocol.md` §5 "DISPUTED"). Both runs were internally consistent; no systematic difference
+between them has been found. The leading untested suspect is our emitter's own word encoding — a
+magnitude actually sent as 40 would be indistinguishable from a ×2 multiplier.
 
 | shipped row | function | magnitude 20 lands as | weapons on that key |
 |---|---|---|---|
@@ -564,8 +577,13 @@ they were first measured on, so the table above is the effective-damage table fo
 2. **Retune `t5`** for the five multiplied weapons and separately move the Energy Launcher off `<9,3>`
    (an `overrides` entry on `t3`/`t4`), or change that row's function.
 
-**The recommendation is flatten**, and the deciding argument is asymmetry: flattening restores exactly
-the §2 numbers, which are *already* band-checked and dominance-checked, so it costs **zero retune**.
+> ⚠️ **This decision may be moot.** If the multipliers do not exist (U10), the shipped table already
+> behaves as if flattened and the five weapons deal their `t5` — nothing to fix. Settle U10 first;
+> acting now risks retuning five weapons to correct a multiplier that was never there.
+
+**If the multipliers are real, the recommendation is flatten**, and the deciding argument is
+asymmetry: flattening restores exactly the §2 numbers, which are *already* band-checked and
+dominance-checked, so it costs **zero retune**.
 Retuning means recomputing five weapons and re-running the dominance check with multipliers folded in —
 and leaves a weapon's real damage depending on *the other player's* config, which is a nasty class of
 bug and invisible to every balance tool we have (`htk`, `ttk_ms` and the band/dominance tests all
