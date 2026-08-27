@@ -55,6 +55,23 @@ em-dash, a box-drawing glyph — **kills the script mid-run**, usually after it 
 gun. **Keep bench-script output ASCII-only.** (`mcp/tools/weapon_range.py` says so in its docstring;
 the lesson does not travel unless you look.)
 
+**"That IR function does nothing" / "my emitter fired but the victim never reacted."**
+**Check the SHOOTER TEAM in the IR word before believing any negative result.** The receiver gates IR
+by the function's polarity and **discards the frame outright when the team is wrong — emitting no
+`$HIR` at all**. A wrongly-teamed shot is therefore *indistinguishable* from a dead emitter, a
+misaimed LED, or a function that genuinely does nothing.
+
+| testing | fire from |
+|---|---|
+| damage, armour-pierce | an **enemy** team |
+| heal, shield, armour, respawn, any grant | the victim's **own** team |
+| an unknown function | **both**, and compare — that is how you learn its polarity |
+
+This voided several previously "confirmed" negatives (fn 24-27, and the whole stun hunt across
+fn 3/8/23-28/35), all of which had been fired from an enemy team only. **Every IR experiment must
+state its shooter team, and carry a known-good control at both ends** — without a control you cannot
+tell "rejected" from "broken".
+
 **Never write a headset sticker id into the repo.**
 The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
 docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the
