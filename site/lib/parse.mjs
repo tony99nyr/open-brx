@@ -114,6 +114,13 @@ function finishBlock(b) {
   // a bold lead-in on the head line is the block title
   const t = b.head.match(/^\*\*(.+?)\*\*\s*(.*)$/) || b.head.match(/^"(.+?)"\s*(.*)$/) || b.head.match(/^“(.+?)”\s*(.*)$/);
   if (t) { b.title = t[1].trim(); b.head = t[2].trim().replace(/^[—–-]\s*/, ''); }
+  // A [spec-sheet] head names the thing being specified ("Tagger battery 📖 👥:"). Without this it
+  // rendered as a grey lead paragraph, leaving the spec-sheet page with no headings and no TOC.
+  if (!b.title && b.type === 'spec-sheet' && b.head.trim()) {
+    const [name, ...rest] = b.head.split(/\s+—\s+/);
+    b.title = name.replace(/\s*:\s*$/, '').trim();
+    b.head = rest.join(' — ').trim();
+  }
 }
 
 /** Load every manual file in a directory (sorted). */

@@ -1,6 +1,6 @@
 // Render page models (lib/parse.mjs) to HTML. One component per block type; unknown → visible TODO chip.
 import { marked } from 'marked';
-import { PROV_LABEL, PROV_EMOJI } from './parse.mjs';
+import { PROV_LABEL } from './parse.mjs';
 
 marked.use({ gfm: true, breaks: false, mangle: false, headerIds: false });
 
@@ -10,11 +10,19 @@ const slugify = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[`*"“”
 
 export function badge(kind) {
   const label = { bench: 'bench', official: 'official', apk: 'app', community: 'community', software: 'software', spec: 'spec', wip: 'under construction' }[kind];
-  return `<span class="badge b-${kind}" title="${esc(PROV_LABEL[kind])}"><i aria-hidden="true">${PROV_EMOJI[kind]}</i><span>${label}</span></span>`;
+  // no emoji in the markup: the dot is drawn in CSS, so a missing font can never leave tofu behind
+  return `<span class="badge b-${kind}" title="${esc(PROV_LABEL[kind])}"><span>${label}</span></span>`;
 }
 const EMOJI_RE = /[✅📖🔍👥🧪📐🚧]/gu;
 const EMOJI_KIND = { '✅': 'bench', '📖': 'official', '🔍': 'apk', '👥': 'community', '🧪': 'software', '📐': 'spec', '🚧': 'wip' };
 function badgesInline(html) { return html.replace(EMOJI_RE, e => badge(EMOJI_KIND[e])); }
+// A paragraph whose whole content is provenance marks is a status line, not prose: the dot alone
+// says nothing there, so it spells the marks out instead of leaving orphaned coloured dots behind.
+const ONLY_BADGES = /^(?:\s|<span class="badge[^"]*"[^>]*>(?:<span>[^<]*<\/span>)?<\/span>)+$/;
+function badgeRow(html) {
+  return html.replace(/<p([^>]*)>([\s\S]*?)<\/p>/g, (m, attrs, inner) =>
+    ONLY_BADGES.test(inner) ? `<p class="badge-row">${inner}</p>` : m);
+}
 
 function linkSlugs(html, ctx) {
   // `<code>/manual/x/y</code>` → a link labelled with the page's title when the slug exists
@@ -52,9 +60,10 @@ export function md(text, ctx) {
   html = crossRefs(html, ctx);
   // every table scrolls inside its own container, never the page
   html = html.replace(/<table>[\s\S]*?<\/table>/g, m => `<div class="table-wrap">${m}</div>`);
-  return html;
+  return badgeRow(html);
 }
-const inline = (text, ctx) => md(text, ctx).replace(/^<p>|<\/p>\s*$/g, '');
+// unwrap the single paragraph marked produces — including one md() has already re-classed
+const inline = (text, ctx) => md(text, ctx).replace(/^<p[^>]*>|<\/p>\s*$/g, '');
 
 function listItems(body) {
   // split a markdown list body into items (each may span continuation lines)
@@ -70,6 +79,15 @@ function listItems(body) {
 function splitLead(item) {
   const m = item.match(/^\*\*(.+?)\*\*\s*[—–:-]?\s*([\s\S]*)$/) || item.match(/^"(.+?)"\s*[—–:-]?\s*([\s\S]*)$/) || item.match(/^(.+?\?)\s*([\s\S]*)$/);
   return m ? [m[1], m[2]] : [item, ''];
+}
+// A spec sheet writes its facts as "Wavelength: **980 nm**" — the term first, the value emphasised.
+// splitLead only understands a leading **bold**, so without this every fact landed in the term
+// column and all 20 <dd> came out empty. A short, emphasis-free run before ": " is the term.
+function splitSpec(item) {
+  const [k, v] = splitLead(item);
+  if (v) return [k, v];
+  const c = item.match(/^([^:*`\n]{1,44}):\s+([\s\S]+)$/);
+  return c ? [c[1].trim(), c[2]] : [item, ''];
 }
 
 function srcLine(b) {
@@ -91,7 +109,7 @@ export function assignIds(page) {
 function blockHead(b, ctx) {
   let h = '';
   if (b.title) h += `<h2 id="${b.id || slugify(b.title)}">${inline(b.title, ctx)}</h2>`;
-  if (b.head) h += `<p class="lead">${inline(b.head, ctx)}</p>`;
+  if (b.head) { const inner = inline(b.head, ctx); h += ONLY_BADGES.test(inner) ? `<p class="badge-row">${inner}</p>` : `<p class="lead">${inner}</p>`; }
   return h;
 }
 const wrap = (b, cls, inner) => `<section class="blk blk-${b.type}${cls ? ' ' + cls : ''}" data-type="${esc(b.type)}">${inner}</section>`;
@@ -134,7 +152,9 @@ function statRow(b, ctx) {
 function specSheet(b, ctx) {
   const items = listItems(b.body);
   if (!items.length) return md(b.body.join('\n'), ctx);
-  return `<dl>${items.map(it => { const [k, v] = splitLead(it); return `<dt>${inline(k, ctx)}</dt><dd>${md(v || '', ctx)}</dd>`; }).join('')}</dl>`;
+  // an item that is a sentence rather than a term:value pair spans the full width instead of
+  // being squeezed into the term column with nothing beside it
+  return `<dl>${items.map(it => { const [k, v] = splitSpec(it); return v ? `<dt>${inline(k, ctx)}</dt><dd>${md(v, ctx)}</dd>` : `<dt class="full">${inline(k, ctx)}</dt><dd class="full"></dd>`; }).join('')}</dl>`;
 }
 
 // A [table] whose head says "columns: A | B | C" and whose body is a list of "a | b | c" items → real table.
@@ -212,8 +232,9 @@ export function renderShell({ title, description, slug, section, body, sidebar, 
 <link rel="canonical" href="${ctx.site}${slug === '/' ? '/' : slug + '/'}">
 <link rel="alternate" type="text/markdown" href="${slug === '/' ? '/index' : slug}.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="${ctx.cssHref || '/assets/site.css'}">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script>` : ''}
 </head>
@@ -241,8 +262,8 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="${REPO_URL}" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="${ctx.jsHref || '/assets/site.js'}" defer></script>
 </body>
 </html>`;
 }
@@ -253,24 +274,52 @@ export function pageBody(page, ctx, extras = {}) {
   const prov = new Set(page.blocks.flatMap(b => b.badges));
   const lv = page.section.lastVerified;
   if (page.slug === '/') {
-    // Home: the pitch is the H1; no badge row, no crumbs
-    return `<article class="page"><header class="page-head"><h1 class="pitch">${inline(page.subtitle || page.title, ctx)}</h1><p class="meta">${lv ? `<span class="lv">Manual last verified <time datetime="${lv}">${lv}</time></span>` : ''}<a class="md-link" href="/index.md">View as Markdown</a></p></header>${blocks}${extras.after || ''}</article>`;
+    // Home: a documentation landing — wordmark, the pitch, then straight into the section index.
+    // The pitch is the manual's own [hero] block promoted into the head (with its src), not a second copy.
+    const h = extras.pitchBlock;
+    // the hero's bold lead-in is the project name; the wordmark above already says it
+    const dupe = t => t.replace(/[.\s]/g, '').toLowerCase() === 'openbrx';
+    const pitch = h ? `${h.title && !dupe(h.title) ? `<strong>${inline(h.title, ctx)}</strong> ` : ''}${inline(h.head, ctx)}` : inline(page.subtitle || '', ctx);
+    return `<article class="page"><header class="page-head">${page.subtitle ? `<p class="kicker">${inline(page.subtitle, ctx)}</p>` : ''}<h1 class="wordmark">Open BRX</h1><p class="pitch">${pitch}</p>${metaLine({ lv, lvLabel: 'Manual last verified', mdHref: '/index.md' })}${h ? srcLine(h) : ''}</header>${extras.before || ''}${blocks}${extras.after || ''}</article>`;
   }
   return `<article class="page">
 <header class="page-head">
 <h1>${inline(page.title, ctx)}</h1>
 ${page.subtitle ? `<p class="subtitle">${inline(page.subtitle, ctx)}</p>` : ''}
-<p class="meta">${[...prov].map(badge).join('')}${lv ? `<span class="lv">Last verified <time datetime="${lv}">${lv}</time></span>` : ''}<a class="md-link" href="${page.slug}.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul>${Object.entries(PROV_LABEL).map(([k, v]) => `<li>${badge(k)} ${esc(v)}</li>`).join('')}</ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+${metaLine({ prov: [...prov], lv, mdHref: `${page.slug}.md` })}
 </header>
 ${blocks}
 ${extras.after || ''}
 </article>`;
 }
 
-export function tocFor(page) {
+// One line of page furniture: provenance · last verified · how we know · the markdown twin.
+// The badge legend lives once, on /credits/ — not repeated on all 73 pages.
+export function metaLine({ prov = [], lv, lvLabel = 'Last verified', aud, mdHref }) {
+  // spacing, not middots: on a narrow screen a separator character strands itself at the end of a
+  // wrapped row and reads as debris, so the flex gap does the separating instead
+  const parts = [];
+  if (prov.length) parts.push(`<span class="prov">${prov.map(badge).join('')}</span>`);
+  if (aud) parts.push(`<span class="aud">For ${esc(aud)}</span>`);
+  if (lv) parts.push(`<span class="lv">${lvLabel} <time datetime="${lv}">${lv}</time></span>`);
+  if (prov.length) parts.push(`<a class="how" href="/credits/#how-we-know">How we know</a>`);
+  if (mdHref) parts.push(`<a class="md-link" href="${mdHref}">Markdown</a>`);
+  return parts.length ? `<p class="meta">${parts.join('')}</p>` : '';
+}
+
+// The provenance legend, rendered once at the bottom of /credits/.
+export function legendHtml() {
+  return `<section class="blk" id="how-we-know"><h2>How we know — the provenance marks</h2><p class="lead">Every block on this site carries one of these. If a fact is not confirmed on the bench, in an official document, or in the app's own data, it is not published.</p><ul class="legend-list">${Object.entries(PROV_LABEL).map(([k, v]) => `<li>${badge(k)} — ${esc(v)}</li>`).join('')}</ul></section>`;
+}
+
+// The rail lists the page's SECTIONS. A callout or a hero paragraph has a title but renders no
+// heading, so those entries were full sentences pointing at a paragraph with no landing target.
+const TOC_SKIP = new Set(['callout', 'hero', 'quote', 'image', 'diagram', 'prose']);
+export function tocFor(page, extra = []) {
   assignIds(page);
-  const all = page.blocks.filter(b => b.id).map(b => { const t = b.title || b.head.split('—')[0]; return `<li><a href="#${b.id}">${esc(t.replace(/[`*]/g, ''))}</a></li>`; });
+  const all = page.blocks.filter(b => b.id && !TOC_SKIP.has(b.type))
+    .map(b => { const t = b.title || b.head.split('—')[0]; return `<li><a href="#${b.id}">${esc(t.replace(/[`*]/g, ''))}</a></li>`; })
+    .concat(extra.map(e => `<li><a href="#${e.id}">${esc(e.title)}</a></li>`));
   return all.length >= 2 ? `<ol>${all.join('')}</ol>` : '';
 }
 

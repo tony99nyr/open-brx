@@ -79,10 +79,117 @@ for (const u of sitemapUrls()) {
     expect(slugLinks, 'page links showing raw slugs').toEqual([]);
     const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     expect(sw, `horizontal page overflow (${sw} > ${iw})`).toBeLessThanOrEqual(iw + 1);
-    if (await page.locator('.meta .badge').count()) await expect(page.locator('.legend summary')).toBeVisible();
+    // provenance is explained once, on /credits/ — a page that shows marks must link there
+    if (await page.locator('.meta .badge').count()) {
+      await expect(page.locator('.meta a.how')).toHaveAttribute('href', '/credits/#how-we-know');
+      await expect(page.locator('.meta .badge').first()).toHaveText(/\w/); // the word, not a bare dot
+    }
+    expect(await page.locator('.legend, details.legend').count(), 'per-page badge legend is back').toBe(0);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 }
+
+// ---- 1d. the design contract: what "less cluttered, more technical" means, asserted on screen ----
+it('1d · page furniture is one meta line; a pending image is a strip, not a hero-sized box', async ({ page }) => {
+  await page.goto('/manual/hardware/leds/', { waitUntil: 'networkidle' });
+  // the head is: h1, subtitle, one meta line — and nothing else
+  const head = await page.evaluate(() => [...document.querySelectorAll('.page-head > *')].map(e => e.tagName.toLowerCase() + '.' + e.className));
+  expect(head, `page head grew furniture: ${head.join(', ')}`).toEqual(['h1.', 'p.subtitle', 'p.meta']);
+  await expect(page.locator('.page-head .meta')).toBeVisible();
+  // the head is title + subtitle + one meta row; on a phone the meta row wraps, nothing more
+  const budget = page.viewportSize().width < 820 ? 260 : 200;
+  const headH = await page.locator('.page-head').evaluate(e => Math.round(e.getBoundingClientRect().height));
+  expect(headH, `page head is ${headH}px, over the ${budget}px budget`).toBeLessThan(budget);
+  // one text family: no display face for headings, and headings match running prose
+  const fams = await page.evaluate(() => ['h1', '.subtitle', 'main h2', 'main .blk p'].map(s => { const e = document.querySelector(s); return e ? getComputedStyle(e).fontFamily.split(',')[0].replace(/"/g, '') : null; }));
+  expect(new Set(fams.filter(Boolean)).size, `heading and body faces differ: ${fams.join(' / ')}`).toBe(1);
+  expect(fams[0]).toBe('IBM Plex Sans');
+  // a placeholder for an unshot image must not consume a screen
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const phs = await page.locator('.ph').all();
+  expect(phs.length, 'no placeholder on the home page to measure').toBeGreaterThan(0);
+  for (const ph of phs) {
+    const h = await ph.evaluate(e => Math.round(e.getBoundingClientRect().height));
+    expect(h, 'pending-image placeholder is hero-sized again').toBeLessThan(64);
+  }
+});
+
+it('1e · light by default; the section index on the home page routes to all seven sections', async ({ page }) => {
+  await page.addInitScript(() => { try { localStorage.removeItem('brx-theme'); } catch {} });
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const lum = bg.match(/\d+/g).slice(0, 3).reduce((a, c) => a + Number(c), 0) / 3;
+  expect(lum, `home is not light by default (body bg ${bg})`).toBeGreaterThan(200);
+  const links = page.locator('.index a');
+  await expect(links).toHaveCount(7);
+  await expect(page.locator('.index-note')).toHaveText(/verified \d{4}-\d\d-\d\d/);
+  for (let i = 0; i < 7; i++) {
+    await expect(links.nth(i).locator('.n')).toHaveText(/^0[1-7]$/);
+    await expect(links.nth(i).locator('.t')).not.toBeEmpty();
+    await expect(links.nth(i).locator('.v')).toHaveText(/^\d+ pages?$/);
+    // the blurb is the section's own page titles, never an author-facing goal or a mid-sentence cut
+    const d = await links.nth(i).locator('.d').innerText();
+    expect(d, `index blurb is truncated: ${d}`).not.toMatch(/…$/);
+  }
+  // the row is a real route, not decoration
+  const href = await links.nth(2).getAttribute('href');
+  const title = (await links.nth(2).locator('.t').innerText()).trim();
+  await links.nth(2).click();
+  await expect(page).toHaveURL(new RegExp(href.replace(/[/]/g, '\\/') + '$'));
+  await expect(page.locator('h1')).toContainText(title);
+});
+
+it('1h · on a phone a table either fits the screen or scrolls — it is never crushed into a tower', async ({ page }) => {
+  const vp = page.viewportSize();
+  test.skip(vp.width >= 820, 'phone-only table sizing');
+  let fits = 0, scrolls = 0;
+  // a mix of wide reference tables (must scroll) and 2-column tables (must fit)
+  for (const u of ['/manual/hardware/leds/', '/manual/dev/commands/', '/manual/hardware/spec-sheet/', '/manual/dev/weap/', '/manual/dev/brx-mcp/', '/manual/operate/sighting/', '/manual/sound/voice-packs/']) {
+    await page.goto(u, { waitUntil: 'networkidle' });
+    const rows = await page.evaluate(() => [...document.querySelectorAll('.table-wrap')].map(w => ({
+      scrolls: w.scrollWidth > w.clientWidth + 1,
+      cols: w.querySelector('tr')?.cells.length || 0,
+      tallest: Math.max(0, ...[...w.querySelectorAll('tbody tr')].map(r => Math.round(r.getBoundingClientRect().height))),
+    })));
+    expect(rows.length, `${u} has no table to measure`).toBeGreaterThan(0);
+    for (const r of rows) {
+      r.scrolls ? scrolls++ : fits++;
+      // a table that fits was not made to fit by crushing its columns
+      if (!r.scrolls) expect(r.tallest, `${u}: a ${r.cols}-column table fits only because a row grew to ${r.tallest}px`).toBeLessThan(150);
+    }
+    // the page itself never scrolls sideways, whatever the table does
+    const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    expect(sw, `${u} page overflow`).toBeLessThanOrEqual(iw + 1);
+  }
+  expect(fits, 'no narrow table fits the phone screen — the min-width floor is too high').toBeGreaterThan(0);
+});
+
+it('1g · CSS and JS are content-hashed, so cached assets can never outlive the markup', async ({ page, request }) => {
+  await page.goto('/manual/dev/commands/', { waitUntil: 'networkidle' });
+  const refs = await page.evaluate(() => [document.querySelector('link[rel=stylesheet][href^="/assets"]')?.getAttribute('href'), document.querySelector('script[src^="/assets"]')?.getAttribute('src')]);
+  for (const href of refs) {
+    expect(href, 'asset reference missing').toBeTruthy();
+    expect(href, `unhashed asset ${href} — a stale cache would break the page`).toMatch(/^\/assets\/site\.[0-9a-f]{10}\.(css|js)$/);
+    expect((await request.get(href)).status(), href).toBe(200);
+  }
+  // and the unfingerprinted names must be gone, not left behind to be served stale
+  expect((await request.get('/assets/site.css')).status()).not.toBe(200);
+  // the same hashes on another page: one build, one pair of assets
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const home = await page.evaluate(() => [document.querySelector('link[rel=stylesheet][href^="/assets"]')?.getAttribute('href'), document.querySelector('script[src^="/assets"]')?.getAttribute('src')]);
+  expect(home).toEqual(refs);
+});
+
+it('1f · the provenance legend exists once, at /credits/#how-we-know, and names every mark', async ({ page }) => {
+  await page.goto('/credits/', { waitUntil: 'networkidle' });
+  const legend = page.locator('#how-we-know');
+  await expect(legend).toBeVisible();
+  await expect(legend.locator('.legend-list li')).toHaveCount(7);
+  for (const kind of ['bench', 'official', 'apk', 'community', 'software', 'spec', 'wip']) {
+    await expect(legend.locator(`.badge.b-${kind}`)).toHaveCount(1);
+  }
+  await expect(legend.locator('.legend-list li').first()).toContainText(/bench/i);
+});
 
 it('1t · TOC follows the reader: clicking a TOC link scrolls to the heading and marks it active', async ({ page }) => {
   await page.goto('/manual/dev/transport/');
@@ -227,7 +334,7 @@ it('2c · in-page filterable table (command reference) filters, clears, and sort
 it('2d · code copy → "copied"; clipboard failure → "copy failed"', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
   await page.goto('/manual/dev/transport/');
-  const btn = page.locator('pre .copy-btn').first();
+  const btn = page.locator('.code-wrap .copy-btn').first();
   await expect(btn).toBeVisible();
   await btn.click();
   await expect(btn).toHaveText('copied');
@@ -245,7 +352,8 @@ it('2f · theme toggle changes the page and persists across navigation', async (
   await t.click();
   const mode = await page.evaluate(() => document.documentElement.dataset.theme);
   expect(['light', 'dark']).toContain(mode);
-  await expect(t).toHaveAttribute('aria-pressed', String(mode === 'light'));
+  // the control is named by the action it performs, not by an aria-pressed that reads backwards
+  await expect(t).toHaveAttribute('aria-label', mode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
   const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(after).not.toBe(before);
   await page.goto('/manual/hardware/leds/');

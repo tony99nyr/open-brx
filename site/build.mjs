@@ -4,8 +4,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { loadManual } from './lib/parse.mjs';
-import { renderShell, pageBody, tocFor, markdownTwin, renderBlock, badge, md } from './lib/render.mjs';
+import { renderShell, pageBody, tocFor, markdownTwin, renderBlock, badge, md, metaLine, legendHtml } from './lib/render.mjs';
 import { buildWeapons, buildSounds } from './lib/data.mjs';
 import { sourceStamp, sourceFiles } from './lib/sources.mjs';
 
@@ -44,7 +45,19 @@ const titles = new Map(); const slugTitles = new Map();
 for (const p of pages) { titles.set(norm(p.title), p.slug); slugTitles.set(p.slug, p.title.replace(/[`*]/g, '')); }
 for (const s of sections) { if (!titles.has(norm(s.title))) titles.set(norm(s.title), s.slug); if (!slugTitles.has(s.slug)) slugTitles.set(s.slug, s.title); }
 const aliases = new Map([['platform section', '/platform'], ['platform', '/platform'], ['developer', '/manual/dev'], ['developer section', '/manual/dev'], ['ir protocol', '/manual/dev/ir'], ['developer / ir protocol', '/manual/dev/ir'], ['sound', '/manual/sound'], ['sound section', '/manual/sound'], ['repairs', '/manual/fix/repairs'], ['mods', '/manual/fix/mods'], ['accessories: stations', '/manual/fix/accessories'], ['firmware & sounds', '/manual/sound/firmware'], ['firmware', '/manual/sound/firmware'], ['gameplay', '/manual/gameplay'], ['hardware', '/manual/hardware'], ['troubleshooting', '/manual/fix/diagnose'], ['diagnose', '/manual/fix/diagnose']].filter(([, v]) => slugs.has(v)));
-const ctx = { site: SITE, slugs, images: manual.images, imageFiles, titles, slugTitles, aliases };
+// ---- assets: content-hashed filenames --------------------------------------------------------
+// The stylesheet and the HTML must arrive together. Without a fingerprint a returning visitor can
+// hold a cached site.css against freshly deployed markup and see an unstyled/half-styled page.
+const assetDir = path.join(HERE, 'assets');
+const assetFiles = fs.readdirSync(assetDir).map(f => {
+  const buf = fs.readFileSync(path.join(assetDir, f));
+  const hash = createHash('sha256').update(buf).digest('hex').slice(0, 10);
+  const ext = path.extname(f);
+  return { src: f, out: `assets/${path.basename(f, ext)}.${hash}${ext}`, buf };
+});
+const assetHref = name => { const a = assetFiles.find(x => x.src === name); return a ? '/' + a.out : `/assets/${name}`; };
+
+const ctx = { site: SITE, slugs, images: manual.images, imageFiles, titles, slugTitles, aliases, cssHref: assetHref('site.css'), jsHref: assetHref('site.js') };
 
 // ---- nav / sidebar ------------------------------------------------------------------------
 const manualSections = sections.filter(s => s.slug.startsWith('/manual'));
@@ -110,23 +123,64 @@ function explorerHtml(e, anchor) {
 </section>`;
 }
 
+// ---- home: the section index (generated from the manual's own structure, never hand-written) ---
+// A section's "Goal of this section:" sentence is written for the authors and runs long; the index
+// shows its first clause only, so seven rows fit on one screen.
+function shortGoal(goal, min = 42, max = 112) {
+  let s = String(goal || '').split(/;\s|\s—\s|\.\s/)[0].replace(/\s+/g, ' ').trim().replace(/[.,;]$/, '');
+  if (s.length > max) {
+    // cut at the first clause boundary that is long enough AND does not leave a bracket or
+    // quote hanging open — an index blurb ending in "(who plays what…" reads as a bug
+    const balanced = p => { let d = 0; for (const c of p) { if (c === '(') d++; else if (c === ')') d--; } return d === 0 && (p.split('"').length - 1) % 2 === 0; };
+    let cut = -1;
+    for (let i = s.indexOf(', ', min); i > 0 && i <= max; i = s.indexOf(', ', i + 1)) if (balanced(s.slice(0, i))) { cut = i; break; }
+    s = (cut > 0 ? s.slice(0, cut) : s.slice(0, s.lastIndexOf(' ', max))) + '…';
+  }
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+// A section's own "Goal of this section:" sentence is written FOR THE AUTHOR ("Be the one place
+// that lists…") and runs long enough to need truncating. The section's page titles are written for
+// the reader, are already the thing being navigated to, and never need cutting mid-sentence.
+function sectionIndexHtml() {
+  const lv = sections.map(s => s.lastVerified).filter(Boolean).sort().pop();
+  const rows = sections.map(s => {
+    const sp = pages.filter(p => p.section === s && p.slug !== s.slug);
+    const names = sp.map(p => p.title.replace(/[`*]/g, '').split(/\s+—\s+/)[0].trim());
+    const shown = names.slice(0, 3);
+    const more = names.length - shown.length;
+    return `<li><a href="${s.slug}/"><span class="n">${esc(s.num)}</span><span class="t">${esc(s.title)}</span>` +
+      (shown.length ? `<span class="d">${shown.map(esc).join(' · ')}${more > 0 ? ` <span class="more">+${more} more</span>` : ''}</span>` : '') +
+      `<span class="v">${sp.length} page${sp.length === 1 ? '' : 's'}</span></a></li>`;
+  }).join('');
+  return `<nav class="index" aria-label="Manual sections"><ol>${rows}</ol>` +
+    (lv ? `<p class="index-note">Every section last verified ${esc(lv)}.</p>` : '') + `</nav>`;
+}
+
 // ---- render pages -------------------------------------------------------------------------
 const searchIndex = [];
 const sitemap = [];
 const twins = [];
 function renderOne(page, opts = {}) {
   const ex = EXPLORERS[page.slug];
+  const isHome = page.slug === '/';
   let replaced = false;
+  // Home's [hero] block IS the pitch — it is promoted into the page head rather than repeated below it.
+  const heroBlock = isHome ? page.blocks.find(b => b.type === 'hero') : null;
   const extras = {
-    replaceBlock: b => { if (ex && !replaced && b.type === 'data-table') { replaced = true; return explorerHtml(ex, b.id); } return undefined; },
+    replaceBlock: b => {
+      if (b === heroBlock) return '';
+      if (ex && !replaced && b.type === 'data-table') { replaced = true; return explorerHtml(ex, b.id); }
+      return undefined;
+    },
+    ...(isHome ? { pitchBlock: heroBlock, before: sectionIndexHtml() } : {}),
+    ...(page.slug === '/credits' ? { after: legendHtml() } : {}),
   };
   const body = pageBody(page, ctx, extras);
-  const isHome = page.slug === '/';
   const html = renderShell({
     title: isHome ? 'Open BRX — The Ultimate BRX Manual' : pageTitle(page),
     description: page.subtitle || page.title, slug: page.slug, section: page.section, body,
     sidebar: isHome || page.slug === '/credits' || page.slug === '/changelog' ? '' : sidebarFor(page),
-    toc: isHome ? '' : tocFor(page), breadcrumbs: crumbsFor(page), jsonld: jsonldFor(page), klass: isHome ? 'home' : (ex ? 'explorer-page' : ''),
+    toc: isHome ? '' : tocFor(page, page.slug === '/credits' ? [{ id: 'how-we-know', title: 'How we know — the provenance marks' }] : []), breadcrumbs: crumbsFor(page), jsonld: jsonldFor(page), klass: isHome ? 'home' : (ex ? 'explorer-page' : ''),
   }, ctx);
   write(slugPath(page.slug), html);
   const twin = markdownTwin(page); write(twinPath(page.slug), twin); twins.push({ slug: page.slug, title: page.title, twin });
@@ -144,7 +198,7 @@ for (const s of manualSections) {
   const sp = pages.filter(p => p.section === s);
   const hub = { title: s.title, slug: s.slug, subtitle: s.goal || '', section: s, blocks: [] };
   const cards = `<section class="blk blk-cards"><div class="cards"><ul>${sp.map(p => `<li><a href="${p.slug}/"><strong>${esc(p.title.replace(/[`*]/g, ''))}</strong><br>${esc(p.subtitle || '')}</a></li>`).join('')}</ul></div></section>`;
-  const body = `<article class="page hub"><header class="page-head"><p class="kicker">Section ${s.num}</p><h1>${esc(s.title)}</h1>${s.goal ? `<p class="subtitle">${md(s.goal, ctx).replace(/^<p>|<\/p>\s*$/g, '')}</p>` : ''}<p class="meta">${s.audience ? `<span class="aud">For ${esc(s.audience)}</span>` : ''}${s.lastVerified ? `<span class="lv">Last verified <time datetime="${s.lastVerified}">${s.lastVerified}</time></span>` : ''}<a class="md-link" href="${s.slug}.md">View as Markdown</a></p></header>${cards}</article>`;
+  const body = `<article class="page hub"><header class="page-head"><p class="kicker">Section ${s.num}</p><h1>${esc(s.title)}</h1>${s.goal ? `<p class="subtitle">${md(shortGoal(s.goal), ctx).replace(/^<p>|<\/p>\s*$/g, '')}</p>` : ''}${metaLine({ lv: s.lastVerified, mdHref: `${s.slug}.md` })}</header>${cards}</article>`;
   write(slugPath(s.slug), renderShell({ title: `${s.title} — The BRX Manual (Open BRX)`, description: s.goal || s.title, slug: s.slug, section: s, body, sidebar: sidebarFor(hub), toc: '', breadcrumbs: crumbsFor(hub), jsonld: jsonldFor(hub) }, ctx));
   const twin = [`# ${s.title}`, s.goal || '', '', ...sp.map(p => `- [${p.title}](${SITE}${p.slug}/) — ${p.subtitle || ''}`)].join('\n');
   write(twinPath(s.slug), twin); twins.push({ slug: s.slug, title: s.title, twin });
@@ -153,11 +207,12 @@ for (const s of manualSections) {
 }
 
 // ---- assets, data, machine-readable layer ------------------------------------------------
-for (const f of fs.readdirSync(path.join(HERE, 'assets'))) write(`assets/${f}`, fs.readFileSync(path.join(HERE, 'assets', f)));
+for (const a of assetFiles) write(a.out, a.buf);
 for (const [id, f] of Object.entries(imageFiles)) write(`img/${f}`, fs.readFileSync(path.join(imgDir, f)));
 write('404.html', renderShell({ title: 'Page not found — Open BRX', description: 'That page does not exist.', slug: '/404', section: {}, body: `<article class="page"><header class="page-head"><h1>Page not found</h1><p class="subtitle">That URL isn't part of the manual. The sections are one tap away.</p></header><section class="blk"><div class="cards"><ul><li><a href="/manual/"><strong>The BRX Manual</strong><br>Hardware, operation, gameplay, sound, fixes, protocol.</a></li><li><a href="/platform/"><strong>The Open BRX platform</strong><br>What we're building on the BRX.</a></li></ul></div></section></article>`, sidebar: '', toc: '', breadcrumbs: [], jsonld: null }, ctx));
 write('404.md', '# Page not found\n\nThat URL is not part of the manual. Start at https://open-brx.iamrossi.workers.dev/manual/\n');
-write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#0c1016"/><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="#39b4ff" stroke-width="2" stroke-linecap="round"/></svg>`);
+// the mark reads on a light or a dark tab strip, so it carries no background plate of its own
+write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="#0a5fbb" stroke-width="2" stroke-linecap="round"/></svg>`);
 write('data/search.json', JSON.stringify(searchIndex));
 write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemap.map(s => `<url><loc>${SITE}${s === '/' ? '/' : s + '/'}</loc>${manual.sections[0]?.lastVerified ? `<lastmod>${manual.sections[0].lastVerified}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>\n`);
