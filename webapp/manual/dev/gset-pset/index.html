@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/gset-pset.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"$GSET and $PSET — game and player settings","description":"The two frames that set on-gun rules and the player's pools, identity and voice pack","url":"https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"$GSET and $PSET — game and player settings","item":"https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset/"}]}]}</script>
 </head>
@@ -33,8 +34,7 @@
 <header class="page-head">
 <h1><code>$GSET</code> and <code>$PSET</code> — game and player settings</h1>
 <p class="subtitle">The two frames that set on-gun rules and the player&#39;s pools, identity and voice pack</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/gset-pset.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/gset-pset.md">Markdown</a></p>
 </header>
 <section class="blk blk-table" data-type="table"><h2 id="gset-validated-against-the-captured-gset-0-0-1-0-1-0-50-1"><code>$GSET,&lt;t1&gt;,…,&lt;t8&gt;,*</code> — validated against the captured <code>$GSET,0,0,1,0,1,0,50,1,*</code></h2><div class="table-wrap"><table>
 <thead>
@@ -51,56 +51,56 @@
 <td>friendlyFire</td>
 <td>0 / 1</td>
 <td><strong>Firmware-enforced, both directions.</strong> 0 blocks same-team damage <em>and</em> heals from enemies; 1 opens the gate. Replicated 2× with alternating values plus control.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>2</td>
 <td>outdoorMode</td>
 <td>0</td>
 <td>APK field name; not exercised on the bench.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>3</td>
 <td>gunLaserRegion</td>
 <td>1</td>
 <td>APK field name; not exercised on the bench.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>4</td>
 <td>autoAmbientLight</td>
 <td>0</td>
 <td>APK field name; not exercised on the bench.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>5</td>
 <td>gyroscope</td>
 <td>1</td>
 <td>APK field name; not exercised on the bench.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>6</td>
 <td>secondaryBluetoothWeapons</td>
 <td>0</td>
 <td>APK field name; not exercised on the bench.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>7</td>
 <td>criticalShotModifier</td>
 <td>50</td>
 <td>APK field name. <strong>Not</strong> score-to-win (byte-identical across captures with different win conditions).</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>8</td>
 <td>gameMods</td>
 <td>1</td>
 <td>APK field name; not exercised on the bench.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (GSET), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §3, §7n; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (FF enforcement table)</p></section>
@@ -120,35 +120,35 @@
 <td><strong>player id</strong></td>
 <td>6</td>
 <td><strong>0-based, 0–63 (6 bits)</strong> — the app&#39;s UI shows 1–64 and writes id−1 (app 7 → wire 6, app 64 → 63, an out-of-range 69 clamps to 63). Ends up in every IR shot&#39;s P field and comes back as <code>$HIR</code> token 3 on whoever you hit.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>2</td>
 <td>—</td>
 <td>0</td>
 <td>0 in every capture; 0/1/7 gave byte-identical behaviour. Inert.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>3</td>
 <td>HP</td>
 <td>45</td>
 <td>Starting/max HP. Echoed as <code>$LCD</code> token 1 after <code>$SPAWN</code>.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>4</td>
 <td>armor</td>
 <td>70</td>
 <td>Armor pool (<code>$LCD</code> token 2, <code>$HP</code> token 2).</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>5</td>
 <td>shield</td>
 <td>70</td>
 <td>Shield <strong>maximum</strong>. The pool starts at 0 and only fills via an IR <code>$SIR</code> grant function — it is not BLE-writable as a value.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>6</td>
@@ -169,7 +169,7 @@
 <td><strong>positional voice pack</strong></td>
 <td>H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10</td>
 <td>Sixteen sound ids on the wire. The app&#39;s metadata declares these voice-pack fields: deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit, emptyUnboundButtonSound, ammoOrGearPickUp, energyShieldLoop. Which wire slot carries which name: — (unknown).</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §3, §7e, §7p, §7r; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (PSET); <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/gameconfig.py" rel="noopener">mcp/brx_mcp/gameconfig.py</a>; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/unknowns.md" rel="noopener">docs/unknowns.md</a> (A10b′, P3)</p></section>
@@ -177,13 +177,13 @@
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#gset-validated-against-the-captured-gset-0-0-1-0-1-0-50-1">$GSET,&lt;t1&gt;,…,&lt;t8&gt;, — validated against the captured $GSET,0,0,1,0,1,0,50,1,</a></li><li><a href="#there-is-no-respawn-time-lives-or-score-token">There is no respawn, time, lives or score token.</a></li><li><a href="#pset-sample-pset-6-0-45-70-70-50-h44-jad-v33-v3i-v3c-v3g-v3e">$PSET,&lt;t1&gt;,…, — sample $PSET,6,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,</a></li><li><a href="#numbering-a-fleet-is-one-token">Numbering a fleet is one token.</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#gset-validated-against-the-captured-gset-0-0-1-0-1-0-50-1">$GSET,&lt;t1&gt;,…,&lt;t8&gt;, — validated against the captured $GSET,0,0,1,0,1,0,50,1,</a></li><li><a href="#pset-sample-pset-6-0-45-70-70-50-h44-jad-v33-v3i-v3c-v3g-v3e">$PSET,&lt;t1&gt;,…, — sample $PSET,6,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

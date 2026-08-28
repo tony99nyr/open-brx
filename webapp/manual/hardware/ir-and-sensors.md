@@ -2,7 +2,8 @@
 _The invisible beam that carries every tag — its published specs and what we measured._
 Last verified: 2026-08-27
 
-IR emitter (Class 1 laser, IEC 60825-1) — from Battle Company's Extended User Guide 📖:
+## IR emitter (Class 1 laser, IEC 60825-1)
+from Battle Company's Extended User Guide 📖:
 - Wavelength: **980 nm** (note: many hobby IR parts are 940 nm — pick 980 nm-capable receivers for anything you build)
 - Pulse width: **6.5 µs**
 - Energy per pulse: **111 nJ**

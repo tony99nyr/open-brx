@@ -1,6 +1,6 @@
 # Open BRX — The Ultimate BRX Manual (full text)
 
-Generated 2026-08-27T21:48:59.882Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-08-28T12:48:13.677Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -208,7 +208,8 @@ _[image HW-05: (ports close-up — see Images table)]_
 _The invisible beam that carries every tag — its published specs and what we measured._
 Last verified: 2026-08-27
 
-IR emitter (Class 1 laser, IEC 60825-1) — from Battle Company's Extended User Guide 📖:
+## IR emitter (Class 1 laser, IEC 60825-1)
+from Battle Company's Extended User Guide 📖:
 - Wavelength: **980 nm** (note: many hobby IR parts are 940 nm — pick 980 nm-capable receivers for anything you build)
 - Pulse width: **6.5 µs**
 - Energy per pulse: **111 nJ**
@@ -348,7 +349,7 @@ Source: docs/gotchas.md, docs/field-process.md
 _A 7.4 V two-cell pack with one nasty surprise: the connector polarity is backwards._
 Last verified: 2026-08-27
 
-Tagger battery 📖 👥:
+## Tagger battery 📖 👥
 - Chemistry / pack: **7.4 V Li-ion, ~2,200 mAh**, two cells
 - Connector: **2-pin** (aftermarket 3-pin packs fit — the third pin is a thermistor the BRX ignores)
 - Charger: the supplied **8.4 V two-cell smart charger**; LED red while charging → green when full
@@ -469,7 +470,7 @@ Last verified: 2026-08-27
 
 _[image HW-11: (what's-in-the-box flat lay — see Images table)]_
 
-BRX tagger:
+## BRX tagger
 - Form factor: rifle-style, ABS shell, reload handle on the right 📖
 - Controls: trigger · reload handle · ALT (orange) · SELECT · LEFT/RIGHT · power slide switch 📖
 - Emitter: Class 1 IR laser, 980 nm, 38 kHz, 6.5 µs pulses, 111 nJ/pulse, <18 mm beam at aperture 📖
@@ -484,7 +485,7 @@ BRX tagger:
 - Manufacturer: Laser Tag Pro / Battle Company, Oak Creek, WI 📖
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1 §7c + docs/experiment-log.md 2026-08-23 (USB console — Teensy MCU), protocol/brx-protocol.md §7o (sight flash)
 
-BRX headset:
+## BRX headset
 - Sensors: IR receiver domes around the band (front/back distinguished on the wire) ✅
 - Feedback: 3 W green hit LEDs (4 directions) + WS2812B RGB ring 📖 👥
 - Emitter: front IR emitter (melee gesture, respawn requests) 📖
@@ -492,7 +493,7 @@ BRX headset:
 - Battery: 1 × 18650; USB 5 V charging 👥 📖
 - Firmware: USB disk mode via PROGRAM pin 📖
 
-Smart Grenade:
+## Smart Grenade
 - Top button · safety clip · 3 IR emitters + 1 emitter/receiver · RGB status LED · USB-C (charge only) ✅
 - 5 modes: Frag · Assault · Hill · Respawn · CTF ✅
 
@@ -1168,9 +1169,9 @@ Source: protocol/brx-protocol.md §7r + §7r addendum, docs/weapon-design.md §6
 | What is a shield? | A third pool above armor, used by Nexus-style classes (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event — a phone cannot simply set it. | ✅ 📖 |
 | Can a medic heal me? | Yes — the Supremacy Medic's medi-gel pulse is a heal *shot*; community confirms it heals by shooting teammates. A host can also grant health directly. | 📖 👥 ✅ |
 | Do heals overfill? | No — a heal adds to the pool and clamps at the maximum. | ✅ |
-| Head shots? | The headset carries two sensors (front and back domes) and the gun body a third; a crit flag exists in every shot (×1.5 damage) but no stock weapon sets it. | ✅ |
+| Head shots? | The headset carries two sensors (front and back domes) and the gun body a third; a crit flag exists in every shot but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100` — a per-game setting, ×1.5 at the shipped t7=50, and t7=0 disables crits entirely. | ✅ |
 | Can friendly fire hurt me? | Only if the game enables it. With friendly fire off the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. | ✅ 📖 |
-Source: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-26 ("CRIT = x1.5 damage", replicated), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)
+Source: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)
 
 ## Heals and boosts are "add", never "set".
 When a phone or host grants health to a live gun, the grant is *added* to the current pool and clamped at the maximum — you cannot be set to a lower number this way, and a grant to a full-health player does nothing. This is why Halo-style regenerating shields, health-on-kill and medic roles are all built by a host watching your pool and topping it up.
@@ -2524,7 +2525,7 @@ _[diagram DEV-05: Token ruler t0–t42 colour-coded by block: identity · damage
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard · 1 MedicHeal · 2 ActivateShield · 3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb · 10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. | ✅ (position) 🔍 (enum names) |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. | 🔍 |
 | 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (§7r addendum). | ✅ |
-| 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (×1.5). | 🔍 |
+| 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (applies `$GSET` t7, ×1.5 at the shipped t7=50). | 🔍 |
 | 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | — | — | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. | 🔍 |
 | 12 | extraHeadsetDamage | — | — | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
 | 13 | extraHeadsetRangeOutdoor | — | — | 80 on the same three weapons. | ✅ (correlation) |
@@ -2650,7 +2651,7 @@ _What an IR hit does to this gun is decided by the victim's table, not by the sh
 Last verified: 2026-08-27
 
 ## The key idea.
-An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** 16 × 4 = 64 addressable cells, all writable per game over BLE.
+An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** The same is true of a **wrongly-teamed** shot: damage applies only from an enemy team and support only from your own, and a rejected frame emits **no `$HIR` at all** — it never reaches BLE. 16 × 4 = 64 addressable cells, all writable per game over BLE.
 Source: protocol/brx-protocol.md §5; protocol/brx-ir-protocol.md
 
 ## Format:
@@ -2663,8 +2664,8 @@ Source: protocol/brx-protocol.md §5; docs/experiment-log.md (clean negatives)
 ```text
 # The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…) — plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — ×1.25 damage
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — ×2 damage
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — fn 36 (×1.25 DISPUTED, see below)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — fn 37 (×2 DISPUTED, see below)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -2677,13 +2678,14 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 ```
 Source: protocol/brx-protocol.md §5; docs/experiment-log.md (shipped-table consequence)
 
-## Function map (measured at magnitude 20 on protocol 5, baseline HP 45 / armor 70 / shield 0)
+## Function map
+measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. The classes do **not** vary by IR protocol (50 cells across protocols 0/5/7/9/10); whether a **headset-dome** hit behaves the same is **untested**.
 | Class | Function ids | Measured behaviour | Polarity | Conf |
 |---|---|---|---|---|
 | Standard damage | 1, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45→25→5 with armor **and shields** untouched | enemy only | ✅ |
-| ×1.25 damage | 36 | magnitude 20 lands as 25 | enemy only | ✅ |
-| ×2 damage | 37 | magnitude 20 lands as 40 | enemy only | ✅ |
+| ×1.25 damage ⚠️ | 36 | magnitude 20 lands as 25 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
+| ×2 damage ⚠️ | 37 | magnitude 20 lands as 40 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
 | Add HP, overflow → armor | 9, 12, 16, 19 | 15→35→45, then +armor | ally only (16/19 also damage enemies) | ✅ |
 | Add HP, clamp | 10, 17 | 15→35→45, no overflow | ally only (17 also AP-damages enemies) | ✅ |
 | Add HP, overflow → shield | 14, 21 | 15→35→45, then +shield | ally only | ✅ |
@@ -2698,9 +2700,9 @@ Source: docs/experiment-log.md (2026-08-26 complete two-sided $SIR map; 2026-08-
 With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.
 Source: protocol/brx-protocol.md §5; docs/experiment-log.md (dual-polarity, FF table)
 
-_[diagram DEV-07: Damage pipeline: IR word (B,U,D,C) → victim `$SIR[B,U]` → function multiplier → ×1.5 if crit → drain shields → armor → HP → emit `$HIR` + `$HP`.]_
+_[diagram DEV-07: Damage pipeline: IR word (B,U,D,C) → victim `$SIR[B,U]` → function multiplier → ×(1 + `$GSET` t7/100) if crit → drain shields → armor → HP → emit `$HIR` + `$HP`.]_
 
-- **applied = magnitude × fn multiplier × (1.5 if crit)** — fn 1 ×1 · fn 36 ×1.25 · fn 37 ×2; crit stacks (fn 37 + crit = ×3). ✅
+- **applied = magnitude × fn multiplier × (1 + `$GSET` t7/100 if crit)** — the crit modifier is a **per-game tunable**, not a fixed ×1.5: t7=0 disables crits, t7=100 doubles. ×1.5 is simply the shipped t7=50. Exact at seven levels, 3/3 each. ✅
 - **Drain order: shields → armor → HP.** Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper's 80 split exactly 70/10). ✅
 - **Heals clamp** at the pool max — magnitude 200 is a fill, not a stack. ✅
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks. ✅
@@ -2796,7 +2798,7 @@ Source: protocol/brx-ir-protocol.md; protocol/brx-protocol.md §7c (laser mW)
 | **P** | 6 | 4–9 | player id 0–63 = `$PSET` token 1 = `$HIR` tok3 | matched the registry | ✅ |
 | **T** | 2 | 10–11 | team id 0–3 = `$TID & 3` = `$HIR` tok4 | matched | ✅ |
 | **D** | 8 | 12–19 | magnitude = `$WEAP` t5 = `$HIR` tok5 | pushed 22 → 9 → 115; only these bits moved | ✅ |
-| **C** | 1 | 20 | critical flag → `$HIR` tok6, ×1.5 applied | emitted crit=1 → `$HIR,…,1,…` | ✅ |
+| **C** | 1 | 20 | critical flag → `$HIR` tok6, applies ×(1 + `$GSET` t7/100) | emitted crit=1 → `$HIR,…,1,…` | ✅ |
 | **U** | 2 | 21–22 | `$SIR` subtype → `$HIR` tok7 | U=0/1/3 registered with rows; U=2 (no row) ignored | ✅ |
 | **Z** | 2 | 23–24 | parity trailer | see rule | ✅ |
 Source: protocol/brx-ir-protocol.md; docs/experiment-log.md (2026-08-26 melee capture)

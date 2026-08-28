@@ -3,7 +3,7 @@ _What an IR hit does to this gun is decided by the victim's table, not by the sh
 Last verified: 2026-08-27
 
 ## The key idea.
-An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** 16 × 4 = 64 addressable cells, all writable per game over BLE.
+An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** The same is true of a **wrongly-teamed** shot: damage applies only from an enemy team and support only from your own, and a rejected frame emits **no `$HIR` at all** — it never reaches BLE. 16 × 4 = 64 addressable cells, all writable per game over BLE.
 Source: protocol/brx-protocol.md §5; protocol/brx-ir-protocol.md
 
 ## Format:
@@ -16,8 +16,8 @@ Source: protocol/brx-protocol.md §5; docs/experiment-log.md (clean negatives)
 ```text
 # The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…) — plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — ×1.25 damage
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — ×2 damage
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — fn 36 (×1.25 DISPUTED, see below)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — fn 37 (×2 DISPUTED, see below)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -30,13 +30,14 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 ```
 Source: protocol/brx-protocol.md §5; docs/experiment-log.md (shipped-table consequence)
 
-## Function map (measured at magnitude 20 on protocol 5, baseline HP 45 / armor 70 / shield 0)
+## Function map
+measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. The classes do **not** vary by IR protocol (50 cells across protocols 0/5/7/9/10); whether a **headset-dome** hit behaves the same is **untested**.
 | Class | Function ids | Measured behaviour | Polarity | Conf |
 |---|---|---|---|---|
 | Standard damage | 1, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45→25→5 with armor **and shields** untouched | enemy only | ✅ |
-| ×1.25 damage | 36 | magnitude 20 lands as 25 | enemy only | ✅ |
-| ×2 damage | 37 | magnitude 20 lands as 40 | enemy only | ✅ |
+| ×1.25 damage ⚠️ | 36 | magnitude 20 lands as 25 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
+| ×2 damage ⚠️ | 37 | magnitude 20 lands as 40 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
 | Add HP, overflow → armor | 9, 12, 16, 19 | 15→35→45, then +armor | ally only (16/19 also damage enemies) | ✅ |
 | Add HP, clamp | 10, 17 | 15→35→45, no overflow | ally only (17 also AP-damages enemies) | ✅ |
 | Add HP, overflow → shield | 14, 21 | 15→35→45, then +shield | ally only | ✅ |
@@ -51,9 +52,9 @@ Source: docs/experiment-log.md (2026-08-26 complete two-sided $SIR map; 2026-08-
 With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.
 Source: protocol/brx-protocol.md §5; docs/experiment-log.md (dual-polarity, FF table)
 
-_[diagram DEV-07: Damage pipeline: IR word (B,U,D,C) → victim `$SIR[B,U]` → function multiplier → ×1.5 if crit → drain shields → armor → HP → emit `$HIR` + `$HP`.]_
+_[diagram DEV-07: Damage pipeline: IR word (B,U,D,C) → victim `$SIR[B,U]` → function multiplier → ×(1 + `$GSET` t7/100) if crit → drain shields → armor → HP → emit `$HIR` + `$HP`.]_
 
-- **applied = magnitude × fn multiplier × (1.5 if crit)** — fn 1 ×1 · fn 36 ×1.25 · fn 37 ×2; crit stacks (fn 37 + crit = ×3). ✅
+- **applied = magnitude × fn multiplier × (1 + `$GSET` t7/100 if crit)** — the crit modifier is a **per-game tunable**, not a fixed ×1.5: t7=0 disables crits, t7=100 doubles. ×1.5 is simply the shipped t7=50. Exact at seven levels, 3/3 each. ✅
 - **Drain order: shields → armor → HP.** Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper's 80 split exactly 70/10). ✅
 - **Heals clamp** at the pool max — magnitude 200 is a fill, not a stack. ✅
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks. ✅

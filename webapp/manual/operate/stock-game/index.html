@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/operate/stock-game/">
 <link rel="alternate" type="text/markdown" href="/manual/operate/stock-game.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Running a Native Game on Stock Kit","description":"A walkthrough of a whole match — on-gun or app-hosted — and what every light and voice line means while it runs.","url":"https://open-brx.iamrossi.workers.dev/manual/operate/stock-game/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Operating the BRX","item":"https://open-brx.iamrossi.workers.dev/manual/operate/"},{"@type":"ListItem","position":4,"name":"Running a Native Game on Stock Kit","item":"https://open-brx.iamrossi.workers.dev/manual/operate/stock-game/"}]},{"@type":"HowTo","name":"Option A — a game hosted on the gun (no phone)","step":[{"@type":"HowToStep","position":1,"text":"Every player: gun on, headset on and settled (no rainbow)."},{"@type":"HowToStep","position":2,"text":"Every player selects the same mode with LEFT/RIGHT and pulls the trigger."},{"@type":"HowToStep","position":3,"text":"Pick team with the D-pad, weapon with the trigger, perk with ALT (Team Death Match only)."},{"@type":"HowToStep","position":4,"text":"Step through lives / time / respawn / volume with SELECT. Agree the values across all guns — each gun runs its own clock."},{"@type":"HowToStep","position":5,"text":"Count down together and pull the reload handle to start."},{"@type":"HowToStep","position":6,"text":"Keep score by voice, by a ref, or by team flags — the guns do not tally kills."}]}]}</script>
 </head>
@@ -33,24 +34,23 @@
 <header class="page-head">
 <h1>Running a Native Game on Stock Kit</h1>
 <p class="subtitle">A walkthrough of a whole match — on-gun or app-hosted — and what every light and voice line means while it runs.</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/operate/stock-game.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/operate/stock-game.md">Markdown</a></p>
 </header>
 <section class="blk blk-steps" data-type="steps"><h2 id="option-a-a-game-hosted-on-the-gun-no-phone">Option A — a game hosted on the gun (no phone)</h2><div class="steps"><ol>
-<li>Every player: gun on, headset on and settled (no rainbow). <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>Every player selects the <strong>same mode</strong> with LEFT/RIGHT and pulls the trigger. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>Pick team with the D-pad, weapon with the trigger, perk with ALT (Team Death Match only). <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>Step through lives / time / respawn / volume with SELECT. Agree the values across all guns — each gun runs its own clock. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
-<li>Count down together and <strong>pull the reload handle</strong> to start. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>Keep score by voice, by a ref, or by team flags — the guns do not tally kills. <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li>Every player: gun on, headset on and settled (no rainbow). <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>Every player selects the <strong>same mode</strong> with LEFT/RIGHT and pulls the trigger. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>Pick team with the D-pad, weapon with the trigger, perk with ALT (Team Death Match only). <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>Step through lives / time / respawn / volume with SELECT. Agree the values across all guns — each gun runs its own clock. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
+<li>Count down together and <strong>pull the reload handle</strong> to start. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>Keep score by voice, by a ref, or by team flags — the guns do not tally kills. <span class="badge b-community" title="Community-reported"><span>community</span></span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
 </ol>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7n</p></section>
 <section class="blk blk-steps" data-type="steps"><h2 id="option-b-a-game-hosted-from-callsign">Option B — a game hosted from Callsign</h2><div class="steps"><ol>
-<li>Every player: headset paired, phone mounted on the gun, app icon green. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
-<li>Host creates the game, others join and ready up (allow a minute for the lobby). <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
-<li>Host launches: guns spawn together, HUDs light up. The reload handle is <strong>not</strong> needed to start. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
-<li>Death → the app respawns you after the configured respawn time (or at a QR scanner). <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
-<li>Time or score limit reached → the app ends the game with a voice line and stops the guns. Scores live on the phones. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></li>
+<li>Every player: headset paired, phone mounted on the gun, app icon green. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
+<li>Host creates the game, others join and ready up (allow a minute for the lobby). <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
+<li>Host launches: guns spawn together, HUDs light up. The reload handle is <strong>not</strong> needed to start. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
+<li>Death → the app respawns you after the configured respawn time (or at a QR scanner). <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
+<li>Time or score limit reached → the app ends the game with a voice line and stops the guns. Scores live on the phones. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
 </ol>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7e, §7f, §7n, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/callsign-ui.md" rel="noopener">docs/reference/callsign-ui.md</a></p></section>
 <section class="blk blk-table" data-type="table"><h2 id="during-play-what-you-see-and-hear">During play — what you see and hear</h2><div class="table-wrap"><table>
@@ -62,31 +62,31 @@
 </thead>
 <tbody><tr>
 <td>Gun LED</td>
-<td>ammo and health indicator <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td>ammo and health indicator <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 <tr>
 <td>Headset dark</td>
-<td>normal during a game <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>normal during a game <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Headset flashes, &quot;zip&quot; sound, no damage</td>
-<td>a miss under the recoil-accuracy model <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td>a miss under the recoil-accuracy model <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 <tr>
 <td>Headset lit with team colour mid-game</td>
-<td>that gun is still in the lobby — it never entered the game <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>that gun is still in the lobby — it never entered the game <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Headset slow rainbow</td>
-<td>headset dropped — that gun is locked until it re-pairs <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>headset dropped — that gun is locked until it re-pairs <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Trigger only reloads / chirps</td>
-<td>you are in a menu, the game has not started, or the gun is locked <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>you are in a menu, the game has not started, or the gun is locked <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>&quot;Dead / out of ammo&quot; noise on trigger</td>
-<td>you are dead and a respawn station is configured — go to the station <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>you are dead and a respawn station is configured — go to the station <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-27), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/grenade.md" rel="noopener">docs/reference/grenade.md</a></p></section>
@@ -94,9 +94,9 @@
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>Dead means dead. A tagger that is dead (out of health) ignores <strong>all</strong> incoming IR — it cannot take a hit, be healed, or be armed by a station until it respawns.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/grenade.md" rel="noopener">docs/reference/grenade.md</a></p></aside></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note"><p>The &quot;screamer&quot; — long powered sessions. Owners widely report that in hosted/online play, after about an hour some guns fail with a <strong>loud buzz</strong> and need a reboot, and that a low battery stops Bluetooth re-pairing entirely; a game can cascade down to half its players. We reproduced the Bluetooth half on a gun left powered all day. Rules: power guns <strong>off</strong> between rounds, keep packs topped, and reboot a buzzing gun rather than fighting it.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a> (SCREAMERS), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 U6 parked)</p></aside></section>
 <section class="blk blk-cards" data-type="cards"><h2 id="owner-invented-rulesets-that-need-no-extra-gear">Owner-invented rulesets that need no extra gear</h2><div class="cards"><ul>
-<li><strong>Ribbon teams</strong> — run everyone on one team with friendly fire on and tell teams apart by a coloured ribbon on a clip; swap ribbons on death for infection or team-swap modes. <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></li>
-<li><strong>Respawn character</strong> — Generals / Commanders / Swarm modes give one player a mobile respawn point: teammates revive at them with the trigger. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li><strong>Ammo restock</strong> — a grenade, a perk slot, or the respawn character can hand out ammo in limited-ammo games. <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></li>
+<li><strong>Ribbon teams</strong> — run everyone on one team with friendly fire on and tell teams apart by a coloured ribbon on a clip; swap ribbons on death for infection or team-swap modes. <span class="badge b-community" title="Community-reported"><span>community</span></span></li>
+<li><strong>Respawn character</strong> — Generals / Commanders / Swarm modes give one player a mobile respawn point: teammates revive at them with the trigger. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li><strong>Ammo restock</strong> — a grenade, a perk slot, or the respawn character can hand out ammo in limited-ammo games. <span class="badge b-community" title="Community-reported"><span>community</span></span></li>
 </ul>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a></p></section>
 <section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-generate fig-pending" id="OPS-08" style="--ratio:21/9"><div class="ph ph-generate" role="img" aria-label="Diagram: a match timeline as a horizontal band — lobby, start, play with hit/kill ticks, death and respawn gap, end — with only colour and shape, labels overlaid later."><span class="ph-id">OPS-08</span><span class="ph-kind">illustration pending</span></div><figcaption>Diagram: a match timeline as a horizontal band — lobby, start, play with hit/kill ticks, death and respawn gap, end — with only colour and shape, labels overlaid later.</figcaption></figure></section>
@@ -109,7 +109,7 @@
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

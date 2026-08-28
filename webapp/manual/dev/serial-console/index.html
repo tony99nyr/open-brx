@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/serial-console/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/serial-console.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"The USB serial console — QUERY and SETUP","description":"The micro-USB \"Programing Port\" is a Teensy serial console with two commands, not the `$` protocol and not SSH","url":"https://open-brx.iamrossi.workers.dev/manual/dev/serial-console/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"The USB serial console — QUERY and SETUP","item":"https://open-brx.iamrossi.workers.dev/manual/dev/serial-console/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is $QUERY, over BLE the same thing?","acceptedAnswer":{"@type":"Answer","text":"No. Over BLE it returns a $-framed status array with no serial, PIN or version. The device record is USB-only."}},{"@type":"Question","name":"What is the advertised BLE name vs Gun Name?","acceptedAnswer":{"@type":"Answer","text":"Two fields: the advertisement is Tactix-XXXX from the MAC tail; Gun Name is what $NAME writes."}}]},{"@type":"HowTo","name":"SETUP — the provisioning/re-pair path (identity lives here)","step":[{"@type":"HowToStep","position":1,"text":"Run QUERY on both gun and headset-side records first; SETUP on the gun asks for the headset's serial number — that is the gun↔headset pairing mechanism."},{"@type":"HowToStep","position":2,"text":"The \"Factory Defaults\" banner is a mode header, not an action: entering SETUP and power-cycling out changed nothing (field-by-field diff)."},{"@type":"HowToStep","position":3,"text":"The community's \"change tagger ID / re-pair the headset\" procedure is this console (LaserTagMods' headset-pairing note); the identity fields it concerns are the ones QUERY prints: PlayerID, FieldID, Serial Number/Head PIN, Grenade Pin."},{"@type":"HowToStep","position":4,"text":"Only the first prompt (the headset serial) has been walked on our bench. Do it only on a gun you can afford to re-pair."},{"@type":"HowToStep","position":5,"text":"For per-game identity you do not need this: $PSET token 1 over BLE sets the player id each game."}]}]}</script>
 </head>
@@ -33,8 +34,7 @@
 <header class="page-head">
 <h1>The USB serial console — <code>QUERY</code> and <code>SETUP</code></h1>
 <p class="subtitle">The micro-USB &quot;Programing Port&quot; is a Teensy serial console with two commands, not the <code>$</code> protocol and not SSH</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/serial-console.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/serial-console.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>The BRX has two ports: charging, and a separate micro-USB <strong>&quot;Programing Port&quot;</strong>. Plugged into a computer it enumerates as a <strong>Teensyduino USB Serial</strong> CDC device (Windows <code>COMx</code>, macOS <code>/dev/tty.usbmodem*</code>, Linux <code>/dev/ttyACM*</code>, VID <code>16C0</code>). Baud is ignored. This is what the community means by &quot;PuTTY into the tagger&quot;. The command set came from LaserTagMods&#39; headset-pairing note.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7c; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24 B7)</p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="what-the-port-does-and-does-not-do">What the port does and does not do</h2><div class="table-wrap"><table>
@@ -48,27 +48,27 @@
 <tbody><tr>
 <td><code>$PING,*</code>, <code>$VERSION,*</code>, any <code>$</code> frame</td>
 <td><strong>Echoed back</strong> (local echo on — easy to mistake for a reply); with CR: <code>ERROR</code></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>?</code>, <code>help</code>, <code>AT</code>, <code>status</code>, …</td>
 <td><code>ERROR</code></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>QUERY</code> + CR</td>
 <td>Dumps the device record (below). Case-insensitive.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>SETUP</code> + CR</td>
 <td>Enters factory provisioning; prompts (EN/中文) for the <strong>headset&#39;s</strong> serial number</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Hold SELECT while powering on with USB connected</td>
 <td>Mass-storage mode exposing the on-board sound storage (the sound-pack update path) — a different mode from the console</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7c; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> ("New sounds ON THE TAGGER")</p></section>
@@ -99,7 +99,7 @@ BT central V: devhost.03
 <section class="blk blk-steps" data-type="steps"><h2 id="setup-the-provisioning-re-pair-path-identity-lives-here"><code>SETUP</code> — the provisioning/re-pair path (identity lives here)</h2><div class="steps"><ol>
 <li>Run <code>QUERY</code> on both gun and headset-side records first; <code>SETUP</code> on the gun asks for the <strong>headset&#39;s</strong> serial number — that is the gun↔headset pairing mechanism.</li>
 <li>The &quot;Factory Defaults&quot; banner is a <strong>mode header, not an action</strong>: entering <code>SETUP</code> and power-cycling out changed nothing (field-by-field diff).</li>
-<li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> The community&#39;s &quot;change tagger ID / re-pair the headset&quot; procedure is this console (LaserTagMods&#39; headset-pairing note); the identity fields it concerns are the ones <code>QUERY</code> prints: <code>PlayerID</code>, <code>FieldID</code>, <code>Serial Number/Head PIN</code>, <code>Grenade Pin</code>.</li>
+<li><span class="badge b-community" title="Community-reported"><span>community</span></span> The community&#39;s &quot;change tagger ID / re-pair the headset&quot; procedure is this console (LaserTagMods&#39; headset-pairing note); the identity fields it concerns are the ones <code>QUERY</code> prints: <code>PlayerID</code>, <code>FieldID</code>, <code>Serial Number/Head PIN</code>, <code>Grenade Pin</code>.</li>
 <li>Only the first prompt (the headset serial) has been walked on our bench. Do it only on a gun you can afford to re-pair.</li>
 <li>For per-game identity you do not need this: <code>$PSET</code> token 1 over BLE sets the player id each game.</li>
 </ol>
@@ -111,13 +111,13 @@ BT central V: devhost.03
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#what-the-port-does-and-does-not-do">What the port does and does not do</a></li><li><a href="#real-format-quirks">Real-format quirks</a></li><li><a href="#setup-the-provisioning-re-pair-path-identity-lives-here">SETUP — the provisioning/re-pair path (identity lives here)</a></li><li><a href="#firmware-backup-is-impossible-do-not-reflash">Firmware backup is impossible; do not reflash.</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#what-the-port-does-and-does-not-do">What the port does and does not do</a></li><li><a href="#setup-the-provisioning-re-pair-path-identity-lives-here">SETUP — the provisioning/re-pair path (identity lives here)</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

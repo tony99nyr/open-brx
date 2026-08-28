@@ -4,7 +4,7 @@ Last verified: 2026-08-27
 
 _[image HW-11: (what's-in-the-box flat lay — see Images table)]_
 
-BRX tagger:
+## BRX tagger
 - Form factor: rifle-style, ABS shell, reload handle on the right 📖
 - Controls: trigger · reload handle · ALT (orange) · SELECT · LEFT/RIGHT · power slide switch 📖
 - Emitter: Class 1 IR laser, 980 nm, 38 kHz, 6.5 µs pulses, 111 nJ/pulse, <18 mm beam at aperture 📖
@@ -19,7 +19,7 @@ BRX tagger:
 - Manufacturer: Laser Tag Pro / Battle Company, Oak Creek, WI 📖
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1 §7c + docs/experiment-log.md 2026-08-23 (USB console — Teensy MCU), protocol/brx-protocol.md §7o (sight flash)
 
-BRX headset:
+## BRX headset
 - Sensors: IR receiver domes around the band (front/back distinguished on the wire) ✅
 - Feedback: 3 W green hit LEDs (4 directions) + WS2812B RGB ring 📖 👥
 - Emitter: front IR emitter (melee gesture, respawn requests) 📖
@@ -27,7 +27,7 @@ BRX headset:
 - Battery: 1 × 18650; USB 5 V charging 👥 📖
 - Firmware: USB disk mode via PROGRAM pin 📖
 
-Smart Grenade:
+## Smart Grenade
 - Top button · safety clip · 3 IR emitters + 1 emitter/receiver · RGB status LED · USB-C (charge only) ✅
 - 5 modes: Frag · Assault · Hill · Respawn · CTF ✅
 

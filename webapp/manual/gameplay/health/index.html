@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/gameplay/health/">
 <link rel="alternate" type="text/markdown" href="/manual/gameplay/health.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Health, armor & damage","description":"What a hit takes away, what armor does, and why nothing comes back on its own","url":"https://open-brx.iamrossi.workers.dev/manual/gameplay/health/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Gameplay","item":"https://open-brx.iamrossi.workers.dev/manual/gameplay/"},{"@type":"ListItem","position":4,"name":"Health, armor & damage","item":"https://open-brx.iamrossi.workers.dev/manual/gameplay/health/"}]},{"@type":"HowTo","name":"What happens when you get hit","step":[{"@type":"HowToStep","position":1,"text":"The shot's damage number lands on your gun (the IR word carries it — see How a kill works)."},{"@type":"HowToStep","position":2,"text":"Your gun looks up the shot's damage type in its effect table. Most shots are \"standard damage\"; class abilities can be heals, shield grants, or multipliers instead."},{"@type":"HowToStep","position":3,"text":"Armor absorbs 1:1 first, with no per-hit cap — an 80-point standard hit takes all 70 armor and 10 health at once."},{"@type":"HowToStep","position":4,"text":"Health takes the rest. Your headset and gun play the hit tone; the gun reports the new pool to any connected phone."},{"@type":"HowToStep","position":5,"text":"At 0 health the gun plays the death alarm, stops firing, and ignores all incoming shots until it respawns."}]}]}</script>
 </head>
@@ -33,8 +34,7 @@
 <header class="page-head">
 <h1>Health, armor &amp; damage</h1>
 <p class="subtitle">What a hit takes away, what armor does, and why nothing comes back on its own</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/gameplay/health.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/gameplay/health.md">Markdown</a></p>
 </header>
 <section class="blk blk-hero" data-type="hero"><p class="hero-text">Every player is a pool of points: <strong>45 health and 70 armor by default — 115 in total</strong>. A hit subtracts its damage from armor first, and whatever armor cannot absorb spills straight into health. When health reaches zero you are dead, and nothing in the stock firmware refills you until you respawn.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/weapon-design.md" rel="noopener">docs/weapon-design.md</a> §0, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r addendum</p></section>
 <section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="GAME-09" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Three stacked pools (shield, armor, health) draining top-down, with one large hit overflowing from the armor bar into the health bar"><span class="ph-id">GAME-09</span><span class="ph-kind">diagram pending</span></div><figcaption>The three pools (shield → armor → health) draining under fire, with an 80-point standard hit splitting 70 into armor and 10 into health.</figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r addendum</p></section>
@@ -57,45 +57,45 @@
 <tbody><tr>
 <td>Default pool?</td>
 <td>45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 <tr>
 <td>Does armor reduce damage?</td>
 <td>No — it <em>is</em> extra hit points that drain first. Damage per hit is not reduced by armor.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Do I heal over time?</td>
 <td><strong>No.</strong> On the bench (pools set to 99/99) armor was shot down to 18 and sat there through 18 s and then 12 s of idle without moving. Any &quot;regen&quot; you experience comes from a class ability, a medic, or a host that refills you.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>What is a shield?</td>
 <td>A third pool above armor, used by Nexus-style classes (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR &quot;activate shield&quot; event — a phone cannot simply set it.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 <tr>
 <td>Can a medic heal me?</td>
 <td>Yes — the Supremacy Medic&#39;s medi-gel pulse is a heal <em>shot</em>; community confirms it heals by shooting teammates. A host can also grant health directly.</td>
-<td><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span> <span class="badge b-community" title="Community-reported"><span>community</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Do heals overfill?</td>
 <td>No — a heal adds to the pool and clamps at the maximum.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Head shots?</td>
-<td>The headset carries two sensors (front and back domes) and the gun body a third; a crit flag exists in every shot (×1.5 damage) but no stock weapon sets it.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>The headset carries two sensors (front and back domes) and the gun body a third; a crit flag exists in every shot but no stock weapon sets it. A crit multiplies damage by <code>1 + $GSET t7/100</code> — a per-game setting, ×1.5 at the shipped t7=50, and t7=0 disables crits entirely.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Can friendly fire hurt me?</td>
 <td>Only if the game enables it. With friendly fire off the gun itself blocks same-team damage (and blocks enemy &quot;heals&quot;). FFA is one team with friendly fire on.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 </tbody></table></div>
-<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/weapon-design.md" rel="noopener">docs/weapon-design.md</a> §0 + §6.1, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> #33 ("NO native regen"), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> 2026-08-26 ("CRIT = x1.5 damage", replicated), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a> §Supremacy characters, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Health/regen variants + §Team structure, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-ir-protocol.md" rel="noopener">protocol/brx-ir-protocol.md</a> (crit bit), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r (sensor map)</p></section>
+<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/weapon-design.md" rel="noopener">docs/weapon-design.md</a> §0 + §6.1, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> #33 ("NO native regen"), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a> §Supremacy characters, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Health/regen variants + §Team structure, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-ir-protocol.md" rel="noopener">protocol/brx-ir-protocol.md</a> (crit bit), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r (sensor map)</p></section>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="heals-and-boosts-are-add-never-set"><strong class="co-title">Heals and boosts are &quot;add&quot;, never &quot;set&quot;.</strong><p>When a phone or host grants health to a live gun, the grant is <em>added</em> to the current pool and clamped at the maximum — you cannot be set to a lower number this way, and a grant to a full-health player does nothing. This is why Halo-style regenerating shields, health-on-kill and medic roles are all built by a host watching your pool and topping it up.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> #33 "SEMANTICS + REGEN nailed", <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Health/regen variants</p></aside></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="a-dead-gun-is-deaf"><strong class="co-title">A dead gun is deaf.</strong><p>Once at 0 health, the tagger accepts no IR at all — a respawn station cannot &quot;revive a corpse&quot; by beam; it arms the living. The trigger of a dead gun only makes the dead/out-of-ammo noise.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/grenade.md" rel="noopener">docs/reference/grenade.md</a> §Can we add new modes, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r (Resync)</p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="respawn-lives-the-knobs-every-mode-shares">Respawn &amp; lives — the knobs every mode shares</h2><div class="table-wrap"><table>
@@ -113,7 +113,7 @@
 </tr>
 <tr>
 <td>Respawn time</td>
-<td>Off · 15 · 30 · 60 s · <strong>Ramp 45</strong> · <strong>Ramp 90</strong> (penalty grows per death <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span>)</td>
+<td>Off · 15 · 30 · 60 s · <strong>Ramp 45</strong> · <strong>Ramp 90</strong> (penalty grows per death <span class="badge b-community" title="Community-reported"><span>community</span></span>)</td>
 <td>a number in seconds (e.g. 15)</td>
 </tr>
 <tr>
@@ -132,13 +132,13 @@
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#what-happens-when-you-get-hit">What happens when you get hit</a></li><li><a href="#health-facts-in-player-terms">Health facts, in player terms</a></li><li><a href="#heals-and-boosts-are-add-never-set">Heals and boosts are &quot;add&quot;, never &quot;set&quot;.</a></li><li><a href="#a-dead-gun-is-deaf">A dead gun is deaf.</a></li><li><a href="#respawn-lives-the-knobs-every-mode-shares">Respawn &amp; lives — the knobs every mode shares</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#what-happens-when-you-get-hit">What happens when you get hit</a></li><li><a href="#health-facts-in-player-terms">Health facts, in player terms</a></li><li><a href="#respawn-lives-the-knobs-every-mode-shares">Respawn &amp; lives — the knobs every mode shares</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

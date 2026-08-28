@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/status/">
 <link rel="alternate" type="text/markdown" href="/platform/status.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Status & roadmap","description":"What's proven on hardware, what's only software, what's only a spec — with dates.","url":"https://open-brx.iamrossi.workers.dev/platform/status/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Status & roadmap","item":"https://open-brx.iamrossi.workers.dev/platform/status/"}]}]}</script>
 </head>
@@ -33,10 +34,9 @@
 <header class="page-head">
 <h1>Status &amp; roadmap</h1>
 <p class="subtitle">What&#39;s proven on hardware, what&#39;s only software, what&#39;s only a spec — with dates.</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/platform/status.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><span>software</span></span><span class="badge b-spec" title="Specified only"><span>spec</span></span><span class="badge b-wip" title="Under construction"><span>under construction</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/platform/status.md">Markdown</a></p>
 </header>
-<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="how-to-read-this-page"><strong class="co-title">How to read this page.</strong><p><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> means a human ran it on a real tagger and wrote it in the experiment log. <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> means it&#39;s built, has tests, and has <em>not</em> been run on hardware. <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> means there is a spec and nothing else. The project&#39;s own rule: <em>a green test ≠ works on real guns — that&#39;s earned on the bench.</em></p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B15</p></aside></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="how-to-read-this-page"><strong class="co-title">How to read this page.</strong><p><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> means a human ran it on a real tagger and wrote it in the experiment log. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> means it&#39;s built, has tests, and has <em>not</em> been run on hardware. <span class="badge b-spec" title="Specified only"><span>spec</span></span> means there is a spec and nothing else. The project&#39;s own rule: <em>a green test ≠ works on real guns — that&#39;s earned on the bench.</em></p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B15</p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="status-board">Status board</h2><div class="table-wrap"><table>
 <thead>
 <tr>
@@ -47,152 +47,152 @@
 </thead>
 <tbody><tr>
 <td>Remote game start over BLE (config → spawn → live → timed match → respawn)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>multiple sessions, 2026-08-23 → 25</td>
 </tr>
 <tr>
 <td>Full Team Deathmatch: scoring, respawn, frag limit, correct winner, BLE held all match</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> 2 guns</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> 2 guns</td>
 <td>2026-08-25 &quot;FIRST LIVE M0 GAME&quot;</td>
 </tr>
 <tr>
 <td>Synchronised start across guns (config-all-then-spawn barrier)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> 3 guns</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> 3 guns</td>
 <td>2026-08-25, FOLLOWUPS B10</td>
 </tr>
 <tr>
 <td>Exact per-player attribution over BLE (<code>$PSET</code> id → <code>$HIR</code> shooter)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-25, protocol §7p/§7q</td>
 </tr>
 <tr>
 <td>Native kill feedback from our stack: green-sight flash (<code>$SFLASH</code>) + announcer (<code>$PLAY</code> slot 4)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-25 / 26</td>
 </tr>
 <tr>
 <td>Four native teams; firmware-enforced friendly fire; live team flip</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-26</td>
 </tr>
 <tr>
 <td><code>$WEAP</code> map: damage, fire interval, fire modes (auto / single / burst / charge / melee), overheat; all 19 Callsign weapons captured (20 frames)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-26</td>
 </tr>
 <tr>
 <td>Config survives a BLE drop; a power-cycle wipes it (re-push tell)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-25</td>
 </tr>
 <tr>
 <td>Headset must be on or the gun won&#39;t join; rainbow blink = disconnected</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-25 / 27</td>
 </tr>
 <tr>
 <td>Smart Grenade: 5 native modes, Hill/Respawn beacons readable, no BLE config</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>exp-log #33–40</td>
 </tr>
 <tr>
 <td>BRX IR word decoded (25 bits, timings, parity); <strong>stock tagger accepts synthetic shots from our ESP32 rig</strong></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-26</td>
 </tr>
 <tr>
 <td><code>$SIR</code> effects matrix (16 protocols × 4 subtypes) mapped: damage, ×1.25 / ×2, heal, armor, shield, audio suppression</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 <td>2026-08-26 / 27</td>
 </tr>
 <tr>
 <td>Native phone app: connects, drives <code>$SFLASH</code>, arms a full game, stable session</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> single gun</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> single gun</td>
 <td>2026-08-25</td>
 </tr>
 <tr>
 <td>Phone → Mission Control → gun: hello, roster bind, try-out fired a real gun</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> single node, bench</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> single node, bench</td>
 <td>2026-08-25 night</td>
 </tr>
 <tr>
 <td>Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games</td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 <td>~500 Python tests, 42 e2e, 2026-08-26 / 27</td>
 </tr>
 <tr>
 <td>FFA / Infection / LMS / CS / Domination / KotH / CTF / Extraction engines</td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 <td>156 sim scenarios; objective modes wait on a station</td>
 </tr>
 <tr>
 <td><strong>MC ↔ multiple phones over a real field Wi-Fi</strong></td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> never run</td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> never run</td>
 <td>—</td>
 </tr>
 <tr>
 <td><strong>Dispersed timed start on a real field</strong></td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> never run</td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> never run</td>
 <td>—</td>
 </tr>
 <tr>
 <td><strong>Store-and-forward recovery after real coverage loss</strong></td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> never run</td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> never run</td>
 <td>—</td>
 </tr>
 <tr>
 <td>20-minute two-node soak (screen-lock, backgrounding, out of Wi-Fi range)</td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> open</td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> open</td>
 <td>verification-checklist §NEXT 4</td>
 </tr>
 <tr>
 <td>Loadout v2 (two slots, perks, policy presets, phone picks)</td>
-<td><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span></td>
+<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 <td>2026-08-27, not bench-verified</td>
 </tr>
 <tr>
 <td>BRX Companion (ESP32-S3 rider)</td>
-<td><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></td>
+<td><span class="badge b-spec" title="Specified only"><span>spec</span></span></td>
 <td>ADR-0001 accepted 2026-08-25; bench kit arrived 2026-08-26</td>
 </tr>
 <tr>
 <td>Utility Box / objective station</td>
-<td><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> design, <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> emit</td>
+<td><span class="badge b-spec" title="Specified only"><span>spec</span></span> design, <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> emit</td>
 <td>build is &quot;a packaging exercise&quot;</td>
 </tr>
 <tr>
 <td>Effect nodes (relay, WLED, DMX)</td>
-<td><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></td>
+<td><span class="badge b-spec" title="Specified only"><span>spec</span></span></td>
 <td><code>firmware/</code> empty</td>
 </tr>
 <tr>
 <td>Field radio (LoRa / the gun&#39;s nRF)</td>
-<td><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></td>
+<td><span class="badge b-spec" title="Specified only"><span>spec</span></span></td>
 <td>nRF unprobed (D1)</td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/verification-checklist.md" rel="noopener">docs/verification-checklist.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/HANDOFF.md" rel="noopener">docs/HANDOFF.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a></p></section>
 <section class="blk blk-timeline" data-type="timeline"><h2 id="roadmap-the-project-ladder">Roadmap — the project ladder</h2><ul>
-<li><strong>M1 · Identify</strong> — scan, identify, listen to real taggers. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> done</li>
-<li><strong>M2 · Control</strong> — remote game start, weapons, respawn, timed matches. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> done</li>
-<li><strong>M3 · Protocol depth</strong> — <code>$WEAP</code> map, the 2,166-id sound bank, game-mode model, <strong>per-player id over BLE</strong>, the IR word. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> done (2026-08-25 / 26)</li>
-<li><strong>M4 · Pilot game</strong> — per-player node + Mission Control + live scoreboard. <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> built + tested in software; the MC↔phone field path is the next hardware muster (<code>docs/field-runbook-mc.md</code>)</li>
-<li><strong>M5 · Arena</strong> — objectives, items, stations (Domination / KotH / CTF / Extraction points / bomb sites). <span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> engines · <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> IR emit · <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> the box</li>
-<li><strong>M6 · Companion + scale</strong> — ESP32 Companions on the same contracts; mesh for instant field-wide feedback; 20+ guns. <span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span></li>
+<li><strong>M1 · Identify</strong> — scan, identify, listen to real taggers. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> done</li>
+<li><strong>M2 · Control</strong> — remote game start, weapons, respawn, timed matches. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> done</li>
+<li><strong>M3 · Protocol depth</strong> — <code>$WEAP</code> map, the 2,166-id sound bank, game-mode model, <strong>per-player id over BLE</strong>, the IR word. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> done (2026-08-25 / 26)</li>
+<li><strong>M4 · Pilot game</strong> — per-player node + Mission Control + live scoreboard. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> built + tested in software; the MC↔phone field path is the next hardware muster (<code>docs/field-runbook-mc.md</code>)</li>
+<li><strong>M5 · Arena</strong> — objectives, items, stations (Domination / KotH / CTF / Extraction points / bomb sites). <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engines · <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> IR emit · <span class="badge b-spec" title="Specified only"><span>spec</span></span> the box</li>
+<li><strong>M6 · Companion + scale</strong> — ESP32 Companions on the same contracts; mesh for instant field-wide feedback; 20+ guns. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
 </ul>
 <p class="src"><span>Source:</span> README.md §Roadmap</p></section>
-<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="mission-control-and-the-phone-hud-under-construction-details"><strong class="co-title">Mission Control and the phone HUD — <span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> under construction; details when they have run on a real field.</strong><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §8</p></aside></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="mission-control-and-the-phone-hud-under-construction-details"><strong class="co-title">Mission Control and the phone HUD — <span class="badge b-wip" title="Under construction"><span>under construction</span></span> under construction; details when they have run on a real field.</strong><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §8</p></aside></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="what-we-will-not-claim-yet"><strong class="co-title">What we will not claim yet.</strong><p>Nobody has run a multi-phone match on a real field, a dispersed start where players walk out of range before T-0, or a store-and-forward recovery after real coverage loss. Three guns on one laptop radio is the most we have held at once; the maximum is untested. FFA / Infection / LMS have not been played on real guns (their logic is sim-proven). The Companion and the Utility Box are not built. See <em>Honest gaps</em> below for the full list.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B10, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/verification-checklist.md" rel="noopener">docs/verification-checklist.md</a></p></aside></section>
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#how-to-read-this-page">How to read this page.</a></li><li><a href="#status-board">Status board</a></li><li><a href="#roadmap-the-project-ladder">Roadmap — the project ladder</a></li><li><a href="#mission-control-and-the-phone-hud-under-construction-details">Mission Control and the phone HUD — 🚧 under construction; details when they have run on a real field.</a></li><li><a href="#what-we-will-not-claim-yet">What we will not claim yet.</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#status-board">Status board</a></li><li><a href="#roadmap-the-project-ladder">Roadmap — the project ladder</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

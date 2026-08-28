@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/operate/on-gun-menu/">
 <link rel="alternate" type="text/markdown" href="/manual/operate/on-gun-menu.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"The On-Gun Menu","description":"Everything you can set without a phone — and what the gun remembers.","url":"https://open-brx.iamrossi.workers.dev/manual/operate/on-gun-menu/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Operating the BRX","item":"https://open-brx.iamrossi.workers.dev/manual/operate/"},{"@type":"ListItem","position":4,"name":"The On-Gun Menu","item":"https://open-brx.iamrossi.workers.dev/manual/operate/on-gun-menu/"}]},{"@type":"HowTo","name":"Navigating the root menu","step":[{"@type":"HowToStep","position":1,"text":"Power on → you are at the root menu. LEFT / RIGHT cycle game modes; the LED colour changes with each. Trigger selects."},{"@type":"HowToStep","position":2,"text":"D-pad picks your team or faction. Trigger cycles weapons (or characters in Supremacy). ALT cycles perks — only in modes that have them."},{"@type":"HowToStep","position":3,"text":"Press SELECT to step through the game variables: lives, game time, respawn, volume. D-pad changes each value; SELECT advances."},{"@type":"HowToStep","position":4,"text":"Pull the reload handle to start. Settings you changed become the new defaults for that mode."}]}]}</script>
 </head>
@@ -33,15 +34,14 @@
 <header class="page-head">
 <h1>The On-Gun Menu</h1>
 <p class="subtitle">Everything you can set without a phone — and what the gun remembers.</p>
-<p class="meta"><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/operate/on-gun-menu.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/operate/on-gun-menu.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>The gun&#39;s LED tells you which mode is selected: <strong>white</strong> Free For All · <strong>red</strong> Death Match · <strong>yellow</strong> Generals · <strong>blue</strong> Supremacy · <strong>pink</strong> Commander · <strong>green</strong> Survival · <strong>orange</strong> The Swarm. During play the same LED indicates ammo and health.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a></p></aside></section>
 <section class="blk blk-steps" data-type="steps"><h2 id="navigating-the-root-menu">Navigating the root menu</h2><div class="steps"><ol>
-<li>Power on → you are at the root menu. LEFT / RIGHT cycle game modes; the LED colour changes with each. <strong>Trigger selects.</strong> <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>D-pad picks your team or faction. Trigger cycles weapons (or characters in Supremacy). ALT cycles perks — only in modes that have them. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>Press SELECT to step through the game variables: lives, game time, respawn, volume. D-pad changes each value; SELECT advances. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li>Pull the reload handle to start. Settings you changed become the new defaults for that mode. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
+<li>Power on → you are at the root menu. LEFT / RIGHT cycle game modes; the LED colour changes with each. <strong>Trigger selects.</strong> <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>D-pad picks your team or faction. Trigger cycles weapons (or characters in Supremacy). ALT cycles perks — only in modes that have them. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>Press SELECT to step through the game variables: lives, game time, respawn, volume. D-pad changes each value; SELECT advances. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li>Pull the reload handle to start. Settings you changed become the new defaults for that mode. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
 </ol>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a></p></section>
 <section class="blk blk-table" data-type="table"><h2 id="game-variables-on-the-gun">Game variables on the gun</h2><div class="table-wrap"><table>
@@ -55,29 +55,29 @@
 <tbody><tr>
 <td>Game time</td>
 <td>Off · 5 · 10 · 15 · 20 · 30 min</td>
-<td><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 <tr>
 <td>Respawn</td>
 <td>Off · 15 · 30 · 60 s · Ramp 45 · Ramp 90</td>
-<td>&quot;Ramp&quot; grows the penalty with each death, up to the cap <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td>&quot;Ramp&quot; grows the penalty with each death, up to the cap <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td>Volume</td>
 <td>1 – 5</td>
-<td><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td><span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a> (respawn delay ramps)</p></section>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p>These variables are remembered <strong>per game mode</strong> and live on the gun. They are not the same numbers the Callsign app uses — the app keeps its own clock and respawn timer on the phone and never writes these to the gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7n</p></aside></section>
 <section class="blk blk-cards" data-type="cards"><h2 id="button-holds-worth-memorising">Button holds worth memorising</h2><div class="cards"><ul>
-<li><strong>ALT, hold 3 s</strong> — toggle indoor / outdoor (persists). <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li><strong>LEFT at power-on</strong> — target mode for sighting. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li><strong>RIGHT at power-on</strong> — &quot;install accessory&quot; pairing mode (headset, grenade, sidearm…). <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></li>
-<li><strong>SELECT at power-on</strong> — USB disk mode; no startup sound. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li><strong>LEFT + RIGHT, hold 5 s in a game</strong> — soft reset back to the menu. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
-<li><strong>LEFT + RIGHT, hold 3 s at the root menu</strong> — admin lock (blocks mode changes and reset); add SELECT for the stronger lock that also freezes indoor/outdoor, weapon, team and perk. A locked gun cannot host. <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></li>
-<li><strong>Swing your elbow (gesture-enabled &quot;logo&quot; guns)</strong> — melee from the headset&#39;s front emitter; other guns use RIGHT. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></li>
+<li><strong>ALT, hold 3 s</strong> — toggle indoor / outdoor (persists). <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li><strong>LEFT at power-on</strong> — target mode for sighting. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li><strong>RIGHT at power-on</strong> — &quot;install accessory&quot; pairing mode (headset, grenade, sidearm…). <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></li>
+<li><strong>SELECT at power-on</strong> — USB disk mode; no startup sound. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li><strong>LEFT + RIGHT, hold 5 s in a game</strong> — soft reset back to the menu. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
+<li><strong>LEFT + RIGHT, hold 3 s at the root menu</strong> — admin lock (blocks mode changes and reset); add SELECT for the stronger lock that also freezes indoor/outdoor, weapon, team and perk. A locked gun cannot host. <span class="badge b-community" title="Community-reported"><span>community</span></span></li>
+<li><strong>Swing your elbow (gesture-enabled &quot;logo&quot; guns)</strong> — melee from the headset&#39;s front emitter; other guns use RIGHT. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></li>
 </ul>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-manual-notes.md" rel="noopener">docs/reference/brx-manual-notes.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/brx-extended-user-guide.md" rel="noopener">docs/reference/brx-extended-user-guide.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/community-notes.md" rel="noopener">docs/reference/community-notes.md</a></p></section>
 <section class="blk blk-table" data-type="table"><h2 id="stock-modes-selectable-on-the-gun">Stock modes selectable on the gun</h2><div class="table-wrap"><table>
@@ -114,7 +114,7 @@
 <td>—</td>
 </tr>
 <tr>
-<td>Generals, Commander and The Swarm appear on newer firmware as Callsign-Live unlocks. Full stats and abilities are in the <em>Game Modes &amp; Weapons</em> section. <span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span></td>
+<td>Generals, Commander and The Swarm appear on newer firmware as Callsign-Live unlocks. Full stats and abilities are in the <em>Game Modes &amp; Weapons</em> section. <span class="badge b-official" title="Official Battle Company docs"><span>official</span></span></td>
 <td></td>
 <td></td>
 <td></td>
@@ -131,7 +131,7 @@
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/sir/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/sir.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"$SIR — the incoming-IR effects matrix","description":"What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon","url":"https://open-brx.iamrossi.workers.dev/manual/dev/sir/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"$SIR — the incoming-IR effects matrix","item":"https://open-brx.iamrossi.workers.dev/manual/dev/sir/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is there a stun?","acceptedAnswer":{"@type":"Answer","text":"None found. $STUN over BLE is a no-op, and fn 23 — the only function that visibly changes anything without touching a pool — leaves the gun firing."}},{"@type":"Question","name":"Can I read a native game's $SIR table?","acceptedAnswer":{"@type":"Answer","text":"No — the gun never reports it. Capturing an ability's IR word tells you its protocol, not what a native victim binds to it."}},{"@type":"Question","name":"Which protocols are free?","acceptedAnswer":{"@type":"Answer","text":"Stock uses 0, 8, 10, 11, 13 and 15 (grenade beacon); the app's table also ships rows on 1, 2, 3, 6, 9. Truly unused: 4, 5, 7, 12, 14 — but every cell is re-definable per game since you push the table."}}]}]}</script>
 </head>
@@ -33,15 +34,15 @@
 <header class="page-head">
 <h1><code>$SIR</code> — the incoming-IR effects matrix</h1>
 <p class="subtitle">What an IR hit does to this gun is decided by the victim&#39;s table, not by the shooter&#39;s weapon</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/sir.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/sir.md">Markdown</a></p>
 </header>
-<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="the-key-idea"><strong class="co-title">The key idea.</strong><p>An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the <code>$SIR</code> row with that <code>&lt;protocol, subtype&gt;</code> key; the row&#39;s <strong>function</strong> decides what the word&#39;s 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. <strong>No matching row → the hit is silently ignored.</strong> 16 × 4 = 64 addressable cells, all writable per game over BLE.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-ir-protocol.md" rel="noopener">protocol/brx-ir-protocol.md</a></p></aside></section>
-<section class="blk blk-spec-sheet" data-type="spec-sheet"><h2 id="format">Format:</h2><p class="lead"><code>$SIR,&lt;irProtocol&gt;,&lt;subtype&gt;,&lt;soundID&gt;,&lt;function&gt;,&lt;p5&gt;,&lt;p6&gt;,&lt;p7&gt;,&lt;p8&gt;,*</code></p><dl><dt><code>&lt;soundID&gt;</code> plays <strong>on the victim</strong> when the row fires (<code>VA16</code> &quot;armor suit&quot;, <code>VA8C</code> &quot;shields online&quot;, <code>H29</code> stim-pack).</dt><dd></dd><dt><code>&lt;p5&gt;–&lt;p8&gt;</code> do <strong>not</strong> scale damage (<code>0,0,1</code>, <code>0,50,1</code>, <code>0,100,2,60</code>, <code>0,200,2,60</code>, <code>50,100,2,60</code> all landed exactly the magnitude).</dt><dd></dd><dt>Max distinct IR recognitions per game: 14 (community figure).</dt><dd></dd></dl><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (clean negatives)</p></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="the-key-idea"><strong class="co-title">The key idea.</strong><p>An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the <code>$SIR</code> row with that <code>&lt;protocol, subtype&gt;</code> key; the row&#39;s <strong>function</strong> decides what the word&#39;s 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. <strong>No matching row → the hit is silently ignored.</strong> The same is true of a <strong>wrongly-teamed</strong> shot: damage applies only from an enemy team and support only from your own, and a rejected frame emits <strong>no <code>$HIR</code> at all</strong> — it never reaches BLE. 16 × 4 = 64 addressable cells, all writable per game over BLE.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-ir-protocol.md" rel="noopener">protocol/brx-ir-protocol.md</a></p></aside></section>
+<section class="blk blk-spec-sheet" data-type="spec-sheet"><h2 id="format">Format:</h2><p class="lead"><code>$SIR,&lt;irProtocol&gt;,&lt;subtype&gt;,&lt;soundID&gt;,&lt;function&gt;,&lt;p5&gt;,&lt;p6&gt;,&lt;p7&gt;,&lt;p8&gt;,*</code></p><dl><dt class="full"><code>&lt;soundID&gt;</code> plays <strong>on the victim</strong> when the row fires (<code>VA16</code> &quot;armor suit&quot;, <code>VA8C</code> &quot;shields online&quot;, <code>H29</code> stim-pack).</dt><dd class="full"></dd><dt class="full"><code>&lt;p5&gt;–&lt;p8&gt;</code> do <strong>not</strong> scale damage (<code>0,0,1</code>, <code>0,50,1</code>, <code>0,100,2,60</code>, <code>0,200,2,60</code>, <code>50,100,2,60</code> all landed exactly the magnitude).</dt><dd class="full"></dd><dt>Max distinct IR recognitions per game</dt><dd><p>14 (community figure).</p>
+</dd></dl><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (clean negatives)</p></section>
 <section class="blk blk-code" data-type="code"><pre><code class="language-text"># The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…) — plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — ×1.25 damage
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — ×2 damage
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — fn 36 (×1.25 DISPUTED, see below)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — fn 37 (×2 DISPUTED, see below)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -53,7 +54,7 @@ $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
 $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)
 </code></pre>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (shipped-table consequence)</p></section>
-<section class="blk blk-data-table" data-type="data-table"><h2 id="function-map-measured-at-magnitude-20-on-protocol-5-baseline">Function map (measured at magnitude 20 on protocol 5, baseline HP 45 / armor 70 / shield 0)</h2><div class="dt" data-rows="12"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">12 rows</span></div><div class="table-wrap"><table>
+<section class="blk blk-data-table" data-type="data-table"><h2 id="function-map">Function map</h2><p class="lead">measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, <strong>at the gun-body sensor (<code>$HIR</code> tok1 = 4) from ~40 cm</strong>. The classes do <strong>not</strong> vary by IR protocol (50 cells across protocols 0/5/7/9/10); whether a <strong>headset-dome</strong> hit behaves the same is <strong>untested</strong>.</p><div class="dt" data-rows="12"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">12 rows</span></div><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Class</th>
@@ -68,90 +69,90 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <td>1, 4, 5, 7, 29, 30, 33, 38</td>
 <td>−20 per hit, drains shields → armor → HP</td>
 <td>enemy only</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><strong>Armor-piercing</strong></td>
 <td>2, 6 (+17, 21 enemy-side)</td>
 <td>HP 45→25→5 with armor <strong>and shields</strong> untouched</td>
 <td>enemy only</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
-<td>×1.25 damage</td>
+<td>×1.25 damage ⚠️</td>
 <td>36</td>
-<td>magnitude 20 lands as 25</td>
+<td>magnitude 20 lands as 25 in one dataset, <strong>as 20 in another</strong></td>
 <td>enemy only</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>⚠️ <strong>DISPUTED</strong></td>
 </tr>
 <tr>
-<td>×2 damage</td>
+<td>×2 damage ⚠️</td>
 <td>37</td>
-<td>magnitude 20 lands as 40</td>
+<td>magnitude 20 lands as 40 in one dataset, <strong>as 20 in another</strong></td>
 <td>enemy only</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td>⚠️ <strong>DISPUTED</strong></td>
 </tr>
 <tr>
 <td>Add HP, overflow → armor</td>
 <td>9, 12, 16, 19</td>
 <td>15→35→45, then +armor</td>
 <td>ally only (16/19 also damage enemies)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Add HP, clamp</td>
 <td>10, 17</td>
 <td>15→35→45, no overflow</td>
 <td>ally only (17 also AP-damages enemies)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Add HP, overflow → shield</td>
 <td>14, 21</td>
 <td>15→35→45, then +shield</td>
 <td>ally only</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Add armor</td>
 <td>13, 15, 20, 22</td>
 <td>0→20→40; overflow spills to shields</td>
 <td>ally only (20 also strips enemy armor)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Add shield</td>
 <td>11, 18</td>
 <td>0→20→40</td>
 <td>ally only</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><strong><code>$ALCD</code> token-2 drop</strong></td>
 <td>23</td>
 <td>Registers a hit, no pool change; <code>$ALCD</code> token 2 drops 100→0 and recovers over ~6–8 s while the gun keeps firing. The state clears on <code>$SPAWN,,*</code>.</td>
 <td>enemy</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Registers, no pool change</td>
 <td>enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34</td>
 <td><code>$HIR</code> fires, pools unchanged, no other frame.</td>
 <td>—</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>No registration</td>
 <td>0, 39–45 (and 28/45 on protocol 5)</td>
 <td>—</td>
 <td>—</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 </tbody></table></div>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 complete two-sided $SIR map; 2026-08-27 fn 23)</p></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="support-functions-are-team-gated-in-firmware"><strong class="co-title">Support functions are team-gated in firmware.</strong><p>With <code>$GSET</code> friendlyFire = 0, heals/armor/shield grants register <strong>only from a same-team source</strong>, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces &quot;allies only&quot; with zero host logic.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (dual-polarity, FF table)</p></aside></section>
-<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-07" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch &quot;no row → dropped silently&quot; / &quot;row found&quot; → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×1.5 if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches."><span class="ph-id">DEV-07</span><span class="ph-kind">diagram pending</span></div><figcaption>Damage pipeline: IR word (B,U,D,C) → victim <code>$SIR[B,U]</code> → function multiplier → ×1.5 if crit → drain shields → armor → HP → emit <code>$HIR</code> + <code>$HP</code>.</figcaption></figure><p class="src"><span>Source:</span> below</p></section>
-<section class="blk blk-stat-row" data-type="stat-row"><ul class="stats"><li><strong>applied = magnitude × fn multiplier × (1.5 if crit)</strong><span>— fn 1 ×1 · fn 36 ×1.25 · fn 37 ×2; crit stacks (fn 37 + crit = ×3). <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>Drain order: shields → armor → HP.</strong><span>Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper&#39;s 80 split exactly 70/10). <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>Heals clamp</strong><span>at the pool max — magnitude 200 is a fill, not a stack. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>No function is a damage-over-time.</strong><span>18 s watched after each status hit: no ticks. <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li><li><strong>Dead guns accept no IR at all.</strong><span><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></span></li></ul><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r addendum; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)</p></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-07" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch &quot;no row → dropped silently&quot; / &quot;row found&quot; → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×(1 + $GSET t7/100) if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches."><span class="ph-id">DEV-07</span><span class="ph-kind">diagram pending</span></div><figcaption>Damage pipeline: IR word (B,U,D,C) → victim <code>$SIR[B,U]</code> → function multiplier → ×(1 + <code>$GSET</code> t7/100) if crit → drain shields → armor → HP → emit <code>$HIR</code> + <code>$HP</code>.</figcaption></figure><p class="src"><span>Source:</span> below</p></section>
+<section class="blk blk-stat-row" data-type="stat-row"><ul class="stats"><li><strong>applied = magnitude × fn multiplier × (1 + <code>$GSET</code> t7/100 if crit)</strong><span>— the crit modifier is a <strong>per-game tunable</strong>, not a fixed ×1.5: t7=0 disables crits, t7=100 doubles. ×1.5 is simply the shipped t7=50. Exact at seven levels, 3/3 each. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>Drain order: shields → armor → HP.</strong><span>Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper&#39;s 80 split exactly 70/10). <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>Heals clamp</strong><span>at the pool max — magnitude 200 is a fill, not a stack. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>No function is a damage-over-time.</strong><span>18 s watched after each status hit: no ticks. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>Dead guns accept no IR at all.</strong><span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li></ul><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r addendum; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)</p></section>
 <section class="blk blk-faq" data-type="faq"><div class="faq"><details><summary>Is there a stun?</summary><div><p>None found. <code>$STUN</code> over BLE is a no-op, and fn 23 — the only function that visibly changes anything without touching a pool — leaves the gun firing.</p>
 </div></details><details><summary>Can I read a native game&#39;s <code>$SIR</code> table?</summary><div><p>No — the gun never reports it. Capturing an ability&#39;s IR word tells you its protocol, not what a native victim binds to it.</p>
 </div></details><details><summary>Which protocols are free?</summary><div><p>Stock uses 0, 8, 10, 11, 13 and 15 (grenade beacon); the app&#39;s table also ships rows on 1, 2, 3, 6, 9. Truly unused: 4, 5, 7, 12, 14 — but every cell is re-definable per game since you push the table.</p>
@@ -159,13 +160,13 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#the-key-idea">The key idea.</a></li><li><a href="#format">Format:</a></li><li><a href="#function-map-measured-at-magnitude-20-on-protocol-5-baseline">Function map (measured at magnitude 20 on protocol 5, baseline HP 45 / armor 70 / shield 0)</a></li><li><a href="#support-functions-are-team-gated-in-firmware">Support functions are team-gated in firmware.</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#format">Format:</a></li><li><a href="#function-map">Function map</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

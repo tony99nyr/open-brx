@@ -21,7 +21,7 @@ Source: protocol/brx-ir-protocol.md; protocol/brx-protocol.md §7c (laser mW)
 | **P** | 6 | 4–9 | player id 0–63 = `$PSET` token 1 = `$HIR` tok3 | matched the registry | ✅ |
 | **T** | 2 | 10–11 | team id 0–3 = `$TID & 3` = `$HIR` tok4 | matched | ✅ |
 | **D** | 8 | 12–19 | magnitude = `$WEAP` t5 = `$HIR` tok5 | pushed 22 → 9 → 115; only these bits moved | ✅ |
-| **C** | 1 | 20 | critical flag → `$HIR` tok6, ×1.5 applied | emitted crit=1 → `$HIR,…,1,…` | ✅ |
+| **C** | 1 | 20 | critical flag → `$HIR` tok6, applies ×(1 + `$GSET` t7/100) | emitted crit=1 → `$HIR,…,1,…` | ✅ |
 | **U** | 2 | 21–22 | `$SIR` subtype → `$HIR` tok7 | U=0/1/3 registered with rows; U=2 (no row) ignored | ✅ |
 | **Z** | 2 | 23–24 | parity trailer | see rule | ✅ |
 Source: protocol/brx-ir-protocol.md; docs/experiment-log.md (2026-08-26 melee capture)

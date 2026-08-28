@@ -2,7 +2,7 @@
 _A 7.4 V two-cell pack with one nasty surprise: the connector polarity is backwards._
 Last verified: 2026-08-27
 
-Tagger battery 📖 👥:
+## Tagger battery 📖 👥
 - Chemistry / pack: **7.4 V Li-ion, ~2,200 mAh**, two cells
 - Connector: **2-pin** (aftermarket 3-pin packs fit — the third pin is a thermistor the BRX ignores)
 - Charger: the supplied **8.4 V two-cell smart charger**; LED red while charging → green when full

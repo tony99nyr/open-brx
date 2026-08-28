@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/weap/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/weap.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"$WEAP — the weapon definition","description":"Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type","url":"https://open-brx.iamrossi.workers.dev/manual/dev/weap/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"$WEAP — the weapon definition","item":"https://open-brx.iamrossi.workers.dev/manual/dev/weap/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can I build a semi-auto rifle?","acceptedAnswer":{"@type":"Answer","text":"Yes — t20=7 is single-shot per pull. (An earlier note that semi-auto \"may not exist\" predates the t20 proof.)"}},{"@type":"Question","name":"What bounds a custom weapon?","acceptedAnswer":{"@type":"Answer","text":"The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2166 sound ids. Any combination with arbitrary numbers is buildable; a brand-new damage behaviour is not."}},{"@type":"Question","name":"Does a $WEAP re-push mid-game keep the ammo count?","acceptedAnswer":{"@type":"Answer","text":"No — it resets mag/reserve to the frame's values. Re-send $AMMO."}}]}]}</script>
 </head>
@@ -33,8 +34,7 @@
 <header class="page-head">
 <h1><code>$WEAP</code> — the weapon definition</h1>
 <p class="subtitle">Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/weap.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/weap.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="a-weapon-is-data-not-firmware"><strong class="co-title">A weapon is data, not firmware.</strong><p>The gun has no weapons baked in; the host sends a full <code>$WEAP</code> frame into one of <strong>six slots (0–5)</strong>. The field <em>names</em> come from the Callsign app&#39;s metadata (declaration order = wire order); the <em>positions and meanings</em> below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6, §6.1</p></aside></section>
 <section class="blk blk-code" data-type="code"><pre><code class="language-text"># Two known-good frames (slot 0 Assault Rifle, slot 1 Charge Rifle):
@@ -62,7 +62,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>0</td>
 <td>1</td>
 <td>Weapon slot 0–5. Slot 4 = melee by convention (gyro swing, <code>$BMAP,8,4</code>).</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>1</td>
@@ -70,7 +70,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td><code>2</code> on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); <code>1</code> on melee; <code>0</code> rail gun; empty otherwise. Not fire mode.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>2</td>
@@ -86,7 +86,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>0</td>
 <td>8</td>
 <td><strong>The IR word&#39;s B field / <code>$SIR</code> protocol key.</strong> Writing a type here is echoed by the victim in <code>$HIR</code> token 2 and selects its <code>$SIR</code> row. DamageType enum: 0 Standard · 1 MedicHeal · 2 ActivateShield · 3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb · 10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (position) <span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> (enum names)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (position) <span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> (enum names)</td>
 </tr>
 <tr>
 <td>4</td>
@@ -94,7 +94,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>0</td>
 <td>0</td>
 <td>IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>5</td>
@@ -102,15 +102,15 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>24</td>
 <td>150</td>
 <td><strong>The raw magnitude put in the IR word</strong> (= <code>$HIR</code> token 5). Applied damage depends on the victim&#39;s <code>$SIR</code> row. The stock AR actually emits 9; the sample&#39;s 24 is the manual&#39;s stale anchor (§7r addendum).</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>6</td>
 <td>primaryCriticalChance</td>
 <td>0</td>
 <td>0</td>
-<td>Crit chance. 0 on every stock weapon; the IR crit bit <em>can</em> be set (×1.5).</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td>Crit chance. 0 on every stock weapon; the IR crit bit <em>can</em> be set (applies <code>$GSET</code> t7, ×1.5 at the shipped t7=50).</td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>7–11</td>
@@ -118,7 +118,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td><strong>Dormant</strong>: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>12</td>
@@ -126,7 +126,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td>Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (correlation)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 <tr>
 <td>13</td>
@@ -134,15 +134,15 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td>80 on the same three weapons.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (correlation)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 <tr>
 <td>14</td>
 <td><strong>fire interval / charge time (ms)</strong></td>
 <td>100</td>
 <td>1250</td>
-<td><strong>Proven by one-field flip</strong>: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (<span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span>): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (flip) <span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> (cadence list)</td>
+<td><strong>Proven by one-field flip</strong>: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (<span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span>): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (flip) <span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> (cadence list)</td>
 </tr>
 <tr>
 <td>15</td>
@@ -158,7 +158,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>32</td>
 <td>100</td>
 <td>Magazine size.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>17</td>
@@ -166,7 +166,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>32768</td>
 <td>32768</td>
 <td>Always <code>2 × t40</code> in captured frames (or 32768 as an unlimited flag). Not an independent knob.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (correlation)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 <tr>
 <td>18</td>
@@ -174,7 +174,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>1400</td>
 <td>2500</td>
 <td>Reload time.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>19</td>
@@ -190,7 +190,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>0</td>
 <td>14</td>
 <td><strong>Proven by one-field flip</strong>: <code>0</code> full-auto · <code>7</code> single-shot/bolt · <code>9</code> burst (cycle in t23) · <code>2</code> charge, auto-release (tap = weak shot) · <code>3</code> hold-to-charge, auto-fire (tap = sound only) · <code>14</code> tap-fire OR charge-release · <code>13</code> melee.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>21</td>
@@ -198,7 +198,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>100</td>
 <td>100</td>
 <td></td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>22</td>
@@ -206,7 +206,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>100</td>
 <td>100</td>
 <td></td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>23</td>
@@ -214,7 +214,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td>Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>24</td>
@@ -222,7 +222,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>0</td>
 <td>14</td>
 <td>SMG 5 · Energy Rifle 6 · Charge Rifle 14 · Plasma Sniper 30. <strong>Inert unless t37/t38 are set.</strong></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>25</td>
@@ -246,7 +246,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>R01</td>
 <td>E03</td>
 <td>Fire sound id. <strong>A sound, not an identity</strong> — Rocket Launcher and Rail Gun both fire <code>C03</code> with different stat lines.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>28</td>
@@ -254,7 +254,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>C15</td>
 <td>Engage sound. <code>C…</code> ids = charge (rail gun C08, laser cannon C11, charge rifle C15); <code>D…</code> ids = extra reload parts on five-part reloads (sniper/AMR/force rifle D20, ion sniper D32).</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>29</td>
@@ -262,7 +262,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>C17</td>
 <td>Release sound. Present exactly when the weapon has a distinct release event (charge rifle C17, bolt weapons D19/D31); absent on auto-firing chargers.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>30</td>
@@ -270,7 +270,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td></td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>31</td>
@@ -278,7 +278,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>D04</td>
 <td>D30</td>
 <td></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>32</td>
@@ -286,7 +286,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>D03</td>
 <td>D29</td>
 <td></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>33</td>
@@ -294,7 +294,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>D02</td>
 <td>D37</td>
 <td></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>34</td>
@@ -302,7 +302,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>D18</td>
 <td>A73</td>
 <td></td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>35</td>
@@ -310,7 +310,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>C19</td>
 <td><strong>Overheat sound</strong> (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122).</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>36</td>
@@ -318,7 +318,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>C04</td>
 <td>Second feature sound.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>37</td>
@@ -326,7 +326,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>20</td>
 <td><strong>Gate for the overheat system</strong> (with t38): transplanting <code>20,150</code> onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip — at these values the 72-round magazine empties before a hard lockout.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (gate)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (gate)</td>
 </tr>
 <tr>
 <td>38</td>
@@ -334,7 +334,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>150</td>
 <td>See t37.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (gate)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (gate)</td>
 </tr>
 <tr>
 <td>39</td>
@@ -342,7 +342,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>32</td>
 <td>100</td>
 <td>Equals t16 in every captured frame.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (correlation)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 <tr>
 <td>40</td>
@@ -350,7 +350,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>9999999</td>
 <td>9999999</td>
 <td>Reserve; 9999999 = unlimited. <code>t17 == 2 × t40</code> in stock frames.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>41</td>
@@ -366,7 +366,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <td>—</td>
 <td>—</td>
 <td>30/30/40 on the three t1=2 weapons.</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (correlation)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 </tbody></table></div>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 $WEAP token probes; charge modes; overheat solved)</p></section>
@@ -484,13 +484,13 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#a-weapon-is-data-not-firmware">A weapon is data, not firmware.</a></li><li><a href="#token-map-0-indexed-weap-the-slot-is-t0">Token map (0-indexed: $WEAP,&lt;t0&gt;,&lt;t1&gt;,…,; the slot is t0)</a></li><li><a href="#two-positions-that-bit-us">Two positions that bit us.</a></li><li><a href="#stock-weapon-signatures">Stock weapon signatures</a></li><li><a href="#overheat-is-a-balance-lever-on-any-weapon">Overheat is a balance lever on any weapon.</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#token-map-0-indexed-weap-the-slot-is-t0">Token map (0-indexed: $WEAP,&lt;t0&gt;,&lt;t1&gt;,…,; the slot is t0)</a></li><li><a href="#stock-weapon-signatures">Stock weapon signatures</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

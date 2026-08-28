@@ -6,10 +6,17 @@
 
   // ---- theme ----
   const themeBtn = $('[data-theme-toggle]');
-  const applyTheme = t => { document.documentElement.dataset.theme = t; if (themeBtn) themeBtn.setAttribute('aria-pressed', String(t === 'light')); };
-  const current = () => document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  applyTheme(document.documentElement.dataset.theme || '');
-  if (themeBtn) themeBtn.setAttribute('aria-pressed', String(current() === 'light'));
+  // Only 'dark' and 'light' are themes. A stale or hand-edited localStorage value used to land in
+  // data-theme verbatim, which rendered light but made the first click a no-op.
+  const clean = t => (t === 'dark' || t === 'light' ? t : '');
+  const current = () => clean(document.documentElement.dataset.theme) || 'light';
+  const applyTheme = t => {
+    document.documentElement.dataset.theme = clean(t);
+    // aria-pressed on a "toggle theme" label reads backwards; name the action instead
+    themeBtn?.setAttribute('aria-label', current() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+    themeBtn?.removeAttribute('aria-pressed');
+  };
+  applyTheme(document.documentElement.dataset.theme);
   themeBtn?.addEventListener('click', () => { const t = current() === 'light' ? 'dark' : 'light'; applyTheme(t); try { localStorage.setItem('brx-theme', t); } catch {} });
 
   // ---- mobile nav ----
@@ -21,13 +28,15 @@
 
   // ---- copy buttons on code blocks ----
   $$('pre').forEach(pre => {
+    const wrap = document.createElement('div'); wrap.className = 'code-wrap';
+    pre.parentNode.insertBefore(wrap, pre); wrap.appendChild(pre);
     const b = document.createElement('button'); b.type = 'button'; b.className = 'copy-btn'; b.textContent = 'copy'; b.setAttribute('aria-label', 'Copy code');
     b.addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(pre.querySelector('code')?.innerText ?? pre.innerText); b.textContent = 'copied'; b.dataset.done = '1'; }
       catch (err) { b.textContent = 'copy failed'; b.dataset.done = ''; console.error(err); }
       setTimeout(() => { b.textContent = 'copy'; delete b.dataset.done; }, 1800);
     });
-    pre.appendChild(b);
+    wrap.appendChild(b);
   });
 
   // ---- in-page table filter + sort (data-table blocks) ----
@@ -65,8 +74,21 @@
   // ---- search (⌘K) ----
   const modal = $('[data-search-modal]'), sInput = $('[data-search-input]'), sRes = $('[data-search-results]');
   let index = null, loadErr = null;
-  const openSearch = async () => { modal.hidden = false; sInput.value = ''; sInput.focus(); if (!index && !loadErr) { sRes.innerHTML = '<p class="muted">Loading index…</p>'; try { index = await (await fetch('/data/search.json')).json(); runSearch(); } catch (e) { loadErr = e; sRes.innerHTML = '<p class="x-error">Search index failed to load. Reload the page to retry.</p>'; } } };
-  const closeSearch = () => { modal.hidden = true; };
+  const box = $('.search-box', modal);
+  let lastFocus = null;
+  box?.setAttribute('aria-modal', 'true');
+  const openSearch = async () => { lastFocus = document.activeElement; modal.hidden = false; document.body.classList.add('modal-open'); sInput.value = ''; sInput.focus(); if (!index && !loadErr) { sRes.innerHTML = '<p class="muted">Loading index…</p>'; try { index = await (await fetch('/data/search.json')).json(); runSearch(); } catch (e) { loadErr = e; sRes.innerHTML = '<p class="x-error">Search index failed to load. Reload the page to retry.</p>'; } } };
+  const closeSearch = () => { modal.hidden = true; document.body.classList.remove('modal-open'); lastFocus?.focus?.(); lastFocus = null; };
+  // Tab must cycle inside the dialog: without this it walked onto the links behind the overlay
+  modal?.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const f = [sInput, ...$$('a', sRes)].filter(el => el && el.offsetParent !== null);
+    if (!f.length) return;
+    const i = f.indexOf(document.activeElement);
+    if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    else if (i < 0) { e.preventDefault(); f[0].focus(); }
+  });
   $('[data-search-open]')?.addEventListener('click', openSearch);
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); modal.hidden ? openSearch() : closeSearch(); } if (e.key === 'Escape' && !modal.hidden) closeSearch(); });
   sInput?.addEventListener('keydown', e => {
@@ -125,9 +147,15 @@
       more.hidden = f.length <= limit; if (!more.hidden) moreBtn.textContent = `Show more (${f.length - limit} hidden)`;
       renderDock();
     }
+    let dockKey = null;
     function renderDock() {
       if (kind !== 'weapons') { dock.hidden = true; return; }
       dock.hidden = false;
+      dock.classList.toggle('empty', picked.length === 0);
+      // it is aria-live: rewriting identical markup on every keystroke re-announced the whole dock
+      const key = picked.join(',') + '|' + (evicted || '');
+      if (key === dockKey) return;
+      dockKey = key;
       const ws = picked.map(id => rows.find(r => r.id === id)).filter(Boolean);
       const clearBtn = '<button type="button" class="x-clear" data-x-clear>Clear picks</button>';
       const note = evicted ? `<span class="muted"> · ${esc(evicted)} was replaced</span>` : '';
@@ -145,14 +173,17 @@
       chips.innerHTML = [`<button type="button" data-facet="all" aria-pressed="true">All</button>`, ...fs.map(f => `<button type="button" data-facet="${esc(f)}" aria-pressed="false">${esc(f)}</button>`)].join('');
       render();
     }
-    const sortBy = th => { const i = Number(th.dataset.col); sortDir = sortCol === i ? -sortDir : 1; sortCol = i; render(); };
+    // render() re-serialises thead/tbody, which destroys the focused node. Put the keyboard back on
+    // the equivalent control, otherwise a sort or a pick throws the user to the top of the document.
+    const refocus = sel => { const el = sel && $(sel, ex); if (el) el.focus({ preventScroll: true }); };
+    const sortBy = th => { const i = Number(th.dataset.col); sortDir = sortCol === i ? -sortDir : 1; sortCol = i; render(); refocus(`th[data-col="${i}"]`); };
     table.tHead.addEventListener('click', e => { const th = e.target.closest('th[data-col]'); if (th) sortBy(th); });
     table.tHead.addEventListener('keydown', e => { const th = e.target.closest('th[data-col]'); if (th && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); sortBy(th); } });
     chips.addEventListener('click', e => { const b = e.target.closest('[data-facet]'); if (!b) return; facet = b.dataset.facet; $$('[data-facet]', chips).forEach(x => x.setAttribute('aria-pressed', String(x === b))); limit = 300; render(); });
     search.addEventListener('input', () => { limit = 300; render(); });
     moreBtn.addEventListener('click', () => { limit += 500; render(); });
     $('[data-x-retry]', ex).addEventListener('click', load);
-    table.addEventListener('change', e => { const cb = e.target.closest('[data-pick]'); if (!cb) return; const id = cb.dataset.pick; evicted = null; if (cb.checked) { picked.push(id); if (picked.length > 2) { const gone = picked.shift(); evicted = rows.find(r => r.id === gone)?.name ?? gone; } } else picked = picked.filter(x => x !== id); render(); });
+    table.addEventListener('change', e => { const cb = e.target.closest('[data-pick]'); if (!cb) return; const id = cb.dataset.pick; evicted = null; if (cb.checked) { picked.push(id); if (picked.length > 2) { const gone = picked.shift(); evicted = rows.find(r => r.id === gone)?.name ?? gone; } } else picked = picked.filter(x => x !== id); render(); refocus(`[data-pick="${CSS.escape(id)}"]`); });
     dock.addEventListener('click', e => { if (e.target.closest('[data-x-clear]')) { picked = []; evicted = null; render(); } });
     table.addEventListener('click', async e => { const b = e.target.closest('[data-copy]'); if (!b) return; try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'copied'; b.dataset.done = '1'; } catch { b.textContent = 'copy failed'; } setTimeout(() => { b.textContent = 'copy $PLAY'; delete b.dataset.done; }, 1500); });
     load();

@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/headset-link.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Headset, link and what survives","description":"Which state lives where — and what a BLE drop, a headset switch-off, or a power-cycle each wipe","url":"https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Headset, link and what survives","item":"https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/"}]}]}</script>
 </head>
@@ -33,8 +34,7 @@
 <header class="page-head">
 <h1>Headset, link and what survives</h1>
 <p class="subtitle">Which state lives where — and what a BLE drop, a headset switch-off, or a power-cycle each wipe</p>
-<p class="meta"><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/headset-link.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/headset-link.md">Markdown</a></p>
 </header>
 <section class="blk blk-compare" data-type="compare"><h2 id="state-survival-matrix">State survival matrix</h2><div class="table-wrap"><table>
 <thead>
@@ -51,56 +51,56 @@
 <td>— (unknown) — re-send the full head after a reconnect</td>
 <td>Gun sends <code>$DISCONNECT,*</code> and drops the link; config: — (unknown)</td>
 <td><strong>Wiped</strong> — <code>$SPAWN</code> then echoes <code>$LCD,0,0,0,0,0,0</code> + <code>$ALCD,0,0,0,0,0</code></td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Alive/dead + pools</td>
 <td>Survives (a dead gun stays dead)</td>
 <td>—</td>
 <td>Reset</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Ammo</td>
 <td>Survives</td>
 <td>—</td>
 <td>Wiped</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$TID</code> team / LED colour</td>
 <td>Survives; colour is painted at <code>$SPAWN</code></td>
 <td>—</td>
 <td>Reset</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$NAME</code></td>
 <td>Persists</td>
 <td>Persists</td>
 <td><strong>Persists</strong> (only the official app rewrites it)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Player id (<code>$PSET</code> t1)</td>
 <td>Survives with config</td>
 <td>—</td>
 <td>Wiped (the USB <code>PlayerID</code> is separate and persistent)</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Score, clock, respawn timer</td>
 <td><strong>Never on the gun</strong></td>
 <td>—</td>
 <td>—</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$SIR</code> fn-23 state (<code>$ALCD</code> token 2 at 0)</td>
 <td>Persists until <code>$SPAWN</code></td>
 <td>—</td>
 <td>Cleared</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r (E1), §7n; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24 $NAME; EMP recovery matrix)</p></section>
@@ -117,17 +117,17 @@
 <tbody><tr>
 <td>Slow <strong>rainbow</strong> blink</td>
 <td>Disconnected / not paired — the pre-game tell for &quot;this gun will not join&quot;</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (operator, repeatable)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (operator, repeatable)</td>
 </tr>
 <tr>
 <td>Team colour (red/blue…)</td>
 <td><strong>Pre-game only</strong>; goes dark once the game starts</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (operator)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (operator)</td>
 </tr>
 <tr>
 <td>Dark</td>
 <td>During play — normal</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> (operator)</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (operator)</td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-27 headset LED)</p></section>
@@ -142,37 +142,37 @@
 <tbody><tr>
 <td>The headset syncs team colour from the tagger</td>
 <td>bench observation</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$VERSION</code> token 2 = headset firmware (<code>hds.59</code>); USB <code>QUERY</code> shows headset version and battery</td>
 <td>captures / USB</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Headset disconnecting <strong>mid-game</strong> locks the gun until it reconnects (anti-cheat); a gun booted with <strong>no</strong> headset shoots normally in local play</td>
 <td>Battle Company manual V7</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td>Headset pairing can take up to 3 minutes with many BT devices nearby</td>
 <td>manual V7</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td>Headset sensor ids: <code>$HIR</code> tok1 0 = front dome, 1 = back dome (4 = gun body)</td>
 <td>shield-isolated bench</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Gun↔headset pairing PIN = the headset&#39;s serial, set via USB <code>SETUP</code></td>
 <td>LaserTagMods note + USB</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> <span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td>Headset LED commands <code>$HLED</code>/<code>$BLINK</code>/<code>$CHASE</code>/<code>$HLOOP</code>/<code>$LED</code> exist; only <code>$HLED,,6</code> and <code>$HLOOP,0,0</code> have been seen in use</td>
 <td>APK + captures</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7h, §7m, §7r, tok1 section; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-27)</p></section>
@@ -180,13 +180,13 @@
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#state-survival-matrix">State survival matrix</a></li><li><a href="#headset-off-no-ble">Headset off = no BLE.</a></li><li><a href="#headset-behaviours-native-autonomous-they-work-under-any-hos">Headset behaviours (native, autonomous — they work under any host's game head)</a></li><li><a href="#other-headset-facts">Other headset facts</a></li><li><a href="#screamers">Screamers.</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#state-survival-matrix">State survival matrix</a></li><li><a href="#headset-behaviours-native-autonomous-they-work-under-any-hos">Headset behaviours (native, autonomous — they work under any host's game head)</a></li><li><a href="#other-headset-facts">Other headset facts</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>

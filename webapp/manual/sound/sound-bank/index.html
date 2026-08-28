@@ -8,8 +8,9 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/sound/sound-bank/">
 <link rel="alternate" type="text/markdown" href="/manual/sound/sound-bank.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"The sound bank","description":"All 2166 ids the BRX will play — by family, with durations and the meanings the community has pinned","url":"https://open-brx.iamrossi.workers.dev/manual/sound/sound-bank/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Sound, voice & updates","item":"https://open-brx.iamrossi.workers.dev/manual/sound/"},{"@type":"ListItem","position":4,"name":"The sound bank","item":"https://open-brx.iamrossi.workers.dev/manual/sound/sound-bank/"}]},{"@type":"Dataset","name":"Sound Bank Explorer","description":"2166 ids · 33 with a known meaning · search by id, family or meaning","url":"https://open-brx.iamrossi.workers.dev/manual/sound/sound-bank/","distribution":[{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":"https://open-brx.iamrossi.workers.dev/data/sounds.json"}],"license":"https://opensource.org/licenses/MIT","creator":{"@type":"Organization","name":"Open BRX"}}]}</script>
 </head>
@@ -33,13 +34,12 @@
 <header class="page-head">
 <h1>The sound bank</h1>
 <p class="subtitle">All 2166 ids the BRX will play — by family, with durations and the meanings the community has pinned</p>
-<p class="meta"><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/sound/sound-bank.md">View as Markdown</a></p>
-<details class="legend"><summary>What the badges mean</summary><ul><li><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> Verified on our bench</li><li><span class="badge b-official" title="Official Battle Company docs"><i aria-hidden="true">📖</i><span>official</span></span> Official Battle Company docs</li><li><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span> Decoded from the Callsign app</li><li><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> Community-reported</li><li><span class="badge b-software" title="Built + software-tested"><i aria-hidden="true">🧪</i><span>software</span></span> Built + software-tested</li><li><span class="badge b-spec" title="Specified only"><i aria-hidden="true">📐</i><span>spec</span></span> Specified only</li><li><span class="badge b-wip" title="Under construction"><i aria-hidden="true">🚧</i><span>under construction</span></span> Under construction</li></ul><p>Nothing unconfirmed is published — see <a href="/credits/">Credits &amp; sourcing</a>.</p></details>
+<p class="meta"><span class="prov"><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/sound/sound-bank.md">Markdown</a></p>
 </header>
 <section class="blk blk-hero" data-type="hero"><p class="hero-text" id="2166-sounds-78-minutes-one-list"><strong>2166 sounds. 78 minutes. One list.</strong> The complete inventory of valid sound ids was recovered from the official app&#39;s configuration (<code>Sounds.json</code>, an id→duration map), not guessed by ear. It is the authoritative set of <code>$PLAY</code> arguments and of the file names you&#39;d replace over USB.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/sound-bank.md" rel="noopener">protocol/callsign-extract/sound-bank.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> #20</p></section>
 <section class="blk blk-stat-row" data-type="stat-row"><ul class="stats"><li><strong>2166</strong><span>ids in the bank</span></li><li><strong>~4,700 s</strong><span>(78 min) total audio</span></li><li><strong>136</strong><span><code>E_</code>-prefixed alternate takes of existing ids</span></li><li><strong>Longest:</strong><span><code>J100</code> at 250 s (a music bed) · <strong>Shortest:</strong> <code>N1A</code> at 0.04 s</span></li></ul><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/Sounds.json" rel="noopener">protocol/callsign-extract/Sounds.json</a> (computed)</p></section>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="how-to-read-an-id"><strong class="co-title">How to read an id.</strong><p>The first letters are a family prefix (what kind of sound), the rest is an index — <code>R02</code> is the second entry in the R (rifle-shot) family, <code>V3A</code> is line A of the Heavy (V3) voice. An <code>E_</code> prefix marks an alternate take of the base id (<code>E_VB17</code> is a variant of <code>VB17</code>; the <code>E_</code> set covers the VB, VA, J, K, N, X and VS families). Ids are the app&#39;s own names — there is no friendlier label in the protocol.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/sound-bank.md" rel="noopener">protocol/callsign-extract/sound-bank.md</a></p></aside></section>
-<section class="blk blk-table" data-type="table"><h2 id="category-map-every-family-in-the-bank">Category map — every family in the bank</h2><p class="lead">(prefix meanings restated from David Knox&#39;s audio map, counts computed from the bank file; <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><i aria-hidden="true">🔍</i><span>app</span></span>)</p><div class="table-wrap"><table>
+<section class="blk blk-table" data-type="table"><h2 id="category-map-every-family-in-the-bank">Category map — every family in the bank</h2><p class="lead">(prefix meanings restated from David Knox&#39;s audio map, counts computed from the bank file; <span class="badge b-community" title="Community-reported"><span>community</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span>)</p><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Family</th>
@@ -248,7 +248,7 @@
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/Sounds.json" rel="noopener">protocol/callsign-extract/Sounds.json</a> (computed), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/sound-bank.md" rel="noopener">protocol/callsign-extract/sound-bank.md</a> (DK prefix legend)</p></section>
-<section class="blk blk-table" data-type="table"><h2 id="thirty-odd-ids-worth-knowing">Thirty-odd ids worth knowing</h2><p class="lead">(the confirmed core; <span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span> = heard on our bench or in a capture, <span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span> = DK map)</p><div class="table-wrap"><table>
+<section class="blk blk-table" data-type="table"><h2 id="thirty-odd-ids-worth-knowing">Thirty-odd ids worth knowing</h2><p class="lead">(the confirmed core; <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> = heard on our bench or in a capture, <span class="badge b-community" title="Community-reported"><span>community</span></span> = DK map)</p><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Id</th>
@@ -263,231 +263,231 @@
 <td>VA</td>
 <td>&quot;Connection established&quot; — played on every phone connect</td>
 <td>1.27 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>U16</code></td>
 <td>U</td>
 <td>Connect tone (paired with VA20)</td>
 <td>0.43 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA81</code></td>
 <td>VA</td>
 <td>3-2-1 spawn countdown (arena)</td>
 <td>2.97 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA33</code></td>
 <td>VA</td>
 <td>&quot;Game over&quot; + music</td>
 <td>2.26 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA85</code></td>
 <td>VA</td>
 <td>Countdown to game over, no music</td>
 <td>9.66 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>VSB</code></td>
 <td>VS</td>
 <td>Countdown to game over + music</td>
 <td>10.39 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>VS6</code></td>
 <td>VS</td>
 <td>Game-end line (solo game close)</td>
 <td>2.26 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VSF</code> + <code>JAY</code></td>
 <td>VS / JA</td>
 <td>Victory sting + &quot;Victory&quot; — the winner&#39;s end-of-game pair</td>
 <td>1.86 s + 5.69 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA46</code></td>
 <td>VA</td>
 <td>Lives depleted / multi-kill</td>
 <td>1.47 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>V3A</code></td>
 <td>V3</td>
 <td>&quot;Kill&quot; — the app&#39;s per-kill announcer line</td>
 <td>0.79 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VB17</code></td>
 <td>VB</td>
 <td>Score / lead-change line</td>
 <td>1.77 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>N41</code></td>
 <td>N</td>
 <td>Revive-countdown ping</td>
 <td>0.73 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>NA0</code></td>
 <td>NA</td>
 <td>Death beep (also the file swapped to change the death cue)</td>
 <td>4.00 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>N03</code></td>
 <td>N</td>
 <td>&quot;Kerchung&quot;</td>
 <td>0.82 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>N04</code></td>
 <td>N</td>
 <td>Swish</td>
 <td>1.43 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>JA9</code></td>
 <td>JA</td>
 <td>Startup music</td>
 <td>5.74 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>JAD</code></td>
 <td>JA</td>
 <td>Death music (the musicMixOnDeath slot)</td>
 <td>3.50 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>H29</code></td>
 <td>H</td>
 <td>Respawn / add-HP — a quiet, sustained &quot;stim-pack&quot; medical sound</td>
 <td>1.20 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA16</code></td>
 <td>VA</td>
 <td>&quot;Armor suit&quot; — add armor</td>
 <td>0.94 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA8C</code></td>
 <td>VA</td>
 <td>&quot;Shields online&quot; — add shields (SFX over the first word)</td>
 <td>1.50 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA2</code></td>
 <td>VA</td>
 <td>Tear gas effect</td>
 <td>5.98 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>H02</code></td>
 <td>H</td>
 <td>Rail gun impact</td>
 <td>0.39 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>X13</code></td>
 <td>X</td>
 <td>Rocket launcher / explosion</td>
 <td>1.55 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>H50</code></td>
 <td>H</td>
 <td>Energy blade</td>
 <td>0.99 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>H57</code></td>
 <td>H</td>
 <td>Rifle bash</td>
 <td>0.76 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>H49</code></td>
 <td>H</td>
 <td>War hammer</td>
 <td>1.21 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>R02</code></td>
 <td>R</td>
 <td>M4 fire</td>
 <td>2.20 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>T14</code></td>
 <td>T</td>
 <td>TAC-87 shotgun fire</td>
 <td>0.89 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>S16</code></td>
 <td>S</td>
 <td>SR-100 sniper fire</td>
 <td>1.61 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>J07</code></td>
 <td>J</td>
 <td>MG7 fire</td>
 <td>1.60 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>G10</code></td>
 <td>G</td>
 <td>SMG-x3 fire</td>
 <td>1.32 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>V3I</code></td>
 <td>V3</td>
 <td>&quot;Get some&quot; — Heavy respawn line</td>
 <td>1.53 s</td>
-<td><span class="badge b-bench" title="Verified on our bench"><i aria-hidden="true">✅</i><span>bench</span></span></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>VA3</code> / <code>VA5</code></td>
 <td>VA</td>
 <td>Male scream / yell (death-cue swap candidates)</td>
 <td>1.27 / 1.29 s</td>
-<td><span class="badge b-community" title="Community-reported"><i aria-hidden="true">👥</i><span>community</span></span></td>
+<td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/sound-bank.md" rel="noopener">protocol/callsign-extract/sound-bank.md</a> "Confirmed meanings" + DK map, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7o/§7r, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> 2026-08-26, <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/sounds.py" rel="noopener">mcp/brx_mcp/sounds.py</a></p></section>
@@ -504,13 +504,13 @@
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#2166-sounds-78-minutes-one-list">2166 sounds. 78 minutes. One list.</a></li><li><a href="#how-to-read-an-id">How to read an id.</a></li><li><a href="#category-map-every-family-in-the-bank">Category map — every family in the bank</a></li><li><a href="#thirty-odd-ids-worth-knowing">Thirty-odd ids worth knowing</a></li><li><a href="#sound-bank-explorer">Sound Bank Explorer</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#category-map-every-family-in-the-bank">Category map — every family in the bank</a></li><li><a href="#thirty-odd-ids-worth-knowing">Thirty-odd ids worth knowing</a></li><li><a href="#sound-bank-explorer">Sound Bank Explorer</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.js" defer></script>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.d3ca03ea85.js" defer></script>
 </body>
 </html>
