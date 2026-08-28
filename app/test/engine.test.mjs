@@ -90,11 +90,14 @@ test('Q12: spawn and respawn zero the shield (it is a capacity, never a starting
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HP,45,70,150,*');
   assert.equal(h.eng.shield, 150);
-  h.frame('$HIR,4,0,19,2,99,0,3,*'); h.frame('$HP,0,0,0,*');   // die with a shield up
+  // Kill with the SHIELD STILL UP. If the killing $HP carried shield 0, _onHp would zero it and the
+  // assertion below would hold even with the respawn fix reverted -- i.e. the test could not fail.
+  h.frame('$HIR,4,0,19,2,99,0,3,*'); h.frame('$HP,0,0,120,*');
   assert.equal(h.eng.alive, false);
+  assert.equal(h.eng.shield, 120, 'shield must survive the killing blow, or this test proves nothing');
   h.adv(8000); h.eng.tick();                                   // auto-respawn fires
   assert.equal(h.eng.alive, true, 'respawn must actually have happened for this to test anything');
-  assert.equal(h.eng.shield, 0, 'a stale shield would inflate the next damage computation');
+  assert.equal(h.eng.shield, 0, 'respawn must zero the shield; a stale one inflates the next damage calc');
 });
 
 test('death with a stale latch → shooter_num 0 (DEATH_LATCH_MS)', () => {

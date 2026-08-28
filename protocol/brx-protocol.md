@@ -595,7 +595,8 @@ Protocol `0` hits drained **18** armor each; protocol `4` hits drained **9**.
 Token 5 was `9` in both, so it is **not** simply the damage value — the `$SIR` table's
 mapping of protocol → effect is what determines damage.
 > **Corrected (§7r, 2026-08-26): token 5 = the RAW magnitude in the IR word** (= the shooter's `$WEAP`
-> `t5`), and the **applied** damage = magnitude × the `$SIR`-function multiplier × 1.5-if-crit — see §7r.
+> `t5`), and the **applied** damage = magnitude × the `$SIR`-function multiplier × (1 + `$GSET` t7/100) if
+> crit — see §7r. (Earlier drafts said a flat ×1.5; that is only the shipped t7=50 case.)
 > ⚠️ **The old "protocol 0 → 18 vs protocol 4 → 9" split is NOT explained by that**, and a first attempt
 > to explain it that way was wrong: in these two frames (`$HIR,0,0,1,1,9,0,3` / `$HIR,4,0,1,1,9,0,3`)
 > the varying token is **token 1, the SENSOR** — `irProto` (token 2) is **0 in both**. The "protocol 4"
@@ -1301,7 +1302,7 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
   A kill is NOT marked in `$HIR` (no `2`): the kill is `$HP,0,0,0` followed by `$LCD,0,0,0,0,<mag>,<reserve>`.
   §7q's "4 = armor absorbed / 0 = HP / 2 = kill" reading is **retracted**. Token 5 = the raw magnitude in the
   IR word (24 here = this config's `$WEAP` `t5`; **applied** = magnitude × the victim's `$SIR`-function
-  multiplier × 1.5-if-crit — see the §7r addendum).
+  multiplier × (1 + `$GSET` t7/100) if crit — see the §7r addendum; ×1.5 is only the shipped t7=50).
   **tok1 sensor map — RESOLVED by shielded isolation (2026-08-26):** `0` = headset **FRONT** dome,
   `1` = headset **BACK** dome, `4` = gun body (full method in the tok1 sensor-map section at the end of
   this file). A headset/head hit is tok1 ∈ {0,1} (0 vs 1 = front vs back); the earlier bench's "token 1
@@ -1347,8 +1348,10 @@ Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damag
 
 - **`$HIR` token 5 = the RAW magnitude carried in the IR word** (= the shooter's `$WEAP` `t5`), **not
   necessarily the applied damage.** ⚠ Refined 2026-08-26 (night, brx-ir emitter) — the **applied**
-  damage is `magnitude × the victim's $SIR-function multiplier × (1.5 if the crit bit is set)`
-  (fn 1 = ×1, fn 36 = ×1.25, fn 37 = ×2; e.g. mag 20 @ fn 37 crit → 20×2×1.5 = 60). Exp-2's 4-weapon
+  damage is `magnitude × the victim's $SIR-function multiplier × (1 + $GSET t7/100 if the crit bit is
+  set)`. ⚠️ Two caveats added 2026-08-27: the crit term is **not a fixed ×1.5** (that is only t7=50),
+  and the **fn 36 ×1.25 / fn 37 ×2 multipliers are DISPUTED** — they did not reproduce in 24
+  controlled cells, so the worked example `mag 20 @ fn 37 crit → 60` should not be relied on. Exp-2's 4-weapon
   read (AR `t5`=9 → armor −9; Shotgun `T01` 45 → −45; Sniper 80 → 70 absorbed +10 HP; Rocket 115 → kill)
   was **correct for what it tested** — all four key to `$SIR` **fn-1** rows (mult 1, crit 0) where raw ==
   applied — a scope limit found later, not an error. Where a multiplier row or crit is in play, tok5 ≠

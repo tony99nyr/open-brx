@@ -181,7 +181,7 @@ came from a human's senses.
 proxy was never tested against the behaviour it stood in for.
 
 **Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
-`$HIR` tok5 is the **raw magnitude**; applied = magnitude × the row's function multiplier × 1.5 if crit.
+`$HIR` tok5 is the **raw magnitude**; applied = magnitude × the row's function multiplier × (1 + `$GSET` t7/100) if crit (×1.5 only at the shipped t7=50; the row multipliers for fn 36/37 are currently DISPUTED).
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
 **Your filter can lie.** A `$HIR` filter matching `,42,` reported zero hits on a run that had actually

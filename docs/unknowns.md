@@ -71,7 +71,7 @@ or floor space. This is the biggest category and the highest-value one.
 ### A5 · Protocol field widths (1) — answered by a bench push, not a capture
 | id | unknown | why it matters |
 |---|---|---|
-| **A10b′** | **Does `$PSET` armor accept > 255, and does the gun CLAMP or WRAP?** | our policy layer caps at 255 as an *assumption*; the wire has never been asked. A wrap would make a "tanky" preset silently fragile. Cross-ref `weapon-design.md` `$PSET` notes |
+| ~~**A10b′**~~ ✅ **CLOSED 2026-08-27** | ~~Does `$PSET` armor accept > 255, and does the gun CLAMP or WRAP?~~ **Neither — pools are not 8-bit.** Armor, HP and shield all store and decrement exactly to at least **1000**, clamping at zero with no wrap (`$QUERY` readback + live `$HP`). The 255 cap is our policy, not a device limit.** | our policy layer caps at 255 as an *assumption*; the wire has never been asked. A wrap would make a "tanky" preset silently fragile. Cross-ref `weapon-design.md` `$PSET` notes |
 
 ---
 

@@ -379,7 +379,7 @@ _The two frames that set on-gun rules and the player's pools, identity and voice
 ### Page: `$SIR` — the incoming-IR effects matrix  (`/manual/dev/sir`)
 _What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon_
 
-[callout:info] **The key idea.** An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** 16 × 4 = 64 addressable cells, all writable per game over BLE. ✅ src: protocol/brx-protocol.md §5; protocol/brx-ir-protocol.md
+[callout:info] **The key idea.** An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to — damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** The same is true of a **wrongly-teamed** shot: damage applies only from an enemy team and support only from your own, and a rejected frame emits **no `$HIR` at all** — it never reaches BLE. 16 × 4 = 64 addressable cells, all writable per game over BLE. ✅ src: protocol/brx-protocol.md §5; protocol/brx-ir-protocol.md
 
 [spec-sheet] **Format:** `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 - `<soundID>` plays **on the victim** when the row fires (`VA16` "armor suit", `VA8C` "shields online", `H29` stim-pack).
@@ -391,8 +391,8 @@ _What an IR hit does to this gun is decided by the victim's table, not by the sh
 ```text
 # The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…) — plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — ×1.25 damage
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — ×2 damage
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle — fn 36 (×1.25 DISPUTED, see below)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle — fn 37 (×2 DISPUTED, see below)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -405,13 +405,13 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 ```
 ✅ src: protocol/brx-protocol.md §5; docs/experiment-log.md (shipped-table consequence)
 
-[data-table:filterable] **Function map (measured at magnitude 20 on protocol 5, baseline HP 45 / armor 70 / shield 0)**
+[data-table:filterable] **Function map** — measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. The classes do **not** vary by IR protocol (50 cells across protocols 0/5/7/9/10); whether a **headset-dome** hit behaves the same is **untested**.
 | Class | Function ids | Measured behaviour | Polarity | Conf |
 |---|---|---|---|---|
 | Standard damage | 1, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45→25→5 with armor **and shields** untouched | enemy only | ✅ |
-| ×1.25 damage | 36 | magnitude 20 lands as 25 | enemy only | ✅ |
-| ×2 damage | 37 | magnitude 20 lands as 40 | enemy only | ✅ |
+| ×1.25 damage ⚠️ | 36 | magnitude 20 lands as 25 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
+| ×2 damage ⚠️ | 37 | magnitude 20 lands as 40 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
 | Add HP, overflow → armor | 9, 12, 16, 19 | 15→35→45, then +armor | ally only (16/19 also damage enemies) | ✅ |
 | Add HP, clamp | 10, 17 | 15→35→45, no overflow | ally only (17 also AP-damages enemies) | ✅ |
 | Add HP, overflow → shield | 14, 21 | 15→35→45, then +shield | ally only | ✅ |
@@ -809,7 +809,7 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 1. **`$WEAP` frame builder** — sliders/selects for damage (t5), fire interval (t14), fire mode (t20: auto/single/burst/charge variants/melee), burst cycle (t23), clip/reserve (t16/t39/t40, with t17 auto-derived as 2×t40), reload ms (t18), IR protocol (t3, DamageType enum names), overheat (t24/t35/t37/t38), and sound-id pickers from the bank for t27–t36. Outputs the exact frame string with copy-to-clipboard; locks t15 to 850 and greys the dormant t7–t11.
 2. **Frame decoder** — paste any `$…,*` frame; it tokenises and labels every position from the tables on these pages (`$WEAP`, `$GSET`, `$PSET`, `$SIR`, `$HIR`, `$HP`, `$LCD`, `$ALCD`, `$PLAY`, `$AMMO`, `$BMAP`), flags empty tokens, shows the per-token confidence, and validates against the framing regex.
 3. **IR word encoder/decoder** — six fields → 25-bit string, pulse-train visualisation (sync + long/short marks), true parity vs the gun's `Z0≠Z1` test, and the `$SIR` cell `<B,U>` it would key into; paste a bit string to reverse it.
-4. **Damage calculator** — pick a weapon (magnitude, protocol/subtype), the victim's `$SIR` row function, crit on/off, `$GSET` friendly-fire, teams, and starting pools; shows applied damage, drain order across shields→armor→HP, hits-to-kill, and the resulting `$HIR`/`$HP` frames.
+4. **Damage calculator** — pick a weapon (magnitude, protocol/subtype), the victim's `$SIR` row function, crit on/off, `$GSET` friendly-fire, teams, and starting pools; shows applied damage, drain order across shields→armor→HP, hits-to-kill, and the resulting `$HIR`/`$HP` frames. **Must model the team gate honestly:** when the shot is rejected (damage from an ally, or support from an enemy, with friendly fire off) the correct output is **no frames at all** — not zero damage. Showing a `$HIR` there would teach the opposite of how the hardware behaves. Crit uses `1 + $GSET t7/100`, and the fn 36/37 multipliers must stay out until the dispute is settled.
 5. **`$SIR` matrix explorer** — a 16 × 4 grid of `<protocol, subtype>` cells; click a cell to assign a function class and sound, see stock rows pre-filled, and export the full `$SIR` block for a game head.
 
 ## Sources used
@@ -853,7 +853,7 @@ Everything below was removed from the pages above because it is unconfirmed, sin
 - **`$WEAP` t25 / t26** — `2` and `50` on the Suppressor only (melee t25 = 0). Read as "suppress the muzzle flash" and a loudness value; single sample each.
 - **`$WEAP` t37 / t38** — the pair enables overheat (published); which is threshold and which is cooldown is unmapped.
 - **`$WEAP` t41** — APK name `gunRange` (%); 75 on every stock weapon; whether it changes emitted range is untested.
-- **`$PSET` t6** — APK source order suggests `criticalDamageBonus`; unverified. **`$PSET` t4 armor > 255** — clamp vs wrap untested.
+- **`$PSET` t6** — APK source order suggests `criticalDamageBonus`; swept 0–200 with no measurable effect on damage, pools, crit or gating, so unverified and not damage-related. **`$PSET` pools are NOT 8-bit** — armor, HP and shield all store and decrement exactly to at least **1000**, clamping at zero with no wrap; a 255 cap is our own policy, not a device limit.
 - **`$PSET` voice pack slot↔name alignment** — 17 metadata names vs 16 wire ids; not proven by ear.
 - **`$GSET` fields 2–8** — only the APK names are published; none has been flipped on the bench.
 - **`$LCD` tokens 3–4, `$VOLTS` tokens 3–4** — never decoded (`$VOLTS` 3–4 were read as charge %/levels; unconfirmed).
