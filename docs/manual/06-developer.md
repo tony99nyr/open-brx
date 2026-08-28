@@ -418,8 +418,8 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | Add armor | 13, 15, 20, 22 | 0→20→40; overflow spills to shields | ally only (20 also strips enemy armor) | ✅ |
 | Add shield | 11, 18 | 0→20→40 | ally only | ✅ |
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100→0 and recovers over ~6–8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy | ✅ |
-| Registers, no pool change | enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. | — | ✅ |
-| No registration | 0, 39–45 (and 28/45 on protocol 5) | — | — | ✅ |
+| Registers, no pool change | enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. Verified identical on protocols 0/5/7/9/10 — including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. | — | ✅ |
+| No registration | 0, 39–45 | — | — | ✅ 0/39/40 re-measured 2026-08-27; 41–45 not re-tested |
 ✅ src: docs/experiment-log.md (2026-08-26 complete two-sided `$SIR` map; 2026-08-27 fn 23)
 
 [callout:warn] **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic. ✅ src: protocol/brx-protocol.md §5; docs/experiment-log.md (dual-polarity, FF table)
