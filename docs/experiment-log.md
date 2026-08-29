@@ -2942,8 +2942,10 @@ control fired, these are **true negatives, not a blind instrument**.
    entirely victim-side — audio, LEDs, or a firing lockout — with no telemetry whatsoever. No amount of
    keyboard work will find it. It needs a person holding the gun reporting what they **hear, see, or
    cannot do**. This is why bench item 0.x is blocked on an operator and cannot be worked around.
-2. **fn 23's suppression is enemy-only.** It lands from both teams (per the function map) but produces
-   the `$ALCD` signature **only from an enemy source** — consistent with a debuff, and a useful detail
+2. **fn 23's suppression looks enemy-only — one cell, no friendly-side control.** It lands from both
+   teams (per the function map) but produced the `$ALCD` signature only from an enemy source in a
+   **single** friendly trial that read `(none)`. There was no positive control proving a friendly-sourced
+   fn 23 *could* have shown a signature, so treat this as indicative, not established — consistent with a debuff, and a useful detail
    for anyone building it into a mode.
 
 **Corollary for Mission Control:** status effects are **not observable in telemetry**. A HUD cannot show
@@ -3025,14 +3027,31 @@ Software encoding was verified instead, and is correct.
 41 functions x 2 teams, autonomous, `$VOL,3`, victim Tactix-FE30 `$TID,1`, hp45/armour70/shield-cap70,
 magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counted separately from `$HP`.
 
-> **SCOPE — measured at the GUN-BODY sensor (`$HIR` tok1 = 4), 20/20, emitter at ~40 cm.** Whether a
-> headset-dome hit applies the same pool deltas is **untested** — this rig cannot produce one.
-> Re-measuring two rows with the emitter aimed at a dome would settle it.
+> ### ⚠️ THREE SCOPE CONDITIONS ON THIS MAP — read before citing any row
 >
-> **SCOPE — measured on IR protocol 0, and since verified to generalise.** Every cell used row
-> `<0,subtype>`. A follow-up matrix (fn {1,3,8,23,24,25,26,27,28,35} x protocols {0,5,7,9,10}) found
-> **not one cell varies by protocol**, so the classes below hold across protocols and may be cited
-> without a protocol qualifier. See the matrix entry for the one caveat that remains: `c9c4a3f`'s
+> **1. CEILING ARTIFACT — the friendly/grant half of the "status" class is NOT trustworthy.** Every cell
+> re-armed from `$CLEAR`, so the victim sat at **full HP 45 / armour 70**. An *add-HP* or *add-armour*
+> grant into full pools is **clamped, and reads as "moves no pool"** — indistinguishable from a genuine
+> status effect. Only the shield (starting 0, cap 70) had headroom, which is exactly why every "grants"
+> row is signed `shield 0 -> 40`. **Proof this bit us:** the map lists **fn 10** as status, but fn 10 is
+> independently bench-confirmed as **"respawn + add HP (15→35→45)"** (`brx-protocol.md` §5). It is a
+> grant, mis-binned by the ceiling. **So friendly 9, 10, 15, 31, 32, 34 must be re-measured from
+> DEPLETED pools** (spawn, take damage, then apply) before any of them is called a status function.
+> The **enemy** half (3, 8, 24-28, 35) is unaffected — damage into full pools is visible.
+>
+> **2. GUN-BODY SENSOR, ~40 cm.** All 20/20 hits landed on `$HIR` tok1 = 4. Whether a headset-dome hit
+> applies the same pool deltas is **untested** — this rig cannot produce one.
+>
+> **3. Protocol independence is measured on 10 of 41 functions.** The matrix covered
+> fn {1, 3, 8, 23, 24, 25, 26, 27, 28, 35}, **enemy team only, subtype 0 only** — no grant/friendly
+> function was in it. "The classes do not vary by protocol" is well-supported for damage and
+> enemy-status functions and is an **extrapolation** for the grant half.
+>
+> **SCOPE — measured on IR protocol 0; protocol-independence verified for 10 of the 41 functions.**
+> Every cell used row `<0,subtype>`. A follow-up matrix (fn {1,3,8,23,24,25,26,27,28,35} x protocols
+> {0,5,7,9,10}, **enemy team, subtype 0**) found **not one cell varies by protocol**. That covers the
+> damage and enemy-status functions; extending it to the **grant/friendly** half is an extrapolation,
+> not a measurement. See the matrix entry for the one caveat that remains: `c9c4a3f`'s
 > "fn 24 damages on protocol 7" does **not** reproduce here, and that disagreement is unexplained.
 
 **Trailing control passed.** The fn 1 and fn 11 cells were re-measured *after* all 41 cells and
@@ -3048,7 +3067,7 @@ separate pass.)*
 | **plain damage** | 1, 4, 5, 7, 16, 19, 20, 22, 29, 30, 33, 36, 37, 38 | enemy-only, armour 70 -> 30 (40 dealt) |
 | **armour-piercing** | 2, 6, 17, 21 | enemy-only, HP 45 -> 5, **armour untouched** |
 | **grants** | 11, 12, 13, 14, 18, 19, 20, 21 | friendly (or dual), shield 0 -> 40 |
-| **status — lands, moves nothing** | **3, 8** (enemy) · **9, 10, 15, 31, 32, 34** (friendly) · **23** (dual) · **24, 25, 26, 27, 28, 35** (enemy) | `$HIR` fires, every pool unchanged |
+| **status — lands, moves nothing** | **3, 8** (enemy) · **23** (dual) · **24, 25, 26, 27, 28, 35** (enemy) · ⚠️ *friendly 9, 10, 15, 31, 32, 34 — see the ceiling caveat below* | `$HIR` fires, every pool unchanged |
 | **inert** | 0, 39, 40 | no `$HIR` from either team — the range ends at 38 |
 
 #### Why the status class is the stun shortlist

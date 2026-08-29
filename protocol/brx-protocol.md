@@ -42,12 +42,12 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$INIT,*` | Initialize | |
 | `$PHONE,*` | Put tagger in app-controlled mode | Same mode the official app uses |
 | `$GSET,...` | Global game settings — **FULL MAP, confirmed 2026-08-24** | 8 tokens: `friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,secondaryBluetoothWeapons,criticalShotModifier(%),gameMods`. Validated vs `$GSET,0,0,1,0,1,0,50,1,*`. **No respawn/time/lives token** — those are host-side. **`friendlyFire` (token 1) is GUN-ENFORCED** (bench 2026-08-26, brx-ir four-cell IR emitter, 2×+control): FF=0 blocks same-team damage AND enemy heals; FF=1 opens the gate — exactly as labelled. (An intermediate same-day gun-probe read it as not-enforced, but only reached FF=1 with an unverified victim team; MC friendly-fire is a policy/scoring layer over this enforced base.) Source: Callsign IL2CPP metadata, see `callsign-extract/protocol-classes.md` |
-> **BENCH-CONFIRMED 2026-08-27 — `$GSET` token 7 is the crit modifier IN PERCENT:**
+> **BENCH-CONFIRMED 2026-08-27 — `$GSET` token 7 is the crit modifier IN PERCENT** (measured at magnitude 20 on fn 1 with armour 200, seven t7 levels x 3 reps; the *form* is confirmed, a magnitude/function sweep would confirm it is universal)**:**
 > `crit damage = magnitude × (1 + t7/100)`. Exact at t7 = 0/10/25/50/75/100/150 (3/3 reps each,
 > single shots, armor 200 so nothing clipped). **t7=0 disables crits entirely; 100 doubles.** The
 > shipped value is 50, which is why crit had looked like a fixed ×1.5. Non-crit damage is untouched.
 > Tokens 2,3,4,5,6,8 showed **no** effect on damage / friendly fire / crit and remain unknown.
-| `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. **Token 5 is a shield CAPACITY, not a starting pool** — the spawn shield is always 0 and is filled only by an fn-11 grant, saturating at t5 (bench 2026-08-27). **None of the three is 8-bit**: all store and decrement exactly to at least 1000, clamping at zero with no wrap, so a 255 cap is a policy choice and not a device limit. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
+| `$PSET,...` | Player settings (health pools, audio set, etc.) | Tokens 3–5 are `<HP>,<armor>,<shield>` — verified against the `$LCD` echo in §7e. **Token 5 is a shield CAPACITY, not a starting pool** — the spawn shield is always 0 and is filled by a shield grant (fn 11/18) **or by armour overflow from fn 13/15/20/22**, saturating at t5 (bench 2026-08-27). **Not 8-bit** — but check what was actually measured: **armor and HP** were pushed to **1000** and decrement exactly, clamping at zero with no wrap. **Shield was NOT** — its only data is a grant-saturation run (cap 600, reached 500) and it was never decremented above 255. So a 255 cap is a policy choice rather than a device limit **for armor and HP**; for shield that is inferred, not measured. All at the gun-body sensor (`$HIR` tok1 = 4), ~40 cm. e.g. `$PSET,0,0,45,70,70,50,,H44,JAD,V33,...,A10,*` |
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, **100=weapon-cycle (verified on hardware 2026-08-23)**. Note: with only one `$WEAP` slot loaded, function 100 has nothing to cycle to and **falls back to reloading** — which looks like a wrong mapping but is not. Load a secondary to see it switch. |
@@ -120,6 +120,10 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 >
 >   **Damage applies only from an enemy team; support only from your own.** Support-side gating was
 >   established 2026-08-26 (3/3 same-team, 0/3 otherwise); the damage side is measured here.
+> - ⚠️ **SCOPE for every pool number in this section:** measured at the **gun-body sensor**
+>   (`$HIR` tok1 = 4) from **~40 cm**, victim re-armed to full pools each cell. Whether a
+>   **headset-dome** hit applies the same deltas is **untested**, and grants into already-full
+>   pools clamp — so a "no pool change" reading is only meaningful for *damage*, not for grants.
 > - **The rejection emits NO `$HIR` AT ALL.** A team-blocked shot is not "received and not applied" —
 >   it never reaches BLE. **Consequence: friendly fire and mis-aimed support are invisible to Mission
 >   Control** and cannot be logged or scored from gun telemetry while t1=0.

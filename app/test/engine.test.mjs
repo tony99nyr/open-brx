@@ -100,6 +100,20 @@ test('Q12: spawn and respawn zero the shield (it is a capacity, never a starting
   assert.equal(h.eng.shield, 0, 'respawn must zero the shield; a stale one inflates the next damage calc');
 });
 
+test('Q12: a shield does not survive a MATCH BOUNDARY into the next spawn', () => {
+  // _endLocal and control{panic} reset spawned/alive but deliberately do NOT touch the pools,
+  // so _spawn's `this.shield = 0` is the only thing clearing a shield carried out of match 1.
+  // Without it, match 2's first hit computes `before` inflated by the stale shield -- Q12's
+  // failure mode across a match boundary. (Found by review: this path had zero coverage.)
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HP,45,70,150,*');
+  assert.equal(h.eng.shield, 150);
+  h.eng.control({ cmd: 'panic' });                 // ends the match, leaves pools alone
+  assert.equal(h.eng.shield, 150, 'precondition: the shield really does survive the match end');
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();   // match 2
+  assert.equal(h.eng.shield, 0, 'SPAWN must zero the carried-over shield');
+});
+
 test('death with a stale latch → shooter_num 0 (DEATH_LATCH_MS)', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.adv(3000);  // latch older than 2 s

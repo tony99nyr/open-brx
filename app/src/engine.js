@@ -539,7 +539,7 @@ export class Engine {
   feedFrame(f) {
     const t = toks(f), cmd = t[0];
     switch (cmd) {
-      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined ? (+t[3] || 0) : this.shield); break;
+      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
