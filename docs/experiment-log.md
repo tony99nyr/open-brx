@@ -3060,13 +3060,6 @@ magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counte
 > function was in it. "The classes do not vary by protocol" is well-supported for damage and
 > enemy-status functions and is an **extrapolation** for the grant half.
 >
-> **SCOPE — measured on IR protocol 0; protocol-independence verified for 10 of the 41 functions.**
-> Every cell used row `<0,subtype>`. A follow-up matrix (fn {1,3,8,23,24,25,26,27,28,35} x protocols
-> {0,5,7,9,10}, **enemy team, subtype 0**) found **not one cell varies by protocol**. That covers the
-> damage and enemy-status functions; extending it to the **grant/friendly** half is an extrapolation,
-> not a measurement. See the matrix entry for the one caveat that remains: `c9c4a3f`'s
-> "fn 24 damages on protocol 7" does **not** reproduce here, and that disagreement is unexplained.
-
 **Trailing control passed.** The fn 1 and fn 11 cells were re-measured *after* all 41 cells and
 reproduced their opening rows exactly (`HIR=2 $HP,45,30,0` and `HIR=2 $HP,45,70,40`). The rig did not
 degrade across the run, so the whole table is trustworthy. *(Design note: the first draft armed a

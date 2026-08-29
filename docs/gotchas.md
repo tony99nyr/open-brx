@@ -68,9 +68,9 @@ misaimed LED, or a function that genuinely does nothing.
 | an unknown function | **both**, and compare — that is how you learn its polarity |
 
 This voided several previously "confirmed" negatives (fn 24-27, and the whole stun hunt across
-fn 3/8/23-28/35), all of which had been fired from an enemy team only. **Every IR experiment must
-state its shooter team, its firing range, the `$HIR` tok1 sensor, and whether the victim's pools had
-headroom — a grant into a full pool clamps and looks inert. Carry a known-good control at both ends** — without a control you cannot
+fn 3/8/23-28/35), all of which had been fired from an enemy team only. **Every IR experiment must state its shooter team, its firing range, the `$HIR` tok1 sensor, and
+whether the victim's pools had headroom** — a grant into a full pool clamps and looks inert, and a
+drain against an empty one does too. **Carry a known-good control at both ends** — without a control you cannot
 tell "rejected" from "broken".
 
 **`git filter-repo --replace-text` reports success but silently SKIPS binary blobs.**
