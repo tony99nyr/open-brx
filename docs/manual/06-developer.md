@@ -408,7 +408,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 [data-table:filterable] **Function map**: measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a **headset-dome** hit behaves the same is **untested**.
 | Class | Function ids | Measured behaviour | Polarity | Conf |
 |---|---|---|---|---|
-| Standard damage | 1, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
+| Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45→25→5 with armor **and shields** untouched | enemy only | ✅ |
 | ×1.25 damage ⚠️ | 36 | magnitude 20 lands as 25 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
 | ×2 damage ⚠️ | 37 | magnitude 20 lands as 40 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
@@ -418,7 +418,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | Add armor | 13, 15, 20, 22 | 0→20→40; overflow spills to shields | ally only (20 also strips enemy armor) | ✅ |
 | Add shield | 11, 18 | 0→20→40 | ally only | ✅ |
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100→0 and recovers over ~6–8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy | ✅ |
-| Registers, no pool change | enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. **Two measurement artifacts apply to this row.** The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as "no pool change". That is what mis-binned **fn 10**, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also reads as no change. This row therefore means "does not reduce HP or armour". It does not mean "does nothing". | n/a | ⚠️ scoped |
+| Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. **Two measurement artifacts apply to this row.** The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as "no pool change". That is what mis-binned **fn 10**, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also read as no change. **That second artifact has since been closed by re-testing with a shield granted first, and it caught one wrong entry: fn 3 drains shield exactly as plain damage does, so it has moved to the damage class.** The seven functions left in this row moved no pool with 150 shield available, so for them the reading is real. | n/a | ⚠️ scoped |
 | No registration | 0, 39–45 | n/a | n/a | ✅ 0/39/40 re-measured 2026-08-27; 41–45 not re-tested |
 ✅ src: docs/experiment-log.md (2026-08-26 complete two-sided `$SIR` map; 2026-08-27 fn 23)
 
@@ -861,7 +861,7 @@ Everything below was removed from the pages above because it is unconfirmed, sin
 
 **`$SIR` and IR**
 - **fn 23**: is it audio suppression? The `$ALCD` token-2 drop is published; the explanation is single-sourced (experiment-log 2026-08-27).
-- **Status functions** enemy 3, 8, 24–28, 35 and ally 31, 32, 34: register and move no pool; a stun, a fire-rate buff, or nothing? Needs a trigger pulled during each to detect a fire lockout. Only "registers, no pool change" is published.
+- **Status functions** enemy 8, 24–28, 35 and ally 31, 32, 34: register and move no pool; a stun, a fire-rate buff, or nothing? Needs a trigger pulled during each to detect a fire lockout. Only "registers, no pool change" is published.
 - **`$SIR` p5–p8**: not a multiplier (published); what they are is open.
 - **Tear gas row (`$SIR,11,…,28`)**: reported by the community as not working; unverified.
 - **Grenade station beacon word**: predicted protocol 15 with the mode in the magnitude (Respawn 6, Hill 8); never captured intact. The native **Sentinel EMP** word has also never been captured intact.

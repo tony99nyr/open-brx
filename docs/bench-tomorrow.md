@@ -50,7 +50,9 @@ believing it.**
 
 **The stun shortlist is now evidence-based** — functions that register a `$HIR` but move **no pool**,
 the same signature as fn 23 (the one proven status effect). Enemy-polarity candidates, in priority
-order: **3, 8, 24, 25, 26, 27, 28, 35**. Fire each at a gun you are holding and report what you
+order: **8, 24, 25, 26, 27, 28, 35**. (**fn 3 was removed 2026-08-29** — re-tested with a shield
+granted first, it drains shield exactly as plain damage does. It only looked inert because the original
+sweep ran with the shield at 0. The seven left moved no pool with 150 shield available.) Fire each at a gun you are holding and report what you
 **hear, see, or cannot do** — the wire has told us everything it can.
 
 ---

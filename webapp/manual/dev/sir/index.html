@@ -66,7 +66,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 </thead>
 <tbody><tr>
 <td>Standard damage</td>
-<td>1, 4, 5, 7, 29, 30, 33, 38</td>
+<td>1, <strong>3</strong>, 4, 5, 7, 29, 30, 33, 38</td>
 <td>−20 per hit, drains shields → armor → HP</td>
 <td>enemy only</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
@@ -136,8 +136,8 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 </tr>
 <tr>
 <td>Registers, no pool change</td>
-<td>enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34</td>
-<td><code>$HIR</code> fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including <strong>fn 28 on protocol 5</strong>, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. <strong>Two measurement artifacts apply to this row.</strong> The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as &quot;no pool change&quot;. That is what mis-binned <strong>fn 10</strong>, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also reads as no change. This row therefore means &quot;does not reduce HP or armour&quot;. It does not mean &quot;does nothing&quot;.</td>
+<td>enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34</td>
+<td><code>$HIR</code> fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including <strong>fn 28 on protocol 5</strong>, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. <strong>Two measurement artifacts apply to this row.</strong> The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as &quot;no pool change&quot;. That is what mis-binned <strong>fn 10</strong>, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also read as no change. <strong>That second artifact has since been closed by re-testing with a shield granted first, and it caught one wrong entry: fn 3 drains shield exactly as plain damage does, so it has moved to the damage class.</strong> The seven functions left in this row moved no pool with 150 shield available, so for them the reading is real.</td>
 <td>n/a</td>
 <td>⚠️ scoped</td>
 </tr>

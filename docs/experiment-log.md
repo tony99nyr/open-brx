@@ -2776,6 +2776,48 @@ toggle — it remains the answer for kid-mode today. t19=5 would be *fully autom
 button, which is a different feature, and Tony should pick by feel rather than by which we can build.
 
 
+### 2026-08-29 — FLOOR ARTIFACT CLOSED: fn 3 is DAMAGE, not a status function
+
+Acting on the correction from the review loop rather than leaving it as a caveat. The `$SIR` function
+map ran with the victim's shield at **0**, so a function draining *shield only* had nothing to take and
+read as "moves no pool" — indistinguishable from a status effect. Fix: **grant a shield first**, then
+fire the candidate.
+
+**Method.** Victim `$PSET` shield cap 150. Row `<1,0>` = fn 11 (shield grant, friendly); three
+friendly grants of 50 bring the shield to **150**. Then two enemy shots of magnitude 20 with the
+candidate function in row `<0,0>`. Re-armed from `$CLEAR` every cell.
+
+**fn 1 carried as the positive control** — plain damage, which must drain the shield first per the
+known drain order. It did (150 -> 110), so the method can see a shield drain and every "no change"
+below is real.
+
+| fn | pools after grant | after candidate | result |
+|---|---|---|---|
+| **1** (control) | 45/70/150 | 45/70/**110** | drains shield ✅ control fired |
+| **3** | 45/70/150 | 45/70/**110** | **DRAINS SHIELD — this is DAMAGE** |
+| 8 | 45/70/150 | 45/70/150 | no pool moved |
+| 24 | 45/70/150 | 45/70/150 | no pool moved |
+| 25 | 45/70/150 | 45/70/150 | no pool moved |
+| 26 | 45/70/150 | 45/70/150 | no pool moved |
+| 27 | 45/70/150 | 45/70/150 | no pool moved |
+| 28 | 45/70/150 | 45/70/150 | no pool moved |
+| 35 | 45/70/150 | 45/70/150 | no pool moved |
+
+**Result: fn 3 was mis-binned.** It drains exactly what fn 1 drains, 40 from a 2 x 20 volley, and only
+looked inert because the earlier run gave it no shield to take. **It belongs in the damage class, not
+the status class.** The predicted artifact was real and it caught a specific wrong row.
+
+**The other seven are now much stronger candidates**, not merely un-refuted: they have survived the
+ceiling test (damage into full HP/armour is visible, and they showed none) *and* the floor test (a
+shield drain with 150 shield available is visible, and they showed none). **The stun shortlist is
+therefore 8, 24, 25, 26, 27, 28, 35** — enemy polarity, register a `$HIR`, and move **no pool of any
+kind**. That is a genuinely narrower claim than the one it replaces.
+
+**Still true, and still needs an operator:** none of these seven touches BLE beyond the hit pair
+(fn 23 is the only status function with a wire signature). Whatever they do is audio, LEDs, or a
+felt effect. The wire has now given up everything it can about them.
+
+
 ### 2026-08-27 — the rig is pinned to the GUN-BODY sensor (20/20) — a scope fact, not a null result
 
 Tested whether the unattended rig can land a **headset-dome** hit, which would have made the sensor
