@@ -1,45 +1,45 @@
 # Lights and what they mean
-_The gun's LED bank and the headset's ring — read them like a dashboard._
+_The gun's LED bank and the headset's ring. Read them like a dashboard._
 Last verified: 2026-08-27
 
-Two separate LED systems: the **gun** LEDs (a small bank on the rifle) and the **headset** LEDs (a ring of bright green hit LEDs plus addressable RGB). They answer different questions.
+There are two separate light systems. The **gun** has a small bank of LEDs on the rifle. The **headset** has a ring of bright green hit LEDs plus colour-changing RGB LEDs. Each one answers a different question.
 Source: docs/experiment-log.md (2026-08-27)
 
 Gun LEDs
 | col 1 | col 2 | col 3 |
 |---|---|---|
-| Colour while in the menu | **Selected game mode**: Free For All white · Death Match red · Generals yellow · Supremacy blue · Commander pink · Survival green · The Swarm orange | 📖 |
-| Colour during a game | **Your team / faction colour** (e.g. team 1 blue, team 2 yellow on our bench) — colour is team-derived, not a free-form RGB | ✅ |
+| Colour while in the menu | **The game mode you picked**: Free For All white · Death Match red · Generals yellow · Supremacy blue · Commander pink · Survival green · The Swarm orange | 📖 |
+| Colour during a game | **Your team or faction colour** (on our bench, team 1 is blue and team 2 is yellow). The colour comes from your team. You cannot set any colour you like | ✅ |
 | Colour palette available | 9 colours reported by the community: red · blue · yellow · green · purple · cyan · white · pink · orange | 👥 |
-| Segments going out | **A life gauge**: the three LEDs act as a segmented bar that drains as you take damage | ✅ |
+| Segments going out | **Your health bar**: the three LEDs work like a bar that drains as you take damage | ✅ |
 | Manual's description | "LED indicator shows ammo & health" | 📖 |
-| Slow blink in team colour | An externally-hosted game that has not switched on the life gauge | ✅ |
+| Slow blink in team colour | A game run from an outside app that has not switched the health bar on | ✅ |
 Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7r (LEDs slow-blink team colour in an app-derived config), docs/experiment-log.md (LED life mode, 2026-08-27)
 
-_[diagram HW-10: (gun LED gauge states — see Images table)]_
+_[diagram HW-10: (gun LED gauge states, see Images table)]_
 
 Headset LEDs
 | col 1 | col 2 | col 3 |
 |---|---|---|
-| **Slow rainbow cycling** | **Disconnected / not paired** to a tagger. Visible across a room — check every headset before a game starts | ✅ |
-| **Solid / pulsing team colour** (red, blue…) | Paired and synced to the tagger — **pre-game only** | ✅ |
-| **Dark** | **Normal during play.** The band goes dark once the game starts; dark is not a fault | ✅ |
+| **Slow rainbow cycling** | **Not connected, not paired** to a tagger. You can spot it across a room, so check every headset before a game starts | ✅ |
+| **Solid or pulsing team colour** (red, blue…) | Paired and synced to the tagger. You see this **before the game only** | ✅ |
+| **Dark** | **This is normal in play.** The band goes dark once the game starts, and dark is not a fault | ✅ |
 | **Green blink** | Hit feedback | ✅ |
 | **Holds green** | Kill feedback | ✅ |
 | **Green flash in Target Mode** | A direct hit on the sighting target | 📖 |
-| **Bright green burst** (4 directions) | The 3 W hit LEDs — meant to be visible in daylight; dimmed in indoor mode | 📖 |
+| **Bright green burst** (4 directions) | The 3 W hit LEDs. They are built to show up in daylight, and indoor mode dims them | 📖 |
 Source: docs/experiment-log.md (2026-08-27, "the HEADSET LED is autonomous"), docs/field-process.md, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
-## An earlier version of our own notes had this wrong.
-Green is *hit/kill feedback*, not a death signal, and team colour shows *only before* the game starts. If you read "green = dead" elsewhere, it came from the older reading.
+## We got this wrong in an earlier version of our own notes.
+Green means *hit or kill*, not death. Team colour shows *only before* the game starts. If you read "green = dead" somewhere else, it came from that older reading.
 Source: docs/experiment-log.md (2026-08-27 correction)
 
-The headset LEDs are **autonomous** — they do this on their own, in stock games and in externally-hosted ones alike. Nothing needs to be configured to get them.
+The headset LEDs work **on their own**. You get them in stock games and in games hosted by an outside app alike. Nothing needs to be set up first.
 Source: docs/experiment-log.md
 
 ## For modders: what the headset LEDs are
-- The addressable RGB LEDs are **WS2812B 5050** (NeoPixel-compatible), wired as a **series** string on the BRX headset (parallel on the SwapTX variant). One data line, 5 V and ground. 👥
-- Indoor mode dims the green hit LEDs and enables the RGB LEDs. 📖
+- The addressable RGB LEDs are **WS2812B 5050** (NeoPixel-compatible). On the BRX headset they are wired as a **series** string (parallel on the SwapTX variant). One data line, 5 V and ground. 👥
+- Indoor mode dims the green hit LEDs and switches the RGB LEDs on. 📖
 Source: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md
 
-_[image HW-04: (headset LED states strip — see Images table)]_
+_[image HW-04: (headset LED states strip, see Images table)]_

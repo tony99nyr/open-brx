@@ -1,16 +1,16 @@
-# BRX weapon reference — the complete Callsign arsenal
+# BRX weapon reference: the complete Callsign arsenal
 
 Every weapon selectable in the official Callsign app, captured over BLE while arming a game and
-**named by the operator at capture time** (the wire carries no weapon name — token 27 is only a
+**named by the operator at capture time** (the wire carries no weapon name; token 27 is only a
 *sound* id, and two different weapons share `C03`).
 
 Field decode and the evidence behind it: `protocol/callsign-extract/protocol-classes.md`.
 Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`.
 
-**Reading the columns.** `dmg` = `t5` (the **raw magnitude** the weapon emits — bench exp 2; an AR emits
+**Reading the columns.** `dmg` = `t5` (the **raw magnitude** the weapon emits, per bench exp 2; an AR emits
 9, the manual's 24 was stale. **Applied** damage = magnitude × the victim's `$SIR`-function multiplier ×
-1.5-if-crit — `brx-protocol.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
+1.5-if-crit; see `brx-protocol.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
 charge time. `clip`/`reserve` = `t16`/`t40`. `heat` = `t24`, non-zero only on weapons that overheat.
 
 | weapon | sound | behaviour | dmg | cycle ms | clip | reserve | heat |
@@ -31,7 +31,7 @@ charge time. `clip`/`reserve` = `t16`/`t40`. `heat` = `t24`, non-zero only on we
 | **Rail Gun** | `C03` | charges, **auto-fires** after ~1 s; a tap also fires | 115 | 1200 | 1 | 3 | 0 |
 | **Rocket Launcher** | `C03` | standard single shot | 115 | 1000 | 2 | 4 | 0 |
 | **SMG** | `G03` | full auto, **overheats** | 8 | 90 | 72 | 144 | 5 |
-| **Sniper** | `S16` | single shot; bolt — pull back, release | 80 | 300 | 4 | 12 | 0 |
+| **Sniper** | `S16` | single shot; bolt: pull back, release | 80 | 300 | 4 | 12 | 0 |
 | **Stinger** | `E11` | full auto | 15 | 120 | 18 | 36 | 0 |
 | **Suppressor** | `Q06` | full auto; **quiet (not silent)**, no muzzle flash | 8 | 75 | 48 | 144 | 0 |
 
@@ -40,22 +40,22 @@ charge time. `clip`/`reserve` = `t16`/`t40`. `heat` = `t24`, non-zero only on we
 Each of these was confirmed by a field being populated on **exactly** the weapons whose named
 behaviour it describes, and empty on all the others:
 
-- **`t23` burst time** — only the Burst Rifle (275) and Force Rifle (250).
-- **`t24` overheat** + **`t35` overheat sound** — only the SMG, Charge Rifle, Plasma Sniper and
+- **`t23` burst time**: only the Burst Rifle (275) and Force Rifle (250).
+- **`t24` overheat** + **`t35` overheat sound**: only the SMG, Charge Rifle, Plasma Sniper and
   Energy Rifle. All four were described as overheating; the other sixteen read `0`.
-- **`t28`/`t29` two extra action sounds** — `C…` ids on charge weapons, `D…` ids on weapons with a
+- **`t28`/`t29` two extra action sounds**: `C…` ids on charge weapons, `D…` ids on weapons with a
   five-part reload. The Rail Gun (auto-fires) and Laser Cannon (can't be tapped) have **no release
   sound**; the Charge Rifle, which fires on release, has both. Two predicted absences.
-- **`t1`=2 with `t12`/`t13`/`t42`** — four positions co-occurring on exactly three weapons.
-- **`t25`/`t26`** — only the Suppressor, the one weapon that is quiet and has no muzzle flash.
+- **`t1`=2 with `t12`/`t13`/`t42`**: four positions co-occurring on exactly three weapons.
+- **`t25`/`t26`**: only the Suppressor, the one weapon that is quiet and has no muzzle flash.
 
 **Tokens 7–11 (secondary fire) are empty on all twenty.** No stock BRX weapon has an alt-fire mode.
 
 ## Caveat worth carrying
 
-`t5` **is the raw magnitude** the weapon emits in the IR word — an AR emits 9, the manual's 24 was stale.
+`t5` **is the raw magnitude** the weapon emits in the IR word: an AR emits 9, the manual's 24 was stale.
 It equalled the applied damage across the four weapons exp 2 tested only because all four key to `$SIR`
 **fn-1** rows; in general **applied = magnitude × the victim's `$SIR`-function multiplier × 1.5-if-crit**
 (`brx-protocol.md` §7r). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
-are what the app sent on the day — a faithful record of the wire (as emitted magnitudes), not necessarily
+are what the app sent on the day: a faithful record of the wire (as emitted magnitudes), not necessarily
 BRX's current live-service balance.

@@ -1,9 +1,9 @@
 # The sound bank
-_All 2166 ids the BRX will play — by family, with durations and the meanings the community has pinned_
+_All 2166 ids the BRX will play, by family, with durations and the meanings the community has pinned_
 Last verified: 2026-08-27
 
 ## 2166 sounds. 78 minutes. One list.
-The complete inventory of valid sound ids was recovered from the official app's configuration (`Sounds.json`, an id→duration map), not guessed by ear. It is the authoritative set of `$PLAY` arguments and of the file names you'd replace over USB.
+We recovered the complete set of valid sound ids from the official app's own configuration file, `Sounds.json`. Nothing here was guessed by ear. It is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
 Source: protocol/callsign-extract/sound-bank.md, docs/experiment-log.md #20
 
 - **2166** ids in the bank
@@ -13,19 +13,19 @@ Source: protocol/callsign-extract/sound-bank.md, docs/experiment-log.md #20
 Source: protocol/callsign-extract/Sounds.json (computed)
 
 ## How to read an id.
-The first letters are a family prefix (what kind of sound), the rest is an index — `R02` is the second entry in the R (rifle-shot) family, `V3A` is line A of the Heavy (V3) voice. An `E_` prefix marks an alternate take of the base id (`E_VB17` is a variant of `VB17`; the `E_` set covers the VB, VA, J, K, N, X and VS families). Ids are the app's own names — there is no friendlier label in the protocol.
+The first letters are a family prefix (what kind of sound), and the rest is an index. `R02` is the second entry in the R (rifle-shot) family, and `V3A` is line A of the Heavy (V3) voice. An `E_` prefix marks an alternate take of the base id, so `E_VB17` is a variant of `VB17`. The `E_` set covers the VB, VA, J, K, N, X and VS families. Ids are the app's own names, and the protocol has no friendlier label.
 Source: protocol/callsign-extract/sound-bank.md
 
-## Category map — every family in the bank
+## Category map: every family in the bank
 (prefix meanings restated from David Knox's audio map, counts computed from the bank file; 👥🔍)
 | Family | What it holds | Ids | Typical length |
 |---|---|---|---|
-| `VA` + `E_VA` | Male voice — announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5–3 s (countdowns up to 11 s) |
-| `VB` + `E_VB` | Scout / female-clean voice — score & lead lines | 90 + 64 | 1–2 s |
-| `V0`–`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, —, Infiltrator, Marauder, Medic, Raider) | 23 each (255 total) | 0.4–6 s |
+| `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5–3 s (countdowns up to 11 s) |
+| `VB` + `E_VB` | Scout / female-clean voice: score & lead lines | 90 + 64 | 1–2 s |
+| `V0`–`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider) | 23 each (255 total) | 0.4–6 s |
 | `V100`–`V144` | CTF / Slayer / King-of-the-Hill callouts | 34 | 1–2.4 s; three at 12–13 s |
 | `VC`…`VS` (15 families) | Sentinel, Female sniper, Clean male, Creature, Female creature, Valkyrie, Viper, Wraith, Russian clean, Clean female, Mercenary, Clean male (alt), Nexus & Vanguard commanders, Clean commander | 9 base + 9–22 extra lines each (329 total, incl. 5 `E_VS` takes) | 1–6 s |
-| `N` + `E_N` | Miscellaneous cues — the "kerchung", swish, revive ping, ultra-short ticks | 108 + 10 | 0.04–6.7 s |
+| `N` + `E_N` | Miscellaneous cues: the "kerchung", swish, revive ping, ultra-short ticks | 108 + 10 | 0.04–6.7 s |
 | `NA` | Death beep (`NA0`) | 1 | 4 s |
 | `M` | Mortal-Kombat-style SFX | 95 | 0.1–3.4 s (`M57` 25 s) |
 | `U` | Beeps and boops (UI / system tones; `U16` is connect-related) | 91 | 0.05–1.9 s |
@@ -37,7 +37,7 @@ Source: protocol/callsign-extract/sound-bank.md
 | `R` | Rifle shots (`R02` M4) | 47 | 0.5–5 s |
 | `SW` | Star-Wars-flavoured SFX (`SW02` 28 s) | 34 | 0.3–28 s |
 | `E` | Cool sci-fi SFX | 32 | 0.7–4.5 s |
-| `JA` + `J` + `E_J` | Music & stings — `JA9` startup, `JAD` death music, `JAY` victory; `J01` 63 s and `J100` 250 s beds; `J07` MG7 fire | 32 + 23 + 12 | 1 s – 250 s |
+| `JA` + `J` + `E_J` | Music & stings: `JA9` startup, `JAD` death music, `JAY` victory; `J01` 63 s and `J100` 250 s beds; `J07` MG7 fire | 32 + 23 + 12 | 1 s – 250 s |
 | `B` | Bow / arrow | 31 | 0.2–2 s |
 | `G` | SMG / gun shots (`G10` SMG-x3) | 23 | 0.5–2 s |
 | `C` | Cool SFX | 21 | 1–4 s |
@@ -59,16 +59,16 @@ Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extr
 (the confirmed core; ✅ = heard on our bench or in a capture, 👥 = DK map)
 | Id | Family | Meaning | Length | Conf. |
 |---|---|---|---|---|
-| `VA20` | VA | "Connection established" — played on every phone connect | 1.27 s | ✅ |
+| `VA20` | VA | "Connection established": plays on every phone connect | 1.27 s | ✅ |
 | `U16` | U | Connect tone (paired with VA20) | 0.43 s | ✅ |
 | `VA81` | VA | 3-2-1 spawn countdown (arena) | 2.97 s | ✅ |
 | `VA33` | VA | "Game over" + music | 2.26 s | ✅ |
 | `VA85` | VA | Countdown to game over, no music | 9.66 s | 👥 |
 | `VSB` | VS | Countdown to game over + music | 10.39 s | 👥 |
 | `VS6` | VS | Game-end line (solo game close) | 2.26 s | ✅ |
-| `VSF` + `JAY` | VS / JA | Victory sting + "Victory" — the winner's end-of-game pair | 1.86 s + 5.69 s | ✅ |
+| `VSF` + `JAY` | VS / JA | Victory sting + "Victory": the winner's end-of-game pair | 1.86 s + 5.69 s | ✅ |
 | `VA46` | VA | Lives depleted / multi-kill | 1.47 s | 👥 |
-| `V3A` | V3 | "Kill" — the app's per-kill announcer line | 0.79 s | ✅ |
+| `V3A` | V3 | "Kill": the app's per-kill announcer line | 0.79 s | ✅ |
 | `VB17` | VB | Score / lead-change line | 1.77 s | ✅ |
 | `N41` | N | Revive-countdown ping | 0.73 s | 👥 |
 | `NA0` | NA | Death beep (also the file swapped to change the death cue) | 4.00 s | 👥 |
@@ -76,9 +76,9 @@ Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extr
 | `N04` | N | Swish | 1.43 s | 👥 |
 | `JA9` | JA | Startup music | 5.74 s | 👥 |
 | `JAD` | JA | Death music (the musicMixOnDeath slot) | 3.50 s | 👥 |
-| `H29` | H | Respawn / add-HP — a quiet, sustained "stim-pack" medical sound | 1.20 s | ✅ |
-| `VA16` | VA | "Armor suit" — add armor | 0.94 s | ✅ |
-| `VA8C` | VA | "Shields online" — add shields (SFX over the first word) | 1.50 s | ✅ |
+| `H29` | H | Respawn / add-HP: a quiet, sustained "stim-pack" medical sound | 1.20 s | ✅ |
+| `VA16` | VA | "Armor suit": add armor | 0.94 s | ✅ |
+| `VA8C` | VA | "Shields online": add shields (SFX over the first word) | 1.50 s | ✅ |
 | `VA2` | VA | Tear gas effect | 5.98 s | ✅ |
 | `H02` | H | Rail gun impact | 0.39 s | ✅ |
 | `X13` | X | Rocket launcher / explosion | 1.55 s | ✅ |
@@ -90,12 +90,12 @@ Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extr
 | `S16` | S | SR-100 sniper fire | 1.61 s | 👥 |
 | `J07` | J | MG7 fire | 1.60 s | 👥 |
 | `G10` | G | SMG-x3 fire | 1.32 s | 👥 |
-| `V3I` | V3 | "Get some" — Heavy respawn line | 1.53 s | ✅ |
+| `V3I` | V3 | "Get some": Heavy respawn line | 1.53 s | ✅ |
 | `VA3` / `VA5` | VA | Male scream / yell (death-cue swap candidates) | 1.27 / 1.29 s | 👥 |
 Source: protocol/callsign-extract/sound-bank.md "Confirmed meanings" + DK map, protocol/brx-protocol.md §7o/§7r, docs/experiment-log.md 2026-08-26, mcp/brx_mcp/sounds.py
 
 ## Sound Bank Explorer
-the full 2166-row table, built from the repo data file at publish time (see Interactive ideas for the full spec). Columns: id · family · meaning (blank when unknown) · meaning status (known / unknown) · duration · provenance (✅ / 👥) · copy button. Every id, filename and duration is published; a meaning is shown only when it is known.
+the full 2166-row table, built from the repo data file at publish time (see Interactive ideas for the full spec). Columns: id · family · meaning (blank when unknown) · meaning status (known / unknown) · duration · provenance (✅ / 👥) · copy button. Every id, filename and duration is published. A meaning is shown only when it is known.
 Source: protocol/callsign-extract/Sounds.json (data), protocol/callsign-extract/sound-bank.md (meanings)
 
 _[diagram SND-03: Treemap of the bank by family, area = number of ids, one accent for voice families. GENERATE from the counts above.]_

@@ -11,7 +11,7 @@ export const PROV_LABEL = {
 export const PROV_EMOJI = Object.fromEntries(Object.entries(PROV).map(([e, k]) => [k, e]));
 
 const BLOCK_RE = /^\[([a-z][a-z-]*)(?::([a-z|]+))?(?:\s+([A-Za-z0-9-]+))?\]\s*(.*)$/;
-const PAGE_RE = /^### Page:\s*(.+?)\s+\(`(\/[^`]*)`\)\s*(?:—.*)?$/;
+const PAGE_RE = /^### Page:\s*(.+?)\s+\(`(\/[^`]*)`\)\s*(?:[—–·|].*)?$/;
 const SECTION_RE = /^#\s+(\d\d)\s*·\s*(.+?)\s+\((?:section )?slugs?:\s*([^)]+)\)/;
 const SRC_RE = /^(?:[✅📖🔍👥🧪📐🚧\s·]*)\s*`?src:\s*(.*?)`?\s*$/u;
 const IGNORE_H2 = /^## (Images for this section|Interactive ideas|Sources used|Research backlog|Honest gaps|Still cracking)/;
@@ -113,13 +113,13 @@ function finishBlock(b) {
   b.badges = badgesIn(b.head + '\n' + b.body.join('\n'));
   // a bold lead-in on the head line is the block title
   const t = b.head.match(/^\*\*(.+?)\*\*\s*(.*)$/) || b.head.match(/^"(.+?)"\s*(.*)$/) || b.head.match(/^“(.+?)”\s*(.*)$/);
-  if (t) { b.title = t[1].trim(); b.head = t[2].trim().replace(/^[—–-]\s*/, ''); }
+  if (t) { b.title = t[1].trim(); b.head = t[2].trim().replace(/^[—–:-]\s*/, ''); }
   // A [spec-sheet] head names the thing being specified ("Tagger battery 📖 👥:"). Without this it
   // rendered as a grey lead paragraph, leaving the spec-sheet page with no headings and no TOC.
   if (!b.title && b.type === 'spec-sheet' && b.head.trim()) {
-    const [name, ...rest] = b.head.split(/\s+—\s+/);
+    const [name, ...rest] = b.head.split(/\s+[—–]\s+|:\s+/);
     b.title = name.replace(/\s*:\s*$/, '').trim();
-    b.head = rest.join(' — ').trim();
+    b.head = rest.join(': ').trim();
   }
 }
 

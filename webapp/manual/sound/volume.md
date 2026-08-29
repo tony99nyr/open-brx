@@ -3,7 +3,7 @@ _On-gun 1–5, protocol 0–100, and why "30" is silence_
 Last verified: 2026-08-27
 
 ## 30 is silence.
-The gun menu offers volume 1–5; over Bluetooth the same control is a 0–100 scale — and on that scale the difference between "quiet" and "inaudible" is narrower than you'd think.
+The gun menu offers volume 1–5. Over Bluetooth the same control is a 0–100 scale. On that scale, the gap between "quiet" and "you hear nothing" is smaller than you would think.
 Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md
 
 ## The scales, side by side
@@ -14,20 +14,20 @@ Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md
 Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md, docs/experiment-log.md
 
 ## What the official apps send
-Android Callsign: `$VOL,100` · iOS Callsign: `$VOL,69` · Open BRX game default: **69** (the app's value) · Open BRX probing default: **30** (deliberately quiet — and deliberately not for games).
+Android Callsign: `$VOL,100` · iOS Callsign: `$VOL,69` · Open BRX game default: **69** (the app's value) · Open BRX probing default: **30** (deliberately quiet, and deliberately not for games).
 Source: protocol/brx-protocol.md, CLAUDE.md
 
 ## 30 is not "quiet", it is silent for weapon audio.
-Measured with a microphone harness: at volume 100 the gun's sounds peak at 7–37× the room noise floor; at 30 nothing rises above room noise. Volume 45 is barely audible. Use **≥ 65** to hear a tagger reliably and **69** for play.
+We measured it with a microphone harness. At volume 100 the gun's sounds peak at 7–37× the room noise floor, and at 30 nothing rises above room noise. Volume 45 is barely audible. Use **≥ 65** to hear a tagger reliably, and **69** for play.
 Source: docs/experiment-log.md #6, protocol/brx-protocol.md
 
 ## Practical levels
-- **Play:** 69 — the value the official iOS app sets on connect; the Android app sends 100. ✅
-- **Bench / diagnostics:** 30 or lower keeps the neighbours happy and still confirms the command path (the gun echoes its state; you just won't hear it). ✅
+- **Play:** 69, the value the official iOS app sets on connect. The Android app sends 100. ✅
+- **Bench / diagnostics:** 30 or lower keeps the neighbours happy and still confirms the command path (the gun echoes its state, you just won't hear it). ✅
 Source: protocol/brx-protocol.md, docs/experiment-log.md #6, CLAUDE.md
 
 ## Safety.
-The boot chime plays at the gun's stored level before any host can lower it, so a gun last used at 100 is loud at the next power-on — set volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep can be uncomfortable held to the ear at 100; 69 is the value the official iOS app ships with for a reason.
+The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.
 Source: docs/sound-architecture.md, docs/experiment-log.md
 
 _[diagram SND-06: Horizontal loudness scale 0–100 with the two app defaults (69, 100) marked and a shaded "inaudible for weapon audio" zone below ~45. GENERATE.]_

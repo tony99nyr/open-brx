@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Command reference — Developer reference — The BRX Manual (Open BRX)</title>
-<meta name="description" content="Every command we know of — host → tagger, tagger → host, headset — with args, meaning and confidence">
+<title>Command reference | Developer reference | The BRX Manual (Open BRX)</title>
+<meta name="description" content="Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/commands/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/commands.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Command reference","description":"Every command we know of — host → tagger, tagger → host, headset — with args, meaning and confidence","url":"https://open-brx.iamrossi.workers.dev/manual/dev/commands/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Command reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/commands/"}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Command reference","description":"Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/commands/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Command reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/commands/"}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -27,13 +27,13 @@
   </div>
 </header>
 <div class="layout has-side has-toc">
-  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/" aria-current="page">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations: which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The complete Callsign arsenal</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock: the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/" aria-current="page">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence: from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP: the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET: game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR: the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events: what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word: what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console: QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures: recording and decoding the official app</a></li></ul></details></nav>
   <main id="main" class="main">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/dev/">Developer reference</a><span class="sep">/</span><span aria-current="page">Command reference</span></nav>
     <article class="page">
 <header class="page-head">
 <h1>Command reference</h1>
-<p class="subtitle">Every command we know of — host → tagger, tagger → host, headset — with args, meaning and confidence</p>
+<p class="subtitle">Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written.</p>
 <p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/commands.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="how-to-read-the-tables"><strong class="co-title">How to read the tables.</strong><p>&quot;Direction&quot; is host→gun (<code>&gt;&gt;</code>) or gun→host (<code>&lt;&lt;</code>). Provenance is per row: <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> we sent/received it on hardware and know what it did; <span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> the command class and its field names come from the Callsign app&#39;s IL2CPP metadata (names certain, wire position = declaration order); <span class="badge b-community" title="Community-reported"><span>community</span></span> seen in LaserTagMods sources or community captures, not reproduced by us. Commands the app knows but we have never sent sit in their own table at the end of this page. Where a command&#39;s field map has its own page (<code>$WEAP</code>, <code>$GSET</code>/<code>$PSET</code>, <code>$SIR</code>) the row links there.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (confidence note), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §3–§4</p></aside></section>
@@ -50,42 +50,42 @@
 <tbody><tr>
 <td><code>$PING,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Connectivity check. Reply <code>$PONG,*</code>.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$STOP,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$PHONE,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>App-controlled mode: opens the live event tap (buttons, <code>$VOLTS</code>), locks the on-gun menu. Reply <code>$BUT,3,0,*</code>.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$CONNECT,*</code> / <code>$INIT,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>On the known-safe list. Sent on v4.32: <strong>no observable reply</strong>.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$CLEAR,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Clear current game state. First frame of every arm sequence; half of the panic sequence.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$START,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Begin the configuration sequence. Gun echoes <code>$LCD,0,0,0,0,0,0,*</code>.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
@@ -93,7 +93,7 @@
 <td><code>$GSET,…,*</code></td>
 <td>&gt;&gt;</td>
 <td>8 tokens</td>
-<td>Global game settings — friendly fire, indoor/outdoor, region, ambient light, gyro, BT secondaries, crit modifier, mods. <strong>No respawn/time/lives token.</strong> → GSET page</td>
+<td>Global game settings: friendly fire, indoor/outdoor, region, ambient light, gyro, BT secondaries, crit modifier, mods. <strong>No respawn/time/lives token.</strong> → GSET page</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -121,7 +121,7 @@
 <td><code>$BMAP,&lt;button&gt;,&lt;function&gt;,&lt;swap0..3&gt;,*</code></td>
 <td>&gt;&gt;</td>
 <td>button id, function, 4 swap slots</td>
-<td>Remap physical controls. Buttons: 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right · 8 gyro. Functions seen: 0 fire · 97 reload · 98 (select/left/right) · 100 weapon-cycle · 4 melee (gyro). <strong>Mandatory</strong> — without it the trigger only chirps &quot;disabled&quot;.</td>
+<td>Remap physical controls. Buttons: 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right · 8 gyro. Functions seen: 0 fire · 97 reload · 98 (select/left/right) · 100 weapon-cycle · 4 melee (gyro). <strong>Mandatory</strong>: without it the trigger only chirps &quot;disabled&quot;.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -142,7 +142,7 @@
 <td><code>$AMMO,&lt;slot&gt;,&lt;mag&gt;,&lt;reserve&gt;,&lt;flag&gt;,*</code></td>
 <td>&gt;&gt;</td>
 <td>slot, magazine, reserve, 1</td>
-<td>Load magazines. Must follow <code>$SPAWN</code> at initial go-live or the gun is live with no ammunition. e.g. <code>$AMMO,0,36,108,1,*</code>. A bare <code>$WEAP</code> re-push resets ammo to the frame&#39;s baked values — re-send <code>$AMMO</code> after any weapon swap.</td>
+<td>Load magazines. Must follow <code>$SPAWN</code> at initial go-live or the gun is live with no ammunition. e.g. <code>$AMMO,0,36,108,1,*</code>. A bare <code>$WEAP</code> re-push resets ammo to the frame&#39;s baked values. Re-send <code>$AMMO</code> after any weapon swap.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -156,7 +156,7 @@
 <td><code>$PLAY,&lt;sound&gt;,&lt;vol&gt;,&lt;prio&gt;,&lt;announcer&gt;,,,,*</code></td>
 <td>&gt;&gt;</td>
 <td>8 tokens</td>
-<td>Play a sound id (see the 2166-id bank). <strong>Two independent slots</strong>: token 1 = local/effect sound, <strong>token 4 = announcer/voice channel</strong> — <code>$PLAY,,4,6,V3A,,,,*</code> speaks &quot;kill&quot; with token 1 empty; <code>$PLAY,VSF,4,6,JAY,,,,*</code> uses both. <strong>Tokens 2–3 are required</strong>: <code>$PLAY,VA33,,,,,,,*</code> is silent, <code>$PLAY,VA33,4,6,,,,,*</code> speaks. Numeric values vary by client (<code>3,9</code> Android app · <code>3,6</code> iOS · <code>4,6</code> JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue.</td>
+<td>Play a sound id (see the 2166-id bank). <strong>Two independent slots</strong>: token 1 = local/effect sound, <strong>token 4 = announcer/voice channel</strong>. <code>$PLAY,,4,6,V3A,,,,*</code> speaks &quot;kill&quot; with token 1 empty; <code>$PLAY,VSF,4,6,JAY,,,,*</code> uses both. <strong>Tokens 2–3 are required</strong>: <code>$PLAY,VA33,,,,,,,*</code> is silent, <code>$PLAY,VA33,4,6,,,,,*</code> speaks. Numeric values vary by client (<code>3,9</code> Android app · <code>3,6</code> iOS · <code>4,6</code> JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -176,22 +176,22 @@
 <tr>
 <td><code>$VERSION,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
-<td>Query firmware. Reply <code>$VERSION,v4.32,?,4,,devhost.03,*</code> — token 2 is the <strong>headset</strong> firmware (<code>hds.59</code>) when a headset is linked.</td>
+<td>n/a</td>
+<td>Query firmware. Reply <code>$VERSION,v4.32,?,4,,devhost.03,*</code>. Token 2 is the <strong>headset</strong> firmware (<code>hds.59</code>) when a headset is linked.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$SP,&lt;n&gt;,*</code></td>
 <td>&gt;&gt;</td>
 <td>n</td>
-<td>End-of-game / stop. <code>$SP,99,*</code> is the second half of the panic sequence. Do not probe it mid-game hoping for a score — the gun keeps none.</td>
+<td>End-of-game / stop. <code>$SP,99,*</code> is the second half of the panic sequence. Do not probe it mid-game hoping for a score. The gun keeps none.</td>
 <td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>$QUERY,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
-<td>Over BLE returns a <code>$</code>-framed status array (<code>$QUERY,0,0,0,0,0,,1,0,,0,…</code>) plus a <code>$LCD</code>. <strong>Not</strong> the USB device record (that is USB-only — see the Serial console page).</td>
+<td>n/a</td>
+<td>Over BLE returns a <code>$</code>-framed status array (<code>$QUERY,0,0,0,0,0,,1,0,,0,…</code>) plus a <code>$LCD</code>. <strong>Not</strong> the USB device record (that is USB-only; see the Serial console page).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 </tbody></table></div>
@@ -209,7 +209,7 @@
 <tbody><tr>
 <td><code>$SFLASH,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td><strong>The shooter&#39;s green-sight kill-confirm flash.</strong> The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.)</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
@@ -217,7 +217,7 @@
 <td><code>$LIFE,&lt;hp&gt;,&lt;armor&gt;,&lt;shields&gt;,*</code></td>
 <td>&gt;&gt;</td>
 <td>addedHP, addedArmor, addedShields</td>
-<td>Grant health. <strong>Additive, clamped at the pool max</strong> — not an absolute set. Writes do not self-emit <code>$HP</code>; the new value shows on the next hit/HUD refresh.</td>
+<td>Grant health. <strong>Additive, clamped at the pool max</strong>, not an absolute set. Writes do not self-emit <code>$HP</code>; the new value shows on the next hit/HUD refresh.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -258,7 +258,7 @@
 <tr>
 <td><code>$STUN,*</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Listed in the APK. <strong>Proven no-op over BLE.</strong></td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>(no-op)</td>
 </tr>
@@ -266,7 +266,7 @@
 <td><code>$GLED,&lt;mid&gt;,&lt;effect&gt;,&lt;optionA&gt;,&lt;optionB&gt;,…,*</code></td>
 <td>&gt;&gt;</td>
 <td>mid, effect, optionA, optionB</td>
-<td>Gun LED <strong>effect</strong> — <code>effect</code> = LedEffect enum (Solid, Glow, ChaseBack, ChaseForward, StopIR). <strong>Not RGB</strong>: colour is team-derived from <code>$TID</code>. Used by the app during the pre-game lobby.</td>
+<td>Gun LED <strong>effect</strong>. <code>effect</code> = LedEffect enum (Solid, Glow, ChaseBack, ChaseForward, StopIR). <strong>Not RGB</strong>: colour is team-derived from <code>$TID</code>. Used by the app during the pre-game lobby.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>(not RGB)</td>
 </tr>
 <tr>
@@ -280,13 +280,13 @@
 <td><code>$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART</code></td>
 <td>&gt;&gt;</td>
 <td>enum index</td>
-<td>The <strong>&quot;playbook&quot;</strong> pre-battle family mirroring the on-gun menu — a second remote-start path captured on fw <strong>v4.30</strong> (<code>$PBGAME,0</code> = FFA · <code>$PBWEAP,0</code> = M4 AUTO · <code>$PBPERK,2</code> = Body Armor · <code>$PBLIVES,2</code> = 5 lives · <code>$PBTIME,5</code> = infinite). <code>$PBWEAP,0,*</code> produced a &quot;game starting&quot; reload sound on our v4.32.</td>
+<td>The <strong>&quot;playbook&quot;</strong> pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw <strong>v4.30</strong> (<code>$PBGAME,0</code> = FFA · <code>$PBWEAP,0</code> = M4 AUTO · <code>$PBPERK,2</code> = Body Armor · <code>$PBLIVES,2</code> = 5 lives · <code>$PBTIME,5</code> = infinite). <code>$PBWEAP,0,*</code> produced a &quot;game starting&quot; reload sound on our v4.32.</td>
 <td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 <tr>
 <td><code>$DD,&lt;killerId&gt;,&lt;killerTeam&gt;,&lt;victimId&gt;,&lt;nonce&gt;,*</code></td>
 <td>host↔host</td>
-<td>—</td>
+<td>n/a</td>
 <td>JEDGE&#39;s <strong>device-to-device</strong> kill notification. A host-side convention, not a tagger command.</td>
 <td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
@@ -326,7 +326,7 @@
 </thead>
 <tbody><tr>
 <td><code>$PONG,*</code></td>
-<td>—</td>
+<td>n/a</td>
 <td>Reply to <code>$PING</code>.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
@@ -338,26 +338,26 @@
 </tr>
 <tr>
 <td><code>$DISCONNECT,*</code></td>
-<td>—</td>
+<td>n/a</td>
 <td>Gun-initiated disconnect notice (e.g. the moment its headset is switched off).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$VOLTS,&lt;pack_mV&gt;,&lt;cell_mV&gt;,&lt;t3&gt;,&lt;t4&gt;,*</code></td>
 <td>e.g. <code>7662,3921,55,70</code></td>
-<td>Battery telemetry, ~every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3–4: — (unknown).</td>
+<td>Battery telemetry, ~every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3–4: (unknown).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$LCD,&lt;hp&gt;,&lt;armor&gt;,&lt;t3&gt;,&lt;t4&gt;,&lt;mag&gt;,&lt;reserve&gt;,*</code></td>
 <td>e.g. <code>45,70,0,0,36,216</code></td>
-<td><strong>Health/armor HUD echo.</strong> <code>$START</code> → all zeros; <code>$SPAWN</code> → pools + current weapon&#39;s ammo; death → <code>$LCD,0,0,0,1,1,1,*</code>. Tokens 3–4: — (unknown). A zeroed <code>$LCD</code> after <code>$SPAWN</code> means &quot;no config loaded&quot; (post power-cycle tell).</td>
+<td><strong>Health/armor HUD echo.</strong> <code>$START</code> → all zeros; <code>$SPAWN</code> → pools + current weapon&#39;s ammo; death → <code>$LCD,0,0,0,1,1,1,*</code>. Tokens 3–4: (unknown). A zeroed <code>$LCD</code> after <code>$SPAWN</code> means &quot;no config loaded&quot; (post power-cycle tell).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$ALCD,&lt;mag&gt;,&lt;t2&gt;,&lt;slot&gt;,&lt;reserve&gt;,&lt;heat&gt;,*</code></td>
 <td>e.g. <code>36,100,0,108,0</code></td>
-<td><strong>Ammo/weapon HUD stream.</strong> Per-round during fire <em>and</em> reload (mag 0→1→2… as reserve drains). Token 2: — (unknown) — reads 100 in normal play and drops to 0 after a <code>$SIR</code> fn 23 hit. Token 3 = weapon slot. Token 5 = <strong>weapon heat</strong> (0–100+, only on overheat weapons). Only streams on ammo events — silence is not &quot;no change&quot;.</td>
+<td><strong>Ammo/weapon HUD stream.</strong> Per-round during fire <em>and</em> reload (mag 0→1→2… as reserve drains). Token 2: (unknown). It reads 100 in normal play and drops to 0 after a <code>$SIR</code> fn 23 hit. Token 3 = weapon slot. Token 5 = <strong>weapon heat</strong> (0–100+, only on overheat weapons). Only streams on ammo events. Silence is not &quot;no change&quot;.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -386,13 +386,13 @@
 </tr>
 <tr>
 <td><code>$WEAP</code> / <code>$PERK</code> / <code>$HS</code></td>
-<td>—</td>
+<td>n/a</td>
 <td>Selection echoes from the on-gun menus (LaserTagMods).</td>
 <td><span class="badge b-community" title="Community-reported"><span>community</span></span></td>
 </tr>
 </tbody></table></div>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §4, §7e, §7f, §7j, §7r; <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/protocol.py" rel="noopener">mcp/brx_mcp/protocol.py</a> (parsers); <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> 2026-08-27</p></section>
-<section class="blk blk-data-table" data-type="data-table"><h2 id="seen-in-the-app-s-vocabulary-not-exercised-by-us">Seen in the app&#39;s vocabulary, not exercised by us</h2><p class="lead">facts about the Callsign app&#39;s request namespace only; on-tagger behaviour has not been observed. <span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></p><div class="dt" data-rows="7"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">7 rows</span></div><div class="table-wrap"><table>
+<section class="blk blk-data-table" data-type="data-table"><h2 id="seen-in-the-app-s-vocabulary-not-exercised-by-us">Seen in the app&#39;s vocabulary, not exercised by us</h2><p class="lead">facts about the Callsign app&#39;s request namespace only. On-tagger behaviour has not been observed. <span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></p><div class="dt" data-rows="7"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">7 rows</span></div><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Command</th>
@@ -410,7 +410,7 @@
 <tr>
 <td><code>$ZOOM</code></td>
 <td>&gt;&gt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Never sent by us.</td>
 </tr>
 <tr>
@@ -434,18 +434,18 @@
 <tr>
 <td><code>$BLINK</code> · <code>$CHASE</code> · <code>$LED</code></td>
 <td>&gt;&gt; (headset)</td>
-<td>—</td>
+<td>n/a</td>
 <td>Listed with the headset commands. Never sent by us.</td>
 </tr>
 <tr>
 <td><code>$TIME</code></td>
 <td>&lt;&lt;</td>
-<td>—</td>
+<td>n/a</td>
 <td>Listed as a notification. Never observed on the wire.</td>
 </tr>
 </tbody></table></div>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a></p></section>
-<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="complete-vocabulary-from-the-app-s-own-request-namespace"><strong class="co-title">Complete vocabulary from the app&#39;s own request namespace</strong><p>(<span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span>): AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. <code>$PING</code>, <code>$TID</code>, <code>$SP</code>, and the <code>$RV/$RP/$UR/$KK/$DD</code> family are <strong>not</strong> in it — they come from LaserTagMods and our bench. Absence from the app ≠ non-existent.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a></p></aside></section>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="complete-vocabulary-from-the-app-s-own-request-namespace"><strong class="co-title">Complete vocabulary from the app&#39;s own request namespace</strong><p>(<span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span>): AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. <code>$PING</code>, <code>$TID</code>, <code>$SP</code>, and the <code>$RV/$RP/$UR/$KK/$DD</code> family are <strong>not</strong> in it. They come from LaserTagMods and our bench. Absence from the app ≠ non-existent.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a></p></aside></section>
 
 </article>
   </main>
@@ -456,6 +456,6 @@
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.d3ca03ea85.js" defer></script>
+<script src="/assets/site.99eb517084.js" defer></script>
 </body>
 </html>

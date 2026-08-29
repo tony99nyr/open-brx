@@ -1,4 +1,4 @@
-# Open BRX — The Ultimate BRX Manual
+# Open BRX: The BRX Manual
 
 > The definitive reference for the Battle Company BRX laser-tag tagger and headset, plus the Open BRX open-source platform that orchestrates BRX taggers. Known facts only: every statement carries its provenance (verified on our bench · official Battle Company docs · decoded from the Callsign app · community-reported) and a source path into the open repository. Nothing unconfirmed is published.
 
@@ -8,76 +8,76 @@ Protocol discovery credit: LaserTagMods (JEDGE / JBOX). Open BRX is independent 
 
 ## Pages
 
-- [Home](https://open-brx.iamrossi.workers.dev/index.md): Video game inspired tactical laser tag — open and self-hosted.
-- [Manual hub](https://open-brx.iamrossi.workers.dev/manual.md): The Ultimate BRX Manual — everything about the tagger and headset, in one place.
+- [Home](https://open-brx.iamrossi.workers.dev/index.md): Video game style tactical laser tag. Open, and you host it yourself.
+- [Manual hub](https://open-brx.iamrossi.workers.dev/manual.md): The Ultimate BRX Manual: everything about the tagger and headset, in one place.
 - [Credits & sourcing](https://open-brx.iamrossi.workers.dev/credits.md): Who found what, and how we use it.
-- [Changelog](https://open-brx.iamrossi.workers.dev/changelog.md): The manual is a living document. Every page carries its last-verified date; this is the feed.
-- [The BRX at a glance](https://open-brx.iamrossi.workers.dev/manual/hardware/overview.md): A rifle-form laser tagger, a wireless sensor headset, and a smart grenade — and everything they are not.
-- [The tagger, part by part](https://open-brx.iamrossi.workers.dev/manual/hardware/tagger.md): Every button, port, emitter and light on the rifle — and what it is actually for.
-- [The IR emitter, the sight, and the sensors](https://open-brx.iamrossi.workers.dev/manual/hardware/ir-and-sensors.md): The invisible beam that carries every tag — its published specs and what we measured.
-- [Lights and what they mean](https://open-brx.iamrossi.workers.dev/manual/hardware/leds.md): The gun's LED bank and the headset's ring — read them like a dashboard.
+- [Changelog](https://open-brx.iamrossi.workers.dev/changelog.md): The manual keeps growing. Every page shows its last-verified date. This page is the feed.
+- [The BRX at a glance](https://open-brx.iamrossi.workers.dev/manual/hardware/overview.md): A laser tagger shaped like a rifle, a wireless sensor headset, and a smart grenade. Plus what they are not.
+- [The tagger, part by part](https://open-brx.iamrossi.workers.dev/manual/hardware/tagger.md): Every button, port, emitter and light on the rifle, and what each one is really for.
+- [The IR emitter, the sight, and the sensors](https://open-brx.iamrossi.workers.dev/manual/hardware/ir-and-sensors.md): The invisible beam that carries every tag. Here are the published specs and what we measured.
+- [Lights and what they mean](https://open-brx.iamrossi.workers.dev/manual/hardware/leds.md): The gun's LED bank and the headset's ring. Read them like a dashboard.
 - [The headset](https://open-brx.iamrossi.workers.dev/manual/hardware/headset.md): A wireless sensor band that decides whether your tagger is allowed to shoot.
 - [Battery and power](https://open-brx.iamrossi.workers.dev/manual/hardware/battery.md): A 7.4 V two-cell pack with one nasty surprise: the connector polarity is backwards.
-- [Generations — which BRX do you have?](https://open-brx.iamrossi.workers.dev/manual/hardware/generations.md): Gen1 speaks Bluetooth Classic; Gen2 and Gen3 speak BLE. Here is how to tell in 30 seconds.
+- [Generations: which BRX do you have?](https://open-brx.iamrossi.workers.dev/manual/hardware/generations.md): Gen1 speaks Bluetooth Classic; Gen2 and Gen3 speak BLE. Here is how to tell in 30 seconds.
 - [Grenade and accessories](https://open-brx.iamrossi.workers.dev/manual/hardware/accessories.md): What each add-on physically is. How to use them lives in the Accessories & Stations section.
-- [Spec sheet and what's in the box](https://open-brx.iamrossi.workers.dev/manual/hardware/spec-sheet.md): One page to print.
-- [Quick Start](https://open-brx.iamrossi.workers.dev/manual/operate/quick-start.md): From the box to the first "TARGET MODE" voice line in about fifteen minutes (plus a charge).
+- [Spec sheet and what's in the box](https://open-brx.iamrossi.workers.dev/manual/hardware/spec-sheet.md): One page to print. It lists the exact parts, numbers and kit contents for the tagger, the headset and the grenade.
+- [Quick Start](https://open-brx.iamrossi.workers.dev/manual/operate/quick-start.md): From the box to your first "TARGET MODE" voice line in about fifteen minutes, plus a charge.
 - [Charging & Batteries](https://open-brx.iamrossi.workers.dev/manual/operate/power.md): Two ports on the gun, two kinds of charger, one polarity trap.
-- [The On-Gun Menu](https://open-brx.iamrossi.workers.dev/manual/operate/on-gun-menu.md): Everything you can set without a phone — and what the gun remembers.
-- [Indoor vs Outdoor Mode](https://open-brx.iamrossi.workers.dev/manual/operate/indoor-outdoor.md): One three-second hold that changes range, LEDs and blast radius.
-- [Sighting the Laser](https://open-brx.iamrossi.workers.dev/manual/operate/sighting.md): Target mode makes the gun harmless, tireless, and honest about where it is pointing.
-- [Pairing the Headset](https://open-brx.iamrossi.workers.dev/manual/operate/headset-pairing.md): The single most common cause of "my gun won't fire" — and the fix for it.
-- [The Grenade & Other Accessories](https://open-brx.iamrossi.workers.dev/manual/operate/accessories.md): Pairing a thrown grenade, and using it as a respawn point, hill or flag — no app needed.
-- [The Callsign App](https://open-brx.iamrossi.workers.dev/manual/operate/callsign-app.md): Battle Company's official phone app: what it actually does, how a game is built, and the three things nobody tells you.
-- [Running a Native Game on Stock Kit](https://open-brx.iamrossi.workers.dev/manual/operate/stock-game.md): A walkthrough of a whole match — on-gun or app-hosted — and what every light and voice line means while it runs.
+- [The On-Gun Menu](https://open-brx.iamrossi.workers.dev/manual/operate/on-gun-menu.md): Everything you can set without a phone, and what the gun remembers.
+- [Indoor vs Outdoor Mode](https://open-brx.iamrossi.workers.dev/manual/operate/indoor-outdoor.md): One three-second hold changes your range, your LEDs and your blast radius.
+- [Sighting the Laser](https://open-brx.iamrossi.workers.dev/manual/operate/sighting.md): Target mode makes the gun harmless, tireless, and honest about where it points.
+- [Pairing the Headset](https://open-brx.iamrossi.workers.dev/manual/operate/headset-pairing.md): The number one cause of "my gun won't fire", and the fix for it.
+- [The Grenade & Other Accessories](https://open-brx.iamrossi.workers.dev/manual/operate/accessories.md): Pair a thrown grenade, or use it as a respawn point, a hill or a flag. No app needed.
+- [The Callsign App](https://open-brx.iamrossi.workers.dev/manual/operate/callsign-app.md): Battle Company's official phone app: what it does, how you build a game, and the three things nobody tells you.
+- [Running a Native Game on Stock Kit](https://open-brx.iamrossi.workers.dev/manual/operate/stock-game.md): A walkthrough of a whole match, on-gun or app-hosted, and what every light and voice line means while it runs.
 - [Range & Line of Sight](https://open-brx.iamrossi.workers.dev/manual/operate/range.md): What the numbers on the box mean once the sun comes out.
 - [Care & Storage](https://open-brx.iamrossi.workers.dev/manual/operate/care.md): Keep it charged, keep it dry, and turn it off between rounds.
 - [What the BRX can play](https://open-brx.iamrossi.workers.dev/manual/gameplay/overview.md): Two arsenals, three ways to run a game, and one damage model underneath all of it
-- [The Callsign arsenal — the complete roster](https://open-brx.iamrossi.workers.dev/manual/gameplay/weapons.md): Every weapon the official app can hand you (19 weapons, 20 captured frames), with the numbers it actually sends
+- [The complete Callsign arsenal](https://open-brx.iamrossi.workers.dev/manual/gameplay/weapons.md): Every weapon the official app can hand you (19 weapons, 20 captured frames), with the numbers it actually sends
 - [Health, armor & damage](https://open-brx.iamrossi.workers.dev/manual/gameplay/health.md): What a hit takes away, what armor does, and why nothing comes back on its own
-- [How a kill actually works](https://open-brx.iamrossi.workers.dev/manual/gameplay/how-a-kill-works.md): From trigger pull to green flash, in five steps — the developer section has the bit layout
+- [How a kill actually works](https://open-brx.iamrossi.workers.dev/manual/gameplay/how-a-kill-works.md): From trigger pull to green flash in five steps (the developer section has the bit layout)
 - [Native game modes & their settings](https://open-brx.iamrossi.workers.dev/manual/gameplay/modes.md): Everything the gun's own menu and the Callsign app will run, with the exact option values
 - [Classes, factions, perks & killstreaks](https://open-brx.iamrossi.workers.dev/manual/gameplay/classes-and-perks.md): What Supremacy's characters are made of, what the ALT button cycles, and what the app hands out for streaks
-- [The Smart Grenade's game modes](https://open-brx.iamrossi.workers.dev/manual/gameplay/grenade-modes.md): Five objective modes, one button, one colour — and which ones the guns can actually "see"
-- [Beyond stock — the Open BRX mode catalog](https://open-brx.iamrossi.workers.dev/manual/gameplay/open-brx-modes.md): Because the gun keeps no game state, any rule you can write over hits, teams, health and spawns is a mode. A teaser — the full catalog lives in the platform section.
+- [The Smart Grenade's game modes](https://open-brx.iamrossi.workers.dev/manual/gameplay/grenade-modes.md): Five objective modes, one button, one colour, and which ones the guns can actually "see"
+- [Beyond stock: the Open BRX mode catalog](https://open-brx.iamrossi.workers.dev/manual/gameplay/open-brx-modes.md): The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode. This is a taste; the full catalog lives in the platform section.
 - [How BRX audio works](https://open-brx.iamrossi.workers.dev/manual/sound/how-it-works.md): One speaker, two triggers: what the gun plays by itself, and what a host tells it to play
-- [Voice packs & announcers](https://open-brx.iamrossi.workers.dev/manual/sound/voice-packs.md): Male, Female, Heavy, Medic, Valkyrie… — every character is a set of sound-bank slots
-- [The sound bank](https://open-brx.iamrossi.workers.dev/manual/sound/sound-bank.md): All 2166 ids the BRX will play — by family, with durations and the meanings the community has pinned
-- [Custom sounds over USB](https://open-brx.iamrossi.workers.dev/manual/sound/custom-sounds.md): Yes, you can put your own audio on a BRX — no firmware hacking, fully reversible
-- [Firmware updates & factory restore](https://open-brx.iamrossi.workers.dev/manual/sound/firmware.md): The same USB disk carries the firmware — here's the official procedure and the traps
+- [Voice packs & announcers](https://open-brx.iamrossi.workers.dev/manual/sound/voice-packs.md): Male, Female, Heavy, Medic, Valkyrie. Every character is a set of sound-bank slots
+- [The sound bank](https://open-brx.iamrossi.workers.dev/manual/sound/sound-bank.md): All 2166 ids the BRX will play, by family, with durations and the meanings the community has pinned
+- [Custom sounds over USB](https://open-brx.iamrossi.workers.dev/manual/sound/custom-sounds.md): Yes, you can put your own audio on a BRX. No firmware hacking, and fully reversible
+- [Firmware updates & factory restore](https://open-brx.iamrossi.workers.dev/manual/sound/firmware.md): The same USB disk carries the firmware. Here is the official procedure, and the traps
 - [Volume](https://open-brx.iamrossi.workers.dev/manual/sound/volume.md): On-gun 1–5, protocol 0–100, and why "30" is silence
-- [Diagnose my tagger](https://open-brx.iamrossi.workers.dev/manual/fix/diagnose.md): Symptom first. Start at the top of the ladder that matches what you see — the headset is the first thing to check.
-- [Headset, pairing & Bluetooth](https://open-brx.iamrossi.workers.dev/manual/fix/pairing.md): The headset gates everything — firing, joining a game, and whether a phone can even hold a connection.
+- [Diagnose my tagger](https://open-brx.iamrossi.workers.dev/manual/fix/diagnose.md): Start with what you see. Pick the ladder that matches, then work down it. The headset is the first thing to check.
+- [Headset, pairing & Bluetooth](https://open-brx.iamrossi.workers.dev/manual/fix/pairing.md): The headset controls everything: firing, joining a game, and whether a phone can hold a connection.
 - [Hits, sound & battery](https://open-brx.iamrossi.workers.dev/manual/fix/hits-sound-battery.md): When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 - [Repairs](https://open-brx.iamrossi.workers.dev/manual/fix/repairs.md): What owners fix themselves, what Battle Company sells, and what's a send-it-back.
-- [Mods](https://open-brx.iamrossi.workers.dev/manual/fix/mods.md): The community norm is "no permanent modification" — everything rides on the phone bracket or clips to the rail.
-- [Accessories](https://open-brx.iamrossi.workers.dev/manual/fix/accessories.md): Grenade, stations, headsets, power and mounts — what each is, and the gotchas nobody tells you.
-- [The community](https://open-brx.iamrossi.workers.dev/manual/fix/community.md): Where BRX owners actually solve things — and what each place is good for.
+- [Mods](https://open-brx.iamrossi.workers.dev/manual/fix/mods.md): The community norm is "no permanent modification". Everything rides on the phone bracket or clips to the rail.
+- [Accessories](https://open-brx.iamrossi.workers.dev/manual/fix/accessories.md): Grenade, stations, headsets, power and mounts. What each one is, and the gotchas nobody tells you.
+- [The community](https://open-brx.iamrossi.workers.dev/manual/fix/community.md): Where BRX owners really solve things, and what each place is good for.
 - [FAQ](https://open-brx.iamrossi.workers.dev/manual/fix/faq.md): The questions owners ask first.
-- [Transport, framing & safety](https://open-brx.iamrossi.workers.dev/manual/dev/transport.md): How you reach the gun, what a frame looks like, and why nothing here can brick one
-- [Command reference](https://open-brx.iamrossi.workers.dev/manual/dev/commands.md): Every command we know of — host → tagger, tagger → host, headset — with args, meaning and confidence
-- [The arm sequence — from $CLEAR to a live gun](https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence.md): The exact frame order that takes a tagger live, respawns it, and ends the game — captured from the official app and reproduced by our host
-- [$WEAP — the weapon definition](https://open-brx.iamrossi.workers.dev/manual/dev/weap.md): Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type
-- [$GSET and $PSET — game and player settings](https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset.md): The two frames that set on-gun rules and the player's pools, identity and voice pack
-- [$SIR — the incoming-IR effects matrix](https://open-brx.iamrossi.workers.dev/manual/dev/sir.md): What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon
-- [Events — what the gun tells you](https://open-brx.iamrossi.workers.dev/manual/dev/events.md): Hits, health, HUD echoes, buttons and telemetry — and the proof that the gun keeps no game state
-- [The IR word — what a shot carries through the air](https://open-brx.iamrossi.workers.dev/manual/dev/ir.md): A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods' base-station source and verified on our own receiver and emitter
-- [The USB serial console — QUERY and SETUP](https://open-brx.iamrossi.workers.dev/manual/dev/serial-console.md): The micro-USB "Programing Port" is a Teensy serial console with two commands, not the $ protocol and not SSH
-- [Headset, link and what survives](https://open-brx.iamrossi.workers.dev/manual/dev/headset-link.md): Which state lives where — and what a BLE drop, a headset switch-off, or a power-cycle each wipe
-- [Getting started with brx-mcp](https://open-brx.iamrossi.workers.dev/manual/dev/brx-mcp.md): From pip install to a live game in six commands — plus the MCP tools for driving a gun from an AI agent
-- [Captures — recording and decoding the official app](https://open-brx.iamrossi.workers.dev/manual/dev/captures.md): How every fact on these pages was obtained, and how to take the next one
-- [The Open BRX platform](https://open-brx.iamrossi.workers.dev/platform.md): Video game inspired tactical laser tag — open and self-hosted.
-- [How it's wired](https://open-brx.iamrossi.workers.dev/platform/architecture.md): Three tiers of hardware that never all talk to each other at once — and why.
-- [The pieces](https://open-brx.iamrossi.workers.dev/platform/pieces.md): Six components, one decoded protocol, one event stream.
-- [Game modes](https://open-brx.iamrossi.workers.dev/platform/modes.md): Every mode we know the BRX can run — classified by the gear it needs.
-- [What you can build at each budget](https://open-brx.iamrossi.workers.dev/platform/build-tiers.md): Start at $0 with the gear you own. Every rung after is optional and additive.
-- [Open BRX vs Edge](https://open-brx.iamrossi.workers.dev/platform/vs-edge.md): What we match, what we beat, what we can't — honestly.
-- [Status & roadmap](https://open-brx.iamrossi.workers.dev/platform/status.md): What's proven on hardware, what's only software, what's only a spec — with dates.
-- [Get involved](https://open-brx.iamrossi.workers.dev/platform/get-involved.md): Open source, open hardware, open protocol — and one hard rule.
+- [Transport, framing & safety](https://open-brx.iamrossi.workers.dev/manual/dev/transport.md): How you reach the gun, what a frame looks like, and why nothing here can brick one. Start here if you want your own code to talk to a tagger.
+- [Command reference](https://open-brx.iamrossi.workers.dev/manual/dev/commands.md): Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written.
+- [The arm sequence: from $CLEAR to a live gun](https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence.md): The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host.
+- [$WEAP: the weapon definition](https://open-brx.iamrossi.workers.dev/manual/dev/weap.md): Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own.
+- [$GSET and $PSET: game and player settings](https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset.md): The two frames that set on-gun rules and the player's pools, identity and voice pack. Read this page to give each player their health, armor and id.
+- [$SIR: the incoming-IR effects matrix](https://open-brx.iamrossi.workers.dev/manual/dev/sir.md): What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon. This page shows how to write that table.
+- [Events: what the gun tells you](https://open-brx.iamrossi.workers.dev/manual/dev/events.md): Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun keeps no game state. Read this page to learn what the gun sends back to your code.
+- [The IR word: what a shot carries through the air](https://open-brx.iamrossi.workers.dev/manual/dev/ir.md): A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods' base-station source and verified on our own receiver and emitter. Read this page if you are building your own IR sender or receiver.
+- [The USB serial console: QUERY and SETUP](https://open-brx.iamrossi.workers.dev/manual/dev/serial-console.md): The micro-USB "Programing Port" is a Teensy serial console with two commands, not the $ protocol and not SSH. Plug a tagger into a computer and this page tells you what you can ask it.
+- [Headset, link and what survives](https://open-brx.iamrossi.workers.dev/manual/dev/headset-link.md): Which state lives where, and what a BLE drop, a headset switch-off, or a power-cycle each wipe. Read this page before you write code that reconnects to a gun.
+- [Getting started with brx-mcp](https://open-brx.iamrossi.workers.dev/manual/dev/brx-mcp.md): From pip install to a live game in six commands, plus the MCP tools for driving a gun from an AI agent. Start here to get a working setup fast.
+- [Captures: recording and decoding the official app](https://open-brx.iamrossi.workers.dev/manual/dev/captures.md): How every fact on these pages was obtained, and how to take the next one. Read this page if you want to record the app yourself.
+- [The Open BRX platform](https://open-brx.iamrossi.workers.dev/platform.md): Video game inspired tactical laser tag: open and self-hosted.
+- [How it's wired](https://open-brx.iamrossi.workers.dev/platform/architecture.md): Three tiers of hardware that never all talk at once, and why.
+- [The pieces](https://open-brx.iamrossi.workers.dev/platform/pieces.md): Six parts, one decoded protocol, one event stream.
+- [Game modes](https://open-brx.iamrossi.workers.dev/platform/modes.md): Every mode we know the BRX can run, sorted by the gear it needs.
+- [What you can build at each budget](https://open-brx.iamrossi.workers.dev/platform/build-tiers.md): Start at $0 with the gear you own. Every step after that is optional.
+- [Open BRX vs Edge](https://open-brx.iamrossi.workers.dev/platform/vs-edge.md): What we match, what we beat, and what we can't do. Honestly.
+- [Status & roadmap](https://open-brx.iamrossi.workers.dev/platform/status.md): What is proven on hardware, what is only software, what is only a spec. With dates.
+- [Get involved](https://open-brx.iamrossi.workers.dev/platform/get-involved.md): Open source, open hardware, open protocol, and one hard rule.
 - [FAQ](https://open-brx.iamrossi.workers.dev/platform/faq.md): Short answers, each pointing at the doc that proves it.
-- [Meet the BRX](https://open-brx.iamrossi.workers.dev/manual/hardware.md): name every part of the tagger, headset and accessories, explain what each light and port means, and set the mental model (a dumb, stateless IR instrument) that every later section builds on.
-- [Operating the BRX](https://open-brx.iamrossi.workers.dev/manual/operate.md): get from "box on the table" to "a game running and understood", and make every button-hold, LED and voice line on the stock kit mean something. Anything that needs a laptop, a cable, or the BLE protocol is pointed at the developer section, not explained here.
-- [Gameplay](https://open-brx.iamrossi.workers.dev/manual/gameplay.md): be the one place that lists the complete Callsign arsenal with real numbers, explains the damage model in player terms, and enumerates every stock mode and setting — so nobody has to scroll a carousel or dig through PDFs again.
-- [Sound, voice & updates](https://open-brx.iamrossi.workers.dev/manual/sound.md): explain the BRX audio system end-to-end (who plays what, how loud, and how to change it), publish the first complete searchable map of the 2166-id sound bank, and document the USB sound-pack and firmware update path with Battle Company's updater as the factory restore.
-- [Fix, mod & accessorise](https://open-brx.iamrossi.workers.dev/manual/fix.md): get a broken tagger back into a game in under five minutes with symptom-first ladders; document the repairs and mods the community actually does (with credit); catalogue accessories and where owners gather; answer the ten questions every owner asks.
-- [Developer reference](https://open-brx.iamrossi.workers.dev/manual/dev.md): the complete interoperability spec for the BRX tagger + headset: transport, framing, every known command and event with its field map, the $WEAP / $GSET / $PSET / $SIR tables, the optical IR word, the USB console, and a copy-paste path from pip install to a live game — with the confidence of every fact stated per row.
+- [Meet the BRX](https://open-brx.iamrossi.workers.dev/manual/hardware.md): name every part of the tagger, headset and accessories. Explain what each light and port means. Show why the BRX is a simple IR instrument that remembers nothing, which every later section builds on.
+- [Operating the BRX](https://open-brx.iamrossi.workers.dev/manual/operate.md): get you from "box on the table" to "a game running and understood". Every button hold, every LED and every voice line should mean something to you. Anything that needs a laptop, a cable, or the BLE protocol is pointed at the developer section, not explained here.
+- [Gameplay](https://open-brx.iamrossi.workers.dev/manual/gameplay.md): be the one place that lists the whole Callsign arsenal with real numbers. It explains the damage model in player words. It lists every stock mode and setting, so nobody has to scroll a carousel or dig through PDFs again.
+- [Sound, voice & updates](https://open-brx.iamrossi.workers.dev/manual/sound.md): show how BRX audio works from end to end (who plays what, how loud, and how to change it), publish the first complete searchable map of the 2166-id sound bank, and walk through the USB sound-pack and firmware update path, with Battle Company's updater as the factory restore.
+- [Fix, mod & accessorise](https://open-brx.iamrossi.workers.dev/manual/fix.md): get a broken tagger back into a game in under five minutes with symptom-first ladders; write down the repairs and mods the community really does (with credit); list the accessories and the places owners gather; answer the ten questions every owner asks.
+- [Developer reference](https://open-brx.iamrossi.workers.dev/manual/dev.md): the complete interoperability spec for the BRX tagger + headset: transport, framing, every known command and event with its field map, the $WEAP / $GSET / $PSET / $SIR tables, the optical IR word, the USB console, and a copy-paste path from pip install to a live game. Every row says how sure we are of the fact it carries.

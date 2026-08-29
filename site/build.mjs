@@ -78,7 +78,7 @@ function pageTitle(page) {
   const parts = [t];
   if (sec && sec !== t && page.section.slug !== page.slug && page.section.num !== '00') parts.push(sec);
   parts.push(page.slug.startsWith('/platform') ? 'Open BRX' : 'The BRX Manual (Open BRX)');
-  return parts.join(' — ');
+  return parts.join(' | ');
 }
 function crumbsFor(page) {
   const c = [{ title: 'Home', url: '/' }];
@@ -91,7 +91,7 @@ function crumbsFor(page) {
 const plain = s => String(s).replace(/[`*]/g, '').replace(/\s*[✅📖🔍👥🧪📐🚧]*\s*src:.*$/u, '').replace(/[✅📖🔍👥🧪📐🚧]/gu, '').trim();
 function jsonldFor(page) {
   const url = SITE + (page.slug === '/' ? '/' : page.slug + '/');
-  const graph = [{ '@type': 'TechArticle', headline: page.title.replace(/[`*]/g, ''), description: page.subtitle || '', url, dateModified: page.section.lastVerified || undefined, author: { '@type': 'Organization', name: 'Open BRX' }, isPartOf: { '@type': 'WebSite', name: 'Open BRX — The BRX Manual', url: SITE + '/' } },
+  const graph = [{ '@type': 'TechArticle', headline: page.title.replace(/[`*]/g, ''), description: page.subtitle || '', url, dateModified: page.section.lastVerified || undefined, author: { '@type': 'Organization', name: 'Open BRX' }, isPartOf: { '@type': 'WebSite', name: 'Open BRX: The BRX Manual', url: SITE + '/' } },
   { '@type': 'BreadcrumbList', itemListElement: crumbsFor(page).map((c, i) => ({ '@type': 'ListItem', position: i + 1, name: c.title, item: SITE + c.url })) }];
   const faq = page.blocks.filter(b => b.type === 'faq' || b.type === 'accordion').flatMap(b => b.body.filter(l => /^\s*[-*]\s+/.test(l)).map(l => l.replace(/^\s*[-*]\s+/, '')));
   if (faq.length) graph.push({ '@type': 'FAQPage', mainEntity: faq.map(q => { const m = q.match(/^\*\*(.+?)\*\*\s*[—–:-]?\s*([\s\S]*)$/) || [null, q, '']; return { '@type': 'Question', name: plain(m[1]), acceptedAnswer: { '@type': 'Answer', text: plain(m[2] || '') } }; }) });
@@ -145,7 +145,7 @@ function sectionIndexHtml() {
   const lv = sections.map(s => s.lastVerified).filter(Boolean).sort().pop();
   const rows = sections.map(s => {
     const sp = pages.filter(p => p.section === s && p.slug !== s.slug);
-    const names = sp.map(p => p.title.replace(/[`*]/g, '').split(/\s+—\s+/)[0].trim());
+    const names = sp.map(p => p.title.replace(/[`*]/g, '').split(/\s+[—–]\s+|:\s+/)[0].trim());
     const shown = names.slice(0, 3);
     const more = names.length - shown.length;
     return `<li><a href="${s.slug}/"><span class="n">${esc(s.num)}</span><span class="t">${esc(s.title)}</span>` +
@@ -177,10 +177,10 @@ function renderOne(page, opts = {}) {
   };
   const body = pageBody(page, ctx, extras);
   const html = renderShell({
-    title: isHome ? 'Open BRX — The Ultimate BRX Manual' : pageTitle(page),
+    title: isHome ? 'Open BRX | The BRX Manual' : pageTitle(page),
     description: page.subtitle || page.title, slug: page.slug, section: page.section, body,
     sidebar: isHome || page.slug === '/credits' || page.slug === '/changelog' ? '' : sidebarFor(page),
-    toc: isHome ? '' : tocFor(page, page.slug === '/credits' ? [{ id: 'how-we-know', title: 'How we know — the provenance marks' }] : []), breadcrumbs: crumbsFor(page), jsonld: jsonldFor(page), klass: isHome ? 'home' : (ex ? 'explorer-page' : ''),
+    toc: isHome ? '' : tocFor(page, page.slug === '/credits' ? [{ id: 'how-we-know', title: 'How we know each fact' }] : []), breadcrumbs: crumbsFor(page), jsonld: jsonldFor(page), klass: isHome ? 'home' : (ex ? 'explorer-page' : ''),
   }, ctx);
   write(slugPath(page.slug), html);
   const twin = markdownTwin(page); write(twinPath(page.slug), twin); twins.push({ slug: page.slug, title: page.title, twin });
@@ -199,8 +199,8 @@ for (const s of manualSections) {
   const hub = { title: s.title, slug: s.slug, subtitle: s.goal || '', section: s, blocks: [] };
   const cards = `<section class="blk blk-cards"><div class="cards"><ul>${sp.map(p => `<li><a href="${p.slug}/"><strong>${esc(p.title.replace(/[`*]/g, ''))}</strong><br>${esc(p.subtitle || '')}</a></li>`).join('')}</ul></div></section>`;
   const body = `<article class="page hub"><header class="page-head"><p class="kicker">Section ${s.num}</p><h1>${esc(s.title)}</h1>${s.goal ? `<p class="subtitle">${md(shortGoal(s.goal), ctx).replace(/^<p>|<\/p>\s*$/g, '')}</p>` : ''}${metaLine({ lv: s.lastVerified, mdHref: `${s.slug}.md` })}</header>${cards}</article>`;
-  write(slugPath(s.slug), renderShell({ title: `${s.title} — The BRX Manual (Open BRX)`, description: s.goal || s.title, slug: s.slug, section: s, body, sidebar: sidebarFor(hub), toc: '', breadcrumbs: crumbsFor(hub), jsonld: jsonldFor(hub) }, ctx));
-  const twin = [`# ${s.title}`, s.goal || '', '', ...sp.map(p => `- [${p.title}](${SITE}${p.slug}/) — ${p.subtitle || ''}`)].join('\n');
+  write(slugPath(s.slug), renderShell({ title: `${s.title} | The BRX Manual (Open BRX)`, description: s.goal || s.title, slug: s.slug, section: s, body, sidebar: sidebarFor(hub), toc: '', breadcrumbs: crumbsFor(hub), jsonld: jsonldFor(hub) }, ctx));
+  const twin = [`# ${s.title}`, s.goal || '', '', ...sp.map(p => `- [${p.title}](${SITE}${p.slug}/): ${p.subtitle || ''}`)].join('\n');
   write(twinPath(s.slug), twin); twins.push({ slug: s.slug, title: s.title, twin });
   sitemap.push(s.slug);
   searchIndex.push({ url: s.slug + '/', title: s.title, section: 'Manual', subtitle: s.goal || '', heads: sp.map(p => p.title), terms: [] });
@@ -209,7 +209,7 @@ for (const s of manualSections) {
 // ---- assets, data, machine-readable layer ------------------------------------------------
 for (const a of assetFiles) write(a.out, a.buf);
 for (const [id, f] of Object.entries(imageFiles)) write(`img/${f}`, fs.readFileSync(path.join(imgDir, f)));
-write('404.html', renderShell({ title: 'Page not found — Open BRX', description: 'That page does not exist.', slug: '/404', section: {}, body: `<article class="page"><header class="page-head"><h1>Page not found</h1><p class="subtitle">That URL isn't part of the manual. The sections are one tap away.</p></header><section class="blk"><div class="cards"><ul><li><a href="/manual/"><strong>The BRX Manual</strong><br>Hardware, operation, gameplay, sound, fixes, protocol.</a></li><li><a href="/platform/"><strong>The Open BRX platform</strong><br>What we're building on the BRX.</a></li></ul></div></section></article>`, sidebar: '', toc: '', breadcrumbs: [], jsonld: null }, ctx));
+write('404.html', renderShell({ title: 'Page not found | Open BRX', description: 'That page does not exist.', slug: '/404', section: {}, body: `<article class="page"><header class="page-head"><h1>Page not found</h1><p class="subtitle">That URL isn't part of the manual. The sections are one tap away.</p></header><section class="blk"><div class="cards"><ul><li><a href="/manual/"><strong>The BRX Manual</strong><br>Hardware, operation, gameplay, sound, fixes, protocol.</a></li><li><a href="/platform/"><strong>The Open BRX platform</strong><br>What we're building on the BRX.</a></li></ul></div></section></article>`, sidebar: '', toc: '', breadcrumbs: [], jsonld: null }, ctx));
 write('404.md', '# Page not found\n\nThat URL is not part of the manual. Start at https://open-brx.iamrossi.workers.dev/manual/\n');
 // the mark reads on a light or a dark tab strip, so it carries no background plate of its own
 write('favicon.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="#0a5fbb" stroke-width="2" stroke-linecap="round"/></svg>`);
@@ -217,8 +217,8 @@ write('data/search.json', JSON.stringify(searchIndex));
 write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemap.map(s => `<url><loc>${SITE}${s === '/' ? '/' : s + '/'}</loc>${manual.sections[0]?.lastVerified ? `<lastmod>${manual.sections[0].lastVerified}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>\n`);
 const llmsList = [...pages, ...manualSections.filter(s => !pages.some(p => p.slug === s.slug))].map(p => `- [${(p.title).replace(/[`*]/g, '')}](${SITE}${p.slug === '/' ? '/index' : p.slug}.md): ${(p.subtitle || p.goal || '').replace(/[`*]/g, '')}`);
-write('llms.txt', `# Open BRX — The Ultimate BRX Manual\n\n> The definitive reference for the Battle Company BRX laser-tag tagger and headset, plus the Open BRX open-source platform that orchestrates BRX taggers. Known facts only: every statement carries its provenance (verified on our bench · official Battle Company docs · decoded from the Callsign app · community-reported) and a source path into the open repository. Nothing unconfirmed is published.\n\nEvery page is also available as plain Markdown at the same URL with a \`.md\` suffix. The full manual in one file: ${SITE}/llms-full.txt\n\nProtocol discovery credit: LaserTagMods (JEDGE / JBOX). Open BRX is independent and not affiliated with or endorsed by Battle Company. Source: ${'https://github.com/tony99nyr/open-brx'}\n\n## Pages\n\n${llmsList.join('\n')}\n`);
-write('llms-full.txt', `# Open BRX — The Ultimate BRX Manual (full text)\n\nGenerated ${NOW}. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.\n\n` + twins.map(t => `\n\n---\n\n<!-- ${SITE}${t.slug === '/' ? '/' : t.slug + '/'} -->\n\n${t.twin}`).join(''));
+write('llms.txt', `# Open BRX: The BRX Manual\n\n> The definitive reference for the Battle Company BRX laser-tag tagger and headset, plus the Open BRX open-source platform that orchestrates BRX taggers. Known facts only: every statement carries its provenance (verified on our bench · official Battle Company docs · decoded from the Callsign app · community-reported) and a source path into the open repository. Nothing unconfirmed is published.\n\nEvery page is also available as plain Markdown at the same URL with a \`.md\` suffix. The full manual in one file: ${SITE}/llms-full.txt\n\nProtocol discovery credit: LaserTagMods (JEDGE / JBOX). Open BRX is independent and not affiliated with or endorsed by Battle Company. Source: ${'https://github.com/tony99nyr/open-brx'}\n\n## Pages\n\n${llmsList.join('\n')}\n`);
+write('llms-full.txt', `# Open BRX: The BRX Manual (full text)\n\nGenerated ${NOW}. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.\n\n` + twins.map(t => `\n\n---\n\n<!-- ${SITE}${t.slug === '/' ? '/' : t.slug + '/'} -->\n\n${t.twin}`).join(''));
 
 // ---- link check (hard fail) ----------------------------------------------------------------
 const problems = [];

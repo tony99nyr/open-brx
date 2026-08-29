@@ -1,12 +1,12 @@
-# The BRX Manual — canonical facts about the Battle Company BRX
+# The BRX Manual: canonical facts about the Battle Company BRX
 
 **This directory is the manual.** It is the single place a confirmed fact about the BRX tagger,
 headset, accessories, audio, protocol, and repairs is written in publishable form. The public website
 (`open-brx.iamrossi.workers.dev`, design package in [`../site/`](../site/README.md)) is **built from
-these files** — there is no second copy. A fresh clone of the repo has the entire manual right here.
+these files**. There is no second copy. A fresh clone of the repo has the entire manual right here.
 
 **If you are an agent looking for a BRX fact: read the section file below first.** Only if the manual
-is silent go to the evidence layer (`../reference/`, `../../protocol/`, `../experiment-log.md`) — and if
+is silent go to the evidence layer (`../reference/`, `../../protocol/`, `../experiment-log.md`). If
 you confirm something there, promote it into the manual (see *How a fact gets in*).
 
 ## Sections
@@ -29,16 +29,16 @@ EVIDENCE  ../experiment-log.md · ../../protocol/captures/ · ../../protocol/cal
           ../reference/*.md (notes taken FROM external docs) · ../gotchas.md · ../unknowns.md
    │  dated, raw, never published as-is
    ▼  promote when confirmed
-MANUAL    docs/manual/*.md  ← YOU ARE HERE — every confirmed fact, once, with a src: line into EVIDENCE
+MANUAL    docs/manual/*.md  <- YOU ARE HERE. Every confirmed fact, once, with a src: line into EVIDENCE
    │  the only place a fact is stated in publishable form
    ▼  build (no editing, no restating)
-SITE      webapp/ (Cloudflare) — designed pages + a markdown twin of each + llms.txt, generated from MANUAL
+SITE      webapp/ (Cloudflare): designed pages + a markdown twin of each + llms.txt, generated from MANUAL
 ```
 
 Rules that keep it DRY:
 - **A fact lives in one manual file.** Other repo docs link to it; they don't restate it. (Existing docs
-  that predate the manual — `../game-modes.md`, `../sound-architecture.md`, the `Canonical sources`
-  table in `../README.md` — should be migrated to link here as they're touched, not all at once.)
+  that predate the manual (`../game-modes.md`, `../sound-architecture.md`, the `Canonical sources`
+  table in `../README.md`) should be migrated to link here as they're touched, not all at once.)
 - **Data that exists as a file is never hand-copied.** The weapon roster (`../reference/weapons.md`,
   `../../mcp/brx_mcp/mc/weapons.json`), the sound bank (`../../protocol/callsign-extract/Sounds.json` +
   `sound-bank.md`) and the command list (`../../protocol/brx-protocol.md`) are rendered by the site
@@ -46,12 +46,27 @@ Rules that keep it DRY:
   the designer** and is marked as generated; edit the data file, not the page.
 - **Evidence is cited by path, never pasted.** Every block ends in `src:`.
 
+## House style (applies to every file here, because they are published)
+
+- **No em dashes.** Not one. The site build has a test that fails if an em dash reaches a rendered
+  page. Use a period for two independent clauses, a colon to introduce, commas or parentheses for an
+  aside. En dashes stay in number ranges (`0–63`, `§3–§4`).
+- **A bold lead-in is followed by a colon outside the bold**: `- **Reload handle**: on the right`.
+  The renderer's `splitLead()` reads that colon as the term/value split.
+- **Write for a player, not a spec reviewer.** Short sentences, 8 to 14 words. Common words. Say
+  "you". Active voice. Friendly, never silly, never talking down. A 4th grader should follow the
+  player-facing sections.
+- **The developer reference is the exception.** In `06-developer.md`, and in the spec-sheet page of
+  `01-hardware.md`, keep every command, token, field name, enum and wire value exact. Simplify only
+  the prose around the tables. A friendlier sentence that loses a field name is a regression.
+- Never simplify a fact away. Split the sentence instead.
+
 ## Known facts only
 
-The manual states what we know. Every block carries a provenance badge — ✅ verified on our bench ·
-📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported — and
+The manual states what we know. Every block carries a provenance badge: ✅ verified on our bench ·
+📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported. And
 **nothing unconfirmed, hedged, or contradicted between sources is published.** Each file ends with a
-`## Research backlog (held — NOT published)` section listing exactly what was held and why; the site
+`## Research backlog (held, NOT published)` section listing exactly what was held and why; the site
 build ignores that section. `../unknowns.md` is the cross-cutting index of open questions and links to
 these backlogs rather than restating them.
 
@@ -59,7 +74,7 @@ these backlogs rather than restating them.
 
 1. **Observe it** on the bench or find it in a source → append to `../experiment-log.md` (dated) or the
    relevant `../reference/*.md` note. This is evidence, not the manual.
-2. **Confirm it** — bench-verified, or an official document, or concrete + uncontradicted community
+2. **Confirm it**: bench-verified, or an official document, or concrete + uncontradicted community
    practice. If it's a guess, it stays in evidence and goes in the file's *Research backlog*.
 3. **Write it once** in the right manual file, in the block format (below), with the badge and a `src:`
    line pointing at step 1. If it replaces a held backlog item, delete the backlog line.
@@ -70,17 +85,17 @@ these backlogs rather than restating them.
    push, then `npx wrangler deploy` from the repo root (a push alone does not redeploy). The markdown
    twin and `llms-full.txt` update with it.
 
-Contradictions: if two sources disagree, publish neither value — backlog both, and put the question in
+Contradictions: if two sources disagree, publish neither value. Backlog both, and put the question in
 `../unknowns.md` under what would settle it.
 
 ## Block format (what the files look like)
 
 Each file: header (audience, goal, legend) → `## Pages` → one `### Page: Title (\`/slug\`)` per URL →
-an ordered stream of typed blocks — `[hero]`, `[callout:info|warn|tip]`, `[steps]`, `[cards]`,
+an ordered stream of typed blocks: `[hero]`, `[callout:info|warn|tip]`, `[steps]`, `[cards]`,
 `[table]`, `[data-table:filterable]`, `[spec-sheet]`, `[accordion]`, `[image ID]` / `[diagram ID]`,
 `[code lang]`, `[bit-field]`, `[symptom-ladder]`, `[compare]`, `[stat-row]`, `[faq]`,
-`[under-construction …]` — then `## Images for this section`, `## Interactive ideas`, `## Sources used`,
-`## Research backlog (held — NOT published)`. Full definitions: [`../site/BRIEF-open-brx-site.md`](../site/BRIEF-open-brx-site.md) §5.
+`[under-construction …]`, then `## Images for this section`, `## Interactive ideas`, `## Sources used`,
+`## Research backlog (held, NOT published)`. Full definitions: [`../site/BRIEF-open-brx-site.md`](../site/BRIEF-open-brx-site.md) §5.
 Short by construction: no paragraph over three sentences; prefer lists, tables, steps.
 
 Images are referenced by ID; the manifest with shot briefs and generation prompts is

@@ -50,7 +50,7 @@ for (const u of sitemapUrls()) {
     await page.goto(u, { waitUntil: 'networkidle' });
     await expect(page.locator('h1')).toHaveCount(1);
     const title = await page.title();
-    const segs = title.split(' — ');
+    const segs = title.split(' | ');
     expect(new Set(segs).size, `doubled <title>: ${title}`).toBe(segs.length);
     expect(await page.locator('code.language-mermaid').count(), 'mermaid source published').toBe(0);
     await expect(page.locator('h1').first()).toBeVisible();
@@ -85,6 +85,10 @@ for (const u of sitemapUrls()) {
       await expect(page.locator('.meta .badge').first()).toHaveText(/\w/); // the word, not a bare dot
     }
     expect(await page.locator('.legend, details.legend').count(), 'per-page badge legend is back').toBe(0);
+    // house style: an em dash never reaches a reader
+    const emdash = await page.evaluate(() => { const c = document.querySelector('main').cloneNode(true); c.querySelectorAll('pre, code').forEach(e => e.remove()); const t = c.innerText; const i = t.indexOf('\u2014'); return i < 0 ? null : t.slice(Math.max(0, i - 60), i + 60); });
+    expect(emdash, `em dash in rendered text: ${emdash}`).toBeNull();
+    expect(title, 'em dash in <title>').not.toContain('\u2014');
     expect(errors, errors.join('\n')).toEqual([]);
   });
 }
@@ -440,10 +444,10 @@ it('3 · stale/malformed content renders visible TODOs, a placeholder, ragged ta
   await page.goto(STALE + '/manual/stale/resilience/');
   await expect(page.locator('h1')).toHaveText('Resilience page');
   await expect(page.locator('.blk-unknown .todo')).toBeVisible();
-  await expect(page.locator('.blk-unknown .todo')).toContainText('unknown block');
+  await expect(page.locator('.blk-unknown .todo')).toContainText(/unknown block/i);
   await expect(page.locator('.blk-unknown')).toContainText('it still has content');
   await expect(page.locator('.blk-table .todo')).toBeVisible();
-  await expect(page.locator('.blk-table .todo')).toContainText('malformed table');
+  await expect(page.locator('.blk-table .todo')).toContainText(/malformed table/i);
   await expect(page.locator('.fig-pending .ph-id')).toHaveText('ZZZ-99');
   await expect(page.locator('.dt')).toBeVisible();
   await expect(page.locator('.dt tbody tr:not(.dt-empty)')).toHaveCount(2);
@@ -459,7 +463,7 @@ it('3 · stale/malformed content renders visible TODOs, a placeholder, ragged ta
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-it('3b · old data shape: explorer rows missing fields render em-dashes, never undefined/NaN', async ({ page }) => {
+it('3b · old data shape: explorer rows missing fields render n/a, never undefined/NaN', async ({ page }) => {
   await page.route('**/data/weapons.json', async route => {
     const real = await (await route.fetch()).json();
     const weapons = real.weapons.map(({ role, dmg, cycle_ms, sound, behaviour, ...rest }) => rest); // an older data file
@@ -472,7 +476,8 @@ it('3b · old data shape: explorer rows missing fields render em-dashes, never u
   await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
   const text = await ex.innerText();
   expect(text).not.toMatch(/\bundefined\b|\bNaN\b/);
-  expect(text).toContain('—');
+  expect(text, 'missing values must read n/a').toContain('n/a');
+  expect(text, 'em dash in explorer output').not.toContain('\u2014');
   await ex.locator('[data-pick="ghost"]').check();
   await ex.locator('[data-pick="smg"]').check();
   await expect(ex.locator('[data-x-dock] .cmp')).toBeVisible();

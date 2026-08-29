@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>$WEAP — the weapon definition — Developer reference — The BRX Manual (Open BRX)</title>
-<meta name="description" content="Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type">
+<title>$WEAP: the weapon definition | Developer reference | The BRX Manual (Open BRX)</title>
+<meta name="description" content="Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/weap/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/weap.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"$WEAP — the weapon definition","description":"Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type","url":"https://open-brx.iamrossi.workers.dev/manual/dev/weap/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"$WEAP — the weapon definition","item":"https://open-brx.iamrossi.workers.dev/manual/dev/weap/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can I build a semi-auto rifle?","acceptedAnswer":{"@type":"Answer","text":"Yes — t20=7 is single-shot per pull. (An earlier note that semi-auto \"may not exist\" predates the t20 proof.)"}},{"@type":"Question","name":"What bounds a custom weapon?","acceptedAnswer":{"@type":"Answer","text":"The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2166 sound ids. Any combination with arbitrary numbers is buildable; a brand-new damage behaviour is not."}},{"@type":"Question","name":"Does a $WEAP re-push mid-game keep the ammo count?","acceptedAnswer":{"@type":"Answer","text":"No — it resets mag/reserve to the frame's values. Re-send $AMMO."}}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"$WEAP: the weapon definition","description":"Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/weap/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"$WEAP: the weapon definition","item":"https://open-brx.iamrossi.workers.dev/manual/dev/weap/"}]},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Can I build a semi-auto rifle?","acceptedAnswer":{"@type":"Answer","text":"Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto \"may not exist\" predates the t20 proof.)"}},{"@type":"Question","name":"What bounds a custom weapon?","acceptedAnswer":{"@type":"Answer","text":"The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2166 sound ids. Any combination with arbitrary numbers is buildable; a brand-new damage behaviour is not."}},{"@type":"Question","name":"Does a $WEAP re-push mid-game keep the ammo count?","acceptedAnswer":{"@type":"Answer","text":"No. It resets mag/reserve to the frame's values. Re-send $AMMO."}}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -27,24 +27,24 @@
   </div>
 </header>
 <div class="layout has-side has-toc">
-  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/" aria-current="page">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations: which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The complete Callsign arsenal</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock: the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence: from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/" aria-current="page">$WEAP: the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET: game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR: the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events: what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word: what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console: QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures: recording and decoding the official app</a></li></ul></details></nav>
   <main id="main" class="main">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/dev/">Developer reference</a><span class="sep">/</span><span aria-current="page">$WEAP — the weapon definition</span></nav>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/dev/">Developer reference</a><span class="sep">/</span><span aria-current="page">$WEAP: the weapon definition</span></nav>
     <article class="page">
 <header class="page-head">
-<h1><code>$WEAP</code> — the weapon definition</h1>
-<p class="subtitle">Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type</p>
+<h1><code>$WEAP</code>: the weapon definition</h1>
+<p class="subtitle">Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own.</p>
 <p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/weap.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="a-weapon-is-data-not-firmware"><strong class="co-title">A weapon is data, not firmware.</strong><p>The gun has no weapons baked in; the host sends a full <code>$WEAP</code> frame into one of <strong>six slots (0–5)</strong>. The field <em>names</em> come from the Callsign app&#39;s metadata (declaration order = wire order); the <em>positions and meanings</em> below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6, §6.1</p></aside></section>
 <section class="blk blk-code" data-type="code"><pre><code class="language-text"># Two known-good frames (slot 0 Assault Rifle, slot 1 Charge Rifle):
 $WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*
 $WEAP,1,,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*
-# A captured Shotgun (slot 1) — the only stock weapon with the extra-headset block populated:
+# A captured Shotgun (slot 1): the only stock weapon with the extra-headset block populated:
 $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*
 </code></pre>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6; <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/__main__.py" rel="noopener">mcp/brx_mcp/__main__.py</a> (captured frames)</p></section>
-<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-05" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="A horizontal token ruler of 43 cells (t0–t42) colour-coded by block: identity (t0–t2), damage/IR (t3–t6), secondary-dormant (t7–t11, hatched grey), extra-headset (t12–t13, t42), cadence &amp; ammo (t14–t19), fire mode/accuracy/burst/overheat (t20–t26), sounds (t27–t36), overheat gate (t37–t38), ammo tail (t39–t41). Each cell shows its index and a short label; t14 and t20 get a &quot;bench-proven&quot; badge; t15 gets a &quot;constant 850 — don't write&quot; badge."><span class="ph-id">DEV-05</span><span class="ph-kind">diagram pending</span></div><figcaption>Token ruler t0–t42 colour-coded by block: identity · damage/IR · secondary (dormant) · extra-headset · cadence/ammo · fire mode/overheat · sounds · tail.</figcaption></figure><p class="src"><span>Source:</span> table below</p></section>
+<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-05" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="A horizontal token ruler of 43 cells (t0–t42) colour-coded by block: identity (t0–t2), damage/IR (t3–t6), secondary-dormant (t7–t11, hatched grey), extra-headset (t12–t13, t42), cadence &amp; ammo (t14–t19), fire mode/accuracy/burst/overheat (t20–t26), sounds (t27–t36), overheat gate (t37–t38), ammo tail (t39–t41). Each cell shows its index and a short label; t14 and t20 get a &quot;bench-proven&quot; badge; t15 gets a &quot;constant 850: don't write&quot; badge."><span class="ph-id">DEV-05</span><span class="ph-kind">diagram pending</span></div><figcaption>Token ruler t0–t42 colour-coded by block: identity · damage/IR · secondary (dormant) · extra-headset · cadence/ammo · fire mode/overheat · sounds · tail.</figcaption></figure><p class="src"><span>Source:</span> table below</p></section>
 <section class="blk blk-data-table" data-type="data-table"><h2 id="token-map-0-indexed-weap-the-slot-is-t0">Token map (0-indexed: <code>$WEAP,&lt;t0&gt;,&lt;t1&gt;,…,*</code>; the slot is t0)</h2><div class="dt" data-rows="39"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">39 rows</span></div><div class="table-wrap"><table>
 <thead>
 <tr>
@@ -67,18 +67,18 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>1</td>
 <td>slotType / mode flag</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td><code>2</code> on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); <code>1</code> on melee; <code>0</code> rail gun; empty otherwise. Not fire mode.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>2</td>
-<td>—</td>
+<td>n/a</td>
 <td>100</td>
 <td>100</td>
-<td>— (unknown)</td>
-<td>—</td>
+<td>(unknown)</td>
+<td>n/a</td>
 </tr>
 <tr>
 <td>3</td>
@@ -115,24 +115,24 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>7–11</td>
 <td>secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td><strong>Dormant</strong>: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>12</td>
 <td>extraHeadsetDamage</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td>Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 <tr>
 <td>13</td>
 <td>extraHeadsetRangeOutdoor</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td>80 on the same three weapons.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
@@ -146,11 +146,11 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </tr>
 <tr>
 <td>15</td>
-<td>—</td>
+<td>n/a</td>
 <td>850</td>
 <td>850</td>
-<td>— (unknown)</td>
-<td>—</td>
+<td>(unknown)</td>
+<td>n/a</td>
 </tr>
 <tr>
 <td>16</td>
@@ -178,11 +178,11 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </tr>
 <tr>
 <td>19</td>
-<td>—</td>
+<td>n/a</td>
 <td>0</td>
 <td>0</td>
-<td>— (unknown)</td>
-<td>—</td>
+<td>(unknown)</td>
+<td>n/a</td>
 </tr>
 <tr>
 <td>20</td>
@@ -211,8 +211,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>23</td>
 <td>burstWeaponTime (ms)</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td>Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
@@ -226,32 +226,32 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </tr>
 <tr>
 <td>25</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>— (unknown)</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>(unknown)</td>
+<td>n/a</td>
 </tr>
 <tr>
 <td>26</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>— (unknown)</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>(unknown)</td>
+<td>n/a</td>
 </tr>
 <tr>
 <td>27</td>
 <td>primaryFire_SoundName</td>
 <td>R01</td>
 <td>E03</td>
-<td>Fire sound id. <strong>A sound, not an identity</strong> — Rocket Launcher and Rail Gun both fire <code>C03</code> with different stat lines.</td>
+<td>Fire sound id. <strong>A sound, not an identity</strong>. Rocket Launcher and Rail Gun both fire <code>C03</code> with different stat lines.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>28</td>
 <td>extra action sound A</td>
-<td>—</td>
+<td>n/a</td>
 <td>C15</td>
 <td>Engage sound. <code>C…</code> ids = charge (rail gun C08, laser cannon C11, charge rifle C15); <code>D…</code> ids = extra reload parts on five-part reloads (sniper/AMR/force rifle D20, ion sniper D32).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
@@ -259,7 +259,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>29</td>
 <td>extra action sound B</td>
-<td>—</td>
+<td>n/a</td>
 <td>C17</td>
 <td>Release sound. Present exactly when the weapon has a distinct release event (charge rifle C17, bolt weapons D19/D31); absent on auto-firing chargers.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
@@ -267,8 +267,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>30</td>
 <td>secondary_Mix_SoundName</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td></td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
@@ -307,7 +307,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>35</td>
 <td>weaponFeatureA</td>
-<td>—</td>
+<td>n/a</td>
 <td>C19</td>
 <td><strong>Overheat sound</strong> (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122).</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
@@ -315,7 +315,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>36</td>
 <td>weaponFeatureB</td>
-<td>—</td>
+<td>n/a</td>
 <td>C04</td>
 <td>Second feature sound.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
@@ -323,15 +323,15 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr>
 <td>37</td>
 <td>overheat param A</td>
-<td>—</td>
+<td>n/a</td>
 <td>20</td>
-<td><strong>Gate for the overheat system</strong> (with t38): transplanting <code>20,150</code> onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip — at these values the 72-round magazine empties before a hard lockout.</td>
+<td><strong>Gate for the overheat system</strong> (with t38): transplanting <code>20,150</code> onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip. At these values the 72-round magazine empties before a hard lockout.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (gate)</td>
 </tr>
 <tr>
 <td>38</td>
 <td>overheat param B</td>
-<td>—</td>
+<td>n/a</td>
 <td>150</td>
 <td>See t37.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (gate)</td>
@@ -354,23 +354,23 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </tr>
 <tr>
 <td>41</td>
-<td>—</td>
+<td>n/a</td>
 <td>75</td>
 <td>75</td>
-<td>— (unknown)</td>
-<td>—</td>
+<td>(unknown)</td>
+<td>n/a</td>
 </tr>
 <tr>
 <td>42</td>
 <td>extraHeadsetRangeIndoor</td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td>30/30/40 on the three t1=2 weapons.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 </tbody></table></div>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 $WEAP token probes; charge modes; overheat solved)</p></section>
-<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="two-positions-that-bit-us"><strong class="co-title">Two positions that bit us.</strong><p>(1) The metadata&#39;s field order has <code>rateOfFire</code> before <code>weaponSwapDelay</code>; the wire has the <em>rate</em> at <strong>t14</strong> and the constant 850 at t15 — a compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (cap17, cap18)</p></aside></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="two-positions-that-bit-us"><strong class="co-title">Two positions that bit us.</strong><p>(1) The metadata&#39;s field order has <code>rateOfFire</code> before <code>weaponSwapDelay</code>; the wire has the <em>rate</em> at <strong>t14</strong> and the constant 850 at t15. A compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §6.1; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (cap17, cap18)</p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="stock-weapon-signatures">Stock weapon signatures</h2><p class="lead">(fire sound → weapon → behaviour, as named by the operator at capture)</p><div class="table-wrap"><table>
 <thead>
 <tr>
@@ -476,10 +476,10 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> (weapon signatures, cap14–cap22); <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 melee capture, damage bench)</p></section>
-<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="overheat-is-a-balance-lever-on-any-weapon"><strong class="co-title">Overheat is a balance lever on any weapon.</strong><p>Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock <code>20,150</code>), and the live heat gauge streams in <code>$ALCD</code> token 5 — climbing ~8/shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7j, overheat section; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (overheat mechanism solved)</p></aside></section>
-<section class="blk blk-faq" data-type="faq"><div class="faq"><details><summary>Can I build a semi-auto rifle?</summary><div><p>Yes — t20=7 is single-shot per pull. (An earlier note that semi-auto &quot;may not exist&quot; predates the t20 proof.)</p>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="overheat-is-a-balance-lever-on-any-weapon"><strong class="co-title">Overheat is a balance lever on any weapon.</strong><p>Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock <code>20,150</code>), and the live heat gauge streams in <code>$ALCD</code> token 5, climbing ~8/shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7j, overheat section; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (overheat mechanism solved)</p></aside></section>
+<section class="blk blk-faq" data-type="faq"><div class="faq"><details><summary>Can I build a semi-auto rifle?</summary><div><p>Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto &quot;may not exist&quot; predates the t20 proof.)</p>
 </div></details><details><summary>What bounds a custom weapon?</summary><div><p>The firmware&#39;s behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2166 sound ids. Any <em>combination</em> with arbitrary numbers is buildable; a brand-new damage <em>behaviour</em> is not.</p>
-</div></details><details><summary>Does a <code>$WEAP</code> re-push mid-game keep the ammo count?</summary><div><p>No — it resets mag/reserve to the frame&#39;s values. Re-send <code>$AMMO</code>.</p>
+</div></details><details><summary>Does a <code>$WEAP</code> re-push mid-game keep the ammo count?</summary><div><p>No. It resets mag/reserve to the frame&#39;s values. Re-send <code>$AMMO</code>.</p>
 </div></details></div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> t20 section · <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/callsign-extract/protocol-classes.md" rel="noopener">protocol/callsign-extract/protocol-classes.md</a> ("What's moddable") · <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a></p></section>
 
 </article>
@@ -491,6 +491,6 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.d3ca03ea85.js" defer></script>
+<script src="/assets/site.99eb517084.js" defer></script>
 </body>
 </html>

@@ -1,10 +1,10 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/ \u2014 regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers \u2014 dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today \u2014 see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1) \u2014 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem \u2014 the UIs show it on the tile and hero.",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
    "name": "Assault Rifle",
-   "desc": "The anchor \u2014 its frame is the one every other weapon is measured against. 13 hits at 190ms with 32 up and 384 in reserve: 32 kills without resupply, the deepest pool in the arsenal, and the slowest kill in it.",
+   "desc": "The anchor. Its frame is the one every other weapon is measured against. 13 hits at 190ms with 32 up and 384 in reserve: 32 kills without resupply, the deepest pool in the arsenal, and the slowest kill in it.",
    "cls": 0,
    "role": "assault",
    "mag": 32,
@@ -31,7 +31,7 @@
   {
    "weapon_id": "burst_rifle",
    "name": "Burst Rifle",
-   "desc": "A real three-round burst \u2014 one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
+   "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
    "cls": 0,
    "role": "assault",
    "mag": 36,
@@ -76,7 +76,7 @@
    "overrides": {
     "t33": {
      "value": "D02",
-     "why": "captured D21 plays a 'disable' chirp alongside the reload \u2014 reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
+     "why": "captured D21 plays a 'disable' chirp alongside the reload, reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
     }
    },
    "verified": false,
@@ -88,7 +88,7 @@
   {
    "weapon_id": "bolt_rifle",
    "name": "Bolt Rifle",
-   "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back \u2014 22 kills from a full kit for operators who would rather aim than hold.",
+   "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back. That is 22 kills from a full kit, for operators who would rather aim than hold.",
    "cls": 0,
    "role": "assault",
    "mag": 18,
@@ -112,7 +112,7 @@
   {
    "weapon_id": "smg",
    "name": "SMG",
-   "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag \u2014 four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+   "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
    "cls": 1,
    "role": "cqb",
    "mag": 72,
@@ -139,7 +139,7 @@
   {
    "weapon_id": "shotgun",
    "name": "Shotgun",
-   "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload \u2014 sustained pressure from the shallowest ammo pool outside the power tier.",
+   "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
    "cls": 3,
    "role": "cqb",
    "mag": 6,
@@ -166,7 +166,7 @@
   {
    "weapon_id": "stinger",
    "name": "Stinger",
-   "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve \u2014 eight hits to drop, twenty kills to spend, and nothing held back for range.",
+   "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve: eight hits to drop, twenty kills to spend, and nothing held back for range.",
    "cls": 6,
    "role": "cqb",
    "mag": 18,
@@ -193,7 +193,7 @@
   {
    "weapon_id": "sniper_rifle",
    "name": "Sniper Rifle",
-   "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it \u2014 the fewest hits to a kill outside the power tier, and no margin for a miss.",
+   "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss.",
    "cls": 2,
    "role": "marksman",
    "mag": 4,
@@ -215,7 +215,7 @@
    "overrides": {
     "t33": {
      "value": "D02",
-     "why": "captured D21 plays a 'disable' chirp alongside the reload \u2014 reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
+     "why": "captured D21 plays a 'disable' chirp alongside the reload, reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
     }
    },
    "verified": false,
@@ -228,7 +228,7 @@
   {
    "weapon_id": "plasma_sniper",
    "name": "Plasma Sniper",
-   "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back \u2014 lean on it and it overheats.",
+   "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back. Lean on it and it overheats.",
    "cls": 2,
    "role": "marksman",
    "mag": 10,
@@ -257,7 +257,7 @@
   {
    "weapon_id": "amr",
    "name": "AMR",
-   "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind \u2014 the hardest-hitting automatic and the shallowest.",
+   "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest.",
    "cls": 4,
    "role": "support",
    "mag": 14,
@@ -279,7 +279,7 @@
    "overrides": {
     "t33": {
      "value": "D02",
-     "why": "captured D21 plays a 'disable' chirp alongside the reload \u2014 reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
+     "why": "captured D21 plays a 'disable' chirp alongside the reload, reproduced on the bench 2026-08-26; D02 is the clean cocking beat the AR/burst/bolt chains already end on"
     }
    },
    "verified": false,
@@ -292,7 +292,7 @@
   {
    "weapon_id": "suppressor",
    "name": "Suppressor",
-   "desc": "Quiet, not silent, and no muzzle flash \u2014 the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
+   "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
    "cls": 1,
    "role": "support",
    "mag": 48,
@@ -319,7 +319,7 @@
   {
    "weapon_id": "energy_rifle",
    "name": "Energy Rifle",
-   "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit \u2014 the largest ammo pool in the game, on the smallest per-hit number.",
+   "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number.",
    "cls": 5,
    "role": "support",
    "mag": 300,
@@ -346,7 +346,7 @@
   {
    "weapon_id": "charge_rifle",
    "name": "Charge Rifle",
-   "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage \u2014 two hits to a kill and a heat budget that ends the party if you rush it; twelve up, twelve back.",
+   "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. Twelve up, twelve back.",
    "cls": 5,
    "role": "support",
    "mag": 12,
@@ -370,7 +370,7 @@
   {
    "weapon_id": "rocket_launcher",
    "name": "Rocket Launcher",
-   "desc": "Point, pull, erase. 115 a hit \u2014 a full-health operator in one \u2014 on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
+   "desc": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
    "cls": 9,
    "role": "power",
    "mag": 2,
@@ -395,7 +395,7 @@
   {
    "weapon_id": "rail_gun",
    "name": "Rail Gun",
-   "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total \u2014 everyone within earshot hears the spool.",
+   "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool.",
    "cls": 7,
    "role": "power",
    "mag": 2,
@@ -445,7 +445,7 @@
   {
    "weapon_id": "energy_launcher",
    "name": "Energy Launcher",
-   "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier \u2014 four kills, spent quietly.",
+   "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier. Four kills, spent quietly.",
    "cls": 9,
    "role": "power",
    "mag": 2,
@@ -466,7 +466,7 @@
    "overrides": {
     "t27": {
      "value": "O01",
-     "why": "captured J15 is a music sting (J = music/SFX family, DK legend), inherited from the 'unnamed secondary' frame \u2014 bench 2026-08-26; O01 is an ordnance report and the O family is otherwise unused by the stock arsenal"
+     "why": "captured J15 is a music sting (J = music/SFX family, DK legend), inherited from the 'unnamed secondary' frame (bench 2026-08-26); O01 is an ordnance report and the O family is otherwise unused by the stock arsenal"
     }
    },
    "verified": false,
@@ -475,12 +475,12 @@
     "power",
     "heavy"
    ],
-   "caution": "Known issue: deals no damage in our shipped config (weapon-design.md) \u2014 avoid until fixed"
+   "caution": "Known issue: deals no damage in our shipped config (weapon-design.md). Avoid until fixed."
   },
   {
    "weapon_id": "ion_sniper",
    "name": "Ion Sniper",
-   "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back \u2014 the power tier's only weapon that looks and sounds like a marksman rifle.",
+   "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back. The power tier's only weapon that looks and sounds like a marksman rifle.",
    "cls": 2,
    "role": "power",
    "mag": 2,
@@ -509,7 +509,7 @@
   {
    "weapon_id": "melee",
    "name": "Melee",
-   "desc": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact \u2014 hidden from the picker, always bound to slot 4.",
+   "desc": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact. Hidden from the picker, always bound to slot 4.",
    "cls": 8,
    "role": "melee",
    "mag": 1,

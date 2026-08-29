@@ -1,5 +1,5 @@
-# The IR word — what a shot carries through the air
-_A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods' base-station source and verified on our own receiver and emitter_
+# The IR word: what a shot carries through the air
+_A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods' base-station source and verified on our own receiver and emitter. Read this page if you are building your own IR sender or receiver._
 Last verified: 2026-08-27
 
 ## Credit.
@@ -7,8 +7,8 @@ The layout was decoded from **LaserTagMods' NRFL-Bases** `node1.ino` (a referee-
 Source: protocol/brx-ir-protocol.md
 
 ## Physical layer
-- Carrier **38 kHz**, **940/980 nm** — a standard VS1838B/TSOP demodulating receiver recovers it. Laser rated 16.9 mW on the gun's USB record.
-- **Sync:** one ~2 ms LOW pulse before the frame — measured **1988–1991 µs**.
+- Carrier **38 kHz**, **940/980 nm**. A standard VS1838B/TSOP demodulating receiver recovers it. Laser rated 16.9 mW on the gun's USB record.
+- **Sync:** one ~2 ms LOW pulse before the frame, measured **1988–1991 µs**.
 - **Bits:** each bit is a LOW pulse; **long ≈ 1000 µs = 1** (measured 990–994), **short ≈ 500 µs = 0** (489–512), spaces 489–512 µs; decision threshold ~750 µs.
 - **End of frame:** a trailing short pulse (< 250 µs in node1's test).
 - ⚠ A `> 1500 µs` sync gate is not BRX-unique (a Sony SIRC remote's 2390 µs header passes it). Bound sync to ~1800–2200 µs and require 25 bits + the parity rule.
@@ -26,9 +26,9 @@ Source: protocol/brx-ir-protocol.md; protocol/brx-protocol.md §7c (laser mW)
 | **Z** | 2 | 23–24 | parity trailer | see rule | ✅ |
 Source: protocol/brx-ir-protocol.md; docs/experiment-log.md (2026-08-26 melee capture)
 
-_[diagram DEV-06: Bit-field ruler of the 25-bit word with the sync pulse and a sample pulse train (`1101000111010101101000110` = protocol 13, player 7, team 1, magnitude 90, crit 0, subtype 1 — a genuine captured melee swing).]_
+_[diagram DEV-06: Bit-field ruler of the 25-bit word with the sync pulse and a sample pulse train (`1101000111010101101000110` = protocol 13, player 7, team 1, magnitude 90, crit 0, subtype 1; a genuine captured melee swing).]_
 
-## Parity — what genuine frames emit vs what the gun checks.
+## Parity: what genuine frames emit vs what the gun checks.
 Real BRX frames set Z by parity over bits 0–22: **odd number of ones → `01`, even → `10`** (4/4 captured frames). But the gun's acceptance test is only **`Z0 ≠ Z1`**: `01` and `10` both land 8/8, `00` and `11` are rejected 0/8. Compute the true parity for fidelity; use the mismatch to tell your own traffic from a real gun's.
 Source: protocol/brx-ir-protocol.md
 
@@ -68,7 +68,7 @@ Source: protocol/brx-protocol.md §7r addendum; docs/experiment-log.md
 `$IRTX`, `$HFIRE`, `$MELEE` and `$BHIT` produced zero IR with a receiver control passing before and after. The headset emits only for a physical melee swing in a native game and for the Sentinel death-nova.
 Source: docs/experiment-log.md (2026-08-26 headset emission)
 
-- **Do I need a victim gun to test an emitter?** No — a VS1838B on an ESP32 decodes the word, and the sync/mark timings above are the acceptance spec.
+- **Do I need a victim gun to test an emitter?** No. A VS1838B on an ESP32 decodes the word, and the sync/mark timings above are the acceptance spec.
 - **Can a station revive a dead player by IR?** No. A dead gun ignores all IR; stations *arm* a living tagger's respawn path.
 - **Why do my captured frames come out as prefixes (16/17/20/21 bits)?** Your capture sketch is printing while the next frame lands. Turn the RAW dump off.
 Source: protocol/brx-ir-protocol.md · docs/experiment-log.md (448-word brute force) · docs/gotchas.md; protocol/brx-ir-protocol.md (capture gotcha)

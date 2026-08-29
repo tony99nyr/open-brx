@@ -1,5 +1,5 @@
-# The arm sequence — from `$CLEAR` to a live gun
-_The exact frame order that takes a tagger live, respawns it, and ends the game — captured from the official app and reproduced by our host_
+# The arm sequence: from `$CLEAR` to a live gun
+_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
 Last verified: 2026-08-27
 
 This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
@@ -12,7 +12,7 @@ $GSET,1,0,1,0,1,0,50,1,*
 $PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*
 $WEAP,0,...                (primary)
 $WEAP,1,...                (secondary)
-$WEAP,4,...                (melee — always sent)
+$WEAP,4,...                (melee, always sent)
 $SIR,... x10               (incoming-IR effects table)
 $BMAP,0,0,,,,,*   $BMAP,1,100,0,1,99,99,*   $BMAP,2,97,,,,,*
 $BMAP,3,98,,,,,*  $BMAP,4,98,,,,,*          $BMAP,5,98,,,,,*
@@ -40,15 +40,15 @@ _[diagram DEV-04: Sequence diagram: host → gun frames above, with the gun's ec
 Source: protocol/brx-protocol.md §7e
 
 ## The config head is silent and safe.
-Writing `$CLEAR … $TID` without `$SPAWN` plays nothing and **a configured-but-unspawned gun ignores IR** — no `$HIR`, no `$HP`. "Get some" and the cocking sound belong to `$SPAWN`. A head held unspawned for ~2 minutes then spawned went live with config intact.
+Writing `$CLEAR … $TID` without `$SPAWN` plays nothing and **a configured-but-unspawned gun ignores IR**: no `$HIR`, no `$HP`. "Get some" and the cocking sound belong to `$SPAWN`. A head held unspawned for ~2 minutes then spawned went live with config intact.
 Source: protocol/brx-protocol.md §7r
 
 ## Death and respawn are host-driven
 1. Victim reports `$HP,0,0,0,*` then `$LCD,0,0,0,1,1,1,*`. The gun does **not** revive itself, and a dead gun's trigger produces `$BUT` events but no `$ALCD` decrement (it cannot fire).
 2. The app sends `$HLOOP,0,0,*` ~1.7 s after death.
-3. After the game's respawn delay (the app's own timer — ~10 s in the capture; 👥 community: a per-death ramp capping at 45/90 s) the host sends `$SPAWN,,*`.
-4. Gun echoes `$LCD,45,70,0,0,36,216,*` — HP, armor **and ammo** restored with no `$AMMO` needed.
-5. **A dead gun ignores all incoming IR** — 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can.
+3. After the game's respawn delay (the app's own timer, ~10 s in the capture; 👥 community: a per-death ramp capping at 45/90 s) the host sends `$SPAWN,,*`.
+4. Gun echoes `$LCD,45,70,0,0,36,216,*`: HP, armor **and ammo** restored with no `$AMMO` needed.
+5. **A dead gun ignores all incoming IR**: 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can.
 Source: protocol/brx-protocol.md §7f, §7j(community ramp), §7q (dead gun cannot fire); docs/experiment-log.md 2026-08-26 ("448-word brute force: a DEAD gun accepts NO IR")
 
 ## After a BLE drop, re-send the whole head.
@@ -67,5 +67,5 @@ Source: protocol/brx-protocol.md §7e, §7n, §7o
 
 - **Do I need the reload-handle pull?** No. The manual's reload-handle pull is the *local* start; `$SPAWN,,*` is the *remote* one. Both exist.
 - **Where do respawn time, game time, lives and score-to-win go?** Nowhere on the gun. Three captures at respawn 5/15/30 s gave byte-identical `$GSET`/`$PSET`. Your host keeps the clock.
-- **Is the second `$BMAP,0,0` (after `$SPAWN`) needed?** Yes — omit it and the trigger is dead.
+- **Is the second `$BMAP,0,0` (after `$SPAWN`) needed?** Yes. Omit it and the trigger is dead.
 Source: protocol/brx-protocol.md §7e · protocol/brx-protocol.md §7n · protocol/brx-protocol.md §7e, §7r addendum

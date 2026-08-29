@@ -1,5 +1,5 @@
-# The USB serial console — `QUERY` and `SETUP`
-_The micro-USB "Programing Port" is a Teensy serial console with two commands, not the `$` protocol and not SSH_
+# The USB serial console: `QUERY` and `SETUP`
+_The micro-USB "Programing Port" is a Teensy serial console with two commands, not the `$` protocol and not SSH. Plug a tagger into a computer and this page tells you what you can ask it._
 Last verified: 2026-08-27
 
 The BRX has two ports: charging, and a separate micro-USB **"Programing Port"**. Plugged into a computer it enumerates as a **Teensyduino USB Serial** CDC device (Windows `COMx`, macOS `/dev/tty.usbmodem*`, Linux `/dev/ttyACM*`, VID `16C0`). Baud is ignored. This is what the community means by "PuTTY into the tagger". The command set came from LaserTagMods' headset-pairing note.
@@ -8,11 +8,11 @@ Source: protocol/brx-protocol.md §7c; docs/experiment-log.md (2026-08-24 B7)
 ## What the port does and does not do
 | Sent | Result | Conf |
 |---|---|---|
-| `$PING,*`, `$VERSION,*`, any `$` frame | **Echoed back** (local echo on — easy to mistake for a reply); with CR: `ERROR` | ✅ |
+| `$PING,*`, `$VERSION,*`, any `$` frame | **Echoed back** (local echo is on, which is easy to mistake for a reply); with CR: `ERROR` | ✅ |
 | `?`, `help`, `AT`, `status`, … | `ERROR` | ✅ |
 | `QUERY` + CR | Dumps the device record (below). Case-insensitive. | ✅ |
 | `SETUP` + CR | Enters factory provisioning; prompts (EN/中文) for the **headset's** serial number | ✅ |
-| Hold SELECT while powering on with USB connected | Mass-storage mode exposing the on-board sound storage (the sound-pack update path) — a different mode from the console | 👥 |
+| Hold SELECT while powering on with USB connected | Mass-storage mode exposing the on-board sound storage (the sound-pack update path). This is a different mode from the console | 👥 |
 Source: protocol/brx-protocol.md §7c; protocol/callsign-extract/protocol-classes.md ("New sounds ON THE TAGGER")
 
 ```text
@@ -44,8 +44,8 @@ Source: protocol/brx-protocol.md §7c (values are one unit's; PIN/serial redacte
 the parser has to survive: `Gun Name` is NUL-padded, lines end `\r\r\n`, `Laser` can read `UNTESTED` instead of a number, `Grenade Pin` is a real non-zero value. `brx-mcp` ships `parse_query()` and `python -m brx_mcp usb-query [port]`, which saves a backup to `~/.brx-mcp/device-backups/`.
 Source: docs/experiment-log.md (2026-08-24 B7); mcp/brx_mcp/protocol.py
 
-## `SETUP` — the provisioning/re-pair path (identity lives here)
-1. Run `QUERY` on both gun and headset-side records first; `SETUP` on the gun asks for the **headset's** serial number — that is the gun↔headset pairing mechanism.
+## `SETUP`: the provisioning/re-pair path (identity lives here)
+1. Run `QUERY` on both gun and headset-side records first; `SETUP` on the gun asks for the **headset's** serial number. That is the gun↔headset pairing mechanism.
 2. The "Factory Defaults" banner is a **mode header, not an action**: entering `SETUP` and power-cycling out changed nothing (field-by-field diff).
 3. 👥 The community's "change tagger ID / re-pair the headset" procedure is this console (LaserTagMods' headset-pairing note); the identity fields it concerns are the ones `QUERY` prints: `PlayerID`, `FieldID`, `Serial Number/Head PIN`, `Grenade Pin`.
 4. Only the first prompt (the headset serial) has been walked on our bench. Do it only on a gun you can afford to re-pair.

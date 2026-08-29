@@ -1,8 +1,8 @@
 # Getting started with `brx-mcp`
-_From `pip install` to a live game in six commands — plus the MCP tools for driving a gun from an AI agent_
+_From `pip install` to a live game in six commands, plus the MCP tools for driving a gun from an AI agent. Start here to get a working setup fast._
 Last verified: 2026-08-27
 
-`brx-mcp` is the project's lab instrument: a pure-Python (`bleak` + `mcp`) CLI and MCP server that runs on **whichever machine owns the Bluetooth radio** — Windows, macOS or Linux. It enforces the known-safe list, refuses malformed frames, records every session, and has a `panic` tool.
+`brx-mcp` is the project's lab instrument: a pure-Python (`bleak` + `mcp`) CLI and MCP server that runs on **whichever machine owns the Bluetooth radio**: Windows, macOS or Linux. It enforces the known-safe list, refuses malformed frames, records every session, and has a `panic` tool.
 Source: README.md (quickstart, Safety)
 
 ```bash
@@ -10,7 +10,7 @@ Source: README.md (quickstart, Safety)
 python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -e ./mcp
 
-# first contact — no MCP client needed:
+# first contact, no MCP client needed:
 python -m brx_mcp scan             # find taggers (Gen2/3 advertise the Nordic UART service)
 python -m brx_mcp identify <addr>  # $PING → generation check, firmware, host image
 python -m brx_mcp listen <addr>    # read-only live console: pull the trigger, watch $BUT/$HIR/$HP
@@ -35,7 +35,7 @@ Source: README.md; mcp/brx_mcp/__main__.py
 ```bash
 # register with Claude Code as an MCP server:
 claude mcp add brx -- python -m brx_mcp
-# WSL2 has no Bluetooth — develop in WSL, run the server with Windows Python:
+# WSL2 has no Bluetooth: develop in WSL, run the server with Windows Python:
 claude mcp add brx -- python.exe -m brx_mcp
 ```
 Source: README.md (Platform notes)
@@ -66,12 +66,12 @@ Source: mcp/brx_mcp/__main__.py (dispatch table)
 Source: mcp/brx_mcp/server.py
 
 ## Platform notes.
-macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic — `bleak` is BLE-only, so pair in the OS and use the serial port. Captures and the device registry live in `~/.brx-mcp/`.
+macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic. `bleak` is BLE-only, so pair in the OS and use the serial port. Captures and the device registry live in `~/.brx-mcp/`.
 Source: README.md; CLAUDE.md; docs/gotchas.md
 
 ## Recommended first session (safe order)
 1. `scan` → note the address. `identify` → confirm `$PONG` and read the `$VERSION` reply.
-2. `listen` read-only: pull the trigger, get tagged by another gun, watch `$BUT`/`$HIR`/`$HP` — send **no** config yet.
+2. `listen` read-only: pull the trigger, get tagged by another gun, watch `$BUT`/`$HIR`/`$HP`. Send **no** config yet.
 3. `play tdm … volume=69` on two guns; confirm each echoes `$LCD,45,70,0,0,36,216` on spawn.
-4. If anything looks wrong: `panic`, then power-cycle — that always restores the tagger.
+4. If anything looks wrong: `panic`, then power-cycle. That always restores the tagger.
 Source: protocol/brx-protocol.md §8; README.md

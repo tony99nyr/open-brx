@@ -1,4 +1,4 @@
-/* Open BRX site — progressive enhancement. Every control here visibly responds; errors are shown, never swallowed. */
+/* Open BRX site: progressive enhancement. Every control here visibly responds; errors are shown, never swallowed. */
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -120,18 +120,19 @@
     const cfg = kind === 'weapons' ? {
       facetKey: 'role', facets: r => r.role, cols: [
         ['', r => `<label class="pick"><input type="checkbox" aria-label="Compare ${esc(r.name ?? r.id)}" data-pick="${esc(r.id)}"${picked.includes(r.id) ? ' checked' : ''}></label>`, null],
-        ['Weapon', r => `<strong>${esc(r.name ?? '—')}</strong>${r.behaviour ? `<br><span class="muted">${esc(r.behaviour)}</span>` : ''}`, r => r.name ?? ''],
+        ['Weapon', r => `<strong>${esc(r.name ?? 'n/a')}</strong>${r.behaviour ? `<br><span class="muted">${esc(r.behaviour)}</span>` : ''}`, r => r.name ?? ''],
         ['Class', r => r.role ? esc(r.role) : dash(), r => r.role ?? ''], ['Damage', r => n(r.dmg), r => r.dmg], ['Cycle ms', r => n(r.cycle_ms), r => r.cycle_ms], ['Mag', r => n(r.mag), r => r.mag], ['Reserve', r => n(r.reserve), r => r.reserve], ['Reload ms', r => n(r.reload_ms), r => r.reload_ms], ['Heat', r => n(r.heat), r => r.heat], ['Sound', r => r.sound ? `<code>${esc(r.sound)}</code>` : dash(), r => r.sound ?? ''],
       ], key: r => `${r.name ?? ''} ${r.role ?? ''} ${r.behaviour || ''} ${r.sound || ''}`,
     } : {
       facetKey: 'family', facets: r => r.family, cols: [
-        ['ID', r => `<strong>${esc(r.id ?? '—')}</strong>`, r => r.id ?? ''], ['Family', r => `${r.family ? esc(r.family) : dash()}${r.family_meaning ? `<br><span class="muted">${esc(r.family_meaning)}</span>` : ''}`, r => r.family ?? ''],
-        ['Meaning', r => r.meaning_known && r.meaning ? esc(r.meaning) : `<span class="unknown">— not yet identified</span>`, r => r.meaning ?? ''], ['Length s', r => n(r.len), r => r.len], ['File', r => r.file ? `<code>${esc(r.file)}</code>` : dash(), r => r.file ?? ''],
+        ['ID', r => `<strong>${esc(r.id ?? 'n/a')}</strong>`, r => r.id ?? ''], ['Family', r => `${r.family ? esc(r.family) : dash()}${r.family_meaning ? `<br><span class="muted">${esc(r.family_meaning)}</span>` : ''}`, r => r.family ?? ''],
+        ['Meaning', r => r.meaning_known && r.meaning ? esc(r.meaning) : `<span class="unknown">not yet identified</span>`, r => r.meaning ?? ''], ['Length s', r => n(r.len), r => r.len], ['File', r => r.file ? `<code>${esc(r.file)}</code>` : dash(), r => r.file ?? ''],
         ['Play', r => r.play ? `<button type="button" class="x-cell-copy" data-copy="${esc(r.play)}" aria-label="Copy ${esc(r.play)}">copy $PLAY</button>` : dash(), null],
       ], key: r => `${r.id ?? ''} ${r.family ?? ''} ${r.family_meaning ?? ''} ${r.meaning ?? ''}`,
     };
     function n(v) { return v == null || v === '' || Number.isNaN(v) ? dash() : `<span class="num">${esc(v)}</span>`; }
-    function dash() { return '<span class="unknown">—</span>'; }
+    // the house style has no em dash, so a missing value reads as n/a
+    function dash() { return '<span class="unknown">n/a</span>'; }
     const filtered = () => {
       const q = search.value.trim().toLowerCase();
       const f = rows.filter(r => (facet === 'all' || cfg.facets(r) === facet) && (!q || cfg.key(r).toLowerCase().includes(q)));
@@ -160,7 +161,7 @@
       const clearBtn = '<button type="button" class="x-clear" data-x-clear>Clear picks</button>';
       const note = evicted ? `<span class="muted"> · ${esc(evicted)} was replaced</span>` : '';
       if (ws.length === 0) { dock.innerHTML = '<span class="muted">Tick two weapons to compare them side by side.</span>'; return; }
-      if (ws.length === 1) { dock.innerHTML = `<strong>${esc(ws[0].name ?? ws[0].id)}</strong> picked — tick one more to compare.${note} ${clearBtn}`; return; }
+      if (ws.length === 1) { dock.innerHTML = `<strong>${esc(ws[0].name ?? ws[0].id)}</strong> picked. Tick one more to compare.${note} ${clearBtn}`; return; }
       const [a, b] = ws; const stat = [['Damage', 'dmg', 1], ['Cycle ms', 'cycle_ms', -1], ['Magazine', 'mag', 1], ['Reserve', 'reserve', 1], ['Reload ms', 'reload_ms', -1], ['Hits to kill', 'htk', -1], ['Time to kill ms', 'ttk_ms', -1]];
       const bar = (v, max, lead) => `<div class="bar${lead ? ' lead' : ''}"><i style="width:${max ? Math.round((v / max) * 100) : 0}%"></i></div>`;
       dock.innerHTML = `<div class="x-dock-bar"><strong>${esc(a.name ?? a.id)}</strong> vs <strong>${esc(b.name ?? b.id)}</strong>${note} ${clearBtn}</div><div class="cmp"><span class="k"></span><span class="h">${esc(a.name ?? a.id)}</span><span class="h">${esc(b.name ?? b.id)}</span>` + stat.map(([label, k, better]) => { const va = Number(a[k] ?? 0) || 0, vb = Number(b[k] ?? 0) || 0, max = Math.max(va, vb) || 1; const la = better > 0 ? va > vb : va < vb, lb = better > 0 ? vb > va : vb < va; return `<span class="k">${label}</span><span>${esc(va)}${bar(va, max, la)}</span><span>${esc(vb)}${bar(vb, max, lb)}</span>`; }).join('') + `</div><p class="muted" style="margin:8px 0 0">Values as sent by the app when each weapon was armed; green = better for that stat.</p>`;

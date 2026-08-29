@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Game modes — The Open BRX platform — Open BRX</title>
-<meta name="description" content="Every mode we know the BRX can run — classified by the gear it needs.">
+<title>Game modes | The Open BRX platform | Open BRX</title>
+<meta name="description" content="Every mode we know the BRX can run, sorted by the gear it needs.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/modes/">
 <link rel="alternate" type="text/markdown" href="/platform/modes.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Game modes","description":"Every mode we know the BRX can run — classified by the gear it needs.","url":"https://open-brx.iamrossi.workers.dev/platform/modes/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Game modes","item":"https://open-brx.iamrossi.workers.dev/platform/modes/"}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Game modes","description":"Every mode we know the BRX can run, sorted by the gear it needs.","url":"https://open-brx.iamrossi.workers.dev/platform/modes/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Game modes","item":"https://open-brx.iamrossi.workers.dev/platform/modes/"}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -33,42 +33,42 @@
     <article class="page">
 <header class="page-head">
 <h1>Game modes</h1>
-<p class="subtitle">Every mode we know the BRX can run — classified by the gear it needs.</p>
+<p class="subtitle">Every mode we know the BRX can run, sorted by the gear it needs.</p>
 <p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><span>software</span></span><span class="badge b-spec" title="Specified only"><span>spec</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/platform/modes.md">Markdown</a></p>
 </header>
-<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="two-tier-axes-kept-separate"><strong class="co-title">Two tier axes, kept separate.</strong><p><em>Infrastructure</em> tiers say what gear a mode needs (laptop-only → + props → + broadcast). <em>Spend</em> tiers (next page) say what each budget adds. A mode&#39;s infrastructure tier maps to whichever spend tier supplies that gear.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Three infrastructure tiers</p></aside></section>
-<section class="blk blk-cards" data-type="cards"><h2 id="laptop-only-with-brx-mcp-no-props-no-broadcast">Laptop-only with <code>brx-mcp</code> — no props, no broadcast</h2><p class="lead">(engines built <span class="badge b-software" title="Built + software-tested"><span>software</span></span>; TDM <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> on 2 guns; FFA / Infection / LMS engines sim-proven, not yet run on real guns)</p><div class="cards"><ul>
-<li><strong>Team Deathmatch</strong> — two to four teams; team kills or elimination. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> 2026-08-25</li>
-<li><strong>Free For All</strong> — everyone vs everyone; exact per-player attribution over BLE (shooter id rides in every hit). <span class="badge b-software" title="Built + software-tested"><span>software</span></span></li>
-<li><strong>Survival / Infection</strong> — a kill converts a human to the infected team (live <code>$TID</code> flip is bench-proven). <span class="badge b-software" title="Built + software-tested"><span>software</span></span> (flip <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>)</li>
-<li><strong>Last Man Standing</strong> — limited lives; last alive. <span class="badge b-software" title="Built + software-tested"><span>software</span></span></li>
-<li><strong>Generals / Commander / The Swarm</strong> — a player <em>is</em> the team&#39;s mobile respawn point. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
-<li><strong>Supremacy</strong> — three factions, class loadouts as <code>$WEAP</code>/<code>$PSET</code>. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
-<li><strong>Health variants</strong> — Syphon (health-on-kill to the exact killer), Halo-style regen (host-driven; armor does not regen natively), medic, armor overshield. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> (<code>$LIFE</code>/<code>$BUMP</code> writes <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>)</li>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="two-tier-axes-kept-separate"><strong class="co-title">Two tier axes, kept separate.</strong><p><em>Infrastructure</em> tiers say what gear a mode needs (laptop-only → + props → + broadcast). <em>Spend</em> tiers (next page) say what each budget adds. A mode&#39;s infrastructure tier maps to whichever spend tier buys that gear.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Three infrastructure tiers</p></aside></section>
+<section class="blk blk-cards" data-type="cards"><h2 id="laptop-only-with-brx-mcp-no-props-no-broadcast">Laptop-only with <code>brx-mcp</code>, no props, no broadcast</h2><p class="lead">(engines built <span class="badge b-software" title="Built + software-tested"><span>software</span></span>; TDM <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> on 2 guns; FFA / Infection / LMS engines sim-proven, not yet run on real guns)</p><div class="cards"><ul>
+<li><strong>Team Deathmatch</strong>: two to four teams. Team kills or elimination. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> 2026-08-25</li>
+<li><strong>Free For All</strong>: everyone against everyone. Exact per-player attribution over BLE (the shooter id rides in every hit). <span class="badge b-software" title="Built + software-tested"><span>software</span></span></li>
+<li><strong>Survival / Infection</strong>: a kill turns a human into the infected team (the live <code>$TID</code> flip is bench-proven). <span class="badge b-software" title="Built + software-tested"><span>software</span></span> (flip <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>)</li>
+<li><strong>Last Man Standing</strong>: limited lives, last one alive wins. <span class="badge b-software" title="Built + software-tested"><span>software</span></span></li>
+<li><strong>Generals / Commander / The Swarm</strong>: one player <em>is</em> the team&#39;s mobile respawn point. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>Supremacy</strong>: three factions, class loadouts as <code>$WEAP</code>/<code>$PSET</code>. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>Health variants</strong>: Syphon (health-on-kill to the exact killer), Halo-style regen (host-driven; armor does not regen on its own), medic, armor overshield. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> (<code>$LIFE</code>/<code>$BUMP</code> writes <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>)</li>
 </ul>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Catalog + §Health/regen, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/verification-checklist.md" rel="noopener">docs/verification-checklist.md</a>, mcp/brx_mcp/modes/</p></section>
 <section class="blk blk-cards" data-type="cards"><h2 id="props-a-contested-place-needs-a-local-authority"><ul>
-<li>Props — a contested place needs a local authority</li>
+<li>Props: a contested place needs a local authority</li>
 </ul>
 </h2><p class="lead">(engines built <span class="badge b-software" title="Built + software-tested"><span>software</span></span>; need a station or a grenade to emit the IR events)</p><div class="cards"><ul>
-<li><strong>Domination</strong> — hold control points for score-over-time; multi-point wants linked stations. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine</li>
-<li><strong>King of the Hill / Territory</strong> — hold one zone; the Smart Grenade can be the hill for $0. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine / <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> grenade Hill mode</li>
-<li><strong>Capture the Flag</strong> — standard, assault (one-sided) and centre-flag variants. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine (grenade CTF team-assign still open)</li>
-<li><strong>Assault</strong> — attack/defend objectives in sequence. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
-<li><strong>Counter-Strike (plant / defuse)</strong> — the grenade, a station, or <em>a phone&#39;s touchscreen</em> is the bomb. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine</li>
-<li><strong>Team Arena</strong> — TDM + QR weapon pickups + capturable flags (paper QR = ~$0 props). <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
-<li><strong>VIP escort / Hostage rescue</strong> — a special player role + one extraction station. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>Domination</strong>: hold control points to score over time. Multi-point wants linked stations. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine</li>
+<li><strong>King of the Hill / Territory</strong>: hold one zone. The Smart Grenade can be the hill for $0. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine / <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> grenade Hill mode</li>
+<li><strong>Capture the Flag</strong>: standard, assault (one-sided) and centre-flag variants. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine (grenade CTF team-assign still open)</li>
+<li><strong>Assault</strong>: attack and defend objectives in order. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>Counter-Strike (plant / defuse)</strong>: the grenade, a station, or <em>a phone&#39;s touchscreen</em> is the bomb. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine</li>
+<li><strong>Team Arena</strong>: TDM plus QR weapon pickups and capturable flags (paper QR = ~$0 props). <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>VIP escort / Hostage rescue</strong>: a special player role plus one extraction station. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
 </ul>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Catalog + §Custom modes, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/mode-limits.md" rel="noopener">docs/mode-limits.md</a> §2</p></section>
 <section class="blk blk-cards" data-type="cards"><h2 id="broadcast-location"><ul>
 <li>Broadcast / location</li>
 </ul>
 </h2><div class="cards"><ul>
-<li><strong>Battle Royale</strong> — shrinking zone, GPS supply drops, last alive; needs per-node location and a live field-wide downlink (Tier 4 radio). <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
-<li><strong>Any prop mode with live callouts</strong> — &quot;flag taken!&quot; everywhere, a live HQ scoreboard, on a large no-Wi-Fi park. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>Battle Royale</strong>: shrinking zone, GPS supply drops, last one alive. It needs per-node location and a live field-wide downlink (Tier 4 radio). <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
+<li><strong>Any prop mode with live callouts</strong>: &quot;flag taken!&quot; everywhere, plus a live HQ scoreboard, on a large park with no Wi-Fi. <span class="badge b-spec" title="Specified only"><span>spec</span></span></li>
 </ul>
 </div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Catalog, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/build-tiers.md" rel="noopener">docs/build-tiers.md</a> Tier 4</p></section>
-<section class="blk blk-hero" data-type="hero"><p class="hero-text" id="extraction-the-flagship-mode-edge-doesn-t-have"><strong>Extraction — the flagship mode Edge doesn&#39;t have</strong> (<span class="img-ref ph-inline" title="image pending">PLAT-04</span>)</p><p>The extraction-shooter genre (Tarkov, Hunt: Showdown, DMZ) maps beautifully onto laser tag: insert → <strong>loot</strong> → reach an extraction point and <strong>channel it — loudly, so everyone converges on you</strong> → survive the channel → bank the loot. <strong>Die and you drop everything.</strong> <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine</p>
+<section class="blk blk-hero" data-type="hero"><p class="hero-text" id="extraction-the-flagship-mode-edge-doesn-t-have"><strong>Extraction: the flagship mode Edge doesn&#39;t have</strong> (<span class="img-ref ph-inline" title="image pending">PLAT-04</span>)</p><p>Extraction shooters (Tarkov, Hunt: Showdown, DMZ) fit laser tag perfectly. Drop in → <strong>loot</strong> → reach an extraction point and <strong>start the channel, loudly, so everyone runs at you</strong> → survive the channel → bank the loot. <strong>Die and you drop everything.</strong> <span class="badge b-software" title="Built + software-tested"><span>software</span></span> engine</p>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Extraction</p></section>
 <section class="blk blk-table" data-type="table"><h2 id="how-extraction-maps-onto-the-brx">How Extraction maps onto the BRX</h2><div class="table-wrap"><table>
 <thead>
@@ -80,37 +80,37 @@
 </thead>
 <tbody><tr>
 <td>Your carried loot</td>
-<td>the player&#39;s node is the <strong>loot wallet</strong> (kills, IR loot boxes, pickups); optional printed QR &quot;briefcase&quot; you physically carry</td>
+<td>the player&#39;s node is the <strong>loot wallet</strong> (kills, IR loot boxes, pickups), plus an optional printed QR &quot;briefcase&quot; you carry</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 </tr>
 <tr>
 <td>Extraction point + &quot;summon it, takes a while&quot;</td>
-<td>the King-of-the-Hill hold primitive with a <strong>30–60 s channel timer</strong> — a station, or the Smart Grenade as the beacon</td>
+<td>the King-of-the-Hill hold primitive with a <strong>30–60 s channel timer</strong>. Use a station, or the Smart Grenade as the beacon</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> / <span class="badge b-spec" title="Specified only"><span>spec</span></span></td>
 </tr>
 <tr>
 <td>&quot;It&#39;s loud&quot;</td>
-<td>station + nearby nodes fire an audio/LED alarm; the guns themselves scream via <code>$PLAY</code>; field-wide needs the broadcast tier</td>
+<td>the station and nearby nodes fire an audio/LED alarm; the guns themselves scream via <code>$PLAY</code>; field-wide needs the broadcast tier</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 </tr>
 <tr>
 <td>Survive the channel</td>
-<td>killed or leave the zone → channel pauses/resets</td>
+<td>get killed or leave the zone and the channel pauses or resets</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 </tr>
 <tr>
 <td>Drop it all on death</td>
-<td>on <code>$HP,0</code> the wallet transfers out — to a dropped token, the pool, or the killer</td>
+<td>on <code>$HP,0</code> the wallet moves out, to a dropped token, the pool, or the killer</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 </tr>
 <tr>
 <td>Extracted loot → power</td>
-<td>banked value becomes score and/or <code>$LIFE</code>/<code>$WEAP</code> boosts on the next raid — a persistent stash</td>
+<td>banked value becomes score and/or <code>$LIFE</code>/<code>$WEAP</code> boosts on your next raid, so the stash carries over</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Extraction, <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/modes/extraction.py" rel="noopener">mcp/brx_mcp/modes/extraction.py</a></p></section>
-<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="try-extraction-with-no-hardware"><strong class="co-title">Try Extraction with no hardware.</strong><p><code>python -m brx_mcp extraction-sim</code> runs the pure rules engine — loot wallet, loud channel, drop-on-death, pickup, bank → boost, win target — as a narrated demo. A $0 version with the grenade as the beacon and phones as wallets is designed; the full version wants stations and the broadcast tier.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Extraction, <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/tests/test_extraction.py" rel="noopener">mcp/tests/test_extraction.py</a></p></aside></section>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="try-extraction-with-no-hardware"><strong class="co-title">Try Extraction with no hardware.</strong><p><code>python -m brx_mcp extraction-sim</code> runs the pure rules engine as a narrated demo (loot wallet, loud channel, drop-on-death, pickup, bank → boost, win target). A $0 version with the grenade as the beacon and phones as wallets is designed. The full version wants stations and the broadcast tier.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md" rel="noopener">docs/game-modes.md</a> §Extraction, <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/tests/test_extraction.py" rel="noopener">mcp/tests/test_extraction.py</a></p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="what-the-stock-smart-grenade-gives-you-for-0">What the stock Smart Grenade gives you for $0</h2><p class="lead"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> hardware-characterised</p><div class="table-wrap"><table>
 <thead>
 <tr>
@@ -131,7 +131,7 @@
 </tr>
 <tr>
 <td>Blue = Hill (KotH)</td>
-<td><strong>yes</strong> — beacon <code>$HIR,0,15,0,&lt;team&gt;,&lt;mode&gt;</code></td>
+<td><strong>yes</strong>, beacon <code>$HIR,0,15,0,&lt;team&gt;,&lt;mode&gt;</code></td>
 <td>holder gets a rate-of-fire perk</td>
 </tr>
 <tr>
@@ -142,10 +142,10 @@
 <tr>
 <td>White = CTF</td>
 <td>no</td>
-<td>turned red, not team colour — team assignment unresolved</td>
+<td>turned red, not team colour; team assignment unresolved</td>
 </tr>
 <tr>
-<td><code>$GREN</code> over BLE does <strong>not</strong> set the mode (button-locked, anti-tamper) — config stays a printed cheat-sheet. Two grenades = two objectives.</td>
+<td><code>$GREN</code> over BLE does <strong>not</strong> set the mode (button-locked, anti-tamper), so config stays a printed cheat-sheet. Two grenades = two objectives.</td>
 <td></td>
 <td></td>
 </tr>
@@ -154,13 +154,13 @@
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#laptop-only-with-brx-mcp-no-props-no-broadcast">Laptop-only with brx-mcp — no props, no broadcast</a></li><li><a href="#props-a-contested-place-needs-a-local-authority">+ Props — a contested place needs a local authority</a></li><li><a href="#broadcast-location">+ Broadcast / location</a></li><li><a href="#how-extraction-maps-onto-the-brx">How Extraction maps onto the BRX</a></li><li><a href="#what-the-stock-smart-grenade-gives-you-for-0">What the stock Smart Grenade gives you for $0</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#laptop-only-with-brx-mcp-no-props-no-broadcast">Laptop-only with brx-mcp, no props, no broadcast</a></li><li><a href="#props-a-contested-place-needs-a-local-authority">+ Props: a contested place needs a local authority</a></li><li><a href="#broadcast-location">+ Broadcast / location</a></li><li><a href="#how-extraction-maps-onto-the-brx">How Extraction maps onto the BRX</a></li><li><a href="#what-the-stock-smart-grenade-gives-you-for-0">What the stock Smart Grenade gives you for $0</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.d3ca03ea85.js" defer></script>
+<script src="/assets/site.99eb517084.js" defer></script>
 </body>
 </html>

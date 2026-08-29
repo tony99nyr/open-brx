@@ -6,6 +6,8 @@ marked.use({ gfm: true, breaks: false, mangle: false, headerIds: false });
 
 export const REPO_URL = 'https://github.com/tony99nyr/open-brx';
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// a block head is "Name<delimiter>what it is"; that delimiter was an em dash and is now a colon
+export const SUBTITLE_SPLIT = /\s+[—–]\s+|:\s+/;
 const slugify = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[`*"“”]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'section';
 
 export function badge(kind) {
@@ -100,7 +102,7 @@ export function assignIds(page) {
   const seen = new Map();
   const NO_ANCHOR = new Set(['image', 'diagram', 'quote', 'prose']);
   for (const b of page.blocks) {
-    const t = b.title || (b.type === 'under-construction' ? (b.head.split('—')[0] || '') : '');
+    const t = b.title || (b.type === 'under-construction' ? (b.head.split(SUBTITLE_SPLIT)[0] || '') : '');
     if (!t.trim() || NO_ANCHOR.has(b.type)) { b.id = null; continue; }
     const base = slugify(t); const n = (seen.get(base) || 0) + 1; seen.set(base, n);
     b.id = n === 1 ? base : `${base}-${n}`;
@@ -176,7 +178,7 @@ function tableWarning(b) {
   const rows = b.body.filter(l => l.trim().startsWith('|')).map(l => l.trim().replace(/^\||\|$/g, '').split('|').length);
   if (rows.length < 2) return '';
   const bad = rows.slice(2).filter(n => n !== rows[0]).length;
-  return bad ? `<span class="todo" data-todo="malformed table">TODO: content — malformed table: ${bad} row${bad > 1 ? 's' : ''} don't match the ${rows[0]}-column header</span>` : '';
+  return bad ? `<span class="todo" data-todo="malformed table">TODO: content. Malformed table: ${bad} row${bad > 1 ? 's' : ''} don't match the ${rows[0]}-column header</span>` : '';
 }
 function dataTable(b, ctx) {
   const table = md(b.body.join('\n'), ctx);
@@ -187,9 +189,9 @@ function dataTable(b, ctx) {
 function underConstruction(b, ctx) {
   const first = b.body.find(l => l.trim()) || '';
   const one = first.replace(/^\s*[-*]\s*/, '').replace(/^\*\*What:\*\*\s*/, '');
-  const title = b.title || b.head.split('—')[0];
+  const title = b.title || b.head.split(SUBTITLE_SPLIT)[0];
   const status = (b.head.match(/[✅🧪📐🚧]+/gu) || ['🚧']).join('');
-  return `<div class="uc"><div class="uc-head"><span class="uc-mark" aria-hidden="true">🚧</span><h2 id="${b.id || slugify(title)}">${inline(title, ctx)}</h2>${badgesInline(esc(status))}</div><p>${inline(one, ctx)}</p><p class="uc-note">Under construction — details when it has run on real hardware.</p></div>`;
+  return `<div class="uc"><div class="uc-head"><span class="uc-mark" aria-hidden="true">🚧</span><h2 id="${b.id || slugify(title)}">${inline(title, ctx)}</h2>${badgesInline(esc(status))}</div><p>${inline(one, ctx)}</p><p class="uc-note">Under construction. We will add details once it has run on real hardware.</p></div>`;
 }
 
 export function renderBlock(b, ctx) {
@@ -208,10 +210,10 @@ export function renderBlock(b, ctx) {
     case 'code': return wrap(b, '', `${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
     case 'bit-field': return wrap(b, '', `${blockHead(b, ctx)}<div class="bitfield">${md(body, ctx)}</div>${srcLine(b)}`);
     case 'symptom-ladder': return wrap(b, '', `${blockHead(b, ctx)}${ladder(b, ctx)}${srcLine(b)}`);
-    case 'quote': return wrap(b, '', `<blockquote>${b.title ? `<p class="q">“${inline(b.title, ctx)}”</p>` : ''}${b.head ? `<footer class="q-by">— ${inline(b.head, ctx)}</footer>` : ''}${md(body, ctx)}</blockquote>${srcLine(b)}`);
+    case 'quote': return wrap(b, '', `<blockquote>${b.title ? `<p class="q">“${inline(b.title, ctx)}”</p>` : ''}${b.head ? `<footer class="q-by">${inline(b.head, ctx)}</footer>` : ''}${md(body, ctx)}</blockquote>${srcLine(b)}`);
     case 'stat-row': return wrap(b, '', `${blockHead(b, ctx)}${statRow(b, ctx)}${srcLine(b)}`);
     case 'under-construction': return wrap(b, '', underConstruction(b, ctx));
-    default: return wrap(b, 'blk-unknown', `<span class="todo" data-todo="unknown block type">TODO: content — unknown block type “${esc(b.type)}”</span>${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
+    default: return wrap(b, 'blk-unknown', `<span class="todo" data-todo="unknown block type">TODO: content. Unknown block type “${esc(b.type)}”</span>${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
   }
 }
 
@@ -309,7 +311,7 @@ export function metaLine({ prov = [], lv, lvLabel = 'Last verified', aud, mdHref
 
 // The provenance legend, rendered once at the bottom of /credits/.
 export function legendHtml() {
-  return `<section class="blk" id="how-we-know"><h2>How we know — the provenance marks</h2><p class="lead">Every block on this site carries one of these. If a fact is not confirmed on the bench, in an official document, or in the app's own data, it is not published.</p><ul class="legend-list">${Object.entries(PROV_LABEL).map(([k, v]) => `<li>${badge(k)} — ${esc(v)}</li>`).join('')}</ul></section>`;
+  return `<section class="blk" id="how-we-know"><h2>How we know each fact</h2><p class="lead">Every block on this site carries one of these. If a fact is not confirmed on the bench, in an official document, or in the app's own data, it is not published.</p><ul class="legend-list">${Object.entries(PROV_LABEL).map(([k, v]) => `<li>${badge(k)} ${esc(v)}</li>`).join('')}</ul></section>`;
 }
 
 // The rail lists the page's SECTIONS. A callout or a hero paragraph has a title but renders no
@@ -318,7 +320,7 @@ const TOC_SKIP = new Set(['callout', 'hero', 'quote', 'image', 'diagram', 'prose
 export function tocFor(page, extra = []) {
   assignIds(page);
   const all = page.blocks.filter(b => b.id && !TOC_SKIP.has(b.type))
-    .map(b => { const t = b.title || b.head.split('—')[0]; return `<li><a href="#${b.id}">${esc(t.replace(/[`*]/g, ''))}</a></li>`; })
+    .map(b => { const t = b.title || b.head.split(SUBTITLE_SPLIT)[0]; return `<li><a href="#${b.id}">${esc(t.replace(/[`*]/g, ''))}</a></li>`; })
     .concat(extra.map(e => `<li><a href="#${e.id}">${esc(e.title)}</a></li>`));
   return all.length >= 2 ? `<ol>${all.join('')}</ol>` : '';
 }
@@ -326,7 +328,7 @@ export function tocFor(page, extra = []) {
 export function markdownTwin(page) {
   const out = [`# ${page.title}`, page.subtitle ? `_${page.subtitle}_` : '', page.section.lastVerified ? `Last verified: ${page.section.lastVerified}` : '', ''];
   for (const b of page.blocks) {
-    if (b.type === 'under-construction') { out.push(`## ${b.title || b.head} 🚧`, 'Under construction — details when it has run on real hardware.', ''); continue; }
+    if (b.type === 'under-construction') { out.push(`## ${b.title || b.head} 🚧`, 'Under construction. We will add details once it has run on real hardware.', ''); continue; }
     if (b.type === 'image' || b.type === 'diagram') { out.push(`_[${b.type} ${b.arg}: ${b.head || ''}]_`, ''); continue; }
     if (b.title) out.push(`## ${b.title}`);
     const cm = (b.head || '').match(/columns?:\s*(.+)$/i);

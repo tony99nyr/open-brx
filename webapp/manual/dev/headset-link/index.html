@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Headset, link and what survives — Developer reference — The BRX Manual (Open BRX)</title>
-<meta name="description" content="Which state lives where — and what a BLE drop, a headset switch-off, or a power-cycle each wipe">
+<title>Headset, link and what survives | Developer reference | The BRX Manual (Open BRX)</title>
+<meta name="description" content="Which state lives where, and what a BLE drop, a headset switch-off, or a power-cycle each wipe. Read this page before you write code that reconnects to a gun.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/">
 <link rel="alternate" type="text/markdown" href="/manual/dev/headset-link.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Headset, link and what survives","description":"Which state lives where — and what a BLE drop, a headset switch-off, or a power-cycle each wipe","url":"https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX — The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Headset, link and what survives","item":"https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/"}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Headset, link and what survives","description":"Which state lives where, and what a BLE drop, a headset switch-off, or a power-cycle each wipe. Read this page before you write code that reconnects to a gun.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Headset, link and what survives","item":"https://open-brx.iamrossi.workers.dev/manual/dev/headset-link/"}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -27,13 +27,13 @@
   </div>
 </header>
 <div class="layout has-side has-toc">
-  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations — which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The Callsign arsenal — the complete roster</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock — the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence — from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP — the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET — game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR — the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events — what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word — what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console — QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/" aria-current="page">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures — recording and decoding the official app</a></li></ul></details></nav>
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations: which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec"><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The complete Callsign arsenal</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock: the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec" open><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence: from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP: the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET: game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR: the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events: what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word: what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console: QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/" aria-current="page">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures: recording and decoding the official app</a></li></ul></details></nav>
   <main id="main" class="main">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><a href="/manual/dev/">Developer reference</a><span class="sep">/</span><span aria-current="page">Headset, link and what survives</span></nav>
     <article class="page">
 <header class="page-head">
 <h1>Headset, link and what survives</h1>
-<p class="subtitle">Which state lives where — and what a BLE drop, a headset switch-off, or a power-cycle each wipe</p>
+<p class="subtitle">Which state lives where, and what a BLE drop, a headset switch-off, or a power-cycle each wipe. Read this page before you write code that reconnects to a gun.</p>
 <p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span><span class="badge b-community" title="Community-reported"><span>community</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/manual/dev/headset-link.md">Markdown</a></p>
 </header>
 <section class="blk blk-compare" data-type="compare"><h2 id="state-survival-matrix">State survival matrix</h2><div class="table-wrap"><table>
@@ -48,29 +48,29 @@
 </thead>
 <tbody><tr>
 <td>Game config (<code>$GSET</code>/<code>$PSET</code>/<code>$WEAP</code>/<code>$SIR</code>/<code>$BMAP</code>)</td>
-<td>— (unknown) — re-send the full head after a reconnect</td>
-<td>Gun sends <code>$DISCONNECT,*</code> and drops the link; config: — (unknown)</td>
-<td><strong>Wiped</strong> — <code>$SPAWN</code> then echoes <code>$LCD,0,0,0,0,0,0</code> + <code>$ALCD,0,0,0,0,0</code></td>
+<td>(unknown). Re-send the full head after a reconnect</td>
+<td>Gun sends <code>$DISCONNECT,*</code> and drops the link; config: (unknown)</td>
+<td><strong>Wiped</strong>. <code>$SPAWN</code> then echoes <code>$LCD,0,0,0,0,0,0</code> + <code>$ALCD,0,0,0,0,0</code></td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Alive/dead + pools</td>
 <td>Survives (a dead gun stays dead)</td>
-<td>—</td>
+<td>n/a</td>
 <td>Reset</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Ammo</td>
 <td>Survives</td>
-<td>—</td>
+<td>n/a</td>
 <td>Wiped</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$TID</code> team / LED colour</td>
 <td>Survives; colour is painted at <code>$SPAWN</code></td>
-<td>—</td>
+<td>n/a</td>
 <td>Reset</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
@@ -84,29 +84,29 @@
 <tr>
 <td>Player id (<code>$PSET</code> t1)</td>
 <td>Survives with config</td>
-<td>—</td>
+<td>n/a</td>
 <td>Wiped (the USB <code>PlayerID</code> is separate and persistent)</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Score, clock, respawn timer</td>
 <td><strong>Never on the gun</strong></td>
-<td>—</td>
-<td>—</td>
+<td>n/a</td>
+<td>n/a</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$SIR</code> fn-23 state (<code>$ALCD</code> token 2 at 0)</td>
 <td>Persists until <code>$SPAWN</code></td>
-<td>—</td>
+<td>n/a</td>
 <td>Cleared</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r (E1), §7n; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-24 $NAME; EMP recovery matrix)</p></section>
 <section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-09" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Grid: rows = config, alive/dead+pools, ammo, `$TID`/LED colour, `$NAME`, player id, score/clock, fn-23 state; columns = BLE drop, headset off, power-cycle. Cells filled blue &quot;survives&quot;, amber &quot;wiped&quot;, grey &quot;never on gun / untested&quot;, each with a two-word note."><span class="ph-id">DEV-09</span><span class="ph-kind">diagram pending</span></div><figcaption>The matrix above as a grid graphic.</figcaption></figure><p class="src"><span>Source:</span> as above</p></section>
-<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="headset-off-no-ble"><strong class="co-title">Headset off = no BLE.</strong><p>Switching a linked headset off makes the gun send <code>$DISCONNECT,*</code> and drop. A headset-less gun &quot;connects&quot;, answers a quick <code>$PING</code>, then dies within seconds and echoes <strong>nothing</strong> to a config head. A power-cycled gun needs its headset re-linked before BLE holds. <strong>A held link plus <code>$ALCD</code> echoes <em>is</em> the headset check</strong> — there is no dedicated probe. The official app silently drops a headset-less gun within ~1.2 s.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7m, §7r</p></aside></section>
-<section class="blk blk-table" data-type="table"><h2 id="headset-behaviours-native-autonomous-they-work-under-any-hos">Headset behaviours (native, autonomous — they work under any host&#39;s game head)</h2><div class="table-wrap"><table>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="headset-off-no-ble"><strong class="co-title">Headset off = no BLE.</strong><p>Switching a linked headset off makes the gun send <code>$DISCONNECT,*</code> and drop. A headset-less gun &quot;connects&quot;, answers a quick <code>$PING</code>, then dies within seconds and echoes <strong>nothing</strong> to a config head. A power-cycled gun needs its headset re-linked before BLE holds. <strong>A held link plus <code>$ALCD</code> echoes <em>is</em> the headset check</strong>. There is no dedicated probe. The official app silently drops a headset-less gun within ~1.2 s.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7m, §7r</p></aside></section>
+<section class="blk blk-table" data-type="table"><h2 id="headset-behaviours-native-and-autonomous-they-work-under-any">Headset behaviours (native and autonomous: they work under any host&#39;s game head)</h2><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Headset LED</th>
@@ -116,7 +116,7 @@
 </thead>
 <tbody><tr>
 <td>Slow <strong>rainbow</strong> blink</td>
-<td>Disconnected / not paired — the pre-game tell for &quot;this gun will not join&quot;</td>
+<td>Disconnected / not paired. The pre-game tell for &quot;this gun will not join&quot;</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (operator, repeatable)</td>
 </tr>
 <tr>
@@ -126,7 +126,7 @@
 </tr>
 <tr>
 <td>Dark</td>
-<td>During play — normal</td>
+<td>During play (normal)</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (operator)</td>
 </tr>
 </tbody></table></div>
@@ -176,17 +176,17 @@
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7h, §7m, §7r, tok1 section; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-27)</p></section>
-<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="screamers"><strong class="co-title">Screamers.</strong><p>A tagger left powered all day can stop holding BLE — advertising normally but connect-then-drop or hanging on connect — the community-documented &quot;screamer&quot; state. Power-rest guns between sessions; keep them charged (firmware won&#39;t re-pair below a battery threshold).</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a>; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 screamer)</p></aside></section>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="screamers"><strong class="co-title">Screamers.</strong><p>A tagger left powered all day can stop holding BLE. It still advertises, but the connection drops or hangs. The community calls this the &quot;screamer&quot; state. Power-rest guns between sessions; keep them charged (firmware won&#39;t re-pair below a battery threshold).</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/gotchas.md" rel="noopener">docs/gotchas.md</a>; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 screamer)</p></aside></section>
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#state-survival-matrix">State survival matrix</a></li><li><a href="#headset-behaviours-native-autonomous-they-work-under-any-hos">Headset behaviours (native, autonomous — they work under any host's game head)</a></li><li><a href="#other-headset-facts">Other headset facts</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#state-survival-matrix">State survival matrix</a></li><li><a href="#headset-behaviours-native-and-autonomous-they-work-under-any">Headset behaviours (native and autonomous: they work under any host's game head)</a></li><li><a href="#other-headset-facts">Other headset facts</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.d3ca03ea85.js" defer></script>
+<script src="/assets/site.99eb517084.js" defer></script>
 </body>
 </html>
