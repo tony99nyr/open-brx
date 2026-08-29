@@ -1,7 +1,7 @@
 {
- "built": "2026-08-29T12:05:47.315Z",
+ "built": "2026-08-29T12:07:23.181Z",
  "ok": true,
- "sourceStamp": 1787969613903.0322,
+ "sourceStamp": 1788005234991.5823,
  "sources": [
   "site/build.mjs",
   "site/lib/data.mjs",

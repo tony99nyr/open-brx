@@ -54,7 +54,7 @@ $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
 $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)
 </code></pre>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (shipped-table consequence)</p></section>
-<section class="blk blk-data-table" data-type="data-table"><h2 id="function-map">Function map</h2><p class="lead">measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, <strong>at the gun-body sensor (<code>$HIR</code> tok1 = 4) from ~40 cm</strong>. The classes do <strong>not</strong> vary by IR protocol (50 cells across protocols 0/5/7/9/10); whether a <strong>headset-dome</strong> hit behaves the same is <strong>untested</strong>.</p><div class="dt" data-rows="12"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">12 rows</span></div><div class="table-wrap"><table>
+<section class="blk blk-data-table" data-type="data-table"><h2 id="function-map">Function map</h2><p class="lead">measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, <strong>at the gun-body sensor (<code>$HIR</code> tok1 = 4) from ~40 cm</strong>. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a <strong>headset-dome</strong> hit behaves the same is <strong>untested</strong>.</p><div class="dt" data-rows="12"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">12 rows</span></div><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Class</th>
@@ -137,9 +137,9 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <tr>
 <td>Registers, no pool change</td>
 <td>enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34</td>
-<td><code>$HIR</code> fires, pools unchanged, no other frame. Verified identical on protocols 0/5/7/9/10, including <strong>fn 28 on protocol 5</strong>, which an earlier draft of the row below listed as non-registering.</td>
+<td><code>$HIR</code> fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including <strong>fn 28 on protocol 5</strong>, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. <strong>Two measurement artifacts apply to this row.</strong> The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as &quot;no pool change&quot;. That is what mis-binned <strong>fn 10</strong>, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also reads as no change. This row therefore means &quot;does not reduce HP or armour&quot;. It does not mean &quot;does nothing&quot;.</td>
 <td>n/a</td>
-<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
+<td>⚠️ scoped</td>
 </tr>
 <tr>
 <td>No registration</td>
