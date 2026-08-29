@@ -109,8 +109,9 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 >   **`10` respawn + add HP** (HP 15→35→45, +magnitude, clamps, deals no damage) ·
 >   **`11` add shields** (0→50→70) · **`13` add armor** (0→30→60→70, **overflow spills into shields**).
 > - **Damage drain order confirmed on the wire: shields → armor → HP.**
-> - **⚠ ALL functions are TEAM-GATED in firmware, by polarity** — measured as a full four-team x
->   function matrix (bench 2026-08-27, `$GSET` t1=0, victim `$TID,1`, `$HIR` counted separately from
+> - **⚠ TEAM-GATED in firmware, by polarity** — measured as a four-team matrix across **four functions
+>   (1, 2, 9, 11)**, not all 41; "all functions" is an extrapolation from those four plus the
+>   polarity pattern seen in the wider map (bench 2026-08-27, `$GSET` t1=0, victim `$TID,1`, `$HIR` counted separately from
 >   `$HP`):
 >
 >   | function | team 0 | **team 1 (victim's own)** | team 2 | team 3 |
@@ -120,10 +121,14 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 >
 >   **Damage applies only from an enemy team; support only from your own.** Support-side gating was
 >   established 2026-08-26 (3/3 same-team, 0/3 otherwise); the damage side is measured here.
-> - ⚠️ **SCOPE for every pool number in this section:** measured at the **gun-body sensor**
->   (`$HIR` tok1 = 4) from **~40 cm**, victim re-armed to full pools each cell. Whether a
->   **headset-dome** hit applies the same deltas is **untested**, and grants into already-full
->   pools clamp — so a "no pool change" reading is only meaningful for *damage*, not for grants.
+> - ⚠️ **SCOPE — two different runs, two different starting states. Check which a number came from.**
+>   The **function-class map** (`experiment-log.md` 2026-08-27) re-armed the victim to **full**
+>   hp45/armour70/shield0 each cell, so in *that* run a heal/armour grant clamps and a
+>   shield-drain has no shield to take — "moves no pool" is only meaningful there for **HP/armour
+>   damage**. The confirmed grant figures in the bullets above (fn 10 `15→35→45`, fn 11 `0→50→70`,
+>   fn 13 `0→30→60→70`) come from an earlier run with **depleted** pools and are unaffected.
+>   Both were measured at the **gun-body sensor** (`$HIR` tok1 = 4), ~40 cm; whether a
+>   **headset-dome** hit applies the same deltas is **untested**.
 > - **The rejection emits NO `$HIR` AT ALL.** A team-blocked shot is not "received and not applied" —
 >   it never reaches BLE. **Consequence: friendly fire and mis-aimed support are invisible to Mission
 >   Control** and cannot be logged or scored from gun telemetry while t1=0.

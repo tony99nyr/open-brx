@@ -96,12 +96,12 @@ _Every command we know of — host → tagger, tagger → host, headset — with
 [data-table:filterable] **Host → tagger: lifecycle & configuration**
 | Command | Dir | Args | Meaning | Conf |
 |---|---|---|---|---|
-| `$PING,*` | >> | — | Connectivity check. Reply `$PONG,*`. | ✅ |
-| `$STOP,*` | >> | — | Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail. | ✅ |
-| `$PHONE,*` | >> | — | App-controlled mode: opens the live event tap (buttons, `$VOLTS`), locks the on-gun menu. Reply `$BUT,3,0,*`. | ✅ |
-| `$CONNECT,*` / `$INIT,*` | >> | — | On the known-safe list. Sent on v4.32: **no observable reply**. | ✅ |
-| `$CLEAR,*` | >> | — | Clear current game state. First frame of every arm sequence; half of the panic sequence. | ✅ |
-| `$START,*` | >> | — | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. | ✅ |
+| `$PING,*` | >> | n/a | Connectivity check. Reply `$PONG,*`. | ✅ |
+| `$STOP,*` | >> | n/a | Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail. | ✅ |
+| `$PHONE,*` | >> | n/a | App-controlled mode: opens the live event tap (buttons, `$VOLTS`), locks the on-gun menu. Reply `$BUT,3,0,*`. | ✅ |
+| `$CONNECT,*` / `$INIT,*` | >> | n/a | On the known-safe list. Sent on v4.32: **no observable reply**. | ✅ |
+| `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. | ✅ |
+| `$START,*` | >> | n/a | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. | ✅ |
 | `$GSET,…,*` | >> | 8 tokens | Global game settings — friendly fire, indoor/outdoor, region, ambient light, gyro, BT secondaries, crit modifier, mods. **No respawn/time/lives token.** → GSET page | ✅ |
 | `$PSET,…,*` | >> | id, 0, HP, armor, shield, 50, , voice-pack… | Player settings: **token 1 = player id (0–63)**, tokens 3–5 = HP/armor/shield pools, then a positional voice pack. → PSET page | ✅ |
 | `$WEAP,<slot>,…,*` | >> | slot 0–5 + ~43 tokens | Define a weapon in a slot: damage, fire interval, fire mode, clip/reserve, reload, sounds, IR type. → WEAP page | ✅ |
@@ -114,26 +114,26 @@ _Every command we know of — host → tagger, tagger → host, headset — with
 | `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (see the 2166-id bank). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel** — `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2–3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app · `3,6` iOS · `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. | ✅ |
 | `$VOL,<0–100>,<n2>,*` | >> | volume, 0 | Master volume. Android app sends `$VOL,100,0,*`; iOS `$VOL,69,0,*`. 30 is inaudible for game audio; use 69. | ✅ |
 | `$NAME,<name>,*` | >> | name | Sets the gun's **persistent** name (the USB `Gun Name` field; survives power-cycle). Opening the official app rewrites it to `Tactix2`. | ✅ |
-| `$VERSION,*` | >> | — | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*` — token 2 is the **headset** firmware (`hds.59`) when a headset is linked. | ✅ |
+| `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*` — token 2 is the **headset** firmware (`hds.59`) when a headset is linked. | ✅ |
 | `$SP,<n>,*` | >> | n | End-of-game / stop. `$SP,99,*` is the second half of the panic sequence. Do not probe it mid-game hoping for a score — the gun keeps none. | 👥 |
-| `$QUERY,*` | >> | — | Over BLE returns a `$`-framed status array (`$QUERY,0,0,0,0,0,,1,0,,0,…`) plus a `$LCD`. **Not** the USB device record (that is USB-only — see the Serial console page). | ✅ |
+| `$QUERY,*` | >> | n/a | Over BLE returns a `$`-framed status array (`$QUERY,0,0,0,0,0,,1,0,,0,…`) plus a `$LCD`. **Not** the USB device record (that is USB-only — see the Serial console page). | ✅ |
 ✅ src: protocol/brx-protocol.md §3, §7a, §7e, §7f, §7l, §7o, §7r; docs/gotchas.md; docs/experiment-log.md (2026-08-24 `$QUERY`)
 
 [data-table:filterable] **Host → tagger: in-game effects, feedback & pools**
 | Command | Dir | Args | Meaning | Conf |
 |---|---|---|---|---|
-| `$SFLASH,*` | >> | — | **The shooter's green-sight kill-confirm flash.** The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.) | ✅ |
+| `$SFLASH,*` | >> | n/a | **The shooter's green-sight kill-confirm flash.** The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.) | ✅ |
 | `$LIFE,<hp>,<armor>,<shields>,*` | >> | addedHP, addedArmor, addedShields | Grant health. **Additive, clamped at the pool max** — not an absolute set. Writes do not self-emit `$HP`; the new value shows on the next hit/HUD refresh. | 🔍 ✅ |
 | `$BUMP,<hp>,<armor>,<shields>,*` | >> | hP, armor, shields | Adjust current pools. Same additive/clamped behaviour as `$LIFE`. | 🔍 ✅ |
 | `$BHIT,<damage>,<isCrit>,<powerLevel>,*` | >> | damage, isCriticalShot, powerLevel | Four shapes sent on v4.32: each was echoed and **applied no damage**. | 🔍 (fields) ✅ (bench result) |
 | `$HFIRE,…,*` | >> | Range, CountIRPulses, RateOfFire, FlashLED | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). | 🔍 (fields) ✅ (bench result) |
 | `$IRTX,…,*` | >> | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). | 🔍 (fields) ✅ (bench result) |
 | `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. | 🔍 ✅(no-op) |
-| `$STUN,*` | >> | — | Listed in the APK. **Proven no-op over BLE.** | 🔍 ✅(no-op) |
+| `$STUN,*` | >> | n/a | Listed in the APK. **Proven no-op over BLE.** | 🔍 ✅(no-op) |
 | `$GLED,<mid>,<effect>,<optionA>,<optionB>,…,*` | >> | mid, effect, optionA, optionB | Gun LED **effect** — `effect` = LedEffect enum (Solid, Glow, ChaseBack, ChaseForward, StopIR). **Not RGB**: colour is team-derived from `$TID`. Used by the app during the pre-game lobby. | 🔍 ✅(not RGB) |
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. | 🔍 (fields) ✅ (bench result) |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu — a second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA · `$PBWEAP,0` = M4 AUTO · `$PBPERK,2` = Body Armor · `$PBLIVES,2` = 5 lives · `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. | 👥 |
-| `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host↔host | — | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. | 👥 |
+| `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host↔host | n/a | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. | 👥 |
 ✅ src: protocol/brx-protocol.md §3, §7d, §7i, §7j(community `$PB*`), §7o; protocol/callsign-extract/protocol-classes.md; docs/experiment-log.md (2026-08-26 headset emission, `$BHIT`, `$GREN` emission)
 
 [data-table:filterable] **Headset commands (host → gun → headset)**
@@ -146,29 +146,29 @@ _Every command we know of — host → tagger, tagger → host, headset — with
 [data-table:filterable] **Tagger → host: events and echoes**
 | Message | Fields | Meaning | Conf |
 |---|---|---|---|
-| `$PONG,*` | — | Reply to `$PING`. | ✅ |
+| `$PONG,*` | n/a | Reply to `$PING`. | ✅ |
 | `$VERSION,<gun fw>,<headset fw>,<n>,,<host image>,*` | e.g. `v4.32,?,4,,devhost.03` | Version reply; token 2 reads `hds.59` with a headset linked, `?` otherwise. `devhost.*` = developer/host image. | ✅ |
-| `$DISCONNECT,*` | — | Gun-initiated disconnect notice (e.g. the moment its headset is switched off). | ✅ |
-| `$VOLTS,<pack_mV>,<cell_mV>,<t3>,<t4>,*` | e.g. `7662,3921,55,70` | Battery telemetry, ~every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3–4: — (unknown). | ✅ |
-| `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | e.g. `45,70,0,0,36,216` | **Health/armor HUD echo.** `$START` → all zeros; `$SPAWN` → pools + current weapon's ammo; death → `$LCD,0,0,0,1,1,1,*`. Tokens 3–4: — (unknown). A zeroed `$LCD` after `$SPAWN` means "no config loaded" (post power-cycle tell). | ✅ |
-| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0→1→2… as reserve drains). Token 2: — (unknown) — reads 100 in normal play and drops to 0 after a `$SIR` fn 23 hit. Token 3 = weapon slot. Token 5 = **weapon heat** (0–100+, only on overheat weapons). Only streams on ammo events — silence is not "no change". | ✅ |
+| `$DISCONNECT,*` | n/a | Gun-initiated disconnect notice (e.g. the moment its headset is switched off). | ✅ |
+| `$VOLTS,<pack_mV>,<cell_mV>,<t3>,<t4>,*` | e.g. `7662,3921,55,70` | Battery telemetry, ~every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3–4: (unknown). | ✅ |
+| `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | e.g. `45,70,0,0,36,216` | **Health/armor HUD echo.** `$START` → all zeros; `$SPAWN` → pools + current weapon's ammo; death → `$LCD,0,0,0,1,1,1,*`. Tokens 3–4: (unknown). A zeroed `$LCD` after `$SPAWN` means "no config loaded" (post power-cycle tell). | ✅ |
+| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0→1→2… as reserve drains). Token 2: (unknown) — reads 100 in normal play and drops to 0 after a `$SIR` fn 23 hit. Token 3 = weapon slot. Token 5 = **weapon heat** (0–100+, only on overheat weapons). Only streams on ammo events — silence is not "no change". | ✅ |
 | `$HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,*` | e.g. `4,0,19,2,9,0,3` | **Hit received.** → Events page for the full decode. | ✅ |
 | `$HP,<hp>,<armor>,<shield>,*` | e.g. `43,0,0` | Pools after a hit; arrives in the same millisecond as its `$HIR`. `$HP,0,0,0` = death. | ✅ |
 | `$BUT,<id>,<state>,*` | id 0–5, state 1 press / 0 release | Physical button event (ids match `$BMAP`). Streams only in app mode. `$BUT,4,0` is also returned by `$MELEE`. | ✅ |
 | `$QUERY,…` | ~11 `value,,` pairs | Status array in reply to BLE `$QUERY,*`. | ✅ |
-| `$WEAP` / `$PERK` / `$HS` | — | Selection echoes from the on-gun menus (LaserTagMods). | 👥 |
+| `$WEAP` / `$PERK` / `$HS` | n/a | Selection echoes from the on-gun menus (LaserTagMods). | 👥 |
 ✅ src: protocol/brx-protocol.md §4, §7e, §7f, §7j, §7r; mcp/brx_mcp/protocol.py (parsers); docs/experiment-log.md 2026-08-27
 
 [data-table:filterable] **Seen in the app's vocabulary, not exercised by us** — facts about the Callsign app's request namespace only; on-tagger behaviour has not been observed. 🔍
 | Command | Direction | APK fields / enums | Note |
 |---|---|---|---|
 | `$VIB` | >> | `isEnableVibration` | Never sent by us. |
-| `$ZOOM` | >> | — | Never sent by us. |
+| `$ZOOM` | >> | n/a | Never sent by us. |
 | `$FSET` | >> | ~38 event→sound slots: ActionKey, DeathAlarm, TickTock, HitHp, HitArmor, HitShield, HitCrit, EmpStart/Loop/End, IncendiaryStart/…, TearGasHit, … | Never sent by us. |
 | `$ASSIST` | >> | `soundName` (+ SetVolume) | Never sent by us. |
 | `$DLC` / `$ASKDLC` → `$GOTDLC` | >> / << | `hiddenFeatures` | The app's premium-content (BattleCoins) handshake. The metadata names three premium modes: Generals, Commanders, Swarm. Never sent by us. |
-| `$BLINK` · `$CHASE` · `$LED` | >> (headset) | — | Listed with the headset commands. Never sent by us. |
-| `$TIME` | << | — | Listed as a notification. Never observed on the wire. |
+| `$BLINK` · `$CHASE` · `$LED` | >> (headset) | n/a | Listed with the headset commands. Never sent by us. |
+| `$TIME` | << | n/a | Listed as a notification. Never observed on the wire. |
 🔍 src: protocol/callsign-extract/protocol-classes.md
 
 [callout:tip] **Complete vocabulary from the app's own request namespace** (🔍): AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. `$PING`, `$TID`, `$SP`, and the `$RV/$RP/$UR/$KK/$DD` family are **not** in it — they come from LaserTagMods and our bench. Absence from the app ≠ non-existent. 🔍 src: protocol/callsign-extract/protocol-classes.md
@@ -266,44 +266,44 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | tok | Field | AR | Charge Rifle | Meaning | Conf |
 |---|---|---|---|---|---|
 | 0 | slot | 0 | 1 | Weapon slot 0–5. Slot 4 = melee by convention (gyro swing, `$BMAP,8,4`). | ✅ |
-| 1 | slotType / mode flag | — | — | `2` on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); `1` on melee; `0` rail gun; empty otherwise. Not fire mode. | ✅ |
-| 2 | — | 100 | 100 | — (unknown) | — |
+| 1 | slotType / mode flag | n/a | n/a | `2` on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); `1` on melee; `0` rail gun; empty otherwise. Not fire mode. | ✅ |
+| 2 | n/a | 100 | 100 | (unknown) | n/a |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard · 1 MedicHeal · 2 ActivateShield · 3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb · 10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. | ✅ (position) 🔍 (enum names) |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. | 🔍 |
 | 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (§7r addendum). | ✅ |
 | 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (applies `$GSET` t7, ×1.5 at the shipped t7=50). | 🔍 |
-| 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | — | — | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. | 🔍 |
-| 12 | extraHeadsetDamage | — | — | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
-| 13 | extraHeadsetRangeOutdoor | — | — | 80 on the same three weapons. | ✅ (correlation) |
+| 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | n/a | n/a | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. | 🔍 |
+| 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
+| 13 | extraHeadsetRangeOutdoor | n/a | n/a | 80 on the same three weapons. | ✅ (correlation) |
 | 14 | **fire interval / charge time (ms)** | 100 | 1250 | **Proven by one-field flip**: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (🔍): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time. | ✅ (flip) 🔍 (cadence list) |
-| 15 | — | 850 | 850 | — (unknown) | — |
+| 15 | n/a | 850 | 850 | (unknown) | n/a |
 | 16 | maxClip | 32 | 100 | Magazine size. | ✅ |
 | 17 | maxAmmo | 32768 | 32768 | Always `2 × t40` in captured frames (or 32768 as an unlimited flag). Not an independent knob. | ✅ (correlation) |
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. | 🔍 |
-| 19 | — | 0 | 0 | — (unknown) | — |
+| 19 | n/a | 0 | 0 | (unknown) | n/a |
 | 20 | **fire mode** | 0 | 14 | **Proven by one-field flip**: `0` full-auto · `7` single-shot/bolt · `9` burst (cycle in t23) · `2` charge, auto-release (tap = weak shot) · `3` hold-to-charge, auto-fire (tap = sound only) · `14` tap-fire OR charge-release · `13` melee. | ✅ |
 | 21 | maxAccuracy | 100 | 100 | | 🔍 |
 | 22 | singleShotAccuracy | 100 | 100 | | 🔍 |
-| 23 | burstWeaponTime (ms) | — | — | Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else. | ✅ |
+| 23 | burstWeaponTime (ms) | n/a | n/a | Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else. | ✅ |
 | 24 | overheat (heat per shot) | 0 | 14 | SMG 5 · Energy Rifle 6 · Charge Rifle 14 · Plasma Sniper 30. **Inert unless t37/t38 are set.** | ✅ |
-| 25 | — | — | — | — (unknown) | — |
-| 26 | — | — | — | — (unknown) | — |
+| 25 | n/a | n/a | n/a | (unknown) | n/a |
+| 26 | n/a | n/a | n/a | (unknown) | n/a |
 | 27 | primaryFire_SoundName | R01 | E03 | Fire sound id. **A sound, not an identity** — Rocket Launcher and Rail Gun both fire `C03` with different stat lines. | ✅ |
-| 28 | extra action sound A | — | C15 | Engage sound. `C…` ids = charge (rail gun C08, laser cannon C11, charge rifle C15); `D…` ids = extra reload parts on five-part reloads (sniper/AMR/force rifle D20, ion sniper D32). | ✅ |
-| 29 | extra action sound B | — | C17 | Release sound. Present exactly when the weapon has a distinct release event (charge rifle C17, bolt weapons D19/D31); absent on auto-firing chargers. | ✅ |
-| 30 | secondary_Mix_SoundName | — | — | | 🔍 |
+| 28 | extra action sound A | n/a | C15 | Engage sound. `C…` ids = charge (rail gun C08, laser cannon C11, charge rifle C15); `D…` ids = extra reload parts on five-part reloads (sniper/AMR/force rifle D20, ion sniper D32). | ✅ |
+| 29 | extra action sound B | n/a | C17 | Release sound. Present exactly when the weapon has a distinct release event (charge rifle C17, bolt weapons D19/D31); absent on auto-firing chargers. | ✅ |
+| 30 | secondary_Mix_SoundName | n/a | n/a | | 🔍 |
 | 31 | reloadPart1_SoundName | D04 | D30 | | ✅ |
 | 32 | reloadPart2_SoundName | D03 | D29 | | ✅ |
 | 33 | reloadPart3_SoundName | D02 | D37 | | ✅ |
 | 34 | noAmmo_SoundName | D18 | A73 | | 🔍 |
-| 35 | weaponFeatureA | — | C19 | **Overheat sound** (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122). | ✅ |
-| 36 | weaponFeatureB | — | C04 | Second feature sound. | 🔍 |
-| 37 | overheat param A | — | 20 | **Gate for the overheat system** (with t38): transplanting `20,150` onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip — at these values the 72-round magazine empties before a hard lockout. | ✅ (gate) |
-| 38 | overheat param B | — | 150 | See t37. | ✅ (gate) |
+| 35 | weaponFeatureA | n/a | C19 | **Overheat sound** (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122). | ✅ |
+| 36 | weaponFeatureB | n/a | C04 | Second feature sound. | 🔍 |
+| 37 | overheat param A | n/a | 20 | **Gate for the overheat system** (with t38): transplanting `20,150` onto the SMG brought its dead heat gauge alive (28→52 through a mag dump) and the trigger gated at the top like an empty clip — at these values the 72-round magazine empties before a hard lockout. | ✅ (gate) |
+| 38 | overheat param B | n/a | 150 | See t37. | ✅ (gate) |
 | 39 | clipStartingAmmo | 32 | 100 | Equals t16 in every captured frame. | ✅ (correlation) |
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. | 🔍 |
-| 41 | — | 75 | 75 | — (unknown) | — |
-| 42 | extraHeadsetRangeIndoor | — | — | 30/30/40 on the three t1=2 weapons. | ✅ (correlation) |
+| 41 | n/a | 75 | 75 | (unknown) | n/a |
+| 42 | extraHeadsetRangeIndoor | n/a | n/a | 30/30/40 on the three t1=2 weapons. | ✅ (correlation) |
 🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 `$WEAP` token probes; charge modes; overheat solved)
 
 [callout:warn] **Two positions that bit us.** (1) The metadata's field order has `rateOfFire` before `weaponSwapDelay`; the wire has the *rate* at **t14** and the constant 850 at t15 — a compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons. ✅ src: protocol/brx-protocol.md §6.1; protocol/callsign-extract/protocol-classes.md (cap17, cap18)
@@ -363,13 +363,13 @@ _The two frames that set on-gun rules and the player's pools, identity and voice
 | tok | Field | Sample | Meaning | Conf |
 |---|---|---|---|---|
 | 1 | **player id** | 6 | **0-based, 0–63 (6 bits)** — the app's UI shows 1–64 and writes id−1 (app 7 → wire 6, app 64 → 63, an out-of-range 69 clamps to 63). Ends up in every IR shot's P field and comes back as `$HIR` token 3 on whoever you hit. | ✅ |
-| 2 | — | 0 | 0 in every capture; 0/1/7 gave byte-identical behaviour. Inert. | ✅ |
+| 2 | n/a | 0 | 0 in every capture; 0/1/7 gave byte-identical behaviour. Inert. | ✅ |
 | 3 | HP | 45 | Starting/max HP. Echoed as `$LCD` token 1 after `$SPAWN`. | ✅ |
 | 4 | armor | 70 | Armor pool (`$LCD` token 2, `$HP` token 2). | ✅ |
 | 5 | shield | 70 | Shield **maximum**. The pool starts at 0 and only fills via an IR `$SIR` grant function — it is not BLE-writable as a value. | ✅ |
-| 6 | — | 50 | — (unknown) | — |
-| 7 | (empty) | — | | — |
-| 8+ | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | Sixteen sound ids on the wire. The app's metadata declares these voice-pack fields: deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit, emptyUnboundButtonSound, ammoOrGearPickUp, energyShieldLoop. Which wire slot carries which name: — (unknown). | 🔍 |
+| 6 | n/a | 50 | (unknown) | n/a |
+| 7 | (empty) | n/a | | n/a |
+| 8+ | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | Sixteen sound ids on the wire. The app's metadata declares these voice-pack fields: deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit, emptyUnboundButtonSound, ammoOrGearPickUp, energyShieldLoop. Which wire slot carries which name: (unknown). | 🔍 |
 ✅ 🔍 src: protocol/brx-protocol.md §3, §7e, §7p, §7r; protocol/callsign-extract/protocol-classes.md (PSET); mcp/brx_mcp/gameconfig.py; docs/unknowns.md (A10b′, P3)
 
 [callout:tip] **Numbering a fleet is one token.** Give every gun a distinct `$PSET` token 1 at arm time and per-player kill attribution is BLE-native — no cable, no IR receiver. Show operators 1-based ids; write `id − 1`. ✅ src: protocol/brx-protocol.md §7p, §7q
@@ -418,8 +418,8 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | Add armor | 13, 15, 20, 22 | 0→20→40; overflow spills to shields | ally only (20 also strips enemy armor) | ✅ |
 | Add shield | 11, 18 | 0→20→40 | ally only | ✅ |
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100→0 and recovers over ~6–8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy | ✅ |
-| Registers, no pool change | enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. Verified identical on protocols 0/5/7/9/10 — including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. | — | ✅ |
-| No registration | 0, 39–45 | — | — | ✅ 0/39/40 re-measured 2026-08-27; 41–45 not re-tested |
+| Registers, no pool change | enemy 3, 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. Verified identical on protocols 0/5/7/9/10 — including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. | n/a | ✅ |
+| No registration | 0, 39–45 | n/a | n/a | ✅ 0/39/40 re-measured 2026-08-27; 41–45 not re-tested |
 ✅ src: docs/experiment-log.md (2026-08-26 complete two-sided `$SIR` map; 2026-08-27 fn 23)
 
 [callout:warn] **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic. ✅ src: protocol/brx-protocol.md §5; docs/experiment-log.md (dual-polarity, FF table)
@@ -462,8 +462,8 @@ _Hits, health, HUD echoes, buttons and telemetry — and the proof that the gun 
 | Message | Decode | Conf |
 |---|---|---|
 | `$HP,<hp>,<armor>,<shield>,*` | Pools after the hit; same millisecond as its `$HIR`. `$HP,0,0,0` = death. Example run at 9/hit: armor 70→61→…→0, then HP 45→43→34→…→0. Writes (`$LIFE`/`$BUMP`) do not self-emit `$HP`. | ✅ |
-| `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | Health/armor HUD echo on `$START`/`$SPAWN`/death. Tokens 3–4: — (unknown). | ✅ |
-| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD (token 2: — (unknown)): one frame per round fired *and* per round reloaded; slot changes on alt-fire cycle (0↔1); melee (slot 4) appears as an isolated frame. Heat is a raw level that exceeds 100. | ✅ |
+| `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | Health/armor HUD echo on `$START`/`$SPAWN`/death. Tokens 3–4: (unknown). | ✅ |
+| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD (token 2: (unknown)): one frame per round fired *and* per round reloaded; slot changes on alt-fire cycle (0↔1); melee (slot 4) appears as an isolated frame. Heat is a raw level that exceeds 100. | ✅ |
 | `$BUT,<id>,<state>,*` | 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire. | ✅ |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | Battery every ~30 s in app mode. **Only reliably returned at good RSSI** — weak-signal guns in a fleet sweep returned none. | ✅ |
 | `$DISCONNECT,*` | The gun is hanging up (headset switched off, or the app closing). | ✅ |
@@ -624,14 +624,14 @@ _Which state lives where — and what a BLE drop, a headset switch-off, or a pow
 [compare] **State survival matrix**
 | State | BLE drop / reconnect | Headset switched off | Power-cycle | Conf |
 |---|---|---|---|---|
-| Game config (`$GSET`/`$PSET`/`$WEAP`/`$SIR`/`$BMAP`) | — (unknown) — re-send the full head after a reconnect | Gun sends `$DISCONNECT,*` and drops the link; config: — (unknown) | **Wiped** — `$SPAWN` then echoes `$LCD,0,0,0,0,0,0` + `$ALCD,0,0,0,0,0` | ✅ |
-| Alive/dead + pools | Survives (a dead gun stays dead) | — | Reset | ✅ |
-| Ammo | Survives | — | Wiped | ✅ |
-| `$TID` team / LED colour | Survives; colour is painted at `$SPAWN` | — | Reset | ✅ |
+| Game config (`$GSET`/`$PSET`/`$WEAP`/`$SIR`/`$BMAP`) | (unknown) — re-send the full head after a reconnect | Gun sends `$DISCONNECT,*` and drops the link; config: (unknown) | **Wiped** — `$SPAWN` then echoes `$LCD,0,0,0,0,0,0` + `$ALCD,0,0,0,0,0` | ✅ |
+| Alive/dead + pools | Survives (a dead gun stays dead) | n/a | Reset | ✅ |
+| Ammo | Survives | n/a | Wiped | ✅ |
+| `$TID` team / LED colour | Survives; colour is painted at `$SPAWN` | n/a | Reset | ✅ |
 | `$NAME` | Persists | Persists | **Persists** (only the official app rewrites it) | ✅ |
-| Player id (`$PSET` t1) | Survives with config | — | Wiped (the USB `PlayerID` is separate and persistent) | ✅ |
-| Score, clock, respawn timer | **Never on the gun** | — | — | ✅ |
-| `$SIR` fn-23 state (`$ALCD` token 2 at 0) | Persists until `$SPAWN` | — | Cleared | ✅ |
+| Player id (`$PSET` t1) | Survives with config | n/a | Wiped (the USB `PlayerID` is separate and persistent) | ✅ |
+| Score, clock, respawn timer | **Never on the gun** | n/a | n/a | ✅ |
+| `$SIR` fn-23 state (`$ALCD` token 2 at 0) | Persists until `$SPAWN` | n/a | Cleared | ✅ |
 ✅ src: protocol/brx-protocol.md §7r (E1), §7n; docs/experiment-log.md (2026-08-24 `$NAME`; EMP recovery matrix)
 
 [diagram DEV-09] The matrix above as a grid graphic. ✅ src: as above
@@ -794,16 +794,16 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 ## Images for this section
 | ID | Page / where | What it shows | Kind | Source | Gemini prompt |
 |---|---|---|---|---|---|
-| DEV-01 | Transport — hero | Atmospheric hero: a laser-tag rifle silhouette in profile, low-key, with a faint oscilloscope-style serial pulse train sweeping across the lower third and soft concentric radio arcs emanating from the receiver; a single amber dot for the IR emitter. | GENERATE | — | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: a sleek futuristic laser-tag rifle in side profile, rim-lit in electric blue, with thin concentric radio arcs radiating from its rear and a crisp oscilloscope pulse train (long and short pulses) glowing along the bottom edge; one small amber point of light at the muzzle; shallow depth of field, matte surfaces, no visible branding. |
-| DEV-02 | Transport — after the generation table | Link topology. Boxes: HOST (laptop/phone/ESP32) — TAGGER — HEADSET — OTHER TAGGER — USB CONSOLE. Arrows: host→tagger labelled "BLE NUS write 6E400002" and tagger→host "notify 6E400003"; a dashed bidirectional line tagger↔headset labelled "proprietary link (team colour, hit sensors)"; tagger→other tagger a dotted amber arrow labelled "IR 38 kHz, 25-bit word"; a side arrow USB CONSOLE→tagger labelled "QUERY / SETUP (CR-terminated, not $)". A small note on the Gen1 path: "Gen1: SPP 57600 via HC-05". | SVG (build in site) | protocol/brx-protocol.md §1, §7c, §7r | — |
-| DEV-03 | Transport — frame anatomy | Annotated frame `$PLAY,,4,6,V3A,,,,*` as monospace chips: `$` (start), `PLAY` (command), `,` separators, an **empty** token highlighted in amber with the note "empty = leave unchanged", `4`, `6`, `V3A` (announcer slot), trailing empties, `,*` (terminator). Callouts: "max ~20-byte BLE chunks", "no commas / * / newlines inside tokens". | SVG (build in site) | protocol/brx-protocol.md §2, §7o; mcp/brx_mcp/protocol.py | — |
-| DEV-04 | Arm sequence | Sequence diagram, two lifelines HOST and TAGGER. Downward arrows in order: `$CLEAR` `$START` (return `$LCD,0,0,0,0,0,0`) `$GSET` `$PSET` `$WEAP×3` `$SIR×10` `$BMAP×7` `$TID` `$PLAYX,0` `$PLAY,VA81,4,6` `$SPAWN,,` (return `$LCD,45,70,0,0,36,216`) `$AMMO,0,36,108,1` `$AMMO,1,6,12,1` `$BMAP,0,0`. Then a shaded "in play" band with `$BUT,0,1`/`$ALCD` returns. Then a death band: return `$HP,0,0,0` + `$LCD,0,0,0,1,1,1`; host `$HLOOP,0,0` (~1.7 s); host `$SPAWN,,` (~10 s) return `$LCD,45,70,0,0,36,216`. Then end: `$VOL,69,0` `$HLED,,6` `$STOP` `$CLEAR` `$PLAY,VSF,4,6,JAY`. Blue for host frames, amber for gun echoes. | SVG (build in site) | protocol/brx-protocol.md §7e, §7f, §7o | — |
-| DEV-05 | `$WEAP` page | A horizontal token ruler of 43 cells (t0–t42) colour-coded by block: identity (t0–t2), damage/IR (t3–t6), secondary-dormant (t7–t11, hatched grey), extra-headset (t12–t13, t42), cadence & ammo (t14–t19), fire mode/accuracy/burst/overheat (t20–t26), sounds (t27–t36), overheat gate (t37–t38), ammo tail (t39–t41). Each cell shows its index and a short label; t14 and t20 get a "bench-proven" badge; t15 gets a "constant 850 — don't write" badge. | SVG (build in site) | protocol/callsign-extract/protocol-classes.md; protocol/brx-protocol.md §6.1 | — |
-| DEV-06 | IR page | 25-bit field ruler: B(4) P(6) T(2) D(8) C(1) U(2) Z(2) with bit offsets 0–24 below, plus a pulse-train strip above showing the 2 ms sync, then long (≈1000 µs) and short (≈500 µs) marks for the sample word `1101000111010101101000110`, and the trailing short end pulse. Under each field: "= $WEAP t3 / $HIR tok2", "= $PSET t1 / $HIR tok3", "= $TID & 3 / $HIR tok4", "= $WEAP t5 / $HIR tok5", "= $HIR tok6 (×(1 + $GSET t7/100))", "= $SIR subtype / $HIR tok7", "parity: odd→01 even→10; gun checks only Z0≠Z1". | SVG (build in site) | protocol/brx-ir-protocol.md | — |
-| DEV-07 | `$SIR` page | Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch "no row → dropped silently" / "row found" → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×(1 + $GSET t7/100) if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches. | SVG (build in site) | protocol/brx-protocol.md §5, §7r addendum; docs/experiment-log.md | — |
-| DEV-08 | Events page | Kill attribution sequence with three lifelines: VICTIM GUN, HOST, SHOOTER GUN. Victim → host: `$HIR,4,0,19,2,9,0,3` (×N) then `$HIR` + `$HP,0,0,0` (same ms). Host box: "credit player 19 / team 2". Host → shooter: `$SFLASH,*` (+0.4 s), `$PLAY,,4,6,V3A,,,,*` (+0.2 s), `$PLAY,,4,6,VB17,,,,*` (lead change only). Host → victim after respawn delay: `$SPAWN,,*`. | SVG (build in site) | protocol/brx-protocol.md §7o, §7q | — |
-| DEV-09 | Headset/link page | Grid: rows = config, alive/dead+pools, ammo, `$TID`/LED colour, `$NAME`, player id, score/clock, fn-23 state; columns = BLE drop, headset off, power-cycle. Cells filled blue "survives", amber "wiped", grey "never on gun / untested", each with a two-word note. | SVG (build in site) | protocol/brx-protocol.md §7r, §7n; docs/experiment-log.md | — |
-| DEV-10 | Serial console page — header | Atmosphere: a micro-USB cable plugged into the side of a matte device, a faint terminal glow reflecting on the surface; extreme close-up, shallow focus. | GENERATE | — | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: extreme close-up of a micro-USB cable seated in the port of a matte dark polymer device, a faint electric-blue glow spilling from an out-of-focus terminal screen in the background, one small amber status LED beside the port, shallow depth of field, no readable characters anywhere. |
+| DEV-01 | Transport — hero | Atmospheric hero: a laser-tag rifle silhouette in profile, low-key, with a faint oscilloscope-style serial pulse train sweeping across the lower third and soft concentric radio arcs emanating from the receiver; a single amber dot for the IR emitter. | GENERATE | n/a | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: a sleek futuristic laser-tag rifle in side profile, rim-lit in electric blue, with thin concentric radio arcs radiating from its rear and a crisp oscilloscope pulse train (long and short pulses) glowing along the bottom edge; one small amber point of light at the muzzle; shallow depth of field, matte surfaces, no visible branding. |
+| DEV-02 | Transport — after the generation table | Link topology. Boxes: HOST (laptop/phone/ESP32) — TAGGER — HEADSET — OTHER TAGGER — USB CONSOLE. Arrows: host→tagger labelled "BLE NUS write 6E400002" and tagger→host "notify 6E400003"; a dashed bidirectional line tagger↔headset labelled "proprietary link (team colour, hit sensors)"; tagger→other tagger a dotted amber arrow labelled "IR 38 kHz, 25-bit word"; a side arrow USB CONSOLE→tagger labelled "QUERY / SETUP (CR-terminated, not $)". A small note on the Gen1 path: "Gen1: SPP 57600 via HC-05". | SVG (build in site) | protocol/brx-protocol.md §1, §7c, §7r | n/a |
+| DEV-03 | Transport — frame anatomy | Annotated frame `$PLAY,,4,6,V3A,,,,*` as monospace chips: `$` (start), `PLAY` (command), `,` separators, an **empty** token highlighted in amber with the note "empty = leave unchanged", `4`, `6`, `V3A` (announcer slot), trailing empties, `,*` (terminator). Callouts: "max ~20-byte BLE chunks", "no commas / * / newlines inside tokens". | SVG (build in site) | protocol/brx-protocol.md §2, §7o; mcp/brx_mcp/protocol.py | n/a |
+| DEV-04 | Arm sequence | Sequence diagram, two lifelines HOST and TAGGER. Downward arrows in order: `$CLEAR` `$START` (return `$LCD,0,0,0,0,0,0`) `$GSET` `$PSET` `$WEAP×3` `$SIR×10` `$BMAP×7` `$TID` `$PLAYX,0` `$PLAY,VA81,4,6` `$SPAWN,,` (return `$LCD,45,70,0,0,36,216`) `$AMMO,0,36,108,1` `$AMMO,1,6,12,1` `$BMAP,0,0`. Then a shaded "in play" band with `$BUT,0,1`/`$ALCD` returns. Then a death band: return `$HP,0,0,0` + `$LCD,0,0,0,1,1,1`; host `$HLOOP,0,0` (~1.7 s); host `$SPAWN,,` (~10 s) return `$LCD,45,70,0,0,36,216`. Then end: `$VOL,69,0` `$HLED,,6` `$STOP` `$CLEAR` `$PLAY,VSF,4,6,JAY`. Blue for host frames, amber for gun echoes. | SVG (build in site) | protocol/brx-protocol.md §7e, §7f, §7o | n/a |
+| DEV-05 | `$WEAP` page | A horizontal token ruler of 43 cells (t0–t42) colour-coded by block: identity (t0–t2), damage/IR (t3–t6), secondary-dormant (t7–t11, hatched grey), extra-headset (t12–t13, t42), cadence & ammo (t14–t19), fire mode/accuracy/burst/overheat (t20–t26), sounds (t27–t36), overheat gate (t37–t38), ammo tail (t39–t41). Each cell shows its index and a short label; t14 and t20 get a "bench-proven" badge; t15 gets a "constant 850 — don't write" badge. | SVG (build in site) | protocol/callsign-extract/protocol-classes.md; protocol/brx-protocol.md §6.1 | n/a |
+| DEV-06 | IR page | 25-bit field ruler: B(4) P(6) T(2) D(8) C(1) U(2) Z(2) with bit offsets 0–24 below, plus a pulse-train strip above showing the 2 ms sync, then long (≈1000 µs) and short (≈500 µs) marks for the sample word `1101000111010101101000110`, and the trailing short end pulse. Under each field: "= $WEAP t3 / $HIR tok2", "= $PSET t1 / $HIR tok3", "= $TID & 3 / $HIR tok4", "= $WEAP t5 / $HIR tok5", "= $HIR tok6 (×(1 + $GSET t7/100))", "= $SIR subtype / $HIR tok7", "parity: odd→01 even→10; gun checks only Z0≠Z1". | SVG (build in site) | protocol/brx-ir-protocol.md | n/a |
+| DEV-07 | `$SIR` page | Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch "no row → dropped silently" / "row found" → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×(1 + $GSET t7/100) if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches. | SVG (build in site) | protocol/brx-protocol.md §5, §7r addendum; docs/experiment-log.md | n/a |
+| DEV-08 | Events page | Kill attribution sequence with three lifelines: VICTIM GUN, HOST, SHOOTER GUN. Victim → host: `$HIR,4,0,19,2,9,0,3` (×N) then `$HIR` + `$HP,0,0,0` (same ms). Host box: "credit player 19 / team 2". Host → shooter: `$SFLASH,*` (+0.4 s), `$PLAY,,4,6,V3A,,,,*` (+0.2 s), `$PLAY,,4,6,VB17,,,,*` (lead change only). Host → victim after respawn delay: `$SPAWN,,*`. | SVG (build in site) | protocol/brx-protocol.md §7o, §7q | n/a |
+| DEV-09 | Headset/link page | Grid: rows = config, alive/dead+pools, ammo, `$TID`/LED colour, `$NAME`, player id, score/clock, fn-23 state; columns = BLE drop, headset off, power-cycle. Cells filled blue "survives", amber "wiped", grey "never on gun / untested", each with a two-word note. | SVG (build in site) | protocol/brx-protocol.md §7r, §7n; docs/experiment-log.md | n/a |
+| DEV-10 | Serial console page — header | Atmosphere: a micro-USB cable plugged into the side of a matte device, a faint terminal glow reflecting on the surface; extreme close-up, shallow focus. | GENERATE | n/a | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: extreme close-up of a micro-USB cable seated in the port of a matte dark polymer device, a faint electric-blue glow spilling from an out-of-focus terminal screen in the background, one small amber status LED beside the port, shallow depth of field, no readable characters anywhere. |
 
 ## Interactive ideas (≤5)
 1. **`$WEAP` frame builder** — sliders/selects for damage (t5), fire interval (t14), fire mode (t20: auto/single/burst/charge variants/melee), burst cycle (t23), clip/reserve (t16/t39/t40, with t17 auto-derived as 2×t40), reload ms (t18), IR protocol (t3, DamageType enum names), overheat (t24/t35/t37/t38), and sound-id pickers from the bank for t27–t36. Outputs the exact frame string with copy-to-clipboard; locks t15 to 850 and greys the dormant t7–t11.
@@ -846,14 +846,14 @@ Everything below was removed from the pages above because it is unconfirmed, sin
 - **On-gun volume menu ↔ `$VOL`** — the 1–5 menu ≈ `$VOL` 60/70/80/90/100 is a field estimate (brx-protocol.md §3), not measured.
 - **"~1 in 3" BLE connection attempts succeed** — an operator impression, never counted (experiment-log 2026-08-23 #5, gotchas.md). Published only as "establishment is intermittent; retry".
 
-**Field-map positions blanked to `— (unknown)`**
+**Field-map positions blanked to `(unknown)`**
 - **`$WEAP` t2** — 100 on every stock gun, 90 on melee/gas-melee; function unknown.
 - **`$WEAP` t15** — 850 on every stock gun, 100 on melee; read as `weaponSwapDelay` from the APK name order, never proven. (The "don't write it — a compiler once wrote the fire rate here" warning stays published because the 850 constant and the bug are both bench facts.)
 - **`$WEAP` t19** — guess `reloadType` (ReloadType enum: Magazine, Quiver, Shells, SingleBolt, BoltWithMagazine, AutoReload). Shotgun reads 2, melee 10, but the shell-reload Plasma Sniper reads 0; a sniper probe changed nothing about firing.
 - **`$WEAP` t25 / t26** — `2` and `50` on the Suppressor only (melee t25 = 0). Read as "suppress the muzzle flash" and a loudness value; single sample each.
 - **`$WEAP` t37 / t38** — the pair enables overheat (published); which is threshold and which is cooldown is unmapped.
 - **`$WEAP` t41** — APK name `gunRange` (%); 75 on every stock weapon; whether it changes emitted range is untested.
-- **`$PSET` t6** — APK source order suggests `criticalDamageBonus`; swept 0–200 with no measurable effect on damage, pools, crit or gating, so unverified and not damage-related. **`$PSET` pools are NOT 8-bit** — armor, HP and shield all store and decrement exactly to at least **1000**, clamping at zero with no wrap; a 255 cap is our own policy, not a device limit.
+- **`$PSET` t6** — APK source order suggests `criticalDamageBonus`; swept 0–200 with no measurable effect on damage, pools, crit or gating, so unverified and not damage-related. **`$PSET` pools are NOT 8-bit** — **armor and HP** store and decrement exactly to at least **1000**, clamping at zero with no wrap, so a 255 cap is our own policy rather than a device limit. **Shield was not measured that far**: grant-saturation only (cap 600, reached 500), never decremented above 255 — its width is inferred, not shown.
 - **`$PSET` voice pack slot↔name alignment** — 17 metadata names vs 16 wire ids; not proven by ear.
 - **`$GSET` fields 2–8** — only the APK names are published; none has been flipped on the bench.
 - **`$LCD` tokens 3–4, `$VOLTS` tokens 3–4** — never decoded (`$VOLTS` 3–4 were read as charge %/levels; unconfirmed).

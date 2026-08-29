@@ -2839,9 +2839,12 @@ five.
 
 **Conclusions**
 
-1. **The behaviour classes travel.** So the function map can be stated without a protocol qualifier
-   after all — the scope banner I added is **over-cautious and can be relaxed**, which is a perfectly
-   good outcome and cheaper than having carried an overclaim.
+1. **The behaviour classes travel — for the functions actually tested.** ⚠️ **Partly retracted the same
+   day:** this originally said the map "can be stated without a protocol qualifier after all" and that
+   the scope banner was over-cautious. That was itself over-scoped. The matrix covered **10 of 41
+   functions, enemy team only, subtype 0 only** — no grant/friendly function was in it. Protocol
+   independence is well-supported for damage and enemy-status functions and is an **extrapolation** for
+   the grant half. See the scope block on the function-map entry.
 2. **The earlier "dissolved — identical on protocols 5 and 7" retraction is CORRECT**, and now extends
    to 0, 5, 7, 9 and 10. It was not half-right; it was right.
 3. **`c9c4a3f`'s "fn 24 damages on protocol 7 (armour 70 -> 30)" does NOT reproduce.** fn 24 is
@@ -3037,7 +3040,17 @@ magnitude 20, 2 shots per cell, re-armed from `$CLEAR` every cell, `$HIR` counte
 > independently bench-confirmed as **"respawn + add HP (15→35→45)"** (`brx-protocol.md` §5). It is a
 > grant, mis-binned by the ceiling. **So friendly 9, 10, 15, 31, 32, 34 must be re-measured from
 > DEPLETED pools** (spawn, take damage, then apply) before any of them is called a status function.
-> The **enemy** half (3, 8, 24-28, 35) is unaffected — damage into full pools is visible.
+> **The same artifact applies at the FLOOR, mirrored — so the enemy half is not fully clean either.**
+> The victim's shield started at **0**. Any enemy-side function that drains *shield only* has nothing to
+> take and also reads "moves no pool". So the enemy shortlist (3, 8, 24-28, 35) is clean of the *heal*
+> confound but **not** of a shield-drain confound: what it really shows is "does not reduce HP or
+> armour". Re-measure those cells **with a shield granted first** to close it.
+>
+> **And the "grants" rows are under-determined for the same reason.** With HP and armour full, a grant is
+> visible *only* as shield overflow — so `shield 0 -> 40` cannot say which pool fn 11/12/14/18/19/20/21
+> actually targets. **fn 13 proves the confound**: it is a known *add-armour* function and was seen as
+> shield. Only the earlier depleted-pool run (`brx-protocol.md` §5: fn 10 `15→35→45`, fn 11 `0→50→70`,
+> fn 13 `0→30→60→70`) distinguishes them.
 >
 > **2. GUN-BODY SENSOR, ~40 cm.** All 20/20 hits landed on `$HIR` tok1 = 4. Whether a headset-dome hit
 > applies the same pool deltas is **untested** — this rig cannot produce one.
@@ -3067,7 +3080,7 @@ separate pass.)*
 | **plain damage** | 1, 4, 5, 7, 16, 19, 20, 22, 29, 30, 33, 36, 37, 38 | enemy-only, armour 70 -> 30 (40 dealt) |
 | **armour-piercing** | 2, 6, 17, 21 | enemy-only, HP 45 -> 5, **armour untouched** |
 | **grants** | 11, 12, 13, 14, 18, 19, 20, 21 | friendly (or dual), shield 0 -> 40 |
-| **status — lands, moves nothing** | **3, 8** (enemy) · **23** (dual) · **24, 25, 26, 27, 28, 35** (enemy) · ⚠️ *friendly 9, 10, 15, 31, 32, 34 — see the ceiling caveat below* | `$HIR` fires, every pool unchanged |
+| **status — lands, moves nothing** | **3, 8** (enemy) · **23** (dual) · **24, 25, 26, 27, 28, 35** (enemy) · ⚠️ *friendly 9, 10, 15, 31, 32, 34 — see the ceiling caveat above* | `$HIR` fires, every pool unchanged |
 | **inert** | 0, 39, 40 | no `$HIR` from either team — the range ends at 38 |
 
 #### Why the status class is the stun shortlist
