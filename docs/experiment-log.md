@@ -2801,6 +2801,57 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-08-30 — ⚠️ RETRACTION + PLAN: most of the day's `$GLED` conclusions do not hold
+
+A three-agent review (captures / APK / adversarial) went through the two `$GLED` entries below. **Most
+of what they concluded is not supported.** Corrections first, then the plan that follows from them.
+
+#### What is RETRACTED
+
+| claim | status |
+|---|---|
+| "index 0 = off", night mode is `$GLED,0` | ❌ **WRONG. 0 = RED.** An earlier capture already recorded `$GLED,0,0,0,0,10,,*` as **red** (§7i table), and the community map reads 0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 cyan · 6 white. The "all dark" came from the **trailing tokens**, not the index. **Night mode must not ship on `$GLED,0`.** |
+| token 3 has a per-value LED pattern | ❌ **The two tables below contradict each other on every row** (t3=1 → red in one, blue in the other, etc). The entry itself notes the LEDs were **animating**, so each reading is a caught phase. There is no repeatable per-value map. |
+| token 4 is a 0/1 enable | ❌ **Enumerated, not boolean.** The Callsign app sends **`$GLED,,,,5,,,*`** on death — every field empty except token 4 = **5**. We only ever tried 0 and 1. |
+| "LED 2 is not addressable" | ❌ **Unsupported.** It rests on ONE frame shape (t1=3, t2=0, t4=1, t5=2000, only t3 varied). **LED 2 showed red = palette index 0 = the default** — nothing in those frames ever addressed it. |
+| token 1 = blue at n=1 | ⚠️ **Uncontrolled** — the gun was on `$TID,1`, which is already blue, so "blue" is indistinguishable from "no override". The community map supports it; our test does not. |
+| the gun "flashes and reverts by itself" | ⚠️ **Inferred, not observed.** No TX log was checked, steps were ~10 s apart, and LED colour is known to be repainted at `$SPAWN`. |
+| token 5 = brightness | ⚠️ **Plausible but uncontrolled** — the effect value during that sweep was not recorded. If effect was 1 (Glow), "dim to bright" could be a modulation *period*, not amplitude. |
+
+#### What SURVIVES
+
+- **Token 1 is a colour index and it OVERRIDES the team colour.** A gun held on `$TID,1` showed yellow,
+  green, purple, teal and white on command. The old "colour is team-derived only" claim is genuinely
+  disproven, and our indices 2-6 match the community map independently.
+- **Token 2 is the effect** — a clean A/B at n=1, effect 0 vs 1, with modulation matching `LedEffect.Glow`.
+
+#### The plan for the MIDDLE LED
+
+The best lead is the app's own death frame, `$GLED,,,,5,,,*`, and the fact that **the one time the
+middle LED moved** (`$GLED,1,<eff>,1,0,10`) had **token 4 = 0**, while every cell where it stayed red
+had **token 4 = 1**. Token 4 is the axis that was never swept.
+
+Ranked, cheapest first. Hold everything else fixed, run on **`$TID,2`** (yellow) so "blue" can never be
+confused with "no override", and record **all three LEDs** each time:
+
+1. **Sweep token 4 across 0-9.** The app uses 5. This is the single most likely unlock.
+2. **Sweep effect 2, 3, 4** (ChaseBack / ChaseForward / StopIR). The two Chase effects are literally
+   segment-walkers — if anything addresses LEDs in sequence, it is these.
+3. **Test token 1 as the APK's `mid`** — i.e. a *segment id*, not a colour. That reading has never been
+   tried, and the APK names the field `mid`, not `colour`.
+4. **Replay the app's exact frames**: `$GLED,,,,5,,,*`, and the richest LED frame we hold,
+   `$HLED,7,4,90,90,10,15,*` (seven populated positions, two 90s), adapted to `$GLED`.
+5. **Sequenced writes** — three frames, one per segment, in case a frame only ever paints one LED.
+6. **Drain the pools first.** The manual says the three LEDs are a **health bar**; every test so far ran
+   on a freshly spawned gun at full pools, so "LED 2 red" may be the gauge reporting full, not a default.
+
+**Do not add more token-3 values.** That axis is exhausted and its readings are phase noise.
+
+**Method rule for the re-run:** the LEDs animate, so a single glance is not a measurement. Hold each cell
+long enough to see whether it is static or cycling, and record *"static X"* or *"cycling X/Y"* rather
+than one colour.
+
+
 ### 2026-08-30 — `$GLED` field map: colour, effect, brightness, and a SELF-ANIMATING flash
 
 Follow-up to the P13 palette sweep, with Tony calling the LEDs. Gun held on `$TID,1` (blue) so anything
