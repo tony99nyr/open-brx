@@ -2825,6 +2825,37 @@ of what they concluded is not supported.** Corrections first, then the plan that
   disproven, and our indices 2-6 match the community map independently.
 - **Token 2 is the effect** — a clean A/B at n=1, effect 0 vs 1, with modulation matching `LedEffect.Glow`.
 
+#### ✅ TOKEN 4 SWEEP RESULT (2026-08-30, run on `$TID,2` = yellow so blue cannot be confused with no-override)
+
+| token 4 | all three LEDs |
+|---|---|
+| 0 | static green · red · red |
+| 1 | static green · red · red |
+| 2 | static green · red · red |
+| **3** | **ALL OFF / DARK** |
+
+**`$GLED,<c>,0,0,3,10,,*` turns every LED off. That is the real night-mode frame (P17)** — and it is on
+the axis the earlier "index 0 = off" claim got wrong. **LED 2 and 3 read RED while the team was YELLOW**,
+which confirms red is the palette **default** (index 0), not the team colour showing through.
+
+| 4, 5, 9 | *not reported* |
+| 6 | static green · red · red (Tony: "maybe the green led is brighter? not sure" — recorded as **uncertain**, not a finding) |
+| 7, 8 | static green · red · red |
+| **app's `$GLED,,,,5,,,*`** | **ALL OFF / DARK** |
+
+**Verdict: token 4 did NOT unlock the middle LED.** Two useful results, but not the one we were after:
+
+1. **`$GLED,<c>,0,0,3,10,,*` blanks every LED** — a real night-mode frame (P17), on the correct axis.
+2. **The app's `$GLED,,,,5,,,*` also blanks.** Note its **colour field is EMPTY**, so "no colour" may be
+   what blanks it rather than token 4 = 5 specifically. Two candidate blanking mechanisms; not yet
+   separated.
+3. **Red is confirmed as the palette DEFAULT**, not the team colour — the team was **yellow** throughout
+   and no LED ever showed yellow.
+
+**LED 2 never moved across all ten values.** Next on the ranked plan: **effects 2/3/4**
+(ChaseBack / ChaseForward / StopIR) — the two Chase effects are segment-walkers and are the strongest
+remaining candidate for per-LED addressing.
+
 #### The plan for the MIDDLE LED
 
 The best lead is the app's own death frame, `$GLED,,,,5,,,*`, and the fact that **the one time the
