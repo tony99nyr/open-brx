@@ -270,45 +270,49 @@ candidate.
 **If lever 1 works, it belongs in `GameConfig` as an indoor/tight-space preset**, alongside the existing
 kid-mode toggles. That is the shippable outcome.
 
-## 🟠 Q17 — kill attribution failed with THREE guns, works with two (2026-08-30, live bench)
+## 🟠 Q17 — kill attribution still uses shooter TEAM, so it breaks whenever a team has 2+ guns
 
-⚠️ **Narrowed from the original filing.** I first recorded this as a general failure of per-gun kill
-attribution. **It is not** — the very next game attributed kills perfectly. The bug is real but
-specific.
+**Root-caused 2026-08-30. Not a bug: an unfinished migration.** Two earlier framings of this item were
+wrong and are superseded — it is neither a general attribution failure nor a player-id collision.
 
-**Game 1, three taggers (2v1):**
-```
-🏆 GAME OVER - team1  scores={1: 2, 2: 0}
-  R0BQT (E20D) team1  kills 0  deaths 0    <- the gun Tony was HOLDING and firing
-  R0BAT (3D4F) team1  kills 0  deaths 1
-  R0BAS (FE30) team2  kills 0  deaths 2
-```
-Team score correct, **every gun `kills: 0`**.
+**Symptom.** Two live games, same shooter, same weapon, same mode:
 
-**Game 2, two taggers (R0BAT absent), same shooter, same weapon, same mode:**
-```
-🏆 GAME OVER - team1  scores={1: 5, 2: 0}
-  R0BQT (E20D) team1  kills 5  deaths 0    <- attribution CORRECT
-  R0BAS (FE30) team2  kills 0  deaths 5
-```
+| | teams | result |
+|---|---|---|
+| 3 guns, TDM 2v1 | team 1 has **two** guns | **every gun `kills: 0`**, team score correct |
+| 2 guns, TDM 1v1 | each team has **one** gun | **5/5 kills credited correctly** |
 
-**So the path works.** Something about the three-gun game broke it.
+**Cause, documented in the code itself** (`mcp/brx_mcp/modes/base.py:14`):
 
-**Leading hypothesis: player-id collision.** Kills cannot come from the shooter — the gun emits **no
-shooter-side kill event** (finding D4) — so attribution maps the victim's last `$HIR` **token 3 shooter
-player id** back to a gun address. That id is set per gun by `$PSET` **token 1**. If two of the three
-guns were assigned the **same** player id, the reverse lookup is ambiguous and attribution drops for
-everyone, while team scoring (derived from **deaths**, reported by the victim itself) stays correct.
-That matches the symptom exactly: team score right, all kills zero.
+> *"Kill attribution: a victim's gun reports `$HIR` (**shooter TEAM in token 4**)... Per-player credit
+> works when each gun has a **unique team** (`$TID`) - FFA - or once P2 sets a real PlayerID."*
 
-**Test it cheaply:** run a 3-gun game and log each gun's `$PSET` token 1 at setup. If they are not
-distinct, that is the bug. If they are distinct, capture the `$HIR` frames and check whether the
-shooter id in them matches any assigned id.
+The engine credits kills by **shooter team**. That is unambiguous only when one gun owns a team, i.e.
+FFA or 1v1. Put two guns on team 1 and the victim's `$HIR` says "team 1 shot me", which cannot pick
+between them, so nobody is credited. Team scoring is unaffected because it comes from **deaths**, which
+the victim reports about itself.
 
-**Why the sim never caught it:** the sim has no real `$HIR` shooter ids to collide.
+**The fix is already half-built.** The precondition that comment waits for has been met:
 
-**Impact:** per-player scoreboards, K/D, streaks and medals are wrong in games above two guns. Team
-scoring and win conditions are unaffected, which is how it survived to a live game unnoticed.
+- `mcp/brx_mcp/protocol.py:92` already parses **`shooter_player_id` = `$HIR` token 3**.
+- `mcp/brx_mcp/modes/driver.py:113-120` already **assigns a distinct id per gun** (auto-numbered 0,1,2,
+  overridable via `config.player_ids`) and pushes it as `$PSET` token 1, with a comment noting distinct
+  ids are "what make per-player attribution possible at all". The assignment is computed once so a
+  mid-game resetup re-sends the same id and does not orphan a player's kills.
+
+**So the driver did its half and the engine never switched over.** `grep` finds **no use of
+`shooter_player_id` anywhere in `modes/`** - the engine still reads only token 4.
+
+**To fix:** attribute by `$HIR` token 3 (shooter player id) mapped through `driver.player_ids`, and keep
+the team path as a fallback for guns whose id is unknown. Then per-player credit works in TDM, not just
+FFA and 1v1.
+
+**Test that proves it:** the 3-gun TDM above is the failing case and takes one short game to re-run.
+Also worth an FFA run, where the current team-based path is expected to work with 3 guns - that would
+confirm the diagnosis from the other direction.
+
+**Impact:** per-player scoreboards, K/D, streaks and medals are wrong in any team mode where a team has
+more than one gun, which is the normal case. Team scores and win conditions are correct.
 
 ## 🟡 Q18 — the FIRST mid-game reconnect reports success falsely (2026-08-30, live bench)
 
