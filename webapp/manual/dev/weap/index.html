@@ -354,18 +354,18 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </tr>
 <tr>
 <td>41</td>
-<td>n/a</td>
+<td>gunRangeIndoor</td>
 <td>75</td>
 <td>75</td>
-<td>(unknown)</td>
-<td>n/a</td>
+<td><strong>The gun&#39;s INDOOR IR range</strong>, as a percent. The APK field order places <code>gunRangeIndoor</code> here, between <code>ammoReserv</code> (t40) and <code>extraHeadsetRangeIndoor</code> (t42), and it reads 75 on all eighteen guns and <strong>20 on melee</strong>, which is the direction physics demands. <code>$GSET</code> token 2 selects whether the indoor or outdoor profile is live. <strong>Lowering this is the most promising route to a weaker indoor beam</strong> for tight spaces where bounced IR registers hits. Untested on the bench.</td>
+<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>42</td>
 <td>extraHeadsetRangeIndoor</td>
 <td>n/a</td>
 <td>n/a</td>
-<td>30/30/40 on the three t1=2 weapons.</td>
+<td>The <strong>headset&#39;s</strong> indoor range, separate from the gun&#39;s (t41). 30/30/40 on the three t1=2 weapons, blank elsewhere. There are four range fields in all: gun and headset, each with an indoor and an outdoor value.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (correlation)</td>
 </tr>
 </tbody></table></div>

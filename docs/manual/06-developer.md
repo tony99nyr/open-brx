@@ -302,8 +302,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 38 | overheat param B | n/a | 150 | See t37. | ✅ (gate) |
 | 39 | clipStartingAmmo | 32 | 100 | Equals t16 in every captured frame. | ✅ (correlation) |
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. | 🔍 |
-| 41 | n/a | 75 | 75 | (unknown) | n/a |
-| 42 | extraHeadsetRangeIndoor | n/a | n/a | 30/30/40 on the three t1=2 weapons. | ✅ (correlation) |
+| 41 | gunRangeIndoor | 75 | 75 | **The gun's INDOOR IR range**, as a percent. The APK field order places `gunRangeIndoor` here, between `ammoReserv` (t40) and `extraHeadsetRangeIndoor` (t42), and it reads 75 on all eighteen guns and **20 on melee**, which is the direction physics demands. `$GSET` token 2 selects whether the indoor or outdoor profile is live. **Lowering this is the most promising route to a weaker indoor beam** for tight spaces where bounced IR registers hits. Untested on the bench. | 🔍 |
+| 42 | extraHeadsetRangeIndoor | n/a | n/a | The **headset's** indoor range, separate from the gun's (t41). 30/30/40 on the three t1=2 weapons, blank elsewhere. There are four range fields in all: gun and headset, each with an indoor and an outdoor value. | ✅ (correlation) |
 🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 `$WEAP` token probes; charge modes; overheat solved)
 
 [callout:warn] **Two positions that bit us.** (1) The metadata's field order has `rateOfFire` before `weaponSwapDelay`; the wire has the *rate* at **t14** and the constant 850 at t15. A compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons. ✅ src: protocol/brx-protocol.md §6.1; protocol/callsign-extract/protocol-classes.md (cap17, cap18)

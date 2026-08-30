@@ -159,10 +159,26 @@ watched a gun **drain its own armour** shooting a wall a few feet away.
 The native indoor/outdoor toggle is the only power control BRX exposes to players, and indoor is its
 floor. We want **below** that.
 
-### Lever 1 (best): `$WEAP` token 41, "gun range"
+### ⚠️ First, the answer to "is there a width, or only power?": **only power.**
 
-`t41` is a **0 to 100 per-weapon range value**. It reads **75 on all eighteen guns** and **20 on
-melee** (`weapon-design.md` §4.2).
+There is **no width, spread, cone or angle field anywhere** in the APK dump (searched
+width/spread/cone/angle/arc across `callsign-extract/`). Beam geometry is fixed by the physical optics,
+the emitter LED and its lens. Every control BRX exposes is **power/range**, so a narrower beam is not
+available in software. If bounce is the problem, the only software answer is less power.
+
+### The four range fields (this is more structured than it first looked)
+
+The APK field order gives the gun **four** range values, not one: `gunRangeOutdoor`,
+**`gunRangeIndoor`**, `extraHeadsetRangeOutdoor` and `extraHeadsetRangeIndoor`. `$GSET` token 2
+(`outdoorMode`) is described in the metadata as the *"indoor(0)/outdoor(1) IR range profile"*, i.e. it
+**selects which pair is live** rather than scaling anything itself.
+
+### Lever 1 (best): `$WEAP` token 41 = `gunRangeIndoor`
+
+**t41 is literally `gunRangeIndoor`** — the APK field order places it between `ammoReserv` (t40) and
+`extraHeadsetRangeIndoor` (t42). It is a percent, reading **75 on all eighteen guns** and **20 on
+melee** (`weapon-design.md` §4.2). So it is not a generic "range" number: it is specifically the
+**indoor** value, which is exactly the case we want to lower, and lowering it leaves outdoor alone.
 
 **That melee value is the argument.** Melee is a contact weapon, and Battle Company set its range field
 to 20 while every gun sits at 75. An inert cosmetic number would not track physical reality in exactly
@@ -171,6 +187,14 @@ the direction physics demands. It is decent evidence the field really drives emi
 Battle Company never varies it across the arsenal, which is likely why nobody has tried. **We can:
 push `$WEAP` with t41 at 30, 20, 10 and measure.** Per-weapon, writable over BLE, already in our
 config path. If it works it is a per-game, per-weapon power dial, which is better than any toggle.
+
+### Dead end, already tested: `$IRTX` / `$HFIRE`
+
+The APK lists an **`$IRTX`** command with an explicit **`iRPower`** field ("raw IR transmit"), and
+`$HFIRE` with `Range, CountIRPulses, RateOfFire, FlashLED`. Both look ideal. **Both produced ZERO IR**
+on our firmware: 5 `$IRTX` shapes and 5 `$HFIRE` shapes, with receiver controls passing
+(`experiment-log.md` 2026-08-26). Treat them as unimplemented on v4.32 unless someone finds the right
+argument shape.
 
 ### Lever 2: `$GSET` token 3, `gunLaserRegion`
 
