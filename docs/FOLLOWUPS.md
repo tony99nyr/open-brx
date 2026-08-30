@@ -303,6 +303,44 @@ and whether the reverse lookup is populated before the first kill.
 **Impact:** any per-player scoreboard, K/D, streak or medal is wrong. Team scoring and win conditions
 are unaffected, which is why this survived to a live game unnoticed.
 
+## 🟡 Q18 — the FIRST mid-game reconnect reports success falsely (2026-08-30, live bench)
+
+⚠️ **This item was first filed as a critical failure. That was wrong and is corrected here** — I read a
+mid-sequence snapshot instead of waiting for the run to finish. **Resilience actually works.**
+
+**What really happened**, running checklist item 2 with R0BAS power-cycled mid-match:
+
+```
+ 9-18  (send to D9:50:2F:98:FE:30 failed: Not connected)   x10   <- the gun is genuinely gone
+   19  (reconnected D9:50:2F:98:FE:30)                           <- FALSE: not actually back
+ 20-26 (send ... failed: Not connected)                    x7    <- still dead
+   27  (reconnected D9:50:2F:98:FE:30)                           <- GENUINE
+   28  team1: 3 (+1)   30  respawn ...   31  team1: 4 (+1)       <- fully recovered
+```
+
+**The outcome is a PASS.** The gun dropped, the host retried, and it rejoined and resumed scoring and
+respawning. That is the flat-battery-swap case working on real hardware.
+
+**The defect is the log line, and it is worth fixing.** `modes/driver.py:318` prints "reconnected" once
+`mgr.connect(..., attempts=1)` and `driver.resetup(addr)` both return without raising. Neither proves
+the gun is listening: `is_connected` reads `client.is_connected` (`ble.py`), the transport's opinion.
+So the first attempt lands in the window where a power-cycled gun **advertises before it is ready** (and
+`gotchas.md` records that a gun whose headset link is not up drops BLE entirely), reports success, and
+dies. Recovery takes a second attempt about 7 failed sends later.
+
+**Why it still matters:** an operator watching the log believes the player is back well before they are.
+And `RECONNECT_CAP = 6` bounds total attempts per gun, so **false successes consume a budget that a
+genuinely recoverable gun may need** — with a flakier link than this one, burning attempts on phantom
+recoveries could abandon a gun that would otherwise have come back.
+
+**Fix:** verify with a real round trip before printing "reconnected" and before charging the attempt
+against `RECONNECT_CAP` — send something harmless and require a reply, or re-check after a short settle.
+
+**Still open, and now genuinely uncertain:** R0BAT was off at start, powered on mid-game, and never
+rejoined. Connect-grace at START passed cleanly (`playing with 2/3 taggers`, ~110 s after five
+attempts). Whether a gun absent at start can ever join a running match is **untested** — it may be by
+design. Worth one deliberate test.
+
 ## 🔴 Q14 — the fn 36/37 multiplier dispute BLOCKS a published number (2026-08-29)
 
 **This is the highest-value open item and it previously had no id**, existing only as an aside inside
