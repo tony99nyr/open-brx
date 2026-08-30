@@ -57,21 +57,21 @@
 <td>2</td>
 <td>outdoorMode</td>
 <td>0</td>
-<td>APK field name; not exercised on the bench.</td>
+<td>The <strong>indoor/outdoor</strong> setting, the same one the gun toggles natively on a 3 second ALT hold. Outdoor raises IR range, hit-LED brightness and blast radius; indoor shrinks them. See <a href="/manual/operate/indoor-outdoor">Indoor vs Outdoor Mode</a>. Field name and mapping are APK-decoded and <strong>we have not yet set it over BLE and observed the change</strong>.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>3</td>
 <td>gunLaserRegion</td>
 <td>1</td>
-<td>APK field name; not exercised on the bench.</td>
+<td><strong>IR transmit power, as a regional legal limit</strong> (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; <strong>untested on the bench</strong>, and we do not know whether it is two coarse levels or finer.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>
 <td>4</td>
 <td>autoAmbientLight</td>
 <td>0</td>
-<td>APK field name; not exercised on the bench.</td>
+<td>Ambient-light compensation, presumably the sunlight IR-noise filtering the user guide describes. APK field name; not exercised on the bench.</td>
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span></td>
 </tr>
 <tr>

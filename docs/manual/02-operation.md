@@ -122,6 +122,9 @@ _One three-second hold changes your range, your LEDs and your blast radius._
 1. Hold **ALT for 3 seconds** at any time. The gun announces the new mode. 📖
 2. Leave it. The setting **persists across power cycles**, so you set it once per venue. 📖
 3. Host from the Callsign app instead? Its per-game **Outdoor mode** toggle sets the same thing. ✅
+4. Driving a gun from your own code? It is `$GSET` **token 2**, `outdoorMode`. A second field,
+   token 3 `gunLaserRegion`, carries the IR power limit. Both are in the
+   [developer reference](/manual/dev/gset-pset). 🔍
 src: docs/reference/brx-extended-user-guide.md, docs/reference/callsign-ui.md, protocol/brx-protocol.md §7g
 
 [compare] "What changes"

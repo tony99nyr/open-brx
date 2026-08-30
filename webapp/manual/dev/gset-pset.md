@@ -6,9 +6,9 @@ Last verified: 2026-08-27
 | # | Field | Captured | Meaning | Conf |
 |---|---|---|---|---|
 | 1 | friendlyFire | 0 / 1 | **Firmware-enforced, both directions.** 0 blocks same-team damage *and* heals from enemies; 1 opens the gate. Replicated 2× with alternating values plus control. | ✅ |
-| 2 | outdoorMode | 0 | APK field name; not exercised on the bench. | 🔍 |
-| 3 | gunLaserRegion | 1 | APK field name; not exercised on the bench. | 🔍 |
-| 4 | autoAmbientLight | 0 | APK field name; not exercised on the bench. | 🔍 |
+| 2 | outdoorMode | 0 | The **indoor/outdoor** setting, the same one the gun toggles natively on a 3 second ALT hold. Outdoor raises IR range, hit-LED brightness and blast radius; indoor shrinks them. See [Indoor vs Outdoor Mode](/manual/operate/indoor-outdoor). Field name and mapping are APK-decoded and **we have not yet set it over BLE and observed the change**. | 🔍 |
+| 3 | gunLaserRegion | 1 | **IR transmit power, as a regional legal limit** (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; **untested on the bench**, and we do not know whether it is two coarse levels or finer. | 🔍 |
+| 4 | autoAmbientLight | 0 | Ambient-light compensation, presumably the sunlight IR-noise filtering the user guide describes. APK field name; not exercised on the bench. | 🔍 |
 | 5 | gyroscope | 1 | APK field name; not exercised on the bench. | 🔍 |
 | 6 | secondaryBluetoothWeapons | 0 | APK field name; not exercised on the bench. | 🔍 |
 | 7 | criticalShotModifier | 50 | APK field name. **Not** score-to-win (byte-identical across captures with different win conditions). | 🔍 ✅ |
