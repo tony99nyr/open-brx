@@ -2801,6 +2801,61 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-08-30 — P13 ANSWERED: `$GLED` token 1 IS a colour index, and it overrides the team colour
+
+**Tony at the bench, calling colours.** This corrects a documented claim, answers P13, gives P17 its
+frame, and unblocks Q19.
+
+**Method.** Gun on `$TID,1` (blue) and spawned, so anything **not** blue is `$GLED` overriding the team
+colour. Swept `$GLED,<n>,0,0,1,2000,2000,*` for n = 0..8, ~10 s each, Tony reporting colour and which
+of the three gun LEDs changed.
+
+| `$GLED,n,0,0,1,2000,2000` | LED 1 | LEDs 2-3 |
+|---|---|---|
+| **0** | **off / dark** (all three dark) | dark |
+| 1 | **blue** | red |
+| 2 | **yellow** | red |
+| 3 | **green** | red |
+| 4 | **purple** | red |
+| 5 | **teal** | red |
+| 6 | **white** | red |
+| 7, 8 | *not observed* (stepped past while reporting) | |
+
+**Token 2 = effect, confirmed separately.** Repeating n=1 with effect 0 then 1: effect 1 produced
+**visible brightness modulation**, matching `LedEffect.Glow` from the APK enum
+(Solid / Glow / ChaseBack / ChaseForward / StopIR).
+
+#### What this corrects
+
+`protocol/brx-protocol.md` says of `$GLED`: *"LED **colour** is team-derived from `$TID`, not
+`$GLED`."* **That is wrong.** The gun sat on `$TID,1` throughout and its first LED took six different
+colours on command. Colour comes from a shared palette that `$GLED` can address **directly**; `$TID`
+merely selects from the same table. (The narrower original claim — that `$GLED` is not raw `<r>,<g>,<b>`
+— still stands: it is an *index*, not RGB.)
+
+#### What it unblocks
+
+- **P17 / night mode.** `$GLED,0,...` blanks all three LEDs. That is the frame night mode needed.
+  ⚠️ **Still to check: does it STAY dark**, or does the next game event repaint them? `GameConfig(leds=False)`
+  should not ship until that is confirmed.
+- **Q19 / native FFA white.** White is **n=6**. We can match the stock look deliberately instead of
+  shipping three team colours as a side effect of attribution.
+- **The 4-team colour ceiling.** `$TID` is masked to 2 bits, so team colour caps at four. `$GLED` offers
+  **at least six colours plus off, per gun**, independent of team. With Q17 fixed (attribution no longer
+  needs unique teams), a 10-player FFA can put everyone on one team and still give each a distinct gun
+  colour.
+
+#### Not yet resolved, and deliberately not guessed
+
+**Which LED is addressed depends on tokens we have not isolated.** In this sweep only the **first** LED
+changed and 2-3 stayed red. But minutes earlier, `$GLED,1,<eff>,1,0,10,,*` turned the **middle** LED
+**green** — same token 1, different LED *and* different colour. So token 1 is not *only* a colour index;
+the trailing tokens select the target and possibly modify the colour.
+
+**Next:** a one-token-at-a-time sweep holding the others fixed, to separate "which LED" from "what
+colour". Do not build on the palette above beyond LED 1 until that is done.
+
+
 ### 2026-08-29 — FLOOR ARTIFACT CLOSED: fn 3 is DAMAGE, not a status function
 
 Acting on the correction from the review loop rather than leaving it as a caveat. The `$SIR` function
