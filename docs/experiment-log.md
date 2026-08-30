@@ -2852,7 +2852,31 @@ which confirms red is the palette **default** (index 0), not the team colour sho
 3. **Red is confirmed as the palette DEFAULT**, not the team colour — the team was **yellow** throughout
    and no LED ever showed yellow.
 
-**LED 2 never moved across all ten values.** Next on the ranked plan: **effects 2/3/4**
+**A/B CONFIRMED:** token 4 = 0 vs 7 alternated back-to-back, three rounds, 14 s each — Tony: *"no difference"*. So token 4 is **inert except for 3 (all off)**; the other values are not doing anything subtle we missed on a single pass.
+
+**LED 2 never moved across all ten values** — but see the effect sweep below: **it was never token 4.
+It was the EFFECT field.**
+
+#### ✅ THE MIDDLE LED IS ADDRESSABLE — it is the EFFECT field (2026-08-30)
+
+Swept `$GLED,3,<effect>,0,0,10,,*` on `$TID,2` (yellow team, green colour):
+
+| effect | LED 1 | LED 2 | LED 3 |
+|---|---|---|---|
+| 0 Solid | green | red | red |
+| 1 Glow | green | red | red |
+| **2 ChaseBack** | green | **BLUE** | red |
+| **3 ChaseForward** | green | **YELLOW** | red |
+
+**The middle LED moves under the Chase effects and nothing else.** Every earlier "LED 2 is stuck red"
+cell held **effect = 0**, so the conclusion that it was unaddressable was an artifact of never varying
+the one field whose name (ChaseBack / ChaseForward) literally describes walking the strip. The
+adversarial review predicted exactly this.
+
+⚠️ **Both Chase cells were ALTERNATING with the team colour**, so this is an **animation cycling through
+the palette**, not a static per-LED assignment. A health/armour gauge needs each segment **pinned**, so
+the remaining question is whether a static per-segment write exists, or whether the gauge is itself
+built from a chase-like effect. Next on the ranked plan: **effects 2/3/4**
 (ChaseBack / ChaseForward / StopIR) — the two Chase effects are segment-walkers and are the strongest
 remaining candidate for per-LED addressing.
 
