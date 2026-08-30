@@ -2823,6 +2823,10 @@ of the three gun LEDs changed.
 
 **So the palette is at least NINE entries (0 = off, 1-8 = eight distinct colours).** Whether it extends past 8 is untested and worth one more sweep — see below.
 
+**Token 5 = BRIGHTNESS** (bench 2026-08-30): sweeping token 5 over 10 / 100 / 1000 / 4000 with colour 6
+(white) visibly changed the LED's brightness. So a `$GLED` frame carries **colour, effect and brightness**
+independently.
+
 **Token 2 = effect, confirmed separately.** Repeating n=1 with effect 0 then 1: effect 1 produced
 **visible brightness modulation**, matching `LedEffect.Glow` from the APK enum
 (Solid / Glow / ChaseBack / ChaseForward / StopIR).
