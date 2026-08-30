@@ -2873,6 +2873,30 @@ cell held **effect = 0**, so the conclusion that it was unaddressable was an art
 the one field whose name (ChaseBack / ChaseForward) literally describes walking the strip. The
 adversarial review predicted exactly this.
 
+#### ✅ ALL THREE LEDs SET TO ONE COLOUR — `$GLED,3,4,4,0,10,,*` → **green / green / green**
+
+The decisive cell. **Every LED lit the same colour on command**, which proves all three are writable
+from a single frame and that LED 2 was never a hardware limitation.
+
+**But the per-LED index mapping is NOT solved**, and four prediction attempts failed:
+
+| frame | predicted | actual |
+|---|---|---|
+| `$GLED,1,3,5` | blue / yellow / green | **white / yellow / pink** |
+| `$GLED,6,2,7` | white / blue / teal | **purple / pink / yellow** |
+| `$GLED,4,7,2` | purple / white / blue | **green / purple / purple** |
+| `$GLED,3,4,4` | green / green / green | **green / green / green** ✅ |
+
+One hit in four. The single-value cells were self-consistent (t2 = 1..6 walked the palette exactly), but
+**mixed-value frames do not decompose into three independent palette lookups**. Combined with the
+repeated "alternating with the team colour" reports, the likeliest explanation is that a mixed frame
+produces an **animated** state and a single glance samples one phase — the same trap that made the two
+token-3 tables contradict each other.
+
+⚠️ **Eyeball sampling cannot characterise an animation.** Any further table built this way would look
+clean and mean nothing. To finish this properly: **record video of a few frames and step it back
+frame-by-frame**, or point the phototransistor at one LED and log it. Do not extend the tables by eye.
+
 ⚠️ **Both Chase cells were ALTERNATING with the team colour**, so this is an **animation cycling through
 the palette**, not a static per-LED assignment. A health/armour gauge needs each segment **pinned**, so
 the remaining question is whether a static per-segment write exists, or whether the gauge is itself
