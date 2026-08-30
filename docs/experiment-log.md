@@ -2824,8 +2824,14 @@ for his call, then the next. No timers.
 
 - **`<t4>` = 3 blanks all three** — the night-mode frame (P17). The app's `$GLED,,,,5,,,*` also blanks.
 - **`<brightness>`** is token 5.
-- The set colour **alternates with the team colour** rather than replacing it — that alternation is real
-  and was independently visible under the synchronous protocol.
+- ⚠️ **`$SPAWN` is what makes the colours alternate.** A spawned gun runs its own **team-colour pulse**
+  and `$GLED` is composited over it, so a gauge flickers between your colour and the team colour and is
+  unreadable. **Arm WITHOUT `$SPAWN` (and without `$TID`) and the colours hold SOLID** — verified:
+  `$GLED,3,2,1,0,10` after only `$CLEAR`/`$START`/`$VOL` gave a steady green / yellow / blue.
+- **Open, and it matters for shipping:** a gun in a real match *is* spawned. Whether the team pulse
+  continues during live play, or only in the pre-game/lobby state, is **untested**. The manual says the
+  *headset* shows team colour pre-game only and goes dark during play; if the gun behaves the same, an
+  in-game gauge will be solid. **Test before building a gauge into a mode.**
 
 **A 3-segment health/armour gauge is now buildable:** `3,3,3` full → `3,3,0` → `3,0,0` → `0,0,0` empty,
 in whatever colour suits the pool.
