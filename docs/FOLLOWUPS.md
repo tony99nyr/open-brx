@@ -149,6 +149,48 @@ from `$HP`, so a client that joins mid-life and gets an `$LCD` snapshot cannot k
 - token 3 == the shield ⇒ re-add the read in `engine.js` **with a test**, and document the token.
 - token 3 == 0 with a live shield ⇒ record it as confirmed-not-shield and the current code is right.
 
+## 🔴 Q15 — SUB-INDOOR IR POWER: native indoor is still too strong for tight spaces (2026-08-30)
+
+**Tony's own words:** *"native indoor is way too powerful. the ir hits after bouncing way too easily.
+would be awesome if we found a customization to go lower."* This is a real venue problem, not a
+curiosity: a bounce off a wall lands on a headset and registers a hit nobody fired. We have already
+watched a gun **drain its own armour** shooting a wall a few feet away.
+
+The native indoor/outdoor toggle is the only power control BRX exposes to players, and indoor is its
+floor. We want **below** that.
+
+### Lever 1 (best): `$WEAP` token 41, "gun range"
+
+`t41` is a **0 to 100 per-weapon range value**. It reads **75 on all eighteen guns** and **20 on
+melee** (`weapon-design.md` §4.2).
+
+**That melee value is the argument.** Melee is a contact weapon, and Battle Company set its range field
+to 20 while every gun sits at 75. An inert cosmetic number would not track physical reality in exactly
+the direction physics demands. It is decent evidence the field really drives emitted range.
+
+Battle Company never varies it across the arsenal, which is likely why nobody has tried. **We can:
+push `$WEAP` with t41 at 30, 20, 10 and measure.** Per-weapon, writable over BLE, already in our
+config path. If it works it is a per-game, per-weapon power dial, which is better than any toggle.
+
+### Lever 2: `$GSET` token 3, `gunLaserRegion`
+
+APK-decoded as **USA / International = IR legal power**. International limits are generally the lower
+of the two, so flipping it is plausibly a power cut. **Coarse** (two regulatory levels, not a dial) and
+**untested**. Worth one probe, but t41 is the better bet.
+
+### How to test, and what it needs
+
+This is bench item **2.1 / U2**, already queued: receiver on a tripod at a taped mark, no victim gun
+needed. Sweep t41 (75 as the opening control, then 30, 20, 10, then **75 again as a closing control**)
+and count detections at fixed distance. **Needs an operator only for the trigger pulls.**
+
+⚠️ A null result is a real answer here too, and it must be reported as one: if detection at a fixed
+distance does not move across the sweep, t41 is not a range control and lever 2 becomes the only
+candidate.
+
+**If lever 1 works, it belongs in `GameConfig` as an indoor/tight-space preset**, alongside the existing
+kid-mode toggles. That is the shippable outcome.
+
 ## 🔴 Q14 — the fn 36/37 multiplier dispute BLOCKS a published number (2026-08-29)
 
 **This is the highest-value open item and it previously had no id**, existing only as an aside inside

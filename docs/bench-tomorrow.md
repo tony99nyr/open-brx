@@ -88,7 +88,7 @@ sweep ran with the shield at 0. The seven left moved no pool with 150 shield ava
 
 | # | Goal | Do this | Pass |
 |---|---|---|---|
-| **2.1** | **U2 — does `t41` change emitted range?** The last unresolved `$WEAP` token | Tape one mark. `t41=100`, `ir-range` count; then **only** `t41=5`; then `t41=100` again as a **closing control** | detect% differs with controls agreeing ⇒ answered (a null is also an answer) |
+| **2.1** | **U2 / Q15 — does `t41` change emitted range?** ⭐ **Raised in priority 2026-08-30**: Tony reports native indoor is too strong for tight spaces and bounced IR registers hits. `t41` is a 0-100 per-weapon range value reading **75 on all 18 guns and 20 on melee**, so it plausibly is the dial we want | Tape one mark. `t41=100`, `ir-range` count; then **only** `t41=5`; then `t41=100` again as a **closing control** | detect% differs with controls agreeing ⇒ answered (a null is also an answer) |
 | **2.2** | **Back-dome melee — the "halo assassinate"** | Swing at a headset's **BACK** dome with the receiver watching, and a victim on BLE | is it a **different word**, or the same word landing on tok1=1? Melee magnitude is 90 — it should NOT one-shot, so something else is happening |
 | **2.3** | **Sensor-map validation at field distance** | Fire at front dome / back dome / gun body from ~5 m | confirms tok1 0/1/4 outside point-blank |
 

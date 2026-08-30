@@ -61,7 +61,7 @@ or floor space. This is the biggest category and the highest-value one.
 ### A4 · Needs SPACE / a tape measure (4)
 | id | unknown | why it matters |
 |---|---|---|
-| **U2 / 2.1** | Does `$WEAP` **t41** change emitted range? | **the last unresolved weapon token**; now measurable by IR instrument, no victim gun |
+| **U2 / 2.1 / Q15** | Does `$WEAP` **t41** change emitted range? ⭐ **Now a product need, not just a gap** (Q15): native indoor is too strong for tight spaces and bounces register hits. t41 reads **75 on all 18 guns, 20 on melee**, and that melee value is real evidence the field drives range. | **the last unresolved weapon token**; now measurable by IR instrument, no victim gun |
 | **2.2** | The **"halo assassinate"** — is a back-dome melee a different word, or the same word on a different sensor? | melee is magnitude 90 and should *not* one-shot |
 | **2.3** | Sensor map (tok1 0/1/4) at field distance | point-blank washes the domes together |
 | **P15** | Max simultaneous BLE connections a phone holds; which `$PLAY` id makes a field-wide alarm | phone-as-station design |
