@@ -149,6 +149,61 @@ from `$HP`, so a client that joins mid-life and gets an `$LCD` snapshot cannot k
 - token 3 == the shield ⇒ re-add the read in `engine.js` **with a test**, and document the token.
 - token 3 == 0 with a live shield ⇒ record it as confirmed-not-shield and the current code is right.
 
+## 🟠 Q16 — measure the IR beam DIVERGENCE, to decide between a snoot and an attenuator (2026-08-30)
+
+**Why this exists.** Tony asked whether something on the nozzle could stop indoor bounce. The answer
+depends on a number nobody has measured: **how much light leaves the muzzle off-axis.**
+
+**What we know about the emitter** (published spec, `manual/01-hardware.md`): Class 1 laser
+(IEC 60825-1), **980 nm**, **16.9 mW** on one unit's factory record, **beam under 18 mm at the
+aperture**, ~600 ft range, 38 kHz carrier. That is a **collimated** emitter with a lens, not a bare
+wide-angle LED, which is why the answer is not obvious.
+
+**The two failure modes need opposite fixes:**
+
+| bounce mode | what happens | the fix |
+|---|---|---|
+| **off-axis splash** | light leaves the muzzle at a wide angle, hits a side wall | a **snoot** (a tube) helps |
+| **on-axis return** | the beam goes where aimed, hits that wall, scatters back | **only less power** helps; a snoot does nothing |
+
+We have already seen the second one: a gun **drained its own armour** firing at a wall a few feet away
+(`gotchas.md`). A collimated laser should produce little of the first. **So the prior is that a snoot
+is useless here** and the real fix is power. But that is an inference from the spec sheet, not a
+measurement, and it is cheap to settle.
+
+### The measurement (~10 min, receiver only, no victim gun)
+
+Fix the receiver at a set distance (say 3 m) on a taped mark. Fire from **on-axis (0 deg)**, then step
+the *gun* off-axis in ~10 deg increments (10, 20, 30, 40, 50) while keeping the distance constant, and
+count detections per 10 shots at each angle. Return to 0 deg as a **closing control**.
+
+- **Sharp fall-off by 10 to 20 deg** ⇒ tight beam, off-axis splash is not the problem, **a snoot is
+  pointless.** Fix the power instead (t41, then an aperture attenuator).
+- **Detections still landing at 30 to 50 deg** ⇒ a real off-axis skirt, and **a snoot is worth
+  building.**
+
+⚠️ Do it in the room that actually misbehaves, or in a corridor with the far wall covered. In a small
+room the receiver may catch the wall bounce rather than the direct beam, which is the very thing under
+test. If in doubt, run it twice: once facing a soft/absorbing background, once facing the bare wall,
+and compare.
+
+### If a snoot does turn out to be worth building
+
+- **Most black plastic is IR-TRANSPARENT at 980 nm.** A 3D-printed black snoot or a black cap can block
+  visible light and pass IR almost unchanged. **Test the material by firing through it at the receiver
+  before trusting it.** This is the trap that will waste an afternoon.
+- The inside must be non-reflective or the tube becomes a light pipe. Flocking, matte black paint or
+  felt, not bare aluminium.
+- **The headset emits too** (front IR emitter, for melee swings and respawn-station requests), so a
+  muzzle attachment does not cover the whole system.
+
+### Ranking, until this is measured
+
+1. **`$WEAP` t41 = `gunRangeIndoor`** (Q15) - free, per-game, reversible, no hardware.
+2. **Aperture attenuator** - a couple of layers of matte tape or ND film over the emitter window.
+   Trivially reversible, and it is the hardware equivalent of lowering t41.
+3. **Snoot** - only if this measurement shows a real off-axis skirt.
+
 ## 🔴 Q15 — SUB-INDOOR IR POWER: native indoor is still too strong for tight spaces (2026-08-30)
 
 **Tony's own words:** *"native indoor is way too powerful. the ir hits after bouncing way too easily.

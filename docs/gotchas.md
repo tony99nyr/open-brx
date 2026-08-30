@@ -90,6 +90,15 @@ BLE notification chunks and a fixed capture window does not always catch them al
 require two identical consecutive reads before treating a sample as valid. A raw-string diff
 manufactures false positives and will happily "detect" an effect that is not there.
 
+**"I covered the emitter in black plastic and it still fires."**
+**Most black plastic is IR-TRANSPARENT at 980 nm.** Black ABS, PLA and many black caps block visible
+light and pass near-IR almost unchanged, so a 3D-printed shroud or a black cover can look like it is
+working and do nothing at all. **Test any material by firing through it at the receiver before
+trusting it.** The same applies in reverse when building a snoot: the inside must be genuinely
+non-reflective (flocking, matte black paint, felt) or the tube becomes a light pipe and widens the
+very skirt you were trying to kill. And note the **headset has its own front IR emitter** (melee
+swings, respawn-station requests), so a muzzle attachment never covers the whole system.
+
 **Never write a headset sticker id into the repo.**
 The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
 docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the

@@ -169,6 +169,7 @@ that file is already the right home.** Read it before a field day.
 | **Q13** | **Friendly fire is invisible on the wire** — a team-blocked shot emits no `$HIR` at all | a DECISION, not a test: no teamkill feedback can be built from gun telemetry while `$GSET` t1=0 |
 | **B20** | **Is `$LCD` token 3 the shield?** | one-line check; gates whether a mid-life client can learn the shield from anything but `$HP` |
 | **R2** | **Add a `DUTY` command to the IR emitter** | would make the sensor and range tests answerable unattended |
+| **Q16** | **What is the IR beam divergence?** | decides snoot vs attenuator for indoor bounce; receiver-only, ~10 min. The emitter is a collimated Class 1 laser, so the prior is a tight beam and no useful off-axis skirt |
 
 **If you do only one thing:** the **Callsign HTTPS API capture (P8)** is gun-free and would collapse
 several rows at once. **If you have a bench hour:** `bench-tomorrow.md`'s one-hour path.
