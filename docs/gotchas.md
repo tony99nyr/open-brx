@@ -99,6 +99,14 @@ non-reflective (flocking, matte black paint, felt) or the tube becomes a light p
 very skirt you were trying to kill. And note the **headset has its own front IR emitter** (melee
 swings, respawn-station requests), so a muzzle attachment never covers the whole system.
 
+**A timed sweep + a human observer = data bound to the wrong cell.**
+If an operator is calling out what they see while the script advances on a **timer**, their replies
+arrive asynchronously and an observation gets logged against the *next* frame, not the one that caused
+it. This produced two contradictory `$GLED` tables and four failed predictions on 2026-08-30, which
+were then wrongly blamed on the LEDs "animating". **Never advance an operator-in-the-loop sweep on a
+timer.** Send one frame, wait for the call, then send the next. If a timer is unavoidable, have the
+script announce a cell id the operator repeats back.
+
 **Never write a headset sticker id into the repo.**
 The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
 docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the

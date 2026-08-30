@@ -2893,9 +2893,22 @@ repeated "alternating with the team colour" reports, the likeliest explanation i
 produces an **animated** state and a single glance samples one phase — the same trap that made the two
 token-3 tables contradict each other.
 
-⚠️ **Eyeball sampling cannot characterise an animation.** Any further table built this way would look
-clean and mean nothing. To finish this properly: **record video of a few frames and step it back
-frame-by-frame**, or point the phototransistor at one LED and log it. Do not extend the tables by eye.
+⚠️ **THE ANIMATION EXPLANATION IS PROBABLY WRONG — it was a SYNCHRONISATION bug in my method.**
+Tony: *"i type what i see, but bc you are thinking my response doesn't get interpretted right away."*
+
+The sweeps advanced on a **timer** while his reports arrived **asynchronously**. So an observation I
+logged against frame N may well describe frame N-1. **Every mismatch above is explainable as a one-step
+misalignment**, with no animation required — and that also explains the two contradictory token-3
+tables, which I had blamed on "caught phases".
+
+**This invalidates my "eyeball sampling cannot work" conclusion too.** The eye is a fine instrument
+here; the timer was the defect. I built a timed sweep and then read asynchronous replies as if they
+were synchronous.
+
+**Method rule for every future operator-in-the-loop sweep: NEVER advance on a timer.** Send one frame,
+**wait for the operator's call**, then send the next. Slower per cell, but each datum is actually bound
+to the frame that produced it. Re-run the mixed-value cases this way before concluding anything about
+the per-LED mapping.
 
 ⚠️ **Both Chase cells were ALTERNATING with the team colour**, so this is an **animation cycling through
 the palette**, not a static per-LED assignment. A health/armour gauge needs each segment **pinned**, so
