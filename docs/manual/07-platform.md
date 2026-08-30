@@ -38,7 +38,7 @@ src: `docs/adr/0001-companion-rider-architecture.md` §Context, `docs/HANDOFF.md
 [cards] **The pieces**: one works today, the rest are 🚧 under construction (brief §10)
 - **brx-mcp**: the CLI / MCP "lab instrument". Scan, identify, listen, diagnose, and `play tdm …` a real match from a laptop. ✅ **Use it now** → `/manual/dev/brx-mcp`
 - **Mission Control** 🚧: the laptop console that writes a game and runs the match. Under construction.
-- **BRX Combat HUD** 🚧: the native phone app, one gun per phone. Under construction.
+- **BRX Combat HUD** 🚧: the native phone app, one gun per phone. Under construction, and there is an Android test build to sideload → `/platform/app`
 - **BRX Companion** 🚧: a small ESP32-S3 rider (~$15 in parts), designed to rebuild the gun's native kill flash and audio with no phone. Specified; bench kit in hand.
 - **Utility Box / stations** 🚧: the open objective node (hill, flag, bomb site, extraction point, respawn). Design stage. Our ESP32 rig has already put a synthetic IR shot into a stock tagger.
 - **Effect nodes** 🚧: smoke, lights, DMX and music as peers on the event stream. Design stage.
@@ -374,6 +374,39 @@ src: `README.md` §Roadmap
 [callout:info] **Mission Control and the phone HUD: 🚧 under construction. Details when they have run on a real field.** src: `docs/spec/README.md` §8
 
 [callout:warn] **What we will not claim yet.** Nobody has run a multi-phone match on a real field. Nobody has run a dispersed start where players walk out of range before T-0. Nobody has run a store-and-forward recovery after real coverage loss. Three guns on one laptop radio is the most we have held at once, and the maximum is untested. FFA / Infection / LMS have not been played on real guns, and their logic is only sim-proven. The Companion and the Utility Box are not built. See *Honest gaps* below for the full list. src: `docs/architecture-topology.md` §7, `docs/FOLLOWUPS.md` B10, `docs/verification-checklist.md`
+
+---
+
+### Page: Get the app  (`/platform/app`)
+_The Android test build of the phone HUD: one phone, one gun, over Bluetooth._
+
+[callout:warn] **This is a test build, not a release.** The BRX Combat HUD is still being built, and what is below is a **debug build**. It sideloads and runs, but it is signed with Android's throwaway debug key, so a future release-signed build will not install over it (uninstall first). It never touches the tagger's firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun. 🚧 src: `app/README.md`, `CLAUDE.md` §Hard rules
+
+[download] **BRX Combat HUD for Android** One phone drives one BRX tagger over native Bluetooth LE, runs the match loop (spawn, ammo, lives, respawn clock) and reports to Mission Control over the field Wi-Fi. On the phone it installs as **BRX Companion**. 🚧 src: `app/README.md`, `docs/spec/node.md` §3
+
+[callout:info] **What is already proven on real guns.** On 2026-08-25 this app, built from this codebase, passed every core gate on a bench tagger over native Bluetooth: connect, stream trigger and ammo frames, speak (`$VOL` + `$PLAY`), green the sight (`$SFLASH`), push a full config and arm a game (the gun counted 3-2-1 and went live), and hold a link for 5+ minutes with no drops. Later that night a phone talked to Mission Control and an MC-pushed kit-out fired the real gun. What is *not* finished is the game and HUD layer around that. ✅ (BLE path) / 🚧 (app) src: `docs/experiment-log.md` 2026-08-25 "NATIVE app validated on hardware", `docs/adr/0001-companion-rider-architecture.md`
+
+[steps] **Install it**
+- **Get the APK onto the phone.** Tap the download button above on the phone itself, or download on a computer and copy the file across. Any transfer works.
+- **Open the file and allow the install.** Android asks whether the app doing the opening (your browser or file manager) may install apps. Allow it, then confirm. This is the normal prompt for any app that does not come from the Play Store, and you can switch the permission back off afterwards.
+- **Launch it and grant "Nearby devices".** That is the Bluetooth permission. Location is *not* required: the scan is flagged `neverForLocation`, so it works with the system Location toggle off. ✅
+- **Pick your gun.** Turn the tagger on and it appears in the list by name. Connecting proves the link: the app can speak through the gun and flash its sight.
+- **Optional, and needed for a scored match: point it at Mission Control.** Start MC on the laptop (`python -m brx_mcp.mc`), then scan the QR it shows or type the `ws://<ip>:8766/ws` address on the app's CONNECTED screen. 🚧
+src: `app/README.md`, `app/scripts/android-setup.sh`, `mcp/brx_mcp/mc/API.md`
+
+[spec-sheet] **What it needs**
+- **Android**: 7.0 (API 24) or newer. There is no Play Store listing; this is a sideload.
+- **A tagger**: BRX gen 2/3 (Bluetooth LE). Gen 1 uses Bluetooth Classic serial and is not supported.
+- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera only if you scan the Mission Control QR code. No Location, and no internet.
+- **Wi-Fi**: only to reach Mission Control, and only if you are running a hosted match. The field LAN is a laptop and a travel router with no internet behind it.
+- **Screen**: landscape, mounted on the rail. The app locks the orientation itself.
+src: `app/README.md`, `app/scripts/android-setup.sh`, `docs/adr/0002-laptop-mission-control-host.md`
+
+[callout:warn] **Field rule the bench taught us.** Locking the phone, pulling down the notification shade or switching apps suspends the web view and drops the Mission Control socket (it reconnects within about 10 seconds once the app is in front again). Keep the phone mounted, awake, in the foreground and on Do Not Disturb. The app's keep-awake stops auto-lock only, it cannot stop you. ✅ src: `docs/experiment-log.md` 2026-08-25 (night) §3.11
+
+[callout:info] **On an iPhone?** There is no download. iOS is first-class in the code (the same codebase ran on an iPhone X against real taggers), but Apple has no sideload-a-file path: you build it yourself with Xcode and a free Apple ID, which gives a 7-day on-device build. `app/README.md` has the steps. ✅ (it runs) / 🚧 (no distribution) src: `app/README.md` §Prerequisites, `docs/adr/0003-native-app-over-web-bluetooth.md`
+
+[callout:tip] **Prefer to build it yourself?** `git clone`, then `npm ci && npm run android:apk` in `app/` produces exactly this file (JDK 21 and the Android SDK required). The whole project is MIT. src: `app/README.md`, `app/scripts/android-apk.sh`
 
 ---
 

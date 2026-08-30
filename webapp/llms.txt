@@ -73,6 +73,7 @@ Protocol discovery credit: LaserTagMods (JEDGE / JBOX). Open BRX is independent 
 - [What you can build at each budget](https://open-brx.iamrossi.workers.dev/platform/build-tiers.md): Start at $0 with the gear you own. Every step after that is optional.
 - [Open BRX vs Edge](https://open-brx.iamrossi.workers.dev/platform/vs-edge.md): What we match, what we beat, and what we can't do. Honestly.
 - [Status & roadmap](https://open-brx.iamrossi.workers.dev/platform/status.md): What is proven on hardware, what is only software, what is only a spec. With dates.
+- [Get the app](https://open-brx.iamrossi.workers.dev/platform/app.md): The Android test build of the phone HUD: one phone, one gun, over Bluetooth.
 - [Get involved](https://open-brx.iamrossi.workers.dev/platform/get-involved.md): Open source, open hardware, open protocol, and one hard rule.
 - [FAQ](https://open-brx.iamrossi.workers.dev/platform/faq.md): Short answers, each pointing at the doc that proves it.
 - [Meet the BRX](https://open-brx.iamrossi.workers.dev/manual/hardware.md): name every part of the tagger, headset and accessories. Explain what each light and port means. Show why the BRX is a simple IR instrument that remembers nothing, which every later section builds on.

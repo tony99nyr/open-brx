@@ -88,6 +88,24 @@ open(p, "w", encoding="utf-8").write(s)
 print("   ok")
 PY
 
+# --- app version: keep the APK in step with app/package.json ---------------------------------
+# `npx cap add android` writes versionName "1.0" / versionCode 1. That is Capacitor's placeholder,
+# not our version, and it is what a downloader sees in Settings > Apps. Stamp the real one, and
+# derive a monotonic versionCode from it (0.1.0 -> 100) so a later build upgrades over an older one.
+echo "==> stamping app version from package.json"
+python3 - android/app/build.gradle package.json <<'VERSTAMP'
+import json, re, sys
+gradle, pkg = sys.argv[1], sys.argv[2]
+ver = json.load(open(pkg, encoding="utf-8"))["version"]
+major, minor, patch = (int(x) for x in (ver.split(".") + ["0", "0"])[:3])
+code = major * 10000 + minor * 100 + patch
+s = open(gradle, encoding="utf-8").read()
+s = re.sub(r"versionCode\s+\d+", f"versionCode {code}", s, count=1)
+s = re.sub(r'versionName\s+"[^"]*"', f'versionName "{ver}"', s, count=1)
+open(gradle, "w", encoding="utf-8").write(s)
+print(f"   versionName {ver} / versionCode {code}")
+VERSTAMP
+
 echo "==> resulting BLE/location permissions:"
 grep -A1 -E "BLUETOOTH_SCAN|ACCESS_(FINE|COARSE)_LOCATION" "$MANIFEST" || true
-echo "==> done. Build with: (cd android && ./gradlew assembleDebug)"
+echo "==> done. Build a distributable APK with: npm run android:apk"

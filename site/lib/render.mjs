@@ -194,6 +194,25 @@ function underConstruction(b, ctx) {
   return `<div class="uc"><div class="uc-head"><span class="uc-mark" aria-hidden="true">🚧</span><h2 id="${b.id || slugify(title)}">${inline(title, ctx)}</h2>${badgesInline(esc(status))}</div><p>${inline(one, ctx)}</p><p class="uc-note">Under construction. We will add details once it has run on real hardware.</p></div>`;
 }
 
+// A [download] block advertises the one apk committed under webapp/download/. Every hard fact in
+// the card (name, size, date, checksum) is read off that file at build time by build.mjs, so the
+// page cannot drift from the bytes it serves. No apk present = a visible TODO, not a dead link.
+function downloadCard(b, ctx) {
+  const d = ctx.download;
+  if (!d) return `<p class="todo" data-todo="no build published">TODO: content. No build published: run <code>npm run android:apk</code> in <code>app/</code>.</p>`;
+  const rows = [
+    ['File', `<code>${esc(d.file)}</code>`],
+    ['Version', `${esc(d.version || 'unversioned')} (debug build)`],
+    ['Size', esc(d.size)],
+    ['Built', esc(d.date)],
+    ['SHA-256', `<code class="sha">${esc(d.sha256)}</code>`],
+  ];
+  return `<div class="dl">
+<a class="dl-btn" href="${d.href}" download>Download for Android<span>APK · ${esc(d.size)}</span></a>
+<dl class="dl-meta">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+</div>`;
+}
+
 export function renderBlock(b, ctx) {
   const body = b.body.join('\n');
   switch (b.type) {
@@ -212,6 +231,7 @@ export function renderBlock(b, ctx) {
     case 'symptom-ladder': return wrap(b, '', `${blockHead(b, ctx)}${ladder(b, ctx)}${srcLine(b)}`);
     case 'quote': return wrap(b, '', `<blockquote>${b.title ? `<p class="q">“${inline(b.title, ctx)}”</p>` : ''}${b.head ? `<footer class="q-by">${inline(b.head, ctx)}</footer>` : ''}${md(body, ctx)}</blockquote>${srcLine(b)}`);
     case 'stat-row': return wrap(b, '', `${blockHead(b, ctx)}${statRow(b, ctx)}${srcLine(b)}`);
+    case 'download': return wrap(b, '', `${blockHead(b, ctx)}${downloadCard(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
     case 'under-construction': return wrap(b, '', underConstruction(b, ctx));
     default: return wrap(b, 'blk-unknown', `<span class="todo" data-todo="unknown block type">TODO: content. Unknown block type “${esc(b.type)}”</span>${blockHead(b, ctx)}${md(body, ctx)}${srcLine(b)}`);
   }
@@ -325,10 +345,18 @@ export function tocFor(page, extra = []) {
   return all.length >= 2 ? `<ol>${all.join('')}</ol>` : '';
 }
 
-export function markdownTwin(page) {
+export function markdownTwin(page, ctx = {}) {
   const out = [`# ${page.title}`, page.subtitle ? `_${page.subtitle}_` : '', page.section.lastVerified ? `Last verified: ${page.section.lastVerified}` : '', ''];
   for (const b of page.blocks) {
     if (b.type === 'under-construction') { out.push(`## ${b.title || b.head} 🚧`, 'Under construction. We will add details once it has run on real hardware.', ''); continue; }
+    if (b.type === 'download') {
+      const d = ctx.download;
+      if (b.title) out.push(`## ${b.title}`);
+      if (b.head) out.push(b.head);
+      out.push(d ? `Download: ${ctx.site || ''}${d.href} (${d.size}, version ${d.version || 'unversioned'}, built ${d.date}, sha256 ${d.sha256})` : 'No build is published yet.', '');
+      out.push(...b.body, '');
+      continue;
+    }
     if (b.type === 'image' || b.type === 'diagram') { out.push(`_[${b.type} ${b.arg}: ${b.head || ''}]_`, ''); continue; }
     if (b.title) out.push(`## ${b.title}`);
     const cm = (b.head || '').match(/columns?:\s*(.+)$/i);

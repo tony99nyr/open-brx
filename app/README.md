@@ -82,8 +82,34 @@ npm run ios:setup       # build, add the iOS platform if missing, apply our iOS 
 npm run ios:open        # open the project in Xcode  (needs full Xcode)
 
 npm run android:setup   # build, add the Android platform if missing, sync
+npm run android:apk     # build the APK the public site hands out (-> webapp/download/)
 npm run sync            # build + sync every platform already added
 ```
+
+### Publishing the Android build
+
+`npm run android:apk` is the whole release step: it finds a JDK 21, re-applies `android-setup.sh`
+(the platform is generated, so those patches are not in git), builds a **debug** APK, and copies it
+to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there.
+Exactly one APK lives in that folder: the site build refuses to guess between two.
+
+Then rebuild + test the site and commit, because **a push to `main` deploys `webapp/`**:
+
+```bash
+cd ../site && npm run build && npm test      # /platform/app reads name, size, date + sha256 off the file
+git add webapp docs/manual app && git commit && git push
+```
+
+The build is debug-signed. It sideloads fine, but a future release-signed build will **not**
+upgrade over it, and anyone who installed the debug build has to uninstall first. When we want
+real updates in place, add a keystore and switch this script to `assembleRelease`.
+
+**Version:** `android-setup.sh` stamps `versionName` from `package.json` and derives `versionCode`
+from it (`0.1.0` -> `100`). Bump `package.json` before cutting a build, or every build claims to be
+the same version. Capacitor's own placeholder is `1.0` / `1`, which is why this is stamped.
+
+**Requirements:** JDK 21 (Capacitor 8 refuses 17 with *"invalid source release: 21"*) and the
+Android SDK. `minSdk` is **24 (Android 7.0)**; `targetSdk` is 36.
 
 ### Running on a real iPhone
 

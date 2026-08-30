@@ -38,7 +38,7 @@ src: content/02, 04, 05, 06
 [image HOME-02] "How it's wired" teaser diagram (SVG: a phone on each gun, a laptop at the base, IR between guns; solid vs dashed links)
 [cards] "What the platform does today"
 - **Play now, laptop only** ✅: `python -m brx_mcp play tdm <gun1> <gun2>` ran a full Team Deathmatch on two real taggers on 2026-08-25. It handled scoring, respawn, the frag limit, and the correct winner. Everyone stays in the laptop's BLE range (a room, a yard). → `/manual/dev/brx-mcp`
-- **Mission Control + the phone HUD** 🚧: a laptop console sets up the game. A phone on each gun then runs it over field Wi-Fi. Under construction. → `/platform/pieces`
+- **Mission Control + the phone HUD** 🚧: a laptop console sets up the game. A phone on each gun then runs it over field Wi-Fi. Under construction. → `/platform/pieces` · Android test build → `/platform/app`
 - **The Companion** 🚧: a ~$15 ESP32 rider that rebuilds the gun's own kill flash and killstreak audio over BLE. You need no phone for it. Under construction. → `/platform/pieces`
 src: docs/architecture-topology.md §3, §7; README.md; docs/VISION.md
 

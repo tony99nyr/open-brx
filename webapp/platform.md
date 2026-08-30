@@ -31,7 +31,7 @@ _[diagram PLAT-05: laptop Mission Control at the base, one phone (node) per gun 
 one works today, the rest are 🚧 under construction (brief §10)
 - **brx-mcp**: the CLI / MCP "lab instrument". Scan, identify, listen, diagnose, and `play tdm …` a real match from a laptop. ✅ **Use it now** → `/manual/dev/brx-mcp`
 - **Mission Control** 🚧: the laptop console that writes a game and runs the match. Under construction.
-- **BRX Combat HUD** 🚧: the native phone app, one gun per phone. Under construction.
+- **BRX Combat HUD** 🚧: the native phone app, one gun per phone. Under construction, and there is an Android test build to sideload → `/platform/app`
 - **BRX Companion** 🚧: a small ESP32-S3 rider (~$15 in parts), designed to rebuild the gun's native kill flash and audio with no phone. Specified; bench kit in hand.
 - **Utility Box / stations** 🚧: the open objective node (hill, flag, bomb site, extraction point, respawn). Design stage. Our ESP32 rig has already put a synthetic IR shot into a stock tagger.
 - **Effect nodes** 🚧: smoke, lights, DMX and music as peers on the event stream. Design stage.

@@ -8,7 +8,7 @@
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/">
 <link rel="alternate" type="text/markdown" href="/platform.md" title="Markdown version">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.668d3d5739.css">
+<link rel="stylesheet" href="/assets/site.de097c8a13.css">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
@@ -27,7 +27,7 @@
   </div>
 </header>
 <div class="layout has-side has-toc">
-  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec" open><summary><span class="num">07</span> The Open BRX platform</summary><ul><li><a href="/platform/architecture/">How it's wired</a></li><li><a href="/platform/pieces/">The pieces</a></li><li><a href="/platform/modes/">Game modes</a></li><li><a href="/platform/build-tiers/">What you can build at each budget</a></li><li><a href="/platform/vs-edge/">Open BRX vs Edge</a></li><li><a href="/platform/status/">Status &amp; roadmap</a></li><li><a href="/platform/get-involved/">Get involved</a></li><li><a href="/platform/faq/">FAQ</a></li></ul></details></nav>
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec" open><summary><span class="num">07</span> The Open BRX platform</summary><ul><li><a href="/platform/architecture/">How it's wired</a></li><li><a href="/platform/pieces/">The pieces</a></li><li><a href="/platform/modes/">Game modes</a></li><li><a href="/platform/build-tiers/">What you can build at each budget</a></li><li><a href="/platform/vs-edge/">Open BRX vs Edge</a></li><li><a href="/platform/status/">Status &amp; roadmap</a></li><li><a href="/platform/app/">Get the app</a></li><li><a href="/platform/get-involved/">Get involved</a></li><li><a href="/platform/faq/">FAQ</a></li></ul></details></nav>
   <main id="main" class="main">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><span aria-current="page">The Open BRX platform</span></nav>
     <article class="page">
@@ -50,7 +50,7 @@
 <section class="blk blk-cards" data-type="cards"><h2 id="the-pieces">The pieces</h2><p class="lead">one works today, the rest are <span class="badge b-wip" title="Under construction"><span>under construction</span></span> under construction (brief §10)</p><div class="cards"><ul>
 <li><strong>brx-mcp</strong>: the CLI / MCP &quot;lab instrument&quot;. Scan, identify, listen, diagnose, and <code>play tdm …</code> a real match from a laptop. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> <strong>Use it now</strong> → <a class="pl" href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li>
 <li><strong>Mission Control</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the laptop console that writes a game and runs the match. Under construction.</li>
-<li><strong>BRX Combat HUD</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the native phone app, one gun per phone. Under construction.</li>
+<li><strong>BRX Combat HUD</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the native phone app, one gun per phone. Under construction, and there is an Android test build to sideload → <a class="pl" href="/platform/app/">Get the app</a></li>
 <li><strong>BRX Companion</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: a small ESP32-S3 rider (~$15 in parts), designed to rebuild the gun&#39;s native kill flash and audio with no phone. Specified; bench kit in hand.</li>
 <li><strong>Utility Box / stations</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the open objective node (hill, flag, bomb site, extraction point, respawn). Design stage. Our ESP32 rig has already put a synthetic IR shot into a stock tagger.</li>
 <li><strong>Effect nodes</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: smoke, lights, DMX and music as peers on the event stream. Design stage.</li>

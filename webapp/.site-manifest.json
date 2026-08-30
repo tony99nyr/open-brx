@@ -1,7 +1,7 @@
 {
- "built": "2026-08-30T11:25:24.302Z",
+ "built": "2026-08-30T22:56:34.331Z",
  "ok": true,
- "sourceStamp": 1788089124149.8535,
+ "sourceStamp": 1788130591726.3484,
  "sources": [
   "site/build.mjs",
   "site/lib/data.mjs",
@@ -23,13 +23,13 @@
   "docs/reference/weapons.md",
   "protocol/callsign-extract/Sounds.json"
  ],
- "pages": 73,
- "htmlFiles": 73,
+ "pages": 74,
+ "htmlFiles": 74,
  "files": [
   "404.html",
   "404.md",
-  "assets/site.668d3d5739.css",
   "assets/site.99eb517084.js",
+  "assets/site.de097c8a13.css",
   "changelog.md",
   "changelog/index.html",
   "credits.md",
@@ -165,6 +165,8 @@
   "manual/sound/volume.md",
   "manual/sound/volume/index.html",
   "platform.md",
+  "platform/app.md",
+  "platform/app/index.html",
   "platform/architecture.md",
   "platform/architecture/index.html",
   "platform/build-tiers.md",

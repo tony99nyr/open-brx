@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get the app | The Open BRX platform | Open BRX</title>
+<meta name="description" content="The Android test build of the phone HUD: one phone, one gun, over Bluetooth.">
+<link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/app/">
+<link rel="alternate" type="text/markdown" href="/platform/app.md" title="Markdown version">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.de097c8a13.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light dark">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Get the app","description":"The Android test build of the phone HUD: one phone, one gun, over Bluetooth.","url":"https://open-brx.iamrossi.workers.dev/platform/app/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Get the app","item":"https://open-brx.iamrossi.workers.dev/platform/app/"}]},{"@type":"HowTo","name":"Install it","step":[]}]}</script>
+</head>
+<body class="">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
+  <nav class="topnav" aria-label="Primary"><a href="/manual/">Manual</a><a href="/platform/" aria-current="true">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
+  <div class="tools">
+    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
+    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
+    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
+  </div>
+</header>
+<div class="layout has-side has-toc">
+  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec" open><summary><span class="num">07</span> The Open BRX platform</summary><ul><li><a href="/platform/architecture/">How it's wired</a></li><li><a href="/platform/pieces/">The pieces</a></li><li><a href="/platform/modes/">Game modes</a></li><li><a href="/platform/build-tiers/">What you can build at each budget</a></li><li><a href="/platform/vs-edge/">Open BRX vs Edge</a></li><li><a href="/platform/status/">Status &amp; roadmap</a></li><li><a href="/platform/app/" aria-current="page">Get the app</a></li><li><a href="/platform/get-involved/">Get involved</a></li><li><a href="/platform/faq/">FAQ</a></li></ul></details></nav>
+  <main id="main" class="main">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/platform/">Platform</a><span class="sep">/</span><span aria-current="page">Get the app</span></nav>
+    <article class="page">
+<header class="page-head">
+<h1>Get the app</h1>
+<p class="subtitle">The Android test build of the phone HUD: one phone, one gun, over Bluetooth.</p>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-wip" title="Under construction"><span>under construction</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/platform/app.md">Markdown</a></p>
+</header>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="this-is-a-test-build-not-a-release"><strong class="co-title">This is a test build, not a release.</strong><p>The BRX Combat HUD is still being built, and what is below is a <strong>debug build</strong>. It sideloads and runs, but it is signed with Android&#39;s throwaway debug key, so a future release-signed build will not install over it (uninstall first). It never touches the tagger&#39;s firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/app/README.md" rel="noopener">app/README.md</a>, CLAUDE.md §Hard rules</p></aside></section>
+<section class="blk blk-download" data-type="download"><h2 id="brx-combat-hud-for-android">BRX Combat HUD for Android</h2><p class="lead">One phone drives one BRX tagger over native Bluetooth LE, runs the match loop (spawn, ammo, lives, respawn clock) and reports to Mission Control over the field Wi-Fi. On the phone it installs as <strong>BRX Companion</strong>.</p><div class="dl">
+<a class="dl-btn" href="/download/brx-companion-0.1.0-android-debug.apk" download>Download for Android<span>APK · 5.3 MB</span></a>
+<dl class="dl-meta"><dt>File</dt><dd><code>brx-companion-0.1.0-android-debug.apk</code></dd><dt>Version</dt><dd>0.1.0 (debug build)</dd><dt>Size</dt><dd>5.3 MB</dd><dt>Built</dt><dd>2026-08-30</dd><dt>SHA-256</dt><dd><code class="sha">720eba2694550b0ac04582414e5dc3dbc1feabb87f44ef81310b8f5e7c2f3f74</code></dd></dl>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/app/README.md" rel="noopener">app/README.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/node.md" rel="noopener">docs/spec/node.md</a> §3</p></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="what-is-already-proven-on-real-guns"><strong class="co-title">What is already proven on real guns.</strong><p>On 2026-08-25 this app, built from this codebase, passed every core gate on a bench tagger over native Bluetooth: connect, stream trigger and ammo frames, speak (<code>$VOL</code> + <code>$PLAY</code>), green the sight (<code>$SFLASH</code>), push a full config and arm a game (the gun counted 3-2-1 and went live), and hold a link for 5+ minutes with no drops. Later that night a phone talked to Mission Control and an MC-pushed kit-out fired the real gun. What is <em>not</em> finished is the game and HUD layer around that. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (BLE path) / <span class="badge b-wip" title="Under construction"><span>under construction</span></span> (app)</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> 2026-08-25 "NATIVE app validated on hardware", <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0001-companion-rider-architecture.md" rel="noopener">docs/adr/0001-companion-rider-architecture.md</a></p></aside></section>
+<section class="blk blk-steps" data-type="steps"><h2 id="install-it">Install it</h2><div class="steps"><ul>
+<li><strong>Get the APK onto the phone.</strong> Tap the download button above on the phone itself, or download on a computer and copy the file across. Any transfer works.</li>
+<li><strong>Open the file and allow the install.</strong> Android asks whether the app doing the opening (your browser or file manager) may install apps. Allow it, then confirm. This is the normal prompt for any app that does not come from the Play Store, and you can switch the permission back off afterwards.</li>
+<li><strong>Launch it and grant &quot;Nearby devices&quot;.</strong> That is the Bluetooth permission. Location is <em>not</em> required: the scan is flagged <code>neverForLocation</code>, so it works with the system Location toggle off. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
+<li><strong>Pick your gun.</strong> Turn the tagger on and it appears in the list by name. Connecting proves the link: the app can speak through the gun and flash its sight.</li>
+<li><strong>Optional, and needed for a scored match: point it at Mission Control.</strong> Start MC on the laptop (<code>python -m brx_mcp.mc</code>), then scan the QR it shows or type the <code>ws://&lt;ip&gt;:8766/ws</code> address on the app&#39;s CONNECTED screen. <span class="badge b-wip" title="Under construction"><span>under construction</span></span></li>
+</ul>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/app/README.md" rel="noopener">app/README.md</a>, app/scripts/android-setup.sh, <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/mc/API.md" rel="noopener">mcp/brx_mcp/mc/API.md</a></p></section>
+<section class="blk blk-spec-sheet" data-type="spec-sheet"><h2 id="what-it-needs">What it needs</h2><dl><dt>Android</dt><dd><p>7.0 (API 24) or newer. There is no Play Store listing; this is a sideload.</p>
+</dd><dt>A tagger</dt><dd><p>BRX gen 2/3 (Bluetooth LE). Gen 1 uses Bluetooth Classic serial and is not supported.</p>
+</dd><dt>Permissions</dt><dd><p>Nearby devices (Bluetooth) to reach the gun. Camera only if you scan the Mission Control QR code. No Location, and no internet.</p>
+</dd><dt>Wi-Fi</dt><dd><p>only to reach Mission Control, and only if you are running a hosted match. The field LAN is a laptop and a travel router with no internet behind it.</p>
+</dd><dt>Screen</dt><dd><p>landscape, mounted on the rail. The app locks the orientation itself.</p>
+</dd></dl><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/app/README.md" rel="noopener">app/README.md</a>, app/scripts/android-setup.sh, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0002-laptop-mission-control-host.md" rel="noopener">docs/adr/0002-laptop-mission-control-host.md</a></p></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="field-rule-the-bench-taught-us"><strong class="co-title">Field rule the bench taught us.</strong><p>Locking the phone, pulling down the notification shade or switching apps suspends the web view and drops the Mission Control socket (it reconnects within about 10 seconds once the app is in front again). Keep the phone mounted, awake, in the foreground and on Do Not Disturb. The app&#39;s keep-awake stops auto-lock only, it cannot stop you.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> 2026-08-25 (night) §3.11</p></aside></section>
+<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="on-an-iphone"><strong class="co-title">On an iPhone?</strong><p>There is no download. iOS is first-class in the code (the same codebase ran on an iPhone X against real taggers), but Apple has no sideload-a-file path: you build it yourself with Xcode and a free Apple ID, which gives a 7-day on-device build. <code>app/README.md</code> has the steps. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (it runs) / <span class="badge b-wip" title="Under construction"><span>under construction</span></span> (no distribution)</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/app/README.md" rel="noopener">app/README.md</a> §Prerequisites, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0003-native-app-over-web-bluetooth.md" rel="noopener">docs/adr/0003-native-app-over-web-bluetooth.md</a></p></aside></section>
+<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="prefer-to-build-it-yourself"><strong class="co-title">Prefer to build it yourself?</strong><p><code>git clone</code>, then <code>npm ci &amp;&amp; npm run android:apk</code> in <code>app/</code> produces exactly this file (JDK 21 and the Android SDK required). The whole project is MIT.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/app/README.md" rel="noopener">app/README.md</a>, app/scripts/android-apk.sh</p></aside></section>
+
+</article>
+  </main>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#brx-combat-hud-for-android">BRX Combat HUD for Android</a></li><li><a href="#install-it">Install it</a></li><li><a href="#what-it-needs">What it needs</a></li></ol></div></aside>
+</div>
+<footer class="foot">
+  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
+  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
+</footer>
+<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
+<script src="/assets/site.99eb517084.js" defer></script>
+</body>
+</html>

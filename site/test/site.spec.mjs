@@ -607,3 +607,80 @@ it('8 · llms.txt, llms-full.txt, sitemap, robots, JSON-LD (TechArticle/Breadcru
   expect(ds.distribution[0].contentUrl).toMatch(/\/data\/sounds\.json$/);
   expect(await page.locator('link[rel="alternate"][type="text/markdown"]').count()).toBe(1);
 });
+
+// ---- 9. the app download: the button must hand over the exact bytes the page describes --------
+// A download page that 404s, or that advertises a size/checksum from an older build, is worse than
+// no page at all: the visitor installs a file they cannot verify, or nothing at all.
+it('9 · /platform/app: the download button serves the committed APK, and the page facts match the bytes', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await page.goto('/platform/app/', { waitUntil: 'networkidle' });
+  const btn = page.locator('a.dl-btn');
+  await expect(btn).toBeVisible();
+  const href = await btn.getAttribute('href');
+  expect(href, 'the button links an apk under /download/').toMatch(/^\/download\/[\w.-]+\.apk$/);
+
+  // the file the site will actually deploy (Cloudflare publishes webapp/ from the repo)
+  const onDisk = path.join(WEB, href.replace(/^\//, ''));
+  expect(fs.existsSync(onDisk), `${href} is not committed under webapp/`).toBe(true);
+  const bytes = fs.readFileSync(onDisk);
+  expect(bytes.length, 'an apk under 1 MB is not a real build').toBeGreaterThan(1e6);
+  expect(bytes.subarray(0, 2).toString('latin1'), 'not a zip/apk').toBe('PK');
+
+  // served, not just present
+  const r = await request.get(href);
+  expect(r.status()).toBe(200);
+  expect((await r.body()).length).toBe(bytes.length);
+
+  // and the button actually hands the file over when a person taps it
+  const [dl] = await Promise.all([page.waitForEvent('download'), btn.click()]);
+  expect(dl.suggestedFilename()).toBe(path.basename(href));
+  expect(fs.statSync(await dl.path()).size).toBe(bytes.length);
+
+  // every hard fact on the page is the file's own
+  const sha = execFileSync('sha256sum', [onDisk], { encoding: 'utf8' }).split(' ')[0];
+  const meta = (await page.locator('.dl-meta').innerText()).replace(/\s+/g, ' ');
+  expect(meta).toContain(path.basename(onDisk));
+  expect(meta).toContain(sha);
+  expect(meta, 'size on the page must match the file').toContain(`${(bytes.length / 1e6).toFixed(1)} MB`);
+  const ver = path.basename(onDisk).match(/-(\d+\.\d+\.\d+)-/)?.[1];
+  expect(ver, 'the filename carries the version').toBeTruthy();
+  expect(meta).toContain(ver);
+
+  // the honesty the page owes a sideloader
+  const body = (await page.locator('main').innerText()).toLowerCase();
+  for (const claim of ['debug build', 'nearby devices', 'api 24']) expect(body, `missing: ${claim}`).toContain(claim);
+  expect(errors).toEqual([]);
+});
+
+// The two ways this page can lie to a visitor, both caught at build time: no build published (must
+// say so, not link a 404) and two builds published (the page must not pick one at random).
+it('9b · a manual with [download] but no apk renders a TODO; two apks fail the build', async () => {
+  const dir = fs.mkdtempSync(path.join(SITE, 'test', 'tmp-dl-'));
+  const build = out => {
+    try { return { code: 0, output: execFileSync('node', [path.join(SITE, 'build.mjs'), '--manual', dir, '--out', out], { stdio: 'pipe' }).toString() }; }
+    catch (e) { return { code: e.status, output: String(e.stdout) + String(e.stderr) }; }
+  };
+  try {
+    for (const f of fs.readdirSync(path.join(HERE, 'fixtures/manual-stale'))) fs.copyFileSync(path.join(HERE, 'fixtures/manual-stale', f), path.join(dir, f));
+    // into the FIRST page of the fixture (appending would land it on the last page instead)
+    const home = path.join(dir, '00-home.md');
+    const src = fs.readFileSync(home, 'utf8');
+    const cut = src.indexOf('\n### Page:', src.indexOf('\n### Page:') + 1);
+    fs.writeFileSync(home, src.slice(0, cut) + '\n[download] **The app** Get it here. src: fixture\n' + src.slice(cut));
+
+    const none = path.join(dir, 'out-none');
+    const a = build(none);
+    expect(a.code, a.output).toBe(0);
+    const html = fs.readFileSync(path.join(none, 'index.html'), 'utf8');
+    expect(html).toContain('data-todo="no build published"');
+    expect(html).not.toContain('href="/download/');
+
+    const two = path.join(dir, 'out-two');
+    fs.mkdirSync(path.join(two, 'download'), { recursive: true });
+    for (const f of ['one.apk', 'two.apk']) fs.writeFileSync(path.join(two, 'download', f), 'PK');
+    const b = build(two);
+    expect(b.code, 'two apks must fail the build').not.toBe(0);
+    expect(b.output).toContain('keep exactly one');
+    expect(JSON.parse(fs.readFileSync(path.join(two, '.site-manifest.json'), 'utf8')).ok).toBe(false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

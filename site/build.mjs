@@ -16,7 +16,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.start
 const MANUAL = path.resolve(args.manual || path.join(REPO, 'docs/manual'));
 const OUT = path.resolve(args.out || path.join(REPO, 'webapp'));
 const SITE = args.site || 'https://open-brx.iamrossi.workers.dev';
-const PROTECTED = new Set(['mc']); // never written or deleted by this build
+const PROTECTED = new Set(['mc', 'download']); // never written or deleted by this build
 const NOW = new Date().toISOString();
 
 const written = new Set();
@@ -58,6 +58,43 @@ const assetFiles = fs.readdirSync(assetDir).map(f => {
 const assetHref = name => { const a = assetFiles.find(x => x.src === name); return a ? '/' + a.out : `/assets/${name}`; };
 
 const ctx = { site: SITE, slugs, images: manual.images, imageFiles, titles, slugTitles, aliases, cssHref: assetHref('site.css'), jsHref: assetHref('site.js') };
+
+// ---- the published app build (webapp/download/*.apk) ----------------------------------------
+// The apk is a committed artifact, not something this build produces: `npm run android:apk` in
+// app/ drops it there. Everything the download page states about it (size, date, checksum) is read
+// off the file itself, so the page can never advertise a version that is not the one being served.
+const dlDir = path.join(OUT, 'download');
+const dlProblems = [];
+function findDownload() {
+  if (!fs.existsSync(dlDir)) return null;
+  const apks = fs.readdirSync(dlDir).filter(f => f.toLowerCase().endsWith('.apk')).sort();
+  if (!apks.length) return null;
+  if (apks.length > 1) { dlProblems.push(`webapp/download/: ${apks.length} apks (${apks.join(', ')}): keep exactly one, the site links a single build`); return null; }
+  const file = apks[0];
+  const buf = fs.readFileSync(path.join(dlDir, file));
+  const sha256 = createHash('sha256').update(buf).digest('hex');
+  const m = file.match(/-(\d+\.\d+(?:\.\d+)?)-/);
+  // When the build was made is not recoverable from the file: a git checkout stamps its own mtime,
+  // and the apk's zip entries are normalised to 1981. android-apk.sh records it in a sidecar, which
+  // is trusted only while it still describes these exact bytes.
+  let date = fs.statSync(path.join(dlDir, file)).mtime.toISOString().slice(0, 10);
+  const sidecar = path.join(dlDir, 'build.json');
+  if (fs.existsSync(sidecar)) {
+    let meta = null;
+    try { meta = JSON.parse(fs.readFileSync(sidecar, 'utf8')); } catch { /* handled below */ }
+    if (!meta || meta.file !== file || meta.sha256 !== sha256) dlProblems.push(`webapp/download/build.json does not describe ${file} (rerun \`npm run android:apk\`)`);
+    else if (meta.built) date = meta.built.slice(0, 10);
+  }
+  return {
+    file, href: `/download/${file}`,
+    version: m ? m[1] : '',
+    bytes: buf.length,
+    size: `${(buf.length / 1e6).toFixed(1)} MB`,
+    sha256,
+    date,
+  };
+}
+ctx.download = findDownload();
 
 // ---- nav / sidebar ------------------------------------------------------------------------
 const manualSections = sections.filter(s => s.slug.startsWith('/manual'));
@@ -183,7 +220,7 @@ function renderOne(page, opts = {}) {
     toc: isHome ? '' : tocFor(page, page.slug === '/credits' ? [{ id: 'how-we-know', title: 'How we know each fact' }] : []), breadcrumbs: crumbsFor(page), jsonld: jsonldFor(page), klass: isHome ? 'home' : (ex ? 'explorer-page' : ''),
   }, ctx);
   write(slugPath(page.slug), html);
-  const twin = markdownTwin(page); write(twinPath(page.slug), twin); twins.push({ slug: page.slug, title: page.title, twin });
+  const twin = markdownTwin(page, ctx); write(twinPath(page.slug), twin); twins.push({ slug: page.slug, title: page.title, twin });
   sitemap.push(page.slug);
   const rows = page.blocks.flatMap(b => b.body.filter(l => l.startsWith('|') && !/^\|\s*-/.test(l)).map(l => l.split('|')[1]?.replace(/[`*]/g, '').trim()).filter(Boolean));
   const heads = page.blocks.filter(b => b.title).map(b => b.title.replace(/[`*]/g, ''));
@@ -221,12 +258,13 @@ write('llms.txt', `# Open BRX: The BRX Manual\n\n> The definitive reference for 
 write('llms-full.txt', `# Open BRX: The BRX Manual (full text)\n\nGenerated ${NOW}. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.\n\n` + twins.map(t => `\n\n---\n\n<!-- ${SITE}${t.slug === '/' ? '/' : t.slug + '/'} -->\n\n${t.twin}`).join(''));
 
 // ---- link check (hard fail) ----------------------------------------------------------------
-const problems = [];
+const problems = [...dlProblems];
 for (const rel of written) {
   if (!rel.endsWith('.html')) continue;
   const html = fs.readFileSync(path.join(OUT, rel), 'utf8');
   for (const m of html.matchAll(/href="(\/[^"#?]*)"/g)) {
     const h = m[1];
+    if (h.startsWith('/download/')) { if (!fs.existsSync(path.join(OUT, h.slice(1)))) problems.push(`${rel}: missing download ${h}`); continue; }
     if (h.startsWith('/assets/') || h.startsWith('/data/') || h.startsWith('/img/')) { if (!written.has(h.slice(1))) problems.push(`${rel}: missing asset ${h}`); continue; }
     if (/\.(md|txt|xml|svg)$/.test(h)) { if (!written.has(h.slice(1))) problems.push(`${rel}: missing file ${h}`); continue; }
     const target = h === '/' ? 'index.html' : h.replace(/^\//, '').replace(/\/?$/, '/index.html');
