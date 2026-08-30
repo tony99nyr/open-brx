@@ -2819,7 +2819,9 @@ of the three gun LEDs changed.
 | 4 | **purple** | red |
 | 5 | **teal** | red |
 | 6 | **white** | red |
-| 7, 8 | *not observed* (stepped past while reporting) | |
+| 7, 8 | **two further distinct colours** (Tony: "the first led continued to change to several other colors too") — not individually named | red |
+
+**So the palette is at least NINE entries (0 = off, 1-8 = eight distinct colours).** Whether it extends past 8 is untested and worth one more sweep — see below.
 
 **Token 2 = effect, confirmed separately.** Repeating n=1 with effect 0 then 1: effect 1 produced
 **visible brightness modulation**, matching `LedEffect.Glow` from the APK enum
@@ -2852,8 +2854,13 @@ changed and 2-3 stayed red. But minutes earlier, `$GLED,1,<eff>,1,0,10,,*` turne
 **green** — same token 1, different LED *and* different colour. So token 1 is not *only* a colour index;
 the trailing tokens select the target and possibly modify the colour.
 
-**Next:** a one-token-at-a-time sweep holding the others fixed, to separate "which LED" from "what
-colour". Do not build on the palette above beyond LED 1 until that is done.
+**Next, two cheap sweeps:**
+
+1. **How big is the palette?** We stopped at 8 only because the FB map claims 0-8. Sweep n = 9..24
+   and find where it wraps or goes dark. **This directly decides the 10-tagger question**: if there
+   are 16 colours, a 10-player FFA can give every player a distinct gun colour.
+2. **One token at a time**, holding the others fixed, to separate "which LED" from "what colour".
+   Do not build on the palette above beyond LED 1 until that is done.
 
 
 ### 2026-08-29 — FLOOR ARTIFACT CLOSED: fn 3 is DAMAGE, not a status function
