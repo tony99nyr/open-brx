@@ -2801,6 +2801,38 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-08-30 — ⭐ THE PULSE **IS** THE HEALTH GAUGE (native FFA, Tony observing)
+
+**Tony, in a NATIVE FFA game:** *"two guns went blue. i shoot the other, the pulsing blue led represents
+the health. now only the 3rd led is pulsing blue."*
+
+**This inverts the whole F1 design.** The pulsing team-colour LEDs that I spent the afternoon trying to
+**suppress** are the gun's **native health bar**: three LEDs pulsing at full health, dropping to one as
+health falls. The "alternation" that was "washing out" my gauge was a working gauge underneath, and my
+`$GLED` override was **destroying** it, not building one.
+
+**What this means**
+
+- The gun **already** renders a 3-segment health gauge in the team colour, natively, with no host
+  involvement. That is exactly what F1 asked for.
+- My `$GLED` per-LED control is still real and still useful (night mode, hit flash, per-player colour,
+  FFA white) — but it is the wrong tool for *health*, because the gun does health itself.
+- Everything I read as noise on a spawned gun was signal. **A spawned gun pulses because it is
+  displaying pools.** That is why it only ever appeared when spawned, and why it never "settled".
+
+**Open, and decisive for F1:**
+
+1. **Does the gauge refill** on heal/respawn (1 → 2 → 3)?
+2. **Does it appear in OUR host-driven games**, or only in native ones? If `play tdm` shows it, F1 is
+   already delivered and the override should be deleted. If it does not, the question becomes *what
+   native does at setup that we do not* — likely a `$PSET`/`$GSET` field we leave unset.
+3. Does it track **health only**, or armour/shield too? Tony's reading was health.
+
+**Method note for me:** I had the answer in front of me twice — the earlier session's "3 gun LEDs are a
+segmented gauge, purple draining with the pools" note, and every "pulsing" report today. I treated a
+documented native behaviour as interference because I was committed to driving the LEDs myself.
+
+
 ### 2026-08-30 — ✅ `$GLED` SOLVED: three independently addressable LEDs, direct palette indices
 
 Re-ran under a **synchronous** protocol after Tony identified the defect in my method (*"i type what i
