@@ -2820,13 +2820,33 @@ health falls. The "alternation" that was "washing out" my gauge was a working ga
 - Everything I read as noise on a spawned gun was signal. **A spawned gun pulses because it is
   displaying pools.** That is why it only ever appeared when spawned, and why it never "settled".
 
+**⭐ AND THE FULL F1 BEHAVIOUR ALREADY EXISTS NATIVELY.** Tony, on Supremacy: *"in supremacy, the
+maurader health bar worked differently. it showed armor and then health and it would switch back to team
+after being delt damage."*
+
+That is **exactly the F1 spec** — pool status on damage, armour then health, auto-revert to team colour
+— **implemented in stock firmware, with no host involvement.** Two consequences:
+
+- **It is CLASS-DEPENDENT.** The Marauder behaves *differently from other classes*, so this is not one
+  fixed gun behaviour: something in the class config selects it. **That field is what F1 actually
+  needs**, not a `$GLED` loop.
+- **The gun handles the revert timeout itself**, which is strictly better than driving it from the host:
+  no BLE write per hit, no flicker, and no cost at 10 players. My `$GLED` approach would have been worse
+  than what the hardware already does.
+
 **Open, and decisive for F1:**
 
 1. **Does the gauge refill** on heal/respawn (1 → 2 → 3)?
 2. **Does it appear in OUR host-driven games**, or only in native ones? If `play tdm` shows it, F1 is
    already delivered and the override should be deleted. If it does not, the question becomes *what
    native does at setup that we do not* — likely a `$PSET`/`$GSET` field we leave unset.
-3. Does it track **health only**, or armour/shield too? Tony's reading was health.
+3. Does it track **health only**, or armour/shield too? In FFA Tony read it as health; on the Supremacy
+   Marauder it showed **armour then health**, so the answer is likely class-configured rather than fixed.
+4. **Which field selects it?** The Marauder differs from other classes, so compare a Supremacy class
+   config against ours. Look first at `$PSET` (the class/character block) and `$GSET`. This is the single
+   highest-value question for F1 — it turns the feature from "write an LED driver" into "set one field".
+5. **Does a native game touch BLE at all?** A native game runs on-gun, so the gauge may be entirely
+   autonomous. If so there is nothing to capture and the answer must come from config diffing.
 
 **Method note for me:** I had the answer in front of me twice — the earlier session's "3 gun LEDs are a
 segmented gauge, purple draining with the pools" note, and every "pulsing" report today. I treated a

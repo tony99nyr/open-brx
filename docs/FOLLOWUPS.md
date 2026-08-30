@@ -397,7 +397,25 @@ design. Worth one deliberate test.
 time of no damage reset to team color."* … *"on health/armor/shield change +/- the leds should indicate
 that status. then after a few seconds maybe 3-5s go back to team color or mode color."*
 
-### Behaviour
+### ⭐ THIS ALREADY EXISTS IN STOCK FIRMWARE — find the field, do not build a driver
+
+Tony, on Supremacy (2026-08-30): *"the maurader health bar worked differently. it showed armor and then
+health and it would switch back to team after being delt damage."* That is this entire spec, running
+natively, with the **gun** handling the revert timeout.
+
+**So F1 is probably a CONFIG question, not an LED-driver question.** The Marauder differs from other
+classes, so a field selects the behaviour. Find it and F1 costs one setting instead of a BLE write per
+hit per player.
+
+**Where to look:** diff a Supremacy class setup against ours — `$PSET` (the class/character block)
+first, then `$GSET`. Note a native game runs on-gun and may never touch BLE, in which case config
+diffing is the *only* route and there is nothing to capture.
+
+**Do not build the `$GLED` driver below until this is ruled out.** Driving it from the host is strictly
+worse: it flickers against the native gauge, costs a write per hit, and reimplements something the
+hardware already does properly.
+
+### Behaviour (as originally specified)
 
 1. Any change to **health, armour or shield** — up or down — paints the three gun LEDs as a gauge of the
    pool that changed.
