@@ -52,7 +52,7 @@ Each one unblocks a spec decision marked [OPEN — bench] in `docs/spec/README.m
 ## ⭐ EFFICIENT BENCH PLAN (post sim-hardening, 2026-08-25)
 All game LOGIC for every mode is now exhaustively verified in software (156 sim scenarios + the SimGame
 harness) — so the bench only needs to confirm what the sim CAN'T model. Do these in order; each is fast:
-1. ⚠ **Combat modes on real guns** - **TDM PASSED 2026-08-30** on 3 taggers: team LED colours split 2v1 correctly, hit sound, death sound, headset dark in play then blinking green on death, host-driven respawn, team scoring correct, and friendly fire confirmed gun-enforced with a REAL gun (previously only proven with our synthetic emitter). ⚠ **One defect found: per-gun kill attribution reads 0 while team score is right - see Q17.** ffa/infection/lms still ⬜.
+1. ⚠ **Combat modes on real guns** - **TDM PASSED 2026-08-30** on 3 taggers: team LED colours split 2v1 correctly, hit sound, death sound, headset dark in play then blinking green on death, host-driven respawn, team scoring correct, and friendly fire confirmed gun-enforced with a REAL gun (previously only proven with our synthetic emitter). ⚠ **One defect: per-gun kill attribution read 0 in the THREE-gun game, but was correct (5/5) in a two-gun game - see Q17, likely a player-id collision.** ffa/infection/lms still ⬜.
    ~~1. ⬜ Combat modes on real guns~~ (tdm/ffa/infection/lms, 2–3 taggers): `play <mode> …` — confirm the
    on-gun reality the sim can't see: LED team colours, hit/death/respawn SOUNDS, health behaves, and the
    scoreboard matches. Logic is sim-proven, so this is a hardware-behaviour check, not a logic check.

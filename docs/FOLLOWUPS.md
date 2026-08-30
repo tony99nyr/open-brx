@@ -270,38 +270,45 @@ candidate.
 **If lever 1 works, it belongs in `GameConfig` as an indoor/tight-space preset**, alongside the existing
 kid-mode toggles. That is the shippable outcome.
 
-## 🔴 Q17 — per-gun KILL ATTRIBUTION reads 0 while the team score is correct (2026-08-30, live bench)
+## 🟠 Q17 — kill attribution failed with THREE guns, works with two (2026-08-30, live bench)
 
-**Found in the first real 3-tagger game.** Team scoring is right; individual kills are not.
+⚠️ **Narrowed from the original filing.** I first recorded this as a general failure of per-gun kill
+attribution. **It is not** — the very next game attributed kills perfectly. The bug is real but
+specific.
 
+**Game 1, three taggers (2v1):**
 ```
-🏆 GAME OVER - team1   scores={1: 2, 2: 0}
-  R0BQT (E20D)  team1  kills 0  deaths 0   <- the gun Tony was HOLDING and firing
-  R0BAT (3D4F)  team1  kills 0  deaths 1
-  R0BAS (FE30)  team2  kills 0  deaths 2
+🏆 GAME OVER - team1  scores={1: 2, 2: 0}
+  R0BQT (E20D) team1  kills 0  deaths 0    <- the gun Tony was HOLDING and firing
+  R0BAT (3D4F) team1  kills 0  deaths 1
+  R0BAS (FE30) team2  kills 0  deaths 2
+```
+Team score correct, **every gun `kills: 0`**.
+
+**Game 2, two taggers (R0BAT absent), same shooter, same weapon, same mode:**
+```
+🏆 GAME OVER - team1  scores={1: 5, 2: 0}
+  R0BQT (E20D) team1  kills 5  deaths 0    <- attribution CORRECT
+  R0BAS (FE30) team2  kills 0  deaths 5
 ```
 
-Tony held R0BQT and killed R0BAS twice. **team1 scored 2, matching those deaths, but R0BQT logged
-`kills: 0`.** Every gun shows 0 kills.
+**So the path works.** Something about the three-gun game broke it.
 
-**Why the team score still works:** it is derived from **deaths**, which the victim reports directly.
-Per-player kills need the opposite direction, and **the gun emits no shooter-side kill event** (finding
-D4). So a kill can only be attributed by mapping the victim's last `$HIR` **shooter player id** back to
-a gun address. That mapping is what appears to be failing.
+**Leading hypothesis: player-id collision.** Kills cannot come from the shooter — the gun emits **no
+shooter-side kill event** (finding D4) — so attribution maps the victim's last `$HIR` **token 3 shooter
+player id** back to a gun address. That id is set per gun by `$PSET` **token 1**. If two of the three
+guns were assigned the **same** player id, the reverse lookup is ambiguous and attribution drops for
+everyone, while team scoring (derived from **deaths**, reported by the victim itself) stays correct.
+That matches the symptom exactly: team score right, all kills zero.
 
-**Correct behaviour also observed, worth keeping:** R0BAT's death scored **nothing** for team2. That was
-a friendly-fire kill (Tony shot a same-team gun with FF on), and a FF death correctly does not credit
-the enemy. The scoring logic is sound; only the attribution is broken.
+**Test it cheaply:** run a 3-gun game and log each gun's `$PSET` token 1 at setup. If they are not
+distinct, that is the bug. If they are distinct, capture the `$HIR` frames and check whether the
+shooter id in them matches any assigned id.
 
-**Why the sim never caught this:** the sim has no real `$HIR` shooter ids to mis-map. This is precisely
-the class of bug a bench run exists to find, and it went unnoticed through 156 sim scenarios.
+**Why the sim never caught it:** the sim has no real `$HIR` shooter ids to collide.
 
-**Where to look:** how `$HIR` token 3 (shooter player id, 0-63, set by `$PSET` token 1) is mapped back
-to a gun address in the live mode runner. Check whether each gun's `$PSET` player id is unique per game
-and whether the reverse lookup is populated before the first kill.
-
-**Impact:** any per-player scoreboard, K/D, streak or medal is wrong. Team scoring and win conditions
-are unaffected, which is why this survived to a live game unnoticed.
+**Impact:** per-player scoreboards, K/D, streaks and medals are wrong in games above two guns. Team
+scoring and win conditions are unaffected, which is how it survived to a live game unnoticed.
 
 ## 🟡 Q18 — the FIRST mid-game reconnect reports success falsely (2026-08-30, live bench)
 
