@@ -2801,6 +2801,47 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-08-30 — ✅ `$GLED` SOLVED: three independently addressable LEDs, direct palette indices
+
+Re-ran under a **synchronous** protocol after Tony identified the defect in my method (*"i type what i
+see, but bc you are thinking my response doesn't get interpretted right away"*). One frame sent, wait
+for his call, then the next. No timers.
+
+**Every earlier contradiction vanished immediately.**
+
+| frame sent | LEDs |
+|---|---|
+| `$GLED,1,0,0,0,10` | **blue** / red / red |
+| `$GLED,0,1,0,0,10` | red / **blue** / red |
+| `$GLED,0,0,1,0,10` | red / red / **blue** |
+| `$GLED,3,2,1,0,10` | **green / yellow / blue** — *predicted in advance, confirmed* |
+
+## `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>,,*`
+
+**Tokens 1-3 are the three gun body LEDs, each a direct palette index:**
+
+**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal/cyan · 6 white** (7-8 exist, unnamed)
+
+- **`<t4>` = 3 blanks all three** — the night-mode frame (P17). The app's `$GLED,,,,5,,,*` also blanks.
+- **`<brightness>`** is token 5.
+- The set colour **alternates with the team colour** rather than replacing it — that alternation is real
+  and was independently visible under the synchronous protocol.
+
+**A 3-segment health/armour gauge is now buildable:** `3,3,3` full → `3,3,0` → `3,0,0` → `0,0,0` empty,
+in whatever colour suits the pool.
+
+#### Why this took all day, and it was not the hardware
+
+Every failed prediction and both contradictory token-3 tables came from **timed sweeps racing an
+asynchronous human observer**. I logged observations against the wrong frames, then explained the mess
+with two successive wrong theories — "LED 2 is not addressable" (it always was), then "the LEDs animate
+so single glances are useless" (they don't, and glances are fine). **Tony diagnosed the real cause.**
+
+The APK's field names (`mid, effect, optionA, optionB`) do **not** describe this command. That teardown
+recovers identifiers in declaration order with no types, and it also asserts colour is team-derived,
+which is false. **Where the APK and the bench disagree, the bench wins.**
+
+
 ### 2026-08-30 — ⚠️ RETRACTION + PLAN: most of the day's `$GLED` conclusions do not hold
 
 A three-agent review (captures / APK / adversarial) went through the two `$GLED` entries below. **Most
