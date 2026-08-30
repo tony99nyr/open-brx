@@ -2840,9 +2840,37 @@ itself. No flash-then-restore round trip, which matters at 10 players.
 - **Per-player identity beyond 4 teams:** 8+ colours, per gun, independent of `$TID`'s 2-bit ceiling.
 - **Hit flash:** token 3 non-zero, self-animating.
 
-#### Not resolved
+#### Per-LED addressing — swept, and the answer is PARTIAL
 
-**The exact per-LED addressing.** token 3 clearly selects *a pattern across the three LEDs*, but 1/2/3
+Held colour 3 (green), effect 0, token4 = 1, brightness 2000; stepped token 3 over 0-7. Tony called all
+three LEDs each time:
+
+| token 3 | LED 1 | LED 2 | LED 3 |
+|---|---|---|---|
+| 0 | green | **red** | red |
+| 1 | green | **red** | blue |
+| 2 | green | **red** | green |
+| 3 | green | **red** | blue |
+| 4 | green | **red** | teal |
+| 5 | green | **red** | pink/white |
+| 6, 7 | *not reported* | | |
+
+**LED 1 takes token 1's colour. LED 3 varies with token 3. LED 2 stayed RED in every single cell.**
+Brightness was also visibly cycling on several steps, so token 3 selects an animated state, not a
+static pattern - the LED 3 colour recorded is whatever phase it was caught in.
+
+**Verdict: two of the three LEDs are addressable this way, not all three.** LED 2 is not reachable with
+`$GLED,<colour>,0,<t3>,1,<brightness>`.
+
+**So a health/armour GAUGE is NOT yet buildable** - it needs the middle segment. What would unblock it:
+sweep **token 4** (only 0 and 1 tried; 0 disabled the override entirely) and the **6th/7th** token
+positions, and try `effect` values 2-4 (ChaseBack / ChaseForward / StopIR) which may address segments
+differently. Also worth capturing what a **native Supremacy game** sends while its own 3-LED gauge
+drains - that is the gauge working, and the frames are on the wire.
+
+#### Also not resolved
+
+**The exact per-LED addressing for a full gauge.** token 3 clearly selects *a pattern across the three LEDs*, but 1/2/3
 do not map cleanly to a bitmask (2 changed the 3rd LED to blue; 3 lit the 1st and 3rd green). A
 **health/armour gauge** needs to know exactly which LED a value targets, so that wants one more sweep:
 hold colour and brightness fixed, step token 3 across a wider range (0-7), and record all three LEDs
