@@ -30,6 +30,45 @@ def test_tdm_kill_credits_shooter_team():
     assert not g.over
 
 
+def test_tdm_credits_the_specific_killer_when_a_team_holds_two_guns():
+    """Q17 REGRESSION (bench-found 2026-08-30, 3 taggers, TDM 2v1).
+
+    Attribution used to resolve the killer from the shooter's TEAM, which only
+    identifies one gun when the team has exactly one member. With G1 and G3 both on
+    team 1, a kill by either credited NOBODY - every gun read `kills: 0` while the
+    team score stayed correct. The fix reads the shooter's PLAYER id from `$HIR`
+    token 3 and maps it through the driver's assignment.
+
+    This test could not even be written before: the fake gun hardcoded `$HIR` token 3
+    to 0, so no sim scenario could express a two-gun team. That is why 156 scenarios
+    missed it.
+    """
+    g = SimGame(GameConfig(mode="tdm", frag_limit=0, game_time_s=0),
+                guns={"G1": 1, "G3": 1, "G2": 2}).setup()
+    wire = g.drv.player_ids                    # addr -> $PSET token 1
+    g.kill("G2", shooter_team=1, shooter_id=wire["G3"])   # G3 gets this one, not G1
+
+    snap = g.snapshot()
+    assert snap["team_score"].get(1, 0) == 1, "team scoring must still work"
+    assert snap["players"]["G2"]["deaths"] == 1
+    assert snap["players"]["G3"]["kills"] == 1, "the SPECIFIC killer must be credited"
+    assert snap["players"]["G1"]["kills"] == 0, "the teammate must NOT be credited"
+
+
+def test_tdm_falls_back_to_team_when_the_shooter_id_is_unknown():
+    """An unmapped shooter id must not lose the kill: fall back to team resolution.
+
+    Only resolvable when the team holds one gun, which is exactly what the old
+    behaviour did, so a gun we never assigned an id to is no worse off than before.
+    """
+    g = SimGame(GameConfig(mode="tdm", frag_limit=0, game_time_s=0)).setup()  # 1v1
+    g.kill("G2", shooter_team=1, shooter_id=61)   # 61 was never assigned to anyone
+
+    snap = g.snapshot()
+    assert snap["team_score"].get(1, 0) == 1
+    assert snap["players"]["G1"]["kills"] == 1, "team fallback must still credit G1"
+
+
 def test_tdm_frag_limit_ends_with_right_winner():
     """Reaching frag_limit ends the game with the leading team as winner."""
     g = SimGame(GameConfig(mode="tdm", frag_limit=2, game_time_s=0, respawn_s=3)).setup()

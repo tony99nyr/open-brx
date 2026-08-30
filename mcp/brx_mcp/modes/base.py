@@ -135,6 +135,17 @@ class Roster:
 
     def __init__(self) -> None:
         self.players: dict[str, Player] = {}
+        # wire player id ($PSET token 1, echoed as $HIR token 3) -> player_id.
+        # Populated by the driver, which assigns those ids. Empty until it does, and
+        # attribution then falls back to team resolution.
+        self.wire_ids: dict[int, str] = {}
+
+    def by_wire_id(self, wire_id: Optional[int]) -> Optional[Player]:
+        """The gun that fired, resolved by its `$PSET` player id. None if unmapped."""
+        if wire_id is None:
+            return None
+        pid = self.wire_ids.get(wire_id)
+        return self.players.get(pid) if pid else None
 
     def add(self, player_id: str, team: int, lives: Optional[int] = None) -> Player:
         p = Player(player_id, team, lives=lives)
@@ -197,6 +208,23 @@ def shooter_team(ev: dict) -> Optional[int]:
         return None                     # grenade IR, not a player shot
     try:
         return int(t[4]) if len(t) > 4 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def shooter_player_id(ev: dict) -> Optional[int]:
+    """`$HIR` token 3 = shooter PLAYER id (0-63, set per gun by `$PSET` token 1).
+
+    Preferred over `shooter_team()` for attribution: a team only identifies the shooter
+    when it holds exactly one gun (FFA, 1v1), so team-based credit silently fails the
+    moment two guns share a team, which is the normal case in TDM. Bench-confirmed
+    2026-08-30: TDM 2v1 credited nobody, FFA and 1v1 credited correctly (Q17).
+    """
+    t = ev.get("tokens", [])
+    if len(t) > 2 and t[2] == "15":
+        return None                     # grenade IR, not a player shot
+    try:
+        return int(t[3]) if len(t) > 3 else None
     except (ValueError, TypeError):
         return None
 

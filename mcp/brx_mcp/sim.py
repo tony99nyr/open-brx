@@ -86,12 +86,17 @@ class SimGame:
             self._feed(victim, f, now)
         return self
 
-    def kill(self, victim: str, shooter_team: int, now: float = 0.0) -> "SimGame":
-        """Shoot `victim` until down (one clean kill)."""
+    def kill(self, victim: str, shooter_team: int, now: float = 0.0,
+             shooter_id: int = 0) -> "SimGame":
+        """Shoot `victim` until down (one clean kill).
+
+        `shooter_id` is the shooter's PLAYER id ($HIR token 3). Pass it to model a
+        team that holds more than one gun, where the team alone cannot identify the
+        killer (Q17)."""
         tg = self.taggers[victim]
         n = 0
         while tg.alive and n < 50:
-            tg.receive_ir(shooter_team)
+            tg.receive_ir(shooter_team, shooter_id)
             n += 1
         for f in tg.drain():
             self._feed(victim, f, now)

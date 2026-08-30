@@ -18,7 +18,7 @@ the M0 base actions of the same name, import Extraction's action classes from
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, PlaySound, Player,
     Respawn, Roster, Score, SendFrame, SetTeam,
-    is_hit, is_death, shooter_team,
+    is_hit, is_death, shooter_team, shooter_player_id,
 )
 from .deathmatch import DeathmatchEngine
 from .survival import InfectionEngine
@@ -34,7 +34,7 @@ __all__ = [
     # M0 base actions + interface
     "Action", "Callout", "Eliminate", "GameEngine", "GameOver", "Heal",
     "PlaySound", "Player", "Respawn", "Roster", "Score", "SendFrame", "SetTeam",
-    "is_hit", "is_death", "shooter_team",
+    "is_hit", "is_death", "shooter_team", "shooter_player_id",
     # engines + driver
     "DeathmatchEngine", "InfectionEngine", "LastManStandingEngine", "BombEngine",
     "DominationEngine", "CtfEngine",

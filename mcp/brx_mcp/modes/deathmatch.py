@@ -11,7 +11,7 @@ from typing import Optional
 
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, Respawn, Roster, Score,
-    hp_values, is_hit, shooter_team,
+    hp_values, is_hit, shooter_team, shooter_player_id,
 )
 from .announcer import KillAnnouncer
 
@@ -50,7 +50,9 @@ class DeathmatchEngine(GameEngine):
         if is_hit(ev):
             st = shooter_team(ev)
             if st is not None:
-                self._last_shot[player_id] = (st, now)
+                # keep the shooter's PLAYER id too: team alone cannot identify the
+                # killer once a team holds 2+ guns (Q17).
+                self._last_shot[player_id] = (st, now, shooter_player_id(ev))
             return []
         hv = hp_values(ev)
         if hv is not None:
@@ -74,11 +76,21 @@ class DeathmatchEngine(GameEngine):
         actions: list[Action] = []
 
         entry = self._last_shot.pop(victim_id, None)
-        killer_team = entry[0] if (entry and now - entry[1] <= ATTRIB_FUSE_S) else None
+        fresh = entry is not None and now - entry[1] <= ATTRIB_FUSE_S
+        killer_team = entry[0] if fresh else None
+        killer_wire_id = entry[2] if (fresh and len(entry) > 2) else None
         if killer_team is not None and killer_team != v.team:
             self.team_score[killer_team] = self.team_score.get(killer_team, 0) + 1
-            # credit the specific killer where team→player is 1:1 (FFA)
-            killer = self.roster.sole_member_of_team(killer_team)
+            # Credit the specific killer. Prefer the shooter's PLAYER id ($HIR token 3,
+            # set per gun via $PSET token 1) — it identifies one gun even when a team
+            # holds several. Fall back to team resolution, which only works 1:1 (FFA,
+            # 1v1), for guns whose id we never assigned. Bench 2026-08-30 (Q17): without
+            # this, TDM 2v1 credited nobody while team scoring stayed correct.
+            killer = self.roster.by_wire_id(killer_wire_id)
+            if killer is not None and killer.team != killer_team:
+                killer = None          # id and team disagree: trust neither, don't guess
+            if killer is None:
+                killer = self.roster.sole_member_of_team(killer_team)
             if killer:
                 killer.kills += 1
             who = (killer.player_id if (self._ffa and killer) else f"team{killer_team}")

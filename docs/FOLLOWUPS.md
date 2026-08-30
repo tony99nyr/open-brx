@@ -270,7 +270,7 @@ candidate.
 **If lever 1 works, it belongs in `GameConfig` as an indoor/tight-space preset**, alongside the existing
 kid-mode toggles. That is the shippable outcome.
 
-## 🟠 Q17 — kill attribution still uses shooter TEAM, so it breaks whenever a team has 2+ guns
+## ✅ Q17 — FIXED 2026-08-30. (was: kill attribution used shooter TEAM, so it broke whenever a team had 2+ guns)
 
 **Root-caused 2026-08-30. Not a bug: an unfinished migration.** Two earlier framings of this item were
 wrong and are superseded — it is neither a general attribution failure nor a player-id collision.
@@ -303,9 +303,19 @@ the victim reports about itself.
 **So the driver did its half and the engine never switched over.** `grep` finds **no use of
 `shooter_player_id` anywhere in `modes/`** - the engine still reads only token 4.
 
-**To fix:** attribute by `$HIR` token 3 (shooter player id) mapped through `driver.player_ids`, and keep
-the team path as a fallback for guns whose id is unknown. Then per-player credit works in TDM, not just
-FFA and 1v1.
+**FIXED as described.** `modes/base.py` gained `shooter_player_id(ev)` (reads `$HIR` token 3) and
+`Roster.wire_ids` / `Roster.by_wire_id()`. `modes/driver.py` populates that map from the ids it already
+assigns. `modes/deathmatch.py` now resolves the killer by player id first and falls back to
+`sole_member_of_team` when the id is unmapped, so a gun we never assigned an id to is no worse off than
+before. A guard drops the id if it disagrees with the shooter's team rather than guessing.
+
+**The harness was also blind, and that is fixed too.** `fake.py` hardcoded `$HIR` token 3 to `0`, so
+**no sim scenario could express a two-gun team** - which is exactly why 156 scenarios missed this.
+`receive_ir()` and `SimGame.kill()` now take an optional `shooter_id`.
+
+**Two regression tests**, mutation-proven: reverting the fix fails
+`test_tdm_credits_the_specific_killer_when_a_team_holds_two_guns`, restoring it passes 535/535. The
+second test covers the unknown-id fallback.
 
 **Test that proves it:** the 3-gun TDM above is the failing case and takes one short game to re-run.
 Also worth an FFA run, where the current team-based path is expected to work with 3 guns - that would
@@ -313,6 +323,34 @@ confirm the diagnosis from the other direction.
 
 **Impact:** per-player scoreboards, K/D, streaks and medals are wrong in any team mode where a team has
 more than one gun, which is the normal case. Team scores and win conditions are correct.
+
+## 🟠 Q19 — our FFA shows THREE team colours; native FFA is white (2026-08-30, observed live)
+
+**Tony, at the bench:** *"green yellow and blue colors. i think on the native game ffa is usually just
+white for all."*
+
+**Confirmed on our FFA run with 3 guns:** each tagger lit a different colour. Native BRX FFA shows
+**white** for everyone, because stock has no per-player scoring to support and players are genuinely
+teamless.
+
+**Why ours differs, and it is not arbitrary.** Kill attribution currently resolves the shooter by
+**team** (`$HIR` token 4 — see Q17). For per-player credit to work at all, shooter-team must identify
+exactly one gun, so our FFA gives **every gun its own `$TID`**. LED colour is `$TID`-derived, so three
+guns produce three colours. We traded the correct look for a working scoreboard.
+
+**Fixing Q17 removes the tradeoff.** Once the engine attributes by `$HIR` **token 3** (shooter player
+id, already parsed and already pushed per gun as `$PSET` token 1), FFA can put **every gun on one
+team** — white, matching native — and still credit kills correctly. That is a concrete second payoff
+for Q17 beyond fixing 2v1 TDM.
+
+**Open question before implementing:** which `$TID` (or other mechanism) produces the native **white**?
+Colour is team-derived, so white may be a specific team value, an unset team, or a different LED path
+entirely. Worth one probe: sweep `$TID` values on a gun and record the colour, and check what a native
+FFA game actually pushes.
+
+**Decide, do not drift:** if we keep distinct colours, that is a legitimate design choice (a 3-colour
+FFA is arguably clearer for players than 3 identical white guns) — but it should be **chosen and
+documented**, not an accident of how attribution happens to work.
 
 ## 🟡 Q18 — the FIRST mid-game reconnect reports success falsely (2026-08-30, live bench)
 
