@@ -2801,6 +2801,54 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-08-30 — `$GLED` field map: colour, effect, brightness, and a SELF-ANIMATING flash
+
+Follow-up to the P13 palette sweep, with Tony calling the LEDs. Gun held on `$TID,1` (blue) so anything
+not blue is `$GLED` overriding.
+
+**`$GLED,<colour>,<effect>,<t3>,<t4>,<brightness>,...`**
+
+| token | meaning | evidence |
+|---|---|---|
+| **1** | **colour index** | 0 off · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7-8 two more |
+| **2** | **effect** (`LedEffect`) | effect 1 = Glow, visible brightness modulation |
+| **3** | **flash / pattern selector** — see below | 0 = no override; 1,2,3 each flash a different 3-LED pattern |
+| **4** | appears to gate whether the colour **persists** | with t4=1 the colour held; with t4=0 the gun stayed team-blue |
+| **5** | **brightness** | swept 10 / 100 / 1000 / 4000, visibly dimmer to brighter |
+
+#### The important one: token 3 makes the gun FLASH BY ITSELF
+
+With token 3 non-zero the gun **pulses its team colour, flashes the `$GLED` pattern, then reverts on its
+own** — no second frame from the host. Observed:
+
+| token 3 | LEDs during the flash |
+|---|---|
+| 0 | *(no flash — stays team blue)* |
+| 1 | green · red · red |
+| 2 | green · red · blue |
+| 3 | green · *(red)* · green (LEDs **1 and 3** green) |
+
+**This is the hit indicator.** The host already sees `$HIR` the instant a player is hit, so a damage
+flash is **one BLE write** — `$GLED,<colour>,0,<pattern>,...` — and the gun animates and restores
+itself. No flash-then-restore round trip, which matters at 10 players.
+
+#### What is now buildable
+
+- **Night mode (P17):** `$GLED,0,...` blanks all three. *(Still unchecked: whether a later game event
+  repaints them.)*
+- **Native FFA white (Q19):** colour 6.
+- **Per-player identity beyond 4 teams:** 8+ colours, per gun, independent of `$TID`'s 2-bit ceiling.
+- **Hit flash:** token 3 non-zero, self-animating.
+
+#### Not resolved
+
+**The exact per-LED addressing.** token 3 clearly selects *a pattern across the three LEDs*, but 1/2/3
+do not map cleanly to a bitmask (2 changed the 3rd LED to blue; 3 lit the 1st and 3rd green). A
+**health/armour gauge** needs to know exactly which LED a value targets, so that wants one more sweep:
+hold colour and brightness fixed, step token 3 across a wider range (0-7), and record all three LEDs
+each time. Do not build a gauge on the table above.
+
+
 ### 2026-08-30 — P13 ANSWERED: `$GLED` token 1 IS a colour index, and it overrides the team colour
 
 **Tony at the bench, calling colours.** This corrects a documented claim, answers P13, gives P17 its
