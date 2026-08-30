@@ -391,6 +391,51 @@ rejoined. Connect-grace at START passed cleanly (`playing with 2/3 taggers`, ~11
 attempts). Whether a gun absent at start can ever join a running match is **untested** — it may be by
 design. Worth one deliberate test.
 
+## 🟢 F1 — POOL-STATUS LEDs: show health/armour/shield on change, revert to team colour (2026-08-30)
+
+**Tony's spec, verbatim:** *"during game we want to be able to take over and show shield health. after a
+time of no damage reset to team color."* … *"on health/armor/shield change +/- the leds should indicate
+that status. then after a few seconds maybe 3-5s go back to team color or mode color."*
+
+### Behaviour
+
+1. Any change to **health, armour or shield** — up or down — paints the three gun LEDs as a gauge of the
+   pool that changed.
+2. After **3-5 s with no further change**, revert to the team (or mode) colour.
+3. A new change inside that window **restarts the timer** rather than queuing.
+
+### What makes it buildable
+
+`$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>` — three independently addressable LEDs, direct palette
+indices (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white**), `t4=3` blanks. Solved
+2026-08-30.
+
+The host already sees every pool change on the wire: `$HP,<hp>,<armor>,<shield>` arrives on damage, and
+`$HIR` on every hit. So the trigger is free — no polling.
+
+Suggested mapping (colour per pool, segments per level):
+- **shield** teal · **armour** purple · **health** green, shifting yellow then red as it drops
+- 3 lit = full, 2 = two-thirds, 1 = one-third, 0 = empty
+
+### ⚠️ The blocker, and it must be settled first
+
+**A spawned gun runs a team-colour pulse and `$GLED` is composited over it**, so the gauge flickers
+between the set colour and the team colour and cannot be read. Arming *without* `$SPAWN` holds solid,
+but a gun in a real match **is** spawned.
+
+**Test in flight:** spawn, let any spawn animation settle (15 s), then send `$GLED` and see whether it
+holds solid or keeps pulsing.
+- **Holds solid** ⇒ build it as specified.
+- **Still pulses** ⇒ we need whatever suppresses the team pulse before this ships. Candidates: a `t4`
+  value we have not tried, an `$HLED`/`$HLOOP` equivalent, or re-asserting `$GLED` on a short repeat.
+  **Do not ship a flickering gauge.**
+
+### Cost note
+
+One BLE write per pool change per player, plus one on revert. At 10 players in a firefight that is a
+real write rate on a host already driving respawns and announcer audio — worth measuring before it goes
+into a mode.
+
 ## 🔴 Q14 — the fn 36/37 multiplier dispute BLOCKS a published number (2026-08-29)
 
 **This is the highest-value open item and it previously had no id**, existing only as an aside inside
