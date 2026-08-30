@@ -13,3 +13,6 @@ site/test-results/
 site/test/out-stale/
 site/test/tmp-*/
 site/playwright-report/
+
+# wrangler local state (deploy runs from Cloudflare git builds, not this cache)
+.wrangler/
