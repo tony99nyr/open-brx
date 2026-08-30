@@ -423,12 +423,26 @@ Suggested mapping (colour per pool, segments per level):
 between the set colour and the team colour and cannot be read. Arming *without* `$SPAWN` holds solid,
 but a gun in a real match **is** spawned.
 
-**Test in flight:** spawn, let any spawn animation settle (15 s), then send `$GLED` and see whether it
-holds solid or keeps pulsing.
-- **Holds solid** ⇒ build it as specified.
-- **Still pulses** ⇒ we need whatever suppresses the team pulse before this ships. Candidates: a `t4`
-  value we have not tried, an `$HLED`/`$HLOOP` equivalent, or re-asserting `$GLED` on a short repeat.
-  **Do not ship a flickering gauge.**
+**TESTED 2026-08-30 — the pulse does NOT settle, and it is an ALTERNATION, not a wash-out.**
+Spawned on `$TID,2` (yellow), waited 20 s for any spawn animation, then sent all-teal
+(`$GLED,5,5,5,0,10`). Tony: *"pulsing yellow and then teal"*. So the frame **is** taking effect — the
+gun cycles **team colour ↔ the set colour**, which is what makes a gauge unreadable rather than the
+gauge being ignored. Unspawned, the same frame holds **solid**.
+
+*(A first attempt sent `$HLOOP,0,0` before the `$GLED` and showed yellow only. That was my error:
+`$HLOOP,0,0` is part of our own END_SEQUENCE restore, so it repainted the team colour over the gauge.
+It is not a suppressor.)*
+
+**Options, none yet tested:**
+1. **Accept the alternation.** It shows team *and* pool status, which is arguably a feature, but Tony's
+   read is that it "washes it out" and is hard to follow step to step.
+2. **Find the suppressor.** Untried: a `$TID` value with no colour (0 was swept for colour but its
+   result was never captured), other `$GLED` trailing tokens on a *spawned* gun, or a headset-family
+   equivalent. `$HLOOP` is ruled out.
+3. **Re-assert `$GLED` on a short repeat** to keep it painted. Works in principle, but it is a BLE write
+   per repeat per player and the host is already busy — measure before choosing this.
+
+**Do not ship a flickering gauge.** Settle which option before building F1 into a mode.
 
 ### Cost note
 
