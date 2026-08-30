@@ -80,10 +80,13 @@ these backlogs rather than restating them.
    line pointing at step 1. If it replaces a held backlog item, delete the backlog line.
 4. **Bump the page's `Last verified:` date** (top of the file) and add a line to the changelog in
    `00-home.md` if it changes something owners care about.
-5. **Build + verify + push + deploy.** `cd site && npm run build && npm test` (the generator reads
-   these files; the suite refuses to run on a stale build), commit `webapp/` with the manual change,
-   push, then `npx wrangler deploy` from the repo root (a push alone does not redeploy). The markdown
-   twin and `llms-full.txt` update with it.
+5. **Build + verify + push.** `cd site && npm run build && npm test` (the generator reads these
+   files; the suite refuses to run on a stale build), commit `webapp/` with the manual change, then
+   push. **A push to `main` deploys the site on its own.** Cloudflare builds from the repo, so the
+   push is the deploy: there is no separate command, and `webapp/` goes live exactly as committed.
+   Push a stale `webapp/` and you publish a stale site, which is why the build and the suite come
+   first. `npx wrangler deploy` from the repo root still works if you ever need to push the local
+   `webapp/` without a commit. The markdown twin and `llms-full.txt` update with the build.
 
 Contradictions: if two sources disagree, publish neither value. Backlog both, and put the question in
 `../unknowns.md` under what would settle it.

@@ -25,8 +25,10 @@ newer than the built output. `npm run serve` previews `webapp/` on :4173. Real p
 `docs/manual/img/<ID>.<ext>` and are picked up by ID.
 
 **Where it ships.** `webapp/` is published as an assets-only Cloudflare Worker via the root
-`wrangler.toml` — **deploy = `npx wrangler deploy` from the repo root** (wrangler is logged in from WSL;
-a git push alone does not redeploy). The built site goes into `webapp/`
+`wrangler.toml` — **a push to `main` deploys it**; Cloudflare builds from the repo, so `webapp/` goes
+live exactly as committed. Push a stale `webapp/` and you publish a stale site, so build and run the
+suite first. (`npx wrangler deploy` from the repo root still works for a local deploy without a commit;
+wrangler is logged in from WSL. A push did not redeploy before 2026-08-30.) The built site goes into `webapp/`
 (`index.html` = Home, `manual/`, `platform/`, `llms.txt`); site source stays outside the published tree;
 `webapp/mc/` and `app/` (Mission Control UI, phone HUD — still in development) are not touched.
 

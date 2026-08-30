@@ -52,8 +52,11 @@ token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/s
 `firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design source `docs/spec/design/mc-export/`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
 website (`docs/manual/*.md` → `webapp/`; `cd site && npm run build && npm test` — the Playwright suite is
-the ui-build-verify checklist and refuses to run on a stale build; `webapp/` deploys via the root
-`wrangler.toml` on Cloudflare; `webapp/mc/` is the separate MC UI and is never touched by the site build).
+the ui-build-verify checklist and refuses to run on a stale build; **a push to `main` deploys the site**
+(Cloudflare builds `webapp/` from the repo via the root `wrangler.toml`, so commit a fresh build or you
+publish a stale one); `webapp/mc/` is the separate MC UI and is never touched by the site build).
+**No em dashes in `docs/manual/`**: a test fails the build if one reaches a page. See
+`docs/manual/README.md` for the house style.
 
 **Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and
 rebuilt by `npm run` scripts). iOS settings we depend on live in `app/scripts/ios-setup.sh`, not in
