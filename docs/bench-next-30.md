@@ -36,14 +36,25 @@ emitter. **Skip this — replaced by item 2b.**
 **Why this replaces the `$GREN` item:** a stun that only stops the victim's trigger is **invisible to
 every instrument we have** — it moves no pool and emits no BLE frame. That is exactly how fn 23 fooled
 us. The only detector is a human pulling a trigger.
-I arm `$SIR,<p>,0,,<fn>` for each remaining candidate (**3, 8, 24, 25, 26, 27, 28, 35**), fire it at you,
-and **you try to fire immediately**. ~1 min each.
+> ### 🛑 READ THIS OR THE TEST LIES TO YOU
+> **Every shot must be fired from an ENEMY team.** The victim is on `$TID,1`, so I shoot as team 0, 2
+> or 3. A wrongly-teamed shot is **discarded by the receiver with no `$HIR` at all** (bench-measured,
+> `experiment-log.md` 2026-08-27), so it looks exactly like "the gun fired normally".
+> **Without this, every candidate reads as a pass and we would close the hunt with a wrong answer.**
+> I will state the shooter team out loud for each shot so you can hold me to it.
+
+I arm `$SIR,<p>,0,,<fn>` for each remaining candidate (**8, 24, 25, 26, 27, 28, 35** — seven, all
+enemy-polarity), fire it at you from an enemy team, and **you try to fire immediately**. ~1 min each.
+
 **Pass:** any function where the trigger genuinely does nothing ⇒ **that is the stun, U11 closes.**
-**All nine fire normally ⇒ no `$SIR` function is a stun**, and category 10 needs a different mechanism —
-also a real answer, and it would close a hunt that has now cost three sessions.
-Same splitting bug hid this one. I drive `$GREN` over BLE, receiver watching.
-**Pass:** one unbroken word of **≥28 bits, identical across ≥3 repeats** (the earlier 28/32 figures came from *split fragments*, so treat the exact length as unknown until a whole frame lands). Then sweep `iRType / operationMode /
-channel / GrenadeType` — **if the bits track the arguments, the gun becomes a programmable emitter.**
+
+**All seven fire normally ⇒ no `$SIR` function is a trigger-stun** — but only if each shot registered.
+**Check `$HIR` landed for every candidate before believing that.** A silent cell is a void trial, not a
+negative. With that check, it is a real answer and closes a hunt that has cost three sessions.
+
+**fn 3 was removed 2026-08-29.** Re-tested with a shield granted first, it drains shield exactly as
+plain damage does, so it is damage. It only looked inert because the original sweep ran with the
+shield at 0.
 
 ## 3 · P13 — the `$GLED` colour index  ·  10 min  ·  needs your eyes, dim room
 Now has a sharper target: native life-mode shows **purple while the protective pools have charge, then

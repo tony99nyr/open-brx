@@ -10,6 +10,15 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
+## ⚡ RIG IS DOWN — power-cycle first (2026-08-29)
+
+The victim gun went **screamer** after ~3 days powered: it still advertises but will not complete a BLE
+connection (fails during service discovery). A headset also began advertising on its own, which may be
+the same fault from the other end. **Power-cycle the gun and the headset before anything below.**
+
+First thing to run once it is back, and it needs no operator: **item 1.5a**, the ally re-measure from
+depleted pools. It decides whether ally 9, 15, 31, 32, 34 are status functions or clamped grants.
+
 ## Before you start (5 min)
 - **POWER-REST first** — the fleet ops rule. Use guns that have been off; Tactix-FE30 ran all night.
 - **Headsets ON and settled** or the gun silently refuses to join.
@@ -66,7 +75,8 @@ sweep ran with the shield at 0. The seven left moved no pool with 150 shield ava
 | ~~1.2~~ ✅ | ~~EMP — does the disable stop you firing?~~ **CLOSED 2026-08-27: NO — fn 23 silences the gun, it does not disable it.** `$ALCD` t2 → 0, self-clears in ~6–8 s (3/3), `$SPAWN` clears it early, ammo + health untouched | — superseded by **1.5**, which retests the other status functions for a real stun | — |
 | ~~1.3~~ | ~~Does a stun cost a reload?~~ **MOOT 2026-08-27** — there is no stun. fn 23 preserves ammo and never stops the trigger; it silences the gun. Re-ask if a real stun is ever found | — | — |
 | **1.4** | **K1 — auto-reload for kids.** Two mechanisms, pick one | (a) `GameConfig(alt_reload=True)` → **already ships** (`$BMAP,1,97`, ALT = reload). (b) `$WEAP` **t19 = 5** (`ReloadType.AutoReload`) → fire dry. ⚠️ **Half of this is already answered (2026-08-27): it does NOT self-reload on an empty or near-empty magazine**, controls both ends. Only the *fire-triggered* case is left — pull the trigger on an empty chamber and watch `$ALCD` | which one feels right for young kids |
-| **1.5** | **Status functions — what do 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) actually DO?** They register, change no pool, emit no BLE. Not DoTs (proved) | I fire each at you; **report anything you feel/hear/see** — sound, vibration, LED, fire-rate change | naming even one is a new mechanic |
+| **1.5** | **Status functions: what do enemy 8, 24-28, 35 and ally 31, 32, 34 actually DO?** They register a `$HIR`, change no pool, emit no BLE. ⚠️ **fn 3 was removed 2026-08-29** (it drains shield, so it is damage). ⚠️ **Do the ally ones LAST** and only after the keyboard re-measure in 1.5a, or you will burn trigger time on clamped grants | I fire each at you from the correct polarity team; **report anything you feel, hear or see** | naming even one is a new mechanic |
+| **1.5a** | **KEYBOARD FIRST (no operator needed): re-measure ally 9, 10, 15, 31, 32, 34 from DEPLETED pools.** The map ran at full HP/armour, so a heal or armour grant clamps and reads as "no pool change". That is how fn 10, a known heal, got mis-binned | spawn, take damage to open headroom, then apply each ally function and watch `$HP` | any that moves a pool is a GRANT, not a status function, and drops off 1.5 |
 | **1.6** | **KotH rate-of-fire buff** (your hardware fact) — likely one of the ally-side no-pool fns | While I fire 31/32/34 at you, **hold the trigger and listen for cadence change** | a fire-rate buff = 31/32/34 named |
 | **1.7** | **t37/t38 overheat semantics** — what 20 vs 150 each mean | Two varied-value probes on the SMG+t37/t38 frame, watch the gauge | maps the two fields |
 | **1.8** | **U4 reload chain / U5 held-trigger sound** | One long reload with a stopwatch; then hold the AR trigger and listen | closes both |
@@ -100,7 +110,14 @@ stuck since the flag turned red instead of team-coloured.*
 
 ---
 
-## GROUP 3½ — the SECOND IR protocol (~10 min, no grenade needed) 🆕
+## ~~GROUP 3½ — the SECOND IR protocol~~ ✅ DONE UNATTENDED, NEGATIVE. SKIP.
+**Do not spend bench time here.** `$GREN` does make the gun emit a second, longer IR word, but the
+argument sweep came back **negative**: the bits do not track `iRType` / `operationMode` / `channel` /
+`GrenadeType` (`experiment-log.md` 2026-08-26). It is a fixed broadcast, not a programmable emitter,
+so it has no further use to us. The `IDLE_GAP_US` capture fix it asks for is already applied.
+Kept below only as the record of what was tried.
+
+### (superseded) original items
 **`$GREN` makes the gun emit IR** — 8/8 probes, against a clean 20 s zero-ambient baseline. It is a
 **28–32 bit word**, not the 25-bit shot format: same physical layer (~2029 µs sync, 500/1000 µs marks)
 but longer, with shot-parity invalid. Almost certainly the **gun→grenade accessory-config channel**

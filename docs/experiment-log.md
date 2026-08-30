@@ -2776,6 +2776,31 @@ toggle — it remains the answer for kid-mode today. t19=5 would be *fully autom
 button, which is a different feature, and Tony should pick by feel rather than by which we can build.
 
 
+### 2026-08-29 — RIG DOWN: screamer reproduced at ~3 days powered (ally re-measure blocked)
+
+Attempted the **ceiling re-measure** (ally functions 9, 10, 11, 15, 31, 32, 34 applied to **depleted**
+pools, with fn 10 and fn 11 as known-grant positive controls). It did not run: BLE dropped mid-arm with
+`BleakError: Not connected`, and the retry now fails during **service discovery**
+(`asyncio.CancelledError` inside `get_characteristics_async`).
+
+**This is the documented "screamer"**: the gun still **advertises** (`rssi -75`, was -70) but cannot
+complete a connection. `docs/gotchas.md` records the cause as a tagger left powered too long, and the
+fix as a **power rest**. This victim has been powered continuously since **2026-08-26**, roughly three
+days, which is the longest we have run one.
+
+**Two observations worth keeping:**
+- **A headset is now advertising on its own** (`BC-HEADSET-F2E7`), which it was not earlier in the
+  session. Per `gotchas.md` a gun whose headset has dropped silently refuses to join a game, so this
+  may be the same fault seen from the other end rather than a second one.
+- **RSSI degraded** from -70 to -75 across the session without anything moving.
+
+**Blocked until a power cycle, which needs an operator.** The ally re-measure is otherwise a pure
+keyboard test and should be the first thing run when the rig is back, because it decides whether ally
+9, 15, 31, 32 and 34 are status functions at all or just grants that were clamped. **fn 10 is already
+known to be a grant, so it is the positive control: if the re-measure does not show fn 10 healing, the
+method is wrong, not the functions.**
+
+
 ### 2026-08-29 — FLOOR ARTIFACT CLOSED: fn 3 is DAMAGE, not a status function
 
 Acting on the correction from the review loop rather than leaving it as a caveat. The `$SIR` function

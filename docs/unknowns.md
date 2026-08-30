@@ -27,15 +27,15 @@ or floor space. This is the biggest category and the highest-value one.
 | id | unknown | why it matters |
 |---|---|---|
 | ~~1.2~~ | ✅ **ANSWERED 2026-08-27 — NO.** fn 23 does not stop the gun firing (trigger-verified) — it appears to **silence** it. ⚠️ The *firing* half is directly measured; the *audio-level* reading of `$ALCD` t2 is the best explanation of **one ear report plus one meter moving together, not two independent instruments** (see `experiment-log.md` confidence note). t2 goes 100 → 0 and recovers over ~6–8 s. A mic, or `$VOL` sweeps against t2, would settle it. | the proxy was wrong — see the log |
-| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 eliminated (it is audio suppression). ⚠️ **2026-08-27: the prior sweeps of fn 3/8/23-28/35 are VOID** — they fired from an enemy team, and support-polarity functions are discarded with no `$HIR` from an enemy source, so a real stun would have presented as "no effect". The both-teams 0-40 re-sweep is **DONE** (50 cells + trailing control): the enemy-polarity shortlist is 8, 24, 25, 26, 27, 28, 35 (fn 3 dropped 2026-08-29: it drains shield, so it is damage) — all register a `$HIR` and move no pool. ⚠️ The *friendly* candidates are contaminated by a full-pool ceiling artifact and need re-measuring from depleted pools. | category 10 "Stun" still unbuilt. **Best lead is no longer a sweep** — capture the **native Sentinel EMP ability** and read its protocol/subtype directly. ⚠️ It has **never been captured**; an attempt during the frame-splitting era produced no decodable word, so we do not actually know it emits IR at all. Splitting is now fixed |
+| **U11′** | **Which `$SIR` function, if any, is an actual STUN?** fn 23 eliminated (it is audio suppression). ⚠️ **2026-08-27: the prior sweeps of fn 3/8/23-28/35 are VOID** — they fired from an enemy team, and support-polarity functions are discarded with no `$HIR` from an enemy source, so a real stun would have presented as "no effect". The both-teams 0-40 re-sweep is **DONE** (50 cells + trailing control): the enemy-polarity shortlist is 8, 24, 25, 26, 27, 28, 35 (fn 3 dropped 2026-08-29: it drains shield, so it is damage) — all register a `$HIR` and move no pool. ⚠️ The *friendly* candidates are contaminated by a full-pool ceiling artifact and need re-measuring from depleted pools. | category 10 "Stun" still unbuilt. **Best lead is a human trigger-test of the shortlist** (`bench-tomorrow.md` 1.5). Capturing the native Sentinel EMP pins its protocol/subtype but **cannot tell us the function** — the effect is decided by the *victim's* `$SIR` row, and a native game's table is unreadable to us. ⚠️ It has **never been captured**; an attempt during the frame-splitting era produced no decodable word, so we do not actually know it emits IR at all. Splitting is now fixed |
 | **NEW** | **Capture the native Sentinel EMP ability word** | the stun answer, straight from BRX. Rig is ready (RAW toggle) |
 | **NEW** | **Capture a `$GREN` accessory word intact** — **no gun needed**, host-driven; see D 3½.1, not duplicated here | same splitting fix applies |
 | **NEW** | **Which token drives LED life mode?** *(segmented gauge observed; ⚠️ the COLOUR semantics are open — blue may be the faction colour, not health)* | a stock feature we lose in every game |
 | **1.3** | Does a stun cost the victim a reload? | decides the stun's real cost |
 | **K4 / 1.1** | Why does **melee not work in our compiled game**? | a stock feature we lose; frames are byte-identical to Callsign's, so it is runtime/state |
-| **1.5** | What do status functions 3, 8, 24–28, 35 (enemy) and 31, 32, 34 (ally) *do*? | they register but move no pool and emit nothing — invisible without a human |
+| **1.5** | What do status functions 8, 24–28, 35 (fn 3 dropped 2026-08-29: it drains shield, so it is damage) (enemy) and 31, 32, 34 (ally) *do*? | they register but move no pool and emit nothing — invisible without a human |
 | **1.6** | Is the KotH **rate-of-fire buff** one of the ally-side no-pool functions? | would name 31/32/34 |
-| **K1 / 1.4** | Kid auto-reload: `alt_reload` (`$BMAP,1,97`, already ships) vs `$WEAP` t19=5 (`AutoReload`) | two different features; which does Tony want |
+| **K1 / 1.4** | Kid auto-reload: `alt_reload` (`$BMAP,1,97`, already ships) vs `$WEAP` t19=5 (`AutoReload`; the empty-magazine half is answered NEGATIVE 2026-08-27, only the fire-triggered case is left) | two different features; which does Tony want |
 | **U4 / U5** | Reload-chain timing vs `reload_ms`; held-trigger fire sound retrigger vs ring-under | weapon sound design |
 | **t37/t38** | What do the two overheat values (20 vs 150) each mean? | overheat is transplantable but unmapped |
 | **A10a** | Empty **slot-2 button map** `$BMAP,1,100,0,0` — what does an ALT press do with no second weapon? | *(loadout v2, brx-fable)* expect nothing; then fire to prove the gun isn't **wedged** |
@@ -164,6 +164,11 @@ that file is already the right home.** Read it before a field day.
 | F · build work, no unknown | 9 |
 | G · decisions | 3 |
 | H · field/scale proofs | ~24 (see verification-checklist) |
+
+| **Q14** | **fn 36/37 multipliers DISPUTED — blocks hits-to-kill for 5 weapons** | the only open item that gates a published number. Settle with a real BRX weapon, our emitter out of the loop (`bench-tomorrow.md` 0.1) |
+| **Q13** | **Friendly fire is invisible on the wire** — a team-blocked shot emits no `$HIR` at all | a DECISION, not a test: no teamkill feedback can be built from gun telemetry while `$GSET` t1=0 |
+| **B20** | **Is `$LCD` token 3 the shield?** | one-line check; gates whether a mid-life client can learn the shield from anything but `$HP` |
+| **R2** | **Add a `DUTY` command to the IR emitter** | would make the sensor and range tests answerable unattended |
 
 **If you do only one thing:** the **Callsign HTTPS API capture (P8)** is gun-free and would collapse
 several rows at once. **If you have a bench hour:** `bench-tomorrow.md`'s one-hour path.

@@ -92,7 +92,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 
 | # | Item | Status | The mechanism (found, needs a trigger-pull to verify) |
 |---|---|---|---|
-| **K1** | **Auto-reload for kids who can't work the lever** | 🟢 **ALREADY SHIPS — plus a second untested mechanism** | ⚠️ My earlier "t19=5" answer was incomplete. **The feature already exists**: `GameConfig`'s **`alt_reload` flag remaps `$BMAP,1,97`** so the orange ALT button reloads (`gameconfig.py:108/188`) — kid-mode is a per-tagger toggle we already build. **Separately**, the APK's `ReloadType` enum ends in **`AutoReload` (ordinal 5)** and `$WEAP` **t19 = reloadType** — that would be *fully automatic* reloading rather than a button. **Bench: push `$WEAP` t19=5 and fire dry — does it reload itself?** Two different kid-modes; test which Tony actually wants. |
+| **K1** | **Auto-reload for kids who can't work the lever** | 🟢 **ALREADY SHIPS — plus a second untested mechanism** | ⚠️ My earlier "t19=5" answer was incomplete. **The feature already exists**: `GameConfig`'s **`alt_reload` flag remaps `$BMAP,1,97`** so the orange ALT button reloads (`gameconfig.py:108/188`) — kid-mode is a per-tagger toggle we already build. **Separately**, the APK's `ReloadType` enum ends in **`AutoReload` (ordinal 5)** and `$WEAP` **t19 = reloadType** — that would be *fully automatic* reloading rather than a button. **Bench: push `$WEAP` t19=5 and pull the trigger on an EMPTY chamber.** ⚠️ Half of this is already answered (2026-08-27, controls both ends): t19=5 does **not** self-reload on an empty or near-empty magazine. Only the *fire-triggered* case remains. Two different kid-modes; test which Tony actually wants. |
 | **K2** | **Equip a secondary weapon / perk to the ALT-FIRE button** | 🟡 **mechanism corrected — NOT the t7–t11 block** | ⚠️ My earlier claim that `$WEAP` t7–t11 is the alt-fire mechanism is **refuted by the captures**: t7–t13 are empty in **every** captured frame *and* in ours, and Callsign's alt-fire works anyway. The real path: **the alt button cycles weapon slots** via `$BMAP,1,100,0,1,99,99` (slots 0↔1), which we already push — so "secondary weapon on ALT" is a **slot-loading** question (put the perk/weapon in slot 1), not a token-filling one. `$BUT`'s `ButtonCode` enum (`Trigger, AltFire, Analog`) still gives a host-side path for arbitrary perks. P1's "t7–t11 dormant" call **stands** — I was wrong to reopen it. |
 | ~~K3~~ | **Death-explosion** | ✅ **CLOSED 2026-08-27 — CAPTURED**: `proto=10 (StandardLethalExplosive), MAG=125, player/team = the DYING player`. Out-damages the Rocket Launcher (115) and **credits kills to the corpse**. Replayable from any emitter. See the experiment log. Original note: | Tony (hardware fact): a Supremacy robot's death **emits IR from the HEADSET**, damaging like a grenade. That means **the headset is an IR emitter we don't control yet** — and `$WEAP`'s field map has **`extraHeadsetDamage`, `extraHeadsetRangeOutdoor`, `extraHeadsetRangeIndoor`, `headsetDirection`, `headsetRepeat`** (tokens 12–13, 39–40, 43), plus **`PowerType/IRSource` enum members `HeadSetOnly`, `GunAndHead`, `DoubleGunAndHead`**. So headset emission is a **`$WEAP` `primaryPowerType` (t4) setting**, not a hidden command. ⇒ **Suicide-bomber / death-nova is buildable**: set powerType to a HeadSet variant + `extraHeadsetDamage`. Verify on hardware. |
 | **K4** | **MELEE does not work in our compiled game** (native mode does) | 🔴 NEW — **NOT a config bug** | Tony had to reboot into a native on-gun game to melee (2026-08-26). But two independent capture reviews found **our melee surface is byte-identical to Callsign's**: `$WEAP,4` character-for-character (`…,4,1,90,13,1,90,…M92…` — proto 13, sub 1, magnitude 90, matching the native swing we captured), all three `$SIR,13,*` rows, `$GSET` with `gyroscope=1`, and all seven `$BMAP` rows including **`$BMAP,8,4`** (button 8 = gyro → melee). Callsign sends only `$GLED` and `$PLAY` beyond what we send; neither gates a swing. ⇒ **runtime/state/trial issue, not a frame.** **Bench (one swing):** in *our* compiled game, **select slot 4 and swing hard**, watching the victim for `$HIR,…,13,…` and the shooter for **`$BUT,8`**. `$BUT,8` + no IR ⇒ slot-4 firing. No `$BUT,8` ⇒ the gyro mapping isn't live despite being sent (check whether `$SPAWN` wipes `$BMAP`, since spawn only re-sends `$BMAP,0,0`). |
@@ -100,7 +100,8 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | **K6** | **Per-game WEAPON TUNING (damage / fire-sound / rate overrides inside a saved game)** | ⬜ deferred — own spec | Tony's "silenced sniper" wants a fire-sound override. `SavedGame.weapon_tuning` is RESERVED in `docs/spec/loadout.md` §8 (always absent today) so it slots in without a schema change; the builtin "Silenced Sniper" preset ships with the stock sound and says so in its desc. Needs: which `$WEAP` tokens per weapon are host-tunable (t5 dmg, t14 fire interval, t27–t29 sounds — `compile._NAMED`), a per-preset override shape, and the bench for sound ids. |
 
 
-## 🟢 R1 — add a software POWER control to the IR emitter (small, unblocks two tests)
+## 🟢 R2 — add a software POWER control to the IR emitter (small, unblocks two tests)
+*(renamed from R1 on 2026-08-29: `R1` was already the Callsign HTTPS API capture, also tracked as P8.)*
 
 `hardware/esp32-ir-bridge/ir_emit.ino` fixes `CARRIER_DUTY = 128` (~50%) as a **compile-time
 constant**, and the serial interface accepts only `TX` / `TXN` / `AUTO`. So effective range and signal
@@ -132,6 +133,42 @@ stands: a failed flash takes the bench down with nobody able to recover it.)
 2. **Re-run the fn 1 control at every duty before trusting anything else at that duty.** Changing duty
    changes effective range, and range is a known-live variable — so the control is not optional there,
    it is what proves the rig is still faithful at the new setting.
+
+## 🟢 B20 — is `$LCD` token 3 the shield? (one-line bench check)
+
+`$LCD` tokens 3 and 4 are **undocumented** (`docs/manual/06-developer.md`, and `protocol/brx-protocol.md`
+says "semantics TBD"). They read **0** in every frame we have ever captured, which is consistent with
+"not the shield" and equally consistent with "the shield was always 0 when we looked".
+
+This matters because `app/src/engine.js` deliberately does **not** read shield from `$LCD` (a version
+that did was reverted for recreating Q12). Until this is settled, the HUD can only learn the shield
+from `$HP`, so a client that joins mid-life and gets an `$LCD` snapshot cannot know the shield.
+
+**Check:** grant a shield (fn 11 from a friendly team), confirm `$HP` shows it, then trigger an `$LCD`
+(`$SPAWN` or a `$LCD,*` query) and read token 3.
+- token 3 == the shield ⇒ re-add the read in `engine.js` **with a test**, and document the token.
+- token 3 == 0 with a live shield ⇒ record it as confirmed-not-shield and the current code is right.
+
+## 🔴 Q14 — the fn 36/37 multiplier dispute BLOCKS a published number (2026-08-29)
+
+**This is the highest-value open item and it previously had no id**, existing only as an aside inside
+the P10 row and as an unnumbered decision. Filing it so it can be prioritised.
+
+**What is blocked:** `docs/manual/03-gameplay.md` currently **withholds hits-to-kill** for the **Burst
+Rifle, Force Rifle, Bolt Rifle, AMR and Energy Launcher** because their damage depends on whether
+fn 36 (×1.25) and fn 37 (×2) are real. Five shipped weapons cannot have a published TTK until this
+resolves.
+
+**The dispute:** two of our own datasets disagree. An earlier run measured fn 37 as ×2, 3/3, and it
+stacked correctly with crit. A later 24-cell controlled matrix read **×1.0** for both, with a clean
+fn 1 control in every cell. Four hypotheses (subtype, table arming, emitter encoding, arithmetic) were
+tested and **refuted**. The emitter is **exonerated** by a structural argument: it is function-agnostic,
+and fn 1 read 20 while fn 37 read 40 in the same session, so the gun did the doubling.
+
+**Settle it with stock hardware, our emitter out of the loop** (`bench-tomorrow.md` item 0.1): fire a
+real BRX weapon that uses fn 36/37 at a victim and compare `$HIR` token 5 (the raw magnitude) against
+the applied `$HP` delta. delta = 2 × tok5 ⇒ the multiplier is real. delta = tok5 ⇒ the ×1.25/×2 claim
+is wrong and five weapons are dealing base damage in every shipped game.
 
 ## 🟠 Q13 — friendly fire is INVISIBLE on the wire; MC cannot log or score it (2026-08-27)
 
@@ -170,7 +207,11 @@ shot.
 
 What changed:
 - `protocol.py` now parses `$HP` as `<hp>,<armor>,<shield>` (it read only `<hp>`).
-- `engine.js` tracks `this.shield`, includes it in the damage total, and reads `$HP`/`$LCD` token 3.
+- `engine.js` tracks `this.shield`, includes it in the damage total, and reads **`$HP`** token 3.
+  ⚠️ **Not `$LCD`.** A first version also read `$LCD` token 3; it was **reverted 2026-08-28** as a bug.
+  `$LCD` tokens 3-4 are undocumented and read 0 in every observed frame, so that write could only
+  *zero* a live shield, recreating Q12 verbatim. `engine.js` carries a comment saying not to re-add
+  it. Open question filed as **B20**.
 - Spawn and respawn **zero** the shield, matching hardware: `$PSET` t5 is a capacity filled by an
   fn-11 grant, never a starting pool. A stale shield would have inflated the next damage computation.
 - Two regression tests in `app/test/engine.test.mjs` (48/48 pass; Python 533/533).

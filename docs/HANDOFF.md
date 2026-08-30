@@ -1,9 +1,34 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-08-27. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
+**Updated:** 2026-08-29. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
 lore, indexed by symptom; several of those quirks each cost a whole session.
-[`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it;
-[`docs/bench-next-30.md`](bench-next-30.md) is the next session.
+[`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it.
+**The bench queue is [`docs/bench-tomorrow.md`](bench-tomorrow.md)** — it is the maintained one.
+[`bench-next-30.md`](bench-next-30.md) is a short 30-minute subset of it, not a separate plan.
+
+> ### ⚠️ 2026-08-27/29 — THREE THINGS THAT CHANGE HOW YOU TEST. Read before planning anything.
+>
+> **1. IR is TEAM-GATED, and a wrongly-teamed shot is INVISIBLE.** Damage lands only from an enemy
+> team; heals, shields and other grants land only from your own. A wrongly-teamed frame is discarded
+> with **no `$HIR` at all**, so it is indistinguishable from a dead emitter or a function that does
+> nothing. This **voided** several earlier "no effect" negatives. Every IR test must state its shooter
+> team, and a silent cell is a **void trial, not a negative**.
+>
+> **2. Two measurement artifacts in the `$SIR` function map.** The victim was re-armed to **full**
+> HP/armour, so a heal or armour grant **clamps** and reads as "no pool change" (this mis-binned
+> **fn 10**, a known heal). And the shield started at **0**, so a shield-only drain also read as no
+> change (this mis-binned **fn 3**, which is actually damage). Before calling anything a status
+> function, check the pool it would move had somewhere to go.
+>
+> **3. The crit formula and the damage multipliers changed.** `crit = magnitude × (1 + $GSET t7/100)`.
+> It is a **per-game knob**, not a fixed ×1.5 — that value is only the shipped t7=50. And the
+> **fn 36 ×1.25 / fn 37 ×2 multipliers are DISPUTED**: they did not reproduce in 24 controlled cells.
+> **Do not tune weapons on them** until bench item 0.1 settles it.
+>
+> Also since: `$GSET` t1 = friendly fire (enforced) · `$PSET` t5 = shield **capacity**, spawn shield is
+> always 0 · pools are **not 8-bit** (armour and HP exact to 1000; shield not measured that far) ·
+> **Q12 fixed in code** (the shield pool is parsed and counted; it was silently dropping hits) ·
+> the stun shortlist is **fn 8, 24, 25, 26, 27, 28, 35**.
 
 > **⚡ 2026-08-27 — a live Supremacy session, and four retractions.**
 > - **K3 CLOSED — the death nova is CAPTURED**: `proto=10 (StandardLethalExplosive), MAG=125,
@@ -39,12 +64,12 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 > - **🏆 A stock tagger accepts fully synthetic shots** from our ESP32+LED rig (invented player/team/
 >   damage land as real $HIR) — the Utility Box (B4) emit side is PROVEN. Emitter has standalone AUTO-TX.
 > - **$SIR is a programmable 16-protocol × 4-subtype effects matrix (64 cells, all writable over BLE)**
->   with a complete two-sided function map: damage / armor-piercing (fn 2,6) / **×1.25 (fn 36)** /
->   **×2 (fn 37)** / heal variants / add-armor / add-shield / **dual-polarity heal-ally+damage-enemy**
+>   with a complete two-sided function map: damage / armor-piercing (fn 2,6) / fn 36 and fn 37 multipliers
+>   (**×1.25 / ×2 — DISPUTED, see the banner above**) / heal variants / add-armor / add-shield / **dual-polarity heal-ally+damage-enemy**
 >   (fn 16,17,20…) / status-only ids. The IR damage field is a **magnitude** whose meaning the row's
 >   function sets. **B = the DamageType enum**; with the 2-bit subtype it forms the `$SIR` composite key (16 x 4 = 64 cells, all writable by us). *(An earlier "~10 free slots is a real design constraint" framing is retracted — see `brx-ir-protocol.md`.)*
 > - **P16 CLOSED — shields DO activate** (IR event, never a BLE pool value; drain shields→armor→HP).
->   **Crit is a real ×1.5** (echoes $HIR tok6). **U7 CLOSED** (damage field = 8 bits, 0–255).
+>   **Crit echoes `$HIR` tok6** and applies `1 + $GSET t7/100` (×1.5 only at the shipped t7=50). **U7 CLOSED** (damage field = 8 bits, 0–255).
 > - **FF CORRECTED: `$GSET` token 1 IS friendlyFire and IS firmware-enforced BOTH directions**
 >   (t1=0 blocks same-team damage AND enemy heals — four-cell matrix, replicated). The earlier
 >   "host-side only" reading generalised an FF=1 observation; the evidence always agreed.
@@ -55,7 +80,7 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 
 > **⚡ LATEST (2026-08-26) — the protocol map is essentially DONE and the arsenal is real.**
 > Bench-proven on live taggers, all committed with evidence + instruments:
-> - **$WEAP**: t5=the RAW magnitude (applied = magnitude x the victim's $SIR-function multiplier x 1.5-if-crit — corrected overnight) · t14=fire interval · t15=850 constant (never write) ·
+> - **$WEAP**: t5=the RAW magnitude (applied = magnitude x the victim's $SIR-function multiplier x (1 + $GSET t7/100) if crit; the fn 36/37 multipliers are DISPUTED) · t14=fire interval · t15=850 constant (never write) ·
 >   **t20=FIRE MODE** (0 auto / 7 single-bolt / 9 burst / 2·3·14 charge variants / 13 melee — proven
 >   by one-field flip) · t23=burst cycle · **overheat = t24+t35 GATED by t37/t38** (transplantable).
 > - **$HIR fully decoded**: tok1 sensor (0=headset FRONT dome, 1=BACK dome, 4=gun — shield-isolated),

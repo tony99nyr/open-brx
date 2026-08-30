@@ -77,4 +77,4 @@ reply expanders before extracting. **Pass:** comment threads present for the pos
 |---|---|---|
 | **P14** | Is the audio SD card removable? | needs a **teardown** of a working gun. Not worth the risk on a 4-gun fleet until there's a spare — the USB `AUDIO` path already works for sound swaps |
 | **G4** | Is grenade `.bin` flashing real? | the assumed method is **dead** (G7: USB-C is power-only, no PROGRAM pin). If it exists it uses an unknown mechanism; nothing to try until someone finds one |
-| **K3** | Headset death-explosion | the mechanism is **expressible today** (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`); it needs a weapon built and fired, so it belongs in a bench session, not a capture |
+| ~~K3~~ ✅ CLOSED 2026-08-27 (proto 10, MAG 125, credits the corpse) | Headset death-explosion | the mechanism is **expressible today** (`$WEAP` powerType `HeadSetOnly`/`GunAndHead` + `extraHeadsetDamage`); it needs a weapon built and fired, so it belongs in a bench session, not a capture |
