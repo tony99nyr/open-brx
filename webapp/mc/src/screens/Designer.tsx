@@ -166,7 +166,7 @@ export function Designer() {
         </div>
 
         {/* summary rail */}
-        <aside style={{ flex: '1 1 300px', maxWidth: 400, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${PERK_COLOR}` }}>
+        <aside className="designer-rail" style={{ flex: '1 1 300px', maxWidth: 400, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${PERK_COLOR}` }}>
           <div style={{ padding: '14px 18px 0' }}>
             <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: PERK_COLOR }}>THE CARD WILL SAY</div>
             <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1, color: name.trim() ? T.ink : T.faint }}>{name.trim() || 'UNNAMED GAME'}</div>
@@ -194,6 +194,12 @@ export function Designer() {
                 {editing && <GhostButton size={11} pad="9px 12px" onClick={() => save(true)} title="Keep the original, save this as a new game">SAVE AS NEW</GhostButton>}
               </div>
               {saved && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
+              {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
+                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} onClick={async () => { const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
+                </div>
+              )}
             </div>
           </div>
         </aside>
@@ -254,7 +260,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
             <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro, marginRight: 4 }}>CLASSES</span>
             {TAGS.map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
           </div>
-          <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>A CHIP SWITCHES A WHOLE CLASS · TAP A WEAPON TO SWITCH JUST THAT ONE · A PARTIAL CHIP (1/5) MEANS SOME OF ITS WEAPONS ARE OFF</div>
+          <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>A CHIP SWITCHES A WHOLE CLASS · TAP A WEAPON TO SWITCH JUST THAT ONE · A PARTIAL CHIP (1/5) MEANS SOME OF ITS WEAPONS ARE OFF · A WEAPON IN TWO CLASSES (ION SNIPER: HEAVY + SNIPER) IS OFF WHEN EITHER CHIP IS OFF</div>
         </>
       )}
       {showWeapons && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}

@@ -55,3 +55,8 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
 /* horizontal shelves (saved games): fade the cut edge so the overflow is discoverable */
 .shelf-x { -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 56px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 56px),transparent); scroll-snap-type: x proximity; }
 .shelf-x > * { scroll-snap-align: start; }
+
+/* designer on a tablet: the summary rail (PLAY / SAVE) comes first, not below NAME & NOTES */
+@media (max-width: 900px) {
+  .designer-rail { order: -1; position: static !important; max-width: none !important; }
+}

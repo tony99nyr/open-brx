@@ -217,7 +217,7 @@ function JoinPanel() {
       <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
       <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</div>
       <div style={{ font: F.mono(600, 12), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
-      <button onClick={() => setShowQr(v => !v)} style={{ alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 10), letterSpacing: '.24em', padding: '9px 0', cursor: 'pointer' }}>
+      <button onClick={() => setShowQr(v => !v)} style={{ minHeight: 36,  alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 10), letterSpacing: '.24em', padding: '9px 0', cursor: 'pointer' }}>
         {showQr ? '▴ HIDE QR CODES' : '▾ SHOW QR CODES'}
       </button>
       {showQr && <>

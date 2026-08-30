@@ -91,7 +91,7 @@ export function CommandBar() {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 30px', padding: '6px 20px', background: T.panelAlt, borderTop: `1px solid ${T.slot}`, font: F.mono(500, 11.5), letterSpacing: '.12em', color: T.dim, alignItems: 'center' }}>
         <span>NET ▸ <span style={{ color: T.dim }}>{state?.lan.ssid ?? state?.lan.mode?.toUpperCase() ?? '—'}</span> · <span style={{ color: linked ? T.ok : T.warn }}>{linked} NODES LINKED</span></span>
-        <span>PHASE ▸ <span style={{ color: T.dim }}>0{cur + 1}/06 {PH[cur][1]}{state?.phase === 'armed' && view === 'armed' ? ' · ARMED' : ''}</span></span>
+        <span>PHASE ▸ <span style={{ color: T.dim }}>{(() => { const sp = state?.phase ?? 'muster'; const si = viewIdx(sp); return `0${si + 1}/06 ${PH[si][1]}${sp === 'armed' ? ' · ARMED' : ''}`; })()}{cur !== viewIdx(state?.phase ?? 'muster') && <span style={{ color: T.micro }}> · VIEWING {view === 'designer' ? 'DESIGNER' : PH[cur][1]}</span>}</span></span>
         <span>UPLINK ▸ <span style={{ color: offline ? T.bad : state ? T.ok : T.bad }}>{offline ? 'DOWN' : state ? 'OK' : 'NO SERVER'}</span> · SYNC {sync}</span>
         <JoinQr />
         {error && <button type="button" role="alert" onClick={clearError} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: T.bad, cursor: 'pointer', padding: 0, minHeight: 44 }} title="dismiss">▲ {error.toUpperCase()}</button>}
