@@ -13,6 +13,35 @@ today** (`mcp/brx_mcp/mc/` — `__main__.py`, `api.py`, `state.py`), not the spe
 
 ---
 
+## 0a. Capture the evidence BEFORE you start (added 2026-08-30)
+
+This path has never run on real hardware, so assume something will misbehave and make sure it leaves a
+trace. Two sides, two mechanisms:
+
+**MC — tee it, or it scrolls away.** MC logs to stdout only. Start it as:
+
+```
+python3 -m brx_mcp.mc -v 2>&1 | tee ~/mc-$(date +%Y%m%d-%H%M).log
+```
+
+**MC also persists every node event to SQLite automatically** at
+`~/.brx-mcp/mc/session-<id>.sqlite` (`store.log()`). That is the authoritative record of what each
+phone reported — you do not have to do anything to get it, but do **copy it off the Mac** after the
+session along with the tee'd log.
+
+**The phones — hit "Share log" on each one, before closing the app.** The HUD keeps its log and the
+**last 60 raw BLE frames** in memory only; closing the app loses them. "Share log" pushes the bundle to
+MC over the wire (`log_offer` → `pull_log` → chunked `log_data`), where it lands in the same SQLite. It
+also offers a local share/clipboard copy, which works even if MC is unreachable.
+
+> The BLE frame ring was added to that bundle on 2026-08-30. It is the only record of what the gun
+> actually said to the phone, and without it a phone-side fault is undebuggable after the fact.
+
+**If something goes wrong, do this before rebooting anything:** hit Share log on both phones, then copy
+`~/mc-*.log` and `~/.brx-mcp/mc/session-*.sqlite`. A reboot loses the phone side entirely.
+
+---
+
 ## 0. What MC is (and is not)
 
 MC is a **local web app**: a Python server (`brx_mcp.mc`) that hosts the game and a browser UI that

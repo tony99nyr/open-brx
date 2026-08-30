@@ -175,10 +175,24 @@ Object.assign(hud.h, {
   // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
   // re-push — a mishit mid-game ruins their match. Fleet safety = MC's PANIC + the physical power switch.
   onShareLog: async () => {
+    // Build the diagnostic bundle ONCE: log lines + engine state + the raw BLE frame ring.
+    // The frame ring (brxlink keeps the last 60 in/out frames) is the only record of what the gun
+    // actually said, and without it a field fault on the phone side is undebuggable.
+    const bundle = () => {
+      let frames = [];
+      try { frames = (link && link.frames || []).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
+      return [
+        logLines.join('\n'),
+        '--- ble frames (last ' + frames.length + ') ---',
+        frames.join('\n'),
+        '--- engine state ---',
+        JSON.stringify(engine.state()),
+      ].join('\n');
+    };
     // 1. queue the log to MC over the wire (log_offer + chunked log_data — the contract's log path)
     try {
       if (transport && transport.state === 'bound') {
-        const text = logLines.join('\n') + '\n' + JSON.stringify(engine.state());
+        const text = bundle();
         const bytes = new TextEncoder().encode(text);
         transport.report('log_offer', { bytes: bytes.length, lines: logLines.length });
         const CHUNK = 40 * 1024;
@@ -189,7 +203,7 @@ Object.assign(hud.h, {
       }
     } catch (e) { log('log→MC: ' + (e && e.message || e), 'le'); }
     // 2. local share/copy still works (field debugging without MC)
-    const text = logLines.join('\n') + '\n' + JSON.stringify(engine.state());
+    const text = bundle();
     try { if (plugins.share) await plugins.share.share({ title: 'BRX node log', text }); else await navigator.clipboard.writeText(text); log('log shared/copied', 'lk'); }
     catch (e) { log('share: ' + (e && e.message || e), 'le'); }
   },
