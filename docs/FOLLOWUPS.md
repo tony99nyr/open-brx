@@ -270,6 +270,39 @@ candidate.
 **If lever 1 works, it belongs in `GameConfig` as an indoor/tight-space preset**, alongside the existing
 kid-mode toggles. That is the shippable outcome.
 
+## 🔴 Q17 — per-gun KILL ATTRIBUTION reads 0 while the team score is correct (2026-08-30, live bench)
+
+**Found in the first real 3-tagger game.** Team scoring is right; individual kills are not.
+
+```
+🏆 GAME OVER - team1   scores={1: 2, 2: 0}
+  R0BQT (E20D)  team1  kills 0  deaths 0   <- the gun Tony was HOLDING and firing
+  R0BAT (3D4F)  team1  kills 0  deaths 1
+  R0BAS (FE30)  team2  kills 0  deaths 2
+```
+
+Tony held R0BQT and killed R0BAS twice. **team1 scored 2, matching those deaths, but R0BQT logged
+`kills: 0`.** Every gun shows 0 kills.
+
+**Why the team score still works:** it is derived from **deaths**, which the victim reports directly.
+Per-player kills need the opposite direction, and **the gun emits no shooter-side kill event** (finding
+D4). So a kill can only be attributed by mapping the victim's last `$HIR` **shooter player id** back to
+a gun address. That mapping is what appears to be failing.
+
+**Correct behaviour also observed, worth keeping:** R0BAT's death scored **nothing** for team2. That was
+a friendly-fire kill (Tony shot a same-team gun with FF on), and a FF death correctly does not credit
+the enemy. The scoring logic is sound; only the attribution is broken.
+
+**Why the sim never caught this:** the sim has no real `$HIR` shooter ids to mis-map. This is precisely
+the class of bug a bench run exists to find, and it went unnoticed through 156 sim scenarios.
+
+**Where to look:** how `$HIR` token 3 (shooter player id, 0-63, set by `$PSET` token 1) is mapped back
+to a gun address in the live mode runner. Check whether each gun's `$PSET` player id is unique per game
+and whether the reverse lookup is populated before the first kill.
+
+**Impact:** any per-player scoreboard, K/D, streak or medal is wrong. Team scoring and win conditions
+are unaffected, which is why this survived to a live game unnoticed.
+
 ## 🔴 Q14 — the fn 36/37 multiplier dispute BLOCKS a published number (2026-08-29)
 
 **This is the highest-value open item and it previously had no id**, existing only as an aside inside

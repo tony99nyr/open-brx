@@ -52,13 +52,14 @@ Each one unblocks a spec decision marked [OPEN — bench] in `docs/spec/README.m
 ## ⭐ EFFICIENT BENCH PLAN (post sim-hardening, 2026-08-25)
 All game LOGIC for every mode is now exhaustively verified in software (156 sim scenarios + the SimGame
 harness) — so the bench only needs to confirm what the sim CAN'T model. Do these in order; each is fast:
-1. ⬜ **Combat modes on real guns** (tdm/ffa/infection/lms, 2–3 taggers): `play <mode> …` — confirm the
+1. ⚠ **Combat modes on real guns** - **TDM PASSED 2026-08-30** on 3 taggers: team LED colours split 2v1 correctly, hit sound, death sound, headset dark in play then blinking green on death, host-driven respawn, team scoring correct, and friendly fire confirmed gun-enforced with a REAL gun (previously only proven with our synthetic emitter). ⚠ **One defect found: per-gun kill attribution reads 0 while team score is right - see Q17.** ffa/infection/lms still ⬜.
+   ~~1. ⬜ Combat modes on real guns~~ (tdm/ffa/infection/lms, 2–3 taggers): `play <mode> …` — confirm the
    on-gun reality the sim can't see: LED team colours, hit/death/respawn SOUNDS, health behaves, and the
    scoreboard matches. Logic is sim-proven, so this is a hardware-behaviour check, not a logic check.
 2. ⬜ **Live-path resilience** (the point of the resilience work): start a game with **one tagger off**
    → confirm connect-grace plays with the rest (`playing with N/M taggers`); **power-cycle a tagger
    mid-game** → confirm it reconnects and rejoins (`reconnected …`); confirm a game never hangs.
-3. ⬜ **Teardown** — after a game, the loser isn't stuck (revived, headset dark, pulses last team). (✅ once.)
+3. ✅ **Teardown - PASSED 2026-08-30 (second confirmation)**. Both guns died seconds before the end and were revived, not stuck. The spawn voice was audibly cut mid-word ("ge..."), which is `$PLAYX,0` firing right after `$SPAWN` exactly as designed; blinking stopped and both pulsed their last-game team colour. ~~3. ⬜ Teardown~~ — after a game, the loser isn't stuck (revived, headset dark, pulses last team). (✅ once.)
 4. ⬜ **Config knobs on-gun** (Session C): night mode LEDs-off (P17), outdoor, kid_mode FF-off, volume, weapons.
 5. ✅ **Native kill feedback** (D4) — RESOLVED 2026-08-25: **fully BLE-drivable** — the host sends `$SFLASH` (green flash) + token-4 `$PLAY` (announcer) per kill, exactly as Callsign does (§7o / B18). ✅ **Per-player attribution (P2) also RESOLVED** the same day (§7p/§7q).
 6. ⬜ **Health variants** (Session B): syphon/regen `$LIFE` behaviour on real guns.
