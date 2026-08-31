@@ -1,8 +1,10 @@
 # Shared contracts (M-CONTRACTS) — freeze before building anything
 
-- **Status:** Ratified (Wave 0) + amendments A1–A6. Changes are **amendments** (§9), not edits.
+- **Status:** Ratified (Wave 0) + amendments **A1–A8**. Changes are **amendments** (§9), not edits.
 - **A4/A5 (2026-08-25) are coherence passes** — P2 closed over BLE, frames compiled by MC, `match_id`,
   `status` counters, `welcome` re-hydration, lifecycle fixes. Read §9 A4–A6 first if you knew the pre-A4 shape.
+- **A7** adds the MC→node `score` push; **A8** adds operator auth, the node re-claim key and input
+  hardening — both §9, both additive except A8's takeover rule.
 - **Consumers:** every module. Bind to *these shapes*, never another module's internals.
 
 Transport-agnostic where possible. JSON on the wire. All ids are opaque strings. Times are

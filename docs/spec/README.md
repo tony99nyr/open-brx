@@ -1,7 +1,9 @@
 # Open BRX — End-to-End Product Spec
 
-- **Status:** Backbone ratified; contracts at amendment **A5** (2026-08-25 — A4: P2 closed over BLE, frames
-  compiled by MC, large-field reality; A5: adversarial + consistency review fixes). Module specs updated to A5.
+- **Status:** Backbone ratified; contracts at amendment **A8** (2026-08-25 — A4: P2 closed over BLE, frames
+  compiled by MC, large-field reality; A5: adversarial + consistency review fixes; A7: MC→node `score` push;
+  A8: operator auth, node re-claim key, input hardening). Module specs updated to A5; **A7/A8 are additive**
+  (except A8's node-takeover rule), so an A5-era module spec is still valid, just silent about them.
 - **Owners:** Tony (product) · multiple Claude sessions (parallel implementation)
 - **Anchors:** ADR-0001 (per-player node), ADR-0002 (laptop MC + local host).
   Extends `docs/m0-game-engine.md`, `docs/game-modes.md`. Ground truth: `protocol/brx-protocol.md`.

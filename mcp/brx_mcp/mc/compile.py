@@ -25,14 +25,21 @@ VOL_PLAY = 69  # house rule — 30 is inaudible for game audio
 # function map + crit multiplier + FF enforcement"). A weapon's <t3,t4> is the composite key into the
 # $SIR table MC pushes in every game head, and the ROW'S FUNCTION decides what the IR word's magnitude
 # does. So damage is a property of the (weapon, table) PAIR, never of the weapon alone.
-_SIR_NO_POOL = frozenset({3, 8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})  # registers a $HIR, moves no pool
-_SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                                     # lands t5 x this
+# ⚠ fn 3 was REMOVED from this set 2026-08-29 (exp-log "FLOOR ARTIFACT CLOSED: fn 3 is DAMAGE").
+# It only looked inert because the original sweep ran with the shield at 0; re-measured with a shield
+# granted first, it drains exactly what fn 1 drains. It is plain damage and lives in _SIR_PLAIN_DAMAGE.
+_SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # registers a $HIR, moves no pool
+# ⚠ DISPUTED, do not treat as fact: two of our own datasets disagree (magnitude 20 landing as 25/40 in
+# one, as 20 in the other) and four explanatory hypotheses were tested and refuted. Settling this is
+# bench item 0.1. We still WARN on these rows — a possible multiplier is a real reason not to publish
+# an htk — but the warning must not assert the number. See docs/weapon-design.md §6.
+_SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                                     # DISPUTED magnitude scaling
 _SIR_ARMOR_PIERCING = frozenset({2, 6})           # bypasses armor AND shields -> straight to bare HP
 _SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "damage" weapon here HELPS the target
 # ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
 # warned about, because the failure we are guarding against (a weapon that cannot hurt anyone, or
 # worse, heals what it shoots) lives precisely in the functions we have NOT characterised.
-_SIR_PLAIN_DAMAGE = frozenset({1, 4, 5, 7, 29, 30, 33, 38})
+_SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33, 38})   # 3 added 2026-08-29, see above
 
 
 def _sir_index(table) -> dict[tuple[str, str], int]:
@@ -212,10 +219,11 @@ class WeaponCatalog:
     def hits_to_kill(self, weapon_id: str, pool: int) -> int:
         """Hits to drop a `pool`-point target (hp + armor), computed on RAW t5.
 
-        Armor absorbs at face value and spills into HP (bench §7r). ⚠ Two things this does not model,
-        both bench-proven 2026-08-26 (docs/weapon-design.md §6): a `$SIR` multiplier row (this
-        over-estimates htk for the five weapons keyed to fn 36/37), and the SHIELD pool, which sits
-        above armor and is granted only by an IR function-11 event. 0 = damage unknown, caller skips."""
+        Armor absorbs at face value and spills into HP (bench §7r). ⚠ Two things this does not model
+        (docs/weapon-design.md §6): a `$SIR` multiplier row — fn 36/37, whose scaling is **DISPUTED**,
+        so htk for those five weapons may be over-estimated or may be exactly right and we cannot yet
+        say which — and the SHIELD pool, which sits above armor and is granted only by an IR
+        function-11 event. 0 = damage unknown, caller skips."""
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
@@ -498,9 +506,10 @@ class Compiler:
                 elif fn in _SIR_MULTIPLIER:
                     flagged.add(wid)
                     mult = _SIR_MULTIPLIER[fn]
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}: it lands "
-                                    f"{mult}x its $WEAP t5, so the published htk/ttk_ms (computed on raw t5) "
-                                    f"are wrong for it (weapon-design.md §6.2)")
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a DISPUTED "
+                                    f"multiplier row (one dataset says {mult}x its $WEAP t5, another says "
+                                    f"1x; bench item 0.1 settles it): treat the published htk/ttk_ms as "
+                                    f"unreliable for this weapon (weapon-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "

@@ -346,7 +346,8 @@ _What is proven on hardware, what is only software, what is only a spec. With da
 | Headset must be on or the gun won't join; rainbow blink = disconnected | ✅ | 2026-08-25 / 27 |
 | Smart Grenade: 5 native modes, Hill/Respawn beacons readable, no BLE config | ✅ | exp-log #33–40 |
 | BRX IR word decoded (25 bits, timings, parity); **stock tagger accepts synthetic shots from our ESP32 rig** | ✅ | 2026-08-26 |
-| `$SIR` effects matrix (16 protocols × 4 subtypes) mapped: damage, ×1.25 / ×2, heal, armor, shield, audio suppression | ✅ | 2026-08-26 / 27 |
+| `$SIR` effects matrix (16 protocols × 4 subtypes) mapped: damage, heal, armor, shield, audio suppression | ✅ | 2026-08-26 / 27 |
+| The ×1.25 / ×2 multiplier rows (functions 36 and 37) | ⚠️ **disputed**: two of our datasets disagree | 2026-08-29 |
 | Native phone app: connects, drives `$SFLASH`, arms a full game, stable session | ✅ single gun | 2026-08-25 |
 | Phone → Mission Control → gun: hello, roster bind, try-out fired a real gun | ✅ single node, bench | 2026-08-25 night |
 | Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games | 🧪 | ~500 Python tests, 42 e2e, 2026-08-26 / 27 |
@@ -507,7 +508,7 @@ From `docs/architecture-topology.md` §7 and `docs/verification-checklist.md`:
 - **FFA / Infection / LMS on real guns**: the logic is sim-proven (156 scenarios). On-gun LED colours, sounds, health and scoreboard are not yet confirmed live. The attribution fuse is not exercised.
 - **Objective modes (Domination / KotH / CTF / CS / Extraction) live**: the engines wait on a station or grenade to emit the IR events. Grenade CTF team-assign (G9) and thrown-blast `$GREN` (G10) are open.
 - **Health variants live** (Syphon, regen): `$LIFE` writes are confirmed, but the modes on top are not run live. The shield pool is IR-only (fn-11), and the node/app currently drop the shield token (Q12). A hit fully absorbed by a shield would go unreported.
-- **Config knobs on-gun**: outdoor mode, kid mode, volume levels, HP/armor start values — none flipped on the bench yet. (Night-mode LEDs-off is **done**: `$GLED` token 4 blanks all three body LEDs, verified 2026-08-30.)
+- **Config knobs on-gun**: outdoor mode, kid mode, volume levels, HP/armor start values; none flipped on the bench yet. (Night-mode LEDs-off is **done**: `$GLED` token 4 blanks all three body LEDs, verified 2026-08-30.)
 - **Loadout v2** (two slots, perks, policy presets, phone picks): built 2026-08-27, not bench-verified.
 - **Melee in a compiled game**: it did not work on the bench, even though our frames match Callsign's byte for byte (K4). A runtime or state question.
 - **ADR-0001 confirmation still owed**: that a host-armed game does *not* self-fire feedback once disconnected.

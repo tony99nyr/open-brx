@@ -65,8 +65,10 @@ and it will silently steal the board.
 | what | command |
 |---|---|
 | find guns | `$PY -m brx_mcp scan` |
-| run a real game | `$PY -m brx_mcp play <mode> <addr…> volume=69` |
-| reset a gun to clean idle | `$PY -m brx_mcp reset <addr>` |
+| run a real game | `$PY -m brx_mcp play <mode> <addr…> volume=69` — **`<mode>` is one of** `tdm ffa infection lms cs domination koth ctf extraction`. A gun may carry a gamertag: `<addr>@<Gamertag>` |
+| two guns, quick duel | `$PY -m brx_mcp arena <addr1> <addr2> [minutes] [respawn_s] [volume]` |
+| return a gun to clean idle | there is **no `reset` verb** — send `$CLEAR,*` (then `$SP,99,*` if it is still making noise). `$PY -m brx_mcp listen <addr>` to watch it settle |
+| what the CLI actually offers | `$PY -m brx_mcp` with no args prints every verb — trust that over this table |
 | capture IR | `$PY -m brx_mcp ir-capture COM7 <secs>` |
 | emit one IR word | `$PY -m brx_mcp ir-emit <25-bits> COM8 [repeat]` |
 | range / hit-rate at distance | `$PY -m brx_mcp ir-range COM7 <secs> <shots>` |
@@ -84,6 +86,12 @@ Each carries its usage in its docstring — `head -3 <file>` if unsure.
 | `weapon_range.py` | see docstring | range work |
 | `tid_bench.py` / `ff_probe.py` | see docstring | team + friendly-fire matrices |
 | `victim_count.py` / `quick_victim.py` | see docstring | quick victim-side readouts |
+| **`ally_remeasure.py`** | `<victim_addr> [com=COM8] [fns=10,11,9,15,31,32,34]` | **runs bench item 1.5a end to end** — arms, depletes, fires each ally fn, prints a verdict table |
+
+> ⚠️ **Most of the night's throwaway probes live on the Windows box** (`C:\Users\Tony\.brx-mcp\*.py`,
+> ~107 of them) and are **not in this repo**. They are one-shot scripts against a known rig state, not
+> tools. If you need one, read it there — but anything worth re-running should be cleaned up and moved
+> into `mcp/tools/` with a docstring, the way `ally_remeasure.py` was.
 
 > ⚠️ **Two rules that have each cost a session.**
 > **1. State the shooter TEAM in every IR test.** A wrongly-teamed shot is discarded with **no `$HIR`
@@ -177,7 +185,7 @@ sweep ran with the shield at 0. The seven left moved no pool with 150 shield ava
 | ~~1.3~~ | ~~Does a stun cost a reload?~~ **MOOT 2026-08-27** — there is no stun. fn 23 preserves ammo and never stops the trigger; it silences the gun. Re-ask if a real stun is ever found | — | — |
 | **1.4** | **K1 — auto-reload for kids.** Two mechanisms, pick one | (a) `GameConfig(alt_reload=True)` → **already ships** (`$BMAP,1,97`, ALT = reload). (b) `$WEAP` **t19 = 5** (`ReloadType.AutoReload`) → fire dry. ⚠️ **Half of this is already answered (2026-08-27): it does NOT self-reload on an empty or near-empty magazine**, controls both ends. Only the *fire-triggered* case is left — pull the trigger on an empty chamber and watch `$ALCD` | which one feels right for young kids |
 | **1.5** | **Status functions: what do enemy 8, 24-28, 35 and ally 31, 32, 34 actually DO?** They register a `$HIR`, change no pool, emit no BLE. ⚠️ **fn 3 was removed 2026-08-29** (it drains shield, so it is damage). ⚠️ **Do the ally ones LAST** and only after the keyboard re-measure in 1.5a, or you will burn trigger time on clamped grants | I fire each at you from the correct polarity team; **report anything you feel, hear or see** | naming even one is a new mechanic |
-| **1.5a** | ⚠️ **NOT operator-free while the rig is in the screamer state — power-cycle first.** **Then keyboard-only: re-measure ally 9, 10, 15, 31, 32, 34 from DEPLETED pools.** The map ran at full HP/armour, so a heal or armour grant clamps and reads as "no pool change". That is how fn 10, a known heal, got mis-binned | **Procedure:** arm the victim, fire **2 enemy shots of 25** to open headroom (armour 70 → 20, still alive — do NOT kill it, a dead gun accepts no IR), then fire each ally function **from the victim's own team**. Read `$HP,<hp>,<armor>,<shield>`. `mcp/tools/hittest.py <shooter> <victim>` gives a clean single-timeline hit if you want one shot at a time. | any that moves a pool is a GRANT, not a status function, and drops off 1.5 |
+| **1.5a** | ⚠️ **NOT operator-free while the rig is in the screamer state — power-cycle first.** **Then keyboard-only: re-measure ally 9, 10, 15, 31, 32, 34 from DEPLETED pools.** The map ran at full HP/armour, so a heal or armour grant clamps and reads as "no pool change". That is how fn 10, a known heal, got mis-binned | **Run `mcp/tools/ally_remeasure.py <victim_addr>`** — it arms the victim, depletes, fires each ally function from the correct polarity and prints a verdict table. **fn 10 and 11 are the positive controls: if they do not read as GRANTs, the method is wrong and the rest of the table means nothing** — do not interpret it. Needs the emitter (board B) aimed at the victim. A `VOID` row means the deplete never landed (aim or connection), not a result. Manual fallback: `mcp/tools/hittest.py <shooter> <victim>` for one shot at a time. | any that moves a pool is a GRANT, not a status function, and drops off 1.5 |
 | **1.6** | **KotH rate-of-fire buff** (your hardware fact) — likely one of the ally-side no-pool fns | While I fire 31/32/34 at you, **hold the trigger and listen for cadence change** | a fire-rate buff = 31/32/34 named |
 | **1.7** | **t37/t38 overheat semantics** — what 20 vs 150 each mean | Two varied-value probes on the SMG+t37/t38 frame, watch the gauge | maps the two fields |
 | **1.8** | **U4 reload chain / U5 held-trigger sound** | One long reload with a stopwatch; then hold the AR trigger and listen | closes both |
