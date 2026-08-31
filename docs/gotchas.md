@@ -202,11 +202,25 @@ proxy was never tested against the behaviour it stood in for.
 `$HIR` tok5 is the **raw magnitude**; applied = magnitude × the row's function multiplier × (1 + `$GSET` t7/100) if crit (×1.5 only at the shipped t7=50; the row multipliers for fn 36/37 are currently DISPUTED).
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
+**Close a question in EVERY file in the same commit, or it is not closed.** Two independent cold-read
+handoff tests both scored this repo down for the same thing, and it was never a wrong fact — it was a
+*right* fact that only landed in one or two places. When `$GLED` was solved on 2026-08-30 the answer went
+into the protocol doc and the manual, while the **spec of record** (`docs/spec/modes.md`) still published
+the disproven `mid,effect,optionA,optionB` field map, `unknowns.md` still listed it as unknown, two bench
+plans still queued the closed test, and `gameconfig.py` still **shipped a frame built on the retracted
+reading** — night mode was sending colour index 0, which is *red*, believing it meant "off". A stale
+retraction is worse than an open question: an open question warns you, a stale answer recruits you.
+
+**When you retract something, say what still stands.** A blanket "this was wrong" makes a reader discard
+the good half too. The `$TID`-sets-a-default-colour half of the team-derived claim was always correct;
+only "and `$GLED` cannot override it" was wrong.
+
 **Your filter can lie.** A `$HIR` filter matching `,42,` reported zero hits on a run that had actually
 killed the player, because the sweep varied the player id.
 
 ---
 
 ## See also
-`docs/unknowns.md` (what is still open) · `docs/bench-next-30.md` (next session) ·
+`docs/bench-tomorrow.md` (**the bench queue — its START HERE block names the first three things**) ·
+`docs/unknowns.md` (what is still open) ·
 `hardware/esp32-ir-bridge/README.md` (board identities and wiring) · `docs/field-process.md` (muster).

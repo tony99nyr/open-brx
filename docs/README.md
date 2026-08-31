@@ -45,6 +45,31 @@ Then, by who you are:
   network, phase-by-phase host flow, troubleshooting) for running a game from the MacBook.
 - **[field-process.md](field-process.md)** — the **Armory Setup** + **Muster** operator processes.
 
+### Closing an open item — the checklist
+
+Both cold-read handoff tests failed this repo on the *same* thing: an answer that landed in one file and
+left the old reading standing in five others. When you close a question (a `P##`/`Q##`/`F#`/`K#`, or a
+bench item), sweep it **in the same commit**:
+
+```
+grep -rn "P17" docs/ protocol/ mcp/ --include=*.md --include=*.py
+```
+
+and check each of these, because each has burned us:
+
+| where | what to fix |
+|---|---|
+| `docs/unknowns.md` | strike the row, put the **answer** in it — not just a ✅ |
+| `docs/FOLLOWUPS.md` | same, and re-read the whole section: a header can say "solved" while a subsection below still argues the old reading |
+| `docs/spec/` | **the spec of record.** It drifts most, because it is written for a different audience and nobody greps it |
+| `docs/manual/` | the public site is built from this — a stale claim here ships |
+| `protocol/brx-protocol.md` | retract **in place**, and say what still stands |
+| `docs/bench-tomorrow.md` + `bench-next-30.md` | strike the queued test so nobody re-runs it |
+| `docs/verification-checklist.md` | flip ⬜ → ✅ |
+| **code** | the frame or constant built on the retracted reading, **and the comment next to it**. Night mode shipped a broken `$GLED` for days because only the log was updated |
+
+A stale answer is worse than an open question: an open question warns you, a stale answer recruits you.
+
 ## Architecture Decision Records (the load-bearing, expensive-to-reverse calls)
 - **[adr/0001](adr/0001-companion-rider-architecture.md)** — the per-player **node** (Companion / phone):
   why stock firmware + an offline dispersed field force a per-player BLE rider for live feedback/scoring.
