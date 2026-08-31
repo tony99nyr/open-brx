@@ -10,6 +10,24 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
+> ### 📍 WHERE TO START — this file is the ONLY bench queue (updated 2026-08-31)
+> Four documents used to each name a different "do this first". They no longer do.
+> **`docs/HANDOFF.md` is the entry point; THIS file is the queue.** `bench-next-30.md` is a
+> 30-minute subset of it, not a rival plan, and `bench-plan-hardware.md` is **superseded** (it says so
+> at its own top).
+>
+> **Start at GROUP 0.** Within it, item order is the priority order.
+>
+> ⚠️ **Closed on 2026-08-30, do not run:** 4.1 (P13 — `$GLED` token 1 is a colour index: 0 red · 1 blue ·
+> 2 yellow · 3 green · 4 purple · 5 teal · 6 white) and 4.2 (P17 — **token 4 = 3 blanks all three LEDs**;
+> the app's `$GLED,,,,5,,,*` does too). `$GLED` is fully solved: `<led1>,<led2>,<led3>,<t4>,<brightness>`.
+>
+> ⚠️ **Reframed on 2026-08-30:** the three gun LEDs are the gun's **own native health gauge** — that is
+> what the "pulsing" is. Supremacy's Marauder shows armour then health and reverts to team colour by
+> itself. So the pool-status feature (**FOLLOWUPS F1**) is probably a **config** question, not an LED
+> driver. **Its open question — "does the native gauge appear in OUR compiled games?" — is a five-minute
+> test with no bench item number, and it could delete a planned feature. Do it early.**
+
 ## ⚡ RIG IS DOWN — power-cycle first (2026-08-29)
 
 The victim gun went **screamer** after ~3 days powered: it still advertises but will not complete a BLE
@@ -170,8 +188,8 @@ Kit a player in MC (or `python -m brx_mcp.mc.mock_node … ` then `pick secondar
 
 | # | Goal | Do this | Pass |
 |---|---|---|---|
-| **4.1** | **P13 — is `$GLED` colour a single 0–8 index?** | Mid-game, sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, **one value at a time**, and write down the colour you see for each | a **stable n → colour map**. The FB map claims 0 red … 8 orange and fits 5/6 of our earlier probe — either confirm it or record where it diverges. Colour not changing at all ⇒ token 1 is not the index and colour really is only `$TID`-derived |
-| **4.2** | **P17 — how do you turn the LEDs OFF?** | Mid-game, try in order: `$GLED,0,4,0,0,0,,*` (effect=StopIR — what we ship today, **unconfirmed**), then all-zeros, then brightness/duration = 0 | **LEDs actually go dark and stay dark.** Whichever frame does it becomes night mode's. If none do, night mode cannot darken a gun and `GameConfig(leds=False)` is lying — say so, it's a mode-design constraint |
+| ~~4.1~~ ✅ | ~~**P13 — is `$GLED` colour a single 0–8 index?** | Mid-game, sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, **one value at a time**, and write down the colour you see for each | a **stable n → colour map**. The FB map claims 0 red … 8 orange and fits 5/6 of our earlier probe — either confirm it or record where it diverges. Colour not changing at all ⇒ token 1 is not the index and colour really is only `$TID`-derived |
+| ~~4.2~~ ✅ | ~~**P17 — how do you turn the LEDs OFF?** | Mid-game, try in order: `$GLED,0,4,0,0,0,,*` (effect=StopIR — what we ship today, **unconfirmed**), then all-zeros, then brightness/duration = 0 | **LEDs actually go dark and stay dark.** Whichever frame does it becomes night mode's. If none do, night mode cannot darken a gun and `GameConfig(leds=False)` is lying — say so, it's a mode-design constraint |
 | **4.3** | **LED "life mode"** — ✅ **behaviour now KNOWN (2026-08-27, observed):** the 3 gun LEDs are a **segmented gauge** — **purple** while the protective pools have charge, draining segment by segment, then a **colour change** (observed blue — but ⚠️ Nexus is the blue *faction*, so the colour is probably team-derived, not a pool identity; test on a red/green faction); at zero, the death grenade + death sound; the **headset flashes green on death**. This matches the wire-measured drain order shields→armor→HP exactly. | Only the **driving token** is missing now. Sweep `$GSET` / `$PSET` / `$GLED` effect values in a native game vs ours and find what selects gauge-mode | our compiled head reproduces purple-then-blue segments tracking the pools |
 | **4.5** | **`$PSET` t2 and t6 — what do they do?** Swept from the keyboard over wide ranges (t2 {0,1,2,5,10,50,100}, t6 {0,1,25,50,100,200}) with **byte-identical** `$HIR` and `$HP` in every cell — they touch no pool, no damage, no crit, no gating, and `$QUERY` does not echo them. If they do anything it is **audio or LED**, which is why they need you | Push each value mid-game and **listen / watch the LEDs** | any audible or visible difference names a token · nothing on either instrument ⇒ record them as inert and stop spending time on them |
 | **4.4** | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | In our try-out flow, note what the LEDs do vs a real game | the quieting token, or confirmation that try-out simply isn't spawned (in which case it's a mode fix, not an LED one) |

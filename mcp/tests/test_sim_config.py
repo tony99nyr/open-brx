@@ -236,7 +236,7 @@ def test_leds_off_emits_gled():
     # NOT hardware-confirmed. We assert the frame the code EMITS today so a change to
     # it is caught; the mapping itself still needs verification on a real gun.
     frames = GameConfig(outdoor=True, leds=False).setup_frames()
-    assert _find(frames, "$GLED,") == ["$GLED,0,4,0,0,0,,*"]  # P17 — pending confirm
+    assert _find(frames, "$GLED,") == ["$GLED,,,,5,,,*"]  # P17 CLOSED 2026-08-30: blanks all three
 
 
 def test_leds_on_emits_no_gled():

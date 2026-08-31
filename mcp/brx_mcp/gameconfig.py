@@ -211,12 +211,16 @@ class GameConfig:
         return f"$WEAP,{slot}{tail}"
 
     def _led_frames(self) -> list[str]:
-        # LEDs are team-derived ($TID); turning them OFF is UNCONFIRMED (followup P17).
-        # Best-effort: $GLED effect field = LedEffect enum (4=StopIR); all-zeros is an
-        # equally-plausible probe. Verify on hardware before relying on night mode.
+        # P17 CLOSED on hardware 2026-08-30. $GLED is NOT "mid/effect/optionA/optionB":
+        # tokens 1-3 are the three gun LEDs, each a direct palette index, and TOKEN 4 = 3
+        # blanks all three. This frame is the one Callsign itself sends on death, observed
+        # blanking the gun; `$GLED,0,0,0,3,10,,*` (t4=3) was observed doing the same.
+        # The previous value here ("$GLED,0,4,0,0,0,,*") was an unconfirmed guess built on
+        # the retracted "colour index 0 = off" reading -- index 0 is RED, so that frame did
+        # not turn anything off.
         if self.leds:
             return []
-        return ["$GLED,0,4,0,0,0,,*"]  # ⚠ UNCONFIRMED "off" attempt — see FOLLOWUPS P17
+        return ["$GLED,,,,5,,,*"]  # blank all three (bench + Callsign capture)
 
     def setup_frames(self, player_id: int = 0) -> list[str]:
         """Ordered config frames for ONE gun. `player_id` is that gun's identity

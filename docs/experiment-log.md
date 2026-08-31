@@ -1,5 +1,12 @@
 # Experiment log
 
+> ⚠️ **ORDERING — read this before skimming.** This file is **NOT strictly chronological.** New
+> entries are inserted **above the day's earlier ones**, so within a date the newest is FIRST, and
+> some recent days sit **mid-file** with older material below them. **Skimming the tail gives you
+> retracted conclusions.** To find current state, do not read this file end to end — read
+> `docs/HANDOFF.md` (entry point) and `docs/bench-tomorrow.md` (the queue). Use this log for
+> *evidence* behind a specific claim, found by grep, not for orientation.
+
 Chronological record of hardware experiments: what was sent, what happened, what it
 means. **Append to this file after every experiment session** — it is the shared lab
 notebook that keeps agents (and Tony) from re-running dead ends. Conventions: each

@@ -3,9 +3,27 @@
 **Updated:** 2026-08-29. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
 lore, indexed by symptom; several of those quirks each cost a whole session.
 [`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it.
-**The bench queue is [`docs/bench-tomorrow.md`](bench-tomorrow.md)** — it is the maintained one.
+**The bench queue is [`docs/bench-tomorrow.md`](bench-tomorrow.md), and it is the ONLY one.**
+[`bench-next-30.md`](bench-next-30.md) is a 30-minute subset of it; `bench-plan-hardware.md` is
+**superseded**. If two documents disagree about what to do first, bench-tomorrow wins.
 [`bench-next-30.md`](bench-next-30.md) is a short 30-minute subset of it, not a separate plan.
 
+> ### ⚠️ 2026-08-30 — `$GLED` SOLVED, and the LED "pulse" was the health gauge all along
+>
+> - **`$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`** — the three gun LEDs are **independently
+>   addressable**, each a direct palette index (**0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
+>   5 teal · 6 white**). **t4 = 3 blanks all three** (night mode, **P17 closed**). The old
+>   "colour is team-derived, `$GLED` = mid/effect/optionA/optionB" reading is **wrong**.
+> - **The pulsing LEDs on a spawned gun are the gun's OWN health gauge**, not interference. Supremacy's
+>   Marauder shows armour then health and reverts to team colour unaided. So the pool-status feature
+>   (**F1**) is likely a **config** question, not an LED driver — and *"does that gauge appear in our
+>   compiled games?"* is a five-minute test that could delete a planned feature.
+> - **Q17 FIXED in code** — kills were credited by shooter *team*, so per-player attribution collapsed
+>   whenever a team held 2+ guns. Now resolved by `$HIR` token 3 (shooter player id). 535 tests green.
+> - ⚠️ **A whole afternoon was lost to a method bug**: timed sweeps racing an asynchronous human
+>   observer, which bound observations to the wrong frames and produced two confidently wrong theories.
+>   **Never advance an operator-in-the-loop sweep on a timer** (`gotchas.md`).
+>
 > ### ⚠️ 2026-08-27/29 — THREE THINGS THAT CHANGE HOW YOU TEST. Read before planning anything.
 >
 > **1. IR is TEAM-GATED, and a wrongly-teamed shot is INVISIBLE.** Damage lands only from an enemy
@@ -253,7 +271,7 @@ id — P2, F, D1…). Summary below is a snapshot only:
 |---|---|
 | `$GSET` 8 tokens | ✅ **mapped + hardware-confirmed** (friendlyFire…gameMods). No respawn/time/lives token — those are host-side |
 | `$WEAP` 44 tokens | ✅ **mapped + validated** vs two live frames (`protocol-classes.md`); ~6 empty positions want a one-field capture |
-| `$GLED` tokens | ✅ colour is team-derived (`$TID`); `$GLED` = mid/effect/optionA/optionB with a LedEffect enum |
+| `$GLED` tokens | ✅ **SOLVED 2026-08-30 — three independently addressable LEDs.** `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`, each LED a direct palette index (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white**). **t4=3 blanks all three** (night mode, P17 closed). ⚠️ The older "colour is team-derived, `$GLED` = mid/effect/optionA/optionB" reading is **WRONG** — a gun held on `$TID,1` took six colours on command. The APK field names do not describe this command. |
 | Sound inventory | ✅ **2166-id bank** (`sound-bank.md`) |
 | Smart Grenade | ✅ config = `$GREN` to gun (FlashBang/Gas/Confusion/Molotov). ⬜ hardware test pending (followup F) |
 | Per-player identity | ✅ **SOLVED 2026-08-25** — `$PSET` token 1 = player id (0–63), `$HIR` token 3 = shooter id on every hit (§7p/§7q). Over BLE, per game, no cable. |
