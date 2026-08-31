@@ -2808,6 +2808,47 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-08-31 — MEASURING THE DOCS: three cold-read handoff tests, 5 → 7 → 8/10
+
+**No hardware. The instrument was a fresh agent with no context**, given only "you are taking over this
+project cold, continue the bench work", told to start at `CLAUDE.md` and report where it got lost. Run
+three times with the fixes in between. Its confusion is the measurement.
+
+**The single failure mode, found in all three rounds, never a wrong fact:** a *right* fact that only
+landed in one or two files. `$GLED` was solved on the bench on 08-30 and written into the protocol doc
+and the manual — while the **spec of record** still published the disproven `mid,effect,optionA,optionB`
+field map, `unknowns.md` still listed it open, two bench plans still queued the closed test, and
+`gameconfig.py` still **shipped** a frame built on the retracted "index 0 = off" reading. Index 0 is
+**red**, so night mode had been sending red LEDs while believing it meant "off".
+
+**Round 3 found the same shape in code, in a different question.** `mc/compile.py` still had **fn 3** in
+`_SIR_NO_POOL` and missing from `_SIR_PLAIN_DAMAGE`, two days after fn 3 was re-measured as ordinary
+damage (the floor artifact below — it only looked inert because the sweep ran at shield 0). A weapon
+keyed to fn 3 therefore got a compile-time warning saying **"the weapon DEALS NO DAMAGE"**. Nobody would
+have caught that at the bench; they would have believed it and changed the weapon. The same file also
+stated the **disputed** fn 36/37 multipliers as fact in three places, one of them calling them
+"both bench-proven 2026-08-26".
+
+**What the three rounds actually cost to fix:** nothing was re-measured. Every fix was propagation.
+
+**Method notes worth keeping**
+
+- **The tests disagreed with my own confidence, and they were right both times.** After round 1 I
+  believed the docs were in good shape; after round 2 I believed the sweep was complete. Round 3 found
+  a shipping bug.
+- **Ask the cold agent to *walk* an item, not review it.** Round 2's most useful output was "I cannot
+  run 1.5a" — the script that runs it existed only on the Windows box, one of **~107** one-shot probes
+  there against **12** in `mcp/tools/`. That is now `mcp/tools/ally_remeasure.py`.
+- **A wrong command survives a review but not a walk.** My own round-2 verb table invented
+  `python -m brx_mcp reset <addr>`. There is no such verb. It was written from memory of what the CLI
+  *should* have and never run.
+- **Tell it not to read the log end to end.** All three rounds followed the header's "grep for evidence,
+  never orient from it" and all three reported it worked.
+
+**The durable output** is not the fixes: it is the rule in `gotchas.md` ("close a question in EVERY file
+in the same commit, or it is not closed") and the greppable eight-place checklist in `docs/README.md`.
+A stale answer is worse than an open question — an open question warns you, a stale answer recruits you.
+
 ### 2026-08-30 — ⭐ THE PULSE **IS** THE HEALTH GAUGE (native FFA, Tony observing)
 
 **Tony, in a NATIVE FFA game:** *"two guns went blue. i shoot the other, the pulsing blue led represents
