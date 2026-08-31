@@ -33,9 +33,11 @@ Then, by who you are:
 - **[`gotchas.md`](gotchas.md)** — **the field lore**: every quirk that wastes an hour, indexed by symptom. Read before a bench session.
 - **[`unknowns.md`](unknowns.md)** — **the index of everything not yet confirmed**, grouped by what
   unblocks it. Start here to see the whole board.
-- **[`bench-next-30.md`](bench-next-30.md)** — the next 30-minute bench session, ordered.
-- **[`bench-tomorrow.md`](bench-tomorrow.md)** — the next bench session: everything still blocked on a
-  human (trigger pulls, ears, eyes, the grenade), grouped to minimise re-rigging. Start here on bench day.
+- **[`bench-tomorrow.md`](bench-tomorrow.md)** — ⭐ **THE bench queue, and the only one.** Everything
+  still blocked on a human (trigger pulls, ears, eyes, the grenade), grouped to minimise re-rigging.
+  Its **START HERE** block names the first three things in order. **Start here on bench day.**
+- **[`bench-next-30.md`](bench-next-30.md)** — a 30-minute **subset** of the above, not a rival plan.
+  If the two disagree, `bench-tomorrow.md` wins.
 - **[verification-checklist.md](verification-checklist.md)** — what needs YOU + a tagger to confirm (the
   running hardware-verification to-do list). **The MC↔phone field path is UNVERIFIED on hardware** —
   proven in software + the single-gun bench only.

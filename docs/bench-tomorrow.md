@@ -1,4 +1,4 @@
-# Bench plan — what needs Tony (updated 2026-08-28)
+# Bench plan — what needs Tony (updated 2026-08-31)
 
 Built overnight from the IR session. **Everything in here is blocked on a human**: a trigger pull, an
 ear, an eye, floor space, or the grenade. Everything that could be cracked from the keyboard already
@@ -10,32 +10,38 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
-> ### 📍 WHERE TO START — this file is the ONLY bench queue (updated 2026-08-31)
-> Four documents used to each name a different "do this first". They no longer do.
-> **`docs/HANDOFF.md` is the entry point; THIS file is the queue.** `bench-next-30.md` is a
-> 30-minute subset of it, not a rival plan, and `bench-plan-hardware.md` is **superseded** (it says so
-> at its own top).
+> ### 📍 START HERE — do these three, in this order
 >
-> **Start at GROUP 0.** Within it, item order is the priority order.
+> **0. Power-cycle the gun AND the headset.** The victim gun went **screamer** after ~3 days powered
+> (2026-08-29): it still advertises but will not complete a BLE connection, failing during service
+> discovery. A headset also began advertising on its own. Nothing below works until this is done.
+> **Verify** with `$PY -m brx_mcp scan` then `identify` — a clean connect means you are back.
 >
-> ⚠️ **Closed on 2026-08-30, do not run:** 4.1 (P13 — `$GLED` token 1 is a colour index: 0 red · 1 blue ·
-> 2 yellow · 3 green · 4 purple · 5 teal · 6 white) and 4.2 (P17 — **token 4 = 3 blanks all three LEDs**;
-> the app's `$GLED,,,,5,,,*` does too). `$GLED` is fully solved: `<led1>,<led2>,<led3>,<t4>,<brightness>`.
+> **1. The F1 gauge check — 5 minutes, and it can DELETE a planned feature.**
+> *Does the gun's native health gauge appear in OUR compiled games, or only in native ones?*
+> Start one of our games, take damage, watch the three gun LEDs. Step down = **FOLLOWUPS F1 is already
+> shipped by the hardware**; no step down = F1 is a one-field config hunt. Either answer removes work.
+> It is item **4.3** below, promoted here because it is cheap and it changes what is worth building.
 >
-> ⚠️ **Reframed on 2026-08-30:** the three gun LEDs are the gun's **own native health gauge** — that is
-> what the "pulsing" is. Supremacy's Marauder shows armour then health and reverts to team colour by
-> itself. So the pool-status feature (**FOLLOWUPS F1**) is probably a **config** question, not an LED
-> driver. **Its open question — "does the native gauge appear in OUR compiled games?" — is a five-minute
-> test with no bench item number, and it could delete a planned feature. Do it early.**
-
-## ⚡ RIG IS DOWN — power-cycle first (2026-08-29)
-
-The victim gun went **screamer** after ~3 days powered: it still advertises but will not complete a BLE
-connection (fails during service discovery). A headset also began advertising on its own, which may be
-the same fault from the other end. **Power-cycle the gun and the headset before anything below.**
-
-First thing to run once it is back, and it needs no operator: **item 1.5a**, the ally re-measure from
-depleted pools. It decides whether ally 9, 15, 31, 32, 34 are status functions or clamped grants.
+> **2. Item 1.5a (in GROUP 1) — the ally re-measure.** Needs **no operator once the rig is up** (it is a
+> keyboard test; only the power-cycle needs hands). It decides whether ally functions 9, 15, 31, 32
+> and 34 are real status effects or just grants that were **clamped** by full pools — a ceiling
+> artifact that already mis-binned fn 10, a known heal.
+>
+> **3. Then GROUP 0**, in the order written. From there, item order is priority order and the groups
+> are ordered to minimise re-rigging — do a whole group before moving on.
+>
+> ---
+>
+> **This file is the ONLY bench queue.** `docs/HANDOFF.md` is the entry point; this is the queue.
+> [`bench-next-30.md`](bench-next-30.md) is a 30-minute **subset** of it, not a rival plan, and
+> `bench-plan-hardware.md` is **superseded** (it says so at its own top). If they disagree, this wins.
+>
+> ⚠️ **Closed on 2026-08-30, do not run:** **4.1** (P13 — `$GLED` tokens 1-3 are three independently
+> addressable LEDs, each a direct palette index: 0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
+> 5 teal · 6 white) and **4.2** (P17 — **token 4 blanks all three**; Callsign's own `$GLED,,,,5,,,*`
+> does too). `$GLED` is solved: `<led1>,<led2>,<led3>,<t4>,<brightness>`. Also closed:
+> `bench-next-30.md` item 3, which is the same pair.
 
 ## HOW TO RUN ANYTHING (read once — the items below assume this)
 
@@ -129,6 +135,17 @@ $PY ../gitrepos/battlecompany/mcp/tools/sensor_bench.py <shooter> <victim>    # 
 ```
 
 **0.1 needs no script** — it is a real BRX weapon fired at a victim while you read the victim's frames.
+
+> ⚠️ **Which `$SIR` table is in play, and why it matters for 0.1.** The applied function is chosen by the
+> **victim's** `$SIR` row for the incoming (protocol, subtype) — *not* by the shooter. So "nothing of ours
+> in the signal path" is true only of the **emitter**: the victim must be armed by us to be on BLE at all,
+> and that means **our** `$SIR` table decides that fn 36 is what gets applied.
+>
+> That is fine — it is exactly the configuration we ship, and it is the one whose numbers we would publish.
+> **What it rules out** is concluding anything about *native* games from this test. If the result is
+> `delta = tok5` (no multiplier), the honest finding is "**fn 36 applies no multiplier in our table**",
+> and whether stock BRX does something different is a separate question needing a native-game capture.
+> **Record which gun was the victim** — 0.4 exists because a previous run did not.
 Put the victim on BLE and watch: `$HIR` **token 5** is the raw magnitude, and the `$HP` delta is the
 applied damage. Compare the two. That is the whole test, and it works because **our emitter is out of
 the signal path**.
@@ -136,7 +153,7 @@ the signal path**.
 
 | # | Goal | Do this | Pass |
 |---|---|---|---|
-| **0.1** | **Settle the DISPUTED fn 36/37 multipliers** — two of our own datasets disagree (x2 vs x1.0) and four hypotheses were tested and refuted. Until this is resolved, **every weapon mapped to fn 36/37 may be dealing base damage** and we must not publish x1.25/x2 | Fire a **real BRX weapon** known to use fn 36/37 at a victim. Compare **`$HIR` token 5** (raw magnitude) against the applied **`$HP` delta** | delta = 2 x tok5 ⇒ multiplier real, our emitter path is at fault · delta = tok5 ⇒ the x1.25/x2 claim is wrong. Either way it reads off stock hardware with **nothing of ours in the signal path** |
+| **0.1** | **Settle the DISPUTED fn 36/37 multipliers** — two of our own datasets disagree (x2 vs x1.0) and four hypotheses were tested and refuted. Until this is resolved, **every weapon mapped to fn 36/37 may be dealing base damage** and we must not publish x1.25/x2 | **Weapon: the Force Rifle** (`R23`, magnitude 9) or the **Sniper Rifle** — both sit on `$SIR,0,1,,36` in our table. Arm a **shooter** gun with it, arm the **victim** from our stack, spawn both on **opposing teams**, fire, and compare the victim's **`$HIR` token 5** (raw magnitude) against its applied **`$HP` delta**. See the note below on which `$SIR` table is in play | delta = 2 x tok5 ⇒ multiplier real, our emitter path is at fault · delta = tok5 ⇒ the x1.25/x2 claim is wrong |
 | **0.2** | **Re-aim the emitter at the receiver** so loopback capture works | Point board B's LED at board A's VS1838B, **attenuated** (it saturates point-blank). Then `TX` any word and confirm a DECODE line | a decoded 25-bit word ⇒ we can verify transmitted words over the air, not just in software. Currently the two boards cannot see each other at all |
 | **0.3** | **Does the SENSOR STRUCK change the applied function?** The single cheapest test for the two results that would not reproduce (fn 36/37 ×2, and fn 24 damaging in an operator-held run). **Note the protocol framing is dead** — a 50-cell matrix showed the function classes do not vary across protocols 0/5/7/9/10, so the difference is not the protocol. **20/20 of my hits landed on `$HIR` tok1 = 4, the gun body** — this rig cannot produce a dome hit at all; a held gun is struck at a different angle | Fire the **same word** twice: once at the **headset dome** (expect `$HIR,0` or `,1`), once at the **gun body** (`$HIR,4`). Use fn 24 on protocol 7, magnitude 20 x2, and read the `$HP` delta | different pool delta between sensors ⇒ **both anomalies explained by one mechanism**, and the function map needs a sensor qualifier · identical ⇒ sensor is ruled out and the cause is elsewhere (different gun, or gun state) |
 | **0.4** | **Which gun did the non-reproducing runs use?** | Just tell me, or re-run fn 24 protocol 7 on a *different* gun | a different gun reproducing 70→30 ⇒ per-unit difference, and every cross-session comparison needs the gun recorded |
@@ -256,7 +273,7 @@ Kit a player in MC (or `python -m brx_mcp.mc.mock_node … ` then `pick secondar
 |---|---|---|---|
 | ~~4.1~~ ✅ | ~~**P13 — is `$GLED` colour a single 0–8 index?** | Mid-game, sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, **one value at a time**, and write down the colour you see for each | a **stable n → colour map**. The FB map claims 0 red … 8 orange and fits 5/6 of our earlier probe — either confirm it or record where it diverges. Colour not changing at all ⇒ token 1 is not the index and colour really is only `$TID`-derived |
 | ~~4.2~~ ✅ | ~~**P17 — how do you turn the LEDs OFF?** | Mid-game, try in order: `$GLED,0,4,0,0,0,,*` (effect=StopIR — what we ship today, **unconfirmed**), then all-zeros, then brightness/duration = 0 | **LEDs actually go dark and stay dark.** Whichever frame does it becomes night mode's. If none do, night mode cannot darken a gun and `GameConfig(leds=False)` is lying — say so, it's a mode-design constraint |
-| **4.3** | **LED "life mode"** — ✅ **behaviour now KNOWN (2026-08-27, observed):** the 3 gun LEDs are a **segmented gauge** — **purple** while the protective pools have charge, draining segment by segment, then a **colour change** (observed blue — but ⚠️ Nexus is the blue *faction*, so the colour is probably team-derived, not a pool identity; test on a red/green faction); at zero, the death grenade + death sound; the **headset flashes green on death**. This matches the wire-measured drain order shields→armor→HP exactly. | Only the **driving token** is missing now. Sweep `$GSET` / `$PSET` / `$GLED` effect values in a native game vs ours and find what selects gauge-mode | our compiled head reproduces purple-then-blue segments tracking the pools |
+| **4.3** | **LED "life mode"** — ✅ **CONFIRMED NATIVE 2026-08-30.** The 3 gun LEDs are the gun's **own segmented health gauge**, in the **team colour**, with no host involvement: three pulsing at full health, stepping down to one as health falls (Tony, native FFA). The 2026-08-27 "purple then blue" reading was the same gauge seen on a blue faction — colour follows the **team**, segment count follows the **pools**. Drain order matches the wire (shields→armor→HP). **Do not build an LED driver for this** — `$GLED` overpaints and destroys it. | **The only question left:** does the gauge appear in **our compiled** games, or only native ones? Start one of our games, take damage, watch the three LEDs. If it does not appear, hunt the config field that enables it (`$GSET`/`$PSET` diff vs a native game) | ✅ gauge steps down in our game ⇒ **FOLLOWUPS F1 is already shipped by the hardware, delete the feature**. ❌ no gauge ⇒ F1 becomes a one-field config hunt, still not a driver |
 | **4.5** | **`$PSET` t2 and t6 — what do they do?** Swept from the keyboard over wide ranges (t2 {0,1,2,5,10,50,100}, t6 {0,1,25,50,100,200}) with **byte-identical** `$HIR` and `$HP` in every cell — they touch no pool, no damage, no crit, no gating, and `$QUERY` does not echo them. If they do anything it is **audio or LED**, which is why they need you | Push each value mid-game and **listen / watch the LEDs** | any audible or visible difference names a token · nothing on either instrument ⇒ record them as inert and stop spending time on them |
 | **4.4** | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | In our try-out flow, note what the LEDs do vs a real game | the quieting token, or confirmation that try-out simply isn't spawned (in which case it's a mode fix, not an LED one) |
 

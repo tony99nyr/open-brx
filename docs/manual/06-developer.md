@@ -836,7 +836,7 @@ Everything below was removed from the pages above because it is unconfirmed, sin
 - **`$UP` / `$AS` / `$SP` as tagger→host echoes**: reported by LaserTagMods (0–11 tokens); never seen from our v4.32 units.
 - **`$SP` full semantics**: published only as "end-of-game / stop; half of the panic sequence" (👥). `$SP,<n>` values other than 99 are unmapped. JEDGE notes fw 4.26 added `$AS`, `$SP`, `$UP` (Gen1 vs Gen2/3 command differences unmapped).
 - **`$PB*` playbook enums on v4.32**: full value→meaning tables exist only from the v4.30 community capture.
-- **`$GLED` colour index**: a community lead suggests a single 0–8 colour index (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 cyan · 6 white · 7 pink · 8 orange); unreproduced. Also open: what its four fields do, how to turn the gun LEDs **off**, which token gives the native "LED life gauge".
+- **`$GLED` indices 7 and 8**: the palette is confirmed through 6 (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white); a community lead names 7 pink and 8 orange, and both indices exist, but neither has been read off a gun. *(The rest of this entry is closed: the field map, LEDs-off, and the native life gauge are all answered above.)*
 - **`$GREN`**: whether the gun programs the grenade from this frame; the exact frame the app sends; which emitter (muzzle or headset) fires when it is sent (the bench saw IR whose bits did not track the arguments).
 - **`$HLOOP,0,0,*`**: guess, a death audio-loop control. Only the captured fact (sent ~1.7 s after death) is published.
 - **`$HLED` / `$BLINK` / `$CHASE` / `$LED`** field semantics: never mapped on the bench.

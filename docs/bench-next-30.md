@@ -6,6 +6,10 @@ Written 2026-08-27 after the Supremacy session. **The rig is already set up and 
 
 **Do them in this order.** Item 1 is worth the whole session on its own.
 
+> ⚠️ **This file is a 30-minute SUBSET of [`bench-tomorrow.md`](bench-tomorrow.md), which is the only
+> bench queue.** If the two disagree, bench-tomorrow wins. **Item 3 below (P13/P17) was CLOSED on
+> 2026-08-30 — do not run it.**
+
 ---
 
 ## 1 · Capture the native Sentinel EMP ability  ·  10 min  ⭐ THE STUN ANSWER
@@ -56,7 +60,15 @@ negative. With that check, it is a real answer and closes a hunt that has cost t
 plain damage does, so it is damage. It only looked inert because the original sweep ran with the
 shield at 0.
 
-## 3 · P13 — the `$GLED` colour index  ·  10 min  ·  needs your eyes, dim room
+## ~~3 · P13 — the `$GLED` colour index~~  ·  ✅ **CLOSED 2026-08-30 — DO NOT RUN**
+
+**Answered:** `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>` — **three** independently addressable body
+LEDs, each a direct palette index (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white**).
+**Token 4 blanks all three** (P17 also closed). And the pulsing gauge everyone was trying to explain is
+the gun's **own native health bar** — see FOLLOWUPS **F1**. Original text kept below for provenance only:
+
+<details><summary>original item (superseded)</summary>
+
 Now has a sharper target: native life-mode shows **purple while the protective pools have charge, then
 switches colour** when they empty. ⚠️ Tony's own correction: the second colour was **blue, and Nexus is
 the blue faction** — so it is probably the **faction** colour, not a health colour. **Cheap decisive
@@ -67,6 +79,8 @@ Mid-game I sweep `$GLED,<n>,0,0,1,2000,2000,*` for n = 0…8, one at a time; **s
 **Then P17 in the same breath:** try `$GLED,0,4,0,0,0,,*` (StopIR), all-zeros, and brightness 0 —
 **pass = the LEDs actually go dark.** If none work, night mode cannot darken a gun and
 `GameConfig(leds=False)` is lying — that is a real answer too.
+
+</details>
 
 ## 4 · If time remains — K4 melee  ·  5 min
 In **our** compiled game: select **slot 4** and swing hard. Watch for **`$BUT,8`** (we confirmed `$BUT`

@@ -263,11 +263,11 @@
 <td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>(no-op)</td>
 </tr>
 <tr>
-<td><code>$GLED,&lt;mid&gt;,&lt;effect&gt;,&lt;optionA&gt;,&lt;optionB&gt;,…,*</code></td>
+<td><code>$GLED,&lt;led1&gt;,&lt;led2&gt;,&lt;led3&gt;,&lt;t4&gt;,&lt;brightness&gt;,,*</code></td>
 <td>&gt;&gt;</td>
-<td>mid, effect, optionA, optionB</td>
-<td>Gun LED <strong>effect</strong>. <code>effect</code> = LedEffect enum (Solid, Glow, ChaseBack, ChaseForward, StopIR). <strong>Not RGB</strong>: colour is team-derived from <code>$TID</code>. Used by the app during the pre-game lobby.</td>
-<td><span class="badge b-apk" title="Decoded from the Callsign app"><span>app</span></span> <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span>(not RGB)</td>
+<td>three LED colours</td>
+<td><strong>Gun LED colour, per LED.</strong> Tokens 1 to 3 are the three body LEDs, each a direct palette index: <strong>0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white</strong>. <strong>Token 4 = 3 blanks all three</strong> (night mode); Callsign sends <code>$GLED,,,,5,,,*</code> on death, which also blanks. Token 5 is brightness. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and <code>$GLED,3,2,1,0,10</code> was predicted and confirmed as green, yellow, blue.</td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td><code>$GREN,…,*</code></td>

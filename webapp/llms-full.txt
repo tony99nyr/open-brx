@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-08-30T22:56:34.331Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-08-31T23:08:51.132Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -2372,7 +2372,7 @@ Source: protocol/brx-protocol.md §3, §7a, §7e, §7f, §7l, §7o, §7r; docs/g
 | `$IRTX,…,*` | >> | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). | 🔍 (fields) ✅ (bench result) |
 | `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. | 🔍 ✅(no-op) |
 | `$STUN,*` | >> | n/a | Listed in the APK. **Proven no-op over BLE.** | 🔍 ✅(no-op) |
-| `$GLED,<mid>,<effect>,<optionA>,<optionB>,…,*` | >> | mid, effect, optionA, optionB | Gun LED **effect**. `effect` = LedEffect enum (Solid, Glow, ChaseBack, ChaseForward, StopIR). **Not RGB**: colour is team-derived from `$TID`. Used by the app during the pre-game lobby. | 🔍 ✅(not RGB) |
+| `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white**. **Token 4 = 3 blanks all three** (night mode); Callsign sends `$GLED,,,,5,,,*` on death, which also blanks. Token 5 is brightness. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. | ✅ |
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. | 🔍 (fields) ✅ (bench result) |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA · `$PBWEAP,0` = M4 AUTO · `$PBPERK,2` = Body Armor · `$PBLIVES,2` = 5 lives · `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. | 👥 |
 | `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host↔host | n/a | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. | 👥 |

@@ -345,9 +345,9 @@ team** — white, matching native — and still credit kills correctly. That is 
 for Q17 beyond fixing 2v1 TDM.
 
 **Open question before implementing:** which `$TID` (or other mechanism) produces the native **white**?
-Colour is team-derived, so white may be a specific team value, an unset team, or a different LED path
-entirely. Worth one probe: sweep `$TID` values on a gun and record the colour, and check what a native
-FFA game actually pushes.
+⚠️ *(This paragraph predates the `$GLED` solve.)* We can now paint **white directly** — `$GLED,6,6,6` —
+so a neutral-white FFA no longer depends on finding a magic `$TID`. The open part is only whether a
+spawned gun's native health gauge repaints over it; check what a native FFA actually pushes.
 
 **Decide, do not drift:** if we keep distinct colours, that is a legitimate design choice (a 3-colour
 FFA is arguably clearer for players than 3 identical white guns) — but it should be **chosen and
@@ -435,32 +435,38 @@ Suggested mapping (colour per pool, segments per level):
 - **shield** teal · **armour** purple · **health** green, shifting yellow then red as it drops
 - 3 lit = full, 2 = two-thirds, 1 = one-third, 0 = empty
 
-### ⚠️ The blocker, and it must be settled first
+### ⚠️ RESOLVED 2026-08-30 — the "blocker" was the native gauge, and my override was destroying it
 
-**A spawned gun runs a team-colour pulse and `$GLED` is composited over it**, so the gauge flickers
-between the set colour and the team colour and cannot be read. Arming *without* `$SPAWN` holds solid,
-but a gun in a real match **is** spawned.
+**This subsection used to argue that a spawned gun's pulse was interference to suppress. That reading is
+RETRACTED.** Tony, watching a **native FFA** game: *"two guns went blue. i shoot the other, the pulsing
+blue led represents the health. now only the 3rd led is pulsing blue."*
 
-**TESTED 2026-08-30 — the pulse does NOT settle, and it is an ALTERNATION, not a wash-out.**
-Spawned on `$TID,2` (yellow), waited 20 s for any spawn animation, then sent all-teal
-(`$GLED,5,5,5,0,10`). Tony: *"pulsing yellow and then teal"*. So the frame **is** taking effect — the
-gun cycles **team colour ↔ the set colour**, which is what makes a gauge unreadable rather than the
-gauge being ignored. Unspawned, the same frame holds **solid**.
+The pulsing is the gun's **own 3-segment health gauge**, in the team colour: three LEDs at full health,
+dropping to one as health falls. So:
 
-*(A first attempt sent `$HLOOP,0,0` before the `$GLED` and showed yellow only. That was my error:
-`$HLOOP,0,0` is part of our own END_SEQUENCE restore, so it repainted the team colour over the gauge.
-It is not a suppressor.)*
+- The "alternation" that "washed out" my gauge **was a working gauge underneath**. `$GLED` was not being
+  ignored and was not fighting an animation — it was **overpainting the real thing**.
+- A spawned gun pulses **because it is displaying pools**. That is why it only ever appeared when
+  spawned, and why it never "settled".
+- The old option list ("find the suppressor", "re-assert on a repeat") aimed at destroying the feature
+  F1 was asking for. **Do not pursue it.** `$HLOOP,0,0` is still not a suppressor — that part stands.
 
-**Options, none yet tested:**
-1. **Accept the alternation.** It shows team *and* pool status, which is arguably a feature, but Tony's
-   read is that it "washes it out" and is hard to follow step to step.
-2. **Find the suppressor.** Untried: a `$TID` value with no colour (0 was swept for colour but its
-   result was never captured), other `$GLED` trailing tokens on a *spawned* gun, or a headset-family
-   equivalent. `$HLOOP` is ruled out.
-3. **Re-assert `$GLED` on a short repeat** to keep it painted. Works in principle, but it is a BLE write
-   per repeat per player and the host is already busy — measure before choosing this.
+`$GLED` per-LED control remains real and useful for **night mode, hit flash, per-player colour and FFA
+white**. It is simply the wrong tool for **health**, because the gun does health itself.
 
-**Do not ship a flickering gauge.** Settle which option before building F1 into a mode.
+### ⬜ The one open question — and it is a five-minute test
+
+**Does the native gauge appear in OUR compiled games, or only in native on-gun ones?** Every confirmed
+sighting (FFA above, Supremacy's Marauder) was a **native** game.
+
+- **If yes:** F1 is *already shipped* by the hardware. Close it, build nothing, and the only work left
+  is finding the config field that selects the Marauder's armour-then-health variant.
+- **If no:** F1 becomes "find the field that turns the native gauge ON in a compiled game" — still a
+  config hunt, still not an LED driver.
+
+Either answer **deletes the planned feature**, which is why it is worth doing before anything else in
+this section. Procedure: compile and start one of our games, take damage, and watch whether the three
+gun LEDs step down. No new tooling.
 
 ### Cost note
 
@@ -595,8 +601,8 @@ FF off ⇒ team identity is enforced in both directions (damage enemies only, he
 | P11 | Health-write semantics | ✅ RESOLVED | exp-log #33: **`$LIFE` and `$BUMP` are both ADDITIVE grants, clamped at max** (send the delta to add; neither is an absolute-set). **NO native regen** — armor held at 18 through 30 s idle. ⇒ shields/overshield/medic/Syphon are buildable via **host-driven** writes (heal on event; Halo-shields = host timer refill). Writes **don't self-emit `$HP`** — value shows on next hit/HUD refresh. |
 | P16 | **Do shields activate?** | ✅ **CLOSED 2026-08-26** — **YES, via an IR `$SIR` function-11 event**, never a BLE pool value: shield 0→50→70 on our emitter, and a later hit drains **shield first** (order shields→armor→HP). `$PSET` shield=70 alone does nothing, which is why G-2 saw 0. Original note: | The `$HP` **shield** field stayed **0** all through G-2 despite `$PSET` shield=70/99. Shields may need explicit **activation** (APK `ActivateShield` ability / a `$SIR` or mode setting), not just a pool value — so armor+HP are the working health pools today. Find how to turn shields on (needed for overshield / energy-shield modes). |
 | P12 | **`$PB*` playbook enum tables + re-test on v4.32** | ❎ **NEGATIVE on v4.32 (2026-08-27)** — all 12 `$PB*` shapes plus `$INIT` are **silent**: no reply, no state change. The v4.30 FB sequence does not respond on our firmware, so the enums cannot be mapped this way. Enum values would have to come from P8 (the HTTPS capture). Original note: | FB captured the full `$PB*` remote-start sequence on **v4.30** with enum values (`$PBGAME 0=FFA`, `$PBWEAP 0=M4 AUTO`, `$PBPERK 2=Body Armor`, `$PBLIVES 2=5`, `$PBTIME 5=Inf`; `$INIT` blocks start) — `brx-protocol.md` §7j. Map the **full enum tables** for each `$PB*` and confirm the sequence on our **v4.32** (behaviour is version-sensitive). |
-| P13 | **`$GLED` colour = single index (0–8)?** | 🟡 NEW | FB colour map (0 red…8 orange) fits **token-2-as-index** for 5/6 of our §7i probe. Re-probe `$GLED,<0-8>,0,0,1,2000,2000,*` mid-game, one field at a time → settle the LED-colour decode (needed for neutral-white FFA + team colours). |
-| P17 | **How to turn the LEDs OFF (night mode)** | 🟡 NEW | `GameConfig(leds=False)` (night mode = outdoor + LEDs off) emits a **best-effort, UNCONFIRMED** `$GLED,0,4,0,0,0,,*` (effect=4=StopIR). Verify the actual LEDs-off frame: try `$GLED` effect=StopIR vs all-zeros vs a brightness/duration=0 mid-game; LED colour is team-derived (§7i/P13), so "off" is likely an effect or brightness field. Until confirmed, night mode's LED-off is not guaranteed. (`gameconfig.py _led_frames`) |
+| P13 | **`$GLED` colour = single index (0–8)?** | ✅ **CLOSED 2026-08-30** | **YES, and there are three of them.** `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>` — tokens 1-3 are the three body LEDs, each a direct palette index: **0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white** (7-8 exist, unnamed). Bench-verified one field at a time, then predicted and confirmed: `$GLED,3,2,1,0,10` → green/yellow/blue. **Do not re-run.** |
+| P17 | **How to turn the LEDs OFF (night mode)** | ✅ **CLOSED 2026-08-30** | **Token 4 blanks all three.** Both `$GLED,,,,3,,,*` and the Callsign app's own death frame `$GLED,,,,5,,,*` go fully dark on the bench. `gameconfig._led_frames` now ships the **Callsign frame** (`t4=5`) because it is the one captured from the official app; `t4=3` is the value the docs name and is equally verified. ⚠️ The old shipped frame `$GLED,0,4,0,0,0,,*` was built on the retracted "index 0 = off" reading — index 0 is **red**, so it never turned anything off. Fixed 2026-08-31. |
 | P14 | **Audio SD card removable?** | 🟡 NEW | FB: audio is on a **(removable) SD card** ("pop" at boot = speaker OK; corrupt SD = no sound) — tensions our "SD hot-glued, not removed" note. Inspect on hardware: is the card accessible/swappable, and does swapping it change sound independent of the USB `AUDIO`-folder path? (`community-notes.md`) |
 | P15 | **`$PLAY` alarm + phone-as-station BLE limits** | 🟡 NEW | For phone-as-extraction-site (`docs/adr/0003-native-app-over-web-bluetooth.md`; phone-app-spec.md deleted): confirm which `$PLAY` sound ids make a good field-wide **extraction alarm** (grenade/explosion bank), and measure the **max simultaneous BLE connections** an Android target phone holds (decides how many guns one phone can make scream — ~3–7 expected). Below that count → mesh-event + per-node alarm. |
 
@@ -703,8 +709,9 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   base tail until a capture pins them); §3 prose `class/damage/range` vs code `cls/dmg/rng`.
 
 ## Bench 2026-08-25 (late) — new items
-- **LED life mode** — our app-derived config slow-blinks the team colour and never shows HP; native on-gun games
-  reportedly show life on the LEDs. Find the `$GSET`/`$PSET`/`$GLED`/`$HLED` token that selects it.
+- ✅ **ANSWERED 2026-08-30 — LED life mode.** The "slow blink" **was** the life gauge: three LEDs pulsing
+  in the team colour, stepping down as health falls (Tony, native FFA). Confirmed in native games; the open
+  part — does it appear in **our compiled** games? — is tracked in **F1**, not here.
 - **5-min hold-across-disperse** — re-run (the 2-min run passed; the 5-min run was cut by the headset event).
 - ✅ BUILT (23a5930, peer session: MC pushes `victory` to the winning team's connected nodes at recap + e2e test; defeat line still unpinned) **Victory cue wiring** — `compile.py` now has `victory` (VSF+JAY) separate from `game_over` (VA33); MC should
   send `victory` to winning nodes in coverage at recap (M-MC), losers get nothing extra. Find a defeat line

@@ -782,10 +782,13 @@ Two taggers were given identical configs differing **only** in team id — `$TID
 | 1 | blue |
 | 2 | yellow |
 
-**Hypothesis 2 above is confirmed: the LED is team-derived.** That is why walking
-`$GLED`'s supposed `<r>,<g>,<b>` tokens produced nonsense — those knobs do not control
-colour. Corroborated by the earlier §7i probe, which ran on a tagger whose default team
-was already blue and reported blue almost throughout.
+⚠️ **PARTLY RETRACTED 2026-08-30.** What stands: `$TID` does set a default colour, and
+`$GLED` has no `<r>,<g>,<b>` tokens — that is why walking them produced nonsense.
+What is **wrong**: the conclusion that colour is *only* team-derived and `$GLED` cannot
+set it. `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>` drives **three independently
+addressable body LEDs**, each a direct palette index, and a gun held on `$TID,1` took six
+colours on command. The §7i probe corroborated the wrong reading because it ran on a
+tagger that was already blue **and** was walking the wrong token positions.
 
 **Still unknown:** the full team→colour table, what `$GLED`'s tokens actually do, and
 whether a neutral/no-team colour exists. **Next test: `$TID,0,*`** — free-for-all has no
@@ -1113,8 +1116,8 @@ to do, using two commands we had misread.
   `$PLAY,,4,6,V3A,,,,*` plays a voice line with token 1 empty. Both slots can be used at once:
   the game-end frame is `$PLAY,VSF,4,6,JAY,,,,*`.
 
-Why the bench `$GLED` probes failed: right observation, wrong command. `$GLED` is team-derived
-(§7i) and never drives this flash; `$SFLASH` does.
+Why the bench `$GLED` probes failed: right observation, wrong command. `$GLED` drives the three
+**body** LEDs (solved 2026-08-30) and never drives the **sight** flash; `$SFLASH` does.
 
 ### Game end is host-driven, and uses both `$PLAY` slots
 

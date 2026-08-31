@@ -312,22 +312,28 @@ knobs — `environment` (indoor/outdoor) and `night` — plus explicit LED contr
 
 ```jsonc
 led {
-  mode:   "team" | "off" | "custom",   // team = $TID-derived colour (default)
-  effect: "solid" | "glow" | "chase" | "stopIR",  // GLED effect enum (protocol-classes)
-  brightness?: number,                 // 0–100 if supported (UNCONFIRMED)
+  mode:   "team" | "off" | "custom",   // team = leave the gun's own colour alone (default)
+  colors?: [number, number, number],   // custom: one palette index per body LED, front to back
+  brightness?: number,                 // $GLED token 5
 }
+// Palette (bench-verified 2026-08-30): 0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
+// 5 teal · 6 white (7-8 exist, unnamed). "off" = $GLED token 4 blanks all three.
+// NOTE: the old `effect: solid|glow|chase|stopIR` enum came from the APK teardown's
+// declaration-order field names and does NOT describe this command. Retracted.
 ```
 
 | Environment | `environment` / `night` / `led` | Frames |
 |---|---|---|
 | **Indoor** | `indoor` / false / `{mode:"team"}` | `$GSET,…,outdoorMode=0,…`; LED = team colour via `$TID` (no `$GLED`) |
 | **Outdoor (day)** | `outdoor` / false / `{mode:"team"}` | `$GSET,…,outdoorMode=1,…` (longer IR range profile) |
-| **Night** | `outdoor` / true / `{mode:"off"}` | `$GSET` outdoor + LED-off `$GLED` — **⚠ UNCONFIRMED** (`_led_frames` best-effort `$GLED,0,4,…`, followup P17) |
+| **Night** | `outdoor` / true / `{mode:"off"}` | `$GSET` outdoor + `$GLED,,,,5,,,*` — ✅ **CONFIRMED 2026-08-30** (token 4 blanks all three LEDs; P17 closed) |
 
-- LED colour is **team-derived** (`$TID` → firmware picks blue/yellow/red/green); we do **not** send
-  r,g,b (`$GLED` is `mid,effect,optionA,optionB`, protocol-classes §GLED). "Off" is the only
-  non-team state we attempt, and it is unverified — `night` drives the node's HUD blackout regardless
-  (that part is reliable; the gun LED-off is the risky bit).
+- ⚠️ **RETRACTED 2026-08-30:** LED colour is *not* only team-derived, and `$GLED` is *not*
+  `mid,effect,optionA,optionB`. It is **`$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`** — three
+  independently addressable body LEDs, each a direct palette index. A gun held on `$TID,1` took six
+  different colours on command. We still default to `mode:"team"` (send no `$GLED`) because a **spawned
+  gun uses those same LEDs as its own native health gauge**, and painting over it destroys the gauge.
+  `"off"` is now confirmed, not a guess. `night` also drives the node's HUD blackout, independently.
 - `is_night_mode() = outdoor && led.mode=="off"` (mirrors `gameconfig.is_night_mode`). Night also
   informs M-NODE's glare/blackout HUD (README §7).
 
@@ -389,8 +395,8 @@ awardMedals(rows, kills)  -> {player_id: medal_id[]}
    `$SIR`, uses `$PSET,0`, and takes `environment` for `$GSET`.
 8. **Voice sets** — `voiceOptions()` + `pset(...)`; encode the known families; VA complete,
    others best-effort; capture-plan doc for the unknown per-slot ids.
-9. **`led` object** — parse into `outdoor`/`leds` + effect; wire the 3 environment presets; keep the
-   night `$GLED` path flagged UNCONFIRMED.
+9. **`led` object** — parse into `outdoor`/`leds` + optional per-LED `colors`; wire the 3 environment
+   presets. The night `$GLED` path is **confirmed** (token 4 blanks); no longer a guess.
 10. **`validate(roster, opts)`** — the §7 rule set incl. required `time_limit_s` and unique `player_num`.
 11. **Medals** — `medalCatalog()` + `awardMedals()` over `ScoreRow[]`/`Kill[]`; per-player, exact.
 12. **Mocks/fakes** — a `FakeCatalog` + sample `GameConfig`s + a sample `FrameBundle` so M-NODE/M-MC
@@ -408,8 +414,9 @@ awardMedals(rows, kills)  -> {player_id: medal_id[]}
   to gun A, no `$SPAWN`; shoot it with a try-out-armed gun B; watch for `$HIR`/`$HP` on A.
 - **Voice per-slot map** beyond VA — do we pull the `voice-profiles` endpoint (apk-harvest) or
   capture-diff each family? Endpoint is faster if reachable offline-cached.
-- **Night LED-off (P17)** — `$GLED` "off" is a guess; `$TID` may always drive some LED. Verify on
-  hardware before promising a dark gun; HUD blackout is independent and reliable.
+- ✅ **Night LED-off (P17) — CLOSED 2026-08-30.** `$GLED` token 4 blanks all three LEDs, verified on
+  hardware. Still open, and tracked in **FOLLOWUPS F1**: a *spawned* gun runs a native health gauge on
+  those LEDs, so confirm a blanked gun stays dark once spawned.
 - **Max native team count** — 2-team play confirmed; 3 distinct `$TID` colours observed but 3+-team
   UNTESTED. Now purely a duos/trios question (attribution no longer depends on it).
 - ~~**Tutorial `$TID`**~~ **RESOLVED:** no "no team" colour exists; send no `$TID`, the leftover colour is

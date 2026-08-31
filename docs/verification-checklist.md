@@ -61,7 +61,7 @@ harness) — so the bench only needs to confirm what the sim CAN'T model. Do the
    → confirm connect-grace plays with the rest (`playing with N/M taggers`); **power-cycle a tagger
    mid-game** → confirm it reconnects and rejoins (`reconnected …`); confirm a game never hangs.
 3. ✅ **Teardown - PASSED 2026-08-30 (second confirmation)**. Both guns died seconds before the end and were revived, not stuck. The spawn voice was audibly cut mid-word ("ge..."), which is `$PLAYX,0` firing right after `$SPAWN` exactly as designed; blinking stopped and both pulsed their last-game team colour. ~~3. ⬜ Teardown~~ — after a game, the loser isn't stuck (revived, headset dark, pulses last team). (✅ once.)
-4. ⬜ **Config knobs on-gun** (Session C): night mode LEDs-off (P17), outdoor, kid_mode FF-off, volume, weapons.
+4. ⬜ **Config knobs on-gun** (Session C): ~~night mode LEDs-off (P17)~~ ✅ **closed 2026-08-30**, outdoor, kid_mode FF-off, volume, weapons.
 5. ✅ **Native kill feedback** (D4) — RESOLVED 2026-08-25: **fully BLE-drivable** — the host sends `$SFLASH` (green flash) + token-4 `$PLAY` (announcer) per kill, exactly as Callsign does (§7o / B18). ✅ **Per-player attribution (P2) also RESOLVED** the same day (§7p/§7q).
 6. ⬜ **Health variants** (Session B): syphon/regen `$LIFE` behaviour on real guns.
 7. ⬜ **Objective modes** — need a station (grenade/Utility Box) to emit the IR events; gated on the IR bench
@@ -108,7 +108,7 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ⚠ **Shields** — `shield=` / any shield-pool effect: **P16** — shields read 0 despite `$PSET` shield=99. ~~Confirm whether shields can be activated at all~~ ✅ **P16 CLOSED 2026-08-26 — yes, via an IR `$SIR` function-11 event, never a BLE pool value** (drain order shields→armor→HP); until then use **armor**, not shield.
 
 ## Session C — environment / config knobs (1 tagger, ~10 min)
-- ⬜ **Night mode / LEDs off** — `leds=0` sends a **guessed** `$GLED` (P17). Does it actually turn the LEDs off? Try effect=StopIR vs all-zeros vs brightness=0.
+- ✅ **Night mode / LEDs off — PASSED 2026-08-30 (P17 closed).** `$GLED` **token 4** blanks all three LEDs; `gameconfig` now ships Callsign's own `$GLED,,,,5,,,*`. ⬜ **Remaining:** confirm a blanked gun stays dark once **spawned** — a spawned gun runs a native health gauge on those same LEDs.
 - ⬜ **Outdoor mode** — `outdoor=1` (`$GSET` token 2) changes IR range/behaviour as expected.
 - ⬜ **Kid mode** — `kid_mode=1` → more health, friendly fire off (verify FF actually off).
 - ⬜ **Volume** — the 1–5 ≈ 60/70/80/90/100 estimate; confirm `volume=80` is a comfortable level-3.
@@ -130,7 +130,8 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ✅ **Native feedback over BLE** — the **host drives the identical feedback over plain BLE**: `cap8`
   caught the app sending **`$SFLASH,*`** (green-sight flash) + **`$PLAY,,4,6,V3A,,,,*`** (kill line) per
   kill (§7o). MC does the same via `KillAnnouncer` (B18) — **the visual is ours too**; the old "nRF-only"
-  call was a wrong-command (`$GLED`) probe. (In a phoneless native game the gun self-fires it over nRF.)
+  call was a wrong-command (`$GLED`) probe — right observation, wrong command; `$GLED` does work, it just
+  drives the three body LEDs, not the sight. (In a phoneless native game the gun self-fires it over nRF.)
 - ✅ **Shooter-side kill event** — **none** on BLE beyond the victim's `$HIR`/`$HP,0` (team-granular) —
   which is *why the host must decide the kill* and send the feedback (D4 stands, not contradicted).
 - ❎ **nRF radio** (D1) — re-scoped twice: not needed for feedback (§7o) **nor for attribution** (§7q —

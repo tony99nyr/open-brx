@@ -45,9 +45,9 @@ or floor space. This is the biggest category and the highest-value one.
 ### A2 · Needs EYES (5) — **the LED cluster, entirely unconfirmed**
 | id | unknown | why it matters |
 |---|---|---|
-| **P13** | Is `$GLED` colour a single 0–8 index? | neutral-white FFA + team colours |
-| **P17** | How do you turn the LEDs **OFF**? | night mode currently emits a **best-effort, UNCONFIRMED** frame |
-| — | **LED life mode** — native games show HP on the LEDs; ours slow-blinks team colour | stock feature we lose |
+| ~~**P13**~~ | ~~Is `$GLED` colour a single 0–8 index?~~ | ✅ **CLOSED 2026-08-30** — yes, and there are **three** independently addressable LEDs (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white). |
+| ~~**P17**~~ | ~~How do you turn the LEDs **OFF**?~~ | ✅ **CLOSED 2026-08-30** — **token 4** blanks all three (`$GLED,,,,3,,,*`, and Callsign's own `$GLED,,,,5,,,*`). |
+| ~~—~~ | ~~**LED life mode**~~ | ✅ **ANSWERED 2026-08-30** — the pulse **is** the native life gauge. Open part moved to **FOLLOWUPS F1**: does it appear in *our compiled* games? |
 | — | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | looks broken to a player |
 | **A10c** | **Extended Mags HUD max** — does the HUD's mag/reserve cap match the `$AMMO,0` we write (64/768)? | *(loadout v2)* **eyes only, no trigger** — compare HUD to the frame |
 

@@ -1,12 +1,12 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-08-29. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
+**Updated:** 2026-08-31. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
 lore, indexed by symptom; several of those quirks each cost a whole session.
 [`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it.
 **The bench queue is [`docs/bench-tomorrow.md`](bench-tomorrow.md), and it is the ONLY one.**
 [`bench-next-30.md`](bench-next-30.md) is a 30-minute subset of it; `bench-plan-hardware.md` is
-**superseded**. If two documents disagree about what to do first, bench-tomorrow wins.
-[`bench-next-30.md`](bench-next-30.md) is a short 30-minute subset of it, not a separate plan.
+**superseded**. If two documents disagree about what to do first, bench-tomorrow wins — and its
+**START HERE** block names the first three things in order.
 
 > ### ⚠️ 2026-08-30 — `$GLED` SOLVED, and the LED "pulse" was the health gauge all along
 >

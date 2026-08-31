@@ -99,7 +99,7 @@ class GameConfig:
 
     # -- environment / LEDs -------------------------------------------------- #
     outdoor: bool = False             # $GSET outdoorMode (IR range/behaviour)
-    leds: bool = True                 # False = LEDs off  ⚠ UNCONFIRMED frame (see below)
+    leds: bool = True                 # False = blank all three gun LEDs (CONFIRMED, see _led_frames)
     kid_mode: bool = False            # gentle preset (applied in __post_init__-style)
 
     # -- combat rules -------------------------------------------------------- #
