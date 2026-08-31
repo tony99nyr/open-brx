@@ -37,6 +37,58 @@ the same fault from the other end. **Power-cycle the gun and the headset before 
 First thing to run once it is back, and it needs no operator: **item 1.5a**, the ally re-measure from
 depleted pools. It decides whether ally 9, 15, 31, 32, 34 are status functions or clamped grants.
 
+## HOW TO RUN ANYTHING (read once — the items below assume this)
+
+**Everything runs from Windows Python, not WSL** (WSL2 has no Bluetooth). From WSL the interpreter is:
+
+```
+PY=/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe
+cd /mnt/c && $PY -m brx_mcp scan          # ALWAYS start here
+```
+
+`scan` prints every tagger's **BLE name and address**. The name carries the headset sticker, so that is
+how you match a physical gun to an address. **The sticker-to-address mapping is deliberately NOT in this
+repo** (the stickers are headset serials) — read it off `scan` each session.
+
+**The ESP32 rig:** board **A = receiver, COM7** (VS1838B → GPIO4) · board **B = emitter, COM8**
+(2N2222A + LED → GPIO5). Close the Arduino Serial Monitor first — **Windows COM ports are exclusive**
+and it will silently steal the board.
+
+### The verbs you will actually use
+
+| what | command |
+|---|---|
+| find guns | `$PY -m brx_mcp scan` |
+| run a real game | `$PY -m brx_mcp play <mode> <addr…> volume=69` |
+| reset a gun to clean idle | `$PY -m brx_mcp reset <addr>` |
+| capture IR | `$PY -m brx_mcp ir-capture COM7 <secs>` |
+| emit one IR word | `$PY -m brx_mcp ir-emit <25-bits> COM8 [repeat]` |
+| range / hit-rate at distance | `$PY -m brx_mcp ir-range COM7 <secs> <shots>` |
+| end-to-end scorecard | `$PY -m brx_mcp diag-game <addr>` |
+
+### The purpose-built bench scripts (`mcp/tools/`, run with the same `$PY`)
+
+Each carries its usage in its docstring — `head -3 <file>` if unsure.
+
+| script | usage | for |
+|---|---|---|
+| `hittest.py` | `<shooter> <victim>` | one clean hit, single timeline |
+| `damage_bench.py` | `<shooter> <victim> [secs]` | does `$WEAP` t5 mean damage |
+| `sensor_bench.py` | `<shooter> <victim> [secs]` | map `$HIR` token 1 (which sensor was struck) |
+| `weapon_range.py` | see docstring | range work |
+| `tid_bench.py` / `ff_probe.py` | see docstring | team + friendly-fire matrices |
+| `victim_count.py` / `quick_victim.py` | see docstring | quick victim-side readouts |
+
+> ⚠️ **Two rules that have each cost a session.**
+> **1. State the shooter TEAM in every IR test.** A wrongly-teamed shot is discarded with **no `$HIR`
+> at all**, so it looks identical to a dead emitter. Damage needs an **enemy** team, grants need the
+> victim's **own**.
+> **2. Never advance an operator-in-the-loop sweep on a timer.** Send one frame, **wait for the call**,
+> then send the next. A timed sweep racing a human observer binds observations to the wrong frame — it
+> cost an afternoon and produced two confidently wrong theories on 2026-08-30.
+
+---
+
 ## Before you start (5 min)
 - **POWER-REST first** — the fleet ops rule. Use guns that have been off; Tactix-FE30 ran all night.
 - **Headsets ON and settled** or the gun silently refuses to join.
@@ -68,6 +120,20 @@ believing it.**
 
 ## GROUP 0 — settle what blocks published numbers (~25 min) 🎯
 
+**Commands for this group** (see HOW TO RUN for `$PY`):
+
+```
+$PY -m brx_mcp scan                                  # get addresses first, every time
+$PY -m brx_mcp ir-capture COM7 60                    # 0.2 loopback: aim board B at board A, then TX
+$PY ../gitrepos/battlecompany/mcp/tools/sensor_bench.py <shooter> <victim>    # 0.3 which sensor was struck
+```
+
+**0.1 needs no script** — it is a real BRX weapon fired at a victim while you read the victim's frames.
+Put the victim on BLE and watch: `$HIR` **token 5** is the raw magnitude, and the `$HP` delta is the
+applied damage. Compare the two. That is the whole test, and it works because **our emitter is out of
+the signal path**.
+
+
 | # | Goal | Do this | Pass |
 |---|---|---|---|
 | **0.1** | **Settle the DISPUTED fn 36/37 multipliers** — two of our own datasets disagree (x2 vs x1.0) and four hypotheses were tested and refuted. Until this is resolved, **every weapon mapped to fn 36/37 may be dealing base damage** and we must not publish x1.25/x2 | Fire a **real BRX weapon** known to use fn 36/37 at a victim. Compare **`$HIR` token 5** (raw magnitude) against the applied **`$HP` delta** | delta = 2 x tok5 ⇒ multiplier real, our emitter path is at fault · delta = tok5 ⇒ the x1.25/x2 claim is wrong. Either way it reads off stock hardware with **nothing of ours in the signal path** |
@@ -94,7 +160,7 @@ sweep ran with the shield at 0. The seven left moved no pool with 150 shield ava
 | ~~1.3~~ | ~~Does a stun cost a reload?~~ **MOOT 2026-08-27** — there is no stun. fn 23 preserves ammo and never stops the trigger; it silences the gun. Re-ask if a real stun is ever found | — | — |
 | **1.4** | **K1 — auto-reload for kids.** Two mechanisms, pick one | (a) `GameConfig(alt_reload=True)` → **already ships** (`$BMAP,1,97`, ALT = reload). (b) `$WEAP` **t19 = 5** (`ReloadType.AutoReload`) → fire dry. ⚠️ **Half of this is already answered (2026-08-27): it does NOT self-reload on an empty or near-empty magazine**, controls both ends. Only the *fire-triggered* case is left — pull the trigger on an empty chamber and watch `$ALCD` | which one feels right for young kids |
 | **1.5** | **Status functions: what do enemy 8, 24-28, 35 and ally 31, 32, 34 actually DO?** They register a `$HIR`, change no pool, emit no BLE. ⚠️ **fn 3 was removed 2026-08-29** (it drains shield, so it is damage). ⚠️ **Do the ally ones LAST** and only after the keyboard re-measure in 1.5a, or you will burn trigger time on clamped grants | I fire each at you from the correct polarity team; **report anything you feel, hear or see** | naming even one is a new mechanic |
-| **1.5a** | **KEYBOARD FIRST (no operator needed): re-measure ally 9, 10, 15, 31, 32, 34 from DEPLETED pools.** The map ran at full HP/armour, so a heal or armour grant clamps and reads as "no pool change". That is how fn 10, a known heal, got mis-binned | spawn, take damage to open headroom, then apply each ally function and watch `$HP` | any that moves a pool is a GRANT, not a status function, and drops off 1.5 |
+| **1.5a** | ⚠️ **NOT operator-free while the rig is in the screamer state — power-cycle first.** **Then keyboard-only: re-measure ally 9, 10, 15, 31, 32, 34 from DEPLETED pools.** The map ran at full HP/armour, so a heal or armour grant clamps and reads as "no pool change". That is how fn 10, a known heal, got mis-binned | **Procedure:** arm the victim, fire **2 enemy shots of 25** to open headroom (armour 70 → 20, still alive — do NOT kill it, a dead gun accepts no IR), then fire each ally function **from the victim's own team**. Read `$HP,<hp>,<armor>,<shield>`. `mcp/tools/hittest.py <shooter> <victim>` gives a clean single-timeline hit if you want one shot at a time. | any that moves a pool is a GRANT, not a status function, and drops off 1.5 |
 | **1.6** | **KotH rate-of-fire buff** (your hardware fact) — likely one of the ally-side no-pool fns | While I fire 31/32/34 at you, **hold the trigger and listen for cadence change** | a fire-rate buff = 31/32/34 named |
 | **1.7** | **t37/t38 overheat semantics** — what 20 vs 150 each mean | Two varied-value probes on the SMG+t37/t38 frame, watch the gauge | maps the two fields |
 | **1.8** | **U4 reload chain / U5 held-trigger sound** | One long reload with a stopwatch; then hold the AR trigger and listen | closes both |
