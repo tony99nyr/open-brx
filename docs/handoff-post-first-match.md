@@ -4,7 +4,18 @@
 is split below by *which machine can do it*, because the two highest-value items are **Mac-only** and
 the Windows machine cannot start them.
 
-Suites at handoff: **mcp 542/542 · app engine 54/54 · browser e2e 75/75.**
+Suites at handoff: **mcp 543/543 · app engine 54/54 · browser e2e 75/75.**
+
+> ### 📌 2026-09-01 — the Mac cleared the leftovers. **W1–W5 below are untouched and still yours.**
+> Swept here after the handoff was written, so they are no longer open: an advisory-`settling`
+> regression test (the feature had shipped without one); `reload_s` returning `0.0` instead of `null`
+> for a missing reload time (it rendered a confident "RELOAD 0.0S"); a stale RECAP selection silently
+> falling back to the live match; duplicate `<option>` keys when a registry gun id equals a node's
+> tail; and dead try-out CSS. Also **three `rules-of-hooks` violations fixed** — one I introduced in
+> `Recap.tsx` and two pre-existing in `Kit.tsx`, all hooks sitting after an early `return null`.
+> `npx oxlint src/` in `webapp/mc` is now **clean of errors** (it had two at HEAD), which matters for
+> W5 below: a lint gate there would now pass from a green start.
+> **Nothing in the Windows section was started.** No file under W1–W5 was edited beyond those fixes.
 Lab notebook entry: `docs/experiment-log.md` → *2026-08-30 (Tony + Claude, MacBook)*.
 Open items also tracked in `docs/FOLLOWUPS.md` → *Field 2026-08-30*.
 

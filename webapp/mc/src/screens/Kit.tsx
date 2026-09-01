@@ -17,6 +17,12 @@ export function Kit() {
   const [newName, setNewName] = useState('');
   const [slot, setSlot] = useState<Slot>('primary');
   const [secKind, setSecKind] = useState<'weapon' | 'perk'>('weapon');
+  // The host's last write per slot. When choice=player BOTH the phone and the host may write; if the phone lands
+  // a pick seconds after the host did, the card would just flip — say so instead (brx-opus2, 2026-08-27).
+  // Kept ABOVE the `!state` early return: hooks after a conditional return change hook order between
+  // renders, which React does not allow (it happened to work only because `state` is never re-nulled).
+  const [hostPick, setHostPick] = useState<{ pid: string; slot: Slot; id: string | null; label: string; t: number } | null>(null);
+  useEffect(() => { if (!hostPick) return; const h = setTimeout(() => setHostPick(null), 12_000); return () => clearTimeout(h); }, [hostPick]);
   if (!state) return null;
   const players = state.players;
   const sp = players.find(p => p.player_id === selPlayer) ?? players[0];
@@ -33,15 +39,20 @@ export function Kit() {
   // has never done that has an EMPTY registry — which used to leave this select with only "NO GUN"
   // and no way to kit anyone. Muster's device-first claim already falls back to the gun tail (which
   // the server matcher accepts, state.py `_find_player_for_gun` second pass); this does the same.
-  const gunOptions: { gun_id: string; label: string }[] = [
-    ...registry.map(r => ({ gun_id: r.gun_id, label: `${r.sticker}${r.ble?.tail ? `-${r.ble.tail}` : ''}` })),
-    ...state.nodes
-      .filter(n => n.gun_tail && !registry.some(r => (r.ble?.tail || '').toUpperCase() === n.gun_tail!.toUpperCase()))
-      .map(n => ({ gun_id: n.gun_tail!, label: `${n.gun_name || n.gun_tail} · UNREGISTERED` })),
-  ];
+  const gunOptions: { gun_id: string; label: string }[] = [];
+  const seenGun = new Set<string>();
+  const addGun = (gun_id: string, label: string) => {
+    const k = gun_id.toUpperCase();
+    if (seenGun.has(k)) return;      // one option per gun: a registry row whose gun_id IS a node's
+    seenGun.add(k);                  // tail would otherwise be emitted twice, with a duplicate key
+    gunOptions.push({ gun_id, label });
+  };
+  registry.forEach(r => addGun(r.gun_id, `${r.sticker}${r.ble?.tail ? `-${r.ble.tail}` : ''}`));
+  state.nodes
+    .filter(n => n.gun_tail && !registry.some(r => (r.ble?.tail || '').toUpperCase() === n.gun_tail!.toUpperCase()))
+    .forEach(n => addGun(n.gun_tail!, `${n.gun_name || n.gun_tail} · UNREGISTERED`));
   // keep an already-assigned gun selectable even if its node dropped and it was never registered
-  if (sp?.gun_id && !gunOptions.some(o => o.gun_id.toUpperCase() === sp.gun_id!.toUpperCase()))
-    gunOptions.push({ gun_id: sp.gun_id, label: `${sp.gun_id} · OFFLINE` });
+  if (sp?.gun_id) addGun(sp.gun_id, `${sp.gun_id} · OFFLINE`);   // keep an assigned gun selectable if its node dropped
   // <select> matches option values case-SENSITIVELY, so a player whose gun_id differs only in case
   // from the option would silently display "— NO GUN —" (review 2026-08-31).
   const selectedGun = gunOptions.find(o => o.gun_id.toUpperCase() === (sp?.gun_id ?? '').toUpperCase())?.gun_id ?? '';
@@ -59,10 +70,6 @@ export function Kit() {
   const showKind: 'weapon' | 'perk' = slot === 'primary' ? 'weapon' : secKind;
   const focusItem: WeaponView | PerkView | undefined = slot === 'primary' ? primary : (secondaryW ?? perk);
 
-  // The host's last write per slot. When choice=player BOTH the phone and the host may write; if the phone lands
-  // a pick seconds after the host did, the card would just flip — say so instead (brx-opus2, 2026-08-27).
-  const [hostPick, setHostPick] = useState<{ pid: string; slot: Slot; id: string | null; label: string; t: number } | null>(null);
-  useEffect(() => { if (!hostPick) return; const h = setTimeout(() => setHostPick(null), 12_000); return () => clearTimeout(h); }, [hostPick]);
   const setLoadout = async (next: Loadout, tryWeapon?: string, note?: { slot: Slot; id: string | null; label: string }) => {
     if (!sp) return;
     const ok = await patch({ loadout: { ...(sp.loadout ?? {}), ...next } });

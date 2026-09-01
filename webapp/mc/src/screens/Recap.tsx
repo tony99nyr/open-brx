@@ -18,11 +18,17 @@ export function Recap() {
   // refetched the history several times a second (review 2026-08-31).
   const liveId = state?.live?.match_id ?? null;
   useEffect(() => { api.matchHistory().then(setHistory).catch(() => setHistory([])); }, [api, liveId, state?.phase]);
-  if (!state) return null;
   // The match still on screen is in the store too — showing it again as an "archived" chip hid its own
   // NEW MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
   const archive = history.filter(h => h.match_id !== liveId);
-  const past = sel ? archive.find(h => h.match_id === sel) ?? null : null;
+  // A selection that no longer exists (new session, or it became the live match) must not silently
+  // fall back to the live recap with nothing highlighted — drop it so the UI matches what is shown.
+  // NB this sits ABOVE the `!state` early return: a hook after a conditional return changes hook
+  // order between renders, which is a React invariant, not a lint preference.
+  const stale = sel != null && !archive.some(h => h.match_id === sel);
+  useEffect(() => { if (stale) setSel(null); }, [stale]);
+  if (!state) return null;
+  const past = sel && !stale ? archive.find(h => h.match_id === sel) ?? null : null;
   const rc: RecapView | null = past ? past.recap : live;
   const picker = archive.length > 0 ? (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>

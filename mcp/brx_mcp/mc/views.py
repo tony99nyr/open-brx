@@ -48,7 +48,9 @@ def weapon_view(w: dict) -> dict:
     dmg_num = dmg if isinstance(dmg, (int, float)) and not isinstance(dmg, bool) else None
     return {"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
             "clip": mag, "mags": ((st.get("reserve") or 0) // max(mag or 1, 1)),
-            "reserve": st.get("reserve"), "reload_s": round((st.get("reload_ms") or 0) / 1000, 1),
+            "reserve": st.get("reserve"),
+            # None, not 0.0: a missing reload time must read "—", not a confident "RELOAD 0.0S"
+            "reload_s": round(st["reload_ms"] / 1000, 1) if st.get("reload_ms") else None,
             "reload_ms": st.get("reload_ms"),
             "dmg": dmg, "rpm": st.get("rof", st.get("rpm", 50)),
             "rng": st.get("rng", st.get("range_pct", 50)),

@@ -129,7 +129,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

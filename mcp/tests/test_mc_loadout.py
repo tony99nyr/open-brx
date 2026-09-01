@@ -743,3 +743,39 @@ def test_a_single_weapon_view_has_no_bars():
     """One weapon cannot be ranked against weapons it has not seen — bars come from `weapon_views`."""
     from brx_mcp.mc.views import weapon_view
     assert "bars" not in weapon_view(Compiler().weapon_catalog()[0])
+
+
+def test_settling_is_advisory_and_never_wedges_the_recap():
+    """A8 field 2026-08-30: the recap read FINAL, then the totals moved.
+
+    `settling` reports which bound nodes have not checked in since the whistle. It must stay ADVISORY:
+    an earlier attempt folded this condition into `_mark_flushed_live`, which left a phone that went
+    quiet at the whistle permanently un-flushable and the recap permanently PROVISIONAL.
+    """
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    s.start(runway_s=5, force=True)
+    end_t = s.scorer.end_t
+    assert end_t is not None
+
+    clock["t"] = end_t - 1000                      # still playing
+    assert s.settling()["settling"] is False, "nothing to settle before the whistle"
+
+    clock["t"] = end_t + 2000                      # whistle blown, neither phone has reported since
+    st = s.settling()
+    assert st["settling"] is True and len(st["awaiting"]) == 2 and st["since_end_ms"] == 2000
+
+    # one phone checks in after the end -> only the other is still awaited
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "hp": 45, "armor": 70, "ammo": 36,
+                                  "alive": True, "shots": 0, "battery": 80, "fw": "v4.32",
+                                  "arm_state": "live", "synced": True, "pending": 0,
+                                  "preflight": {"gun_linked": True}}, clock["t"])
+    assert s.settling()["awaiting"] == [ps[1]["player_id"]]
+
+    # ...and the silent phone must NOT block the recap: it is still flushable, exactly as before.
+    s._mark_flushed_live()
+    r = s.recap()
+    assert "settling" in r, "the advisory rides along on the recap"
+    assert r["provisional"] is not None            # whatever it is, `settling` did not decide it
