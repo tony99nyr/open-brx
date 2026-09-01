@@ -2656,6 +2656,23 @@ game and then it will go dark during the game. it blinks green on hit and flashe
 ⇒ Headset LEDs are **not** something we need to build. The open LED work (P13/P17/life-mode) is about
 the **gun's** LEDs only.
 
+> ### ⛔ CORRECTED 2026-08-30 — "we get them free" is WRONG. Green is HOST-DRIVEN.
+> The first full 2-player match on our own stack (see the 2026-08-30 entry) produced **no green at
+> all** — not on a hit, not on a death — across **126 landed hits and 12 kills**. Both headsets were
+> healthy the whole match (`preflight.headset_ok == true` in all 328 live status envelopes, MC session
+> `session-e615e251.sqlite`), so this is not the dark/unpaired failure.
+> **If the green were autonomous it would have fired regardless of host — it did not.** Callsign must
+> send something on hit/kill that we never send: the only `$HLED` we emit all game is the
+> `$HLED,0,0,0,0,0,0` that BLANKS the headset in `END_SEQUENCE`.
+> Point 2 above ("these are native and survive OUR game heads — we get them free, and must not fight
+> them. Nothing in our config needs to reproduce green-on-death") is **withdrawn**. Point 4's open
+> question — *whose* hit and *whose* kill — is still open, but is now a question about a frame we have
+> to **send**, not one the hardware answers by itself.
+> Rainbow-on-disconnect and pre-game team colour are **untouched** by this: both were observed with no
+> host driving them, and the muster gate that rests on rainbow still stands.
+> ➡ Next: capture a Callsign game on the Mac and diff the in-play frames against ours — the hit/kill
+> feedback frame will be in that delta. Tracked in `FOLLOWUPS.md`.
+
 ## 2026-08-27 (unattended) — 🆕 `$QUERY,*` IS A CONFIG READ-BACK over BLE (and P12 is a negative)
 
 Working alone with one gun on BLE, no IR, no operator.
@@ -3758,3 +3775,90 @@ clamp a configured value to 255 as though the wire required it.
 carried no in-run control, so it could not distinguish "shields behave differently" from "no IR landed" —
 it was discarded rather than written up. See the following entry.
 
+
+## 2026-08-30 (Tony + Claude, MacBook) — 🏆 THE FIRST FULL MATCH ON OUR OWN STACK, and 11 findings
+
+**The MC↔phone↔gun path is HARDWARE-VERIFIED.** Two phones, two taggers, one MacBook hosting: a
+300-second FFA ran start to finish. **12 kills, 126 landed hits, 24 respawns, live streaks, a winner.**
+That closes the headline `[UNVERIFIED]` in `field-runbook-mc.md` — the field path is real, not just
+green in the test suite. Evidence: `~/.brx-mcp/mc/session-e615e251.sqlite` (984 envelopes) and the
+tee'd `~/mc-20260830-1930.log`.
+
+Everything below came out of that one match. Nine were fixed the same night; two need more evidence.
+
+### Setup: a fresh Mac cannot reach the KIT screen (FIXED)
+`~/.brx-mcp/armory.json` is built by cabling a tagger over USB and is git-ignored (it holds headset
+PINs), so a machine that has never done that has an **empty armory**. KIT's gun `<select>` was
+registry-only, so it offered nothing but "— NO GUN —" and no player could be kitted at all. Muster's
+device-first claim already falls back to the connected node's **gun tail** (`state.py
+_find_player_for_gun`, second pass); KIT now does the same and tags such guns `· UNREGISTERED`.
+*Both symptoms had one cause*: a node binds to a player **by gun**, so with no gun assigned neither
+phone bound, so neither got an `assign`, so both HUDs sat on "waiting" — with `kit_open` already true.
+
+### Volume was two notches too quiet (FIXED)
+`$VOL,69` — the value iOS Callsign sends, and our house default — is **on-gun level 2**
+(`$VOL` L1=60 … L5=100). Tony asked for L4. Volume now follows the venue that was already in the
+config: **90 outdoors, 80 indoors**, try-outs 80. `compile.play_volume()`.
+
+### The weapon meters were measuring the wrong thing (FIXED)
+`stats.dmg` is documented in `weapons.json` `_note` as *"share of a 115 pool one hit removes"* — 7 to
+11 for most guns. Rendered as a 0–100 bar it can never fill past a tenth, so **every weapon read weak
+and no two looked different**. And `rng` is **identical (75) on all 18 guns** — range is not
+differentiated on the wire, so that meter always measured nothing. Bars are now ranked **across the
+arsenal** (`views.weapon_views`) and the real numbers ship beside them: damage/hit, hits-to-kill,
+TTK, reload, mag/reserve. The range bar is gone.
+
+### The Assault Rifle: yes, we nerfed it, and it was the wrong nerf (FIXED)
+Tony: *"the classic assault rifle doesn't feel like the native m4 at all. it feels slow"* — and
+*"did we purposely make that less good?"* **Yes.** Exactly one token differed from the captured
+Callsign frame: `t14` fire interval, native **100 → 190 ms**.
+Measured across the whole arsenal, 190 was simply the first cycle at which the AR stopped strictly
+dominating — at native 100 ms with its 384 reserve it **strictly dominates 10 of the 17 picker
+weapons**. But the dominance was never rate alone; it was rate **plus the deepest pool in the game**.
+Paying for speed out of the *reserve* instead: **cycle 140 ms, reserve 192** → zero dominance, still
+inside the 1.5–3.5 s TTK band, and **36 % more rate of fire**. Shipping the true 100 ms remains a
+one-token change for anyone who wants stock feel over a balanced arsenal.
+
+### The HUD never learned about the ALT button (FIXED)
+`engine.js` only ever learned the live weapon slot from `$ALCD`, which the gun sends **on a shot** —
+so after an ALT swap the HUD kept showing the old weapon *"until you press trigger"*. `$BUT,1` was
+being parsed and thrown away (it was only read during resync). ALT now raises a big centre-screen
+**SWITCHING — HOLD FIRE** banner, and the swap is timed: `engine.lastSwitchMs` records the real
+duration the first time an `$ALCD` confirms one. **We have never measured how long a swap takes** —
+the 2500 ms ceiling is a guess with an optimistic flip behind it, and wants a real number.
+Also fixed: `snapshot.weaponId` always reported `weapons[0]`, ignoring the live slot.
+
+### Smaller fixes from the same match
+- **The countdown reset to 02:00 on every tab switch.** `Lobby.tsx` and `Armed.tsx` each held it in
+  `useState(120)`, and React re-runs an initialiser on **remount** — which is what a tab switch is.
+  Now shared + persisted (`webapp/mc/src/runway.ts`).
+- **A red readiness row hard-blocked the push with no way past it**, which stranded a live session
+  when one phone dropped its BLE link. `start()` has had a `force` since A6; `push_config()` did not.
+  It does now, behind a deliberate HOST OVERRIDE click — and the lobby prints the actual blocker
+  (`GUN LINK LOST`) instead of just `E20D RED ON THE BOARD`, which read as "MC is stuck".
+- **The recap read FINAL before the data was in**, then the totals moved. A node reporting
+  `pending == 0` has flushed what it *knows*; if it has not checked in since the whistle it may not
+  yet know its last seconds. After `end_t`, freshness is now measured **from `end_t`**.
+- **No way to see a previous match.** Every finished match was already being written to the session
+  store; nothing ever read it back. `Store.matches()` + `GET /api/matches` + a history picker on RECAP.
+- **The weapon name on the HUD was 11 px and muted.** It is primary information; it is now sized like
+  it, with a PRIMARY/SECONDARY chip, and kept (dimmed) in night mode instead of hidden.
+
+### ⚠ Two that need evidence, not more theorising
+1. **The headsets never flashed green** — on a hit or on a death. This **contradicts the 2026-08-27
+   entry**, which recorded green-on-hit/kill as autonomous and concluded "we get them free". Corrected
+   in place above: it is host-driven and Callsign sends something we do not. Needs a Callsign capture
+   on the Mac and a frame diff.
+2. **Emptying a mag on full auto showed no reload prompt and no empty-clip state.** The data path is
+   fine — ammo tracks and decrements across all 328 status samples — but **ammo never once read 0** in
+   the whole match. Two-second status sampling cannot tell us whether the gun stops emitting `$ALCD`
+   during sustained auto fire or whether this is a render-gate problem. **It needs the phone's raw BLE
+   frame ring**: hit "Share log" on both phones before closing the app and it lands in the same SQLite.
+
+### Method note
+The MC session SQLite carried this whole debrief. `envelopes` (984 rows) gave the per-2-second ammo,
+HP and preflight time series for both phones, which is what settled "did hits register" (yes),
+"were the headsets healthy" (yes, all match) and "did ammo ever hit zero" (no). **Start MC tee'd and
+copy the SQLite off after every session** — `field-runbook-mc.md §0a`. The one gap was the phone-side
+frame ring, which nobody hit "Share log" for; that is the difference between fixing bug 2 and
+speculating about it.

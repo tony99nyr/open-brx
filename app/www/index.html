@@ -102,7 +102,17 @@ button:active{filter:brightness(1.15)}
 .pips{display:flex;gap:4px}
 .pips i{width:8px;height:20px;background:var(--num);transform:skewX(-14deg)}
 .pips i.spent{opacity:.25}.pips i.warn{background:var(--warn)}
-.ammo .wn{font-family:var(--fd);font-weight:600;font-size:11px;letter-spacing:.24em;color:var(--mut)}
+/* Field 2026-08-30: at 11px muted this was unreadable at a glance and Tony could not tell which
+   weapon was equipped. It is primary information, so it is sized like primary information. */
+.ammo .wn{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--ink);display:flex;align-items:baseline;gap:8px;text-shadow:0 0 16px color-mix(in srgb,var(--glow) 35%,transparent)}
+.ammo .wn .slot{font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--mut)}
+/* ALT weapon swap: the gun will not fire until it finishes, so say so, centre-screen and unmissable. */
+.swapping{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px;z-index:6;pointer-events:none}
+.swapping .big{font-family:var(--fd);font-style:italic;font-weight:700;font-size:52px;letter-spacing:.06em;color:var(--warn);text-shadow:0 0 30px rgba(255,176,32,.55);animation:swapPulse .5s ease-in-out infinite alternate}
+.swapping .sub{font-family:var(--fd);font-weight:600;font-size:13px;letter-spacing:.26em;color:var(--mut)}
+.swapping .track{width:210px;height:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.swapping .track i{display:block;height:100%;background:var(--warn);width:0}
+@keyframes swapPulse{from{opacity:.55}to{opacity:1}}
 .reload{transform:skewX(-12deg);background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.26em;padding:3px 18px;animation:blink .7s infinite}
 .reload.solid{animation:none}
 .firevig{position:absolute;inset:0;box-shadow:inset 0 0 140px -20px rgba(255,40,40,.55);animation:hudglow 1s infinite;pointer-events:none}
@@ -122,7 +132,13 @@ button:active{filter:brightness(1.15)}
 /* ============ night ============ */
 [data-env="night"] .clockplate{border:0;background:none;top:28px}
 [data-env="night"] .clockplate .t{font-size:22px;font-weight:600;color:var(--mut);text-shadow:none}
-[data-env="night"] .clockplate .m,[data-env="night"] .ident,[data-env="night"] .topright,[data-env="night"] .reticle,[data-env="night"] .pips,[data-env="night"] .ammo .wn,[data-env="night"] .firevig,[data-env="night"] .takingfire{display:none}
+[data-env="night"] .clockplate .m,[data-env="night"] .ident,[data-env="night"] .topright,[data-env="night"] .reticle,[data-env="night"] .pips,[data-env="night"] .firevig,[data-env="night"] .takingfire{display:none}
+/* night ops strips the chrome, but which gun you are holding is not chrome — keep it, unlit */
+[data-env="night"] .ammo .wn{font-size:17px;color:var(--num);text-shadow:none}
+[data-env="night"] .ammo .wn .slot{display:none}
+/* night ops is light discipline: a 52px pulsing amber overlay would locate the player */
+[data-env="night"] .swapping .big{font-size:22px;color:var(--num);text-shadow:none;animation:none}
+[data-env="night"] .swapping .sub,[data-env="night"] .swapping .track{display:none}
 [data-env="night"] .vitals .hp{font-style:normal;font-size:76px;text-shadow:none;animation:none;color:var(--num)}
 [data-env="night"] .vitals .sh{display:none}
 [data-env="night"] .bar{height:5px;transform:none;border:0;padding:0;background:#120505}
@@ -318,6 +334,7 @@ button:active{filter:brightness(1.15)}
 .tryout .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.06em;color:var(--num)}
 .tryout .ln{font-size:12px;letter-spacing:.18em;color:var(--mut);font-weight:600}
 .tryout .tb{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.2em;color:var(--mut);font-weight:600}
+.tryout .tb span{width:104px;flex:0 0 104px}   /* fits RATE OF FIRE / AMMO CARRIED / KILL SPEED without wrapping */
 .tryout .tb span{width:34px}
 .tryout .tb i{flex:1;height:6px;background:var(--inset,#0a1626);border:1px solid var(--edge);display:block}
 .tryout .tb b{display:block;height:100%;background:var(--glow)}
@@ -395,6 +412,11 @@ button:active{filter:brightness(1.15)}
 .lo .lodetail .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.06em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:4px}
 .lo .lodetail .ln{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lo .lodetail .tb{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600}
+.lo .lodetail .tb span{width:104px;flex:0 0 104px}   /* fits RATE OF FIRE / AMMO CARRIED / KILL SPEED without wrapping */
+/* the real numbers that sit under the ranked bars (field 2026-08-30) */
+.tb span em{font-style:normal;opacity:.7}
+.facts{font-size:11px;letter-spacing:.12em;color:var(--mut);margin-top:6px;line-height:1.7}
+.facts b{color:var(--ink);font-weight:700}
 .lo .lodetail .tb span{width:34px}
 .lo .lodetail .tb i{flex:1;height:6px;background:var(--inset,#0a1626);border:1px solid var(--edge);display:block}
 .lo .lodetail .tb b{display:block;height:100%;background:var(--glow)}

@@ -1,4 +1,5 @@
-import type { ScoreRow } from '../api/types';
+import { useEffect, useState } from 'react';
+import type { MatchHistoryRow, RecapView, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { Brackets, SectionRule, PrimaryButton } from '../ui';
@@ -8,9 +9,44 @@ const AWARD_COLOR: Record<string, string> = { MVP: '#ffd23f', 'FIRST BLOOD': T.b
 
 export function Recap() {
   const { state, run, api, setView } = useStore();
+  // Field 2026-08-30: "the recap doesn't show the previous game once another is started ... we have no
+  // way to view previous". Every finished match is already in MC's session store; this reads it back.
+  const [history, setHistory] = useState<MatchHistoryRow[]>([]);
+  const [sel, setSel] = useState<string | null>(null);
+  const live = state?.recap ?? null;
+  // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
+  // refetched the history several times a second (review 2026-08-31).
+  const liveId = state?.live?.match_id ?? null;
+  useEffect(() => { api.matchHistory().then(setHistory).catch(() => setHistory([])); }, [api, liveId, state?.phase]);
   if (!state) return null;
-  const rc = state.recap;
-  if (!rc) return <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO RECAP YET — THE MATCH ENDS AT THE TIME LIMIT ON EVERY NODE.</div>;
+  // The match still on screen is in the store too — showing it again as an "archived" chip hid its own
+  // NEW MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
+  const archive = history.filter(h => h.match_id !== liveId);
+  const past = sel ? archive.find(h => h.match_id === sel) ?? null : null;
+  const rc: RecapView | null = past ? past.recap : live;
+  const picker = archive.length > 0 ? (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>MATCH HISTORY ▸</span>
+      {live && (
+        <button type="button" onClick={() => setSel(null)} style={chip(!sel)}>THIS MATCH</button>
+      )}
+      {archive.map((h, i) => (
+        <button key={h.match_id} type="button" onClick={() => setSel(h.match_id)} style={chip(sel === h.match_id)}
+          title={h.ended_t ? new Date(h.ended_t).toLocaleString() : h.match_id}>
+          {h.ended_t ? new Date(h.ended_t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : `#${archive.length - i}`}
+          {' · '}{(h.mode || '').toUpperCase() || 'MATCH'}
+        </button>
+      ))}
+    </div>
+  ) : null;
+  if (!rc) return (
+    <div className="screen">
+      {picker}
+      <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>
+        {archive.length ? 'PICK A MATCH ABOVE TO SEE ITS RESULT.' : 'NO RECAP YET — THE MATCH ENDS AT THE TIME LIMIT ON EVERY NODE.'}
+      </div>
+    </div>
+  );
   const name = (id: string) => state.players.find(p => p.player_id === id)?.display ?? rc.rows.find(r => r.player_id === id)?.display ?? id;
   const w = rc.winner ?? {};
   const teamLabel = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
@@ -27,6 +63,12 @@ export function Recap() {
 
   return (
     <div className="screen">
+      {picker}
+      {past && (
+        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.dim}`, font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>
+          ARCHIVED MATCH{past.ended_t ? ` — ENDED ${new Date(past.ended_t).toLocaleString()}` : ''} · READ ONLY
+        </div>
+      )}
       {rc.provisional && (
         <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
           ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}). KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE.
@@ -53,8 +95,9 @@ export function Recap() {
         )}
         <span style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a href={csv} download="brx-recap.csv" className="hov-acc" style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>
-          <PrimaryButton size={13} onClick={async () => { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
+          {/* /api/recap.csv serves the LIVE scorer, so it would silently export the wrong match here */}
+          {!past && <a href={csv} download="brx-recap.csv" className="hov-acc" style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>}
+          {!past && <PrimaryButton size={13} onClick={async () => { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>}
         </div>
       </Brackets>
       {rc.honors.length > 0 && (<>
@@ -120,4 +163,10 @@ function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
       <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: '#ffd23f' }}>{r.medals.length ? r.medals.join(' · ') : '—'}</span>
     </div>
   );
+}
+
+function chip(on: boolean): React.CSSProperties {
+  return { font: F.mono(600, 10), letterSpacing: '.12em', padding: '5px 10px', minHeight: 28, cursor: 'pointer',
+           background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim,
+           border: `1px solid ${on ? T.acc : T.line2}` };
 }

@@ -7,7 +7,10 @@ function pickupHashToken() {
     const m = /(?:^#|[#&])tok=([^&]+)/.exec(location.hash);
     if (m) {
       localStorage.setItem(TOK_KEY, decodeURIComponent(m[1]));
-      history.replaceState(null, '', location.pathname + location.search);   // don't leave the token in the URL bar
+      // Strip ONLY the token, keeping any other hash: the hash also carries the current view now, and
+      // wiping it wholesale sent every refresh back to the phase screen.
+      const rest = location.hash.replace(/(?:^#|&)tok=[^&]*/, '').replace(/^[#&]+/, '');
+      history.replaceState(null, '', location.pathname + location.search + (rest ? '#' + rest : ''));
     }
   } catch { /* no storage / no history: ignore */ }
 }
@@ -98,12 +101,13 @@ export function createHttpApi(): Api {
     rangeVerdict: (weapon_id, verdict, note) => post('/api/range/verdict', { weapon_id, verdict, note }),
     endTryout: async id => { await j(`/api/players/${id}/tryout`, { method: 'DELETE' }); },
     setReady: (id, ready) => post(`/api/players/${id}/ready`, { ready }),
-    pushLobby: () => post('/api/lobby/push'),
-    start: runway_s => post('/api/start', { runway_s }),
+    pushLobby: (force?: boolean) => post('/api/lobby/push', { force: !!force }),
+    start: (runway_s, force) => post('/api/start', { runway_s, force: !!force }),
     reschedule: runway_s => post('/api/start/reschedule', { runway_s }),
     abort: () => post('/api/start/abort'),
     control: (cmd, confirm) => post('/api/control', { cmd, confirm }),
     getRecap: () => j('/api/recap'),
+    matchHistory: () => j('/api/matches'),
     recapCsvUrl: () => '/api/recap.csv',
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
   };

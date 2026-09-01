@@ -14,7 +14,7 @@ Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md
 Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md, docs/experiment-log.md
 
 ## What the official apps send
-Android Callsign: `$VOL,100` · iOS Callsign: `$VOL,69` · Open BRX game default: **69** (the app's value) · Open BRX probing default: **30** (deliberately quiet, and deliberately not for games).
+Android Callsign: `$VOL,100` · iOS Callsign: `$VOL,69` · Open BRX game default: **80 indoors / 90 outdoors** (set from the venue; `$VOL,69` measured as roughly on-gun level 2 and was inaudible on a field, 2026-08-30) · Open BRX try-out default: **69** (fired at arm's length) · Open BRX probing default: **30** (deliberately quiet, and deliberately not for games).
 Source: protocol/brx-protocol.md, CLAUDE.md
 
 ## 30 is not "quiet", it is silent for weapon audio.
@@ -27,7 +27,7 @@ Source: docs/experiment-log.md #6, protocol/brx-protocol.md
 Source: protocol/brx-protocol.md, docs/experiment-log.md #6, CLAUDE.md
 
 ## Safety.
-The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.
+The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason — keep that value for anything fired at arm's length (Open BRX try-outs still do). Open BRX raises play volume to 80/90 because a **game across a field** at 69 was inaudible; that is a field setting, not an indoor one, and no absolute SPL measurement exists for any of these values.
 Source: docs/sound-architecture.md, docs/experiment-log.md
 
 _[diagram SND-06: Horizontal loudness scale 0–100 with the two app defaults (69, 100) marked and a shaded "inaudible for weapon audio" zone below ~45. GENERATE.]_

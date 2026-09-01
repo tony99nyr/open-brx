@@ -1,5 +1,13 @@
 # Handoff — four BLE-only experiments (no IR hardware, no Callsign, no PacketLogger)
 
+> ## ✅ SUPERSEDED — all four were closed by the Windows session. Do not re-run.
+> `$HIR` token 3 **does** carry the shooter's player id (**P2 closed**, §7p/§7q) · `$WEAP` t5 is
+> confirmed as the raw magnitude · `$SFLASH` latches the green sight from our own stack · `$TID & 3`
+> gives four usable teams. See `docs/HANDOFF.md` and the `experiment-log.md` entries from 2026-08-26
+> onward — the IR rig went on to become a general-purpose protocol instrument.
+> **Current handoff: [`handoff-post-first-match.md`](handoff-post-first-match.md).**
+> Kept for the method and for the reasoning behind each experiment.
+
 **For:** the WSL/Windows session.
 **From:** the MacBook session, 2026-08-26, after closing P1.
 **Needs:** two taggers + the laptop's BLE radio. **Nothing else** — no IR receiver, no phone, no

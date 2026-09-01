@@ -863,3 +863,26 @@ u9_pickup/quick_victim lack the try/finally disconnect wrap; hoist shared PSET/S
 connect-finally helper into mcp/tools/bench_common.py (7-file copy-paste drift).
 Docs: FOLLOWUPS/HANDOFF header dates stale; U7 cites closed P10; Energy-Launcher O-family audition
 alternates (O05/O02/O04/O06/O03) live only in weapon-design §3.2 prose.
+
+## Field 2026-08-30 — open after the first full match (see `experiment-log.md` 2026-08-30)
+
+- **F2 · The headset never flashes green on hit or kill under our host.** 126 hits, 12 kills, both
+  headsets healthy all match, no green. Green is **host-driven**, not autonomous — the 2026-08-27
+  "we get them free" conclusion is corrected in place. The only `$HLED` we ever send is the blanking
+  frame in `END_SEQUENCE`. **Needs:** a Callsign game captured on the Mac (PacketLogger → btsnoop →
+  `python -m brx_mcp.btsnoop`) and an in-play frame diff against our own. The feedback frame is in
+  that delta. Mac-only work.
+- **F3 · Empty-mag / reload prompt never appeared on sustained full-auto.** Ammo tracks correctly, but
+  never read 0 in 328 status samples. Cannot distinguish "the gun stops emitting `$ALCD` under
+  sustained auto fire" from a HUD render-gate bug at 2 s sampling. **Needs:** the phone's raw BLE
+  frame ring — hit **Share log** on the phone before closing the app; it lands in the session SQLite.
+- **F4 · A weapon swap has never been timed.** `SWITCH_MAX_MS = 2500` in `engine.js` is a guess.
+  `engine.lastSwitchMs` now records the true figure whenever an `$ALCD` confirms a swap — pull it off
+  the diagnostics log after the next match and tighten the constant.
+- **F5 · The AR ships at 140 ms, not the captured 100 ms.** Deliberate (see the log entry): native
+  speed with the stock 384 reserve strictly dominates 10 of 17 picker weapons. If stock feel is worth
+  more than a balanced arsenal, set `wire.fire_ms` back to 100 and delete
+  `test_ttk_band_and_no_strictly_dominant_weapon` — it will fail, by design.
+- **F6 · `/api/recap.csv` only ever serves the LIVE scorer.** The RECAP history picker therefore hides
+  the CSV button on an archived match rather than exporting the wrong one. A per-match CSV endpoint
+  would be the real fix.

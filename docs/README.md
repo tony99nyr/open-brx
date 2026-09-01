@@ -93,6 +93,10 @@ A stale answer is worse than an open question: an open question warns you, a sta
 | Node↔MC wire + game data model | `spec/contracts.md` |
 | Open work (all items) | `FOLLOWUPS.md` |
 
+- **[handoff-post-first-match.md](handoff-post-first-match.md)** — 🆕 **after the first full match on
+  our own stack (2026-08-30/31).** Everything reported that day is fixed; what remains is split by
+  which machine can do it — the two highest-value items are **Mac-only** (a Callsign capture, and the
+  phone's BLE frame ring). Start here before picking up field work.
 - **[handoff-ble-experiments-no-ir.md](handoff-ble-experiments-no-ir.md)** — **four BLE-only bench
   experiments** needing just two taggers and a laptop (no IR, no Callsign, no capture rig). Top item
   could close P2 and remove an IR hardware dependency.

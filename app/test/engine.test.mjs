@@ -451,17 +451,24 @@ test('runway cues are edge-triggered: stale thresholds never fire, crossed ones 
   a.adv(5000); a.eng.tick(); a.adv(3000); a.eng.tick();
   assert.equal(a.writes.filter(f => f.includes('VA85')).length, 0, 'no VA85 with a 9 s runway');
   assert.ok(!a.eng.cuesFired.has('runway_30') && !a.eng.cuesFired.has('runway_20') && !a.eng.cuesFired.has('runway_10'));
-  // 35 s runway: each threshold fires exactly once as it is crossed from above.
+  // 35 s runway, crossed from above. The bundle deliberately ships runway_30 and runway_20 SILENT —
+  // VA85 at 30 AND 20 AND 10 stacked the same counting track on the bench (compile.py, 2026-08-25), so
+  // only the 10 s call has a frame. This asserts the AUDIO, which is the thing the bench decided;
+  // `cuesFired` only records cues that actually have a frame, so it cannot speak for a silent one.
   const b = harness().kit().config_();
   b.adv(1600); b.echo(); b.eng.tick();
+  const va85 = () => b.writes.filter(f => f.includes('VA85')).length;
   b.start(35000); b.eng.tick();
-  assert.ok(!b.eng.cuesFired.has('runway_30'), 'nothing at T-35');
+  assert.equal(va85(), 0, 'nothing at T-35');
   b.adv(6000); b.eng.tick();   // T-29
-  assert.ok(b.eng.cuesFired.has('runway_30') && !b.eng.cuesFired.has('runway_20'));
+  assert.equal(va85(), 0, 'T-30 is deliberately silent');
   b.adv(10000); b.eng.tick();  // T-19
-  assert.ok(b.eng.cuesFired.has('runway_20') && !b.eng.cuesFired.has('runway_10'));
+  assert.equal(va85(), 0, 'T-20 is deliberately silent');
   b.adv(10000); b.eng.tick();  // T-9
+  assert.equal(va85(), 1, 'the 10 s call is the only runway cue that speaks');
   assert.ok(b.eng.cuesFired.has('runway_10'));
+  b.adv(1000); b.eng.tick();
+  assert.equal(va85(), 1, 'and it fires exactly once');
 });
 
 
@@ -625,4 +632,64 @@ test('A10 §4.1/§4.6: kit_open false → setting-up (no picks); flip true → B
 test('A10 §4.1: a policy without kit_open (older MC) leaves the kit open', () => {
   const h = kitA10(POL);
   assert.equal(h.eng.state().kitOpen, true); assert.ok(h.eng.canPick('primary'));
+});
+
+// ── ALT weapon swap indicator (field 2026-08-30; hardened after review 2026-08-31) ──────────────
+function twoWeapons(h) {
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }] } };
+  return h;
+}
+
+test('ALT raises the swap indicator only with a real second weapon', () => {
+  const h = goLive(harness());
+  h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switching, false, 'single-weapon loadout: ALT is a reload, not a swap');
+  twoWeapons(h).frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switching, true);
+});
+
+test('the indicator EXPIRES without inventing a slot the gun never reported', () => {
+  // $BUT,1 is "alt-fire" — it is also the native 3s indoor/outdoor toggle and easy_reload remaps it to
+  // RELOAD, so a press is not proof a weapon changed. Guessing a slot showed the WRONG gun and the
+  // wrong magazine until the next trigger pull (review 2026-08-31).
+  const h = twoWeapons(goLive(harness()));
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switching, true);
+  h.adv(5000);
+  const st = h.eng.state();
+  assert.equal(st.switching, false, 'indicator cleared');
+  assert.equal(st.activeSlot, 0, 'slot still what the GUN last reported — never guessed');
+  assert.equal(st.ammo, 32, 'ammo still the slot the gun reported');
+});
+
+test('switchingMs() is pure — reading state never mutates it', () => {
+  const h = twoWeapons(goLive(harness()));
+  h.frame('$BUT,1,1,*');
+  h.adv(9999);
+  const before = h.eng.activeSlot;
+  for (let i = 0; i < 5; i++) h.eng.state();
+  assert.equal(h.eng.activeSlot, before, 'snapshot() must not move the slot');
+});
+
+test('an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not', () => {
+  const h = twoWeapons(goLive(harness()));
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.frame('$BUT,1,1,*');
+  h.adv(300); h.frame('$ALCD,1,100,4,0,0,*');            // melee reports on its own $ALCD
+  assert.equal(h.eng.state().switching, true, 'slot 4 is melee, not the swap we awaited');
+  h.adv(200); h.frame('$ALCD,6,100,1,24,0,*');           // the real secondary
+  const st = h.eng.state();
+  assert.equal(st.switching, false);
+  assert.equal(st.activeSlot, 1);
+  assert.equal(st.ammo, 6, 'ammo follows the confirmed slot');
+  assert.ok(h.eng.lastSwitchMs >= 500, 'records ALT -> confirming shot (includes reaction time)');
+});
+
+test('death clears the swap indicator', () => {
+  const h = twoWeapons(goLive(harness()));
+  h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switching, true);
+  h.frame('$HIR,4,0,19,2,24,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().switching, false, 'indicator must not outlive the player');
 });

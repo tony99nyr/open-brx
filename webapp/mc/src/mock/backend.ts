@@ -347,8 +347,8 @@ export class MockBackend implements Api {
     if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.phase = 'lobby';
     this.emit(); return clone(p);
   }
-  async pushLobby() {
-    if (!this.readiness().go) throw new Error('readiness has reds — clear them before pushing');
+  async pushLobby(force?: boolean) {
+    if (!this.readiness().go && !force) throw new Error('readiness has reds — clear them before pushing, or push with force');
     this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};
     for (const p of this.players) {
       const g = GUNS.find(x => x[0] === p.gun_id);
@@ -368,7 +368,7 @@ export class MockBackend implements Api {
     this.phase = 'armed'; this.emit();
     return { match_id, go_live_t, seq };
   }
-  async start(runway_s: number) {
+  async start(runway_s: number, _force?: boolean) {
     if (!this.pushed) throw new Error('push config first');
     return this.schedule(runway_s, 1, uid('match'));
   }
@@ -385,6 +385,7 @@ export class MockBackend implements Api {
     this.start_ = undefined; this.live_ = undefined; this.phase = this.pushed ? 'lobby' : 'kit'; this.pushed = false; this.acks = {};
     this.emit(); return { ok: true };
   }
+  async matchHistory() { return []; }
   async getRecap() { if (!this.recap_) throw new Error('no recap yet'); return clone(this.recap_); }
   recapCsvUrl() {
     const r = this.recap_; if (!r) return '#';

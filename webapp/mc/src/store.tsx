@@ -1,8 +1,26 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Api, FeedEntry, ModeInfo, PerkView, Phase, SavedGame, State, WeaponView } from './api/types';
 
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
-export type View = Phase | 'designer';
+export type View = Phase | 'designer' | 'catalog';
+
+// Tony 2026-08-31: "each tab of the MC should put state in the URL so you can refresh the page."
+// The view lives in the hash (the operator token is picked out of the same hash and stripped, see
+// client.ts). Whitelisted on the way in so a hand-typed hash can never select a view that does not
+// exist — that is what blanked the console when a non-phase view reached the phase-indexed label.
+const VIEWS: View[] = ['muster', 'build', 'designer', 'kit', 'lobby', 'armed', 'live', 'recap', 'catalog'];
+function viewFromHash(): View | null {
+  try {
+    const h = decodeURIComponent(location.hash.replace(/^#/, '')).split('&')[0].trim();
+    return (VIEWS as string[]).includes(h) ? (h as View) : null;
+  } catch { return null; }
+}
+function writeHash(v: View) {
+  try {
+    if (viewFromHash() === v) return;
+    history.replaceState(null, '', location.pathname + location.search + '#' + v);
+  } catch { /* no history: the view still works, it just will not survive a refresh */ }
+}
 /** what the designer opens with: an existing saved game to edit, a stock mode to customise, or the live draft */
 export type DesignerSeed = { game?: SavedGame; mode?: string; fromLive?: boolean; copy?: boolean /* open as an unsaved draft named after `game` */ };
 import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
@@ -51,7 +69,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [modes, setModes] = useState<ModeInfo[]>([]);
   const [weapons, setWeapons] = useState<WeaponView[]>([]);
   const [perks, setPerks] = useState<PerkView[]>([]);
-  const [view, setViewRaw] = useState<View>('muster');
+  const [view, setViewRaw] = useState<View>(() => viewFromHash() ?? 'muster');
+  const setView = useCallback((v: View) => { writeHash(v); setViewRaw(v); }, []);
+  // back/forward and a hand-edited hash both move the console
+  useEffect(() => {
+    const onHash = () => { const v = viewFromHash(); if (v) setViewRaw(v); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const [designerSeed, setDesignerSeed] = useState<DesignerSeed | null>(null);
   const [selPlayer, setSelPlayer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +85,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tokenVersion, setTokenVersion] = useState(0);
   const [serverOld, setServerOld] = useState(false);
   const followed = useRef<Phase | null>(null);
+  // A view restored from the URL must not be stomped by the first server snapshot. The follow rule is
+  // "move when the phase ADVANCES"; on a refresh there has been no advance yet, so the first snapshot
+  // only seeds the baseline. Without this every reload bounced straight back to the phase screen.
+  const urlView = useRef<boolean>(viewFromHash() != null);
   const offset = useRef(0);
 
   useEffect(() => {
@@ -72,8 +101,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setState(s);
         // follow the server phase when it advances (armed → live → recap), but let the host browse freely
         if (followed.current !== s.phase) {
+          const seeding = followed.current === null && urlView.current;
           followed.current = s.phase;
-          setViewRaw(s.phase);
+          urlView.current = false;
+          if (!seeding) { writeHash(s.phase); setViewRaw(s.phase); }   // the URL follows an auto-advance too
         }
       },
       e => setFeed(f => [e, ...f].slice(0, 60)),
@@ -91,8 +122,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [authRequired, api, mock]);
 
   const store = useMemo<Store>(() => ({
-    api, state, feed, modes, weapons, perks, view, setView: setViewRaw, selPlayer, setSelPlayer, error, mock,
-    designerSeed, openDesigner: seed => { setDesignerSeed(seed); setViewRaw('designer'); },
+    api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,
+    designerSeed, openDesigner: seed => { setDesignerSeed(seed); setView('designer'); },
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),

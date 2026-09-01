@@ -100,7 +100,7 @@ and the Companion (C++) are verbatim frame writers.
 ```jsonc
 FrameBundle {                       // per (config_id, player_id); pushed in `config`, re-pushed on assign change
   config_id, player_id,
-  head:    string[],   // config head: $VOL,69 → $CLEAR → $START → $GSET → $PSET,<player_num>,… → $WEAP×n → $SIR×n → $BMAP×n → LED frames → $TID,<tid> (last).
+  head:    string[],   // config head: $VOL,<80 indoor|90 outdoor> → $CLEAR → $START → $GSET → $PSET,<player_num>,… → $WEAP×n → $SIR×n → $BMAP×n → LED frames → $TID,<tid> (last).
                        //   NO $SPAWN, NO countdown/start sound — written at lobby, the gun then sits unspawned (M-START).
                        //   Whether `$START` itself is audible at the lobby write is UNVERIFIED (checklist NEXT #11).
   spawn:   string[],   // go-live tail at T-0: $PLAYX,0 → $SPAWN,, → $AMMO per slot → $BMAP,0,0

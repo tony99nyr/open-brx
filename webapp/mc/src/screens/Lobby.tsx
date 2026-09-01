@@ -1,14 +1,14 @@
 import { useState } from 'react';
+import { RUNWAYS, useRunway } from '../runway';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Seg, Tag } from '../ui';
 
-const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];   // quick bench starts through full walk-outs (Tony 2026-08-26)
 
 export function Lobby() {
   const { state, run, api, setView } = useStore();
-  const [runway, setRunway] = useState(120);
+  const [runway, setRunway] = useRunway();   // survives a tab switch (field 2026-08-30)
   const [drag, setDrag] = useState<string | null>(null);
   if (!state) return null;
   const { players, lobby, readiness, teams } = state;
@@ -22,12 +22,16 @@ export function Lobby() {
   const allReady = nReady === players.length && players.length > 0;
   const acked = Object.values(lobby.acks).filter(a => a.ok).length;
   const allAcked = lobby.pushed && acked === players.length;
-  const reds = readiness.board.filter(b => b.status === 'red').map(b => b.sticker);
+  // Field 2026-08-30: the rail said only "E20D RED ON THE BOARD" and the operator read it as MC being
+  // stuck — the REASON (GUN LINK LOST) was on the muster board, a screen away. Carry the blocker here.
+  const redRows = readiness.board.filter(b => b.status === 'red');
+  const reds = redRows.map(b => b.sticker);
+  const redWhy = redRows.map(b => `${b.sticker}: ${(b.blockers ?? []).join(', ') || 'NOT READY'}`).join('  ·  ');
 
   // Two deliberate clicks (design-critic #5): PUSH, verify the acks/echoes land, THEN arm the countdown.
-  const pushAndArm = async () => {
-    if (!lobby.pushed) { await run(() => api.pushLobby()); return; }   // stop here — the rail's step 2 is real now
-    const s = await run(() => api.start(runway));
+  const pushAndArm = async (force = false) => {
+    if (!lobby.pushed) { await run(() => api.pushLobby(force)); return; }   // stop here — the rail's step 2 is real now
+    const s = await run(() => api.start(runway, force));
     if (s) setView('armed');
   };
   const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
@@ -72,16 +76,31 @@ export function Lobby() {
         </div>
         <span style={{ flex: 1 }} />
         {reds.length > 0
-          ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {reds.join(' + ')} RED ON THE BOARD — CLEAR BEFORE PUSHING</span>
+          ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {redWhy} — CLEAR IT, OR PUSH ANYWAY BELOW</span>
           : notReady.length > 0
             ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {notReady.join(' + ')} NOT READY — LAST MOMENT ALL NODES ARE IN RANGE</span>
             : lobby.pushed && !allAcked
               ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(' + ')} DID NOT ECHO — HEADSET? GUN ASLEEP?</span>
               : <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.ok }}>ALL NODES READY &amp; IN RANGE — PUSH, THEN WALK</span>}
-        <PrimaryButton onClick={pushAndArm} disabled={reds.length > 0 || players.length === 0 || (lobby.pushed && !allAcked)} title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : allReady ? '' : 'Host override: pushing with players not ready'}>
+        <PrimaryButton onClick={() => pushAndArm()} disabled={reds.length > 0 || players.length === 0 || (lobby.pushed && !allAcked)} title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : allReady ? '' : 'Host override: pushing with players not ready'}>
           {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
         </PrimaryButton>
       </div>
+      {reds.length > 0 && (
+        // The override has to cover BOTH steps. Forcing a push does not clear the red — it usually adds
+        // one (the gun that could not ack gets GUN DID NOT ANSWER CONFIG) — so an override that stopped
+        // at PUSH left the operator with ARM still disabled and no button left to press. (Review, 2026-08-31.)
+        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>
+          HOST OVERRIDE ▸ <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, minHeight: 28 }}
+            title={lobby.pushed
+              ? 'Arms the countdown anyway. Nodes still red will not be armed — everyone else starts on time.'
+              : 'Compiles and pushes to every bound node anyway. A gun that is not linked will simply not ack.'}
+            onClick={() => pushAndArm(true)}>
+            [ {lobby.pushed ? 'ARM' : 'PUSH'} ANYWAY OVER {reds.length} RED ]
+          </button>
+          <span style={{ color: T.micro }}>{redWhy}</span>
+        </div>
+      )}
       {!allReady && players.length > 0 && (
         <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>
           HOST OVERRIDE ▸ {players.filter(p => !p.ready).map(p => (

@@ -226,9 +226,9 @@ class Session:
 
     def _catalog_views(self) -> dict:
         """`assign.catalog` — what the phone browses (visible weapons as WeaponView + visible perks)."""
-        from .views import weapon_view                   # one view builder for HTTP and the wire
+        from .views import weapon_views                  # one view builder for HTTP and the wire
         weapons, perks = self._catalog_rows()
-        return {"weapons": [weapon_view(w) for w in weapons], "perks": perks}
+        return {"weapons": weapon_views(weapons), "perks": perks}   # `bars` need the whole arsenal
 
     def kit_open(self) -> bool:
         """A10 §4.1: phones may browse/pick/try only while the host is on KIT and the lobby is not pushed. Before
@@ -1036,7 +1036,13 @@ class Session:
         frames = self.compiler.tutorial_frames(w, self.config["environment"])
         self.trying[pid] = weapon_id
         if p.get("node_id"):
-            self.net.push(p["node_id"], "tutorial", {"weapon": w, "frames": frames})
+            # A WeaponView, not the raw catalog row: the HUD's stat block draws from `bars`, which only
+            # `weapon_views` produces (it needs the whole arsenal to rank against). Pushing the raw row
+            # sent the try-out card back to the near-empty `stats.dmg` meter (review 2026-08-31).
+            from .views import weapon_views
+            wv = next((v for v in weapon_views(self._catalog_rows()[0])
+                       if v["weapon_id"] == w["weapon_id"]), None)
+            self.net.push(p["node_id"], "tutorial", {"weapon": wv or w, "frames": frames})
         self._changed()
 
     # ---------- lobby ----------
@@ -1047,10 +1053,28 @@ class Session:
         if p.get("node_id"):
             self.net.push(p["node_id"], "config", {"config": self.config, "frames": bundle, "roster": self.roster()})
 
-    def push_config(self) -> dict:
+    def push_config(self, force: bool = False) -> dict:
+        """Compile + push every player's bundle. `force` is the OPERATOR OVERRIDE.
+
+        Field 2026-08-30: one phone dropped its BLE link, its row went red, and the push was refused
+        with no way past it — the operator could see the whole field was otherwise ready and had no
+        recourse. `start()` has had a `force` since A6; push did not, which is the inconsistency that
+        stranded the session. A forced push still compiles and sends to every BOUND node; a player
+        whose gun is not linked simply will not ack, which the lobby already shows.
+        """
         rd = self.readiness()
+        if not self.players:
+            raise ValueError("no players — add someone to the roster first")   # force must not bypass this
+        if not rd["go"] and not force:
+            reds = [f"{r['player_num']}:{'/'.join(r['blockers'])}" for r in rd["board"] if r["status"] == "red"]
+            raise ValueError("readiness has reds — clear them before pushing, or push with force: "
+                             + "; ".join(reds))
         if not rd["go"]:
-            raise ValueError("readiness has reds — clear them before pushing")
+            import logging
+            logging.getLogger("brx.mc").warning(
+                "FORCED push over %d red row(s): %s", sum(1 for r in rd["board"] if r["status"] == "red"),
+                        "; ".join(f"{r['player_num']}:{'/'.join(r['blockers'])}"
+                                  for r in rd["board"] if r["status"] == "red"))
         res = self._validate()
         if not res["ok"]:
             raise ValueError("config invalid: " + "; ".join(res["errors"]))
@@ -1205,6 +1229,7 @@ class Session:
             r = self.scorer.recap()
             if self.phase != "recap":
                 r["provisional"] = True
+            r.update(self.settling())     # advisory only — never gates, see settling()
             return r
         return self.last_recap
 
@@ -1223,6 +1248,29 @@ class Session:
             fresh = nv and (now - nv.get("last_seen_ms", 0)) < 30_000
             if fresh and nv.get("pending") == 0:
                 st.flushed = True
+
+    def settling(self) -> dict:
+        """Which bound nodes have NOT been heard from since the whistle (A8, field 2026-08-30).
+
+        Tony: *"it kinda was showing the final results as if it was final and then it finally popped up
+        and the totals changed."* `provisional` could not have caught that — `Scorer.ingest` marks a
+        player flushed on their FIRST event, so anyone who fired a shot is flushed from second one and
+        `missing()` is empty well before the end. The totals moved because late facts were still
+        arriving, which is a different question: *has every node reported since the match ended?*
+
+        This is deliberately ADVISORY and additive — it gates nothing. An earlier attempt folded this
+        condition into `_mark_flushed_live` instead, which left a phone that went quiet at the whistle
+        permanently un-flushable and the recap permanently PROVISIONAL. Never gate on this.
+        """
+        if not self.scorer or self.scorer.end_t is None:
+            return {"settling": False, "awaiting": [], "since_end_ms": None}
+        end_t, now = self.scorer.end_t, self.now_ms()
+        if now < end_t:
+            return {"settling": False, "awaiting": [], "since_end_ms": None}
+        awaiting = [p["player_id"] for p in self.players.values()
+                    if p.get("node_id")
+                    and self.nodes.get(p["node_id"], {}).get("last_seen_ms", 0) < end_t]
+        return {"settling": bool(awaiting), "awaiting": awaiting, "since_end_ms": now - end_t}
 
     def new_session(self, keep_roster: bool = True) -> None:
         self.session_id = uuid.uuid4().hex[:8]

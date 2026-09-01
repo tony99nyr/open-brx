@@ -42,6 +42,35 @@ class Store:
                         (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
         self.db.commit()
 
+    def matches(self) -> list[dict]:
+        """Every finished match in this session, newest first — the history behind MC's RECAP screen.
+
+        Field 2026-08-30: "the recap doesn't show the previous game once another is started ... we have
+        no way to view previous". The rows were always being written here; nothing ever read them back.
+        """
+        out = []
+        # rowid breaks the tie: two matches can end in the same millisecond, and without it sqlite
+        # falls back to insertion order — i.e. OLDEST first, exactly the wrong way round.
+        for r in self.db.execute(
+                "SELECT match_id,config,go_live_t,ended_t,recap FROM matches "
+                "WHERE recap IS NOT NULL ORDER BY COALESCE(ended_t, go_live_t) DESC, rowid DESC"):
+            # Degrade, do not drop: a corrupt CONFIG must not take a perfectly good recap out of the
+            # history with it. Only an unreadable recap disqualifies the row, because without one there
+            # is no result to show.
+            try:
+                recap = json.loads(r[4]) if r[4] else None
+            except (ValueError, TypeError):
+                continue
+            if recap is None:
+                continue
+            try:
+                cfg = json.loads(r[1]) if r[1] else {}
+            except (ValueError, TypeError):
+                cfg = {}
+            out.append({"match_id": r[0], "config": cfg if isinstance(cfg, dict) else {},
+                        "go_live_t": r[2], "ended_t": r[3], "recap": recap})
+        return out
+
     def events(self, match_id: str | None = None, parked: bool | None = None) -> list[dict]:
         q, args = "SELECT node_id,kind,seq,t,t_recv,match_id,parked,body FROM envelopes", []
         conds = []

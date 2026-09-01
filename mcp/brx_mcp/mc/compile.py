@@ -19,7 +19,25 @@ from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team, Weapon
 
-VOL_PLAY = 69  # house rule — 30 is inaudible for game audio
+# Field-corrected 2026-08-30 (first live 2-player match on the Mac): $VOL,69 — the value iOS
+# Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
+# The on-gun menu maps L1=60 L2=70 L3=80 L4=90 L5=100 (protocol/brx-protocol.md $VOL), so play
+# volume is now taken from the venue: L3 indoors, L4 outdoors (the level he asked for).
+VOL_BY_ENV = {"indoor": 80, "outdoor": 90}
+VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (see play_volume)
+VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
+                                   # so it keeps the quieter Callsign value (review 2026-08-31).
+                                   # The field complaint was about hearing a game across a field.
+
+
+def play_volume(environment: str | None) -> int:
+    """$VOL for game audio at this venue. See VOL_BY_ENV — 69 was measurably too quiet outdoors.
+
+    An unrecognised venue resolves to the INDOOR value. `set_config` validates `indoor|outdoor`, so
+    this is only reachable through a preset or a hand-edited config — but the failure has to be quiet,
+    not loud: guessing "outdoor" for an unknown venue means blasting L4 into someone's ear indoors.
+    """
+    return VOL_BY_ENV.get((environment or "").strip().lower(), VOL_PLAY)
 
 # ---- $SIR effect classes (bench-measured 2026-08-26; experiment-log "the COMPLETE two-sided $SIR
 # function map + crit multiplier + FF enforcement"). A weapon's <t3,t4> is the composite key into the
@@ -259,7 +277,7 @@ class Compiler:
             respawn_s=config["respawn"]["delay_s"],
             respawns=0 if config["respawn"]["type"] == "none" else None,
             frag_limit=config["scoring"].get("frag_limit") or 0,
-            volume=VOL_PLAY,
+            volume=play_volume(config["environment"]),
             outdoor=config["environment"] == "outdoor",
             # blackout LED-off on night OR an explicit led.mode=="off" (modes §6)
             leds=(led.get("mode", "team") != "off") and not config.get("night", False),
@@ -300,7 +318,7 @@ class Compiler:
         mods = {k: fx[k] for k in ("ammo_mult", "reload_mult") if fx.get(k)}
 
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
-        head = [f"$VOL,{VOL_PLAY},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
                 gc._gset(), gc._pset(pnum),
                 self.catalog.resolve(w0, 0, mods)]
         if w1:
@@ -345,7 +363,7 @@ class Compiler:
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
-        """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL 69). Needs $START + a $TID to
+        """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL_TRYOUT). Needs $START + a $TID to
         actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard."""
         outdoor = 1 if environment == "outdoor" else 0
         wid = weapon["weapon_id"]
@@ -353,7 +371,7 @@ class Compiler:
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
         pset = "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
         return [
-            "$VOL,69,0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
+            f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
             f"$GSET,0,{outdoor},1,0,1,0,50,1,*",   # FF off, env
             pset,

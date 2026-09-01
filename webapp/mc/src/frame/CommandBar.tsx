@@ -7,6 +7,9 @@ import { HazardButton, GhostButton, PrimaryButton } from '../ui';
 
 const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'LIVE'], ['recap', 'RECAP']];
 const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : PH.findIndex(x => x[0] === p));
+// Views that are not phases need their own label: viewIdx() returns -1 for them, and `PH[-1][1]`
+// threw, blanking the whole console (the WEAPONS tab rendered a black page, 2026-08-31).
+const LABEL: Partial<Record<View, string>> = { designer: 'DESIGNER', catalog: 'ARSENAL' };
 
 export function CommandBar() {
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld, hasToken, setToken } = useStore();
@@ -53,6 +56,16 @@ export function CommandBar() {
               </button>
             );
           })}
+          {/* Not a phase — a read-only reference you can open at any point in the flow, so the stats
+              can be reviewed without selecting a player or writing anybody's kit (Tony, 2026-08-31). */}
+          <button type="button" onClick={() => setView('catalog')} title="Browse every weapon and its real stats — changes nothing"
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'",
+              background: view === 'catalog' ? '#0c1420' : 'transparent', border: 'none',
+              borderBottom: `2px solid ${view === 'catalog' ? T.acc : 'transparent'}`, padding: '8px 16px 7px',
+              cursor: 'pointer', color: view === 'catalog' ? T.ink : T.dim, minHeight: 44 }}>
+            <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: view === 'catalog' ? T.acc : 'rgba(92,113,134,.7)' }}>REF</span>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>ARSENAL</span>
+          </button>
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           {panicked && (
@@ -91,7 +104,7 @@ export function CommandBar() {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 30px', padding: '6px 20px', background: T.panelAlt, borderTop: `1px solid ${T.slot}`, font: F.mono(500, 11.5), letterSpacing: '.12em', color: T.dim, alignItems: 'center' }}>
         <span>NET ▸ <span style={{ color: T.dim }}>{state?.lan.ssid ?? state?.lan.mode?.toUpperCase() ?? '—'}</span> · <span style={{ color: linked ? T.ok : T.warn }}>{linked} NODES LINKED</span></span>
-        <span>PHASE ▸ <span style={{ color: T.dim }}>{(() => { const sp = state?.phase ?? 'muster'; const si = viewIdx(sp); return `0${si + 1}/06 ${PH[si][1]}${sp === 'armed' ? ' · ARMED' : ''}`; })()}{cur !== viewIdx(state?.phase ?? 'muster') && <span style={{ color: T.micro }}> · VIEWING {view === 'designer' ? 'DESIGNER' : PH[cur][1]}</span>}</span></span>
+        <span>PHASE ▸ <span style={{ color: T.dim }}>{(() => { const sp = state?.phase ?? 'muster'; const si = viewIdx(sp); return `0${si + 1}/06 ${PH[si][1]}${sp === 'armed' ? ' · ARMED' : ''}`; })()}{cur !== viewIdx(state?.phase ?? 'muster') && <span style={{ color: T.micro }}> · VIEWING {LABEL[view] ?? PH[cur]?.[1] ?? '—'}</span>}</span></span>
         <span>UPLINK ▸ <span style={{ color: offline ? T.bad : state ? T.ok : T.bad }}>{offline ? 'DOWN' : state ? 'OK' : 'NO SERVER'}</span> · SYNC {sync}</span>
         <JoinQr />
         {error && <button type="button" role="alert" onClick={clearError} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: T.bad, cursor: 'pointer', padding: 0, minHeight: 44 }} title="dismiss">▲ {error.toUpperCase()}</button>}

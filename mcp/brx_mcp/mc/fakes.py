@@ -7,6 +7,7 @@ import random
 import time
 from typing import Callable
 
+from .compile import VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
 from .types import (ArmoryRecord, FrameBundle, GameConfig, Player, ScanRow, ScoreRow, Team, Weapon,
                     MAX_PLAYERS)
 
@@ -47,11 +48,20 @@ def _tags(wid: str, cls: str) -> list[str]:
 
 
 def weapon_views() -> list[dict]:
-    return [{"weapon_id": w[0], "name": w[1], "cls": w[2], "clip": w[3], "mags": w[4],
-             "reserve": w[3] * w[4], "reload_s": w[5], "dmg": w[6], "rpm": w[7], "rng": w[8],
+    """The demo/fallback catalog. Ranked `bars` are added the same way the real one gets them — without
+    that, whenever `/api/weapons` fell back to this list the UI reverted to reading raw `dmg` and showed
+    exactly the near-empty meters the ranked bars exist to replace (review finding, 2026-08-31)."""
+    from .views import weapon_views as rank
+    rows = [{"weapon_id": w[0], "name": w[1], "cls": w[2],
+             "stats": {"mag": w[3], "reserve": w[3] * w[4], "reload_ms": int(w[5] * 1000),
+                       "dmg": w[6], "rof": w[7], "rng": w[8],
+                       "htk": max(1, round(13 * 55 / max(w[6], 1)))},
              "verified": w[0] in ("assault_rifle", "charge_rifle"),
-             "tags": _tags(w[0], w[2]), "role": w[2].lower(),
-             "htk": max(1, round(13 * 55 / max(w[6], 1)))} for w in _WEAPONS]
+             "tags": _tags(w[0], w[2]), "role": w[2].lower()} for w in _WEAPONS]
+    out = rank(rows)
+    for v, w in zip(out, _WEAPONS):
+        v["mags"] = w[4]          # the demo list expresses reserve as a MAG COUNT; keep that field
+    return out
 
 
 class FakeCompiler:
@@ -61,7 +71,7 @@ class FakeCompiler:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
-        head = ["$VOL,69,0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{1 if config['environment'] == 'outdoor' else 0},1,0,1,0,50,1,*",
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
@@ -76,7 +86,7 @@ class FakeCompiler:
                 "cues": self.cues(player.get("voice", "male"))}
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
-        return ["$VOL,69,0,*", "$CLEAR,*", f"$GSET,0,{1 if environment == 'outdoor' else 0},1,0,1,0,50,1,*",
+        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{1 if environment == 'outdoor' else 0},1,0,1,0,50,1,*",
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 

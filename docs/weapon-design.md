@@ -180,7 +180,7 @@ sounds — and moves the numbers.
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 2 / 22 | — | **stock** |
 | SMG | cqb | 8 | 140 | 15 | **1.96** | 57.1 | 45.8 | 72 | 288 | 2500 | 4 / 24 | 5 | cycle 90→140 |
 | Suppressor | support | 8 | 160 | 15 | **2.24** | 50.0 | 39.7 | 48 | 384 | 2000 | 3 / 28 | — | cycle 75→160, res 288→384 |
-| Assault Rifle | assault | 9 | 190 | 13 | **2.28** | 47.4 | 38.5 | 32 | 384 | 1400 | 2 / 32 | — | cycle 100→190 |
+| Assault Rifle | assault | 9 | 140 | 13 | **1.68** | 64.3 | 49.0 | 32 | 192 | 1400 | 2 / 17 | — | cycle 100→140, res 384→192 |
 | Energy Rifle | support | 9 | 200 | 13 | **2.40** | 45.0 | 43.3 | 300 | 600 | 2400 | 23 / 69 | 6 | cycle 90→200 |
 | Charge Rifle | support | 100 | 1250 | 2 | **2.50** | 80.0 | 68.6 | 12 | 12 | 2500 | 6 / 12 | 14 | mag 100→12, res 200→12 |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 2 / 4 | — | res 8→2, reload 1200→2600 |
@@ -194,8 +194,17 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
 
 **Role identities**
 
-- **Assault Rifle** — the anchor. Slowest kill (2.28 s), **deepest pool in the game** (32 kills, 384
-  in reserve). Cycle slowed 100 → 190 ms; damage untouched at the captured 9.
+- **Assault Rifle** — the anchor, and the one weapon players arrive already attached to. Cycle 100 →
+  **140 ms**, reserve 384 → **192** (17 kills); damage untouched at the captured 9.
+  **Retuned 2026-08-30 after the first live match** — Tony: *"the classic assault rifle doesn't feel
+  like the native m4 at all. it feels slow."* He was right, and it was deliberate: the previous 190 ms
+  was simply the first cycle at which the AR stopped strictly dominating, and it cost the weapon its
+  identity. The dominance was never really about rate — it was rate **plus** the deepest pool in the
+  game. Paying for speed out of the reserve instead buys back 36 % of the fire rate at zero dominance.
+  Measured across the whole arsenal (see the table): at the native 100 ms with a 384 reserve the AR
+  strictly dominates **ten** of the seventeen picker weapons; at 140/192 it dominates **none**.
+  Shipping the true 100 ms is a one-token change (`wire.fire_ms`) for anyone who wants stock feel over
+  a balanced arsenal — it fails `test_ttk_band_and_no_strictly_dominant_weapon`, by design.
 - **Burst Rifle** — stock. A real three-round burst the gun enforces, and the most total ammo of the
   burst pair (19 kills).
 - **Force Rifle** — the burst rifle's heavier twin: 10 damage instead of 9, so 12 hits instead of 13

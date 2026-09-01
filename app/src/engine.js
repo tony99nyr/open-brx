@@ -21,6 +21,13 @@ export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
 const PHASES = ['idle', 'connected', 'kitted', 'lobby', 'armed', 'live'];
 const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
+// How long the HUD shows the ALT indicator before giving up on a confirmation.
+// The gun only volunteers $ALCD on a SHOT, so a swap is confirmed by the next trigger pull and this
+// window is a display timeout, nothing more. On expiry the indicator simply clears — the HUD keeps
+// showing the slot the GUN last reported. It deliberately does NOT guess a new slot: $BUT,1 is
+// "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
+// easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
+const SWITCH_MAX_MS = 1200;
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
 
 export function toks(f) {
@@ -86,6 +93,8 @@ export class Engine {
     this.probeSent = false;
     this.night = false;
     this.lastVoltsAt = 0;
+    this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
+    this.lastSwitchMs = null;       // measured duration of the last completed swap
     this._prevAmmo = {};            // per weapon slot ($ALCD token 3): last mag seen
     this.activeSlot = 0;
     this.magBySlot = {};
@@ -567,10 +576,39 @@ export class Engine {
       }
       case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
       case 'VERSION': { if (t[1]) this.fw = t[1]; break; }
-      case 'BUT': { if (this.resync) this._resyncButton(+t[1], +t[2]); break; }
+      case 'BUT': {
+        if (this.resync) this._resyncButton(+t[1], +t[2]);
+        // $BUT id 1 = ALT (protocol §$BUT: 0=trigger 1=alt-fire 2=reload 3=select 4/5=left/right).
+        // Field 2026-08-30: the HUD only ever learned the live slot from $ALCD, which the gun sends on a
+        // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
+        // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
+        if (+t[1] === 1 && +t[2] === 1) this._altPressed();
+        break;
+      }
       default: break;
     }
     this._changed();
+  }
+
+  /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
+  _altPressed() {
+    if (this.phase !== 'live' || !this.alive || this.tutorial) return;
+    if (this._slotCount() < 2) return;            // empty slot 1: ALT falls back to reload (loadout.md §2)
+    this.switching = { at: this.now(), from: this.activeSlot };
+    this._changed();
+  }
+
+  _slotCount() {
+    const ws = this.player && this.player.loadout && this.player.loadout.weapons;
+    return ws ? ws.length : 0;
+  }
+
+  /** How long the ALT indicator has been up, or null once it has expired.
+   *  PURE — it is read from state() on every render and must never mutate engine state. */
+  switchingMs() {
+    if (!this.switching) return null;
+    const ms = this.now() - this.switching.at;
+    return ms > SWITCH_MAX_MS ? null : ms;
   }
 
   /** $ALCD,<mag>,100,<slot>,<reserve>,0 — counts are per weapon SLOT; a weapon swap is never a shot. */
@@ -580,6 +618,14 @@ export class Engine {
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
+    if (this.switching && slot !== this.switching.from && slot < 2) {
+      // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
+      // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
+      // lower bound on "the swap had finished by", NOT a measurement of the swap itself (FOLLOWUPS F4).
+      this.lastSwitchMs = this.now() - this.switching.at;
+      this.log(`slot ${this.switching.from}->${slot} confirmed ${this.lastSwitchMs}ms after ALT (incl. reaction)`, 'li');
+      this.switching = null;
+    }
     this._prevAmmo[slot] = mag; this.activeSlot = slot;
     this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
     this.ammo = mag; this.mag = this.magBySlot[slot];
@@ -619,6 +665,7 @@ export class Engine {
         this.team = tm ? { ...tm } : { ...(this.team || {}), tid, team_id: `tid-${tid}`, name: TEAM_NAME[tid] || `TEAM ${tid}` };
       }
     }
+    this.switching = null;          // a swap indicator must not outlive the player
     this.moment = { kind: 'down', at: this.now() };
     this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
     this._changed();
@@ -728,7 +775,12 @@ export class Engine {
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,
-      weaponId: this.player && this.player.loadout && this.player.loadout.weapons && this.player.loadout.weapons[0] ? this.player.loadout.weapons[0].weapon_id : null, resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
+      // follows the LIVE slot, not always the primary (field 2026-08-30)
+      weaponId: (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),
+      resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
+      // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
+      ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
+      switchWindowMs: SWITCH_MAX_MS, lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
       moment: this.moment, ended: this.ended, endAck: this.endAck, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
       // A10 self-serve kitting

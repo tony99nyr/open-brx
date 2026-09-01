@@ -24,6 +24,32 @@ const PERK_GLYPH = {
 const LOCK_SVG = '<svg class="lockg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>';
 const perkGlyph = id => PERK_GLYPH[id] || '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L24 15 L36 16 L27 24 L30 36 L20 30 L10 36 L13 24 L4 16 L16 15 Z"/></svg>';
 
+
+// Field 2026-08-30: the old DMG/ROF meters read `stats.dmg` straight, but that number is "share of a
+// 115 pool per hit" -- 7 to 11 for most guns -- so every bar sat near empty and no two weapons looked
+// different. MC now ranks each stat ACROSS the arsenal and ships it as `bars`, with the real figures
+// alongside. Range is gone: t41 is identical on all 18 guns, so a range meter measured nothing.
+function statBlock(r) {
+  const st = r && r.stats ? r.stats : (r || {});
+  const b = r && r.bars ? r.bars : {};
+  const bar = (label, v, note) => v == null ? '' :
+    `<div class="tb"><span>${label}${note ? ` <em>${note}</em>` : ''}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
+  const pick = (...xs) => xs.find(x => x != null);
+  const dmgHit = pick(r && r.dmg_per_hit, st.dmg_per_hit);
+  const htk = pick(r && r.htk, st.htk);
+  const ttk = pick(r && r.ttk_ms, st.ttk_ms);
+  const reload = pick(r && r.reload_s, st.reload_s, st.reload_ms != null ? st.reload_ms / 1000 : null);
+  const facts = [
+    dmgHit != null ? `DMG <b>${dmgHit}</b>/HIT` : null,
+    htk != null ? `HITS TO KILL <b>${htk}</b>` : null,
+    ttk != null ? `KILL <b>${(ttk / 1000).toFixed(2)}S</b>` : null,
+    reload != null ? `RELOAD <b>${(+reload).toFixed(1)}S</b>` : null,
+  ].filter(Boolean).join(' · ');
+  return `${bar('POWER', pick(b.power, st.dmg, r && r.dmg))}${bar('RATE OF FIRE', pick(b.rof, st.rof, r && r.rpm))}` +
+    `${bar('AMMO CARRIED', b.ammo)}${bar('KILL SPEED', b.ttk)}` +
+    (facts ? `<div class="facts">${facts}</div>` : '');
+}
+
 export class Hud {
   constructor(root, handlers = {}) {
     this.root = root; this.h = handlers;
@@ -62,7 +88,7 @@ export class Hud {
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
-      st.mode, st.gun && st.gun.name, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
+      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // A10 loadout browser + slot plates
@@ -125,13 +151,17 @@ export class Hud {
     const cs = esc(st.callsign || (mode === 'connected' ? 'LINKED' : 'OPERATOR'));
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
     const tw = this._tryoutShown(st) ? st.tutorialWeapon : null;
+    // MC pushes a WeaponView here (it carries the ranked `bars`), which names the magazine `clip`;
+    // older servers push the raw catalog row, where it is `stats.mag`. Accept both.
     const twStats = tw && tw.stats ? tw.stats : (tw || {});
+    const twMag = [twStats.mag, tw && tw.clip, tw && tw.mag].find(v => v != null);
+    const twRes = [twStats.reserve, tw && tw.reserve].find(v => v != null);
     const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
     const tryout = tw ? `<div class="tryout">
         <div class="art" style="background-image:url('assets/weapons/${esc(tw.weapon_id)}.jpg')"></div>
         <div class="meta"><div class="lbl">TRY-OUT · FIRE A FEW ROUNDS</div><div class="nm">${esc((tw.name || tw.weapon_id || '').toUpperCase())}</div>
-          <div class="ln">MAG ${twStats.mag != null ? twStats.mag : (tw.mag != null ? tw.mag : '—')} · RESERVE ${twStats.reserve != null ? twStats.reserve : (tw.reserve != null ? tw.reserve : '—')}${tw.role ? ' · ' + esc(roleName(tw)) : ''}</div>
-          ${bar('DMG', twStats.dmg)}${bar('ROF', twStats.rof != null ? twStats.rof : twStats.rpm)}${(twStats.htk != null ? twStats.htk : tw.htk) != null ? `<div class="htkl" data-htk="1">HITS TO KILL ${twStats.htk != null ? twStats.htk : tw.htk}</div>` : ''}</div>
+          <div class="ln">MAG ${twMag != null ? twMag : '—'} · RESERVE ${twRes != null ? twRes : '—'}${tw.role ? ' · ' + esc(roleName(tw)) : ''}</div>
+          ${statBlock(tw)}</div>
         <div class="tact"><button class="lobtn ghost" data-act="onTryDone"><span class="unskew">DONE</span></button><div class="small">Keeps the gun armed with this weapon.</div></div></div>` : '';
     // Ammo is unknown until the game is pushed/armed — say so in words instead of showing "MAG — · RESERVE —".
     const _mag = st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : null);
@@ -256,7 +286,7 @@ export class Hud {
       const r = focus.row;
       const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
-      else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${bar('DMG', r.dmg)}${bar('ROF', r.rpm != null ? r.rpm : r.rof)}${r.htk != null ? `<div class="ln htk">HITS TO KILL <b>${r.htk}</b></div>` : ''}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
+      else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? 'Pick a second weapon or a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
     const ackChip = ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? 'EQUIPPED ✓' : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
     const canTry = can && focus && focus.kind === 'weapon';
@@ -312,7 +342,9 @@ export class Hud {
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
       <div class="ammo">${lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>` : ''}
         <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${pad2(st.ammo)}</span><span class="res tab" id="res">/${st.reserve != null ? st.reserve : '—'}</span></div>
-        <div class="pips" id="pips">${this._pips(st)}</div><span class="wn">${esc(st.weapon)}</span></div>
+        <div class="pips" id="pips">${this._pips(st)}</div>
+        <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
+      ${st.switching ? `<div class="swapping"><div class="big">ALT</div><div class="sub">SWITCHING — CONFIRMS ON YOUR NEXT SHOT</div><div class="track"><i id="swapbar"></i></div></div>` : ''}
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
   }
   _pips(st) {
@@ -354,6 +386,9 @@ export class Hud {
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths);
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? (st.wsState === 'bound' ? '' : 'ws') : 'off'); if (dot.className !== cls) dot.className = cls; }
+      // swap progress: fills against the assumed ceiling, so the player can SEE the wait elapsing
+      const sw = q('swapbar');
+      if (sw && st.switchingMs != null && st.switchWindowMs) sw.style.width = `${Math.min(100, Math.round(100 * st.switchingMs / st.switchWindowMs))}%`;
     }
   }
 

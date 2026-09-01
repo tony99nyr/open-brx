@@ -163,6 +163,14 @@ export interface WeaponView {
   role: string;        // assault | cqb | marksman | support | power — the human class label
   tags: string[];      // heavy | sniper | … — what loadout rules match on
   htk?: number;        // hits to kill at the default health config (weapons.json) — replaces the RANGE bar (t41 is 75 on every gun)
+  ttk_ms?: number;     // time to kill in ms at that health config
+  dmg_per_hit?: number;   // the REAL per-hit damage (`dmg` is its share of the 115 pool, 7-11 for most guns)
+  pool?: number;          // the pool dmg_per_hit is measured against (45 HP + 70 armour)
+  ammo_total?: number;    // clip + reserve
+  /** 0-100 meters ranked ACROSS the arsenal (views.weapon_views). Raw stats do not make usable bars —
+   *  see the note there. `ttk` is inverted: a faster kill is a longer bar. No range bar: t41 is
+   *  identical on all 18 guns, so it measured nothing. */
+  bars?: { power: number | null; rof: number | null; ammo: number | null; ttk: number | null };
   caution?: string;    // human copy for a weapon with a known live problem (energy_launcher: zero damage in the shipped $SIR row)
 }
 
@@ -208,12 +216,22 @@ export interface Api {
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
-  pushLobby(): Promise<{ ok: boolean; acks: State['lobby']['acks'] }>;
-  start(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;
+  pushLobby(force?: boolean): Promise<{ ok: boolean; acks: State['lobby']['acks'] }>;
+  start(runway_s: number, force?: boolean): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   reschedule(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   abort(): Promise<{ ok: boolean; reached: string[]; unreachable: string[] }>;
   control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{ ok: boolean }>;
   getRecap(): Promise<RecapView>;
+  matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;
   newSession(keep_roster: boolean): Promise<State>;
+}
+
+/** One finished match from MC's session store — the RECAP screen's history picker (A8). */
+export interface MatchHistoryRow {
+  match_id: string;
+  mode: string;
+  go_live_t: number | null;
+  ended_t: number | null;
+  recap: RecapView | null;
 }

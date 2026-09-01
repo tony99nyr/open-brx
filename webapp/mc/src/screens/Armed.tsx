@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
+import { RUNWAYS, useRunway } from '../runway';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { F, T, TAB, fmtAge, fmtClock } from '../tokens';
 import { Brackets, GhostButton, HazardButton, ScreenHeader, Seg, Tag } from '../ui';
 
-const RUNWAYS = [10, 15, 30, 45, 60, 90, 120, 180];   // quick bench starts through full walk-outs (Tony 2026-08-26)
 
 export function Armed() {
   const { state, run, api, setView, serverNow, connected } = useStore();
   const [, tick] = useState(0);
-  const [runway, setRunway] = useState(state?.start?.countdown_s ?? 120);
+  const [runway, setRunway] = useRunway();   // survives a tab switch (field 2026-08-30)
+  // ...but once a countdown IS armed, show what the SERVER armed. Otherwise a reload (or a second
+  // operator's console) offers this browser's stored pick, and CONFIRM restarts everyone at that
+  // value instead of the armed one (review 2026-08-31).
+  const armedRunway = state?.start?.countdown_s ?? null;
+  const shownRunway = armedRunway ?? runway;
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [reschedConfirm, setReschedConfirm] = useState(false);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 250); return () => clearInterval(id); }, []);
@@ -35,7 +40,7 @@ export function Armed() {
         <>
           <GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>
           {reschedConfirm ? (<>
-            <GhostButton color={T.warn} border={T.warn} onClick={() => { setReschedConfirm(false); run(() => api.reschedule(runway)); }}>CONFIRM — RESTART EVERY COUNTDOWN AT {String(Math.floor(runway / 60)).padStart(2, '0')}:{String(runway % 60).padStart(2, '0')}</GhostButton>
+            <GhostButton color={T.warn} border={T.warn} onClick={() => { setReschedConfirm(false); run(() => api.reschedule(shownRunway)); }}>CONFIRM — RESTART EVERY COUNTDOWN AT {String(Math.floor(shownRunway / 60)).padStart(2, '0')}:{String(shownRunway % 60).padStart(2, '0')}</GhostButton>
             <GhostButton onClick={() => setReschedConfirm(false)}>CANCEL</GhostButton>
           </>) : (
             <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setReschedConfirm(true)} title="Two-step: pushes a fresh go-live time to every node in range">RESCHEDULE</GhostButton>
@@ -58,7 +63,7 @@ export function Armed() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>RESCHEDULE TO</span>
-          <Seg value={String(runway) as '60'} options={RUNWAYS.map(r => ({ value: String(r) as '60', label: fmtClock(r) }))} onChange={v => setRunway(Number(v))} pad="5px 12px" />
+          <Seg value={String(shownRunway) as '60'} options={RUNWAYS.map(r => ({ value: String(r) as '60', label: fmtClock(r) }))} onChange={v => setRunway(Number(v))} pad="5px 12px" />
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ font: F.chk(600, 12), letterSpacing: '.08em', color: T.body }}>{armed}/{nodes.length} NODES ARMED · {nodes.length - armed} AWAITING ACK · {outOfRange} OUT OF RANGE</div>

@@ -27,6 +27,24 @@ export function Kit() {
   const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id && p.gun_id).length;   // no gun = cannot play (critic #8)
   const nReady = players.filter(p => p.ready).length;
   const node = sp ? state.nodes.find(n => n.player_id === sp.player_id) : undefined;
+
+  // Gun options = the armory registry PLUS any connected node whose gun is not registered.
+  // The armory (`~/.brx-mcp/armory.json`) is built by cabling a tagger over USB, so a field Mac that
+  // has never done that has an EMPTY registry — which used to leave this select with only "NO GUN"
+  // and no way to kit anyone. Muster's device-first claim already falls back to the gun tail (which
+  // the server matcher accepts, state.py `_find_player_for_gun` second pass); this does the same.
+  const gunOptions: { gun_id: string; label: string }[] = [
+    ...registry.map(r => ({ gun_id: r.gun_id, label: `${r.sticker}${r.ble?.tail ? `-${r.ble.tail}` : ''}` })),
+    ...state.nodes
+      .filter(n => n.gun_tail && !registry.some(r => (r.ble?.tail || '').toUpperCase() === n.gun_tail!.toUpperCase()))
+      .map(n => ({ gun_id: n.gun_tail!, label: `${n.gun_name || n.gun_tail} · UNREGISTERED` })),
+  ];
+  // keep an already-assigned gun selectable even if its node dropped and it was never registered
+  if (sp?.gun_id && !gunOptions.some(o => o.gun_id.toUpperCase() === sp.gun_id!.toUpperCase()))
+    gunOptions.push({ gun_id: sp.gun_id, label: `${sp.gun_id} · OFFLINE` });
+  // <select> matches option values case-SENSITIVELY, so a player whose gun_id differs only in case
+  // from the option would silently display "— NO GUN —" (review 2026-08-31).
+  const selectedGun = gunOptions.find(o => o.gun_id.toUpperCase() === (sp?.gun_id ?? '').toUpperCase())?.gun_id ?? '';
   const patch = (p: Partial<Player>) => sp && run(() => api.patchPlayer(sp.player_id, p));
 
   const wById = (id?: string | null) => weapons.find(w => w.weapon_id === id);
@@ -170,12 +188,12 @@ export function Kit() {
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />
-                <select aria-label={`gun for ${sp.display}`} value={sp.gun_id ?? ''} onChange={e => patch({ gun_id: e.target.value || null })}
+                <select aria-label={`gun for ${sp.display}`} value={selectedGun} onChange={e => patch({ gun_id: e.target.value || null })}
                   style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 32, cursor: 'pointer' }}>
                   <option value="">— NO GUN —</option>
-                  {registry.map(r => {
-                    const takenBy = players.find(q => q.player_id !== sp.player_id && q.gun_id === r.gun_id);
-                    return <option key={r.gun_id} value={r.gun_id} disabled={!!takenBy}>{r.sticker}{r.ble?.tail ? `-${r.ble.tail}` : ''}{takenBy ? ` · ${takenBy.display}` : ''}</option>;
+                  {gunOptions.map(o => {
+                    const takenBy = players.find(q => q.player_id !== sp.player_id && (q.gun_id || '').toUpperCase() === o.gun_id.toUpperCase());
+                    return <option key={o.gun_id} value={o.gun_id} disabled={!!takenBy}>{o.label}{takenBy ? ` · ${takenBy.display}` : ''}</option>;
                   })}
                 </select>
                 <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: node ? T.ok : sp.gun_id ? T.bad : T.micro }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : sp.gun_id ? 'NO NODE' : 'PICK A GUN'}</span>
@@ -387,13 +405,21 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
           {w.caution && <span role="alert" style={{ font: F.mono(600, 9), letterSpacing: '.14em', color: T.bad }}>▲ {w.caution.toUpperCase()}</span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '7px 14px', alignItems: 'center', maxWidth: 440 }}>
-          {([['DAMAGE', w.dmg], ['FIRE RATE', w.rpm]] as const).map(([l, v]) => <StatRow key={l} label={l} pct={v} />)}
+          {/* Field 2026-08-30: these read `dmg`/`rpm` straight, but `dmg` is "% of a 115 pool per hit"
+              (7-11 for most guns) so every DAMAGE bar sat near empty and no two weapons looked
+              different. MC now ranks each stat across the ARSENAL and ships it as `bars`. */}
+          {([['POWER', w.bars?.power ?? w.dmg], ['FIRE RATE', w.bars?.rof ?? w.rpm],
+             ['AMMO CARRIED', w.bars?.ammo], ['KILL SPEED', w.bars?.ttk]] as const)
+            .filter(([, v]) => v != null)
+            .map(([l, v]) => <StatRow key={l} label={l} pct={v as number} />)}
         </div>
         <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          {w.dmg_per_hit != null && <NumberCell label="DAMAGE / HIT" value={w.dmg_per_hit} size={20} pad="6px 14px" />}
           <NumberCell label="MAGAZINE" value={w.clip} size={20} pad="6px 14px" />
           <NumberCell label="RESERVE" value={w.reserve} size={20} pad="6px 14px" />
           <NumberCell label="RELOAD" value={w.reload_s} unit="s" size={20} pad="6px 14px" />
           {w.htk != null && <NumberCell label="HITS TO KILL" value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
+          {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}
         {tryingId && (

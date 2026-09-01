@@ -1,6 +1,24 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-08-31. **Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
+**Updated:** 2026-08-31.
+
+> ## 🏆 2026-08-30/31 — THE FIRST FULL MATCH RAN ON OUR OWN STACK, and 16 things it exposed.
+> Two phones, two taggers, one MacBook hosting: a 300 s FFA start to finish — **12 kills, 126 landed
+> hits, 24 respawns, a winner.** That closes the top `[UNVERIFIED]` in `field-runbook-mc.md`: the
+> MC↔phone↔gun field path is **hardware-verified**.
+> **Everything reported that day is fixed** (mcp 542/542 · engine 54/54 · e2e 75/75). What is left is
+> split by machine in **[`handoff-post-first-match.md`](handoff-post-first-match.md)** — read it before
+> picking up field work; the two highest-value items are **Mac-only**.
+> Two corrections that change what you believe:
+> - **The headset green flash is HOST-DRIVEN, not autonomous.** 126 hits, both headsets healthy all
+>   match, no green. The 2026-08-27 "we get them free" entry is corrected in place.
+> - **`$VOL,69` is on-gun level 2.** Play volume is now venue-driven (80 indoor / 90 outdoor); the
+>   CLAUDE.md hard rule and the spec/manual pages were updated with it.
+> Also: the AR was retuned (140 ms / 192 reserve — the 190 ms nerf cost it its identity), weapon stat
+> bars are ranked across the arsenal (raw `dmg` is a *share of a 115 pool*, so every meter read empty),
+> and `golden_bundle.json` had been **five days stale** — now pinned by a test.
+
+**Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
 lore, indexed by symptom; several of those quirks each cost a whole session.
 [`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it.
 **The bench queue is [`docs/bench-tomorrow.md`](bench-tomorrow.md), and it is the ONLY one.**

@@ -187,7 +187,7 @@ scoring, no announcement (it is *audible* — the point is to hear fire + reload
   The node writes the frames verbatim; nothing is scored and no `start` is implied. State stays **KITTED**.
 - **UX:** on the player card, weapon selection is **live** — tap a new weapon, a subtle "trying out on
   <name>'s gun" indicator appears; the player squeezes the trigger a few times, feels the fire rate + mag +
-  reload, and either the host keeps it or taps another. The compiled frames carry **`$VOL,69`** (the audible
+  reload, and either the host keeps it or taps another. The compiled frames carry **`$VOL,80` indoors / `$VOL,90` outdoors** (`compile.play_volume()`; the audible
   game value, `modes.md` §4) — never the diagnostic `30`.
 - This flows **MC (compile) → M-NET → node (write) → gun**; MC never touches the gun over BLE (players may
   already be out of bench range — this is why it goes over the LAN via the node).

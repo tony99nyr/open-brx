@@ -169,13 +169,13 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         return JSONResponse(s.modes())
 
     async def weapons(_):
-        from .fakes import weapon_views
-        from .views import weapon_view
+        from .fakes import weapon_views as fake_weapon_views
+        from .views import weapon_views
         try:
-            views = [weapon_view(w) for w in s.compiler.weapon_catalog()]
-            return JSONResponse(views if views else weapon_views())
+            views = weapon_views(s.compiler.weapon_catalog())
+            return JSONResponse(views if views else fake_weapon_views())
         except Exception:
-            return JSONResponse(weapon_views())
+            return JSONResponse(fake_weapon_views())
 
     # ---- A10 §8 saved games (presets) ----
     from .presets import PresetError, PresetStore
@@ -314,9 +314,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except ValueError as e:
             return _err(str(e))
 
-    async def lobby_push(_):
+    async def lobby_push(req):
+        b = await body(req)
         try:
-            return JSONResponse(s.push_config())
+            return JSONResponse(s.push_config(force=bool(b.get("force"))))
         except ValueError as e:
             return _err(str(e))
 
@@ -351,6 +352,22 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def recap(_):
         r = s.recap()
         return JSONResponse(r) if r else _err("no match", 404)
+
+    async def match_history(_):
+        """Past matches, newest first (A8): the RECAP screen's history picker. Read-only, so it needs
+        no operator token — a spectator may look at how the last round went."""
+        if not s.store:
+            return JSONResponse([])
+        try:
+            return JSONResponse([{k: m[k] for k in ("match_id", "go_live_t", "ended_t", "recap")}
+                                 | {"mode": (m["config"] or {}).get("mode", "")} for m in s.store.matches()])
+        except Exception:                            # history is a convenience; never 500 the console
+            # NOT a header: Starlette encodes header values as latin-1, so an error message carrying a
+            # non-ASCII character (this codebase's messages are full of em-dashes) would raise INSIDE
+            # the guard and take the request down anyway. Log it and return the empty list.
+            import logging
+            logging.getLogger("brx.mc").exception("match history unavailable")
+            return JSONResponse([])
 
     async def recap_csv(_):
         if not s.scorer:
@@ -464,6 +481,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/start/abort", abort, methods=["POST"]),
         Route("/api/control", control, methods=["POST"]),
         Route("/api/recap", recap),
+        Route("/api/matches", match_history),
         Route("/api/recap.csv", recap_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
         WebSocketRoute("/ui-ws", ui_ws),

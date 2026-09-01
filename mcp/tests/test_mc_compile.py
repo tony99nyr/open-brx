@@ -36,7 +36,23 @@ def test_head_is_silent_and_ends_with_tid():
     assert not any(f.startswith("$SPAWN") for f in head), "head must NOT contain $SPAWN"
     assert not any("VA81" in f for f in head), "head must NOT contain the $PLAY,VA81 countdown"
     assert head[-1] == "$TID,1,*", f"head must end with $TID,<tid>, got {head[-1]}"
-    assert head[0] == "$VOL,69,0,*" and head[1] == "$CLEAR,*" and head[2] == "$START,*"
+    from brx_mcp.mc.compile import play_volume
+    assert head[0] == f"$VOL,{play_volume('indoor')},0,*" and head[1] == "$CLEAR,*" and head[2] == "$START,*"
+
+
+def test_play_volume_follows_the_venue():
+    """Field 2026-08-30: $VOL,69 (iOS Callsign's value) played at ~on-gun level 2 and was too quiet
+    outdoors. Volume now follows the venue — L3 indoors, L4 outdoors (protocol $VOL: L1=60 .. L5=100)."""
+    from brx_mcp.mc.compile import play_volume
+    assert play_volume("outdoor") == 90 and play_volume("indoor") == 80
+    # An unknown venue must fail QUIET. Guessing "outdoor" means blasting L4 into someone's ear
+    # indoors, and the wrong direction on a hearing-exposure default is not a neutral choice.
+    assert all(play_volume(v) == 80 for v in (None, "", "mixed", "INDOOR", " Indoor ")), "unknown venue -> quieter"
+    assert play_volume("OUTDOOR") == 90, "case-insensitive"
+    from brx_mcp.mc.compile import VOL_TRYOUT
+    assert VOL_TRYOUT == 69, "a try-out is fired at arm's length — it keeps the quiet value"
+    out = C.compile(dict(_cfg(), environment="outdoor"), _player(), _TEAMS)["head"][0]
+    assert out == "$VOL,90,0,*", out
 
 
 def test_head_carries_player_num_in_pset():
@@ -75,11 +91,11 @@ def test_end_and_panic_are_the_known_sequences():
 
 
 def test_ammo_comes_from_selected_weapons():
-    # assault_rifle mag/reserve = 32/384 ; shotgun = 6/24 (weapons.json)
+    # assault_rifle mag/reserve = 32/192 ; shotgun = 6/24 (weapons.json)
     b = C.compile(_cfg(), _player(weapons=("assault_rifle", "shotgun")), _TEAMS)
     a0 = [f for f in b["spawn"] if f.startswith("$AMMO,0,")][0]
     a1 = [f for f in b["spawn"] if f.startswith("$AMMO,1,")][0]
-    assert a0 == "$AMMO,0,32,384,1,*", a0
+    assert a0 == "$AMMO,0,32,192,1,*", a0
     assert a1 == "$AMMO,1,6,24,1,*", a1
 
 
@@ -138,7 +154,8 @@ def test_tutorial_is_reduced_and_identity_zero():
     assert any(f.startswith("$SIR") for f in frames), "tutorial needs a $SIR row so a shot registers"
     assert any(f.startswith("$SPAWN") for f in frames), "tutorial spawns the gun live"
     assert any(f.startswith("$PSET,0,") for f in frames), "tutorial identity is 0 (uncredited)"
-    assert "$VOL,69,0,*" in frames  # audible
+    from brx_mcp.mc.compile import VOL_TRYOUT
+    assert f"$VOL,{VOL_TRYOUT},0,*" in frames  # audible
     assert any(f.startswith("$WEAP,0,") for f in frames)
 
 
@@ -185,14 +202,14 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     assert "melee" not in ids, "hidden melee is not in the visible picker"
     assert len(ids) == 18, f"the §3 roster is 18 weapons, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
-    # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (190ms, not the
+    # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (140ms, not the
     # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
     assert by["assault_rifle"]["verified"] is False
     assert by["burst_rifle"]["verified"] is True
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
-    assert "190ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
+    assert "140ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
     assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
 
 
@@ -445,6 +462,19 @@ def test_award_medals_basic():
 
 
 # ---- the shared golden bundle (M10) --------------------------------------
+def test_golden_bundle_json_matches_the_compiler():
+    """The checked-in fixture is consumed by the phone app's tests and its demo mode, so a compiler
+    change that does not regenerate it silently splits the two. It drifted exactly that way when play
+    volume moved off 69 (review 2026-08-31), and the shape-only test below could not see it."""
+    import json, pathlib
+    p = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "golden_bundle.json"
+    on_disk = json.loads(p.read_text())
+    assert on_disk == golden_bundle(), (
+        "golden_bundle.json is stale — regenerate it:\n"
+        "  python -c \"import json;from brx_mcp.mc.compile import golden_bundle;"
+        "open('mcp/brx_mcp/mc/golden_bundle.json','w').write(json.dumps(golden_bundle(),indent=2)+chr(10))\"")
+
+
 def test_golden_bundle_is_well_formed():
     b = golden_bundle()
     for k in ("head", "spawn", "revive", "end", "panic", "cues"):
@@ -489,7 +519,7 @@ def test_captured_native_behaviour_survives_resolve():
 def test_fire_interval_is_written_at_tok14_and_850_is_never_touched():
     cat, T = WeaponCatalog(), WeaponCatalog._T
     p = cat.resolve("assault_rifle", 0).split(",")
-    assert p[T["fire"] + 1] == "190", "rebalanced fire interval lands at tok14 (raw idx15)"
+    assert p[T["fire"] + 1] == "140", "rebalanced fire interval lands at tok14 (raw idx15)"
     assert p[T["fire"] + 2] == "850", "the unidentified constant at tok15 is never written"
 
 

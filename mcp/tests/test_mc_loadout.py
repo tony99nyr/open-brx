@@ -249,8 +249,8 @@ def test_compile_perk_effects():
     # extended_mags: ×2 mag + reserve on $AMMO,0 AND the frame (t16/t39 mag, t17/t40 reserve; t17 == 2×t40)
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
-    assert _tok(f, 16) == _tok(f, 39) == "64" and _tok(f, 17) == "768" and _tok(f, 40) == "384"
-    assert "$AMMO,0,64,768,1,*" in b["spawn"] and "$AMMO,0,64,768,1,*" in b["revive"]
+    assert _tok(f, 16) == _tok(f, 39) == "64" and _tok(f, 17) == "384" and _tok(f, 40) == "192"
+    assert "$AMMO,0,64,384,1,*" in b["spawn"] and "$AMMO,0,64,384,1,*" in b["revive"]
     assert _tok(f, 18) == _tok(w0, 18)                                   # reload untouched
     # quick_hands: reload halved (t18), ammo untouched
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_hands"}), _TEAMS)
@@ -271,7 +271,7 @@ def test_compile_perk_effects():
     assert "$BMAP,1,100,0,1,99,99,*" in two["head"]
     # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial
     tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
-    assert any(f == "$AMMO,0,32,384,1,*" for f in tut)
+    assert any(f == "$AMMO,0,32,192,1,*" for f in tut)
 
 
 def test_compile_validate_perks():
@@ -483,7 +483,7 @@ def test_apply_policy_cancels_tryouts_and_warns_the_host():
 def test_weapon_view_htk_ttk_caution():
     from brx_mcp.mc.views import weapon_view
     views = {v["weapon_id"]: v for v in (weapon_view(w) for w in C.weapon_catalog())}
-    assert views["assault_rifle"]["htk"] == 13 and views["assault_rifle"]["ttk_ms"] == 2280
+    assert views["assault_rifle"]["htk"] == 13 and views["assault_rifle"]["ttk_ms"] == 1680
     assert all(isinstance(v["htk"], int) and v["htk"] >= 1 for v in views.values())
     assert views["energy_launcher"]["caution"].startswith("Known issue") and "caution" not in views["assault_rifle"]
     # the phone gets the same rows in assign.catalog
@@ -691,3 +691,55 @@ def test_apply_preset_marks_the_playing_game_and_edits_clear_it():
     s.apply_preset(a["preset_id"], a["config"])
     s.set_config({"loadout_policy": {"preset": "snipers"}})
     assert s.snapshot()["active_preset_id"] is None
+
+
+# ── field 2026-08-30 regressions (first live 2-player match on the Mac) ──────────────────────────
+def test_push_config_force_overrides_a_red_board():
+    """A red row hard-blocked the push with no operator recourse, which stranded a live session while
+    everything else on the field was ready. `start()` has always had a force; push now matches."""
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    # drop one gun's BLE link -> that row goes red -> the plain push must refuse
+    net.simulate_status("node1", {"player_id": ps[1]["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True,
+                                  "shots": 0, "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": True,
+                                  "preflight": {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90,
+                                                "screen_on": True, "foreground": True, "gun_linked": False}},
+                        clock["t"])
+    rd = s.readiness()
+    assert not rd["go"] and any(r["status"] == "red" for r in rd["board"])
+    try:
+        s.push_config()
+        raise AssertionError("a red board must refuse a plain push")
+    except ValueError as e:
+        assert "force" in str(e), e            # the message has to name the way out
+        assert "GUN LINK LOST" in str(e), e    # ...and say WHY, not just "there are reds"
+    assert s.push_config(force=True)["ok"] is True
+    assert s.lobby_pushed is True
+
+
+def test_weapon_views_rank_bars_across_the_arsenal():
+    """`stats.dmg` is a share of the 115 pool (7-11 for most guns), so a raw 0-100 bar can only ever
+    fill a tenth of the way — every weapon read 'weak' and none looked different. Bars are ranked."""
+    from brx_mcp.mc.views import weapon_views
+    views = weapon_views(Compiler().weapon_catalog())
+    assert views and all("bars" in v for v in views)
+    powers = [v["bars"]["power"] for v in views]
+    assert min(powers) >= 20 and max(powers) == 100, powers   # spans the usable range, nothing empty
+    by = {v["weapon_id"]: v for v in views}
+    # the real number rides along with the bar
+    assert by["assault_rifle"]["dmg_per_hit"] == 9 and by["assault_rifle"]["pool"] == 115
+    # a heavy hitter must out-rank the AR on power
+    assert by["shotgun"]["bars"]["power"] > by["assault_rifle"]["bars"]["power"]
+    # KILL SPEED is inverted: the quickest kill gets the longest bar
+    quick = min((v for v in views if v.get("ttk_ms")), key=lambda v: v["ttk_ms"])
+    slow = max((v for v in views if v.get("ttk_ms")), key=lambda v: v["ttk_ms"])
+    assert quick["bars"]["ttk"] > slow["bars"]["ttk"]
+    # range is deliberately NOT a bar — t41 is identical on every gun
+    assert all("rng" not in v["bars"] for v in views)
+
+
+def test_a_single_weapon_view_has_no_bars():
+    """One weapon cannot be ranked against weapons it has not seen — bars come from `weapon_views`."""
+    from brx_mcp.mc.views import weapon_view
+    assert "bars" not in weapon_view(Compiler().weapon_catalog()[0])

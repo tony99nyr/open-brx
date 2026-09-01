@@ -25,8 +25,13 @@ token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/s
 - MCP/server enforce the known-safe command list (`protocol.py`); unknown commands need
   explicit confirm. Panic sequence: `$CLEAR,*` then `$SP,99,*`.
 - **Volume:** the diagnostic default is `$VOL,30` (kind to ears indoors), but **30 is measurably
-  inaudible for weapon/game audio** — use **69** (the app's value) for real games. CLI game commands
-  take volume as an argument; keep the low default for probing, pass 69 for play.
+  inaudible for weapon/game audio**. MC now sets play volume **from the venue** —
+  `compile.play_volume()`: **80 indoors (on-gun L3), 90 outdoors (L4)**; an unknown venue resolves to
+  the *quieter* value. Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
+  default) measures as roughly **on-gun level 2** and was inaudible outdoors. **Try-outs stay at 69** —
+  they are fired at arm's length from the player's own head. CLI game commands still take volume as an
+  argument; keep the low default for probing. ⚠️ We have **no absolute SPL measurement** for any of
+  these — treat 90 as a field value, not an indoor one.
 
 ## Environment (important)
 

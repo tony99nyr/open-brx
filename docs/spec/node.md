@@ -95,7 +95,7 @@ The node **owns exactly two literal frame templates** and nothing else (contract
 `$SFLASH,*` and `$PLAYX,0,*` — plus the pre-config probe set above. `frames.cues` values are **pre-composed
 `$PLAY` frames** (the compiler decides slot placement); the node writes them verbatim like any bundle frame. Everything else —
 `head`, `spawn`, `revive`, `end`, `panic`, `team_flip` from the bundle, and the `tutorial{frames}`
-*message* (not a bundle field) — is written verbatim. Volume is MC's concern: the head carries `$VOL,69,…` (house rule — 30 is inaudible); the node
+*message* (not a bundle field) — is written verbatim. Volume is MC's concern: the head carries `$VOL,<80 indoor|90 outdoor>,…` (`compile.play_volume()`; 69 measured as on-gun L2 and was inaudible outdoors, field 2026-08-30); the node
 merely **checks it is present** and logs a warning if not. It never rewrites a frame.
 
 `config.respawn.delay_s` replaces the manual `#respawn` input; `config.time_limit_s` drives the HUD
