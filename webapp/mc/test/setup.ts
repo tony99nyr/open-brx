@@ -16,6 +16,28 @@ globalThis.matchMedia ??= ((q: string) => ({
 Element.prototype.scrollIntoView ??= function () {};
 globalThis.scrollTo ??= (() => {}) as unknown as typeof scrollTo;
 
+// localStorage. NOT present under vitest+jsdom on Node 26: Node ships its own built-in global that
+// is `undefined` unless the process was started with `--localstorage-file`, and it shadows the one
+// jsdom would otherwise expose (jsdom's own works fine — `new JSDOM('', {url}).window.localStorage`
+// is a real Storage). The result is version-dependent: this suite passes on the Node the Windows
+// lane used and fails on a Mac with Node 26, which is exactly the cross-platform trap CLAUDE.md
+// warns about. An in-memory Storage keeps the behaviour identical on both.
+if (typeof globalThis.localStorage === 'undefined') {
+  const mem = new Map<string, string>();
+  const storage = {
+    get length() { return mem.size; },
+    key: (i: number) => [...mem.keys()][i] ?? null,
+    getItem: (k: string) => (mem.has(k) ? mem.get(k)! : null),
+    setItem: (k: string, v: string) => { mem.set(k, String(v)); },
+    removeItem: (k: string) => { mem.delete(k); },
+    clear: () => { mem.clear(); },
+  };
+  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true, writable: true });
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'localStorage', { value: storage, configurable: true, writable: true });
+  }
+}
+
 // React needs to be told this is an act() environment or every state update warns.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
