@@ -884,16 +884,34 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
 
 ## Field 2026-08-30 — open after the first full match (see `experiment-log.md` 2026-08-30)
 
-- **F2 · The headset never flashes green on hit or kill under our host.** 126 hits, 12 kills, both
-  headsets healthy all match, no green. Green is **host-driven**, not autonomous — the 2026-08-27
-  "we get them free" conclusion is corrected in place. The only `$HLED` we ever send is the blanking
-  frame in `END_SEQUENCE`. **Needs:** a Callsign game captured on the Mac (PacketLogger → btsnoop →
-  `python -m brx_mcp.btsnoop`) and an in-play frame diff against our own. The feedback frame is in
-  that delta. Mac-only work.
-- **F3 · Empty-mag / reload prompt never appeared on sustained full-auto.** Ammo tracks correctly, but
-  never read 0 in 328 status samples. Cannot distinguish "the gun stops emitting `$ALCD` under
-  sustained auto fire" from a HUD render-gate bug at 2 s sampling. **Needs:** the phone's raw BLE
-  frame ring — hit **Share log** on the phone before closing the app; it lands in the session SQLite.
+- ~~**F2 · The headset never flashes green on hit or kill under our host.**~~ ✅ **DECODED
+  2026-09-01, from captures already on disk — do NOT run the capture this item used to ask for.**
+  Callsign sends exactly three headset frames: a pre-game `$HLED,<team>,0,,,10,,*`, a once-per-life
+  low-health alert (`$PLAY,VA8B,3,6,,,,,*` then `$HLED,7,4,90,90,10,15,*`, fired ~0.9 s after armour
+  reaches 0 and HP starts dropping), and an end-of-game blank. **There is no per-hit and no per-kill
+  headset frame**: 23 `$HIR` hits produced 2 alerts, one per death. We sent none of the first two,
+  which is why our headsets were dark. Both now ship (`compile.py` head, `cues.hurt`/`hurt_led`).
+  Full write-up: `experiment-log.md` 2026-09-01 (MacBook).
+  **Still open, and it is an EYEBALL test, not a capture (~12 min):** does a per-hit blink happen
+  autonomously once the headset has been lit by that pre-game frame? We have never seen the lit
+  state, so we have never been able to observe it. Also unconfirmed on hardware: that the two new
+  frames do what the capture says. → **F10 below.**
+- **F3 · Empty-mag / reload prompt never appeared on sustained full-auto — NARROWED 2026-09-01 to
+  one layer.** The gun and the engine are both eliminated, from captures already on disk: a capture
+  shows one `$ALCD` per shot all the way down to 0 and then a dry trigger emitting `$BUT` with no
+  `$ALCD`, so the gun does report it. What is left is the phone-side path. **Needs:** the phone's raw
+  BLE frame ring — hit **Share log** on the phone before closing the app; it lands in the session
+  SQLite. See `experiment-log.md` 2026-09-01 (MacBook) for what was ruled out and how.
+- **F10 · The two new headset frames are shipped but UNCONFIRMED on hardware.** `compile.py` sends
+  the pre-game `$HLED,<tid>,…` and the node fires `hurt`/`hurt_led` once per life; neither has ever
+  been seen on a real headset. This is the **only shipped-unverified code path** we have. Next match,
+  before anything else: look at the headsets pre-game (do they show team colour?) and at the moment a
+  player's armour breaks (does the alert fire?). Either machine, ~12 min, no rig.
+  ⚠️ **`docs/manual/` publishes "headset green: blink on a hit, hold on a kill" as a ✅ confirmed
+  fact** (`01-hardware.md:139,144`, `03-gameplay.md:187,197-198,205`, `02-operation.md:389`,
+  `00-home.md:95`). That marker is not earned — we have never seen the lit state. Settle F10 first,
+  then correct the manual in one pass rather than retracting twice. A manual edit needs a site
+  rebuild before the next push (`CLAUDE.md` → Layout).
 - **F4 · A weapon swap has never been timed.** `SWITCH_MAX_MS = 2500` in `engine.js` is a guess.
   `engine.lastSwitchMs` now records the true figure whenever an `$ALCD` confirms a swap — pull it off
   the diagnostics log after the next match and tighten the constant.
@@ -914,7 +932,7 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
   quoting, and `weapon-design.md` §2.5's sensitivity table is machine-checked against the wire.
 
 - ~~**F9 · Nothing tests the MC web console.**~~ ✅ **CLOSED 2026-09-01 (handoff W5).** `webapp/mc`
-  has a `test` script: 50 jsdom tests in ~1.4 s that mount every screen against a full session, an
+  has a `test` script: 69 jsdom tests in ~1.7 s that mount every screen against a full session, an
   empty one and a null one. It found two live bugs on its first run — `CommandBar` still crashed on
   `PH[si][1]` for an unrecognised phase (the same defect as the black ARSENAL page), and `Kit` called
   two hooks below its `if (!state) return null`, so the render that first received a snapshot ran

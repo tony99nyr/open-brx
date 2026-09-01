@@ -5,7 +5,7 @@
 **M2 is narrowed to one layer**, both from captures already on disk — read those sections before
 planning any bench time. What still needs the hardware is **M2's last layer, M3 and M4**.
 
-Suites: **mcp 578/578 · app 70/70 · MC console 66/66 (new) · browser e2e 75/75.**
+Suites: **mcp 579/579 · app 70/70 · MC console 69/69 (new) · browser e2e 75/75.**
 (At handoff: mcp 542 · app engine 54 · e2e 75. The Mac's sweep took mcp to 543.)
 
 > ### 📌 2026-09-01 — the Mac cleared the leftovers, and left W1–W5 alone as promised.
@@ -179,7 +179,7 @@ at all after a discovery-only join. The seven-file bench-frame copy-paste is hoi
 has to be the same control every run or its numbers are not comparable.
 
 ### W5 · Nothing tests the MC web console — ✅
-`cd webapp/mc && npm test` — 66 jsdom tests in ~1.6 s (vitest + the real React renderer; no browser,
+`cd webapp/mc && npm test` — 69 jsdom tests in ~1.7 s (vitest + the real React renderer; no browser,
 no server). Every screen is mounted three ways: a full session, an empty one, and `state: null`.
 **It found two live bugs on its first run**, both of the exact class it was written for:
 - `CommandBar` still did `PH[si][1]` for the *phase* label, so an unrecognised phase crashed the

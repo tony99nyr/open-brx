@@ -11,7 +11,7 @@
 > picking up field work; the two highest-value items are **Mac-only**.
 >
 > ### 2026-09-01 — the whole Windows lane of that handoff is done (W1–W5), and the 2026-08-26 ledger with it
-> Suites now: **mcp 578/578 · app 70/70 · MC console 66/66 (new) · e2e 75/75.** In order of what it
+> Suites now: **mcp 579/579 · app 70/70 · MC console 69/69 (new) · e2e 75/75.** In order of what it
 > changes about the product:
 > - **Weapon stats follow the host's health config.** `POOL = 115` was hardcoded, so KIT and ARSENAL
 >   both said the AR takes 13 hits at any health setting — at a 100/100 game it takes 23. Both
@@ -29,11 +29,29 @@
 > - **The 2026-08-26 deferred-lows ledger is worked and closed** — 15 rows: 14 fixed, one
 >   (CORS `*`) deliberately kept with the reason written down. 11 of the 14 name a test; the rest
 >   are copy or wiring changes with no sensible unit. See FOLLOWUPS.
-> Still open and still Mac-only: **M1 the headset green flash**, **M2 `$ALCD` under sustained auto**,
-> **M3 timing a weapon swap**, **M4 the AR's identity** — all need the hardware.
+>
+> ### 2026-09-01 — and the OTHER lane decoded the headset, from captures already on disk
+> Running in parallel on the Mac, so read both. **M1 is CLOSED**: Callsign sends a pre-game
+> `$HLED,<team>,0,,,10,,*`, a once-per-life low-health alert (`$PLAY,VA8B` + `$HLED,7,4,90,90,10,15,*`
+> at armour-0 → HP dropping), and an end-of-game blank — **and no per-hit or per-kill headset frame at
+> all**. We sent none of the first two, which is why our headsets were dark for a whole match. Both are
+> shipped in `compile.py` and `engine.js` and are **UNCONFIRMED on hardware** — the next match should
+> look at the headsets pre-game. **M2 is narrowed**: the gun and the engine are both eliminated as
+> suspects, again from captures on disk. That lane also swept leftovers, hardened the APK/site
+> pipeline, and rebuilt the site.
+>
+> ⚠️ **What is NOT settled**, and matters for the public manual: whether a per-hit blink happens
+> autonomously *once the headset has been lit* by that pre-game frame. We have never seen the lit
+> state, so we have never been in a position to observe it. `docs/manual/` currently publishes
+> "blink on a hit, hold on a kill" as a ✅ confirmed fact — that marker is not earned. It is a
+> 12-minute eyeball test at the next bench session, not a capture; settle it, then fix the manual.
+>
+> Still open and needing the hardware: **M2's last layer**, **M3 timing a weapon swap**,
+> **M4 the AR's identity** — plus the `$HLED` confirmation above.
 > Two corrections that change what you believe:
 > - **The headset green flash is HOST-DRIVEN, not autonomous.** 126 hits, both headsets healthy all
->   match, no green. The 2026-08-27 "we get them free" entry is corrected in place.
+>   match, no green. The 2026-08-27 "we get them free" entry is corrected in place — and as of the
+>   same day it is **decoded**: see the section above for the exact frames.
 > - **`$VOL,69` is on-gun level 2.** Play volume is now venue-driven (80 indoor / 90 outdoor); the
 >   CLAUDE.md hard rule and the spec/manual pages were updated with it.
 > Also: the AR was retuned (140 ms / 192 reserve — the 190 ms nerf cost it its identity), weapon stat
