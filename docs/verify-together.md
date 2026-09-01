@@ -11,16 +11,30 @@ failing to record, and it is the leading suspect in V1.
 
 ---
 
-## V1 · Do the headset domes register hits? 🔴
-**Shipped:** nothing — this is a diagnosis, not a fix.
-**Do:** power the guns fresh. Hold a nozzle against a headset dome, fire ~5 shots, both headsets,
-both directions. Then repeat with the guns having been on for a while.
-**Proves working:** MC's live rows show hits arriving on the dome (`hit_taken.sensor` = 0 or 1).
-**Proves broken:** every hit reports sensor 4 with the nozzle touching the dome.
-**Why:** the domes were dead for a whole match, then worked later the same day with the venue still
-outdoor. `outdoorMode` is refuted; daylight is refuted (native outdoor play works). The remaining
-correlation is a **gun power-cycle**, and `gotchas.md` already warns that long-powered taggers
-misbehave. `hit_taken` now carries the sensor, so the board shows this live — no log dig.
+## V1 · Why did point-blank on the dome fail, when the domes were working? 🔴
+**Shipped:** nothing — this is a diagnosis.
+
+**The timeline says the domes were never dead.** In the session where they were reported broken
+(`session-8bbf96ab`, 35 min, 170 hits) the **first dome hit landed 17 s in**, and the opening five
+minutes ran at **6 dome / 50 body ≈ 11%** — which is Callsign's own native rate (3 of 23 ≈ 13%).
+The dome-dominated block at 30–40 min (75 dome / 17 body) is the deliberate nozzle test once it
+started working. Guns had been powered **minutes**, so a stale-gun state is out too, along with
+`outdoorMode` and daylight.
+
+So the question is not "do the domes register" — they do, from the first minute. It is **why
+point-blank on the dome failed at that moment and worked later**.
+
+**Do:** hold the nozzle on the dome and fire 5 shots. Then move ~1 m back, aim at the dome, 5 more.
+Repeat on the other headset and the back dome. Watch MC's live rows (`sensor` is reported now).
+**Proves it was aim:** point-blank works every time and the misses were at range/angle.
+**Proves a real fault:** point-blank gives sensor 4 (or nothing) repeatedly — then **do not change
+anything**, Share log from that phone immediately, and note gun uptime and whether the headset had
+been re-seated. The frame ring is the only thing that can show what the gun reported at that instant.
+**Worth knowing:** point-blank IR floods; `gotchas.md` warns that a close-range shot can be
+mis-attributed across sensors. A dome test at 30–50 cm may be more honest than one at 0 cm.
+
+**Also unexplained:** sensors **2** and **3** appear in the data (6 and 17 hits). The protocol
+documents only 0 = headset front, 1 = headset back, 4 = gun body. Nobody knows what 2 and 3 are.
 
 ## V2 · Does the low-health alert fire, and is it bright enough? 🟠
 **Shipped:** `$PLAY,VA8B` + `$HLED,7,4,90,90,**100**,15` once per life when armour hits 0 and HP
