@@ -213,7 +213,7 @@ shows it honestly and briefly:
 |---|---|
 | **`brx-mcp`** (CLI + MCP server) | **Shown in full.** It works today — Tier 0 (laptop-only) games are hardware-proven. It appears on Home, `/platform` and `/platform/pieces` as the thing you can run now, and `/manual/dev/brx-mcp` is the getting-started page. |
 | **Mission Control** (operator console) | 🚧 `[under-construction]` card only. No screenshots, no phase walkthrough, no feature lists. |
-| **BRX Combat HUD** (phone node app) | 🚧 card only. No screenshots, no APK download. |
+| **BRX Combat HUD** (phone node app) | 🚧 card only, **except the download**: `/platform/app` publishes the Android test build via a `[download]` block (see §5), because a build people can install is the one thing the card cannot substitute for. Still no screenshots and no feature walkthrough until it has run a full match on hardware. |
 | **BRX Companion** (ESP32 rider) | 🚧 card only ("specified; bench kit in hand"). |
 | **Utility Box / stations, effect nodes** | 🚧 card only. The one proven fact (a stock tagger accepted a synthetic IR shot from our rig) may appear as a one-liner. |
 | `/platform/architecture`, `/platform/modes`, `/platform/build-tiers`, `/platform/vs-edge`, `/platform/status` | Ship — they describe the design and the honest status, and every block carries ✅/🧪/📐. They must not link to detail pages for 🚧 pieces. |

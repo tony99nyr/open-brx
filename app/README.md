@@ -110,8 +110,11 @@ Then rebuild + test the site and commit, because **a push to `main` deploys `web
 
 ```bash
 cd ../site && npm run build && npm test      # /platform/app reads name, size, date + sha256 off the file
-git add webapp docs/manual app && git commit && git push
+git add webapp/download webapp/platform docs/manual app && git commit -m "cut <version>" && git push
 ```
+
+Name the paths. A bare `git add -A` here will sweep up whatever another session has in flight (this
+repo often has two running), and `webapp/download/` is the one place where that publishes a binary.
 
 **How the site and this script meet** (three rules, all enforced by the site build):
 
@@ -145,7 +148,11 @@ from it (`0.1.0` -> `100`). Bump `package.json` before cutting a build, or every
 the same version. Capacitor's own placeholder is `1.0` / `1`, which is why this is stamped.
 
 **Requirements:** JDK 21 (Capacitor 8 refuses 17 with *"invalid source release: 21"*) and the
-Android SDK. `minSdk` is **24 (Android 7.0)**; `targetSdk` is 36.
+Android SDK. `minSdk` is **24 (Android 7.0)**; `targetSdk` is 36 (both live in the generated
+`android/variables.gradle`, so check them there after a Capacitor bump rather than trusting this
+line). Gradle finds the SDK through `android/local.properties`, which is generated and git-ignored:
+on a fresh clone export `ANDROID_HOME=~/Android/Sdk` (or wherever yours is) before the first build,
+or gradle stops with *"SDK location not found"*.
 
 ### Running on a real iPhone
 

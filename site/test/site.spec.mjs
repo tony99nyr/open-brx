@@ -638,7 +638,7 @@ it('9 · /platform/app: the download button serves the committed APK, and the pa
   expect(fs.statSync(await dl.path()).size).toBe(bytes.length);
 
   // every hard fact on the page is the file's own
-  const sha = execFileSync('sha256sum', [onDisk], { encoding: 'utf8' }).split(' ')[0];
+  const sha = createHash('sha256').update(bytes).digest('hex');   // not sha256sum: macOS has shasum
   const meta = (await page.locator('.dl-meta').innerText()).replace(/\s+/g, ' ');
   expect(meta).toContain(path.basename(onDisk));
   expect(meta).toContain(sha);

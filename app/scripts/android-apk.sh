@@ -75,7 +75,10 @@ cp "$APK" "$OUT/$NAME"
 # exactly one apk lives there: the site build refuses to guess between two. Prune AFTER the copy so a
 # failure never leaves the folder empty, and case-insensitively so a stray .APK cannot survive to
 # hard-fail the site build.
-find "$OUT" -maxdepth 1 -iname '*.apk' ! -name "$NAME" -print -delete
+# -samefile, not -name: on a case-insensitive filesystem (macOS) a pre-existing "…-debug.APK" keeps
+# its own directory entry when cp writes through it, and a name-based prune would delete the inode we
+# just wrote. Compare identity instead.
+find "$OUT" -maxdepth 1 -iname '*.apk' ! -samefile "$OUT/$NAME" -print -delete
 
 # A sidecar for the site: the build date cannot be read back off the apk (a checkout rewrites the
 # mtime, the zip entries are normalised), and the site refuses the sidecar if it stops matching.

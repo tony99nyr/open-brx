@@ -82,6 +82,7 @@ function findDownload() {
   // and the apk's zip entries are normalised to 1981. android-apk.sh records it in a sidecar, which
   // is trusted only while it still describes these exact bytes.
   let date = fs.statSync(path.join(dlDir, file)).mtime.toISOString().slice(0, 10);
+  let variant = /-release\.apk$/i.test(file) ? 'release' : 'debug';
   const sidecar = path.join(dlDir, 'build.json');
   if (!fs.existsSync(sidecar)) {
     // without it the page would date the build from the checkout's mtime and state it as fact
@@ -91,11 +92,11 @@ function findDownload() {
     try { meta = JSON.parse(fs.readFileSync(sidecar, 'utf8')); } catch { /* handled below */ }
     if (!meta || meta.file !== file || meta.sha256 !== sha256) dlProblems.push(`webapp/download/build.json does not describe ${file} (rerun \`npm run android:apk\`)`);
     else if (meta.dirty === true) dlProblems.push(`${file} was built from a dirty tree (build.json git ${meta.git || '?'}): commit app/ and cut it again before publishing`);
-    else if (meta.built) date = meta.built.slice(0, 10);
+    else { if (meta.variant) variant = meta.variant; if (meta.built) date = meta.built.slice(0, 10); }
   }
   return {
     file, href: `/download/${file}`,
-    version: m ? m[1] : '',
+    version: m ? m[1] : '', variant,
     bytes: buf.length,
     size: `${(buf.length / 1e6).toFixed(1)} MB`,
     sha256,

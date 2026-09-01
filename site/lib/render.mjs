@@ -202,7 +202,7 @@ function downloadCard(b, ctx) {
   if (!d) return `<p class="todo" data-todo="no build published">TODO: content. No build published: run <code>npm run android:apk</code> in <code>app/</code>.</p>`;
   const rows = [
     ['File', `<code>${esc(d.file)}</code>`],
-    ['Version', `${esc(d.version || 'unversioned')} (debug build)`],
+    ['Version', `${esc(d.version || 'unversioned')} (${esc(d.variant || 'debug')} build)`],
     ['Size', esc(d.size)],
     ['Built', esc(d.date)],
     ['SHA-256', `<code class="sha">${esc(d.sha256)}</code>`],
