@@ -109,8 +109,10 @@ A stale answer is worse than an open question: an open question warns you, a sta
 - **[../app/README.md](../app/README.md)** — the **native phone app** (Capacitor → Android + iOS): the
   player node. Web Bluetooth is a dev-only harness; the player path is native (ADR-0003).
   §*Publishing the Android build* is the release step: `npm run android:apk` builds the APK the public
-  site hands out at [`/platform/app`](https://open-brx.iamrossi.workers.dev/platform/app/) and commits
-  it to `webapp/download/`; a push to `main` deploys it. iOS has no sideload path (build from source).
+  site hands out at [`/platform/app`](https://open-brx.iamrossi.workers.dev/platform/app/) into
+  `webapp/download/`, **then `cd site && npm run build && npm test`** (a version bump deletes the old
+  APK, so a page that was not rebuilt links a file that is gone), then commit and push to deploy.
+  iOS has no sideload path (build from source).
 - **[../mcp/brx_mcp/mc/API.md](../mcp/brx_mcp/mc/API.md)** — the Mission Control HTTP/WS API.
 - **[../README.md](../README.md)** — `brx-mcp` quickstart (the CLI that drives taggers at the bench).
 

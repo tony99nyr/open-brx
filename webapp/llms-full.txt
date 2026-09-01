@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-09-01T16:44:36.548Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-09-01T16:51:48.679Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -3547,7 +3547,7 @@ Source: docs/experiment-log.md 2026-08-25 "NATIVE app validated on hardware", do
 1. **Get the APK onto the phone.** Tap the download button above on the phone itself, or download on a computer and copy the file across. Any transfer works.
 2. **Open the file and allow the install.** Android asks whether the app doing the opening (your browser or file manager) may install apps. Allow it, then confirm. This is the normal prompt for any app that does not come from the Play Store, and you can switch the permission back off afterwards.
 3. **Expect one scary-looking prompt.** Play Protect warns about any app it has not seen before and offers to send it for scanning. Choosing "install anyway" is the normal path for a sideload. 🚧
-4. **Launch it and grant "Nearby devices".** That is the Bluetooth permission. Location is *not* required: the scan is flagged `neverForLocation`, so it works with the system Location toggle off. ✅
+4. **Launch it and grant "Nearby devices".** That is the Bluetooth permission. On **Android 12 and newer** that is all you need: the scan is flagged `neverForLocation`, so it finds guns with the system Location toggle off. On **Android 7 to 11** the system has no such flag, so the app asks for Location as well **and the Location toggle has to be on**, or the gun list stays empty. We do not use your location either way. ✅
 5. **Pick your gun.** Turn the tagger **and its headset** on: a gun whose headset is off or unpaired is silent over Bluetooth and never appears, which looks exactly like a broken app. A headset that is slow-blinking rainbow has not paired yet. Then the tagger appears in the list by name. ✅ Connecting proves the link: the app can speak through the gun and flash its sight.
 6. **Optional, and needed for a scored match: point it at Mission Control.** Start MC on the laptop (`python -m brx_mcp.mc`), then scan the QR it shows or type the `ws://<ip>:8766/ws` address on the app's CONNECTED screen. 🚧
 Source: app/README.md, app/scripts/android-setup.sh, mcp/brx_mcp/mc/API.md
@@ -3555,8 +3555,9 @@ Source: app/README.md, app/scripts/android-setup.sh, mcp/brx_mcp/mc/API.md
 ## What it needs
 - **Android**: 7.0 (API 24) or newer. There is no Play Store listing; this is a sideload.
 - **A tagger**: BRX gen 2/3 (Bluetooth LE). Gen 1 uses Bluetooth Classic serial and is not supported.
-- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera, only used if you scan the Mission Control QR code. **No Location**: the scan is flagged `neverForLocation`, so it works with the Location toggle off. The manifest does declare network access (Capacitor always adds it) and the app uses it for exactly one thing: the `ws://` link to your own Mission Control. No cloud, no account, no telemetry.
+- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera, for the Mission Control QR scan and the optional CAM look-through in the HUD. **Location** is needed only on Android 7 to 11 (see the install steps); on 12 and newer the scan is flagged `neverForLocation` and works with Location off. Either way the app never reads your position.
 - **Wi-Fi**: only to reach Mission Control, and only if you are running a hosted match. The field LAN is a laptop and a travel router with no internet behind it.
+- **What it does on that Wi-Fi**: to find Mission Control it listens for its mDNS advert, and if that is blocked (many routers filter multicast) it probes the usual home ranges (`192.168.0/1/86.x`, `10.0.0.x`, `172.20.10.x`) on port 8765 until something answers as MC. That scan stops the moment it binds, and it is the only thing the app sends anywhere. Nothing leaves the LAN: no cloud, no account, no telemetry. 🚧
 - **Screen**: landscape, mounted on the rail. The app locks the orientation itself.
 📐 (the Android floor is the build's `minSdk`, not a tested device matrix) / ✅ (the permissions are read from the shipped manifest)
 Source: app/README.md, app/scripts/android-setup.sh, docs/adr/0002-laptop-mission-control-host.md

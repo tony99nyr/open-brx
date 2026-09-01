@@ -49,25 +49,41 @@ if "xmlns:tools=" not in s:
 
 # 2) inject our permission overrides once (idempotent via the marker comment)
 MARKER = "<!-- Open BRX: BLE without location -->"
-BLOCK = (
-    f"\n    {MARKER}\n"
-    '    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"\n'
-    '        android:usesPermissionFlags="neverForLocation" tools:node="replace" />\n'
-    '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\n'
-    '        android:maxSdkVersion="30" tools:node="replace" />\n'
-    '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\n'
-    '        android:maxSdkVersion="30" tools:node="replace" />\n'
+# Applied ONE PERMISSION AT A TIME, not as an all-or-nothing block. The old form was gated on MARKER
+# being absent, so once a machine had an `android/` every permission added to this script afterwards
+# silently never landed there: the 2026-08-30 published apk shipped without ACCESS_NETWORK_STATE,
+# ACCESS_WIFI_STATE, CHANGE_NETWORK_STATE, FOREGROUND_SERVICE(_CONNECTED_DEVICE) and
+# POST_NOTIFICATIONS, the very gates §8b calls not optional. Per-entry insertion heals such a tree.
+ENTRIES = [
+    # (a substring that proves this entry is already applied, the xml to insert)
+    ('usesPermissionFlags="neverForLocation"',
+     '    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"\n'
+     '        android:usesPermissionFlags="neverForLocation" tools:node="replace" />\n'),
+    ('ACCESS_FINE_LOCATION"\n        android:maxSdkVersion="30"',
+     '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\n'
+     '        android:maxSdkVersion="30" tools:node="replace" />\n'),
+    ('ACCESS_COARSE_LOCATION"\n        android:maxSdkVersion="30"',
+     '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\n'
+     '        android:maxSdkVersion="30" tools:node="replace" />\n'),
     # --- field LAN gates (net.md §8b): ws:// to a private IP + bind to the game Wi-Fi ---
-    '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
-    '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'
-    '    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />\n'
-    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
-    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />\n'
-    '    <!-- TODO node.md §3.11: the keep-alive foreground service (foregroundServiceType="connectedDevice") is not built yet; keep-awake covers screen-on only -->\n'
-    '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
-    # camera look-through (@capacitor-community/camera-preview) — without this the CAM button is dead (bench 2026-08-25)
-    '    <uses-permission android:name="android.permission.CAMERA" />\n'
-)
+    ('android.permission.ACCESS_NETWORK_STATE',
+     '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'),
+    ('android.permission.ACCESS_WIFI_STATE',
+     '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'),
+    ('android.permission.CHANGE_NETWORK_STATE',
+     '    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />\n'),
+    # TODO node.md §3.11: the keep-alive foreground service (foregroundServiceType="connectedDevice")
+    # is not built yet; keep-awake covers screen-on only
+    ('android.permission.FOREGROUND_SERVICE"',
+     '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'),
+    ('android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE',
+     '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />\n'),
+    ('android.permission.POST_NOTIFICATIONS',
+     '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'),
+    # camera look-through (@capacitor-community/camera-preview) and the in-app MC QR scanner
+    ('android.permission.CAMERA',
+     '    <uses-permission android:name="android.permission.CAMERA" />\n'),
+]
 
 # 2b) allow cleartext ws:// to the private LAN (API 28+ blocks it by default). Capacitor's
 #     `allowMixedContent` is about mixed HTTPS pages, NOT this. Set it on <application>.
@@ -77,12 +93,15 @@ if 'android:usesCleartextTraffic' not in s:
 # 2c) landscape-only, rail-mounted: force it on the main activity.
 if 'android:screenOrientation' not in s:
     s = re.sub(r'(<activity\b)', r'\1 android:screenOrientation="landscape"', s, count=1)
-# camera permission may be missing from a manifest written by an OLDER setup run (marker present, no CAMERA)
-if 'android.permission.CAMERA' not in s:
-    s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.CAMERA" />\n</manifest>')
 if MARKER not in s:
-    # place right before the closing </manifest>
-    s = s.replace("</manifest>", BLOCK + "</manifest>", 1)
+    s = s.replace("</manifest>", f"\n    {MARKER}\n</manifest>", 1)
+added = []
+for probe, xml in ENTRIES:
+    if probe in s:
+        continue
+    s = s.replace("</manifest>", xml + "</manifest>", 1)
+    added.append(re.search(r'android\.permission\.([A-Z_]+)', xml).group(1))
+print("   added: " + (", ".join(added) if added else "nothing (already complete)"))
 
 open(p, "w", encoding="utf-8").write(s)
 print("   ok")

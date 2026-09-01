@@ -88,7 +88,8 @@ npm run sync            # build + sync every platform already added
 
 ### Publishing the Android build
 
-`npm run android:apk` is the whole release step: it finds a JDK 21, re-applies `android-setup.sh`
+`npm run android:apk` is the build half of the release (the site rebuild below is the other half,
+and is not optional): it finds a JDK 21, re-applies `android-setup.sh`
 (the platform is generated, so those patches are not in git), builds a **debug** APK, and copies it
 to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there.
 Exactly one APK lives in that folder: the site build refuses to guess between two.
@@ -97,7 +98,8 @@ Exactly one APK lives in that folder: the site build refuses to guess between tw
 as it is right now. So before cutting a build meant for the site: commit or stash `app/src`, and bump
 `package.json` if the version should change. The script prints a WARNING listing every uncommitted
 `app/` file it just baked in, and records `git` (short SHA) + `dirty` in `build.json` so a published
-APK is always traceable to a tree. Heed the warning; it is the difference between publishing a
+APK is traceable to a tree. (The sidecar committed on 2026-08-30 predates those two fields, so the
+APK served today carries no recorded provenance; the next cut will.) Heed the warning; it is the difference between publishing a
 reviewed build and publishing whatever another session had half-written.
 
 Just want an APK to install locally, without touching the site? Send it somewhere else:
