@@ -3,7 +3,7 @@ import { RUNWAYS, useRunway } from '../runway';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
-import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Seg, Tag } from '../ui';
+import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag } from '../ui';
 
 
 export function Lobby() {
@@ -30,9 +30,11 @@ export function Lobby() {
   // `red` is a fault, `waiting` is just a phone that has not arrived (field 2026-09-01).
   const reds = redRows.map(b => b.sticker);
   const blockedCount = redRows.length + waitRows.length;
-  const redWhy = redRows.map(b => `${b.sticker}: ${(b.blockers ?? []).join(', ') || 'NOT READY'}`).join('  ·  ');
+  // ONLY what actually gates the start. `ambers` (STALE LINK, SCREEN OFF, …) are advisories and were
+  // printed in the same run-on sentence, which made a real fault read like a shrug.
+  const faults = redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
   const waitWhy = waitRows.length
-    ? `WAITING FOR ${waitRows.length} PHONE${waitRows.length === 1 ? '' : 'S'} — ${waitRows.map(b => b.sticker).join(' + ')}`
+    ? `Waiting for ${waitRows.length} phone${waitRows.length === 1 ? '' : 's'}: ${waitRows.map(b => b.sticker).join(', ')}`
     : '';
 
   // Two deliberate clicks (design-critic #5): PUSH, verify the acks/echoes land, THEN arm the countdown.
@@ -74,46 +76,72 @@ export function Lobby() {
           </div>
         )}
       </div>
-      {/* action rail */}
-      <div style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, padding: '14px 18px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px 34px' }}>
-        <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
-          <Step n={1} done={allReady} label={<>ALL READY <span style={{ color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</span></>} />
-          <Step n={2} done={allAcked} label={<>PUSH CONFIG {lobby.pushed && <span style={{ color: allAcked ? T.ok : T.warn }}>{acked}/{players.length} ACKED</span>}</>} />
-          <Step n={3} done={false} label={<>ARM COUNTDOWN <Seg value={String(runway) as '60'} options={RUNWAYS.map(r => ({ value: String(r) as '60', label: `${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}` }))} onChange={v => setRunway(Number(v))} size={10} pad="3px 9px" /></>} />
+      {/* Action rail — rebuilt 2026-09-01: "lots of small uppercase text. poor organization and
+          readability and usability". One status line in sentence case, faults as a real per-gun list
+          (blockers only — the advisories used to be jammed into the same run-on string), one primary
+          action, and the overrides in a separate tray instead of a second copy of the same sentence. */}
+      <div style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}` }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 28px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</b></>} />
+            <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.warn }}>{acked}/{players.length}</b>}</>} />
+            <Step n={3} done={false} label={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Countdown
+                <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
+                  style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.osw(700, 16), padding: '4px 8px', minHeight: 36, cursor: 'pointer' }}>
+                  {RUNWAYS.map(r => <option key={r} value={r}>{`${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}`}</option>)}
+                </select>
+              </span>} />
+          </div>
+          <span style={{ flex: 1 }} />
+          <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || players.length === 0 || (lobby.pushed && !allAcked)}
+            title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : ''}>
+            {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
+          </PrimaryButton>
         </div>
-        <span style={{ flex: 1 }} />
-        {reds.length > 0
-          ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {redWhy} — CLEAR IT, OR PUSH ANYWAY BELOW</span>
-          : waitRows.length > 0
-            ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro }}>{waitWhy}</span>
-          : notReady.length > 0
-            ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {notReady.join(' + ')} NOT READY — LAST MOMENT ALL NODES ARE IN RANGE</span>
-            : lobby.pushed && !allAcked
-              ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(' + ')} DID NOT ECHO — HEADSET? GUN ASLEEP?</span>
-              : <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.ok }}>ALL NODES READY &amp; IN RANGE — PUSH, THEN WALK</span>}
-        <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || players.length === 0 || (lobby.pushed && !allAcked)} title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : allReady ? '' : 'Host override: pushing with players not ready'}>
-          {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
-        </PrimaryButton>
+
+        <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5,
+                      color: faults.length ? T.bad : waitRows.length ? T.micro : notReady.length ? T.warn : T.ok }}>
+          {faults.length
+            ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
+            : waitWhy
+              || (notReady.length ? `Not ready yet: ${notReady.join(', ')}` : '')
+              || (lobby.pushed && !allAcked
+                  ? `No config echo from ${Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(', ')} — headset off, or gun asleep?`
+                  : 'All nodes ready and in range. Push, then walk.')}
+        </div>
+
+        {faults.length > 0 && (
+          <div style={{ borderTop: `1px solid ${T.line}`, padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {faults.map(f => (
+              <div key={f.who} style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                <span style={{ font: F.osw(700, 15), letterSpacing: '.06em', color: T.ink, minWidth: 130 }}>{f.who}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {f.why.map(w => <span key={w} style={{ font: F.chk(600, 12), color: T.bad }}>▲ {w.split(' — ')[0]}</span>)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
       {blockedCount > 0 && (
-        // The override has to cover BOTH steps. Forcing a push does not clear the red — it usually adds
-        // one (the gun that could not ack gets GUN DID NOT ANSWER CONFIG) — so an override that stopped
-        // at PUSH left the operator with ARM still disabled and no button left to press. (Review, 2026-08-31.)
-        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>
-          HOST OVERRIDE ▸ <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, minHeight: 28 }}
+        <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
+          <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}
             title={lobby.pushed
-              ? 'Arms the countdown anyway. Nodes still red will not be armed — everyone else starts on time.'
+              ? 'Arms the countdown anyway. Nodes still blocked will not arm; everyone else starts on time.'
               : 'Compiles and pushes to every bound node anyway. A gun that is not linked will simply not ack.'}
             onClick={() => pushAndArm(true)}>
-            [ {lobby.pushed ? 'ARM' : 'PUSH'} ANYWAY OVER {[reds.length && `${reds.length} RED`, waitRows.length && `${waitRows.length} MISSING`].filter(Boolean).join(' + ')} ]
+            {lobby.pushed ? 'Arm anyway' : `Push anyway, over ${[reds.length && `${reds.length} fault${reds.length === 1 ? '' : 's'}`, waitRows.length && `${waitRows.length} missing phone${waitRows.length === 1 ? '' : 's'}`].filter(Boolean).join(' and ')}`} ▸
           </button>
-          <span style={{ color: T.micro }}>{[redWhy, waitWhy].filter(Boolean).join('  ·  ')}</span>
         </div>
       )}
       {!allReady && players.length > 0 && (
         <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>
-          HOST OVERRIDE ▸ {players.filter(p => !p.ready).map(p => (
-            <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>[ READY {p.display} ]</button>
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
+          {players.filter(p => !p.ready).map(p => (
+            <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>{p.display} ▸</button>
           ))}
         </div>
       )}

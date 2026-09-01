@@ -125,12 +125,12 @@ function GunCard({ g }: { g: ReadinessRow }) {
         <Micro>LINK</Micro><Val color={g.node === 'none' ? T.micro : stale ? T.warn : T.dim}>{linkText}</Val>
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
-      {g.blockers.length > 0 && (
+      {[...g.blockers, ...(g.ambers ?? [])].length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {g.blockers.map(b => (
+          {[...g.blockers.map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)].map(([b, blocking]) => (
             <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.06em', padding: '6px 10px',
-              background: red ? 'rgba(255,82,82,.1)' : waiting ? 'transparent' : 'rgba(255,176,32,.08)',
-              color, borderLeft: `2px solid ${color}` }}>{waiting ? '·' : '▲'} {b}</div>
+              background: blocking && red ? 'rgba(255,82,82,.1)' : blocking && !waiting ? 'rgba(255,176,32,.08)' : 'transparent',
+              color: blocking ? color : T.micro, borderLeft: `2px solid ${blocking ? color : T.line2}` }}>{blocking ? (waiting ? '·' : '▲') : '·'} {b}</div>
           ))}
         </div>
       )}

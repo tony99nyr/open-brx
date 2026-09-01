@@ -590,7 +590,8 @@ await step('HUDs show ARMED-PENDING then echo OK (head landed)', async () => {
   await shot(hudA, 'hudA-lobby-echo');
 });
 await step('ARM COUNTDOWN (01:00 runway) → Armed screen + HUD T-MINUS overlay', async () => {
-  await mc.click('text=01:00');
+  // the countdown segmented control became a <select> when the lobby rail was rebuilt (2026-09-01)
+  await mc.selectOption('select[aria-label="countdown length"]', '60');
   await mc.click('button:has-text("ARM COUNTDOWN")');
   await until(async () => (await st()).phase === 'armed', 8000, 'phase armed');
   await until(async () => (await hudA.locator('.mo.tminus').count()) > 0, 8000, 'hudA T-minus overlay');

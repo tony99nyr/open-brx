@@ -89,6 +89,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tokenVersion, setTokenVersion] = useState(0);
   const [serverOld, setServerOld] = useState(false);
   const followed = useRef<Phase | null>(null);
+  // The event feed is streamed and appended client-side, and nothing ever cleared it — so a second
+  // match's events piled on top of the first's, producing a feed with two FIRST BLOODs and
+  // non-monotonic clocks (`t_match_s` is relative to each match's own start). Field 2026-09-01.
+  const feedMatch = useRef<string | null>(null);
   // A view restored from the URL must not be stomped by the first server snapshot. The follow rule is
   // "move when the phase ADVANCES"; on a refresh there has been no advance yet, so the first snapshot
   // only seeds the baseline. Without this every reload bounced straight back to the phase screen.
@@ -102,6 +106,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const un = api.subscribe(
       s => {
         offset.current = s.t - Date.now();
+        const mid = s.live?.match_id ?? null;
+        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed([]); }   // a new match starts a new feed
         setState(s);
         // follow the server phase when it advances (armed → live → recap), but let the host browse freely
         if (followed.current !== s.phase) {

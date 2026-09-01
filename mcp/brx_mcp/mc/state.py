@@ -1069,7 +1069,11 @@ class Session:
                         "gun_linked": pf.get("gun_linked"),
                         "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
                         "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
-                        "foreground": pf.get("foreground"), "blockers": blockers + ambers,
+                        "foreground": pf.get("foreground"),
+                        # kept APART. Merging them meant the lobby printed "GUN LINK LOST - BLOCKS
+                        # START, STALE LINK - DOES NOT BLOCK, SCREEN OFF - DOES NOT BLOCK YET" as one
+                        # run-on blocker string, so a real fault read the same as a shrug.
+                        "blockers": blockers, "ambers": ambers,
                         # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
                         # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
                         # the sole complaint — a real problem alongside it still reads red.

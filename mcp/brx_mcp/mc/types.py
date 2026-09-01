@@ -270,7 +270,8 @@ class ReadinessRow(TypedDict, total=False):
     # `waiting` = the phone has not connected yet. Blocks the start exactly like `red`, but it is
     # not a fault and the UI must not paint it as one (field 2026-09-01).
     status: Literal["green", "amber", "red", "waiting"]
-    blockers: list[str]
+    blockers: list[str]      # things that actually gate the start
+    ambers: list[str]        # advisories — never gate anything
 
 
 class ReadinessSnapshot(TypedDict):

@@ -82,7 +82,8 @@ export interface ReadinessRow {
   /** `waiting` = no phone yet. Blocks the start like `red`, but it is NOT a fault — render it
    *  as inactive, never as an error (field 2026-09-01). */
   status: 'green' | 'amber' | 'red' | 'waiting';
-  blockers: string[];
+  blockers: string[];   // things that actually gate the start
+  ambers?: string[];    // advisories — never gate anything
 }
 
 export interface ReadinessSnapshot {
