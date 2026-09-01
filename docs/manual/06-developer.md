@@ -79,7 +79,7 @@ PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]
 ```
 ✅ src: mcp/brx_mcp/protocol.py
 
-[callout:warn] **Volume.** `$VOL,30` is kind to ears on a bench but **measurably inaudible for weapon and game audio**; `$VOL,45` is barely audible. Use **69** (the iOS app's value) for real play. ✅ src: CLAUDE.md hard rules; protocol/brx-protocol.md §3 (`$VOL`)
+[callout:warn] **Volume.** `$VOL,30` is kind to ears on a bench but **measurably inaudible for weapon and game audio**; `$VOL,45` is barely audible. Open BRX plays at **80 indoors / 90 outdoors** (`compile.play_volume()`). The iOS app's 69 measures as roughly on-gun level 2 and was inaudible on a field (2026-08-30). Try-outs stay at 69. ✅ src: CLAUDE.md hard rules; protocol/brx-protocol.md §3 (`$VOL`)
 
 [faq]
 - **Is the baud rate real over BLE?** No. BLE has no baud. 115200 is the UART behind the radio bridge. That is why BLE and a wire speak identical frames. ✅ src: protocol/brx-protocol.md §7c
@@ -112,7 +112,7 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. | ✅ |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. | ✅ |
 | `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (see the 2166-id bank). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel**. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2–3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app · `3,6` iOS · `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. | ✅ |
-| `$VOL,<0–100>,<n2>,*` | >> | volume, 0 | Master volume. Android app sends `$VOL,100,0,*`; iOS `$VOL,69,0,*`. 30 is inaudible for game audio; use 69. | ✅ |
+| `$VOL,<0–100>,<n2>,*` | >> | volume, 0 | Master volume. Android app sends `$VOL,100,0,*`; iOS `$VOL,69,0,*`. 30 is inaudible for game audio. Open BRX plays at 80 indoors / 90 outdoors; try-outs at 69. | ✅ |
 | `$NAME,<name>,*` | >> | name | Sets the gun's **persistent** name (the USB `Gun Name` field; survives power-cycle). Opening the official app rewrites it to `Tactix2`. | ✅ |
 | `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. | ✅ |
 | `$SP,<n>,*` | >> | n | End-of-game / stop. `$SP,99,*` is the second half of the panic sequence. Do not probe it mid-game hoping for a score. The gun keeps none. | 👥 |

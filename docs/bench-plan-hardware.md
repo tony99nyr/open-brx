@@ -22,7 +22,7 @@ similar — only the 3-pin demodulator works with `ir_capture.ino`), and that bo
 DevKitC-1 (two USB-C ports: use the one silkscreened **UART**).
 
 **Safety / mandates:** never modify stock BRX firmware. Panic on any tagger: `$CLEAR,*` then `$SP,99,*`.
-Headsets **ON** or guns won't join (§7m). Volume **69** for real games. Keep headset PINs out of the repo.
+Headsets **ON** or guns won't join (§7m). Volume: **80 indoors / 90 outdoors** for real games (69 reads as on-gun level 2). Keep headset PINs out of the repo.
 
 ---
 

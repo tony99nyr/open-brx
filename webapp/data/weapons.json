@@ -1,5 +1,5 @@
 {
- "generated": "2026-08-31T23:20:43.117Z",
+ "generated": "2026-09-01T13:21:45.967Z",
  "source": [
   "mcp/brx_mcp/mc/weapons.json",
   "docs/reference/weapons.md"
@@ -9,15 +9,15 @@
    "id": "assault_rifle",
    "name": "Assault Rifle",
    "role": "assault",
-   "desc": "The anchor. Its frame is the one every other weapon is measured against. 13 hits at 190ms with 32 up and 384 in reserve: 32 kills without resupply, the deepest pool in the arsenal, and the slowest kill in it.",
+   "desc": "The anchor, and the closest thing to the stock M4. 13 hits at 140ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.68s kill. Battle Company cycles it at 100ms; at that speed with this magazine it out-classes ten other weapons outright, so it gives up some depth and a little rate to leave the rest of the arsenal a reason to exist.",
    "dmg": 8,
    "mag": 32,
-   "reserve": 384,
+   "reserve": 192,
    "reload_ms": 1400,
-   "rof": 39,
+   "rof": 54,
    "rng": 75,
    "htk": 13,
-   "ttk_ms": 2280,
+   "ttk_ms": 1680,
    "cycle_ms": 100,
    "heat": 0,
    "sound": "R01",

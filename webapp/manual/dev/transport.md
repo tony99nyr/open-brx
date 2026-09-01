@@ -76,7 +76,7 @@ PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]
 Source: mcp/brx_mcp/protocol.py
 
 ## Volume.
-`$VOL,30` is kind to ears on a bench but **measurably inaudible for weapon and game audio**; `$VOL,45` is barely audible. Use **69** (the iOS app's value) for real play.
+`$VOL,30` is kind to ears on a bench but **measurably inaudible for weapon and game audio**; `$VOL,45` is barely audible. Open BRX plays at **80 indoors / 90 outdoors** (`compile.play_volume()`). The iOS app's 69 measures as roughly on-gun level 2 and was inaudible on a field (2026-08-30). Try-outs stay at 69.
 Source: CLAUDE.md hard rules; protocol/brx-protocol.md §3 ($VOL)
 
 - **Is the baud rate real over BLE?** No. BLE has no baud. 115200 is the UART behind the radio bridge. That is why BLE and a wire speak identical frames.

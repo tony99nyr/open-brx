@@ -303,9 +303,9 @@ _On-gun 1–5, protocol 0–100, and why "30" is silence_
 | Bluetooth `$VOL,<0–100>,0,*` | 0–100 (`MaxMusicVolume` = 100) | Sent by every app on connect and again at game end ✅🔍 |
 `src: docs/reference/brx-manual-notes.md`, protocol/brx-protocol.md, docs/experiment-log.md
 
-[stat-row] **What the official apps send**: Android Callsign: `$VOL,100` · iOS Callsign: `$VOL,69` · Open BRX game default: **69** (the app's value) · Open BRX probing default: **30** (deliberately quiet, and deliberately not for games). ✅ `src: protocol/brx-protocol.md`, CLAUDE.md
+[stat-row] **What the official apps send**: Android Callsign: `$VOL,100` · iOS Callsign: `$VOL,69` · Open BRX game default: **80 indoors / 90 outdoors** (`compile.play_volume()` sets it from the venue; 69 measured as roughly on-gun level 2 and was inaudible on a field, 2026-08-30) · Open BRX try-out default: **69** (fired at arm's length) · Open BRX probing default: **30** (deliberately quiet, and deliberately not for games). ✅ `src: protocol/brx-protocol.md`, CLAUDE.md
 
-[callout:warn] **30 is not "quiet", it is silent for weapon audio.** We measured it with a microphone harness. At volume 100 the gun's sounds peak at 7–37× the room noise floor, and at 30 nothing rises above room noise. Volume 45 is barely audible. Use **≥ 65** to hear a tagger reliably, and **69** for play. ✅ `src: docs/experiment-log.md` #6, protocol/brx-protocol.md
+[callout:warn] **30 is not "quiet", it is silent for weapon audio.** We measured it with a microphone harness. At volume 100 the gun's sounds peak at 7–37× the room noise floor, and at 30 nothing rises above room noise. Volume 45 is barely audible. Use **≥ 65** to hear a tagger reliably. Open BRX plays at **80 indoors / 90 outdoors**, because 69 was measurably too quiet across a field (2026-08-30). No absolute SPL figure exists for any of these values. ✅ `src: docs/experiment-log.md` #6, protocol/brx-protocol.md
 
 [cards] **Practical levels**
 - **Play:** 69, the value the official iOS app sets on connect. The Android app sends 100. ✅

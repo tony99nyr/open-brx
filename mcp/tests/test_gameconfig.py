@@ -9,7 +9,10 @@ def _find(frames, prefix):
 
 def test_defaults_produce_a_valid_setup():
     frames = GameConfig().setup_frames()
-    assert _find(frames, "$VOL,75")
+    # the CLI default now agrees with MC's indoor venue value; 69/75 were both measurably too
+    # quiet for game audio (field 2026-08-30 — $VOL,69 reads as on-gun level 2)
+    from brx_mcp.mc.compile import VOL_BY_ENV
+    assert _find(frames, f"$VOL,{VOL_BY_ENV['indoor']}")
     assert _find(frames, "$GSET,")
     assert _find(frames, "$PSET,")
     assert _find(frames, "$WEAP,0")

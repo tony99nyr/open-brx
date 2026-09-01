@@ -95,7 +95,10 @@ class GameConfig:
     frag_limit: int = 0               # 0 = none (mode-dependent)
 
     # -- audio --------------------------------------------------------------- #
-    volume: int = 75                  # 0–100 ($VOL). ~75 indoor, ~85 outdoor.
+    volume: int = 80                  # 0–100 ($VOL). MC sets this per venue via
+                                      # `mc.compile.play_volume()` (80 indoor / 90 outdoor) — this
+                                      # default is the indoor value so the CLI path agrees with it.
+                                      # 69 (Callsign's) measures as on-gun level 2 (field 2026-08-30).
 
     # -- environment / LEDs -------------------------------------------------- #
     outdoor: bool = False             # $GSET outdoorMode (IR range/behaviour)
