@@ -267,6 +267,8 @@ button:active{filter:brightness(1.15)}
 .chipbar{position:absolute;top:100px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px}
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
 .pill .unskew{display:inline-block;transform:skewX(10deg)}
+/* a pill that is also a control: same look, real tap target (min 44px per the tap audit) */
+button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .pill.warn{border-color:var(--warn);color:var(--warn)}
 .pill.bad{border-color:var(--bad);color:var(--bad);animation:blink 1.4s infinite}
 .pill.ok{border-color:var(--ok);color:var(--ok)}

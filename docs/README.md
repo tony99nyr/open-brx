@@ -93,6 +93,8 @@ A stale answer is worse than an open question: an open question warns you, a sta
 | Node↔MC wire + game data model | `spec/contracts.md` |
 | Open work (all items) | `FOLLOWUPS.md` |
 
+- **[field-issues.md](field-issues.md)** — 🆕 **the issue register: everything reported from a live
+  session and what happened to it.** Add to it when an issue is reported, not after it is fixed.
 - **[handoff-post-first-match.md](handoff-post-first-match.md)** — 🆕 **after the first full match on
   our own stack (2026-08-30/31).** Everything reported that day is fixed; what remains is split by
   which machine can do it — the two highest-value items are **Mac-only** (a Callsign capture, and the

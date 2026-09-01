@@ -72,7 +72,7 @@ export class BrxLink {
     this.deviceId = deviceId; this.connected = true; this.retries = 0;
     this.onUp(this.advert);
   }
-  async _connectWithRetry(id, attempts) {
+  async _connectWithRetry(id, attempts, forever = false) {
     let last;
     for (let i = 1; ; i++) {
       try {
@@ -81,12 +81,11 @@ export class BrxLink {
         return true;
       } catch (e) {
         last = e; this.retries = i;
-        const more = this.unbounded() || i < attempts;
-        if (!more) throw last;
+        const keep = forever || this.unbounded() || i < attempts;
+        if (!keep) throw last;
         const delay = Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
-        this._log(`connect ${i}${this.unbounded() ? '' : '/' + attempts} failed — retrying in ${Math.round(delay)} ms`, 'le');
+        this._log(`connect ${i}${forever || this.unbounded() ? '' : '/' + attempts} failed — retrying in ${Math.round(delay)} ms`, 'le');
         await sleep(delay);
-        if (!this.unbounded() && i >= attempts) throw last;
       }
     }
   }
@@ -97,8 +96,13 @@ export class BrxLink {
   async _reconnect() {
     if (this._reconnecting) return;                   // one reconnect loop at a time — a second one would double-subscribe notifications
     this._reconnecting = true;
-    try { await this._connectWithRetry(this.deviceId, 6); this.connected = true; this._log('reconnected', 'lk'); this.onUp(this.advert); }
-    catch (e) { this._log('reconnect failed — tap Set my gun', 'le'); }
+    // FOREVER, in every phase. It used to stop after 6 tries (~25 s) outside armed/live, which is
+    // exactly how long a gun that is simply switched OFF takes to burn them — so a gun powered on a
+    // minute later was never retried, the HUD blinked GUN DISCONNECTED indefinitely and the MC board
+    // stayed blocked until someone found RECONNECT GUN in the debug panel (field 2026-09-01).
+    // A gun that is off fails cheaply and the backoff caps at 10 s, so this costs ~6 attempts/min.
+    try { await this._connectWithRetry(this.deviceId, 0, true); this.connected = true; this._log('reconnected', 'lk'); this.onUp(this.advert); }
+    catch (e) { this._log('reconnect stopped: ' + (e && e.message || e), 'le'); }
     finally { this._reconnecting = false; }
   }
   async disconnect() {

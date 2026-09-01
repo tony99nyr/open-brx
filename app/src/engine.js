@@ -574,7 +574,10 @@ export class Engine {
       case 'HIR': {
         if (t[2] === '15') break; // grenade / station beacon
         const num = parseInt(t[3], 10), team = parseInt(t[4], 10);
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[1], 10) }; this.lastHitAt = this.now(); }
+        // $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<damage>,,<subtype> — with t[0] the command
+        // word, sensor is t[1] and irProto is t[2]. `ir_proto` read t[1], so it had been reporting
+        // the SENSOR all along; every hit_taken fact ever recorded carries that mix-up.
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); }
         break;
       }
       case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
@@ -654,7 +657,11 @@ export class Engine {
       if (fr.length) this._write(fr, 'low health');
     }
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
-      this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num, shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto });
+      // `sensor` is $HIR tok1: 0 = headset FRONT dome, 1 = headset BACK, 4 = gun body. It was parsed
+      // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
+      // raw frame ring (field 2026-09-01). One field, and the question becomes readable live.
+      this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
+        shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
       this.lastHitAt = this.now();
     }
     const wasResync = !!this.resync;

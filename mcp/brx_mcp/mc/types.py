@@ -207,6 +207,10 @@ class Event(TypedDict, total=False):
     shooter_team: int
     dmg: int
     ir_proto: int
+    # $HIR tok1 — WHICH sensor caught the shot: 0 = headset FRONT dome, 1 = headset BACK,
+    # 4 = gun body. Forwarded 2026-09-01: it was parsed on the phone and dropped, so a
+    # "the headset domes never register" report could only be checked against a frame ring.
+    sensor: int
     desync: bool
     # respawn
     resync: bool

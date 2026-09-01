@@ -401,7 +401,10 @@ export class Hud {
     const pills = [];
     if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${st.wsReason ? ' (' + esc(String(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
     else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') pills.push(`<span class="pill warn"><span class="unskew">RECONNECTING TO MISSION CONTROL…</span></span>`);
-    if (st.phase !== 'idle' && !st.bleUp) pills.push(`<span class="pill bad"><span class="unskew">GUN LINK LOST — RECONNECTING</span></span>`);
+    // A tappable pill, not just a status: the retry now runs forever, but a player who has just
+    // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
+    // which is where the only reconnect control used to live (Tony, field 2026-09-01).
+    if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew">GUN RELINKED — ${esc(st.resync.prompt).toUpperCase()}</span></div>` : '';
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;

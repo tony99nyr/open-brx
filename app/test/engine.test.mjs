@@ -736,3 +736,14 @@ test('emptying a mag leaves ammo 0 and the low-mag prompt armed', () => {
   h.adv(140); h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');
   assert.equal(h.eng.state().ammo, 0);
 });
+
+test('a hit forwards WHICH sensor caught it', () => {
+  // $HIR tok1: 0 = headset FRONT dome, 1 = headset BACK, 4 = gun body. Answering "do the headset
+  // domes ever register?" needed the phone's raw frame ring because this field was dropped here.
+  const h = goLive(harness());
+  h.frame('$HIR,0,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,52,0,*');
+  const hits = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits.map(f => f.sensor), [0, 4], 'headset dome then gun body');
+});
