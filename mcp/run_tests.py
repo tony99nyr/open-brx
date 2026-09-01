@@ -16,21 +16,27 @@ import traceback
 ROOT = pathlib.Path(__file__).resolve().parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
 
+from _skip import Skipped  # noqa: E402  (needs the tests dir on the path first)
+
 filters = sys.argv[1:]
 files = sorted((ROOT / "tests").glob("test_*.py"))
 if filters:
     files = [f for f in files if any(s in f.stem for s in filters)]
 
-total_pass = total_fail = 0
+total_pass = total_fail = total_skip = 0
 failures: list[str] = []
+skipped: dict[str, int] = {}
 for f in files:
     mod = importlib.import_module(f.stem)
     fns = [n for n in dir(mod) if n.startswith("test_")]
-    p = fl = 0
+    p = fl = sk = 0
     for name in fns:
         try:
             getattr(mod, name)()
             p += 1
+        except Skipped as e:
+            sk += 1
+            skipped[str(e)] = skipped.get(str(e), 0) + 1
         except Exception:
             fl += 1
             failures.append(f"{f.stem}::{name}")
@@ -38,10 +44,14 @@ for f in files:
             traceback.print_exc()
     total_pass += p
     total_fail += fl
-    print(f"  {f.stem}: {p}/{p + fl}")
+    total_skip += sk
+    print(f"  {f.stem}: {p}/{p + fl}" + (f"  ({sk} skipped)" if sk else ""))
 
-print(f"\n=== {total_pass} passed, {total_fail} failed "
-      f"across {len(files)} file(s) ===")
+print(f"\n=== {total_pass} passed, {total_fail} failed"
+      + (f", {total_skip} skipped" if total_skip else "")
+      + f" across {len(files)} file(s) ===")
+for why, n in sorted(skipped.items()):
+    print(f"  skipped {n}: needs {why}")
 if failures:
     print("failed:\n  " + "\n  ".join(failures))
 sys.exit(1 if total_fail else 0)

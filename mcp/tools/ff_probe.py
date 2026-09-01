@@ -3,11 +3,7 @@ Silence on a same-team shot = token1=1 blocks friendly fire (our bench 0 allowed
 """
 import asyncio, sys
 
-AR = "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*"
-PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
-SIRS = ["$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*", "$SIR,10,0,X13,1,0,100,2,60,*",
-        "$SIR,13,0,H50,1,0,0,1,,*", "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]
+from bench_common import AR, GSET_FF, PSET, SIRS   # one copy of the arming frames (bench_common.py)
 
 
 async def main() -> None:
@@ -20,7 +16,7 @@ async def main() -> None:
     sessions = next((getattr(mgr, a) for a in ("sessions", "_sessions") if isinstance(getattr(mgr, a, None), dict)), {})
 
     async def setup(alias, pid, weapon=None):
-        frames = ["$VOL,60,0,*", "$CLEAR,*", "$START,*", "$GSET,1,0,1,0,1,0,50,1,*", PSET.format(pid=pid)] + SIRS + ["$TID,1,*"]
+        frames = ["$VOL,60,0,*", "$CLEAR,*", "$START,*", GSET_FF, PSET.format(pid=pid)] + SIRS + ["$TID,1,*"]
         if weapon:
             frames.append(weapon)
         frames += ["$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]

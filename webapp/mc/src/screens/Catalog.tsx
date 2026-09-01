@@ -13,11 +13,13 @@ import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag } from '
 type SortKey = 'name' | 'role' | 'dmg_per_hit' | 'htk' | 'ttk_ms' | 'clip' | 'reserve' | 'reload_s';
 const NUMERIC: SortKey[] = ['dmg_per_hit', 'htk', 'ttk_ms', 'clip', 'reserve', 'reload_s'];
 
-const COLS: { key: SortKey; label: string; hint?: string }[] = [
+// `pool` comes from the server and follows the host's health config — hits-to-kill is only true of
+// the game that is actually set up (W2; docs/weapon-design.md §2.5). Never hardcode 115 here again.
+const cols = (pool: number | null): { key: SortKey; label: string; hint?: string }[] => [
   { key: 'name', label: 'WEAPON' },
   { key: 'role', label: 'ROLE' },
-  { key: 'dmg_per_hit', label: 'DMG / HIT', hint: 'Damage one hit removes from the 115 pool (45 HP + 70 armour)' },
-  { key: 'htk', label: 'HITS TO KILL' },
+  { key: 'dmg_per_hit', label: 'DMG / HIT', hint: pool ? `Damage one hit removes from this game's ${pool} pool` : 'Damage one hit removes from a full-health player' },
+  { key: 'htk', label: 'HITS TO KILL', hint: pool ? `Hits to drop a full-health player at this game's ${pool} pool` : undefined },
   { key: 'ttk_ms', label: 'TIME TO KILL', hint: 'Seconds of sustained hits to drop a full-health player' },
   { key: 'clip', label: 'MAG' },
   { key: 'reserve', label: 'RESERVE' },
@@ -54,6 +56,8 @@ export function Catalog() {
 
   const click = (k: SortKey) => { if (k === sort) setDesc(d => !d); else { setSort(k); setDesc(false); } };
   const focus = sel ? weapons.find(w => w.weapon_id === sel) ?? null : null;
+  const pool = weapons.find(w => w.pool != null)?.pool ?? null;
+  const COLS = cols(pool);
 
   if (!weapons.length) {
     return <div className="screen"><ScreenHeader kicker="[ ARSENAL // REFERENCE ]" title="Arsenal"
@@ -68,6 +72,7 @@ export function Catalog() {
       <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro, marginBottom: 12 }}>
         {weapons.length} WEAPONS · NOTHING HERE CHANGES A LOADOUT — BROWSE FREELY.
         {' '}METERS RANK EACH WEAPON AGAINST THE WHOLE ARSENAL; THE NUMBERS BESIDE THEM ARE REAL.
+        {pool != null && <> {' · '}HITS AND TIME TO KILL ARE AT THIS GAME'S {pool} POOL (HP + ARMOUR).</>}
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
@@ -81,7 +86,12 @@ export function Catalog() {
           <thead>
             <tr>
               {COLS.map(c => (
+                // sorting was mouse-only: no tabIndex, no key handler, no aria-sort. The e2e
+                // harness having to add `th` to its clickable selector was the tell (review 2026-09-01).
                 <th key={c.key} title={c.hint} onClick={() => click(c.key)}
+                  role="columnheader" tabIndex={0}
+                  aria-sort={sort === c.key ? (desc ? 'descending' : 'ascending') : 'none'}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); click(c.key); } }}
                   style={{ ...BTN_RESET, textAlign: NUMERIC.includes(c.key) ? 'right' : 'left', cursor: 'pointer',
                            font: F.mono(600, 9.5), letterSpacing: '.18em', color: sort === c.key ? T.acc : T.micro,
                            padding: '8px 10px', borderBottom: `1px solid ${T.line2}`, whiteSpace: 'nowrap' }}>

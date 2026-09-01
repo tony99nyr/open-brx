@@ -97,6 +97,9 @@ def build(args):
                 if await asyncio.wait_for(asyncio.get_running_loop().run_in_executor(None, net.advertise_mdns), timeout=6):
                     print("  mDNS: advertising _openbrx._tcp (phones auto-discover)")
             except Exception as e:
+                # the timeout abandons the AWAIT, not the worker thread — tell it to unpublish if it
+                # ever does finish, or MC advertises a service nothing tracks (deferred low)
+                net.abort_mdns()
                 print(f"  mDNS advertising failed ({type(e).__name__}: {e!r}) — QR/manual join still work")
             log.info("net: listening on %s", session.lan["ws_url"])
             # print the nodes line HERE (not in the pre-loop banner) so the REAL bound port shows —

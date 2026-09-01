@@ -127,11 +127,20 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
 ```jsonc
 Weapon {
   weapon_id: string, name: string, class: string,
-  stats: { damage:number, mag:number, reserve:number, rof:number, reload_ms:number, range?:string },
+  stats: { damage:number, mag:number, reserve:number, rof:number, reload_ms:number, range?:string,
+           htk?:number, ttk_ms?:number,          // at the DEFAULT 115 pool; the views recompute per game
+           dmg_hit?:number, cycle_ms?:number, charged?:boolean },   // the pool-INDEPENDENT chain, see below
   // ⚠ `damage` is the MAGNITUDE the weapon emits ($WEAP t5), not the damage that lands. What lands is
   // decided by the victim's $SIR row for this weapon's <t3,t4>: a multiplier row lands x1.25 or x2, a
   // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
   // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
+  // `dmg_hit`/`cycle_ms`/`charged` are what `weapon_view(w, pool)` re-derives htk and ttk_ms from
+  // when the host changes `health` (§2.5). dmg_hit is the real t5 magnitude; cycle_ms is the mean ms
+  // between landed hits (burst-aware: (2*t14 + t23)/3 on a 3-round burst); `charged` weapons pay for
+  // their FIRST shot, so their ttk is htk cycles, not htk-1. A row WITHOUT them (a synthetic/demo
+  // catalog) scales its published `htk` by the pool ratio — honest arithmetic, htk being
+  // proportional to the pool, though ±1 hit from the published rounding — and withholds `ttk_ms`
+  // entirely at any non-default pool rather than publish a figure it cannot derive.
   weap_frame: string,   // the $WEAP,... template (token positions per callsign-extract)
   icon?: string,
   tags: string[], role: string   // A10: policy vocabulary ("heavy", "sniper", + the role) — presets exclude by tag (loadout.md §1.1)

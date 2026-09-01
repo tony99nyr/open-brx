@@ -6,7 +6,7 @@
 > how you see the whole board without reading six files.
 
 Single source of truth for open work. Supersedes the scattered A–G lists in
-`experiment-log.md` (kept there for history). Updated 2026-08-24. Status: ✅ done · 🔴 blocking /
+`experiment-log.md` (kept there for history). Updated 2026-09-01. Status: ✅ done · 🔴 blocking /
 high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 
 ## Build (hardware/software the platform needs)
@@ -809,7 +809,7 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   per-pull discipline can't be enforced.
 
 - **Bench: held-trigger fire sounds — retrigger-from-zero or ring-under?** Decides whether any
-  sound-duration ceiling exists at all (weapon-design §3.2 void note, 2026-08-26).
+  sound-duration ceiling exists at all (weapon-design §3.3 void note, 2026-08-26).
 
 - **Directional hit mechanics are now buildable** (2026-08-26): $HIR tok1 = 0 front dome / 1 back
   dome / 4 gun body, shield-isolated. Design candidates: backstab bonus, flank callouts, HUD hit
@@ -848,21 +848,39 @@ Critical/High/Medium was fixed in `ae05b75`/`9162040`/`9254c5f`. These Lows were
   (2026-08-26): advertise-but-won't-link / connect-then-drop. Rotate power between sessions; never
   bench-marathon a match-day fleet.
 
-## polish-loop 2026-08-26 deferred lows (noted, not fixed — pick freely)
+## polish-loop 2026-08-26 deferred lows — ✅ WORKED 2026-09-01 (handoff W4)
 
-Code: api.py range_verdict 500s (not 400) on malformed JSON + verdicts jsonl unbounded/full-rescan
-per GET; CORS `*` + `--no-auth` admits internet-origin pages in a LAN browser (moot with auth on);
-compile t17==2×t40 silently floors odd reserves + the override _NAMED set permits ammo tokens that
-would break the invariant; restore_snapshot trusts file player_nums until next config change;
-zeroconf executor thread survives the 6s timeout (registers late); app onReconnectMc no-ops after a
-discovery-only connect; allowAssist never resets after bind (transient two-MC steal possible,
-never persisted); Kit registry fetched once (no refresh after later scans) + `v as never` cast;
-parseMcQr gives no "not an MC code" feedback + rejects uppercase WS://; JoinPanel renders the
-GET-THE-APP header with no QR when lan.ip is missing; NEW MATCH button not disabled in-flight;
-u9_pickup/quick_victim lack the try/finally disconnect wrap; hoist shared PSET/SIR/AR frames + a
-connect-finally helper into mcp/tools/bench_common.py (7-file copy-paste drift).
-Docs: FOLLOWUPS/HANDOFF header dates stale; U7 cites closed P10; Energy-Launcher O-family audition
-alternates (O05/O02/O04/O06/O03) live only in weapon-design §3.2 prose.
+The ledger sat un-owned for six days. It is closed now: **15 rows — 14 fixed, 1 deliberately kept.**
+Each line says what happened and, where one exists, which test pins it; the rows without a test are
+copy or wiring changes with no sensible unit. Nobody should have to re-derive whether an item is real.
+
+| item | outcome |
+|---|---|
+| `api.py range_verdict` 500s on malformed JSON | ✅ fixed — it used `request.json()` (which raises) instead of the `body()` helper that degrades to `{}`. Same class as the header defect fixed 2026-08-31: **a guard that itself throws**. A full/read-only disk is now a 503, not a 500. `test_mc_api_range::test_malformed_json_is_400_not_500` + `::test_a_failed_write_is_503_not_500` |
+| verdicts jsonl unbounded / full-rescan per GET | ✅ fixed — the GET reads the last 256 KB and skips a torn line instead of re-parsing a whole bench day on every KIT mount. `test_verdicts_read_only_the_tail_and_skip_torn_lines` |
+| CORS `*` + `--no-auth` | ⬜ **deliberately left.** Both halves are needed: the phone app is a `capacitor://` origin, so `*` is the only value that lets it reach `/api/state` during the sweep fallback, and `--no-auth` is a bench convenience. With a token on (the default) mutating routes are gated anyway, and the read-only ones expose a LAN game's roster. Revisit only if MC is ever exposed off-LAN — at which point the answer is not CORS. Pinned by `test_range_cors_allows_any_origin` so it stays a decision, not an accident. |
+| compile floors odd reserves; overrides could write ammo tokens | ✅ both fixed — the even-rounding moved into `_mods`, so the frame and the number `spawn_ammo()` gives the phone's HUD cannot disagree (an `ammo_mult` perk could ship a gun one round short of what the HUD said). An `overrides` entry naming an ammo token is now a hard error. `test_mc_compile::test_an_odd_reserve_never_splits_the_frame_from_the_hud`, `…::test_an_override_may_not_write_an_ammo_token` |
+| `restore_snapshot` trusts file `player_nums` | ✅ fixed — `player_num` is the `$PSET` player id on the wire, so a duplicate arms two guns that answer to the same id and every hit either takes is scored to whoever MC looks up first. Restore now repairs to unique 1..63, first claimant keeps its number. `test_mc_persist::test_restore_repairs_duplicate_and_out_of_range_player_nums` |
+| zeroconf thread survives the 6 s timeout | ✅ fixed — `wait_for` abandons the *await*, not the thread. A late registration now unpublishes itself rather than advertising an MC that `stop()` has already run past. `test_mc_net::test_a_late_mdns_registration_unpublishes_itself` |
+| app `onReconnectMc` no-ops after a discovery-only connect | ✅ fixed — it dialled `settings.mcUrl`, which a discovery-only connect deliberately never writes, so the button returned on line 1 and did nothing. It falls back to the last URL actually dialled, and says so in the log when there is no target at all rather than no-opping again (review 2026-09-01). No unit test: `app.js` imports the DOM at module scope. |
+| `allowAssist` never resets after bind | ✅ fixed — cleared on `bound`, so a momentary drop mid-match cannot hand the phone to a second MC on the LAN. |
+| Kit registry fetched once; `v as never` cast | ✅ both fixed — the gun picker refetches when the FLEET changes (`registrySig`), and the cast is a real narrowing. ⚠️ The first fix keyed it on `readiness.t`, which is a clock pushed at 4/s — i.e. it re-created the RECAP refetch storm this same ledger documents. Caught in review and now pinned both ways: `console.test.tsx` "the armory is refetched when the FLEET changes, not on a clock". |
+| `parseMcQr`: no "not an MC code" feedback, rejects uppercase `WS://` | ✅ both fixed, and the function moved to `app/src/mcurl.js` so it can be tested at all — `app.js` imports the DOM at module scope. `app/test/mcurl.test.mjs` |
+| JoinPanel GET-THE-APP header with no QR | ✅ fixed — the header alone told the operator to point a camera at nothing. Guards on `isRoutableLanIp()`, not truthiness: `lan.ip` falls back to `127.0.0.1`, so the first fix was dead code and the real failure still printed a QR for loopback (review 2026-09-01). `console.test.tsx` "the APK QR is only offered on an address a phone can reach". |
+| NEW MATCH not disabled in-flight | ✅ fixed — `newSession()` rebuilds the session, and a double-tap on a slow LAN fired it twice. `console.test.tsx` "NEW MATCH disables itself in flight". |
+| `u9_pickup`/`quick_victim` lack try/finally disconnect | ✅ fixed via `bench_common.connected()` — a tool that died holding an open BLE link left a gun that would not accept the next connection until it was power-cycled. `test_bench_common::test_connected_always_disconnects` (covers a raise inside the block, a teardown that itself fails, and a part-way connect). |
+| hoist shared PSET/SIR/AR frames (7-file drift) | ✅ done — `mcp/tools/bench_common.py`. Not a style fix: a run that re-tunes the arming config in one tool and not the others measures two different games and reports one number. `ally_remeasure.py` keeps its own 190 ms AR and shield-150 `$PSET` **deliberately** (its experiment depends on them) and is exempted by name. `test_bench_common.py` fails if a frame is ever pasted back. |
+| Docs: header dates stale · stale P10 markers · O-family alternates only in prose | ✅ done — `mode-limits.md`'s two 🧪 P10 markers now say resolved (2026-08-26); the duplicate `### 3.2` heading in `weapon-design.md` is renumbered (§3.3–§3.5); the Energy Launcher audition shortlist is a real bench item below rather than a line of prose. |
+
+### W4a · Energy Launcher fire sound — bench audition ⬜
+
+`O01` (1.45 s) ships as the Energy Launcher's `t27` override. If it does not sit right on the range,
+the alternates are **`O05` 1.46 s · `O02` 1.71 s · `O04` 1.79 s · `O06` 1.81 s · `O03` 2.51 s** — any
+of them fits the 1600 ms cycle (`weapon-design.md` §3.2). Ten minutes with one gun and the KIT
+try-out button; log the verdict through the range-verdict API like any other weapon.
+⚠️ Its damage is the bigger problem: the Energy Launcher sits on `$SIR,9,3,,24` — a **status** row
+that moves no pool — so it deals **zero damage** in every game we ship (`weapon-design.md` §6.2, and
+`Compiler.validate()` warns on it). Fixing that comes first; the sound is cosmetic beside it.
 
 ## Field 2026-08-30 — open after the first full match (see `experiment-log.md` 2026-08-30)
 
@@ -883,6 +901,22 @@ alternates (O05/O02/O04/O06/O03) live only in weapon-design §3.2 prose.
   speed with the stock 384 reserve strictly dominates 10 of 17 picker weapons. If stock feel is worth
   more than a balanced arsenal, set `wire.fire_ms` back to 100 and delete
   `test_ttk_band_and_no_strictly_dominant_weapon` — it will fail, by design.
-- **F6 · `/api/recap.csv` only ever serves the LIVE scorer.** The RECAP history picker therefore hides
-  the CSV button on an archived match rather than exporting the wrong one. A per-match CSV endpoint
-  would be the real fix.
+- ~~**F6 · `/api/recap.csv` only ever serves the LIVE scorer.**~~ ✅ **CLOSED 2026-09-01 (handoff W1).**
+  `GET /api/matches/{id}.csv` serves any finished match in the session store, through the same writer
+  as the live export (`scoring.rows_csv`) so the two cannot drift. The RECAP picker exports the match
+  it is showing; NEW MATCH stays live-only, because an archived match is a record, not a place to
+  start a game from. `test_mc_api::test_archived_match_csv_exports_that_match_not_the_live_one`.
+
+- ~~**F8 · `POOL = 115` is hardcoded in `views.py`.**~~ ✅ **CLOSED 2026-09-01 (handoff W2).** ARSENAL
+  and KIT quoted `HITS TO KILL 13 · TTK 1.68S` for the AR at every health config; at a 100/100 pool
+  the real answer is 23 hits. `weapon_view(..., pool=)` now follows `config.health` (per-player
+  `loadout.overrides` win, exactly as `_gset` reads them), the screens name the pool they are
+  quoting, and `weapon-design.md` §2.5's sensitivity table is machine-checked against the wire.
+
+- ~~**F9 · Nothing tests the MC web console.**~~ ✅ **CLOSED 2026-09-01 (handoff W5).** `webapp/mc`
+  has a `test` script: 50 jsdom tests in ~1.4 s that mount every screen against a full session, an
+  empty one and a null one. It found two live bugs on its first run — `CommandBar` still crashed on
+  `PH[si][1]` for an unrecognised phase (the same defect as the black ARSENAL page), and `Kit` called
+  two hooks below its `if (!state) return null`, so the render that first received a snapshot ran
+  more hooks than the one before it. It does not replace `app/tools/e2e.mjs`; it is the gate that
+  runs before that suite is worth starting.

@@ -1,4 +1,6 @@
 """API route smoke via starlette TestClient (skips cleanly when starlette/httpx are absent)."""
+from _skip import needs
+
 try:
     from starlette.testclient import TestClient
     import httpx  # noqa: F401
@@ -17,16 +19,14 @@ def _client():
 
 
 def test_state_and_modes_and_weapons():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     c, s, net = _client()
     r = c.get("/api/state"); assert r.status_code == 200 and r.json()["phase"] == "muster"
     assert len(c.get("/api/modes").json()) == 5 and len(c.get("/api/weapons").json()) == 18
 
 
 def test_player_flow_and_errors():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     c, s, net = _client()
     assert c.put("/api/config", json={"mode": "ffa", "time_limit_s": 300}).json()["ok"]
     p = c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).json()
@@ -39,9 +39,79 @@ def test_player_flow_and_errors():
 
 
 def test_ui_ws_snapshot():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     c, s, net = _client()
     with c.websocket_connect("/ui-ws") as ws:
         msg = ws.receive_json()
         assert msg["kind"] == "snapshot" and "readiness" in msg["state"]
+
+
+# ── W1/F6: per-match CSV export (handoff-post-first-match) ───────────────────────────────────────
+def _client_with_history():
+    """A session whose store already holds two finished matches, as after two rounds on the field."""
+    import pathlib, tempfile
+    from brx_mcp.mc.store import Store
+    c, s, net = _client()
+    s.store = Store("sess", pathlib.Path(tempfile.mkdtemp()) / "s.sqlite")
+    s.store.match_started("m1", {"mode": "tdm"}, 1000)
+    s.store.match_ended("m1", {"winner": {"team_id": "blue"}, "rows": [
+        {"player_id": "p1", "display": "ALPHA", "team_id": "blue", "kills": 4, "deaths": 1, "assists": 2,
+         "kd": 4.0, "accuracy": 31, "streak": 3, "shots": 40, "hits": 12, "medals": ["MVP"]}]})
+    s.store.match_started("m2", {"mode": "ffa"}, 2000)
+    s.store.match_ended("m2", {"winner": {"player_id": "p2"}, "rows": [
+        {"player_id": "p2", "display": "=CMD|calc", "team_id": None, "kills": 9, "deaths": 0, "assists": 0,
+         "kd": 9.0, "accuracy": None, "streak": 9, "shots": 20, "hits": 9, "medals": []}]})
+    return c, s, net
+
+
+def test_archived_match_csv_exports_that_match_not_the_live_one():
+    """`/api/recap.csv` only ever served the LIVE scorer, so the RECAP history picker had to HIDE
+    its export button on a past match rather than hand the operator the wrong game's numbers."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client_with_history()
+    r = c.get("/api/matches/m1.csv")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert 'filename="recap-m1.csv"' in r.headers["content-disposition"]
+    body = r.text.splitlines()
+    assert body[0].startswith("operator,team,kills")
+    assert body[1].startswith("ALPHA,blue,4,1,2,4.0,31,3,40,12,MVP")
+    assert "ALPHA" not in c.get("/api/matches/m2.csv").text        # a different match, different rows
+    # there is no live scorer at all here — the archived export must not depend on one
+    assert s.scorer is None and c.get("/api/recap.csv").status_code == 404
+
+
+def test_archived_match_csv_edge_cases():
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client_with_history()
+    assert c.get("/api/matches/nope.csv").status_code == 404       # unknown id, not an empty file
+    # spreadsheet formula injection is neutralised on the archived path too (same writer)
+    assert "'=CMD|calc" in c.get("/api/matches/m2.csv").text
+    # a scored-nobody match is a truthful empty export, not a 404
+    s.store.match_started("m3", {"mode": "ffa"}, 3000)
+    s.store.match_ended("m3", {"winner": {}, "rows": []})
+    r = c.get("/api/matches/m3.csv")
+    assert r.status_code == 200 and r.text.strip() == "operator,team,kills,deaths,assists,kd,accuracy,streak,shots,hits,medals"
+    # and it is READ-ONLY: no operator token, exactly like GET /api/matches
+    assert c.get("/api/matches").status_code == 200
+
+
+def test_weapon_stats_follow_the_hosts_health_config():
+    """W2: `POOL = 115` was hardcoded in views.py, so ARSENAL and KIT quoted `HITS TO KILL 13` for
+    the AR at every health setting (docs/weapon-design.md §2.5)."""
+    needs(HAVE, "starlette + httpx")
+    # the REAL compiler: this is about the shipped arsenal's derivation chain, which the fake has none of
+    from brx_mcp.mc.api import create_app
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    c = TestClient(create_app(Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))))
+
+    def ar():
+        return next(w for w in c.get("/api/weapons").json() if w["weapon_id"] == "assault_rifle")
+    base = ar()
+    assert base["pool"] == 115 and base["htk"] == 13
+    assert c.put("/api/config", json={"health": {"max_hp": 100, "max_armor": 100}}).json()["ok"]
+    hard = ar()
+    assert hard["pool"] == 200 and hard["htk"] == 23                # §2.5's 100/100 column
+    assert hard["dmg_per_hit"] == base["dmg_per_hit"]               # a property of the weapon, not the pool
+    assert hard["ttk_ms"] > base["ttk_ms"]

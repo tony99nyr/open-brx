@@ -14,6 +14,39 @@ from .types import (ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS, STALE_
 Feed = dict
 Feedback = Callable[[str, dict], None]     # (player_id, feedback body)
 
+CSV_COLUMNS = ["operator", "team", "kills", "deaths", "assists", "kd", "accuracy", "streak",
+               "shots", "hits", "medals"]
+
+
+def _csv_safe(v):
+    # neutralise spreadsheet formula injection (=,+,-,@ leading a cell)
+    return ("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") else v
+
+
+def rows_csv(rows) -> str:
+    """`ScoreRow[]` → the exported stats table.
+
+    Module-level, not a `Scorer` method, because the RECAP history picker exports matches whose
+    scorer is long gone — an archived match only has the `rows` its stored recap kept (W1/F6). Both
+    exports run through here so the archived CSV cannot quietly diverge from the live one. Rows are
+    read defensively for the same reason: they may have been read back off disk.
+    """
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(CSV_COLUMNS)
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        acc, medals = r.get("accuracy"), r.get("medals") or []
+        if not isinstance(medals, list):      # a stray string would join per-CHARACTER
+            medals = [medals]
+        w.writerow([_csv_safe(r.get("display", "")), _csv_safe(r.get("team_id") or ""),
+                    r.get("kills", 0), r.get("deaths", 0), r.get("assists", 0), r.get("kd", 0),
+                    "" if acc is None else acc, r.get("streak", 0),
+                    r.get("shots", 0), r.get("hits", 0),
+                    _csv_safe(" · ".join(str(m) for m in medals))])
+    return buf.getvalue()
+
 
 class _P:
     __slots__ = ("kills", "deaths", "assists", "hits", "friendly_kills", "streak", "best_streak",
@@ -388,17 +421,9 @@ class Scorer:
                 "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),
                 "parked": len(self.parked)}
 
-    @staticmethod
-    def _csv_safe(v):
-        # neutralise spreadsheet formula injection (=,+,-,@ leading a cell)
-        return ("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") else v
+    _csv_safe = staticmethod(_csv_safe)
 
     def csv(self) -> str:
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(["operator", "team", "kills", "deaths", "assists", "kd", "accuracy", "streak", "shots", "hits", "medals"])
-        for r in self.rows():
-            w.writerow([self._csv_safe(r["display"]), self._csv_safe(r["team_id"] or ""), r["kills"], r["deaths"],
-                        r["assists"], r["kd"], "" if r["accuracy"] is None else r["accuracy"], r["streak"],
-                        r["shots"], r["hits"], self._csv_safe(" · ".join(r["medals"]))])
-        return buf.getvalue()
+        """This match's stats table. An ARCHIVED match goes through `rows_csv(recap["rows"])`
+        instead — same writer, so the two exports can never drift apart (W1/F6)."""
+        return rows_csv(self.rows())

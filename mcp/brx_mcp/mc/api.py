@@ -172,7 +172,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         from .fakes import weapon_views as fake_weapon_views
         from .views import weapon_views
         try:
-            views = weapon_views(s.compiler.weapon_catalog())
+            views = weapon_views(s.compiler.weapon_catalog(), s.health_pool())   # htk/ttk at THIS game's health
             return JSONResponse(views if views else fake_weapon_views())
         except Exception:
             return JSONResponse(fake_weapon_views())
@@ -369,11 +369,44 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             logging.getLogger("brx.mc").exception("match history unavailable")
             return JSONResponse([])
 
+    _SAFE_NAME = __import__("re").compile(r"[^A-Za-z0-9._-]")
+
+    def _csv(body: str, name: str) -> Response:
+        # The filename is sanitised, not trusted. It carries a match_id, which IS a path param — the
+        # earlier comment here claimed it was "never echoed user text", which was simply wrong; it
+        # was safe only because the store lookup 404s an unknown id first. Defence in depth: a quote
+        # or newline reaching a header is a response-splitting bug, and Starlette encodes headers as
+        # latin-1 so a non-ASCII one would raise inside the handler (review 2026-09-01).
+        return Response(body, media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{_SAFE_NAME.sub("_", name)}"'})
+
     async def recap_csv(_):
         if not s.scorer:
             return _err("no match", 404)
-        return Response(s.scorer.csv(), media_type="text/csv",
-                        headers={"Content-Disposition": "attachment; filename=recap.csv"})
+        return _csv(s.scorer.csv(), "recap.csv")
+
+    async def match_csv(req):
+        """One ARCHIVED match's stats table (W1/F6).
+
+        `/api/recap.csv` serves the LIVE scorer, so the RECAP history picker had to hide its export
+        button on a past match rather than hand the operator the wrong game's numbers. A finished
+        match keeps its rows in the session store; this reads them back through the same writer.
+        Read-only, so no operator token — exactly like `GET /api/matches`."""
+        from .scoring import rows_csv
+        mid = req.path_params["mid"]
+        if not s.store:
+            return _err("no session store", 404)
+        try:
+            m = next((m for m in s.store.matches() if m["match_id"] == mid), None)
+        except Exception:
+            logging.getLogger("brx.mc").exception("match csv: store unreadable")
+            return _err("match history unavailable", 503)
+        if not m:
+            return _err("unknown match", 404)
+        rows = (m.get("recap") or {}).get("rows")
+        # A recap with no rows is a real match that scored nobody. Serve the header row: an empty
+        # download is a truthful answer, and a 404 here reads as "that match is gone".
+        return _csv(rows_csv(rows if isinstance(rows, list) else []), f"recap-{mid}.csv")
 
     async def new_session(req):
         b = await body(req)
@@ -415,31 +448,60 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         from pathlib import Path as _P
         return _P.home() / ".brx-mcp" / "weapon-verdicts.jsonl"
 
+    # A bench day appends one line per try-out and never prunes; the GET re-read and re-parsed the
+    # whole file on every KIT mount. Only the LAST verdict per weapon is ever shown, so read the tail
+    # (polish-loop deferred low, 2026-08-26). 256 KB is thousands of verdicts — far more than a day.
+    _VERDICT_TAIL_BYTES = 256 * 1024
+
     async def range_verdicts(_):
         """Latest verdict per weapon from the bench log."""
         out = {}
         try:
-            for line in _range_path().read_text().splitlines():
-                if line.strip():
+            pth = _range_path()
+            with pth.open("rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - _VERDICT_TAIL_BYTES))
+                raw = f.read().decode("utf-8", "replace")
+            if size > _VERDICT_TAIL_BYTES:
+                # Drop the half line the seek landed inside. Belt-and-braces over the `ValueError`
+                # guard below, which already skips it in practice — kept because a truncated record
+                # is not GUARANTEED to be invalid JSON, and a half row that happens to parse would
+                # be a wrong verdict rather than a skipped one. Deliberately redundant, and no test
+                # can distinguish the two paths on realistic data (review 2026-09-01).
+                raw = raw.split("\n", 1)[-1]
+            for line in raw.splitlines():
+                if not line.strip():
+                    continue
+                try:
                     r = json.loads(line)
+                except ValueError:
+                    continue                        # a torn line must not hide the verdicts after it
+                if isinstance(r, dict) and isinstance(r.get("weapon_id"), str):
                     out[r["weapon_id"]] = r
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
+        except OSError:
+            log.exception("range verdicts unreadable — serving none")
         return JSONResponse(out)
 
     async def range_verdict(request):
         """Append a bench verdict: {weapon_id, verdict: pass|issue, note?}."""
-        body = await request.json()
-        wid, verdict = body.get("weapon_id"), body.get("verdict")
+        # `request.json()` raises on malformed input, which Starlette turns into a 500 — a guard that
+        # itself throws. `body()` above is the one that degrades to {} (polish-loop deferred low).
+        b = await body(request)
+        wid, verdict = b.get("weapon_id"), b.get("verdict")
         if not wid or not isinstance(wid, str) or verdict not in ("pass", "issue"):
-            return JSONResponse({"error": "weapon_id + verdict (pass|issue) required"}, status_code=400)
+            return _err("weapon_id + verdict (pass|issue) required")
         import time as _t
-        rec = {"weapon_id": wid, "verdict": verdict, "note": str(body.get("note") or "")[:400], "t": int(_t.time() * 1000)}
-        pth = _range_path(); pth.parent.mkdir(parents=True, exist_ok=True)
-        with pth.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
+        rec = {"weapon_id": wid, "verdict": verdict, "note": str(b.get("note") or "")[:400], "t": int(_t.time() * 1000)}
+        try:
+            pth = _range_path(); pth.parent.mkdir(parents=True, exist_ok=True)
+            with pth.open("a") as f:
+                f.write(json.dumps(rec) + "\n")
+        except OSError as e:                        # a full/read-only disk must not 500 the bench
+            log.exception("range verdict not written")
+            return _err(f"could not write the bench log: {e}", 503)
         return JSONResponse(rec)
 
     async def apk(_):
@@ -483,6 +545,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/recap", recap),
         Route("/api/matches", match_history),
         Route("/api/recap.csv", recap_csv),
+        Route("/api/matches/{mid}.csv", match_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
         WebSocketRoute("/ui-ws", ui_ws),
     ]

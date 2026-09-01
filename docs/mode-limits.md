@@ -85,7 +85,10 @@ phones as nodes · **T2** ESP32 Companion per gun · **T3** IR objective station
   native-team mode (`$GSET` `friendlyFire=0` blocks same-team damage + cross-team heals — bench
   2026-08-26, brx-ir IR emitter); FFA mode has no on-gun FF (one team), so MC penalizes team-kills. MC FF
   is a policy/scoring layer over the firmware-enforced base.
-- 🧪 **IR damage value (P10)** — needed for damage-weighted scoring. ✅ **Regen is NOT native (P11
+- ✅ **IR damage value (P10) RESOLVED 2026-08-26** — damage-weighted scoring is BLE-native: `$HIR`
+  token 5 carries the RAW magnitude from the IR word. ⚠️ Raw is not applied: the victim's `$SIR` row
+  decides what it does, so derive damage from the `$HP` delta wherever a multiplier row is in play
+  (FOLLOWUPS P10, `brx-protocol.md` §7r). ✅ **Regen is NOT native (P11
   closed)** — armor held through 30 s idle, so Halo-shields are **host-driven** (node refills). 🧪
   **`$PB*` enums are v4.30; ours is v4.32 (P12).**
 - ✅ **Health writes CONFIRMED** — `$LIFE` and `$BUMP` are **both additive grants clamped at max** (exp-log
@@ -162,7 +165,7 @@ Mechanics: `game-modes.md` catalog. These are inherently **contested-place** mod
 | Tier | Status | Limit / why |
 |---|---|---|
 | **T0/T1** (no props) | ❌ as *capture-by-fire* | 🧱 A *place* can't be authored by the guns (no state) and a **phone can't be shot** (no IR). Needs a physical IR point. *Exception:* the **grenade** gives you a single-point **Hill/Respawn/Assault/CTF** for $0 (Hill/Respawn state is BLE-readable; ⚠️ CTF turned red-not-team — team-assign open G9; grenade has no winner display/scoreboard). |
-| **+T3** (IR stations) | ✅ the real thing | One station primitive → Domination (1 pt/s), KotH (hold 45 s, ~5 s recapture), CTF, Assault. 🧪 P10 for damage-weighted scoring. |
+| **+T3** (IR stations) | ✅ the real thing | One station primitive → Domination (1 pt/s), KotH (hold 45 s, ~5 s recapture), CTF, Assault. Damage-weighted scoring is unblocked (P10 resolved 2026-08-26). |
 | **multi-point** | ⚠️ needs linking | 🧱 Several points that share score need base↔base networking (ESP-NOW arena / **T4** LoRa field). Caps: 10-station LoRa domination, ~21-box KotH. |
 | **+T4** | ✅ live | Field-wide live ownership/scoreboard. Without it, multi-point still scores but syncs late. |
 

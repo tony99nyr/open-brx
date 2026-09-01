@@ -1,10 +1,9 @@
 """Arm the victim properly, then count $HIR registrations for N seconds."""
 import asyncio, sys
 
-PSET = "$PSET,40,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
-SIRS = ["$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*", "$SIR,10,0,X13,1,0,100,2,60,*",
-        "$SIR,13,0,H50,1,0,0,1,,*", "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]
+from bench_common import GSET, PSET as _PSET, SIRS   # one copy of the arming frames (bench_common.py)
+
+PSET = _PSET.format(pid=40)
 
 
 async def main() -> None:
@@ -15,7 +14,7 @@ async def main() -> None:
     await mgr.connect(victim, "victim")
     try:
         sessions = next((getattr(mgr, a) for a in ("sessions", "_sessions") if isinstance(getattr(mgr, a, None), dict)), {})
-        for fr in ["$VOL,60,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET] + SIRS + ["$TID,1,*", "$SPAWN,,*", "$PLAYX,0,*"]:
+        for fr in ["$VOL,60,0,*", "$CLEAR,*", "$START,*", GSET, PSET] + SIRS + ["$TID,1,*", "$SPAWN,,*", "$PLAYX,0,*"]:
             await mgr.send("victim", fr, reply_window_ms=300)
         mark = len(sessions["victim"].buffer) if "victim" in sessions else 0
         print("victim ARMED team 1 - DUMP THE MAG NOW (%ds window)" % secs, flush=True)

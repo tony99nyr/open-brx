@@ -155,6 +155,7 @@ class Session:
             if snap.get("config"):
                 self.config = snap["config"]
             self.active_preset_id = snap.get("active_preset_id")
+            self._repair_player_nums()
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
             for pl in self.players.values():                      # a pre-A10 snapshot has no `perk` key; fine
                 pl["loadout"] = _policy.apply(self.config["loadout_policy"], self.loadout_pool(), pl.get("loadout") or {"weapons": []},
@@ -164,6 +165,49 @@ class Session:
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
             return 0
+    def _repair_player_nums(self) -> None:
+        """Every restored player gets a UNIQUE 1..63 `player_num`, whatever the file said.
+
+        `player_num` is what goes on the wire as the `$PSET` player id, so a duplicate is not a
+        cosmetic problem: two guns answer to the same id and every hit either of them takes is
+        attributed to whichever player MC looks up first. The restore path used to take the file's
+        numbers verbatim and only re-derive them at the next config change — so a hand-edited,
+        half-written or two-sessions-merged snapshot could arm a game that scores the wrong people
+        (polish-loop deferred low). Order is stable: the first player to claim a number keeps it.
+        """
+        seen: set[int] = set()
+        needs: list[Player] = []
+        for p in self.players.values():
+            n = p.get("player_num")
+            ok = isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= MAX_PLAYERS and n not in seen
+            if ok:
+                seen.add(n)
+            else:
+                needs.append(p)
+        if not needs:
+            return
+        import logging
+        base = int(self.config.get("player_num_base") or 1)
+        # Prefer the configured base range (A6.5 keeps concurrent games disjoint), but fall back to
+        # the numbers BELOW it before giving up: this path RESTORES a roster, and dropping a real
+        # player while 1..base-1 sat free would destroy data the operator already had. The live add
+        # path (`_next_num`) may refuse; this one must not (review 2026-09-01).
+        start = max(1, min(base, MAX_PLAYERS))
+        order = list(range(start, MAX_PLAYERS + 1)) + list(range(1, start))
+        free = (n for n in order if n not in seen)
+        for p in needs:
+            n = next(free, None)
+            if n is None:                                  # roster fuller than the wire allows
+                logging.getLogger("brx.mc").error(
+                    "snapshot has more players than player_nums (%d) — dropping %s", MAX_PLAYERS, p.get("display"))
+                self.players.pop(p["player_id"], None)
+                continue
+            logging.getLogger("brx.mc").warning(
+                "snapshot player_num %r for %s was invalid or taken — reassigned to %d",
+                p.get("player_num"), p.get("display"), n)
+            p["player_num"] = n
+            seen.add(n)
+
     def _log(self, node_id, kind, body, t_recv, seq=None, parked=False):
         if not self.store:
             return
@@ -224,11 +268,44 @@ class Session:
         weapons, perks = self._catalog_rows()
         return _policy.pool(self.policy(), weapons, perks)
 
-    def _catalog_views(self) -> dict:
+    def health_pool(self, p: Player | None = None) -> int:
+        """hp + armour a full-health player carries — what hits-to-kill is quoted against.
+
+        Per-player `loadout.overrides` win over the game's `health`, exactly as `_gset` and
+        `Compiler.validate()` read them, so the phone's stat block is the truth for THAT player.
+        Field 2026-08-30 shipped a hardcoded 115 in `views.py`, so KIT and ARSENAL both claimed the
+        AR takes 13 hits however the host had set health (docs/weapon-design.md §2.5).
+
+        ⚠ This must mirror `Compiler._to_gc()`'s armour arithmetic EXACTLY — including the
+        `body_armor` perk's `max_armor_add` and the 255 policy ceiling — because that is what
+        actually goes out on `$PSET`. Review 2026-09-01 caught it missing the perk: a player holding
+        `body_armor` is armed at a 165 pool while KIT quoted the AR at 13 hits / 1.68 s when the
+        truth is 19 / 2.52 s. A stat block that is wrong for the one perk that moves the pool is
+        worse than one that never claimed to be per-player."""
+        h = self.config.get("health") or {}
+        ov = ((p or {}).get("loadout") or {}).get("overrides") or {}
+
+        def n(key: str, default: int) -> int:
+            v = ov.get(key, h.get(key, default))
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
+        add = 0
+        if p is not None:
+            try:
+                add = int(self.compiler._perk_effects(p).get("max_armor_add") or 0)
+            except Exception:      # a fake/older compiler has no perk model; the base pool still holds
+                add = 0
+        return max(1, n("max_hp", 45) + min(255, n("max_armor", 70) + add))
+
+    def _catalog_views(self, p: Player | None = None) -> dict:
         """`assign.catalog` — what the phone browses (visible weapons as WeaponView + visible perks)."""
         from .views import weapon_views                  # one view builder for HTTP and the wire
         weapons, perks = self._catalog_rows()
-        return {"weapons": weapon_views(weapons), "perks": perks}   # `bars` need the whole arsenal
+        # `bars` need the whole arsenal; htk/ttk need this game's health pool
+        return {"weapons": weapon_views(weapons, self.health_pool(p)), "perks": perks}
 
     def kit_open(self) -> bool:
         """A10 §4.1: phones may browse/pick/try only while the host is on KIT and the lobby is not pushed. Before
@@ -239,7 +316,7 @@ class Session:
         pol = _policy.node_view(self.policy(), self.loadout_pool())
         pol["kit_open"] = self.kit_open()
         return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
-                "catalog": self._catalog_views(), "policy": pol, "game": self.game_brief()}
+                "catalog": self._catalog_views(p), "policy": pol, "game": self.game_brief()}
 
     def game_brief(self) -> dict:
         """A10 §4.6: what the phone's BRIEFING screen shows — the chosen game in human terms. Saved-game name/desc
@@ -1040,7 +1117,7 @@ class Session:
             # `weapon_views` produces (it needs the whole arsenal to rank against). Pushing the raw row
             # sent the try-out card back to the near-empty `stats.dmg` meter (review 2026-08-31).
             from .views import weapon_views
-            wv = next((v for v in weapon_views(self._catalog_rows()[0])
+            wv = next((v for v in weapon_views(self._catalog_rows()[0], self.health_pool(p))
                        if v["weapon_id"] == w["weapon_id"]), None)
             self.net.push(p["node_id"], "tutorial", {"weapon": wv or w, "frames": frames})
         self._changed()

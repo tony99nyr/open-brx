@@ -22,7 +22,10 @@
 Weapon += { tags: string[] }      // "heavy" (role power), "sniper" (sniper_rifle, plasma_sniper, ion_sniper, amr), "cqb", "assault", "support"
 ```
 `WeaponView` (API.md `GET /api/weapons`, and `assign.catalog`) gains `tags: string[]`, `role: string`, **`htk: number`**
-(hits to drop a 115 pool — the UIs show HITS TO KILL instead of the decorative RANGE bar: t41 is 75 on every gun),
+(hits to drop **the host's pool** — `config.health.max_hp + max_armor` plus any per-player override and
+the `body_armor` perk, 115 at the defaults; it moves with the health config, so a UI showing it must show
+`pool` beside it — see `weapon-design.md` §2.5. The UIs show HITS TO KILL instead of the decorative RANGE
+bar: t41 is 75 on every gun),
 `ttk_ms`, and optional **`caution?: string`** — human copy for a weapon with a known live problem (new optional
 `caution` field in `weapons.json`; set on `energy_launcher`). `cls` stays the raw class id.
 

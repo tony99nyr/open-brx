@@ -59,7 +59,11 @@ export interface Store {
   setToken: (tok: string) => void;
 }
 
-const Ctx = createContext<Store | null>(null);
+// Exported for the test suite ONLY (test/harness.tsx): a screen can then be mounted against a
+// fixture without a server, which is how the console gets checked screen by screen. Production code
+// goes through `StoreProvider`/`useStore` — nothing else should reach for this.
+export const StoreCtx = createContext<Store | null>(null);
+const Ctx = StoreCtx;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);

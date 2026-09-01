@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { isRoutableLanIp, registrySig } from '../api/derive';
 import type { ReadinessRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
@@ -11,7 +12,11 @@ export function Armory() {
   const { state, run, api, setView } = useStore();
   const [scanning, setScanning] = useState(false);
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
-  useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, [state?.readiness?.t]);
+  // Keyed on WHICH GUNS MC knows about, so a SCAN that enrols a new gun shows up in KNOWN GUNS —
+  // NOT SEEN without a reload. NOT on `readiness.t`: that is a clock, and at 4 snapshots a second it
+  // refetches the armory ~4x/s for as long as this screen is open (review 2026-09-01).
+  const sig = registrySig(state);
+  useEffect(() => { api.armory().then(setRegistry).catch(() => setRegistry([])); }, [api, sig]);
   if (!state) return null;
   const { readiness } = state;
   const board = readiness.board;
@@ -201,7 +206,9 @@ function JoinPanel() {
   const [url, setUrl] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
   const qr = state?.lan.qr;
-  const apkUrl = state?.lan.ip ? `http://${state.lan.ip}:${state.lan.port || 8765}/openbrx.apk` : '';
+  // routable, not merely truthy: `lan.ip` falls back to 127.0.0.1, and a QR for loopback sends the
+  // operator's phone to its own browser (review 2026-09-01)
+  const apkUrl = isRoutableLanIp(state?.lan.ip) ? `http://${state!.lan.ip}:${state!.lan.port || 8765}/openbrx.apk` : '';
   const [apkQr, setApkQr] = useState<string | null>(null);
   useEffect(() => {
     if (!apkUrl) return;
@@ -223,11 +230,20 @@ function JoinPanel() {
       {showQr && <>
         <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
         {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={200} height={200} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
-        <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>NO APP YET? PHONE CAMERA HERE</div>
-          {apkQr && <div style={{ background: '#ffffff', padding: 8, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}` }}><img src={apkQr} width={132} height={132} alt="apk download QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
-          <div style={{ font: F.mono(500, 10), letterSpacing: '.04em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
-        </div>
+        {/* no lan.ip means no download URL to print and no QR to scan — the header alone told the
+            operator to point a camera at nothing (polish-loop deferred low) */}
+        {apkUrl ? (
+          <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>NO APP YET? PHONE CAMERA HERE</div>
+            {apkQr && <div style={{ background: '#ffffff', padding: 8, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}` }}><img src={apkQr} width={132} height={132} alt="apk download QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
+            <div style={{ font: F.mono(500, 10), letterSpacing: '.04em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
+          </div>
+        ) : (
+          <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro, textAlign: 'center' }}>
+            NO LAN ADDRESS ({state?.lan.ip || '—'}) — MC IS NOT ON A NETWORK PHONES CAN REACH.
+            {' '}JOIN THE FIELD WI-FI AND RESTART MC; SIDELOAD THE APK BY CABLE MEANWHILE.
+          </div>
+        )}
       </>}
     </div>
   );

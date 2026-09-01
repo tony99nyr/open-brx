@@ -85,3 +85,88 @@ def test_store_matches_survives_a_corrupt_row():
     row = next(m for m in st.matches() if m["match_id"] == "halfgood")
     assert row["config"] == {} and row["recap"]["winner"]["player_id"] == "p9"
     st.close()
+
+
+# ── polish-loop 2026-08-26 deferred low, closed 2026-09-01 ───────────────────────────────────────
+def test_restore_repairs_duplicate_and_out_of_range_player_nums():
+    """`player_num` goes on the wire as the `$PSET` player id, so a duplicate arms two guns that
+    answer to the same id — every hit either takes is attributed to whichever MC looks up first.
+
+    The restore path used to take the file's numbers verbatim and only re-derive them at the next
+    config change, so a hand-edited or half-written snapshot could start a game that scores the
+    wrong people."""
+    from brx_mcp.mc.types import MAX_PLAYERS
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    for i, disp in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA")):
+        s.add_player(disp, team_id="blue")
+    s._persist_last = 0.0
+    s._persist()
+
+    snap = json.loads(tmp.read_text())
+    bad = {"ALPHA": 5, "BRAVO": 5, "CHARLIE": 0, "DELTA": MAX_PLAYERS + 9}    # dup, dup, reserved, out of range
+    for p in snap["players"]:
+        if p["display"] in bad:
+            p["player_num"] = bad[p["display"]]
+    tmp.write_text(json.dumps(snap))
+
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    assert s2.restore_snapshot() == len(snap["players"]), "nobody is dropped for a bad number alone"
+    nums = [p["player_num"] for p in s2.players.values()]
+    assert len(nums) == len(set(nums)), f"duplicate player_num survived the restore: {nums}"
+    assert all(isinstance(n, int) and 1 <= n <= MAX_PLAYERS for n in nums), nums
+    # the FIRST claimant keeps the number it had; the rest are reassigned
+    assert next(p for p in s2.players.values() if p["display"] == "ALPHA")["player_num"] == 5
+
+
+def test_restore_survives_a_non_numeric_player_num():
+    """A snapshot written by a future/older build, or corrupted: never raise, never keep the value."""
+    from brx_mcp.mc.types import MAX_PLAYERS
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s.add_player("ALPHA", team_id="blue")
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    for p, junk in zip(snap["players"], (None, "3", True, 2.5)):
+        p["player_num"] = junk
+    tmp.write_text(json.dumps(snap))
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    assert s2.restore_snapshot() == len(snap["players"])
+    nums = [p["player_num"] for p in s2.players.values()]
+    assert all(isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= MAX_PLAYERS for n in nums), nums
+    assert len(nums) == len(set(nums))
+
+
+def test_restore_never_drops_a_player_while_numbers_are_free():
+    """`player_num_base` keeps concurrent games disjoint (A6.5), but the RESTORE path must not treat
+    it as a hard floor: dropping a real player while 1..base-1 sat free destroys data the operator
+    already had. The live add path may refuse; this one may not (review 2026-09-01)."""
+    from brx_mcp.mc.types import MAX_PLAYERS
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    for d in ("ALPHA", "BRAVO", "CHARLIE", "DELTA"):       # added under the default base
+        s.add_player(d, team_id="blue")
+    s._persist_last = 0.0
+    s._persist()
+
+    # ...then the FILE says base 62, leaving only 62 and 63 at or above it for six players, and every
+    # stored number is invalid so all six need one. The base comes from the snapshot's own config.
+    snap = json.loads(tmp.read_text())
+    snap["config"]["player_num_base"] = MAX_PLAYERS - 1
+    for p in snap["players"]:
+        p["player_num"] = 0
+    tmp.write_text(json.dumps(snap))
+    assert len(snap["players"]) > 2, "the roster must exceed the numbers at/above the base"
+
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    restored = s2.restore_snapshot()
+    assert restored == len(snap["players"]), "nobody may be dropped while low numbers are free"
+    nums = sorted(p["player_num"] for p in s2.players.values())
+    assert len(nums) == len(set(nums)) and all(1 <= n <= MAX_PLAYERS for n in nums), nums

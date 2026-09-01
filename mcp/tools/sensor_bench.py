@@ -3,11 +3,7 @@ Usage: python sensor_bench.py <shooter> <victim> [secs=12]
 """
 import asyncio, sys, time
 
-AR = "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*"
-PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
-SIRS = ["$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*", "$SIR,10,0,X13,1,0,100,2,60,*",
-        "$SIR,13,0,H50,1,0,0,1,,*", "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]
+from bench_common import AR, arming_frames   # one copy of the arming frames + their ORDER
 PHASES = ["HEADSET FRONT ONLY - shield the gun sensors and the back dome", "HEADSET BACK ONLY - shield the gun and the front dome", "GUN ONLY - shield the whole headset dome"]
 
 
@@ -26,7 +22,7 @@ async def main() -> None:
         await mgr.send(alias, fr, reply_window_ms=300)
 
     async def setup(alias, pid, tid):
-        for fr in ["$VOL,60,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET.format(pid=pid)] + SIRS + [f"$TID,{tid},*"]:
+        for fr in arming_frames(pid, tid):
             await send(alias, fr)
         await send(alias, "$SPAWN,,*"); await send(alias, "$PLAYX,0,*")
         await send(alias, "$AMMO,0,32,192,1,*"); await send(alias, "$BMAP,0,0,,,,,*")

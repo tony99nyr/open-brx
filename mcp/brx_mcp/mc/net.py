@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import logging
 import socket
+import threading
 import time
 import secrets
 import uuid
@@ -121,6 +122,10 @@ class NetServer:
         self._port = 0
         self._ws_path = "/ws"
         self._zeroconf = None
+        # `advertise_mdns()` runs in a worker thread behind a 6 s `wait_for` (see `__main__`), and a
+        # timeout abandons the AWAIT, not the thread. These two guard the late finisher.
+        self._mdns_lock = threading.Lock()
+        self._mdns_abort = threading.Event()
         self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0, "evicted": 0}
 
     # ---------------- registration (interfaces.NetServer) ----------------
@@ -163,6 +168,10 @@ class NetServer:
         self._loop = asyncio.get_running_loop()
         self._host, self._ws_path = host, ws_path
         self._advertised_host = advertise_host
+        # a restarted server must be able to advertise again: `stop()` sets the abort latch, and
+        # without this it was one-way — `resume_mdns()` had no caller at all, so the guard was only
+        # half applied (review 2026-09-01)
+        self.resume_mdns()
 
         def process_request(connection, request):
             if request.path != ws_path:
@@ -191,10 +200,12 @@ class NetServer:
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-        if self._zeroconf is not None:
+        self.abort_mdns()               # a still-running advertise thread must not re-arm after stop
+        with self._mdns_lock:
+            zc, self._zeroconf = self._zeroconf, None
+        if zc is not None:
             with contextlib.suppress(Exception):
-                self._zeroconf.close()
-            self._zeroconf = None
+                zc.close()
 
     @property
     def port(self) -> int:
@@ -222,9 +233,37 @@ class NetServer:
             properties={"ver": str(PROTOCOL_V), "session_id": self.session_id, "ws_path": self._ws_path},
             server=f"openbrx-{self.session_id}.local.",
         )
-        self._zeroconf = Zeroconf()
-        self._zeroconf.register_service(info)
+        if self._mdns_abort.is_set():
+            return False
+        zc = Zeroconf()
+        zc.register_service(info)
+        # We may have taken longer than the caller's 6 s cap, or MC may have stopped while we were
+        # inside a wedged multicast stack. Either way the caller has already moved on: a service
+        # advertised here would be one nothing owns and `stop()` has already run past, so phones
+        # would keep discovering an MC that is gone (polish-loop deferred low).
+        with self._mdns_lock:
+            if self._mdns_abort.is_set():
+                zc_late = zc
+            else:
+                self._zeroconf, zc_late = zc, None
+        if zc_late is not None:
+            log.info("mDNS registered after the caller gave up — unpublishing")
+            with contextlib.suppress(Exception):
+                zc_late.close()
+            return False
         return True
+
+    def abort_mdns(self) -> None:
+        """Give up on an in-flight `advertise_mdns()`: it unpublishes itself if it finishes late."""
+        self._mdns_abort.set()
+
+    def resume_mdns(self) -> None:
+        """Clear a previous abort so a fresh `advertise_mdns()` can succeed.
+
+        Without this the flag is one-way: one 6 s timeout (or one `stop()`) would make every later
+        attempt on this NetServer return False forever. Nothing retries today, but a one-way latch on
+        a restartable server is a trap for whoever adds the retry (review 2026-09-01)."""
+        self._mdns_abort.clear()
 
     # ---------------- downlink ----------------
     def push(self, node_id: str, kind: str, body: dict) -> bool:

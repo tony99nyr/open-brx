@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { registrySig } from '../api/derive';
 import type { Loadout, PerkView, Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
@@ -11,16 +12,32 @@ const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEA
 export function Kit() {
   const { state, weapons, perks, selPlayer, setSelPlayer, run, api, setView } = useStore();
   const [registry, setRegistry] = useState<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>([]);
-  useEffect(() => { api.armory().then(setRegistry).catch(() => {}); }, [api]);
+  // Keyed on WHICH GUNS MC knows about: the picker used to be fetched ONCE on mount, so a scan run
+  // from MUSTER after KIT had been opened never reached this dropdown and the operator saw a gun
+  // list that predated the scan they had just watched. Keying it on `readiness.t` instead would
+  // refetch ~4x/s, since that is a clock — the first fix for this was that storm (review 2026-09-01).
+  const sig = registrySig(state);
+  useEffect(() => { api.armory().then(setRegistry).catch(() => setRegistry([])); }, [api, sig]);
   const [verdicts, setVerdicts] = useState<Record<string, { verdict: 'pass' | 'issue'; note: string }>>({});
-  useEffect(() => { api.rangeVerdicts().then(v => setVerdicts(v as never)).catch(() => {}); }, [api]);
+  // `as never` used to silence the shape mismatch here — the route returns rows with weapon_id and t
+  // as well. Narrow to what this screen reads instead, so a route change is a type error, not a cast.
+  useEffect(() => {
+    api.rangeVerdicts()
+      .then(v => setVerdicts(Object.fromEntries(
+        Object.entries(v).map(([id, r]) => [id, { verdict: r.verdict, note: r.note }]))))
+      .catch(() => setVerdicts({}));
+  }, [api]);
   const [newName, setNewName] = useState('');
   const [slot, setSlot] = useState<Slot>('primary');
   const [secKind, setSecKind] = useState<'weapon' | 'perk'>('weapon');
   // The host's last write per slot. When choice=player BOTH the phone and the host may write; if the phone lands
   // a pick seconds after the host did, the card would just flip — say so instead (brx-opus2, 2026-08-27).
-  // Kept ABOVE the `!state` early return: hooks after a conditional return change hook order between
-  // renders, which React does not allow (it happened to work only because `state` is never re-nulled).
+  // Kept ABOVE the `!state` early return. It used to sit 40 lines further down, so the render that
+  // first received a snapshot would run two more hooks than the one before it — "rendered more hooks
+  // than during the previous render". Latent only because `App`'s `Screen()` gates on the same
+  // condition and `state` is never re-nulled; oxlint had been reporting it as an ERROR throughout,
+  // which is its own lesson. `test/screens.test.tsx` now mounts every screen with no snapshot and
+  // then re-renders the SAME tree with one, which is what makes React compare the two hook lists.
   const [hostPick, setHostPick] = useState<{ pid: string; slot: Slot; id: string | null; label: string; t: number } | null>(null);
   useEffect(() => { if (!hostPick) return; const h = setTimeout(() => setHostPick(null), 12_000); return () => clearTimeout(h); }, [hostPick]);
   if (!state) return null;
@@ -425,7 +442,8 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
           <NumberCell label="MAGAZINE" value={w.clip} size={20} pad="6px 14px" />
           <NumberCell label="RESERVE" value={w.reserve} size={20} pad="6px 14px" />
           <NumberCell label="RELOAD" value={w.reload_s} unit="s" size={20} pad="6px 14px" />
-          {w.htk != null && <NumberCell label="HITS TO KILL" value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
+          {/* both follow the host's health config now, not a hardcoded 115 (W2) — say which pool */}
+          {w.htk != null && <NumberCell label={w.pool ? `HITS TO KILL · ${w.pool}` : 'HITS TO KILL'} value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}

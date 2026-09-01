@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-08-31.
+**Updated:** 2026-09-01.
 
 > ## 🏆 2026-08-30/31 — THE FIRST FULL MATCH RAN ON OUR OWN STACK, and 16 things it exposed.
 > Two phones, two taggers, one MacBook hosting: a 300 s FFA start to finish — **12 kills, 126 landed
@@ -9,6 +9,28 @@
 > **Everything reported that day is fixed** (mcp 542/542 · engine 54/54 · e2e 75/75). What is left is
 > split by machine in **[`handoff-post-first-match.md`](handoff-post-first-match.md)** — read it before
 > picking up field work; the two highest-value items are **Mac-only**.
+>
+> ### 2026-09-01 — the whole Windows lane of that handoff is done (W1–W5), and the 2026-08-26 ledger with it
+> Suites now: **mcp 577/577 · app 67/67 · MC console 66/66 (new) · e2e 75/75.** In order of what it
+> changes about the product:
+> - **Weapon stats follow the host's health config.** `POOL = 115` was hardcoded, so KIT and ARSENAL
+>   both said the AR takes 13 hits at any health setting — at a 100/100 game it takes 23. Both
+>   screens now name the pool they are quoting.
+> - **Every published weapon number is now derived from the frame we actually ship**, and a test
+>   fails if a hand-set one drifts — `weapons.json`'s five stat fields, plus `weapon-design.md`
+>   §2.2's whole balance table (DPS and sustained DPS included) and §2.5's sensitivity table. Both
+>   historical defects (the AR's `rof: 53` vs a derived 54, the stale DPS columns) reproduce and are
+>   caught. This is the answer to *"every defect was found by a person, none by a test."*
+> - **The MC console has a test suite at last** (`cd webapp/mc && npm test`). It found two live bugs
+>   on its first run: the `PH[-1][1]` crash was still present in the status bar, and KIT called two
+>   hooks below its `if (!state) return null`.
+> - **Any past match exports its own CSV** (`GET /api/matches/{id}.csv`); the RECAP picker no longer
+>   has to hide the button on an archived game.
+> - **The 2026-08-26 deferred-lows ledger is worked and closed** — 15 rows: 14 fixed, one
+>   (CORS `*`) deliberately kept with the reason written down. 11 of the 14 name a test; the rest
+>   are copy or wiring changes with no sensible unit. See FOLLOWUPS.
+> Still open and still Mac-only: **M1 the headset green flash**, **M2 `$ALCD` under sustained auto**,
+> **M3 timing a weapon swap**, **M4 the AR's identity** — all need the hardware.
 > Two corrections that change what you believe:
 > - **The headset green flash is HOST-DRIVEN, not autonomous.** 126 hits, both headsets healthy all
 >   match, no green. The 2026-08-27 "we get them free" entry is corrected in place.

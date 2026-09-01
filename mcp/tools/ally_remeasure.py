@@ -30,6 +30,7 @@ import time
 
 import serial
 
+from bench_common import GSET, SIR_PLAIN   # the shared control frames (its AR/PSET are deliberately its own)
 from brx_mcp.irbridge import payload_parity
 
 # Victim config. Shield 150 is deliberate: it gives a third pool to open headroom in, and
@@ -79,8 +80,8 @@ async def main() -> None:
     await mgr.connect(addr, "p")
 
     async def arm(fn: int) -> None:
-        for fr in ["$CLEAR,*", "$START,*", "$VOL,3,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET, AR,
-                   "$SIR,0,0,,1,0,0,1,,*", "$SIR,1,0,,%d,0,0,1,,*" % fn,
+        for fr in ["$CLEAR,*", "$START,*", "$VOL,3,*", GSET, PSET, AR,
+                   SIR_PLAIN, "$SIR,1,0,,%d,0,0,1,,*" % fn,
                    "$TID,%d,*" % VICTIM_TEAM, "$SPAWN,,*",
                    "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]:
             await mgr.send("p", fr, reply_window_ms=160)

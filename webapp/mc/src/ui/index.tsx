@@ -142,11 +142,14 @@ export function HazardButton({ children, onClick, size = 12, stripe = 12, pad = 
 }
 
 /** Primary chamfered accent button. */
+/** The filled accent button. Disabled uses `ink` on `faint`, not `accInk`: accInk measured ~2.1:1
+ *  there, and a disabled PRIMARY often carries the label the operator most needs to read
+ *  ("STARTING…"). `ink` on `faint` is 7.8:1 (review 2026-09-01). */
 export function PrimaryButton({ children, onClick, disabled, clip = CHAMFER.tl10, size = 13, pad = '12px 26px', title }:
   { children: ReactNode; onClick?: () => void; disabled?: boolean; clip?: string; size?: number; pad?: string; title?: string }) {
   return (
     <button className={disabled ? undefined : 'hov-accbg'} onClick={disabled ? undefined : onClick} disabled={disabled} title={title}
-      style={{ font: F.chk(700, size), letterSpacing: '.2em', padding: pad, background: disabled ? T.faint : T.acc, color: T.accInk, border: 'none',
+      style={{ font: F.chk(700, size), letterSpacing: '.2em', padding: pad, background: disabled ? T.faint : T.acc, color: disabled ? T.ink : T.accInk, border: 'none',
         cursor: disabled ? 'not-allowed' : 'pointer', clipPath: clip, minHeight: 44 }}>
       {children}
     </button>

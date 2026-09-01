@@ -38,10 +38,14 @@ function statBlock(r) {
   const dmgHit = pick(r && r.dmg_per_hit, st.dmg_per_hit);
   const htk = pick(r && r.htk, st.htk);
   const ttk = pick(r && r.ttk_ms, st.ttk_ms);
+  const pool = pick(r && r.pool, st.pool);
   const reload = pick(r && r.reload_s, st.reload_s, st.reload_ms != null ? st.reload_ms / 1000 : null);
   const facts = [
     dmgHit != null ? `DMG <b>${dmgHit}</b>/HIT` : null,
-    htk != null ? `HITS TO KILL <b>${htk}</b>` : null,
+    // the pool is part of the number: MC quotes htk against the HOST'S health config now, so the
+    // same "13" means a different thing between games (API.md GET /api/weapons; the MC screens
+    // label it the same way). Printing it bare made it silently drift (review 2026-09-01).
+    htk != null ? `HITS TO KILL <b>${htk}</b>${pool != null ? ` · ${pool}` : ''}` : null,
     ttk != null ? `KILL <b>${(ttk / 1000).toFixed(2)}S</b>` : null,
     reload != null ? `RELOAD <b>${(+reload).toFixed(1)}S</b>` : null,
   ].filter(Boolean).join(' · ');

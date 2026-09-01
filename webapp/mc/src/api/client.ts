@@ -109,6 +109,7 @@ export function createHttpApi(): Api {
     getRecap: () => j('/api/recap'),
     matchHistory: () => j('/api/matches'),
     recapCsvUrl: () => '/api/recap.csv',
+    matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
   };
 }

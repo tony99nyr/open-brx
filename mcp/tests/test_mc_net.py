@@ -8,6 +8,8 @@ import contextlib
 import json
 import time
 
+from _skip import Skipped, needs
+
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.types import PROTOCOL_V
 
@@ -139,7 +141,9 @@ def test_envelope_control_cmds_and_malformed_counter():
 
 # --------------------------------------------------------------------------- live server
 def _skip(name):
-    print(f"SKIP {name}: websockets not installed (run with .venv/bin/python)")
+    """Bow out of a live-server test. RAISES, so run_tests.py counts it as a skip — it used to just
+    print and return, which the runner scored as a PASS (review 2026-09-01)."""
+    raise Skipped("websockets")
 
 
 def _run(coro):
@@ -496,4 +500,71 @@ def test_join_info_and_oversize_frame():
             # websockets' max_size closes the socket with 1009; the node reconnects on its own
             assert h.net.nodes["n1"] is not None
             await node.close()
+    _run(go())
+
+
+# ── polish-loop 2026-08-26 deferred low, closed 2026-09-01 ───────────────────────────────────────
+def test_a_late_mdns_registration_unpublishes_itself():
+    """`advertise_mdns()` runs in a worker thread behind a 6 s `wait_for`, and a timeout abandons the
+    AWAIT, not the thread. A wedged multicast stack that finishes afterwards used to leave a service
+    advertised that nothing tracked and `stop()` had already run past — phones kept discovering an
+    MC that was gone."""
+    import sys
+    import types
+    from brx_mcp.mc.net import NetServer
+
+    closed = []
+
+    class FakeZeroconf:
+        def __init__(self):
+            self.registered = None
+
+        def register_service(self, info):
+            self.registered = info
+            net.abort_mdns()                 # the caller gives up WHILE we are registering
+
+        def close(self):
+            closed.append(self)
+
+    fake = types.ModuleType("zeroconf")
+    fake.Zeroconf = FakeZeroconf
+    fake.ServiceInfo = lambda *a, **k: {"info": True}
+    saved = sys.modules.get("zeroconf")
+    sys.modules["zeroconf"] = fake
+    try:
+        net = NetServer()
+        net._host, net._port, net._advertised_host = "127.0.0.1", 8765, "127.0.0.1"
+        assert net.advertise_mdns() is False, "a late registration must not report success"
+        assert len(closed) == 1, "the late registration must be torn down"
+        assert net._zeroconf is None, "and never stashed — stop() has already run past it"
+
+        # once aborted, a fresh attempt does not even open a Zeroconf
+        closed.clear()
+        assert net.advertise_mdns() is False and not closed
+    finally:
+        if saved is None:
+            sys.modules.pop("zeroconf", None)
+        else:
+            sys.modules["zeroconf"] = saved
+
+
+def test_a_restarted_server_can_advertise_again():
+    """`stop()` sets the mDNS abort latch so a late worker unpublishes itself. That latch must be
+    cleared on the next `start()`, or a restarted NetServer silently never advertises again —
+    `resume_mdns()` existed with no caller, i.e. the guard was only half applied (2026-09-01)."""
+    needs(HAVE_WS, "websockets")
+    from brx_mcp.mc.net import NetServer
+    n = NetServer()
+    n.abort_mdns()
+    assert n._mdns_abort.is_set()
+
+    async def go():
+        # start and stop must share ONE loop — the server binds to the loop it was started on
+        await n.start(host="127.0.0.1", port=0)
+        try:
+            assert not n._mdns_abort.is_set(), "start() must clear a previous abort"
+        finally:
+            await n.stop()
+        assert n._mdns_abort.is_set(), "stop() re-arms it for any worker still in flight"
+
     _run(go())

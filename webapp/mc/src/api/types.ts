@@ -162,10 +162,12 @@ export interface WeaponView {
   desc?: string;
   role: string;        // assault | cqb | marksman | support | power — the human class label
   tags: string[];      // heavy | sniper | … — what loadout rules match on
-  htk?: number;        // hits to kill at the default health config (weapons.json) — replaces the RANGE bar (t41 is 75 on every gun)
-  ttk_ms?: number;     // time to kill in ms at that health config
-  dmg_per_hit?: number;   // the REAL per-hit damage (`dmg` is its share of the 115 pool, 7-11 for most guns)
-  pool?: number;          // the pool dmg_per_hit is measured against (45 HP + 70 armour)
+  htk?: number;        // hits to kill AT `pool` — replaces the RANGE bar (t41 is 75 on every gun)
+  ttk_ms?: number;     // time to kill in ms at `pool`; null when it cannot be derived
+  dmg_per_hit?: number;   // the REAL per-hit damage, independent of the pool (`dmg` is its share of the 115 default)
+  /** hp + armour htk/ttk_ms are quoted against — the HOST'S health config, not a constant. Show it
+   *  next to either number: at a 100/100 game the AR needs 23 hits, not the 13 it needs at 45/70. */
+  pool?: number;
   ammo_total?: number;    // clip + reserve
   /** 0-100 meters ranked ACROSS the arsenal (views.weapon_views). Raw stats do not make usable bars —
    *  see the note there. `ttk` is inverted: a faster kill is a longer bar. No range bar: t41 is
@@ -224,6 +226,8 @@ export interface Api {
   getRecap(): Promise<RecapView>;
   matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;
+  /** an ARCHIVED match's stats table — `recapCsvUrl` only ever serves the LIVE scorer (W1/F6) */
+  matchCsvUrl(match_id: string): string;
   newSession(keep_roster: boolean): Promise<State>;
 }
 

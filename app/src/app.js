@@ -9,6 +9,7 @@ import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
+import { parseMcQr } from './mcurl.js';
 
 const APP_VER = 'hud-0.2';
 const $ = id => document.getElementById(id);
@@ -100,16 +101,39 @@ async function refreshPreflight() {
   if (transport) transport.setPreflight(preflight);
 }
 
+/** Discovery/sweep may pick an MC for us. Opened after 15 s of failing to connect, and closed again
+ *  the moment we bind — declared up here because `connectMc`'s onState handler clears it. */
+let allowAssist = false;
+/** Pending "we have been unbound for 15s" timer; see the onState handler in connectMc. */
+let assistTimer = null;
+/** The last URL we actually dialled — including a discovery-only one that `settings.mcUrl` never
+ *  records. RECONNECT MC falls back to it. */
+let lastMcUrl = null;
 function connectMc(url, remember = true) {
   if (!url) return;
   if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
+  // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
+  // discovery-only connect deliberately never writes — so after an auto-discovered join the button
+  // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
+  lastMcUrl = url;
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   transport = new Transport({ node: { app_ver: APP_VER }, gun });
   transport.setStatusProvider(() => engine.statusBody(preflight));
   transport.onHydrate(node => engine.hydrate(node));
   transport.onMessage(m => { engine.onMcMessage(m); if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill'); });
-  transport.onState(s => { engine.setWsState(s, transport.rejected); log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li'); });
+  transport.onState(s => {
+    // Bound to an MC: stop letting discovery/sweep pick a different one. `allowAssist` opens that
+    // door after 15 s of failing to connect and used to stay open for the rest of the session, so a
+    // momentary drop mid-match could hand this phone to a second MC on the LAN (deferred low).
+    if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } }
+    // ...and re-open it if we stay unbound: its only opener used to be a one-shot 15 s boot timer,
+    // so after the first successful bind discovery could never rescue us again — exactly the case
+    // where MC restarts on a new IP mid-match (review 2026-09-01).
+    else if (!assistTimer) assistTimer = setTimeout(() => { assistTimer = null; if (!transport || transport.state !== 'bound') { allowAssist = true; sweepForMc().catch(() => {}); } }, 15000);
+    engine.setWsState(s, transport.rejected);
+    log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li');
+  });
   transport.connect({ url }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 
@@ -169,7 +193,13 @@ Object.assign(hud.h, {
   },
   onCloseDiag: () => hud.toggleDiag(),
   onReconnectGun: () => { if (link.deviceId) link._reconnect(); },
-  onReconnectMc: () => connectMc(settings.mcUrl),
+  onReconnectMc: () => {
+    const url = settings.mcUrl || lastMcUrl;
+    // with neither a remembered nor a discovered target there is nothing to dial, and a button that
+    // silently does nothing reads as "the app is broken" (review 2026-09-01)
+    if (!url) { log('NO MISSION CONTROL YET — SCAN THE JOIN QR ON THE MC SCREEN', 'le'); return; }
+    connectMc(url, !!settings.mcUrl);
+  },
   onScanQr: () => { scanQrForMc().catch(e => log('QR scan failed: ' + e.message, 'le')); },
   onEndOk: () => { engine.ackEnd(); },
   // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
@@ -251,7 +281,13 @@ function startDiscovery() {
         const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
         const url = `ws://${ip}:${svc.port}${path}`;
         log(`Mission Control discovered: ${url}`, 'lk');
-        if ((allowAssist || !settings.mcUrl) && (!transport || transport.state !== 'bound')) connectMc(url, false);   // assist when unconfigured OR the remembered target has failed for 15s
+        // Assist only when we have NO target of our own (nothing remembered AND nothing already
+        // dialled), or when assist has been explicitly re-opened by a spell of not being bound.
+        // The old `!settings.mcUrl` disjunct was true for exactly the phones a discovery-only join
+        // had connected — `remember=false` never writes it — so those phones could be re-bound to a
+        // second MC on any momentary drop, which is the hijack `allowAssist` exists to stop
+        // (review 2026-09-01).
+        if ((allowAssist || !(settings.mcUrl || lastMcUrl)) && (!transport || transport.state !== 'bound')) connectMc(url, false);
       } catch (e) { log('discovery: ' + (e && e.message || e), 'li'); }
     }).catch(e => log('discovery watch: ' + (e && e.message || e), 'li'));
   } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
@@ -259,17 +295,13 @@ function startDiscovery() {
 
 // In-app QR scanner: camera → jsQR → connect. No copy/paste, no native plugin (webview getUserMedia,
 // same camera permission CAM mode already holds). Accepts ws:// text or any URL carrying ?ws=/#ws=.
-function parseMcQr(text) {
-  const t = (text || '').trim();
-  if (t.startsWith('ws://') || t.startsWith('wss://')) return t;
-  const m = /[?#&]ws=([^&\s]+)/.exec(t);
-  return m ? decodeURIComponent(m[1]) : null;
-}
 async function scanQrForMc() {
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#04060a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px';
   const hint = document.createElement('div');
   hint.textContent = 'AIM AT THE QR ON THE MISSION CONTROL SCREEN';
+  hint.setAttribute('role', 'status');
+  hint.setAttribute('aria-live', 'polite');
   hint.style.cssText = 'color:#8fa3bd;font:600 11px ui-monospace,monospace;letter-spacing:.22em;text-align:center';
   const frame = document.createElement('div');
   frame.style.cssText = 'position:relative;width:min(78vw,340px);aspect-ratio:1;border:1px solid #2c3a4e;overflow:hidden';
@@ -281,7 +313,7 @@ async function scanQrForMc() {
   frame.append(video, reticle);
   const cancel = document.createElement('button');
   cancel.textContent = 'CANCEL';
-  cancel.style.cssText = 'padding:12px 34px;background:#131b26;color:#e8eef5;border:1px solid #2c3a4e;font:700 12px ui-monospace,monospace;letter-spacing:.24em';
+  cancel.style.cssText = 'min-height:48px;padding:14px 40px;background:#131b26;color:#e8eef5;border:1px solid #2c3a4e;font:700 12px ui-monospace,monospace;letter-spacing:.24em';
   ov.append(hint, frame, cancel); document.body.appendChild(ov);
   let stream = null, raf = 0, done = false;
   let stop = () => { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); ov.remove(); };
@@ -295,6 +327,7 @@ async function scanQrForMc() {
   } catch (e) { stop(); log('camera unavailable: ' + e.message, 'le'); return; }
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let lastRejected = null;
   const tick = () => {
     if (done) return;
     if (video.videoWidth) {
@@ -304,6 +337,13 @@ async function scanQrForMc() {
       const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
       const url = code && code.data ? parseMcQr(code.data) : null;
       if (url) { stop(); log('QR scanned — connecting: ' + url, 'lk'); connectMc(url); return; }
+      // A code the camera READ but that is not an MC join code used to look identical to reading
+      // nothing at all — the operator kept aiming at a Wi-Fi or URL QR wondering why (deferred low).
+      if (code && code.data && code.data !== lastRejected) {
+        lastRejected = code.data;
+        hint.textContent = 'THAT IS NOT A MISSION CONTROL CODE — SCAN THE ONE ON THE MC SCREEN';
+        hint.style.color = '#ff5252';
+      }
     }
     raf = requestAnimationFrame(tick);
   };
@@ -312,7 +352,6 @@ async function scanQrForMc() {
 
 // Fallback discovery: mDNS can die on AP-isolated/multicast-filtered routers — sweep the likely /24s for
 // MC's HTTP port (8765) and let /api/state hand us the exact ws_url (CORS is open server-side for this).
-let allowAssist = false;
 async function sweepForMc() {
   if (transport && transport.state === 'bound') return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;   // no network, no sweep

@@ -563,3 +563,130 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
             dominates = (a["ttk"] <= b["ttk"] and a["sust"] >= b["sust"] and a["tk"] >= b["tk"]
                          and (a["ttk"] < b["ttk"] or a["sust"] > b["sust"] or a["tk"] > b["tk"]))
             assert not dominates, f"{a['id']} strictly dominates {b['id']}"
+
+
+import json
+import pathlib
+
+
+# ── polish-loop 2026-08-26 deferred lows, closed 2026-09-01 ──────────────────────────────────────
+def test_an_odd_reserve_never_splits_the_frame_from_the_hud():
+    """`tok17 == 2 * tok40` holds on all 19 captured frames, so an odd reserve cannot be written.
+
+    It used to floor tok40 inside `resolve()` alone — the gun got one round less than `spawn_ammo()`
+    had already told the phone's HUD it had. Both now round through `_mods`, so they cannot disagree.
+    """
+    from brx_mcp.mc.compile import WeaponCatalog
+    cat = WeaponCatalog()
+    # the NO-MODS path too: there it is the catalog's own reserve that reaches the wire, and an odd
+    # one would break the invariant just as quietly (review 2026-09-01)
+    odd = WeaponCatalog([{**json.loads((pathlib.Path(__file__).resolve().parents[1] /
+                                        "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"][0],
+                          "reserve": 193}])
+    f = odd.resolve("assault_rifle", 0).split(",")
+    t17, t40 = int(f[WeaponCatalog._T["reserve"] + 1]), int(f[WeaponCatalog._T["reserve_half"] + 1])
+    assert t17 == 2 * t40 and t17 == 192, f"odd catalog reserve broke the invariant: {t17}/{t40}"
+    assert odd.spawn_ammo("assault_rifle")[1] == t17, "the HUD must be told what the gun got"
+
+    for mult in (0.5, 0.77, 1.0, 1.15, 1.5, 2.0):
+        for wid in ("assault_rifle", "shotgun", "energy_rifle", "rocket_launcher"):
+            mods = {"ammo_mult": mult}
+            _mag, reserve = cat.spawn_ammo(wid, mods)
+            f = cat.resolve(wid, 0, mods).split(",")
+            t16, t17 = int(f[WeaponCatalog._T["mag"] + 1]), int(f[WeaponCatalog._T["reserve"] + 1])
+            t39, t40 = int(f[WeaponCatalog._T["clipstart"] + 1]), int(f[WeaponCatalog._T["reserve_half"] + 1])
+            assert t17 == reserve, f"{wid} @ {mult}: frame says {t17}, the HUD was told {reserve}"
+            assert t17 == 2 * t40 and t39 == t16, f"{wid} @ {mult}: invariant broken"
+            assert reserve % 2 == 0, f"{wid} @ {mult}: odd reserve {reserve} cannot be expressed"
+
+
+def test_an_override_may_not_write_an_ammo_token():
+    """An override runs LAST, after the ammo trio, so an ammo token there lands outside `resolve()`'s
+    invariants and ships a frame no captured Callsign frame has ever looked like."""
+    from brx_mcp.mc.compile import WeaponCatalog
+    base = dict(weapon_id="x", name="X", cls=0, mag=10, reserve=20, reload_ms=1000,
+                dmg=9, rof=50, rng=75,
+                capture={"frame": WeaponCatalog().resolve("assault_rifle", 0)})
+    for tok in ("t16", "t17", "t18", "t39", "t40"):
+        cat = WeaponCatalog([{**base, "overrides": {tok: {"value": "7", "why": "because"}}}])
+        try:
+            cat.resolve("x", 0)
+            assert False, f"{tok} was accepted as an override"
+        except ValueError as e:
+            assert "AMMO token" in str(e), e
+    # a NON-ammo token is still allowed — this guard must not close the escape hatch itself
+    cat = WeaponCatalog([{**base, "overrides": {"t33": {"value": "D09", "why": "bench: reload chirps"}}}])
+    assert cat.resolve("x", 0).split(",")[34] == "D09"
+
+
+def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
+    """`validate()`'s mag>=htk gate used to build a THIRD pool arithmetic that omitted the
+    `body_armor` perk and the 255 cap, so it graded that player at 115 while the gun was armed at
+    165 — and used the raw catalog mag rather than the one an `ammo_mult` perk actually grants
+    (review 2026-09-01). All three arithmetics must agree."""
+    from brx_mcp.mc.compile import Compiler
+    c = Compiler()
+    cfg = dict(_cfg(), health={"max_hp": 45, "max_armor": 70})
+
+    def roster(perk, wid="sniper_rifle"):
+        return [{"player_id": "p", "display": "P", "player_num": 1, "team_id": "blue",
+                 "loadout": {"weapons": [{"weapon_id": wid}], "perk": perk}}]
+
+    # the pool the compiler ARMS with, straight off $PSET, for both perk states
+    def armed_pool(perk):
+        head = c.compile(cfg, roster(perk)[0], cfg["teams"])["head"]
+        t = next(f for f in head if f.startswith("$PSET")).split(",")
+        return int(t[3]) + int(t[4])
+
+    assert armed_pool(None) == 115 and armed_pool("body_armor") == 165
+
+    # a weapon whose magazine is exactly enough at 115 but NOT at 165 must be reported for the
+    # armoured player. The sniper: 60 dmg, mag 4 -> htk 2 at 115, htk 3 at 165; still fine. Use a
+    # synthetic roster pool instead so the assertion does not depend on the shipped balance.
+    hi = dict(cfg, health={"max_hp": 45, "max_armor": 250})       # 295 base, +50 perk -> capped 255
+    head = c.compile(hi, roster("body_armor")[0], hi["teams"])["head"]
+    t = next(f for f in head if f.startswith("$PSET")).split(",")
+    assert int(t[4]) == 255, "armour is capped at the policy ceiling"
+    armed = 45 + 255                                     # what the gun is actually armed with
+    # validate() must quote that CAPPED pool, not the uncapped 45 + (250 + 50) = 345
+    errs = c.validate(hi, roster("body_armor", "rail_gun"))["errors"]
+    quoted = [e for e in errs if " pool " in e]
+    assert quoted, "the rail gun cannot kill on one magazine at this pool — expected an error"
+    for e in quoted:
+        assert f" {armed} pool" in e, f"validate did not use the armed pool ({armed}): {e}"
+        assert " 345 pool" not in e, f"validate used the UNCAPPED pool: {e}"
+
+    # and the perk must actually move the grade: without it the same config is a smaller pool
+    plain = [e for e in c.validate(hi, roster(None, "rail_gun"))["errors"] if " pool " in e]
+    assert plain and " 295 pool" in plain[0], plain
+
+
+def test_validate_uses_the_magazine_the_perk_actually_grants():
+    """An `ammo_mult` perk changes the magazine the gun is given; the gate must grade THAT."""
+    from brx_mcp.mc.compile import Compiler, WeaponCatalog
+    c = Compiler()
+    # a weapon that cannot kill on one mag at the base size, but can once a perk enlarges it
+    rows = [{**json.loads((pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" /
+                           "weapons.json").read_text())["weapons"][0],
+             "weapon_id": "tiny", "mag": 4, "reserve": 8}]
+    c.catalog = WeaponCatalog(rows)
+    cfg = dict(_cfg(), health={"max_hp": 45, "max_armor": 70})
+
+    def player(perk):
+        return [{"player_id": "p", "display": "P", "player_num": 1, "team_id": "blue",
+                 "loadout": {"weapons": [{"weapon_id": "tiny"}], "perk": perk}}]
+
+    # mag 4 vs htk 13 at the 115 pool: cannot kill on one magazine
+    errs = c.validate(cfg, player(None))["errors"]
+    assert any("mag 4 <" in e for e in errs), errs
+
+    # `extended_mags` doubles it (perks.json ammo_mult: 2). The gate must grade the magazine the gun
+    # is GIVEN, not the catalog's — the raw-`mag` version reported 4 for a gun that was handed 8.
+    errs2 = c.validate(cfg, player("extended_mags"))["errors"]
+    granted = c.catalog._ammo("tiny", {"ammo_mult": 2})[0]
+    assert granted == 8, granted
+    quoted = [e for e in errs2 if "cannot kill on one magazine" in e]
+    assert quoted, errs2
+    for e in quoted:
+        assert f"mag {granted} <" in e, f"validate graded the catalog mag, not the granted one: {e}"
+        assert "mag 4 <" not in e, e

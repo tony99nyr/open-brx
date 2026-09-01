@@ -64,7 +64,7 @@ Hardware-true, from `brx-protocol.md` §7r and the 2026-08-26 damage experiment:
 
 | term | formula |
 |---|---|
-| **htk** | `ceil(115 / dmg)` — see §6.2; this is the raw-`t5` reading and is wrong for five shipped weapons |
+| **htk** | `ceil(pool / dmg)`, where `pool` is the host's `max_hp + max_armor` (115 at the defaults, and the column used throughout this document) — it MOVES with the health config, see §2.5. Also see §6.2: this is the raw-`t5` reading and is wrong for five shipped weapons |
 | **cycle** | `t14`, ms between shots (for charge weapons, the charge time) |
 | **TTK** | `(htk-1) × cycle`; charge weapons `htk × cycle`; burst weapons use the burst-average cycle |
 | **burst average** | `(2 × t14 + t23) / 3` — three rounds at `t14` spacing, `t23` between bursts |
@@ -105,7 +105,8 @@ the sniper and the shotgun full-autoed on the bench.
 
 ### 1.2 The stock arsenal, as captured
 
-What Battle Company actually ships. `htk`/`TTK` computed against our 115 pool.
+What Battle Company actually ships. `htk`/`TTK` computed against the default 115 pool (they move with
+the host's health config — §2.5).
 
 | weapon | t20 fire mode | dmg | cycle ms | mag | reserve | reload | heat | htk@115 | TTK s |
 |---|---|---|---|---|---|---|---|---|---|
@@ -264,13 +265,15 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | weapon | 45/55 (100) | **45/70 (115)** | 50/100 (150) | 100/100 (200) |
 |---|---|---|---|---|
 | Power tier (115 dmg) | 1 | **1** | **2** | 2 |
+| Charge Rifle | 1 | **2** | 2 | 2 |
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 4 | **5** | 6 | 8 |
 | AMR | 5 | **5** | 7 | 9 |
+| Stinger | 7 | **8** | 10 | 14 |
 | Bolt Rifle | 8 | **9** | 12 | 16 |
 | Force Rifle | 10 | **12** | 15 | 20 |
-| Assault / Burst / Energy Rifle | 12 | **13** | 17 | 23 |
+| Assault Rifle / Burst Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
 | SMG / Suppressor | 13 | **15** | 19 | 25 |
 
 Two consequences carried over from the first pass and still true:
@@ -327,7 +330,7 @@ cannot quietly rot.
 Other `O` candidates for a bench audition if `O01` does not sit right: `O05` 1.46 s, `O02` 1.71 s,
 `O04` 1.79 s, `O06` 1.81 s, `O03` 2.51 s. Any of them fits the Energy Launcher's 1600 ms cycle.
 
-### 3.2 Retracted: the duration ÷ cadence ceiling
+### 3.3 Retracted: the duration ÷ cadence ceiling
 
 > **The first pass defined a "2.07× ceiling"** — fire-sound duration divided by fire interval,
 > derived from the stock AR playing a 1.76 s sample at what was then read as an 850 ms cadence.
@@ -341,7 +344,7 @@ Other `O` candidates for a bench audition if `O01` does not sit right: `O05` 1.4
 > identifies a weapon is its **attack transient**, which bank data (durations and community labels,
 > no waveforms) cannot measure.
 
-### 3.3 Retracted: the reload-chain budget
+### 3.4 Retracted: the reload-chain budget
 
 > The first pass also assumed the three reload parts play in sequence inside `reload_ms`, and audited
 > every weapon for "dead air" and "overrun". The captured frames refute it: **six of Battle Company's
@@ -353,7 +356,7 @@ Other `O` candidates for a bench audition if `O01` does not sit right: `O05` 1.4
 > No replacement rule is offered, because none is supported by the data. The chains are Battle
 > Company's own and we now ship them unmodified. Timing is an open bench question (§5, U4).
 
-### 3.4 What the bank still tells us
+### 3.5 What the bank still tells us
 
 Useful for *new* weapons we invent later, not for the stock 19. Durations, by family:
 
@@ -681,7 +684,7 @@ applied = t5 × (row multiplier for <t3,t4>) × (1.5 if crit)   → drains shiel
                                                               which goes straight to HP
 ```
 
-**3. `htk = ceil(115 / dmg)` assumes a standard row, no crit, no shields, and armor present.** Against
+**3. `htk = ceil(pool / dmg)` — quoted here at the default 115 pool (§2.5) — assumes a standard row, no crit, no shields, and armor present.** Against
 an armor-piercing row the effective pool is **45 (HP only)**; against a shielded target it is larger
 than 115. The `mag ≥ htk` invariant in `validate()` uses the raw-`t5` reading, which is the
 *conservative* direction for standard weapons (it over-estimates htk) but **under**-estimates it for

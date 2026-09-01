@@ -30,6 +30,13 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
                                    # The field complaint was about hearing a game across a field.
 
 
+# The health pool every published weapon stat is quoted against: 45 HP + 70 armour, the GameConfig
+# default. It is a DEFAULT, not a constant of the game — MC lets the host change `health`, and
+# `weapon_view(..., pool=)` follows it (docs/weapon-design.md §2.5). Only `stats.dmg`, whose
+# definition *is* "share of a 115 pool", is pinned here.
+DEFAULT_POOL = 115
+
+
 def play_volume(environment: str | None) -> int:
     """$VOL for game audio at this venue. See VOL_BY_ENV — 69 was measurably too quiet outdoors.
 
@@ -111,7 +118,13 @@ class WeaponCatalog:
                 "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
                 "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
                           "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
-                          "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms")},   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
+                          "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
+                          # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
+                          # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
+                          # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
+                          "dmg_hit": self.damage(w["weapon_id"]),
+                          "cycle_ms": self.cycle_ms(w["weapon_id"]),
+                          "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES},
                 "weap_frame": self.resolve(w["weapon_id"], 0),
                 "verified": bool(w.get("verified", False)),
                 **({"caution": w["caution"]} if w.get("caution") else {}),  # A10: known live problem, human copy
@@ -128,9 +141,12 @@ class WeaponCatalog:
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26; the constant 850 at tok15 is
     # an unidentified field and is never written.
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "mag": 16, "reserve": 17, "reload": 18,
-          "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
+          "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
           "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
           "range": 41}
+    # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
+    # `overrides` entry may not name one (see `_override_index`).
+    _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
     # Doc-token positions that protocol-classes.md gives a NAME to. `overrides` may only name one of
     # these — the hard rule is "never write a token we cannot name", and an override is still a write.
     _NAMED = frozenset({0, 2, 3, 4, 5, 6, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
@@ -148,7 +164,26 @@ class WeaponCatalog:
             return mag, reserve, reload_ms
         am = float(mods.get("ammo_mult") or 1)
         rm = float(mods.get("reload_mult") or 1)
-        return max(1, int(round(mag * am))), int(round(reserve * am)), max(0, int(round(reload_ms * rm)))
+        return (max(1, int(round(mag * am))), int(round(reserve * am)),
+                max(0, int(round(reload_ms * rm))))
+
+    def _ammo(self, weapon_id: str, mods: dict | None) -> tuple[int, int, int]:
+        """(mag, reserve, reload_ms) as they will ACTUALLY be written for this weapon.
+
+        The single answer `resolve()` and `spawn_ammo()` both take, so the frame the gun gets and the
+        number the phone's HUD is told can never disagree — an `ammo_mult` perk used to produce an
+        odd reserve that `resolve()` floored onto the `tok17 == 2 * tok40` invariant while
+        `spawn_ammo()` reported the odd value, i.e. a gun one round short of what the HUD claimed.
+
+        The rounding follows the INVARIANT, not the code path: only a captured frame carries the
+        tok40 mirror, so a legacy-template row (synthetic test catalogs, no `capture`) writes its
+        reserve straight to tok41 and must keep an odd one intact (review 2026-09-01).
+        """
+        w = self._row(weapon_id)
+        mag, reserve, reload_ms = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+        if (w.get("capture") or {}).get("frame"):
+            reserve = (reserve // 2) * 2
+        return mag, reserve, reload_ms
 
     def resolve(self, weapon_id: str, slot: int, mods: dict | None = None) -> str:
         """`$WEAP` frame for a slot, built from the weapon's OWN captured Callsign frame.
@@ -188,9 +223,9 @@ class WeaponCatalog:
             put("dmg", int(wire["dmg"]))
         if wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
-        mag, reserve, reload_ms = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+        mag, reserve, reload_ms = self._ammo(weapon_id, mods)
         put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
-        put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40
+        put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
         for key, ov in (w.get("overrides") or {}).items():
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
@@ -213,6 +248,12 @@ class WeaponCatalog:
             raise ValueError(f"{weapon_id}: override key {key!r} must look like 't33'") from None
         if idx not in WeaponCatalog._NAMED:
             raise ValueError(f"{weapon_id}: override tok{idx} is not a token we have a name for")
+        # An override runs LAST, after the ammo trio is written, so an ammo token here would land
+        # outside `resolve()`'s two invariants — tok39 == tok16 and tok17 == 2 * tok40 — and ship a
+        # frame no captured Callsign frame has ever looked like. Ammo is a catalog field; edit that.
+        if idx in WeaponCatalog._AMMO_TOKENS:
+            raise ValueError(f"{weapon_id}: override tok{idx} is an AMMO token — set mag/reserve/reload_ms "
+                             f"on the weapon instead, or the tok39==tok16 / tok17==2*tok40 invariants break")
         return idx
 
     def damage(self, weapon_id: str) -> int:
@@ -245,9 +286,66 @@ class WeaponCatalog:
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
+    # ---- derived numbers -------------------------------------------------
+    # Everything below is computed from the SHIPPED frame, never read out of weapons.json. The five
+    # hand-set stat fields (`dmg`, `rof`, `rng`, `htk`, `ttk_ms`) are documentation of these, and
+    # `test_weapon_derivations.py` fails if any of them drifts from what the wire actually says.
+    # Field 2026-08-30 found the AR shipping `rof: 53` against a derived 54 for exactly that reason.
+    _BURST_MODE = 9                          # $WEAP t20 fireMode: 3-round burst (t23 = the gap after it)
+    _CHARGE_MODES = frozenset({2, 3, 14})    # 2 auto-fires when charged, 3 must be held, 14 charge+heat
+
+    def _frame_int(self, weapon_id: str, key: str, default: int = 0) -> int:
+        """One named doc token of the shipped frame as an int (wire overrides already applied)."""
+        try:
+            return int(self.resolve(weapon_id, 0).split(",")[self._T[key] + 1] or default)
+        except (IndexError, ValueError, KeyError):
+            return default
+
+    def fire_ms(self, weapon_id: str) -> int:
+        """The `$WEAP` t14 fire interval as SHIPPED — a `wire.fire_ms` override wins, as on the AR."""
+        return self._frame_int(weapon_id, "fire")
+
+    def cycle_ms(self, weapon_id: str) -> float:
+        """Mean ms between landed hits: t14, except on a burst weapon.
+
+        A 3-round burst (t20 == 9) spaces two rounds at t14 and then waits t23 before the next burst,
+        so what a player sustains is (2*t14 + t23)/3 — the "cycle 75 +275" column of
+        docs/weapon-design.md §2.2, and the number `ttk_ms` is built from."""
+        fire = self.fire_ms(weapon_id)
+        if self._frame_int(weapon_id, "mode") == self._BURST_MODE:
+            gap = self._frame_int(weapon_id, "burst")
+            if gap:
+                return (2 * fire + gap) / 3
+        return float(fire)
+
+    def rate_of_fire(self, weapon_id: str) -> int:
+        """weapons.json `stats.rof` — the 0-100 UI bar, `round(7500 / t14)` (weapons.json `_note`).
+
+        Deliberately the RAW t14, not `cycle_ms`: the bar is "how fast does this thing fire", and a
+        burst weapon does fire at t14 — it just cannot keep it up."""
+        fire = self.fire_ms(weapon_id)
+        return round(7500 / fire) if fire else 0
+
+    def damage_bar(self, weapon_id: str, pool: int = DEFAULT_POOL) -> int:
+        """weapons.json `stats.dmg` — the SHARE of `pool` one hit removes, 0-100 (weapons.json `_note`)."""
+        return round(100 * self.damage(weapon_id) / pool) if pool > 0 else 0
+
+    def time_to_kill(self, weapon_id: str, pool: int) -> int:
+        """ms from the first shot to the killing hit at `pool`; 0 when the weapon one-shots.
+
+        (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge weapon, where the
+        first shot has to be charged too, so it is htk cycles. That is the whole reason the Rail Gun
+        and the Laser Cannon publish a TTK (1.20 s / 1.50 s) while the Rocket Launcher, equally a
+        one-shot kill, publishes 0.00."""
+        htk = self.hits_to_kill(weapon_id, pool)
+        if not htk:
+            return 0
+        charged = self._frame_int(weapon_id, "mode") in self._CHARGE_MODES
+        return int(round(self.cycle_ms(weapon_id) * (htk if charged else htk - 1)))
+
     def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
-        w = self._row(weapon_id)
-        mag, reserve, _ = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+        """What the phone's HUD is told the player is carrying — the SAME numbers `resolve()` writes."""
+        mag, reserve, _ = self._ammo(weapon_id, mods)
         return mag, reserve
 
 
@@ -471,20 +569,29 @@ class Compiler:
         # so a kill cost charge + shot + full reload + charge again. Pool is per-player: loadout overrides
         # win over config health, exactly as `_gset` reads them.
         health = config.get("health") or {}
-        seen: set[tuple[str, int]] = set()
+        seen: set[tuple[str, int, int]] = set()
         for p in roster:
             ov = ((p.get("loadout") or {}).get("overrides")) or {}
             hp, armor = ov.get("max_hp", health.get("max_hp")), ov.get("max_armor", health.get("max_armor"))
             if hp is None or armor is None:
                 continue                                     # no health model to check against
-            pool = int(hp) + int(armor)
+            # THE SAME arithmetic as `_to_gc()` and `Session.health_pool()` — the perk's armour and
+            # the 255 ceiling included. This used to be a third, simpler version, so it graded a
+            # `body_armor` player at 115 while the gun was armed at 165 and the mag>=htk gate could
+            # pass a weapon that cannot actually kill on one magazine (review 2026-09-01).
+            fx = self._perk_effects(p)
+            pool = int(hp) + min(255, int(armor) + int(fx.get("max_armor_add") or 0))
+            mods = {k: fx[k] for k in ("ammo_mult", "reload_mult") if fx.get(k)}
             for w in (p.get("loadout", {}) or {}).get("weapons", []):
                 wid = w.get("weapon_id")
-                if wid not in self.catalog._by_id or (wid, pool) in seen:
+                if wid not in self.catalog._by_id:
                     continue                                 # unknown ids already reported above
-                seen.add((wid, pool))
+                # ...and the MODDED magazine, which is what the gun is actually given
+                mag = self.catalog._ammo(wid, mods)[0]
+                if (wid, pool, mag) in seen:
+                    continue
+                seen.add((wid, pool, mag))
                 htk = self.catalog.hits_to_kill(wid, pool)
-                mag = int(self.catalog._row(wid)["mag"])
                 if htk and mag < htk:
                     errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
                                   f"{self.catalog.damage(wid)} dmg vs {pool} pool "

@@ -1,9 +1,13 @@
 """UI/phone view shapes built from contracts rows (API.md `WeaponView`) — one builder for HTTP + the wire."""
 from __future__ import annotations
 
-# The pool one hit is measured against: 45 HP + 70 armour (GameConfig defaults). `stats.dmg` in
-# weapons.json is the SHARE of that pool a single hit removes, so damage-per-hit = pool * dmg/100.
-POOL = 115
+import math
+
+from .compile import DEFAULT_POOL
+
+# The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
+# defaults). `stats.dmg` in weapons.json is the SHARE of that pool a single hit removes.
+POOL = DEFAULT_POOL
 
 # Field 2026-08-30 (first live match): every damage meter read near-empty and all 18 weapons looked
 # identical. Nothing was miscomputed — `stats.dmg` really is 7–11 ("% of a 115 pool per hit"), so a
@@ -35,17 +39,56 @@ def _rank_bars(values: list[float | None], invert: bool = False) -> list[int | N
     return [None if v is None else round(BAR_FLOOR + (100 - BAR_FLOOR) * order[v] / span) for v in values]
 
 
-def weapon_view(w: dict) -> dict:
+def _num(v):
+    """`v` when it is a real number, else None. Guards every derived stat below.
+
+    The HTTP route falls back to fakes on error, but `_catalog_views` (every hydrate/bind) has no
+    such net — a non-numeric stat must not break node assignment.
+    """
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def weapon_view(w: dict, pool: int = DEFAULT_POOL) -> dict:
     """contracts §3 `Weapon` → API.md `WeaponView`. A10 adds `tags` + `role`.
 
     Emits the REAL numbers (damage per hit, reload seconds, mag/reserve, hits- and time-to-kill).
     `bars` is added by `weapon_views` once the whole arsenal is known — a single weapon cannot be
     ranked against weapons it has not seen.
+
+    `pool` is the host's CURRENT health config (hp + armour), not the 115 default: hits-to-kill and
+    time-to-kill move with it (docs/weapon-design.md §2.5 — at a 100/100 pool the AR needs 23 hits,
+    not 13). Field 2026-08-30 shipped both screens quoting 13/1.68 s whatever the host had set.
+    `dmg` is the one stat that cannot follow, because its definition IS "share of a 115 pool"; the
+    pool-independent magnitude is `dmg_per_hit`.
     """
     st = w.get("stats", {}) or {}
     mag = st.get("mag") or 0
     dmg = st.get("dmg", st.get("damage", 50))
-    dmg_num = dmg if isinstance(dmg, (int, float)) and not isinstance(dmg, bool) else None
+    dmg_num = _num(dmg)
+    pool = max(1, int(_num(pool) or DEFAULT_POOL))   # a non-positive pool would publish htk 0
+    # The real per-hit magnitude ($WEAP t5). Synthetic catalogs (fakes, test rows) carry no `dmg_hit`;
+    # for THEM `dmg` is read back as the 115-pool share it is defined to be — which is how the real
+    # one was derived — but that is a display fallback only. htk is NOT derived from it: the demo
+    # catalog's `damage` is an old decorative 0-100 bar on no scale at all, and inventing a magnitude
+    # from it would put a confident wrong number on the screen. Scale its published htk instead —
+    # htk is proportional to the pool, whatever the damage behind it was.
+    real_hit = _num(st.get("dmg_hit"))
+    dmg_hit = real_hit if real_hit is not None else (
+        round(DEFAULT_POOL * dmg_num / 100) if dmg_num is not None else None)
+    published = _num(st.get("htk"))
+    if real_hit:
+        htk = math.ceil(pool / real_hit)
+    elif published:
+        htk = max(1, math.ceil(published * pool / DEFAULT_POOL))
+    else:
+        htk = published
+    cycle = _num(st.get("cycle_ms"))
+    if htk and cycle and "charged" in st:
+        ttk_ms = int(round(cycle * (htk if st["charged"] else htk - 1)))
+    else:
+        # no derivation chain (a synthetic row): the published figure still holds at the pool it was
+        # published for, and is a lie at any other. Show nothing rather than the wrong number.
+        ttk_ms = _num(st.get("ttk_ms")) if pool == DEFAULT_POOL else None
     return {"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
             "clip": mag, "mags": ((st.get("reserve") or 0) // max(mag or 1, 1)),
             "reserve": st.get("reserve"),
@@ -55,17 +98,15 @@ def weapon_view(w: dict) -> dict:
             "dmg": dmg, "rpm": st.get("rof", st.get("rpm", 50)),
             "rng": st.get("rng", st.get("range_pct", 50)),
             # real, human-facing numbers (the bars above are only for ranking)
-            # guarded: the HTTP route falls back to fakes on error, but `_catalog_views` (every
-            # hydrate/bind) has no such net — a non-numeric `dmg` must not break node assignment.
-            "dmg_per_hit": round(POOL * dmg_num / 100) if dmg_num is not None else None,
-            "pool": POOL,
+            "dmg_per_hit": dmg_hit,
+            "pool": pool,
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),
-            "htk": st.get("htk"), "ttk_ms": st.get("ttk_ms"),                    # A10 (htk: hits to drop a 115 pool)
-            **({"caution": w["caution"]} if w.get("caution") else {})}           # A10: known live problem
+            "htk": htk, "ttk_ms": ttk_ms,                                       # A10, now at the host's pool
+            **({"caution": w["caution"]} if w.get("caution") else {})}          # A10: known live problem
 
 
-def weapon_views(catalog: list[dict]) -> list[dict]:
+def weapon_views(catalog: list[dict], pool: int = DEFAULT_POOL) -> list[dict]:
     """Every weapon as a `WeaponView`, plus a `bars` block ranked ACROSS the arsenal.
 
     bars.power  — damage per hit, ranked (weapons.json `dmg`)
@@ -74,7 +115,7 @@ def weapon_views(catalog: list[dict]) -> list[dict]:
     bars.ttk    — kill SPEED, ranked and INVERTED, so a faster kill is a longer bar
     Range is absent on purpose: it is identical on every gun on the wire.
     """
-    views = [weapon_view(w) for w in catalog]
+    views = [weapon_view(w, pool) for w in catalog]
     if not views:
         return views
 

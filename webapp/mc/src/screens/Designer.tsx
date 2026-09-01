@@ -36,6 +36,12 @@ export function Designer() {
     return withPolicy(m ? clone(m.defaults) : clone(state.config));
   }, [seed, modes, state]);
   const [cfg, setCfg] = useState<GameConfig | null>(() => initial);   // the seed is fixed for the page's lifetime
+  // ...but a lazy initialiser runs ONCE, so mounting before the first snapshot arrived captured
+  // `null` and the designer stayed blank forever. Seed it only while still empty — `initial` also
+  // changes with every snapshot (it depends on `state`), and re-seeding on that would throw away
+  // the edits in progress. Same family as the KIT rules-of-hooks bug: state captured at mount and
+  // never reconciled (review 2026-09-01).
+  useEffect(() => { if (cfg === null && initial) setCfg(initial); }, [cfg, initial]);
   const [name, setName] = useState(!seed?.game ? '' : seed.copy || seed.game.builtin ? `${seed.game.name} ${seed.game.builtin ? '(mine)' : 'copy'}` : seed.game.name);
   const [desc, setDesc] = useState(seed?.game?.desc ?? '');
   const [saved, setSaved] = useState<string | null>(null);

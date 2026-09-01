@@ -96,7 +96,7 @@ Contradictions: if two sources disagree, publish neither value. Backlog both, an
 Each file: header (audience, goal, legend) → `## Pages` → one `### Page: Title (\`/slug\`)` per URL →
 an ordered stream of typed blocks: `[hero]`, `[callout:info|warn|tip]`, `[steps]`, `[cards]`,
 `[table]`, `[data-table:filterable]`, `[spec-sheet]`, `[accordion]`, `[image ID]` / `[diagram ID]`,
-`[code lang]`, `[bit-field]`, `[symptom-ladder]`, `[compare]`, `[stat-row]`, `[faq]`,
+`[code lang]`, `[bit-field]`, `[symptom-ladder]`, `[compare]`, `[stat-row]`, `[faq]`, `[download]`,
 `[under-construction …]`, then `## Images for this section`, `## Interactive ideas`, `## Sources used`,
 `## Research backlog (held, NOT published)`. Full definitions: [`../site/BRIEF-open-brx-site.md`](../site/BRIEF-open-brx-site.md) §5.
 Short by construction: no paragraph over three sentences; prefer lists, tables, steps.

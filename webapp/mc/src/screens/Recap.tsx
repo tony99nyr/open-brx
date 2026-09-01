@@ -13,6 +13,8 @@ export function Recap() {
   // way to view previous". Every finished match is already in MC's session store; this reads it back.
   const [history, setHistory] = useState<MatchHistoryRow[]>([]);
   const [sel, setSel] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [csvErr, setCsvErr] = useState<string | null>(null);
   const live = state?.recap ?? null;
   // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
   // refetched the history several times a second (review 2026-08-31).
@@ -53,9 +55,16 @@ export function Recap() {
       </div>
     </div>
   );
-  const name = (id: string) => state.players.find(p => p.player_id === id)?.display ?? rc.rows.find(r => r.player_id === id)?.display ?? id;
+  // For an ARCHIVED match the recap's OWN rows win: the live roster is today's, so renaming a player
+  // between matches made HONORS show the new name while FULL STATS (`r.display`) showed the old one
+  // on the same screen (review 2026-09-01). For the live match the roster is the fresher source.
+  const name = (id: string) => (past
+    ? rc.rows.find(r => r.player_id === id)?.display ?? state.players.find(p => p.player_id === id)?.display
+    : state.players.find(p => p.player_id === id)?.display ?? rc.rows.find(r => r.player_id === id)?.display) ?? id;
   const w = rc.winner ?? {};
-  const teamLabel = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
+  // teams can be renamed between matches too; an archived score is labelled by its own id when the
+  // live config no longer describes that game
+  const teamLabel = (id: string) => ((past ? undefined : state.teams.find(t => t.team_id === id)?.name) ?? id).toUpperCase();
   const winColor = w.team_id ? teamColor(w.team_id) : T.ink;
   const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(teamLabel).join(' / ')}`, tail: '' }
     : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
@@ -65,7 +74,10 @@ export function Recap() {
   const scores = Object.entries(rc.score);
   const rows = [...rc.rows].sort((a, b) => b.kills - a.kills);
   const mvpId = rc.honors.find(h => h.award === 'MVP')?.player_id;
-  const csv = api.recapCsvUrl();
+  // W1/F6: `/api/recap.csv` only ever serves the LIVE scorer, so an archived match used to hide its
+  // export button rather than hand the operator the wrong game. It has its own endpoint now.
+  const csv = past ? api.matchCsvUrl(past.match_id) : api.recapCsvUrl();
+  const csvName = past ? `brx-recap-${past.match_id}.csv` : 'brx-recap.csv';
 
   return (
     <div className="screen">
@@ -77,10 +89,15 @@ export function Recap() {
       )}
       {rc.provisional && (
         <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
-          ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}). KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE.
+          ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}).
+          {/* "bring them into range" is only actionable for the match still in hand */}
+          {past ? ' THESE NUMBERS ARE AS RECORDED WHEN THE MATCH WAS ARCHIVED.'
+                : " KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE."}
         </div>
       )}
-      <div style={{ font: F.mono(500, 10), letterSpacing: '.28em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {state.config.mode.toUpperCase()} · {fmtClock(state.config.time_limit_s ?? 0)} ]</div>
+      {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
+          now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
+      <div style={{ font: F.mono(500, 10), letterSpacing: '.28em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtClock(state.config.time_limit_s ?? 0)}`} ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
@@ -100,10 +117,46 @@ export function Recap() {
           <span style={{ font: F.osw(700, 44), ...TAB, color: T.ink }}>{rows[0]?.kills ?? 0} <span style={{ font: F.chk(600, 12), color: T.micro }}>KILLS</span></span>
         )}
         <span style={{ flex: 1 }} />
+        {csvErr && <span role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.bad }}>▲ {csvErr}</span>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {/* /api/recap.csv serves the LIVE scorer, so it would silently export the wrong match here */}
-          {!past && <a href={csv} download="brx-recap.csv" className="hov-acc" style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>}
-          {!past && <PrimaryButton size={13} onClick={async () => { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>}
+          {/* An <a download> saves whatever comes back, so against an MC that predates the archived
+              route the operator gets the 404's JSON body in a file named .csv. `serverOld` only
+              watches /api/perks, so check this route itself before letting the download start
+              (review 2026-09-01). The live export needs no check: that route has always existed. */}
+          <a href={csv} download={csvName} className="hov-acc"
+            onClick={past ? async e => {
+              e.preventDefault();
+              let blob: Blob;
+              try {
+                const r = await fetch(csv);
+                if (!r.ok) { setCsvErr(r.status === 404 ? 'THIS MC IS TOO OLD TO EXPORT AN ARCHIVED MATCH — UPDATE THE SERVER' : `EXPORT FAILED (${r.status})`); return; }
+                blob = await r.blob();
+              } catch {
+                // ONLY the fetch is caught here. A broad try around the save below reported a code
+                // bug (a missing URL.createObjectURL) to the operator as a network fault — a lie
+                // that would have sent them hunting the Wi-Fi (review 2026-09-01).
+                setCsvErr('EXPORT FAILED — MC UNREACHABLE'); return;
+              }
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = csvName;
+              // attached, and revoked LATE: Safari and Firefox cancel a download from a detached
+              // anchor whose object URL is revoked synchronously, and the field host is a MacBook
+              document.body.appendChild(a);
+              a.click();
+              setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+              setCsvErr(null);
+            } : undefined}
+            style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>
+          {/* NEW MATCH stays live-only: an archived match is a record, not a place to start from */}
+          {/* disabled in-flight: newSession() rebuilds the whole session, and a double-tap on a slow
+              LAN fired it twice — the second landing on a session the first had already replaced */}
+          {!past && <PrimaryButton size={13} disabled={starting} onClick={async () => {
+            if (starting) return;
+            setStarting(true);
+            try { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }
+            finally { setStarting(false); }
+          }}>{starting ? 'STARTING…' : 'NEW MATCH ▸'}</PrimaryButton>}
         </div>
       </Brackets>
       {rc.honors.length > 0 && (<>
@@ -121,6 +174,9 @@ export function Recap() {
         })}
       </div>
       </>)}
+      {/* DATA SYNC reads the LIVE roster and node link state, so it says nothing true about a match
+          that ended hours ago — it would show today's phones against yesterday's game */}
+      {!past && <>
       <SectionRule label="DATA SYNC" hint="WHO HAS DELIVERED THEIR MATCH DATA" />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
         {state.players.map(pl => {
@@ -140,6 +196,7 @@ export function Recap() {
           );
         })}
       </div>
+      </>}
       <SectionRule label="FULL STATS" />
       <div style={{ overflowX: 'auto' }}>
         <div style={{ minWidth: 640 }}>

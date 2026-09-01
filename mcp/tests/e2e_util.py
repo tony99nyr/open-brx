@@ -17,6 +17,8 @@ try:
 except ImportError:
     HAVE_WS = False
 
+from _skip import Skipped
+
 if HAVE_WS:
     from brx_mcp.mc.mock_node import MockNode
     from brx_mcp.mc.net import NetServer
@@ -28,7 +30,9 @@ GUN_ECHO = "$LCD,45,70,0,0,36,216,*"
 
 
 def skip(name: str) -> None:
-    print(f"SKIP {name}: websockets not installed (run with .venv/bin/python)")
+    """Bow out of an e2e flow. RAISES, so run_tests.py counts it as a skip — it used to print and
+    return, which the runner scored as a PASS (review 2026-09-01)."""
+    raise Skipped("websockets")
 
 
 def run(coro):

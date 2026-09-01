@@ -110,6 +110,7 @@ sentences; if a designer finds a wall of text, the content file is wrong, not th
 | `[symptom-ladder]` | ordered checks; each has check / yes → fix / no → next; the T6 core |
 | `[compare]` | side-by-side columns (Open BRX vs Edge, Gen2 vs Gen3, BRX vs BRP) with ✓ / ✗ / ~ cells |
 | `[stat-row]` | 3–5 big tabular numbers with labels |
+| `[download]` | the download button + fact table for the one app build committed under `webapp/download/`. The generator reads the file's own name, size, build date (from its `build.json` sidecar) and sha256, so the page cannot advertise a build it is not serving. No APK present renders a visible TODO, two APKs fail the build. Cut a build with `npm run android:apk` in `app/`. |
 | `[timeline]` | roadmap / status by date |
 | `[pricing-tiers]` | build-tier comparison — looks like pricing, but the columns are budgets, not plans |
 | `[quote]` | a community or official-doc quote, credited |

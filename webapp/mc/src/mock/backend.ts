@@ -1,6 +1,6 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
+  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
   RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, WeaponView,
 } from '../api/types';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -45,6 +45,7 @@ export class MockBackend implements Api {
   private start_?: State['start'];
   private live_?: { rows: LiveRow[]; feed: FeedEntry[]; go_live_t: number; match_id: string };
   private recap_?: RecapView;
+  private history_: MatchHistoryRow[] = [];
   private gunOverride: Partial<Record<string, 'g' | 'r'>> = {};
   private timer: number | null = null;
   private session_id = uid('sess');
@@ -212,6 +213,10 @@ export class MockBackend implements Api {
     for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
     this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors, provisional: missing.length > 0, missing };
+    // the demo keeps its own history, exactly as the server's session store does — without it the
+    // RECAP history picker and the per-match CSV had no way to be seen (let alone tested) in ?mock
+    this.history_.unshift({ match_id: l.match_id, mode: this.config.mode, go_live_t: l.go_live_t,
+                            ended_t: now(), recap: clone(this.recap_) });
     this.emit();
   }
 
@@ -385,10 +390,12 @@ export class MockBackend implements Api {
     this.start_ = undefined; this.live_ = undefined; this.phase = this.pushed ? 'lobby' : 'kit'; this.pushed = false; this.acks = {};
     this.emit(); return { ok: true };
   }
-  async matchHistory() { return []; }
+  async matchHistory() { return clone(this.history_); }
   async getRecap() { if (!this.recap_) throw new Error('no recap yet'); return clone(this.recap_); }
-  recapCsvUrl() {
-    const r = this.recap_; if (!r) return '#';
+  recapCsvUrl() { return this.csvOf(this.recap_); }
+  matchCsvUrl(match_id: string) { return this.csvOf(this.history_.find(h => h.match_id === match_id)?.recap ?? undefined); }
+  private csvOf(r?: RecapView) {
+    if (!r) return '#';
     const lines = ['operator,team,kills,deaths,assists,kd,accuracy,streak,medals',
       ...r.rows.map(x => [x.display, x.team_id ?? '', x.kills, x.deaths, x.assists, x.kd, x.accuracy ?? '', x.streak, x.medals.join(' · ')].join(','))];
     return 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));

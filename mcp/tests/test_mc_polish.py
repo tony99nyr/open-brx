@@ -3,6 +3,8 @@ from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.scoring import Scorer
 
+from _skip import needs
+
 try:
     from starlette.testclient import TestClient
     import httpx  # noqa: F401
@@ -54,8 +56,7 @@ def test_csv_injection_neutralised():
 
 
 def test_auth_gate_and_open_reads():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     from brx_mcp.mc.api import create_app
     s = _sess()
     c = TestClient(create_app(s, token="secret"))
@@ -71,8 +72,7 @@ def test_auth_gate_and_open_reads():
 
 
 def test_bad_bodies_return_4xx_not_500():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     from brx_mcp.mc.api import create_app
     c = TestClient(create_app(_sess(), token=None), raise_server_exceptions=False)
     assert c.put("/api/config", json=[1, 2]).status_code in (400, 200)     # non-dict → not a 500
@@ -198,8 +198,7 @@ def test_rogue_hello_with_copied_gun_name_is_rejected_a8():
 
 # ---------------------------------------------------------------- iteration 3 regressions
 def test_non_ascii_token_is_401_not_500():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     import asyncio
     from brx_mcp.mc.api import create_app
     app = create_app(_sess(), token="secret")
@@ -245,8 +244,7 @@ def test_patch_validates_loadout_voice_ready():
 
 
 def test_numeric_bodies_overflow_and_fraction_are_400():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     from brx_mcp.mc.api import create_app
     c = TestClient(create_app(_sess(), token=None), raise_server_exceptions=False)
     p = c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).json()
@@ -519,8 +517,7 @@ def test_evicted_squatter_frees_the_gun_for_the_legit_phone():
 
 
 def test_evict_route_is_auth_gated_and_404s_unknown():
-    if not HAVE:
-        return
+    needs(HAVE, "starlette + httpx")
     from brx_mcp.mc.api import create_app
     s = _sess()
     c = TestClient(create_app(s, token="secret"))

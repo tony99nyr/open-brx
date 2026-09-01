@@ -3929,3 +3929,232 @@ produces `ammo 0`, `mag 32`, `alive true`, and the low-mag condition **armed** �
 WebView on an iPhone X while it paints. Either the notifications did not arrive, or they did and the
 paint did not happen. **The "Share log" BLE frame ring separates those two outright** — that instrument
 is still needed, but for a much sharper question than "which of three layers".
+
+---
+
+---
+
+## 2026-09-01 (Claude, WSL) — the Windows lane of the post-match handoff, and the six-day-old ledger
+
+No hardware. Everything here is code, docs and tests — `handoff-post-first-match.md` W1–W5, which was
+written *because* the 2026-08-30 match found sixteen defects and **not one of them was found by a
+test**. So the theme is the same one all the way through: make the machine check what a person had to.
+
+**Suites: mcp 542 → 577 · MC console 0 → 66 (new) · app: the 54 engine tests and 9 transport tests
+were already there but had no runner, so `npm test` is new and 4 of the 67 are (`mcurl`).**
+
+`python3 run_tests.py` is green under system python too — and now *says* what it skipped rather than
+counting it as passed: 577 with the extras, 534 + 43 skipped without. The old bare-`return` guards
+made the two totals byte-identical, so "green under system python" was quietly meaningless for every
+route test (review 2026-09-01).
+
+### 1. Weapon numbers are now derived, not typed
+
+The two worst defects of the field session were **numbers that disagreed with other numbers in the
+same repo**: the AR shipped `rof: 53` against a derived 54, and `weapon-design.md` §2.2's DPS and
+sustained-DPS columns went stale when the AR was retuned. Both are hand-maintained ledgers of what
+the wire says, and nothing compared them to the wire.
+
+`compile.WeaponCatalog` grew the derivation chain — `fire_ms`, `cycle_ms`, `rate_of_fire`,
+`damage_bar`, `time_to_kill` — all computed from `resolve()`, the literal `$WEAP` frame MC pushes.
+`test_weapon_derivations.py` then checks three ledgers against it: `weapons.json`'s five stat fields,
+§2.2's whole balance table, and §2.5's hits-to-kill-at-four-health-configs table. Reintroducing both
+historical defects fails the suite with the exact message you would want.
+
+Two things the derivation had to learn, neither of which was written down anywhere:
+
+- **A burst weapon's sustained cycle is `(2*t14 + t23)/3`.** t14 alone is the intra-burst spacing; the
+  gun then waits t23. That is what §2.2 was calling "cycle 75 +275", and it is what the published
+  `ttk_ms` was built from. 141.67 ms for the Burst Rifle, not 75.
+- **A charge weapon pays for its FIRST shot.** For fire modes t20 ∈ {2 charge-auto, 3 charge-held,
+  14 charge+heat} the TTK is `htk` cycles, not `htk-1`. That is the whole reason the Rail Gun
+  publishes 1.20 s and the Laser Cannon 1.50 s while the Rocket Launcher — equally a one-shot kill —
+  publishes 0.00. Five weapons' `ttk_ms` disagreed with a naive `(htk-1) * fire_ms` and all five are
+  explained by these two rules; none of them was wrong.
+
+At the default 115 pool every derived value reproduces the shipped one exactly, all 19 weapons.
+
+### 2. Hits-to-kill follows the host, not a constant
+
+`views.POOL = 115` was hardcoded, so ARSENAL and KIT quoted `HITS TO KILL 13 · TTK 1.68S` for the AR
+whatever health the host had set — at a 100/100 game the real answer is 23 hits. `weapon_view(w, pool)`
+now takes it, `Session.health_pool(player)` supplies it from `config.health` with per-player
+`loadout.overrides` winning (exactly as `_gset` and `validate()` read them), and both screens name the
+pool they are quoting.
+
+The one stat that could **not** follow is `dmg`, because its definition *is* "share of a 115 pool".
+The pool-independent number is `dmg_per_hit`, and `dmg_hit`/`cycle_ms`/`charged` on the catalog row
+are what the view re-derives from.
+
+A judgement call worth recording: the demo/fake catalog's `damage` is an old decorative 0–100 bar on
+no scale at all (the AR reads 55). Reading it back as "share of 115" would give the AR a 63-damage
+magnitude and a 2-hit kill — a *confident wrong number on the screen*. A row with no derivation chain
+now scales its published `htk` by the pool ratio instead, which is honest arithmetic on a coarse
+input. Same instinct as the retraction rule: prefer the coarse true answer to the precise false one.
+
+### 3. The MC console has a test suite, and it found two live bugs
+
+`webapp/mc` had `build` and `lint` and no `test`. It has 50 now (vitest + jsdom + the real React
+renderer, ~1.4 s, no browser): every screen mounted three ways — a full session, an empty one, and
+`state: null` — plus the specific 2026-08-30 regressions pinned where they broke.
+
+On the **first run** it found two defects that were live in `main`:
+
+1. **`CommandBar` still crashed on `PH[si][1]`.** The `PH[-1][1]` bug had been fixed on 2026-08-31 for
+   the *view* label (that was the black ARSENAL page) — the *phase* label on the very next line was
+   untouched, so any phase not in the six-entry table takes the whole console down, not just the tab.
+2. **`Kit` called `useState`/`useEffect` below its `if (!state) return null`.** The render that first
+   receives a snapshot then runs two more hooks than the one before it, which React throws on. It was
+   latent only because `App`'s `Screen()` happens to gate on the same condition. **oxlint had been
+   reporting it as an *error*, not a warning, the whole time** — the lint output was being read past.
+
+That last one is the finding, not the fix: a lint error nobody reads is not a check.
+
+### 4. The 2026-08-26 deferred-lows ledger, worked
+
+Un-owned for six days. Now a table with an outcome per line in `FOLLOWUPS.md`: **15 rows, 14 fixed
+and 1 deliberately kept** (CORS `*` — the phone app is a `capacitor://` origin and needs it; written
+down as a decision rather than left as an accident). 11 of the 14 name a test; the rest are copy or
+wiring changes with no sensible unit to pin. The three that turned out to matter most:
+
+- **An `ammo_mult` perk could ship a gun one round short of what the HUD said.** `resolve()` floored
+  odd reserves onto the `t17 == 2*t40` invariant; `spawn_ammo()` — which is what tells the phone how
+  much ammo the player has — did not. The rounding moved into `_mods`, so both go through one place.
+- **A restored session could arm two guns with the same `$PSET` player id.** `player_num` is the
+  wire's player id, so a duplicate means every hit either gun takes is scored to whoever MC looks up
+  first. `restore_snapshot` took the file's numbers verbatim and only re-derived them at the next
+  config change. It repairs to unique 1..63 now, first claimant keeping its number.
+- **`RECONNECT MC` did nothing at all after a discovery-only join.** It dialled `settings.mcUrl`,
+  which a discovery-only connect deliberately never writes, so it returned on line 1. In the field
+  that reads as "the button is broken", and it is the button you press when the link drops.
+
+Also: the seven-file bench-frame copy-paste is hoisted into `mcp/tools/bench_common.py`, with a test
+that fails if a frame is pasted back. Not tidiness — a run that re-tunes the arming config in one tool
+and not the others measures two different games and reports one number. `ally_remeasure.py` keeps its
+190 ms AR and shield-150 `$PSET` deliberately (the shield is its headroom, and a shield grant showing
+up there is real evidence rather than the value we wrote); it is exempted by name and the test
+requires the file to still say why.
+
+### What did NOT move
+
+**M1–M4 are untouched and still Mac-only.** The headset green flash, whether `$ALCD` stops under
+sustained auto, how long a swap really takes, and the AR's identity all need a gun to answer. Nothing
+in this session should be read as progress on any of them.
+
+### Polish loop — what three reviewers found in the above
+
+Worth recording in full, because the pattern is the point: **the review found more defects in the
+fixes than the fixes had found in the code**, and three of them were tests that passed against
+broken code — the exact failure this whole lane exists to prevent, committed while writing the
+prevention.
+
+Verified and fixed (each has a test that reproduces the defect):
+
+1. **`damage_bench.py` died on import.** `NameError: name 'AR' is not defined` — I changed it to use
+   the hoisted constant *after* running the import check that would have caught it. The tool would
+   have failed at the bench, in the dark, with two taggers in hand.
+2. **The test written for exactly that failure did not catch it.** It checked that the imports
+   *resolve*, which is not the same as checking the file *runs*: the name was read at module scope
+   above the import line. There is now a second test that walks each tool's AST in source order.
+3. **W2 missed its own goal on the one perk that moves the pool.** `health_pool()` ignored
+   `body_armor`'s `max_armor_add: 50`, which `_to_gc()` does write. A player holding it is armed at a
+   165 pool while KIT quoted the AR at 13 hits / 1.68 s; the truth is 19 / 2.52 s. The whole claim of
+   W2 was "the number on screen is the truth for THAT player". `health_pool()` is now pinned against
+   the `$PSET` the compiler actually emits, so the two arithmetics cannot drift again.
+4. **I re-introduced the refetch storm while fixing it.** Keying the armory fetch on
+   `readiness.t` — which is `now_ms()` on every snapshot, pushed at up to 4/s — refetches ~4 times a
+   second. That is the same bug the RECAP history picker had, documented two paragraphs above in the
+   same diff. Both screens now key on a fingerprint of *which guns MC knows about*.
+5. **The `state: null` test asserted nothing** and re-rendered a `<div/>` instead of the screen, so
+   React never compared the two hook lists — the rules-of-hooks class was uncovered for 9 of the 10
+   screens. Injecting a hook below `Live.tsx`'s early return left the suite green.
+6. **Nothing imported `client.ts`,** so the suite had zero contract-drift cover for the route it was
+   written to pin: rewriting `matchCsvUrl` to return `/api/recap.csv` — re-introducing the W1 bug
+   against a real server — kept it green. There is now a test that parses the route table straight
+   out of `api.py` and checks every URL the client builds against it.
+7. **A latent `Designer` bug fell out of fixing (5):** `cfg` is a lazy `useState` initialiser, so
+   mounting before the first snapshot captured `null` and the screen stayed blank forever. Same
+   family as the KIT bug — state captured at mount and never reconciled.
+
+Smaller, same spirit: the archived RECAP showed the *current* draft's mode, a live DATA SYNC board
+and a "bring them into range to finalize" call to action over a match that ended hours ago; the
+disabled PRIMARY button was 2.1:1 contrast while carrying the label the operator most needs to read;
+the APK QR guarded on `lan.ip` being truthy when it falls back to `127.0.0.1`, so the real failure
+still printed a QR for loopback; `RECONNECT MC` was still a silent no-op with no target at all; and
+the even-reserve rounding was applied on the wrong axis (the code path rather than the invariant),
+which cost a round on the legacy template path that has no `tok40` mirror to protect.
+
+**The lesson to carry:** a test written in the same sitting as the fix tends to encode the author's
+belief about the bug rather than the bug. Every test here now has a recorded mutation that makes it
+fail — that step, not the test, is what makes it worth anything.
+
+**Round 2 of the loop** (a third reviewer, on tests and docs, verified by mutating an isolated copy
+of the repo 30+ times) found four more, all of the same family — *the check did not check*:
+
+- **The §2.5 test silently skipped the Assault Rifle.** The row is labelled
+  `Assault / Burst / Energy Rifle`; the parser split on `/` and dropped names that did not resolve,
+  so it validated the Energy Rifle alone. My "every row must resolve" guard passed because *one*
+  name matched. The weapon that W2, API.md and contracts.md are all about was never checked against
+  the table W2 exists to honour. The row now carries full names and an unresolvable name is an error.
+- **§2.5 had no completeness check** — deleting a whole row left the suite green. Adding one
+  immediately found **two weapons missing from the table**: the Charge Rifle and the Stinger. Their
+  rows are now in the doc, computed from the wire.
+- **"13 of 14 fixed with tests" was false twice.** The ledger has 15 rows, and only 7 named a test.
+  It now reads 14 fixed / 1 kept, 11 with a test, and the three without say why. Two of the missing
+  tests were worth writing and now exist (NEW MATCH in-flight, the routable-IP guard); one claim
+  with no test behind it — "a full disk is now a 503" — now has one.
+- **"green under system python" was quietly meaningless.** The extras-dependent tests bowed out with
+  a bare `return`, which the runner scored as a PASS, so the totals were byte-identical with and
+  without starlette. Every route test in this diff executed nothing there. `run_tests.py` counts
+  skips now: **577 with the extras, 534 + 43 skipped without.** CLAUDE.md's promise that they "skip
+  cleanly" is true for the first time.
+
+Plus two retraction-sweep misses on a fact W2 changed — `docs/spec/loadout.md`, the paragraph that
+*defines* `WeaponView.htk`, still said "hits to drop a 115 pool"; and `app/src/hud/hud.js`, a **live
+path**, printed HITS TO KILL with no pool beside it, so the phone showed a number whose meaning
+silently changed between games while the two MC screens labelled it correctly.
+
+**What the loop is actually worth, measured:** three reviewers found 9 defects in the fixes and 4 in
+the fixes to the fixes, of which **six were tests that passed against broken code**. Every one was
+written in the same sitting as the code it covered. The habit to keep is not "write a test" — it is
+**break the code and watch the test fail**, every time, before believing it.
+
+### Round 3 — the reviewers found the fixes to the fixes wanting too
+
+Two more rounds ran against the round-1 fixes. The pattern held: **my fixes were wrong more often
+than the code they fixed.**
+
+- **The `allowAssist` fix did not close the hole it claimed.** The guard reads
+  `(allowAssist || !settings.mcUrl)`, and a discovery-joined phone *never* writes `settings.mcUrl` —
+  that is what `remember=false` means. So exactly the phones the fix was for could still be re-bound
+  to a second MC on any momentary drop. Worse, clearing the flag on bind made it *one-way*: its only
+  opener was a one-shot 15 s boot timer, so after the first bind discovery could never rescue a
+  phone again — the case where MC restarts on a new IP mid-match. Both fixed; assist now re-opens
+  after any 15 s spell unbound.
+- **The archived-CSV download was written to be cancelled.** It revoked the object URL synchronously
+  after clicking a *detached* anchor — Safari and Firefox routinely drop that, and the match-day
+  host is a MacBook. The anchor is attached and the URL revoked late now. The broad `try` around it
+  was also reporting a code bug to the operator as "MC UNREACHABLE"; the catch is narrowed to the
+  fetch.
+- **`validate()` was a THIRD pool arithmetic.** After unifying `health_pool()` with `_to_gc()`, the
+  `mag >= htk` gate still had its own — missing the perk and the 255 cap, and grading the *catalog*
+  magazine rather than the one an `ammo_mult` perk actually grants. All three agree now, pinned by a
+  test that reads the pool straight off `$PSET`.
+- **The bench no-paste rule exempted a whole FILE.** `ally_remeasure.py` deliberately varies its AR
+  and `$PSET` — but the exemption covered every frame, so its `$GSET` drifted unguarded. Exemptions
+  are per-frame now, and narrowing it immediately caught a `$GSET` literal in that file.
+- **`_repair_player_nums` could delete players.** Its free-number generator started at
+  `player_num_base`, so a high base made the RESTORE path drop real players while 1..base-1 sat
+  free. The live add path may refuse; a restore may not.
+- **`resume_mdns()` had no caller**, so the abort latch was still one-way and a restarted NetServer
+  would never advertise again — the guard was half applied.
+
+Two reviewer claims did **not** survive checking, and are worth recording because taking them on
+trust would have made things worse: `URL.createObjectURL` is *not* missing under vitest+jsdom here
+(Node provides it, `blob:nodedata:…`), so a stub would have been dead code testing itself; and the
+`raw.split("\n", 1)[-1]` partial-line drop genuinely *cannot* be isolated by a test, because the
+`except ValueError` guard already covers every realistic torn line — it is documented as deliberate
+redundancy rather than given fake coverage.
+
+**Final tally across three rounds: 5 reviewers, 19 defects in the fixes, 7 of them tests that passed
+against broken code.** Every test in this diff now has a recorded mutation that makes it fail.
