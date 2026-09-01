@@ -60,7 +60,7 @@
     "game_over": "$PLAY,VA33,4,6,,,,,*",
     "victory": "$PLAY,VSF,4,6,JAY,,,,*",
     "hurt": "$PLAY,VA8B,3,6,,,,,*",
-    "hurt_led": "$HLED,7,4,90,90,10,15,*",
+    "hurt_led": "$HLED,7,4,90,90,100,15,*",
     "tick": "$PLAY,U16,4,6,,,,,*",
     "klaxon": "$PLAY,U16,4,6,,,,,*",
     "multi": "$PLAY,,4,6,VA46,,,,*",

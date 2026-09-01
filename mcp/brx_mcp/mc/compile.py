@@ -23,6 +23,14 @@ from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team,
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
 # The on-gun menu maps L1=60 L2=70 L3=80 L4=90 L5=100 (protocol/brx-protocol.md $VOL), so play
 # volume is now taken from the venue: L3 indoors, L4 outdoors (the level he asked for).
+# `$HLED` token 5 is BRIGHTNESS — the same position `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`
+# uses, pinned by the per-field sweep on 2026-08-30. Callsign ships **10** in every LED frame in all
+# 19 captures, and Tony asked for the on-hit alert to be brighter than that in daylight.
+# ⚠ The SCALE IS UNVERIFIED: 10 is the only value anyone has been observed to send, though this same
+# frame carries 90 in two other positions, so the field is clearly not 0-10. If the alert stops
+# firing entirely at 100, the gun is rejecting the value — drop back toward 10 and bisect.
+HEADSET_ALERT_BRIGHTNESS = 100
+
 VOL_BY_ENV = {"indoor": 80, "outdoor": 90}
 VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (see play_volume)
 VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
@@ -538,7 +546,7 @@ class Compiler:
             # in 2026-08-23-two-tagger-combat (@340.5s, @361.5s). This, not a per-hit flash, is almost
             # certainly the "headset blinks green" Tony remembered (he flagged his own uncertainty).
             "hurt":      "$PLAY,VA8B,3,6,,,,,*",
-            "hurt_led":  "$HLED,7,4,90,90,10,15,*",
+            "hurt_led":  f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*",
             "tick":      "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25) SFX tick (real bank id)
             "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
             "multi":     "$PLAY,,4,6,VA46,,,,*",          # provisional (nRF-native is silent over BLE)
