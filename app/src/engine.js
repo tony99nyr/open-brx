@@ -663,7 +663,8 @@ export class Engine {
       if (fr.length) this._write(fr, 'low health');
     }
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
-      // `sensor` is $HIR tok1: 0 = headset FRONT dome, 1 = headset BACK, 4 = gun body. It was parsed
+      // `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are
+      // bench-mapped, 2 and 3 are not), 4 = gun body. It was parsed
       // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
       // raw frame ring (field 2026-09-01). One field, and the question becomes readable live.
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
