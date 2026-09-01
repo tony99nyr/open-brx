@@ -208,9 +208,11 @@ Object.assign(hud.h, {
     // Build the diagnostic bundle ONCE: log lines + engine state + the raw BLE frame ring.
     // The frame ring (brxlink keeps the last 60 in/out frames) is the only record of what the gun
     // actually said, and without it a field fault on the phone side is undebuggable.
+    let frameCount = 0;
     const bundle = () => {
       let frames = [];
       try { frames = (link && link.frames || []).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
+      frameCount = frames.length;
       return [
         logLines.join('\n'),
         '--- ble frames (last ' + frames.length + ') ---',
@@ -229,10 +231,14 @@ Object.assign(hud.h, {
         for (let o = 0, seq = 0; o < text.length; o += CHUNK, seq++) {
           transport.report('log_data', { seq, chunk: text.slice(o, o + CHUNK), last: o + CHUNK >= text.length });
         }
-        log('log sent to MC', 'lk');
+        log(`log sent to MC — ${bytes.length} bytes, ${frameCount} BLE frames ✓`, 'lk');
+        return;                       // delivered: nothing to copy, nothing for the operator to do
       }
     } catch (e) { log('log→MC: ' + (e && e.message || e), 'le'); }
-    // 2. local share/copy still works (field debugging without MC)
+    // Fallback ONLY when MC could not take it. Tony, 2026-09-01: "get rid of the copy paste
+    // fallback. just show that it successfully sent to MC" — a share sheet full of raw log after a
+    // SUCCESSFUL upload reads as "it didn't work", and in the field nobody pastes it anywhere.
+    log('MC unreachable — offering the log locally instead', 'le');
     const text = bundle();
     try { if (plugins.share) await plugins.share.share({ title: 'BRX node log', text }); else await navigator.clipboard.writeText(text); log('log shared/copied', 'lk'); }
     catch (e) { log('share: ' + (e && e.message || e), 'le'); }

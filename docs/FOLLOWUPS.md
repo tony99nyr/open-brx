@@ -947,3 +947,33 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
   two hooks below its `if (!state) return null`, so the render that first received a snapshot ran
   more hooks than the one before it. It does not replace `app/tools/e2e.mjs`; it is the gate that
   runs before that suite is worth starting.
+
+## Field 2026-09-01 — second live match (2 Android HUDs, TDM). Six findings, evidence attached
+
+Session: `~/.brx-mcp/mc/session-8bbf96ab.sqlite` — **both phones' BLE frame rings were shared to MC**,
+so several of these are settled from data rather than recollection.
+
+- **G1 · The headset IR domes never registered a hit.** All **10 `$HIR` in our frame ring carry
+  sensor `4` (gun body); zero from the domes (0 = front, 1 = back).** Callsign's
+  `2026-08-23-two-tagger-combat` capture, same guns, shows **`0` on 3 of 23 hits** — so the domes DO
+  work natively and did not for us. Something in our arm either fails to enable them or disables
+  them. This is the highest-value open item: it is a third of the hit surface.
+- **G2 · `hit_taken` does not carry the sensor.** The engine parses `$HIR` tok1 and drops it, so MC
+  cannot see G1 at all — it took the frame ring to find. Forward it; it is one field.
+- **G3 · Dying produced no green flash** (native does). The only `$HLED` in either ring is our
+  END_SEQUENCE blanker `$HLED,0,0,0,0,0,0`. The low-health alert shipped in 0.1.1 (`hurtFired`
+  landed 09:10, the APK was cut 14:01) so it was present and did not fire — but the ring holds only
+  the last 60 frames and both rings end at teardown, so **absence here is not proof**. Instrument it:
+  log a line when the cue fires.
+- **G4 · The headsets DID show team colour, but on DEATH rather than pre-game.** Consistent with the
+  Windows lane's correction that our `$HLED` sits mid-head where Callsign sends it as a LOBBY frame
+  paired with `$GLED`. Try matching Callsign's position and pairing.
+- **G5 · A game whose rules fix the weapon/perk did not apply them.** No evidence captured yet —
+  needs a repro with the config id noted.
+- **G6 · END MATCH EARLY on MC did not reach either HUD.** `control{end}` fan-out. Both nodes were
+  `wsState: bound` at the time, so this is not a transport drop.
+- **G7 · The perks menu on the phone is too small and hard to find.** UX.
+- **NOT a bug:** "a phone HUD would not reconnect/sync on Wi-Fi". Its own log says
+  `wsState: "bound"`, `synced: true`, `mc_reachable: true`, `pending: 0`, and **it delivered its log
+  over the wire**. What was down was `bleUp:false` — the *gun*, which was off. The HUD presented that
+  as a sync problem, which is the real defect: **UI truth, not transport.**
