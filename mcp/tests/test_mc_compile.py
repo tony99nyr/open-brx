@@ -796,3 +796,4 @@ def test_the_voice_pack_is_per_player_not_hardcoded():
     assert ",V83,V8I,V8C,V8G,V8E,V87," in mp
     # an unknown name falls back rather than emitting a bad family
     assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), _TEAMS)["head"] if f.startswith("$PSET,"))
+
