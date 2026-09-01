@@ -53,13 +53,17 @@ token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/s
 ## Layout
 
 `mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; run `python -m brx_mcp.mc`) ·
-`app/` native phone app (Capacitor → Android + iOS; see `app/README.md`) ·
+`app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` is the
+whole Android release step: it builds the APK the public site hands out and drops it in `webapp/download/`) ·
 `firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design source `docs/spec/design/mc-export/`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
 website (`docs/manual/*.md` → `webapp/`; `cd site && npm run build && npm test` — the Playwright suite is
 the ui-build-verify checklist and refuses to run on a stale build; **a push to `main` deploys the site**
 (Cloudflare builds `webapp/` from the repo via the root `wrangler.toml`, so commit a fresh build or you
-publish a stale one); `webapp/mc/` is the separate MC UI and is never touched by the site build).
+publish a stale one); `webapp/mc/` is the separate MC UI and is never touched by the site build;
+**`webapp/download/`** holds the committed Android APK + its `build.json` sidecar — a committed
+artifact the generator protects but never writes, exactly one `.apk`, rebuilt only by
+`npm run android:apk`).
 **No em dashes in `docs/manual/`**: a test fails the build if one reaches a page. See
 `docs/manual/README.md` for the house style.
 

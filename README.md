@@ -37,7 +37,7 @@ what the limits are, what's actually proven**) · [`docs/README.md`](docs/README
 | ~~`firmware/`~~ | Empty — the only ESP32 code that exists today is the IR bridge in **`hardware/esp32-ir-bridge/`** (`ir_capture.ino`, `ir_emit.ino`, both hardware-proven). Companion / item-pack / objective-station firmware is still to write. |
 | ~~`server/`~~ | Empty — the game engine lives in **`mcp/brx_mcp/mc/`** (Mission Control rules/modes, scoring, announcer, event log, driving player nodes over the LAN) ✅ |
 | `app/` | **BRX Combat HUD** — the native phone app (Capacitor: one codebase → Android + iOS, native BLE). Build instructions: [`app/README.md`](app/README.md) ✅ |
-| `webapp/` | **Generated output — do not hand-edit.** The public site built from `docs/manual/` by `site/`, plus `webapp/mc/` = the Mission Control operator console (Vite/React). Web Bluetooth is not the player path — that is `app/` (ADR-0003) |
+| `webapp/` | **Generated output — do not hand-edit.** The public site built from `docs/manual/` by `site/`, plus `webapp/mc/` = the Mission Control operator console (Vite/React) and `webapp/download/` = the committed Android APK + its `build.json` (written by `app/`'s `npm run android:apk`, never by the site build). Web Bluetooth is not the player path — that is `app/` (ADR-0003) |
 | `hardware/` | **`brx-companion-spec.md`** (per-tagger accessory) ✅; STLs, wiring, BOM (todo) |
 | `docs/` | **[`docs/README.md`](docs/README.md)** index — the **[`docs/spec/`](docs/spec/)** product spec (the record), the **[ADRs](docs/adr/)**, followups, and protocol/reference |
 
@@ -93,8 +93,10 @@ claude mcp add brx -- python -m brx_mcp
 > [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the line-by-line.
 
 > **You do not need the phone app for any of the above** — the quickstart is laptop-to-guns over BLE.
-> The phone node is what lifts the BLE-range limit later. **There is no published build of it yet**;
-> you build it yourself (`app/README.md`), which needs a mobile toolchain per platform.
+> The phone node is what lifts the BLE-range limit later. There is now a **debug-signed Android test
+> build** to sideload at <https://open-brx.iamrossi.workers.dev/platform/app/> (it is under
+> construction, and a later release-signed build will not upgrade over it). On iOS, and to build
+> either yourself, you need a mobile toolchain per platform (`app/README.md`).
 
 ### Platform notes
 
@@ -119,9 +121,15 @@ npm run build            # bundle src/app.js -> www/app.js
 
 npm run ios:setup        # macOS + full Xcode; adds the iOS platform and applies our iOS config
 npm run android:setup    # JDK 21 + Android SDK
+npm run android:apk      # the release step: builds the APK the public site hands out
 ```
 
-Full prerequisites, signing notes, and what's generated vs committed: **[`app/README.md`](app/README.md)**.
+`npm run android:apk` writes `webapp/download/brx-companion-<version>-android-debug.apk` plus a
+`build.json` sidecar; rebuild the site (`cd site && npm run build && npm test`), commit, and a push to
+`main` deploys it to [`/platform/app`](https://open-brx.iamrossi.workers.dev/platform/app/).
+
+Full prerequisites, signing notes, publishing rules, and what's generated vs committed:
+**[`app/README.md`](app/README.md)**.
 
 ## Safety
 

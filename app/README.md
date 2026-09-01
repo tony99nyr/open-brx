@@ -93,12 +93,44 @@ npm run sync            # build + sync every platform already added
 to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there.
 Exactly one APK lives in that folder: the site build refuses to guess between two.
 
+**What lands in the APK is your working tree, not the last commit** — `npm run build` bundles `src/`
+as it is right now. So before cutting a build meant for the site: commit or stash `app/src`, and bump
+`package.json` if the version should change. The script prints a WARNING listing every uncommitted
+`app/` file it just baked in, and records `git` (short SHA) + `dirty` in `build.json` so a published
+APK is always traceable to a tree. Heed the warning; it is the difference between publishing a
+reviewed build and publishing whatever another session had half-written.
+
+Just want an APK to install locally, without touching the site? Send it somewhere else:
+
+```bash
+APK_OUT_DIR=/tmp/brx-apk npm run android:apk    # same build, webapp/download/ untouched
+```
+
 Then rebuild + test the site and commit, because **a push to `main` deploys `webapp/`**:
 
 ```bash
 cd ../site && npm run build && npm test      # /platform/app reads name, size, date + sha256 off the file
 git add webapp docs/manual app && git commit && git push
 ```
+
+**How the site and this script meet** (three rules, all enforced by the site build):
+
+- `webapp/download/` is a **committed artifact**, not generated. `site/build.mjs` neither writes nor
+  sweeps it (`PROTECTED`), so it survives a site rebuild. Don't `.assetsignore` it: Cloudflare has to
+  upload it.
+- **Exactly one `.apk`** in that folder. Two, and the site build fails ("keep exactly one") rather
+  than guessing which one the page should link.
+- `build.json` beside it records the **build date** plus `git`/`dirty` provenance (the date is
+  unrecoverable from the APK: a checkout rewrites the mtime and the zip entries are normalised to
+  1981). `built` describes the *bytes*, so a rebuild that produces an identical APK keeps the
+  original date. The generator trusts the sidecar only while its `file` + `sha256` still match the
+  APK, and fails the build if they drift. This script writes it; never hand-edit it.
+
+The page itself is `docs/manual/07-platform.md` → `### Page: Get the app (/platform/app)`, and the
+`[download]` block there is what renders the button + the fact table. With no APK present the block
+renders a visible TODO instead of a dead link, so a fresh clone that has never run this script still
+builds a correct site. `site/test/site.spec.mjs` steps **9** (the button hands over the committed
+bytes) and **9b** (no-APK and two-APK builds) are the gate.
 
 The build is debug-signed. It sideloads fine, but a future release-signed build will **not**
 upgrade over it, and anyone who installed the debug build has to uninstall first. When we want

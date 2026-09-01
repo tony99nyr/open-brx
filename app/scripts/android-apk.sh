@@ -22,13 +22,20 @@ REPO="$(cd .. && pwd)"
 jdk_major() { [ -x "$1/bin/javac" ] && "$1/bin/javac" -version 2>&1 | sed -n 's/^javac \([0-9]*\).*/\1/p'; }
 if [ -z "${JAVA_HOME:-}" ] || [ "$(jdk_major "$JAVA_HOME")" != "21" ]; then
   found=""
+  # macOS keeps JDKs where java_home knows about them; Linux in ~/.jdks or /usr/lib/jvm
+  if [ -x /usr/libexec/java_home ]; then
+    mac="$(/usr/libexec/java_home -v 21 2>/dev/null || true)"
+    [ -n "$mac" ] && [ "$(jdk_major "$mac")" = "21" ] && found="$mac"
+  fi
   for c in "$HOME"/.jdks/*21* /usr/lib/jvm/*21* /usr/lib/jvm/java-21-*; do
+    [ -n "$found" ] && break
     [ -d "$c" ] || continue
     if [ "$(jdk_major "$c")" = "21" ]; then found="$c"; break; fi
   done
   if [ -z "$found" ]; then
     echo "error: JDK 21 not found (Capacitor 8 needs it; javac in PATH is $(javac -version 2>&1))." >&2
-    echo "       Install one (apt install openjdk-21-jdk, or Android Studio's JBR) or set JAVA_HOME." >&2
+    echo "       Install one (apt install openjdk-21-jdk / brew install openjdk@21, or Android" >&2
+    echo "       Studio's bundled JBR) or point JAVA_HOME at it." >&2
     exit 1
   fi
   export JAVA_HOME="$found"
@@ -45,7 +52,18 @@ npx cap copy android                # push the fresh bundle into the platform
 APK="android/app/build/outputs/apk/debug/app-debug.apk"
 [ -f "$APK" ] || { echo "error: $APK missing after a successful build" >&2; exit 1; }
 VERSION="$(node -p "require('./package.json').version")"
-OUT="$REPO/webapp/download"
+# What goes in the apk is the WORKING TREE, not the last commit: npm run build bundles src/ as it is
+# right now. Publishing someone's half-finished edit is silent and unrecoverable-looking, so say it.
+GIT_SHA="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+DIRTY="$(git -C "$REPO" status --porcelain -- app/src app/www app/package.json app/capacitor.config.json 2>/dev/null)"
+if [ -n "$DIRTY" ]; then
+  echo
+  echo "WARNING: app sources are not committed; this apk bakes in the working tree:" >&2
+  echo "$DIRTY" | sed 's/^/         /' >&2
+  echo "         Commit (or stash) before publishing, or the site serves an unreviewed build." >&2
+  echo
+fi
+OUT="${APK_OUT_DIR:-$REPO/webapp/download}"   # override for a trial build that must not touch the site
 NAME="brx-companion-${VERSION}-android-debug.apk"
 mkdir -p "$OUT"
 # exactly one apk lives there: the site build refuses to guess between two
@@ -58,12 +76,19 @@ node -e '
 const fs = require("fs"), crypto = require("crypto");
 const [file, dir] = [process.argv[1], process.argv[2]];
 const buf = fs.readFileSync(dir + "/" + file);
+const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+// "built" describes the BYTES, not this run: a rebuild that produces an identical apk (gradle was
+// up to date) keeps the original date rather than aging the download page forward for nothing.
+let built = new Date().toISOString();
+try {
+  const prev = JSON.parse(fs.readFileSync(dir + "/build.json", "utf8"));
+  if (prev.sha256 === sha256 && prev.built) built = prev.built;
+} catch {}
 fs.writeFileSync(dir + "/build.json", JSON.stringify({
-  file, version: process.argv[3], variant: "debug",
-  built: new Date().toISOString(), bytes: buf.length,
-  sha256: crypto.createHash("sha256").update(buf).digest("hex"),
+  file, version: process.argv[3], variant: "debug", built, bytes: buf.length, sha256,
+  git: process.argv[4], dirty: process.argv[5] === "1",
 }, null, 1) + "\n");
-' "$NAME" "$OUT" "$VERSION"
+' "$NAME" "$OUT" "$VERSION" "$GIT_SHA" "$([ -n "$DIRTY" ] && echo 1 || echo 0)"
 
 echo
 echo "==> $OUT/$NAME"
