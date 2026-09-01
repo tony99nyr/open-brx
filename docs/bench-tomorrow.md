@@ -15,9 +15,9 @@ groups is the expensive part, not the tests.
 > 3 (0.1 multipliers), 4 (1.5a). It carries the gates and the exact commands. **This file is still the
 > queue**; the sheet expires after the session and its results get struck here.
 >
-> ⛔ **It opens with a repo blocker:** the `$HLED` frames are on `origin/main` only, this checkout is 3
-> commits behind, and uncommitted work here makes `git pull` abort. `grep -c HLED
-> mcp/brx_mcp/mc/compile.py` must be ≥3 before item 1 means anything.
+> Item 1 is **F10** — the only code path we ship that no one has ever seen work, and it gates a
+> correction to a ✅ claim `docs/manual/` publishes today ("headset green: blink on hit, hold on kill").
+> The morning's repo blocker is cleared; just `git pull --ff-only` first.
 
 > ### 📍 START HERE — do these three, in this order
 >
