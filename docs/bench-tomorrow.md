@@ -10,6 +10,15 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
+> ### 🗓️ TODAY (2026-09-01): run [`bench-hour-2026-09-01.md`](bench-hour-2026-09-01.md)
+> A dated one-hour **selection from this file** — items 1 (`$HLED`, shipped-unverified), 2 (F1 gauge),
+> 3 (0.1 multipliers), 4 (1.5a). It carries the gates and the exact commands. **This file is still the
+> queue**; the sheet expires after the session and its results get struck here.
+>
+> ⛔ **It opens with a repo blocker:** the `$HLED` frames are on `origin/main` only, this checkout is 3
+> commits behind, and uncommitted work here makes `git pull` abort. `grep -c HLED
+> mcp/brx_mcp/mc/compile.py` must be ≥3 before item 1 means anything.
+
 > ### 📍 START HERE — do these three, in this order
 >
 > **0. Power-cycle the gun AND the headset.** The victim gun went **screamer** after ~3 days powered
