@@ -354,7 +354,7 @@ export function markdownTwin(page, ctx = {}) {
       if (b.title) out.push(`## ${b.title}`);
       if (b.head) out.push(b.head);
       out.push(d ? `Download: ${ctx.site || ''}${d.href} (${d.size}, version ${d.version || 'unversioned'}, built ${d.date}, sha256 ${d.sha256})` : 'No build is published yet.', '');
-      out.push(...b.body);
+      out.push(...b.body.filter(l => l.trim()));
       if (b.src.length) out.push(`Source: ${b.src.join(' · ')}`);
       out.push('');
       continue;

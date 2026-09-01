@@ -716,12 +716,13 @@ it('9c · the build.json contract: missing, mismatched or dirty fails the build;
     const cut = src.indexOf('\n### Page:', src.indexOf('\n### Page:') + 1);
     fs.writeFileSync(home, src.slice(0, cut) + '\n[download] **The app** Get it here. src: fixture\n' + src.slice(cut));
 
-    const good = { file: NAME, sha256: sha, built: '2019-07-04T10:00:00.000Z', dirty: false };
+    const good = { file: NAME, sha256: sha, built: '2019-07-04T10:00:00.000Z', dirty: false, git: 'abc1234' };
     for (const [label, meta, expected] of [
       ['missing', null, 'build.json is missing'],
       ['wrong sha', { ...good, sha256: 'deadbeef' }, 'does not describe'],
       ['wrong file', { ...good, file: 'something-else.apk' }, 'does not describe'],
-      ['dirty tree', { ...good, dirty: true, git: 'abc1234' }, 'dirty tree'],
+      ['dirty tree', { ...good, dirty: true }, 'dirty tree'],
+      ['no provenance', { file: NAME, sha256: sha, built: good.built }, 'no git/dirty provenance'],
     ]) {
       const r = withSidecar('out-' + label.replace(/ /g, '-'), meta);
       expect(r.code, `${label} must fail the build`).not.toBe(0);
@@ -736,6 +737,14 @@ it('9c · the build.json contract: missing, mismatched or dirty fails the build;
     expect(html).toContain('2019-07-04');
     expect(html).toContain(`href="/download/${NAME}"`);
     expect(html).not.toContain('data-todo');
+
+    // a sidecar left behind by a deleted apk is a failure, not a silent "no build published yet"
+    const orphan = path.join(dir, 'out-orphan');
+    fs.mkdirSync(path.join(orphan, 'download'), { recursive: true });
+    fs.writeFileSync(path.join(orphan, 'download', 'build.json'), JSON.stringify(good));
+    const o = build(orphan);
+    expect(o.code, 'an orphaned sidecar must fail the build').not.toBe(0);
+    expect(o.output).toContain('describes a build that is not there');
 
     // a hand-dropped file the script could never have produced is refused, not linked
     const odd = path.join(dir, 'out-odd');

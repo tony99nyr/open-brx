@@ -21,6 +21,8 @@ const NOW = new Date().toISOString();
 
 const written = new Set();
 function write(rel, content) {
+  // the generator owns everything it writes; a committed artifact folder is not its to overwrite
+  if (PROTECTED.has(rel.split('/')[0])) throw new Error(`refusing to write into the protected ${rel.split('/')[0]}/ (tried ${rel})`);
   const p = path.join(OUT, rel);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, content);
@@ -72,7 +74,10 @@ function findDownload() {
   // is a sign someone dropped a file in by hand rather than running `npm run android:apk`
   const apks = all.filter(f => /^[A-Za-z0-9][A-Za-z0-9._-]*\.apk$/.test(f)).sort();
   for (const bad of all.filter(f => !apks.includes(f))) dlProblems.push(`webapp/download/${bad}: unexpected filename, cut the build with \`npm run android:apk\``);
-  if (!apks.length) return null;
+  if (!apks.length) {
+    if (fs.existsSync(path.join(dlDir, 'build.json'))) dlProblems.push(`webapp/download/build.json describes a build that is not there: restore the apk or delete the sidecar`);
+    return null;
+  }
   if (apks.length > 1) { dlProblems.push(`webapp/download/: ${apks.length} apks (${apks.join(', ')}): keep exactly one, the site links a single build`); return null; }
   const file = apks[0];
   const buf = fs.readFileSync(path.join(dlDir, file));
@@ -92,6 +97,7 @@ function findDownload() {
     try { meta = JSON.parse(fs.readFileSync(sidecar, 'utf8')); } catch { /* handled below */ }
     if (!meta || meta.file !== file || meta.sha256 !== sha256) dlProblems.push(`webapp/download/build.json does not describe ${file} (rerun \`npm run android:apk\`)`);
     else if (meta.dirty === true) dlProblems.push(`${file} was built from a dirty tree (build.json git ${meta.git || '?'}): commit app/ and cut it again before publishing`);
+    else if (typeof meta.git !== 'string' || typeof meta.dirty !== 'boolean') dlProblems.push(`webapp/download/build.json has no git/dirty provenance: cut the build with \`npm run android:apk\` rather than writing the sidecar by hand`);
     else { if (meta.variant) variant = meta.variant; if (meta.built) date = meta.built.slice(0, 10); }
   }
   return {
