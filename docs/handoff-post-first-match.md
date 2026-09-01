@@ -92,13 +92,23 @@ autonomous behaviour — we had simply never lit the headset at all.
 *Unaffected:* rainbow-on-disconnect was observed with no host driving it, so the muster gate that rests
 on rainbow still stands. Pre-game team colour, however, turns out to be **host-sent**.
 
-### M2 · Does the gun stop sending `$ALCD` during sustained full-auto?
-Emptying a mag on full auto showed **no reload prompt and no empty-clip state**. The data path is fine —
-ammo tracks and decrements across all 328 status samples — but **ammo never once read 0** in the whole
-match. Two-second status sampling cannot separate "the gun stops emitting `$ALCD` under sustained auto
-fire" from a HUD render-gate bug.
-**Method:** it needs the phone's raw BLE frame ring. **Hit "Share log" on both phones before closing
-the app** — it lands in the same session SQLite. Without that, this is speculation.
+### M2 · Empty mag showed no reload prompt — **narrowed 2026-09-01 to ONE layer**
+Two of the three candidate layers are now eliminated **from evidence already on disk**:
+
+- **The gun is not the problem.** `2026-08-26-weapons-smg-plus-amr.btsnoop` shows one `$ALCD` per shot
+  all the way down — `9,8,7…1,0` at ~350 ms — and then a dry trigger emitting `$BUT` with **no**
+  `$ALCD`. `$ALCD,0` is real and the gun sends it. (Same in the energy-rifle capture.)
+- **The engine is not the problem.** Replaying that exact cadence through the real `Engine` gives
+  `ammo 0`, `mag 32`, and the low-mag condition **armed** — the two values `hud.js` derives the RELOAD
+  prompt and the solid/red empty state from. Pinned by `app/test/engine.test.mjs`
+  ("emptying a mag leaves ammo 0 and the low-mag prompt armed").
+
+⇒ What is left is the **phone's transport/render layer**: did the `$ALCD` frames actually *arrive* at
+the WebView during sustained fire (7 frames/second on an iPhone X, alongside rendering), or did they
+arrive and the paint never happen?
+**Method (unchanged instrument, much sharper question):** **hit "Share log" on both phones before
+closing the app.** The raw BLE frame ring answers "did the frames arrive" outright. If they did, it is
+a render bug and the ring's timestamps will show the gap.
 
 ### M3 · How long does a weapon swap actually take?
 Never measured. `SWITCH_MAX_MS` in `engine.js` is a display timeout, not a measurement.

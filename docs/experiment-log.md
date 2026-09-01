@@ -3910,3 +3910,22 @@ This is the third time an unread capture answered a question we were about to sp
 on — `$SFLASH` sat unread for two days, `$ALCD` heat telemetry for days, and now this. **Before planning
 a capture, grep the ones in `protocol/captures/raw/` for the command you expect to find.** It cost ten
 minutes here and would have cost an evening with two phones and a hub.
+
+## 2026-09-01 (Claude, MacBook) — M2 narrowed to one layer, again without touching hardware
+
+Same move as the headset decode an hour earlier: **grep the captures before booking a bench session.**
+
+**The gun is not the problem.** `2026-08-26-weapons-smg-plus-amr.btsnoop` (and the energy-rifle
+capture) show the gun sending **one `$ALCD` per shot all the way to zero** — `9,8,7…1,0` at ~350 ms —
+and then a *dry* trigger producing `$BUT,0,1/0` with **no `$ALCD`**. `$ALCD,0` exists and is sent. The
+2026-08-30 observation that "ammo never once read 0" was an artifact of **2-second status sampling**,
+not of the gun going quiet.
+
+**The engine is not the problem either.** Replaying that exact cadence through the real `Engine`
+produces `ammo 0`, `mag 32`, `alive true`, and the low-mag condition **armed** — the two values
+`hud.js` uses for the RELOAD prompt and the solid/red empty state. Now a permanent test.
+
+⇒ The remaining suspect is the **phone's transport/render layer**: ~7 BLE frames/second reaching a
+WebView on an iPhone X while it paints. Either the notifications did not arrive, or they did and the
+paint did not happen. **The "Share log" BLE frame ring separates those two outright** — that instrument
+is still needed, but for a much sharper question than "which of three layers".

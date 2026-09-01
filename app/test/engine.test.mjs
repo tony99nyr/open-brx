@@ -716,3 +716,23 @@ test('a respawn re-arms the low-health alert', () => {
   h.frame('$HP,43,0,0,*');
   assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'a new life gets a new alert');
 });
+
+// ── empty-mag state, replayed at the REAL cadence (capture 2026-08-26-weapons-smg-plus-amr) ──────
+test('emptying a mag leaves ammo 0 and the low-mag prompt armed', () => {
+  // The gun sends one $ALCD per shot all the way down to 0 and then nothing on a dry trigger — proven
+  // in the SMG capture (9,8,7…1,0 at ~350ms, then $BUT with no $ALCD). Field 2026-08-30 showed no
+  // reload prompt and no empty state on the phone, so this pins the two layers we control.
+  const h = goLive(harness());
+  h.frame('$LCD,45,70,0,0,32,192,*');
+  for (let mag = 31; mag >= 0; mag--) {
+    h.adv(140); h.frame('$BUT,0,1,*'); h.frame(`$ALCD,${mag},100,0,192,0,*`); h.frame('$BUT,0,0,*');
+  }
+  const st = h.eng.state();
+  assert.equal(st.ammo, 0, 'the engine sees the empty magazine');
+  assert.equal(st.mag, 32, 'and keeps the right denominator');
+  // the two values hud.js derives the RELOAD prompt and the solid/red empty state from
+  assert.ok(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= 0.15, 'lowMag is armed');
+  // a dry trigger after empty must not move anything
+  h.adv(140); h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.state().ammo, 0);
+});
