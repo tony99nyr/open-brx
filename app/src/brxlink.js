@@ -1,5 +1,6 @@
 // BrxLink — the seed's hardware-proven BLE plumbing (node.md §7), behind a thin interface.
-// Init exactly once; connect-with-retry (unbounded with backoff while armed/live); continuous
+// Init exactly once; connect-with-retry (bounded on the first connect, then FOREVER with backoff in
+// every phase, retired by a generation token); continuous
 // low-latency scan picker; hardened reassembler; 20-byte chunked writes with pacing; per-device
 // write queue; auto-reconnect that hands the engine a resync opportunity.
 import { BleClient, textToDataView, dataViewToText } from '@capacitor-community/bluetooth-le';

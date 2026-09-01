@@ -930,6 +930,7 @@ class Session:
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if self.scorer:
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
+            self._restore_recap()
             self._push_scores()
             self._changed()
 
@@ -942,8 +943,28 @@ class Session:
             self.scorer.ingest_batch(nid, events, t_recv)
             if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
                 self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
+            self._restore_recap()
             self._push_scores()
             self._changed()
+
+    def _restore_recap(self) -> None:
+        """Re-write the stored recap when a fact lands AFTER the match ended.
+
+        `_finish()` wrote it once. Facts held in a node's store-and-forward outbox arrive later — that
+        is the whole point of the outbox — and they updated the live scorer but never the stored row,
+        so the archive drifted from reality. Measured on real sessions: one match stored 4 kills / 38
+        hits against 126 `hit_taken` and 12 deaths on the wire; another matched exactly, because
+        nothing arrived late. The RECAP history picker serves these rows, so an archived match was
+        showing understated scores (review 2026-09-01).
+        """
+        if self.phase != "recap" or not (self.store and self.scorer):
+            return
+        try:
+            self.last_recap = self.scorer.recap()
+            self.store.match_ended(self.scorer.match_id, self.last_recap)
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
 
     def _push_scores(self):
         """A7: push each player's ScoreRow to its node when it changed (best-effort; only reaches nodes in coverage)."""
@@ -1202,7 +1223,15 @@ class Session:
         self.last_recap = None
         if self.store:
             try:
-                self.store.match_started(self.start_info["match_id"], self.config, self.start_info["go_live_t"])
+                # The config AND the compiled head we actually pushed. Tony, 2026-09-01: "as we debug,
+                # you should be able to see every single setting for a game on MC. i had to tell you i
+                # ran it again on outdoor." That round cost us a whole theory: I built a case on
+                # `$GSET` outdoorMode without being able to see which venue had been used, or the
+                # frame that carried it. The head is the ground truth — it shows the token, not a
+                # setting that maps to it.
+                snap = dict(self.config)
+                snap["_heads"] = {pid: (b or {}).get("head", []) for pid, b in self.bundles.items()}
+                self.store.match_started(self.start_info["match_id"], snap, self.start_info["go_live_t"])
             except Exception:
                 pass
         self.net.broadcast("start", self._start_body())

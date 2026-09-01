@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapView, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { Brackets, SectionRule, PrimaryButton } from '../ui';
+import { BTN_RESET, Brackets, SectionRule, PrimaryButton } from '../ui';
 
 const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(120px,1fr)';
 const AWARD_COLOR: Record<string, string> = { MVP: '#ffd23f', 'FIRST BLOOD': T.bad, MULTIKILL: T.warn };
@@ -87,6 +87,7 @@ export function Recap() {
   return (
     <div className="screen">
       {picker}
+      {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
       {past && (
         <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.dim}`, font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>
           ARCHIVED MATCH{past.ended_t ? ` — ENDED ${new Date(past.ended_t).toLocaleString()}` : ''} · READ ONLY
@@ -242,4 +243,47 @@ function chip(on: boolean): React.CSSProperties {
   return { font: F.mono(600, 10), letterSpacing: '.12em', padding: '5px 10px', minHeight: 28, cursor: 'pointer',
            background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim,
            border: `1px solid ${on ? T.acc : T.line2}` };
+}
+
+
+/** Every setting the match actually ran with, and the head we pushed.
+ *  Tony, 2026-09-01: "as we debug, you should be able to see every single setting for a game on MC."
+ *  A whole evening's theory rested on which venue a match used, and the only way to find out was to
+ *  ask him. The compiled head is included because a token is ground truth where a setting is a claim. */
+function MatchConfig({ row }: { row: MatchHistoryRow }) {
+  const [open, setOpen] = useState(false);
+  const cfg = row.config ?? {};
+  const heads = (cfg._heads ?? {}) as Record<string, string[]>;
+  const head = Object.values(heads)[0] ?? [];
+  const skip = new Set(['_heads', 'teams']);
+  const rows = Object.entries(cfg).filter(([k]) => !skip.has(k));
+  return (
+    <div style={{ marginBottom: 12, border: `1px solid ${T.line}`, background: T.panelDeep }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ ...BTN_RESET, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', minHeight: 40 }}>
+        <span style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} GAME SETTINGS AS RUN</span>
+        <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>
+          {String(cfg.mode ?? '').toUpperCase()} · {String(cfg.environment ?? '?').toUpperCase()} · {head.length} HEAD FRAMES
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: '4px 12px 12px', display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 14px', alignItems: 'baseline', minWidth: 260 }}>
+            {rows.map(([k, v]) => (
+              <div key={k} style={{ display: 'contents' }}>
+                <span style={{ font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.micro }}>{k.toUpperCase()}</span>
+                <span style={{ font: F.mono(600, 11), color: T.ink, wordBreak: 'break-word' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+              </div>
+            ))}
+          </div>
+          {head.length > 0 && (
+            <div style={{ flex: '1 1 340px', minWidth: 0 }}>
+              <div style={{ font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.micro, marginBottom: 4 }}>COMPILED HEAD — WHAT THE GUN WAS SENT</div>
+              <pre style={{ margin: 0, maxHeight: 240, overflow: 'auto', font: F.mono(500, 10.5), color: T.dim, background: T.inset, border: `1px solid ${T.line}`, padding: 8 }}>{head.join('\n')}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

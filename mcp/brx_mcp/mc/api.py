@@ -366,7 +366,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         if not s.store:
             return JSONResponse([])
         try:
-            return JSONResponse([{k: m[k] for k in ("match_id", "go_live_t", "ended_t", "recap")}
+            # the FULL config (and the compiled head under `_heads`), not just the mode — debugging a
+            # field report needs every setting the game actually ran with, not a summary of it
+            return JSONResponse([{k: m[k] for k in ("match_id", "go_live_t", "ended_t", "recap", "config")}
                                  | {"mode": (m["config"] or {}).get("mode", "")} for m in s.store.matches()])
         except Exception:                            # history is a convenience; never 500 the console
             # NOT a header: Starlette encodes header values as latin-1, so an error message carrying a

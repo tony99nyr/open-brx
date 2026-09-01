@@ -247,6 +247,9 @@ export interface MatchHistoryRow {
   go_live_t: number | null;
   ended_t: number | null;
   recap: RecapView | null;
+  /** The full GameConfig the match actually ran with, plus `_heads`: the compiled head frames pushed
+   *  to each player. The frames are the ground truth — a setting can be misread, a token cannot. */
+  config?: Record<string, unknown> & { _heads?: Record<string, string[]> };
 }
 
 /** Selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack; only HEAVY is

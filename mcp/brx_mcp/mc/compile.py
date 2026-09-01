@@ -53,7 +53,7 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
 DEFAULT_POOL = 115
 
 
-# Token 1 is a headset colour index. NO capture has ever carried anything but 0, 1, 6 or 7, and the
+# Token 1 is a headset colour index. Across all 23 captures it is only ever 0, 1, 7 or empty, and the
 # APK's `LedColorType` has only a handful of members — so a 4-team game's tid 2/3, and certainly any
 # larger tid, would be a token we cannot name. Emit it only for the values Callsign has been seen to
 # send, and stay silent otherwise rather than guess.
@@ -122,19 +122,20 @@ _W_MAG, _W_RELOAD, _W_CLIPSTART, _W_RESERVE = 17, 19, 40, 41   # doc tokN == spl
 
 # Kill-line id per voice family (§5/§5b). VA (male) + V3A (heavy "kill") are hardware-confirmed;
 # the rest are the family's kill slot, best-effort until pinned.
-# Kill lines CONFIRMED BY EAR in protocol/callsign-extract/sound-bank.md. Unlike the six $PSET
+# Kill lines LISTED in protocol/callsign-extract/sound-bank.md's pack examples. ⚠ Not confirmed by
+# ear — that file's only 'heard' annotations are V3I, H29, VA8C and VA16. Unlike the six $PSET
 # voice slots these do NOT share a suffix across families (A, S, A, A, R, A), so they are listed
 # rather than derived — a family with no confirmed line falls back to its own "<fam>A", which is
 # the majority pattern, and finally to VAA.
-_KILL_LINE_CONFIRMED = {"heavy": "V3A", "medic": "V8S", "male": "VAA", "scout": "VBA",
+_KILL_LINE_DOCUMENTED = {"heavy": "V3A", "medic": "V8S", "male": "VAA", "scout": "VBA",
                         "valkyrie": "VHR", "clean_male": "VEA"}
 
 
 def kill_line(voice: str | None) -> str:
     from ..gameconfig import VOICE_PACKS
     v = (voice or "male").lower()
-    if v in _KILL_LINE_CONFIRMED:
-        return _KILL_LINE_CONFIRMED[v]
+    if v in _KILL_LINE_DOCUMENTED:
+        return _KILL_LINE_DOCUMENTED[v]
     fam = VOICE_PACKS.get(v)
     return f"{fam}A" if fam else "VAA"
 _CONFIRMED_CUES = {"countdown", "kill"}   # everything else in cues() is provisional (real bank ids)

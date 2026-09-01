@@ -953,18 +953,18 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
 Session: `~/.brx-mcp/mc/session-8bbf96ab.sqlite` — **both phones' BLE frame rings were shared to MC**,
 so several of these are settled from data rather than recollection.
 
-- **G1 · The headset IR domes never registered a hit.** All **10 `$HIR` in our frame ring carry
-  sensor `4` (gun body); zero from the domes (0 = front, 1 = back).** Callsign's
-  `2026-08-23-two-tagger-combat` capture, same guns, shows **`0` on 3 of 23 hits** — so the domes DO
-  work natively and did not for us. Something in our arm either fails to enable them or disables
-  them. This is the highest-value open item: it is a third of the hit surface.
-- **G2 · `hit_taken` does not carry the sensor.** The engine parses `$HIR` tok1 and drops it, so MC
-  cannot see G1 at all — it took the frame ring to find. Forward it; it is one field.
-- **G3 · Dying produced no green flash** (native does). The only `$HLED` in either ring is our
-  END_SEQUENCE blanker `$HLED,0,0,0,0,0,0`. The low-health alert shipped in 0.1.1 (`hurtFired`
-  landed 09:10, the APK was cut 14:01) so it was present and did not fire — but the ring holds only
-  the last 60 frames and both rings end at teardown, so **absence here is not proof**. Instrument it:
-  log a line when the cue fires.
+- **G1 · ⛔ RETRACTED — "the headset domes never registered a hit" is wrong.** It rested on 10 frames
+  from a 60-frame teardown ring, and on counting only sensors 0 and 1 as headset. `$HIR` tok1 **0–3
+  are ALL headset** (it has four sensors, operator-confirmed 2026-09-01). Split by match: the reported
+  match was **13 headset / 62 gun (17%)** — above Callsign's native 3/23 ≈ 13% — and the later nozzle
+  test **95 / 0**. Refuted causes: `outdoorMode`, daylight, gun uptime. **What is still unexplained:**
+  sensor 1 (back dome) took **zero** hits in the reported match and 69 in the test. Tracked as
+  `field-issues.md` F2-1, tested by `verify-together.md` V1.
+- **G2 · ✅ DONE** — `hit_taken` now carries `sensor`. Doing it exposed a real bug: `ir_proto` was read
+  from `$HIR` tok1, i.e. it had been carrying the SENSOR all along. Facts recorded before 2026-09-01
+  carry that mix-up with no version marker.
+- **G3 · The low-health alert did not visibly fire.** Instrumented: the HUD now logs when the cue
+  fires, so absence becomes decidable — the 60-frame ring could never settle it. `verify-together.md` V2.
 - **G4 · The headsets DID show team colour, but on DEATH rather than pre-game.** Consistent with the
   Windows lane's correction that our `$HLED` sits mid-head where Callsign sends it as a LOBBY frame
   paired with `$GLED`. Try matching Callsign's position and pairing.

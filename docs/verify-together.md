@@ -6,8 +6,9 @@ ordered so an early result does not depend on a later one. Ten minutes covers th
 Everything here is either a fix that is shipped but unconfirmed on hardware, or a report I could not
 reproduce. Nothing in this file is "probably fine" — if it were, it would not be here.
 
-**Before you start:** note **how long the guns have been powered**. That is the one variable we keep
-failing to record, and it is the leading suspect in V1.
+**Before you start:** note **how long the guns have been powered** and whether a headset was re-seated.
+Not because either is a suspect — gun uptime is refuted (they were cycled before every game) — but because
+they are the variables we keep failing to write down, which is why two theories died undecided.
 
 ---
 
@@ -18,13 +19,16 @@ failing to record, and it is the leading suspect in V1.
 headset**, `4` is the gun body. The doc previously listed only 0 = front, 1 = back, 4 = gun — so 2 and
 3 read as unknown and every count that used "0 or 1" undercounted the headset by half.
 
-Re-counted with all four, the session reported as "headsets not working" was:
-**headset 108, gun 62 — the headset caught 64% of 170 hits**, the first one 17 s in.
+Re-counted with all four and **split by match** (a blended figure mixes two very different things):
 
-So the headsets were working throughout, and the whole-session claim does not hold. Two things still
-do not fit, and are what V1 tests:
-- the **5–10 min window ran 0 headset / 11 gun**;
-- the deliberate point-blank test **failed then and worked later** (30–40 min: 92 headset, 0 gun).
+| match | headset | gun | headset share |
+|---|---|---|---|
+| the one reported as broken | **13** | 62 | **17%** |
+| the later deliberate nozzle test | 95 | 0 | 100% |
+
+17% is above Callsign's own native rate (3 of 23 ≈ 13%), so the headset was not dead. But one thing
+is genuinely odd and is what V1 tests: **sensor 1 — the back dome — recorded ZERO hits in the reported
+match**, and 69 in the test match.
 
 **Do:** nozzle on each of the four sensor positions, 5 shots each; then the same from ~1 m. Watch MC's
 live rows — `sensor` is reported now, so you can see WHICH of the four caught each shot.
@@ -37,13 +41,17 @@ then **change nothing**, Share log from that phone at once, and note gun uptime.
 so 30–50 cm may be the more honest test.
 
 ## V2 · Does the low-health alert fire, and is it bright enough? 🟠
-**Shipped:** `$PLAY,VA8B` + `$HLED,7,4,90,90,**100**,15` once per life when armour hits 0 and HP
-starts dropping. Brightness raised from Callsign's 10.
+**Shipped:** `$PLAY,VA8B` + `$HLED,7,4,90,90,10,15` once per life, byte-identical to Callsign.
+Our trigger fires on the first HP-only frame; **Callsign's two observed alerts both came at `$HP,34,0,0`**,
+two hits later, so an HP threshold fits its behaviour as well as "armour 0" does. n=2.
 **Do:** take a player's armour to 0 and keep hitting them.
 **Proves working:** their headset lights, and the HUD log shows `low-health alert: armour 0, hp NN`.
-**Proves broken:** log line present but no light → the frame is wrong or brightness 100 is rejected;
-**drop the constant toward 10 and bisect** (`HEADSET_ALERT_BRIGHTNESS` in `compile.py`). No log line
-at all → the trigger never fired, and the alert is ours to fix.
+**Proves broken:** log line present but no light → the frame itself is wrong. No log line at all → our
+trigger never fired, and that is ours to fix.
+**Only once it is confirmed firing:** sweep `$HLED` token 5 (`HEADSET_ALERT_BRIGHTNESS`) one value at a
+time to find out what it actually is. ⚠ It may be a REPEAT COUNT, not brightness — the 2026-08-30 sweep
+pinned token 5 on `$GLED`, not `$HLED`, and the APK's headset enums are colour/blink-loop/effect. If it
+is a count, a big value means many seconds of blinking on a victim mid-firefight.
 **Why:** it did not fire last session and we could not tell whether it had even been attempted.
 
 ## V3 · Does the pre-game headset team colour show? 🟠

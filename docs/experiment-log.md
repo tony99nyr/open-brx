@@ -3779,9 +3779,9 @@ it was discarded rather than written up. See the following entry.
 ## 2026-08-30 (Tony + Claude, MacBook) — 🏆 THE FIRST FULL MATCH ON OUR OWN STACK, and 11 findings
 
 **The MC↔phone↔gun path is HARDWARE-VERIFIED.** Two phones, two taggers, one MacBook hosting: a
-300-second FFA ran start to finish. **12 kills, 126 landed hits, 24 respawns, live streaks, a winner.**
+300-second FFA ran start to finish. **12 kills, 126 landed hits, 12 deaths and 12 respawns, live streaks, a winner.**
 That closes the headline `[UNVERIFIED]` in `field-runbook-mc.md` — the field path is real, not just
-green in the test suite. Evidence: `~/.brx-mcp/mc/session-e615e251.sqlite` (984 envelopes) and the
+green in the test suite. Evidence: `~/.brx-mcp/mc/session-e615e251.sqlite` (2095 envelopes) and the
 tee'd `~/mc-20260830-1930.log`.
 
 Everything below came out of that one match. Nine were fixed the same night; two need more evidence.
@@ -3798,7 +3798,7 @@ phone bound, so neither got an `assign`, so both HUDs sat on "waiting" — with 
 ### Volume was two notches too quiet (FIXED)
 `$VOL,69` — the value iOS Callsign sends, and our house default — is **on-gun level 2**
 (`$VOL` L1=60 … L5=100). Tony asked for L4. Volume now follows the venue that was already in the
-config: **90 outdoors, 80 indoors**, try-outs 80. `compile.play_volume()`.
+config: **90 outdoors, 80 indoors**, try-outs 69. `compile.play_volume()`.
 
 ### The weapon meters were measuring the wrong thing (FIXED)
 `stats.dmg` is documented in `weapons.json` `_note` as *"share of a 115 pool one hit removes"* — 7 to
@@ -3897,9 +3897,10 @@ pre-game `$HLED`. Our headsets never got that frame, so we have never seen the l
 now an eyeball test, not a capture.
 
 ### Shipped
-- `compile.py` head now ends `… $HLED,<tid>,0,,,10,,* → $TID,<tid>,*`. **`$HLED` token 1 is a palette
-  index on the same scale as `$GLED`** (0 red · 1 blue · 2 yellow · 3 green) and our `$TID` values
-  already use exactly that mapping (`state.TEAM_DEFS`), so the tid *is* the colour — no lookup needed.
+- `compile.py` head now ends `… $HLED,<tid>,0,,,10,,* → $TID,<tid>,*`. `$HLED` token 1 is a colour index. ⛔ **The claim that it shares `$GLED`'s palette and that "the tid
+  IS the colour" is RETRACTED** (review 2026-09-01): across all 23 captures token 1 is only ever 0, 1, 7
+  or empty, and **no capture contains a `$TID` at all**, so nothing observed links the two. We now emit
+  it only for the values Callsign has been seen to send.
 - `cues.hurt` + `cues.hurt_led`, fired by the node once per life on the armour-0 → HP-damage
   transition (`engine._onHp`). Byte-identical to the capture.
 - Both are **UNCONFIRMED on hardware.** Next match: look at the headsets pre-game (team colour?) and

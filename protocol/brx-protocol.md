@@ -1310,14 +1310,14 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
 `FrameBundle` head written verbatim over BLE from the bench rig (`$VOL,60`). Findings, each observed directly:
 
 - **`$HIR` token 1 is the SENSOR that caught the IR, not a damage class.** Aimed shots: headset-only hits →
-  `$HIR,1,…`; gun-body hits → `$HIR,4,…`; a third value `0` appeared on unaimed hits (another gun sensor).
+  `$HIR,1,…`; gun-body hits → `$HIR,4,…`; a third value `0` appeared on unaimed hits (a HEADSET sensor — the headset has four, 0-3).
   A kill is NOT marked in `$HIR` (no `2`): the kill is `$HP,0,0,0` followed by `$LCD,0,0,0,0,<mag>,<reserve>`.
   §7q's "4 = armor absorbed / 0 = HP / 2 = kill" reading is **retracted**. Token 5 = the raw magnitude in the
   IR word (24 here = this config's `$WEAP` `t5`; **applied** = magnitude × the victim's `$SIR`-function
   multiplier × (1 + `$GSET` t7/100) if crit — see the §7r addendum; ×1.5 is only the shipped t7=50).
   **tok1 sensor map — RESOLVED by shielded isolation (2026-08-26):** `0` = headset **FRONT** dome,
   `1` = headset **BACK** dome, `4` = gun body (full method in the tok1 sensor-map section at the end of
-  this file). A headset/head hit is tok1 ∈ {0,1} (0 vs 1 = front vs back); the earlier bench's "token 1
+  this file). A headset/head hit is tok1 ∈ {0,1,2,3} (the headset has FOUR sensors — operator-confirmed 2026-09-01; only 0 and 1 were bench-isolated) (0 vs 1 = front vs back); the earlier bench's "token 1
   == 1 is a headshot" was half-right — 1 is specifically the BACK dome. ⚠ Trust tok1 for directional
   logic **only at field distance**: a five-phase point-blank sweep saw only {0,4}, because IR floods
   every receiver and the first to catch it reports, so aim→sensor doesn't map at close range.

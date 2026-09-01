@@ -29,9 +29,9 @@ Lab notebook entry: `docs/experiment-log.md` → *2026-08-30 (Tony + Claude, Mac
 ## 🏆 The headline
 
 **The MC↔phone↔gun path is hardware-verified.** Two phones, two taggers, one MacBook hosting: a
-300-second FFA ran start to finish — **12 kills, 126 landed hits, 24 respawns, live streaks, a winner.**
+300-second FFA ran start to finish — **12 kills, 126 landed hits, 12 deaths and 12 respawns, live streaks, a winner.**
 That closes the top `[UNVERIFIED]` banner in `docs/field-runbook-mc.md`. Evidence:
-`~/.brx-mcp/mc/session-e615e251.sqlite` (984 envelopes) + `~/mc-20260830-1930.log` on the Mac.
+`~/.brx-mcp/mc/session-e615e251.sqlite` (2095 envelopes) + `~/mc-20260830-1930.log` on the Mac.
 
 Everything below came out of that single match.
 
@@ -80,7 +80,7 @@ write-up in the 2026-09-01 `experiment-log.md` entry. What Callsign sends to the
 
 | when | frame | which player |
 |---|---|---|
-| pre-game, with `$GLED` | `$HLED,<team>,0,,,10,,*` | every gun, every captured game |
+| pre-game, with `$GLED` | `$HLED,<colour>,0,,,10,,*` | every capture that contains a lobby LED frame — 18 of 23 files have any LED frame, and 3 of those carry only the end-of-game `$HLED,,6` |
 | armour 0 → HP dropping | `$PLAY,VA8B,3,6,,,,,*` then `$HLED,7,4,90,90,10,15,*` | the **victim**, once per life |
 | end of game | `$HLED,,6,,,,,*` | every gun |
 
