@@ -229,7 +229,9 @@ export interface Api {
   start(runway_s: number, force?: boolean): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   reschedule(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   abort(): Promise<{ ok: boolean; reached: string[]; unreachable: string[] }>;
-  control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{ ok: boolean }>;
+  /** `reached` = how many nodes the broadcast actually landed on, out of `nodes` bound. A control
+   *  that reaches nobody used to report plain success (field 2026-09-01). */
+  control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{ ok: boolean; reached?: number; nodes?: number }>;
   getRecap(): Promise<RecapView>;
   matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;

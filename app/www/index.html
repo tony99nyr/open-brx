@@ -377,14 +377,17 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lo .who .num{font-family:var(--fd);font-weight:700;font-size:16px;color:var(--glow)}
 .lo .lobody{position:absolute;top:70px;left:36px;right:36px;bottom:74px;display:flex;gap:16px}
 .lo .lolist{flex:0 0 400px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:6px;pointer-events:auto}
-.lofilt{display:flex;gap:6px;margin-bottom:2px;flex:0 0 auto}
-.fch{height:34px;min-width:90px;padding:0 14px;background:var(--plate2);border:1px solid var(--edge);color:var(--mut);font-size:11px;letter-spacing:.2em;font-weight:700;transform:skewX(-10deg);position:relative;pointer-events:auto}
+/* WEAPONS | PERKS | NONE. Field 2026-09-01: "the perks menu is really small and hard to see, it
+   was hard to figure out how to open the perks menu". These are the only way to reach perks, so
+   they are sized as the primary control they are, not as a filter chip. */
+.lofilt{display:flex;gap:8px;margin-bottom:8px;flex:0 0 auto}
+.fch{height:46px;min-width:132px;padding:0 20px;background:var(--plate2);border:1px solid var(--edge);color:var(--ink);font-size:14px;letter-spacing:.18em;font-weight:700;transform:skewX(-10deg);position:relative;pointer-events:auto}
 .fch .unskew{display:inline-block;transform:skewX(10deg)}
 .fch.on{background:var(--num);color:#04121e;border-color:var(--num)}
 .fch.none{margin-left:auto}
 .fch.none.on{background:var(--plate);color:var(--ok);border-color:var(--ok)}
 .fch.pend{border-color:var(--glow);color:var(--glow)}
-.fch::after{content:"";position:absolute;left:0;right:0;top:-6px;bottom:-6px}   /* ≥44px tap area on a 34px chip */
+/* the ::after tap-area hack is gone: the chip is 46px tall now, so the control IS the tap target */
 .lrow{display:flex;align-items:center;gap:12px;min-height:50px;padding:5px 12px 5px 6px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-6deg);flex:0 0 auto;pointer-events:auto}
 .lrow > *{transform:skewX(6deg)}
 .lrow .thumb{flex:0 0 66px;height:36px;background-size:cover;background-position:center;border:1px solid var(--edge)}

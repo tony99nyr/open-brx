@@ -513,6 +513,9 @@ export class Engine {
     switch (cmd) {
       case 'end': case 'recall':
         if (this.phase === 'live' || this.phase === 'armed' || this.phase === 'lobby') this._endLocal(cmd);
+        // Silently ignoring it is why "END MATCH EARLY did not reach the HUDs" was undiagnosable:
+        // both phones were already in `kitted`, where this is a no-op, and nothing said so anywhere.
+        else this.log(`control ${cmd} ignored — phase is ${this.phase}`, 'le');
         return;
       case 'abort_start':
         if (this.phase === 'armed' && (seq == null || (this.start && this.start.seq === seq))) { this.start = null; this.cuesFired = new Set(); this._write([PLAYX], 'abort'); this._set('lobby'); }
@@ -654,6 +657,9 @@ export class Engine {
       this.hurtFired = true;
       const c = this.frames && this.frames.cues;
       const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
+      // logged explicitly: after the last field session we could not tell whether the alert had
+      // fired at all, because the frame ring only holds 60 frames and had rolled past it.
+      this.log(`low-health alert: armour 0, hp ${this.hp} — ${fr.length} frame(s)`, 'lk');
       if (fr.length) this._write(fr, 'low health');
     }
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {

@@ -7,6 +7,9 @@ import { Blink, GhostButton, Tag } from '../ui';
 const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr) 84px';
 
 export function Live() {
+  // A control that lands on NOBODY used to report plain success — the operator had no way to
+  // know END MATCH EARLY had not reached a single HUD (field 2026-09-01).
+  const [reach, setReach] = useState<string | null>(null);
   const { state, feed, run, api, serverNow, connected } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
   const [recallConfirm, setRecallConfirm] = useState(false);
@@ -58,19 +61,20 @@ export function Live() {
               {endConfirm ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>FREEZE SCORING NOW? LATER KILLS WON'T COUNT.</span>
-                  <GhostButton color={T.bad} border={T.bad} onClick={() => { setEndConfirm(false); run(() => api.control('end')); }}>CONFIRM END</GhostButton>
+                  <GhostButton color={T.bad} border={T.bad} onClick={async () => { setEndConfirm(false); const r = await run(() => api.control('end')); if (r) setReach(`END REACHED ${r.reached ?? '?'} OF ${r.nodes ?? '?'} NODE(S)`); }}>CONFIRM END</GhostButton>
                   <GhostButton onClick={() => setEndConfirm(false)}>CANCEL</GhostButton>
                 </span>
               ) : (
                 <GhostButton onClick={() => setEndConfirm(true)} title="Early end: reaches only nodes in range; the rest end at the time limit (confirm step)">END MATCH EARLY</GhostButton>
               )}
               {recallConfirm ? (<>
-                <GhostButton color={T.warn} border={T.warn} onClick={() => { setRecallConfirm(false); run(() => api.control('recall')); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
+                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => api.control('recall')); if (r) setReach(`RECALL REACHED ${r.reached ?? '?'} OF ${r.nodes ?? '?'} NODE(S)`); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
                 <GhostButton onClick={() => setRecallConfirm(false)}>CANCEL</GhostButton>
               </>) : (
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} title="Two-step: revive and hold every node in range">RECALL</GhostButton>
               )}
               <span style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT {fmtClock(lv.time_limit_s)}.</span>
+              {reach && <span role="status" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: reach.startsWith('END REACHED 0') || reach.startsWith('RECALL REACHED 0') ? T.bad : T.ok }}>{reach}</span>}
             </div>
           </div>
         </div>

@@ -7,7 +7,7 @@ settle them. Newest session first.
 **Add to this file the moment an issue is reported**, before diagnosing — that is the point of it.
 Cross-references: `docs/FOLLOWUPS.md` (all open work), `docs/experiment-log.md` (the lab notebook).
 
-Legend — ✅ fixed & tested · 🔧 fixed, needs a field check · 🔍 open, evidence named · 💭 open, design
+Legend — ✅ fixed & tested · 🔧 fixed, needs a field check (see **[verify-together.md](verify-together.md)**) · 🔍 open, evidence named · 💭 open, design
 
 ---
 
@@ -20,11 +20,11 @@ Evidence: `~/.brx-mcp/mc/session-8bbf96ab.sqlite` (both phones' BLE frame rings 
 | F2-2 | `hit_taken` could not show which sensor fired | ✅ | Sensor forwarded to MC. Found a **pre-existing bug doing it**: `ir_proto` read `$HIR` token 1, which is the *sensor* — every hit fact ever recorded carried that mix-up. Both fixed, test added. |
 | F2-3 | Gun powered on did not auto-reconnect; HUD blinked GUN DISCONNECTED, MC blocked; needed the debug menu | 🔧 | Reconnect was unbounded only in `armed`/`live`; elsewhere it stopped after 6 tries (~25 s) — about how long a switched-off gun takes to burn them. Now retries **forever** in every phase (backoff caps at 10 s, ~6 attempts/min), and the GUN LINK LOST pill is now a **tap-to-reconnect button** instead of a status. |
 | F2-4 | SHARE LOG dumped text to copy-paste | ✅ | On success it now reports bytes + frame count and returns. The share sheet is the fallback for when MC cannot take it, and says so. |
-| F2-5 | Dying produced no green flash (native does) | 🔍 | The alert shipped in 0.1.1 and did not fire. The only `$HLED` in either ring is our END_SEQUENCE blanker — but rings hold 60 frames and both end at teardown, so **absence is not proof**. Needs a log line when the cue fires. |
+| F2-5 | Dying produced no green flash (native does) | 🔧 | **Instrumented + brightness raised** (V2). The HUD now logs when the cue fires, so absence is decidable; `$HLED` brightness went 10 → 100. The alert shipped in 0.1.1 and did not fire. The only `$HLED` in either ring is our END_SEQUENCE blanker — but rings hold 60 frames and both end at teardown, so **absence is not proof**. Needs a log line when the cue fires. |
 | F2-6 | Headsets showed team colour on DEATH, not pre-game | 🔍 | Consistent with the Windows lane's correction: our `$HLED` sits mid-head, where Callsign sends it as a LOBBY frame paired with `$GLED`. Try matching position and pairing. |
 | F2-7 | A game whose rules fix the weapon/perk did not apply them | 🔍 | No evidence captured. Needs a repro with the config id noted. |
-| F2-8 | END MATCH EARLY on MC did not reach either HUD | 🔍 | `control{end}` fan-out. Both nodes were `wsState: bound` at the time, so not a transport drop. |
-| F2-9 | Perks menu on the phone is small and hard to find | 💭 | UX. |
+| F2-8 | END MATCH EARLY on MC did not reach either HUD | 🔧 | **Likely found:** the HUD ignores `control{end}` unless phase is live/armed/lobby — and both nodes reported **`kitted`**, where it is a no-op. MC also discarded `broadcast()`'s reach count, so it reported success either way. Now MC shows `END REACHED n OF m` (red at 0) and the HUD logs the ignore. Verify: V6. |
+| F2-9 | Perks menu on the phone is small and hard to find | 🔧 | The WEAPONS \| PERKS \| NONE controls were 34 px filter chips and are the only route to perks; now 46 px and styled as the primary control they are. Verify: V7. |
 | F2-10 | "A phone HUD would not reconnect/sync on Wi-Fi" | ✅ | **Not a transport bug.** Its own log: `wsState: bound`, `synced: true`, `mc_reachable: true`, `pending: 0` — and it delivered its log over that link. What was down was `bleUp:false`, the *gun*. The HUD presented a dead gun as a sync failure; that misdirection is the real defect and is what F2-3 now fixes. |
 | F2-11 | Only MALE/FEMALE selectable | ✅ | 15 personas. `$PSET`'s trailing tokens are a positional voice pack that was hardcoded to HEAVY for every player. |
 | F2-12 | KIT should list online taggers, not a gun dropdown | 💭 | Built, then **reverted**: it inverts the setup order (roster→gun→phone becomes phone→claim) and took the e2e from 75/75 to 29/75. Right model, but it needs the e2e's setup phase rewritten. Pairs with phone-side gamertag entry — do them together. |

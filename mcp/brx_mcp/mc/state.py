@@ -1248,7 +1248,10 @@ class Session:
             raise ValueError("unknown control")
         if cmd == "panic" and not confirm:
             raise ValueError("panic requires confirm")
-        self.net.broadcast("control", {"cmd": cmd})
+        # broadcast() returns how many nodes it actually reached and this discarded it, so END MATCH
+        # EARLY reported success even when it landed on nobody (field 2026-09-01: "end game early on
+        # MC did not go to each hud"). The operator needs the number — `abort` already shows one.
+        reached = self.net.broadcast("control", {"cmd": cmd})
         if cmd == "end" and self.scorer:
             self.scorer.set_end(self.now_ms())           # A6.1 end freeze
             self._finish()
@@ -1259,7 +1262,8 @@ class Session:
             self.acks = {}
             self.phase = "kit"
         self._changed()
-        return {"ok": True}
+        bound = sum(1 for p in self.players.values() if p.get("node_id"))
+        return {"ok": True, "reached": reached, "nodes": bound}
 
     def _push_victory(self, recap: dict | None) -> None:
         """At recap, the WINNING team's (or FFA winner's) connected nodes get the `victory` cue; losers
