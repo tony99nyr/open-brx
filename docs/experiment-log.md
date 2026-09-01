@@ -3940,11 +3940,11 @@ No hardware. Everything here is code, docs and tests — `handoff-post-first-mat
 written *because* the 2026-08-30 match found sixteen defects and **not one of them was found by a
 test**. So the theme is the same one all the way through: make the machine check what a person had to.
 
-**Suites: mcp 542 → 577 · MC console 0 → 66 (new) · app: the 54 engine tests and 9 transport tests
+**Suites: mcp 542 → 578 · MC console 0 → 66 (new) · app: the 54 engine tests and 9 transport tests
 were already there but had no runner, so `npm test` is new and 4 of the 67 are (`mcurl`).**
 
 `python3 run_tests.py` is green under system python too — and now *says* what it skipped rather than
-counting it as passed: 577 with the extras, 534 + 43 skipped without. The old bare-`return` guards
+counting it as passed: 578 with the extras, 535 + 43 skipped without. The old bare-`return` guards
 made the two totals byte-identical, so "green under system python" was quietly meaningless for every
 route test (review 2026-09-01).
 
@@ -4106,7 +4106,7 @@ of the repo 30+ times) found four more, all of the same family — *the check di
 - **"green under system python" was quietly meaningless.** The extras-dependent tests bowed out with
   a bare `return`, which the runner scored as a PASS, so the totals were byte-identical with and
   without starlette. Every route test in this diff executed nothing there. `run_tests.py` counts
-  skips now: **577 with the extras, 534 + 43 skipped without.** CLAUDE.md's promise that they "skip
+  skips now: **578 with the extras, 535 + 43 skipped without.** CLAUDE.md's promise that they "skip
   cleanly" is true for the first time.
 
 Plus two retraction-sweep misses on a fact W2 changed — `docs/spec/loadout.md`, the paragraph that

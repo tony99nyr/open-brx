@@ -11,7 +11,7 @@
 > picking up field work; the two highest-value items are **Mac-only**.
 >
 > ### 2026-09-01 — the whole Windows lane of that handoff is done (W1–W5), and the 2026-08-26 ledger with it
-> Suites now: **mcp 577/577 · app 67/67 · MC console 66/66 (new) · e2e 75/75.** In order of what it
+> Suites now: **mcp 578/578 · app 70/70 · MC console 66/66 (new) · e2e 75/75.** In order of what it
 > changes about the product:
 > - **Weapon stats follow the host's health config.** `POOL = 115` was hardcoded, so KIT and ARSENAL
 >   both said the AR takes 13 hits at any health setting — at a 100/100 game it takes 23. Both

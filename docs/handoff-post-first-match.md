@@ -5,7 +5,7 @@
 **M2 is narrowed to one layer**, both from captures already on disk — read those sections before
 planning any bench time. What still needs the hardware is **M2's last layer, M3 and M4**.
 
-Suites: **mcp 577/577 · app 67/67 · MC console 66/66 (new) · browser e2e 75/75.**
+Suites: **mcp 578/578 · app 70/70 · MC console 66/66 (new) · browser e2e 75/75.**
 (At handoff: mcp 542 · app engine 54 · e2e 75. The Mac's sweep took mcp to 543.)
 
 > ### 📌 2026-09-01 — the Mac cleared the leftovers, and left W1–W5 alone as promised.
