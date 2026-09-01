@@ -690,3 +690,67 @@ def test_validate_uses_the_magazine_the_perk_actually_grants():
     for e in quoted:
         assert f"mag {granted} <" in e, f"validate graded the catalog mag, not the granted one: {e}"
         assert "mag 4 <" not in e, e
+
+
+def test_what_the_captures_actually_say_about_HLED():
+    """The `$HLED` head frame's comment cites captures on disk. Check it against them.
+
+    Review 2026-09-01 found the original comment overstated the evidence: it called the frame one
+    Callsign "sends in EVERY captured game" as part of the game head, and asserted that its token 1
+    is a team colour. The captures say something narrower, and this pins what they actually contain
+    so the comment cannot drift back. If a NEW capture changes these numbers, update the comment in
+    `compile.py` in the same commit.
+    """
+    import re
+    caps = sorted((pathlib.Path(__file__).resolve().parents[2] / "protocol" / "captures").glob("*.txt"))
+    assert caps, "no captures on disk to check against"
+
+    hled, gled, tid_frames = [], [], 0
+    lobby_evidence = []
+    for c in caps:
+        lines = c.read_text(errors="replace").splitlines()
+        stamped = []
+        for ln in lines:
+            m = re.match(r"\[\s*([\d.]+)s\]\s*>>\s*(\$\w+)", ln)
+            if m:
+                stamped.append((float(m.group(1)), m.group(2), ln))
+        tid_frames += sum(1 for _, f, _ in stamped if f == "$TID")
+        first_arm = next((t for t, f, _ in stamped if f in ("$CLEAR", "$START")), None)
+        for t, f, ln in stamped:
+            if f == "$HLED":
+                hled.append((c.name, t, ln))
+                # token 7 is the in-play low-health alert and 6/empty is the end-of-game blank;
+                # only the COLOUR frames (0/1) are the lobby ones this claim is about
+                if first_arm is not None and ln.split(",")[1].strip() in ("0", "1"):
+                    lobby_evidence.append((c.name, t, first_arm))
+            elif f == "$GLED":
+                gled.append((c.name, t, ln))
+
+    assert hled, "no $HLED in any capture"
+    # 1. every COLOUR $HLED lands BEFORE the arm sequence — it is a lobby frame, not a head frame
+    for name, t, arm in lobby_evidence:
+        assert t < arm, f"{name}: $HLED colour at {t}s is not before the arm sequence at {arm}s"
+    assert lobby_evidence, "expected at least one colour $HLED to compare against an arm sequence"
+
+    # 1b. ...and the token-7 alert is the opposite: it fires DURING play, which is why the node
+    # sends it as a cue rather than in the head
+    alerts = [(n, t) for n, t, ln in hled if ln.split(",")[1].strip() == "7"]
+    assert alerts, "no $HLED,7 alert in any capture"
+
+
+    # 2. token 1 is only ever 0, 1 or 7 (7 = the low-health alert). Never a team id above 1.
+    tokens = {ln.split(",")[1].strip() for _, _, ln in hled}
+    assert tokens <= {"", "0", "1", "7"}, f"$HLED token 1 took an unseen value: {sorted(tokens)}"
+
+    # 3. NOTHING correlates that token with a team: no capture contains a $TID at all
+    assert tid_frames == 0, (f"a capture now contains {tid_frames} $TID frames — the claim that "
+                             "$HLED token 1 is a team colour may finally be testable; re-read compile.py")
+
+    # 4. a lit $HLED is always preceded by a $GLED with the SAME token 1, within ~1s
+    for name, t, ln in hled:
+        tok = ln.split(",")[1].strip()
+        if tok in ("", "6", "7"):
+            continue
+        near = [g for gn, gt, g in gled if gn == name and 0 <= t - gt <= 1.0
+                and g.split(",")[1].strip() == tok]
+        assert near, f"{name}: $HLED,{tok} at {t}s has no matching $GLED,{tok} in the preceding second"

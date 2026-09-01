@@ -92,8 +92,12 @@ class FakeCompiler:
 
     def cues(self, voice: str) -> dict[str, str]:
         # A6.3: cues are pre-composed $PLAY frames the node writes verbatim
+        # `hurt`/`hurt_led` are here so the demo and every fake-backed test exercise the same key set
+        # the real compiler emits — without them the low-health alert path is unreachable in the
+        # demo, and a node bug in it could only ever be found on hardware (review 2026-09-01).
         return {"countdown": "$PLAY,VA81,4,6,,,,,*", "kill": "$PLAY,,4,6,VAA,,,,*",
-                "game_over": "$PLAY,VSF,4,6,JAY,,,,*"}
+                "game_over": "$PLAY,VSF,4,6,JAY,,,,*",
+                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": "$HLED,7,4,90,90,10,15,*"}
 
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []

@@ -45,3 +45,25 @@ if (typeof globalThis.localStorage === 'undefined') {
 // return `blob:nodedata:…`), so they are deliberately NOT stubbed here — a review round-2 finding
 // asserted they were missing, and the probe disproved it. Tests that care about the download
 // lifecycle spy on them locally instead, which tests the real ordering rather than a stub's.
+
+// Fail a test that logs console.error. React 19 runs in dev mode here, so its warnings — the
+// duplicate-key one especially ("Encountered two children with the same key") — go through this and
+// were previously silent: a whole class of real bug that no test could see.
+//
+// ⚠ It MUST be a `vi.spyOn` inside `beforeEach`. Vitest swaps the console per test file, so a plain
+// `console.error = fn` reassignment at module scope is replaced before any test runs and never
+// fires — a probe done that way reports a comfortable zero even for a deliberately duplicated key
+// (measured 2026-09-01). Verified live against two throwaway controls before being trusted.
+//
+// Scope: this does NOT catch jsdom's own VirtualConsole output (e.g. "Not implemented: navigation to
+// another Document", which the download-anchor click emits). Gating those needs a `virtualConsole`
+// hookup in the environment options — deliberately not done.
+import { afterEach, beforeEach, expect, vi } from 'vitest';
+
+let errorSpy: ReturnType<typeof vi.spyOn>;
+beforeEach(() => { errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {}); });
+afterEach(() => {
+  const calls = errorSpy.mock.calls.map(c => c.map(String).join(' '));
+  errorSpy.mockRestore();
+  expect(calls, `console.error during this test:\n  ${calls.join('\n  ')}`).toEqual([]);
+});

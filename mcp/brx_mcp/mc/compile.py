@@ -428,11 +428,24 @@ class Compiler:
             # button-map state on real guns (brx-opus review 2026-08-27). Cycle only to slot 0 instead, so ALT is a
             # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: bench-tomorrow.md.
             bmap = [("$BMAP,1,100,0,0,99,99,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
-        # Pre-game headset team colour. Callsign sends this in EVERY captured game and we never have,
-        # which is why our headsets sat dark (2026-08-23-two-tagger-combat @211.7s, solo-game @21.4s).
-        # $HLED token 1 is a palette index on the same scale as $GLED (0 red · 1 blue · 2 yellow ·
-        # 3 green) and our $TID values already use exactly that mapping (state.TEAM_DEFS), so tid IS
-        # the colour. Token 5 = brightness, 10 as captured.
+        # Headset colour. We never sent ANY lit-state $HLED, which is why our headsets sat dark for a
+        # whole match (field 2026-08-30) — that part is solid, and this frame is the fix.
+        #
+        # ⚠ WHAT THE CAPTURES ACTUALLY SHOW, corrected 2026-09-01 after review found the original
+        # comment here overstated them. Read this before trusting the value:
+        #   · Callsign sends it in the LOBBY, not in the arm sequence. In every capture it lands
+        #     seconds BEFORE $CLEAR/$START (game-start.txt: $HLED @21.429s, $CLEAR @25.012s;
+        #     two-tagger-combat: @211.7s vs @274.5s). We send it mid-head, after $BMAP. Position is
+        #     therefore OURS, not Callsign's.
+        #   · It is always PAIRED with a $GLED carrying the identical token 1 ~200 ms earlier. We
+        #     send it alone: `_led_frames()` returns [] when LEDs are on.
+        #   · Token 1 is only ever 0, 1 or 7 across every capture on disk (7 = the hurt alert), and
+        #     NO capture contains a $TID at all — so nothing observed correlates this token with a
+        #     team id. "tid is the colour" is an inference from $GLED's palette, not a measurement.
+        #     A tid of 2..63 has never been sent to a headset by anything.
+        # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
+        # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
+        # eyeball test, and do not cite this frame as confirmed until that is done.
         head += list(_SIR_TABLE) + bmap + gc._led_frames() + [f"$HLED,{tid},0,,,10,,*", f"$TID,{tid},*"]
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)

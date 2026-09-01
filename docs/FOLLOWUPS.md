@@ -907,6 +907,14 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
   been seen on a real headset. This is the **only shipped-unverified code path** we have. Next match,
   before anything else: look at the headsets pre-game (do they show team colour?) and at the moment a
   player's armour breaks (does the alert fire?). Either machine, ~12 min, no rig.
+  **Test the colour token specifically.** `compile.py` writes `$HLED,<tid>,…` — but across every
+  capture on disk that token is only ever **0, 1 or 7**, and no capture contains a `$TID` at all, so
+  nothing observed links it to a team. "The tid is the colour" is an inference from `$GLED`'s
+  palette, not a measurement (review 2026-09-01; pinned by
+  `test_mc_compile::test_what_the_captures_actually_say_about_HLED`). Put a player on **tid 2 or 3**
+  and see whether the headset takes the colour at all. Also note Callsign sends this frame in the
+  **lobby**, seconds before `$CLEAR`/`$START`, and always paired with a `$GLED` of the same token —
+  we send it mid-head and alone. If the headset does not light, try the captured shape first.
   ⚠️ **`docs/manual/` publishes "headset green: blink on a hit, hold on a kill" as a ✅ confirmed
   fact** (`01-hardware.md:139,144`, `03-gameplay.md:187,197-198,205`, `02-operation.md:389`,
   `00-home.md:95`). That marker is not earned — we have never seen the lit state. Settle F10 first,
