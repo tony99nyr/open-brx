@@ -1008,7 +1008,11 @@ class Session:
             scan = next((s for s in self.scan_rows if s.get("gun_id") == p.get("gun_id")), None)
             row["identity"] = scan["identity"] if scan else ("ok" if g else "unknown")
             if not nid:
-                blockers.append("NO NODE — OPEN THE APP AND SET THE GUN")
+                # NOT a fault: before a phone has ever connected this is the expected state.
+                # It still blocks the start (a player with no phone cannot play), but it must not
+                # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
+                # broken. They are simply disconnected."
+                blockers.append("WAITING FOR THE PHONE — OPEN THE APP AND SET THE GUN")
             else:
                 age = now - nv.get("last_seen_ms", 0)
                 if age > STALE_AFTER_MS:
@@ -1045,12 +1049,16 @@ class Session:
                         "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
                         "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
                         "foreground": pf.get("foreground"), "blockers": blockers + ambers,
-                        "status": "red" if blockers else ("amber" if ambers else "green")})
+                        # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
+                        # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
+                        # the sole complaint — a real problem alongside it still reads red.
+                        "status": ("waiting" if (not nid and len(blockers) == 1)
+                                   else "red") if blockers else ("amber" if ambers else "green")})
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
         greens = sum(1 for r in board if r["status"] == "green")
         return {"t": now, "roster_size": len(board), "greens": greens, "board": board, "unclaimed": unclaimed,
-                "go": all(r["status"] != "red" for r in board) and bool(board)}
+                "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board)}
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
         self.scan_rows = await self.armory.scan(duration_s)

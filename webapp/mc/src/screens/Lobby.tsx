@@ -25,8 +25,15 @@ export function Lobby() {
   // Field 2026-08-30: the rail said only "E20D RED ON THE BOARD" and the operator read it as MC being
   // stuck — the REASON (GUN LINK LOST) was on the muster board, a screen away. Carry the blocker here.
   const redRows = readiness.board.filter(b => b.status === 'red');
+  const waitRows = readiness.board.filter(b => b.status === 'waiting');
+  // Both block the push, but they are different situations and must not be described the same way:
+  // `red` is a fault, `waiting` is just a phone that has not arrived (field 2026-09-01).
   const reds = redRows.map(b => b.sticker);
+  const blockedCount = redRows.length + waitRows.length;
   const redWhy = redRows.map(b => `${b.sticker}: ${(b.blockers ?? []).join(', ') || 'NOT READY'}`).join('  ·  ');
+  const waitWhy = waitRows.length
+    ? `WAITING FOR ${waitRows.length} PHONE${waitRows.length === 1 ? '' : 'S'} — ${waitRows.map(b => b.sticker).join(' + ')}`
+    : '';
 
   // Two deliberate clicks (design-critic #5): PUSH, verify the acks/echoes land, THEN arm the countdown.
   const pushAndArm = async (force = false) => {
@@ -77,16 +84,18 @@ export function Lobby() {
         <span style={{ flex: 1 }} />
         {reds.length > 0
           ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {redWhy} — CLEAR IT, OR PUSH ANYWAY BELOW</span>
+          : waitRows.length > 0
+            ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro }}>{waitWhy}</span>
           : notReady.length > 0
             ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {notReady.join(' + ')} NOT READY — LAST MOMENT ALL NODES ARE IN RANGE</span>
             : lobby.pushed && !allAcked
               ? <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>▲ {Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(' + ')} DID NOT ECHO — HEADSET? GUN ASLEEP?</span>
               : <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.ok }}>ALL NODES READY &amp; IN RANGE — PUSH, THEN WALK</span>}
-        <PrimaryButton onClick={() => pushAndArm()} disabled={reds.length > 0 || players.length === 0 || (lobby.pushed && !allAcked)} title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : allReady ? '' : 'Host override: pushing with players not ready'}>
+        <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || players.length === 0 || (lobby.pushed && !allAcked)} title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : allReady ? '' : 'Host override: pushing with players not ready'}>
           {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
         </PrimaryButton>
       </div>
-      {reds.length > 0 && (
+      {blockedCount > 0 && (
         // The override has to cover BOTH steps. Forcing a push does not clear the red — it usually adds
         // one (the gun that could not ack gets GUN DID NOT ANSWER CONFIG) — so an override that stopped
         // at PUSH left the operator with ARM still disabled and no button left to press. (Review, 2026-08-31.)
@@ -96,9 +105,9 @@ export function Lobby() {
               ? 'Arms the countdown anyway. Nodes still red will not be armed — everyone else starts on time.'
               : 'Compiles and pushes to every bound node anyway. A gun that is not linked will simply not ack.'}
             onClick={() => pushAndArm(true)}>
-            [ {lobby.pushed ? 'ARM' : 'PUSH'} ANYWAY OVER {reds.length} RED ]
+            [ {lobby.pushed ? 'ARM' : 'PUSH'} ANYWAY OVER {blockedCount} {reds.length ? 'RED' : 'MISSING'} ]
           </button>
-          <span style={{ color: T.micro }}>{redWhy}</span>
+          <span style={{ color: T.micro }}>{redWhy || waitWhy}</span>
         </div>
       )}
       {!allReady && players.length > 0 && (

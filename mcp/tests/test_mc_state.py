@@ -41,14 +41,31 @@ def test_player_num_assignment_unique_zero_reserved():
     assert s.add_player("NEW")["player_num"] == 1     # lowest free slot reused
 
 
-def test_readiness_no_node_is_red_and_headset_unknown_is_amber_pre_push():
+def test_readiness_no_node_is_waiting_and_headset_unknown_is_amber_pre_push():
+    """A phone that has not connected yet BLOCKS the start but is not a FAULT.
+
+    Field 2026-09-01, Tony looking at a board of disconnected guns: *"it makes it look like the guns
+    are broken. They are simply disconnected. It shouldn't look like critical errors."* So the row
+    gets its own status: it still gates `go`, but the UI paints it inactive rather than red.
+    """
     s, net, clock, ps = mk(2)
     rd = s.readiness()
-    assert all(r["status"] == "red" for r in rd["board"]) and not rd["go"]
+    assert all(r["status"] == "waiting" for r in rd["board"]), "no phone yet is not a fault"
+    assert not rd["go"], "...but it still blocks the start"
+    assert all("WAITING FOR THE PHONE" in r["blockers"][0] for r in rd["board"])
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     rd = s.readiness()
     assert all(r["status"] == "amber" for r in rd["board"]) and rd["go"]      # headset unproven ≠ red → no deadlock
     assert all(r["headset"] == "unknown" for r in rd["board"])
+
+
+def test_a_real_fault_alongside_a_missing_phone_still_reads_red():
+    """`waiting` is only for the case where the ABSENT PHONE is the sole complaint."""
+    s, net, clock, ps = mk(2)
+    s.patch_player(ps[0]["player_id"], gun_id="GUN-A")
+    s.scan_rows = [{"gun_id": "GUN-A", "identity": "reverted", "basename": "gun-a", "tail": "AAAA", "rssi": -50, "t": 0}]
+    row = next(r for r in s.readiness()["board"] if r["player_id"] == ps[0]["player_id"])
+    assert row["status"] == "red", "a reverted identity is a fault even with no phone attached"
 
 
 def test_unsynced_and_wrong_ssid_are_red():

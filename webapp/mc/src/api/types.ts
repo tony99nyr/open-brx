@@ -79,7 +79,9 @@ export interface ReadinessRow {
   gun_linked?: boolean | null;
   ssid_ok?: boolean; mc_reachable?: boolean; synced?: boolean; screen_on?: boolean; foreground?: boolean;
   last_seen_ms?: number;
-  status: 'green' | 'amber' | 'red';
+  /** `waiting` = no phone yet. Blocks the start like `red`, but it is NOT a fault — render it
+   *  as inactive, never as an error (field 2026-09-01). */
+  status: 'green' | 'amber' | 'red' | 'waiting';
   blockers: string[];
 }
 

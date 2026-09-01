@@ -6,7 +6,8 @@ import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
 
-const statusColor = (s: ReadinessRow['status']) => (s === 'red' ? T.bad : s === 'amber' ? T.warn : T.ok);
+const statusColor = (s: ReadinessRow['status']) =>
+  (s === 'red' ? T.bad : s === 'amber' ? T.warn : s === 'waiting' ? T.micro : T.ok);
 
 export function Armory() {
   const { state, run, api, setView } = useStore();
@@ -23,9 +24,13 @@ export function Armory() {
   const nGreen = board.filter(g => g.status === 'green').length;
   const nAmber = board.filter(g => g.status === 'amber').length;
   const nRed = board.filter(g => g.status === 'red').length;
+  const nWaiting = board.filter(g => g.status === 'waiting').length;
   const firstRed = board.find(g => g.status === 'red');
+  // "waiting" is not a fault and must not be reported as one: it just means the phone has not
+  // arrived yet (Tony, 2026-09-01 — a board full of disconnected guns "looked like critical errors").
   const gateNote = nRed
     ? `${firstRed?.sticker} BLOCKS START — ${firstRed?.blockers[0]?.split(' — ')[0] ?? 'CHECK IT'}`
+    : nWaiting ? `WAITING FOR ${nWaiting} PHONE${nWaiting === 1 ? '' : 'S'} — OPEN THE APP AND SET THE GUN`
     : nGreen ? 'NO REDS — START WHEN READY' : 'NOTHING READY YET — POWER GUNS, OPEN THE APP ON EACH PHONE';
 
   return (
@@ -37,6 +42,7 @@ export function Armory() {
             <CountBlock value={nGreen} label="GREEN" color={T.ok} />
             <CountBlock value={nAmber} label="AMBER" color={T.warn} />
             <CountBlock value={nRed} label="RED" color={nRed ? T.bad : T.micro} />
+            {nWaiting > 0 && <CountBlock value={nWaiting} label="NO PHONE" color={T.micro} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
             <button type="button" className={nRed ? '' : 'hov-accbg'} disabled={!!nRed} onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
@@ -90,6 +96,7 @@ export function Armory() {
 function GunCard({ g }: { g: ReadinessRow }) {
   const color = statusColor(g.status);
   const red = g.status === 'red';
+  const waiting = g.status === 'waiting';   // no phone yet: inactive, NOT a fault
   const batt = g.battery_pct;
   const battColor = batt == null ? T.micro : batt < 30 ? T.bad : batt < 60 ? T.warn : T.ok;
   const age = g.last_seen_age_ms ?? g.battery_age_ms ?? null;                 // real link age from the server
@@ -97,14 +104,14 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const linkText = g.node === 'none' ? 'NO PHONE' : age == null ? '—' : `${fmtAge(age)} AGO`;
   const hs = stale ? 'UNKNOWN' : g.headset === 'proven' ? 'CONNECTED' : g.headset === 'absent' ? '—' : 'UNKNOWN';
   return (
-    <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
+    <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
           <span style={{ font: F.osw(700, 20), letterSpacing: '.1em' }}>{g.sticker}</span>
           <span style={{ font: F.mono(500, 11), color: T.micro }}>-{g.tail}</span>
           {g.player_num != null && <span style={{ font: F.mono(500, 10), color: T.acc }}>#{g.player_num}</span>}
         </div>
-        <Tag color={color}>{red ? 'BLOCKED' : g.status === 'amber' ? 'CHECK' : 'READY'}</Tag>
+        <Tag color={color}>{red ? 'BLOCKED' : g.status === 'waiting' ? 'NO PHONE YET' : g.status === 'amber' ? 'CHECK' : 'READY'}</Tag>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>GUN</Micro><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
@@ -115,14 +122,15 @@ function GunCard({ g }: { g: ReadinessRow }) {
           <SegBar pct={stale ? 0 : batt ?? 0} color={battColor} height={8} cell={7} style={{ flex: 1, maxWidth: 96 }} />
           {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
-        <Micro>LINK</Micro><Val color={g.node === 'none' ? T.bad : stale ? T.warn : T.dim}>{linkText}</Val>
+        <Micro>LINK</Micro><Val color={g.node === 'none' ? T.micro : stale ? T.warn : T.dim}>{linkText}</Val>
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       {g.blockers.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {g.blockers.map(b => (
             <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.06em', padding: '6px 10px',
-              background: red ? 'rgba(255,82,82,.1)' : 'rgba(255,176,32,.08)', color, borderLeft: `2px solid ${color}` }}>▲ {b}</div>
+              background: red ? 'rgba(255,82,82,.1)' : waiting ? 'transparent' : 'rgba(255,176,32,.08)',
+              color, borderLeft: `2px solid ${color}` }}>{waiting ? '·' : '▲'} {b}</div>
           ))}
         </div>
       )}
