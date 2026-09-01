@@ -63,7 +63,10 @@ import { afterEach, beforeEach, expect, vi } from 'vitest';
 let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => { errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => {
-  const calls = errorSpy.mock.calls.map(c => c.map(String).join(' '));
+  // `c` is explicitly typed: without generics on vi.spyOn the call tuple resolves loosely, and
+  // whether that trips noImplicitAny depends on the resolved TS/vitest versions — it does on
+  // Node 26 + a fresh install here, so `tsc -b` failed the BUILD while the tests still passed.
+  const calls = errorSpy.mock.calls.map((c: unknown[]) => c.map(String).join(' '));
   errorSpy.mockRestore();
   expect(calls, `console.error during this test:\n  ${calls.join('\n  ')}`).toEqual([]);
 });
