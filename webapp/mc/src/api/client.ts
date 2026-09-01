@@ -83,6 +83,7 @@ export function createHttpApi(): Api {
     armory: () => j('/api/armory'),
     setPhase: (phase: string) => post('/api/phase', { phase }),
     getModes: () => j('/api/modes'),
+    getVoices: () => j('/api/voices'),
     getWeapons: () => j('/api/weapons'),
     getPerks: () => j('/api/perks'),
     getPresets: () => j('/api/presets'),

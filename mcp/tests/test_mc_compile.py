@@ -754,3 +754,45 @@ def test_what_the_captures_actually_say_about_HLED():
         near = [g for gn, gt, g in gled if gn == name and 0 <= t - gt <= 1.0
                 and g.split(",")[1].strip() == tok]
         assert near, f"{name}: $HLED,{tok} at {t}s has no matching $GLED,{tok} in the preceding second"
+
+def test_every_voice_id_exists_in_the_shipped_sound_bank():
+    """The rule is "never write a token we cannot name". `$PSET`'s trailing tokens are a positional
+    voice pack (APK-derived: deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain,
+    painRelief) and we now build them per family by prefix. Every id we can emit must be a REAL
+    entry in Callsign's 2166-sound bank — a typo'd family would otherwise ship a silent gun.
+    """
+    import json, pathlib
+    from brx_mcp.gameconfig import VOICE_PACKS, voice_tail
+    from brx_mcp.mc.compile import kill_line
+    bank_path = pathlib.Path(__file__).resolve().parents[2] / "protocol" / "callsign-extract" / "Sounds.json"
+    bank = set(json.loads(bank_path.read_text())["SoundsLengthMap"])
+    missing = [(v, i) for v in VOICE_PACKS for i in voice_tail(v) + [kill_line(v)] if i not in bank]
+    assert not missing, f"voice ids not in the sound bank: {missing}"
+
+
+def test_voice_slot_roles_hold_across_every_family():
+    """The per-family swap rests on the packs sharing a layout. Two independent checks, both from
+    the shipped bank: every family carries all six slot ids, and the DURATIONS agree by role —
+    shortPain is the briefest slot in every family and longPain runs materially longer.
+    """
+    import json, pathlib
+    from brx_mcp.gameconfig import VOICE_PACKS, voice_tail
+    bank_path = pathlib.Path(__file__).resolve().parents[2] / "protocol" / "callsign-extract" / "Sounds.json"
+    lens = json.loads(bank_path.read_text())["SoundsLengthMap"]
+    for v in VOICE_PACKS:
+        ids = voice_tail(v)                       # death, respawnCry, meleeGrunt, shortPain, longPain, painRelief
+        assert all(i in lens for i in ids), v
+        short, long_ = lens[ids[3]], lens[ids[4]]
+        assert short < long_, f"{v}: shortPain {short:.2f}s is not shorter than longPain {long_:.2f}s"
+        assert short <= min(lens[i] for i in ids), f"{v}: shortPain is not the briefest slot"
+
+
+def test_the_voice_pack_is_per_player_not_hardcoded():
+    """It shipped as a constant: every player got the HEAVY pack whatever their `voice` said."""
+    hp = next(f for f in C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)["head"] if f.startswith("$PSET,"))
+    mp = next(f for f in C.compile(_cfg(), dict(_player(), voice="medic"), _TEAMS)["head"] if f.startswith("$PSET,"))
+    assert hp != mp, "the voice pack must follow the player"
+    assert ",V33,V3I,V3C,V3G,V3E,V37," in hp      # unchanged from what we shipped
+    assert ",V83,V8I,V8C,V8G,V8E,V87," in mp
+    # an unknown name falls back rather than emitting a bad family
+    assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), _TEAMS)["head"] if f.startswith("$PSET,"))

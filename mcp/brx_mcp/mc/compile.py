@@ -87,8 +87,21 @@ _W_MAG, _W_RELOAD, _W_CLIPSTART, _W_RESERVE = 17, 19, 40, 41   # doc tokN == spl
 
 # Kill-line id per voice family (§5/§5b). VA (male) + V3A (heavy "kill") are hardware-confirmed;
 # the rest are the family's kill slot, best-effort until pinned.
-_KILL_LINE = {"male": "VAA", "heavy": "V3A", "scout": "VBA", "medic": "V8S",
-              "valkyrie": "VHR", "female": "VAA"}
+# Kill lines CONFIRMED BY EAR in protocol/callsign-extract/sound-bank.md. Unlike the six $PSET
+# voice slots these do NOT share a suffix across families (A, S, A, A, R, A), so they are listed
+# rather than derived — a family with no confirmed line falls back to its own "<fam>A", which is
+# the majority pattern, and finally to VAA.
+_KILL_LINE_CONFIRMED = {"heavy": "V3A", "medic": "V8S", "male": "VAA", "scout": "VBA",
+                        "valkyrie": "VHR", "clean_male": "VEA"}
+
+
+def kill_line(voice: str | None) -> str:
+    from ..gameconfig import VOICE_PACKS
+    v = (voice or "male").lower()
+    if v in _KILL_LINE_CONFIRMED:
+        return _KILL_LINE_CONFIRMED[v]
+    fam = VOICE_PACKS.get(v)
+    return f"{fam}A" if fam else "VAA"
 _CONFIRMED_CUES = {"countdown", "kill"}   # everything else in cues() is provisional (real bank ids)
 
 _HERE = pathlib.Path(__file__).resolve().parent
@@ -417,7 +430,7 @@ class Compiler:
 
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
-                gc._gset(), gc._pset(pnum),
+                gc._gset(), gc._pset(pnum, player.get("voice")),   # the voice pack is per-PLAYER (§PSET)
                 self.catalog.resolve(w0, 0, mods)]
         if w1:
             head.append(self.catalog.resolve(w1, 1))        # slot 1 only when a secondary exists (A10)
@@ -499,10 +512,22 @@ class Compiler:
             "$BMAP,0,0,,,,,*",
         ]
 
+    def voice_options(self) -> list[dict]:
+        """The selectable personas (`Session._voice_ids` picks this up to validate a PATCH).
+
+        `$PSET`'s trailing tokens are a positional voice pack and the sound bank carries one for
+        every character family; the roster accepted only male/female, so the other ~13 were
+        unreachable. Only HEAVY is confirmed by ear — see gameconfig.VOICE_PACKS.
+        """
+        from ..gameconfig import VOICE_PACKS
+        return [{"id": v, "name": v.replace("_", " ").upper(), "family": fam,
+                 "kill_line": kill_line(v), "verified": v == "heavy"}
+                for v, fam in VOICE_PACKS.items()]
+
     def cues(self, voice: str) -> dict[str, str]:
         """A6: pre-composed `$PLAY` frames (node writes verbatim; only $SFLASH/$PLAYX,0 are its own
         templates). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token1 = SFX, token4 = voice line."""
-        kill = _KILL_LINE.get(voice, "VAA")
+        kill = kill_line(voice)
         return {
             "countdown": "$PLAY,VA81,4,6,,,,,*",         # confirmed 3-2-1-GO (VA81, slot 1)
             "kill":      f"$PLAY,,4,6,{kill},,,,*",       # confirmed kill line (slot 4, voice-family)

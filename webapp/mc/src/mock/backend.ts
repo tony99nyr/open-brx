@@ -234,6 +234,7 @@ export class MockBackend implements Api {
   }
   async setPhase(phase: string) { this.phase = phase as Phase; this.emit(); return {}; }
   async armory() { return GUNS.map(([s, tail]) => ({ gun_id: s, sticker: s, ble: { tail } })); }
+  async getVoices() { return { default: 'male', voices: [{ id: 'male', name: 'MALE', family: 'VA', kill_line: 'VAA', verified: false }] }; }
   async getModes(): Promise<ModeInfo[]> { return clone(MODES); }
   async getWeapons(): Promise<WeaponView[]> { return clone(WEAPONS); }
   async getPerks(): Promise<PerkView[]> { return clone(PERKS.filter(k => !k.hidden)); }

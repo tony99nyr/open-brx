@@ -27,6 +27,10 @@ export function Kit() {
         Object.entries(v).map(([id, r]) => [id, { verdict: r.verdict, note: r.note }]))))
       .catch(() => setVerdicts({}));
   }, [api]);
+  // The full persona list. `$PSET`'s trailing tokens are a positional voice pack and every family in
+  // the bank carries one; the console offered two of ~15, and `female` was a duplicate of `male`.
+  const [voices, setVoices] = useState<{ id: string; name: string; verified: boolean }[]>([]);
+  useEffect(() => { api.getVoices().then(v => setVoices(v.voices)).catch(() => setVoices([])); }, [api]);
   const [newName, setNewName] = useState('');
   const [slot, setSlot] = useState<Slot>('primary');
   const [secKind, setSecKind] = useState<'weapon' | 'perk'>('weapon');
@@ -208,7 +212,14 @@ export function Kit() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>VOICE</span>
-                <Seg value={sp.voice === 'female' ? 'female' : 'male'} options={[{ value: 'male', label: 'MALE' }, { value: 'female', label: 'FEMALE' }]} onChange={v => patch({ voice: v })} pad="4px 12px" />
+                {voices.length > 2 ? (
+                  <select aria-label={`voice for ${sp.display}`} value={sp.voice ?? 'male'} onChange={e => patch({ voice: e.target.value })}
+                    style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
+                    {voices.map(v => <option key={v.id} value={v.id}>{v.name}{v.verified ? '' : ' ·'}</option>)}
+                  </select>
+                ) : (
+                  <Seg value={sp.voice === 'female' ? 'female' : 'male'} options={[{ value: 'male', label: 'MALE' }, { value: 'female', label: 'FEMALE' }]} onChange={v => patch({ voice: v })} pad="4px 12px" />
+                )}
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />

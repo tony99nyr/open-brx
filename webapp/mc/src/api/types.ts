@@ -205,6 +205,7 @@ export interface Api {
   armory(): Promise<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>;
   setPhase(phase: string): Promise<unknown>;
   getModes(): Promise<ModeInfo[]>;
+  getVoices(): Promise<VoiceList>;
   getWeapons(): Promise<WeaponView[]>;
   getPerks(): Promise<PerkView[]>;
   getPresets(): Promise<SavedGame[]>;
@@ -244,4 +245,11 @@ export interface MatchHistoryRow {
   go_live_t: number | null;
   ended_t: number | null;
   recap: RecapView | null;
+}
+
+/** Selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack; only HEAVY is
+ *  confirmed by ear, the rest are inferred from the pack layout (see gameconfig.VOICE_PACKS). */
+export interface VoiceList {
+  default: string;
+  voices: { id: string; name: string; family: string; kill_line: string; verified: boolean }[];
 }

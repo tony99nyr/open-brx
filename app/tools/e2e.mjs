@@ -320,7 +320,9 @@ await step('weapon description renders in the hero panel', async () => {
 });
 await step('voice change makes the TAGGER speak (apply.preview reaches the gun)', async () => {
   const before = await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length);
-  await mc.click('button:has-text("FEMALE")');
+  // The MALE/FEMALE toggle became a full persona picker: $PSET's trailing tokens are a positional
+  // voice pack and the bank carries ~15 families, of which the console offered two (2026-09-01).
+  await mc.selectOption('select[aria-label^="voice for"]', 'medic');
   await until(async () => (await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length)) > before, 8000, 'a $PLAY frame reached the fake gun');
 });
 await step('diag panel: SHARE LOG ships to MC; PANIC is gone (player-side panic bricks the player)', async () => {

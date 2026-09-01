@@ -50,8 +50,41 @@ WEAPON_AMMO: dict[str, tuple[int, int]] = {
 # platform reserves wire 0 for "no identity" (tutorial / unknown shooter) and assigns real
 # players 1–63 (contracts A5.1). The MC compiler passes `player_num` (1–63) straight through.
 MAX_PLAYER_ID = 63
-_PSET_TAIL = ["50", "", "H44", "JAD", "V33", "V3I", "V3C", "V3G", "V3E", "V37",
-              "H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]
+# `$PSET`'s trailing tokens are a POSITIONAL VOICE PACK, one named game-event sound per slot
+# (source-derived from the APK — protocol/callsign-extract/protocol-classes.md "PSET"):
+#   deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt,
+#   shortPain, longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit,
+#   emptyUnboundButtonSound, ammoOrGearPickUp, energyShieldLoop
+# Only SIX of those are the character's own voice; the rest are shared effects. The shipped frame
+# used the HEAVY pack (V3*) for every player, so persona was never per-player on the gun at all.
+_PSET_HEAD = ["50", "", "H44", "JAD"]           # criticalDamageBonus, deathAlarm, stealthDeathScream, musicMixOnDeath
+_PSET_FOOT = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]   # shared, not voice
+
+# The six voice slots, as suffixes on the family prefix, in $PSET order.
+# Read off the HEAVY pack, which is decoded BY EAR in protocol/callsign-extract/sound-bank.md:
+# V33 death scream · V3I "Get Some" respawn cry · V3G/V3E gasps.
+_VOICE_SLOTS = ("3", "I", "C", "G", "E", "7")
+
+# Family prefix -> display name (sound-bank.md "Voice (V) prefixes").
+# The pack layout is shared: all 16 families carry all six slot ids, the by-ear doc shows the death
+# scream at suffix 3/4/5 for Heavy, Medic, Male AND Scout alike, and the durations agree by role
+# across every family (shortPain is the shortest slot everywhere; longPain runs ~2.5x it).
+# ⚠ Only HEAVY is confirmed by ear. The rest are a well-founded inference from that structure — a
+# wrong id would play a real but wrong sound, which is cosmetic and instantly audible. Confirm by
+# picking a persona and dying once.
+VOICE_PACKS = {
+    "heavy": "V3", "medic": "V8", "male": "VA", "scout": "VB", "valkyrie": "VH",
+    "clean_male": "VE", "female_sniper": "VD", "female": "VM", "fury": "V0",
+    "grenadier": "V1", "guardian": "V2", "hive_queen": "V4", "infiltrator": "V6",
+    "marauder": "V7", "raider": "V9",
+}
+DEFAULT_VOICE = "male"
+
+
+def voice_tail(voice: str | None) -> list[str]:
+    """The six voice-slot ids for a family, or Heavy's if the name is unknown."""
+    fam = VOICE_PACKS.get((voice or DEFAULT_VOICE).lower(), VOICE_PACKS[DEFAULT_VOICE])
+    return [fam + s for s in _VOICE_SLOTS]
 
 # $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG
 # (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
@@ -191,7 +224,7 @@ class GameConfig:
             bmap[1] = "$BMAP,1,97,,,,,*"
         return bmap
 
-    def _pset(self, player_id: int = 0) -> str:
+    def _pset(self, player_id: int = 0, voice: str | None = None) -> str:
         """`$PSET,<playerId>,0,<hp>,<armor>,<shield>,…`
 
         Token 1 is the PLAYER ID (protocol §7p, confirmed by cap10+cap11): 6 bits,
@@ -200,7 +233,8 @@ class GameConfig:
         with another player's and mis-attribute kills."""
         pid = max(0, min(int(player_id), MAX_PLAYER_ID))
         toks = ["PSET", str(pid), "0",
-                str(self.hp), str(self.armor), str(self.shield)] + _PSET_TAIL
+                str(self.hp), str(self.armor), str(self.shield)] \
+            + _PSET_HEAD + voice_tail(voice or getattr(self, "voice", None)) + _PSET_FOOT
         return "$" + ",".join(toks) + ",*"
 
     def _gset(self) -> str:

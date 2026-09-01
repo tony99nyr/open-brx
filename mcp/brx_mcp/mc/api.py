@@ -165,6 +165,13 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def armory_list(_):
         return JSONResponse(s.armory.list())
 
+    async def voices(_):
+        """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and
+        only HEAVY is confirmed by ear — see gameconfig.VOICE_PACKS for the evidence and the caveat."""
+        from ..gameconfig import DEFAULT_VOICE
+        opts = getattr(s.compiler, "voice_options", None)
+        return JSONResponse({"default": DEFAULT_VOICE, "voices": opts() if callable(opts) else []})
+
     async def modes(_):
         return JSONResponse(s.modes())
 
@@ -521,6 +528,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/armory/scan", armory_scan, methods=["POST"]),
         Route("/api/armory", armory_list),
         Route("/api/modes", modes),
+        Route("/api/voices", voices),
         Route("/api/weapons", weapons),
         Route("/api/perks", perks),
         Route("/api/loadout/pool", loadout_pool_preview, methods=["POST"]),
