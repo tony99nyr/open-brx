@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
+import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
 import { HazardButton, GhostButton, PrimaryButton } from '../ui';
 
@@ -12,6 +13,7 @@ const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : PH.find
 const LABEL: Partial<Record<View, string>> = { designer: 'DESIGNER', catalog: 'ARSENAL' };
 
 export function CommandBar() {
+  const notice = useNotice();   // survives the screen that raised it (see notice.ts)
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld, hasToken, setToken } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<string | null>(null);
@@ -68,6 +70,13 @@ export function CommandBar() {
           </button>
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {notice && (
+            <button type="button" onClick={clearNotice} title="dismiss"
+              style={{ background: notice.bad ? 'rgba(255,82,82,.12)' : 'transparent', border: `1px solid ${notice.bad ? T.bad : T.line2}`,
+                       color: notice.bad ? T.bad : T.dim, font: F.mono(600, 11), letterSpacing: '.1em', padding: '6px 12px', cursor: 'pointer' }}>
+              {notice.bad ? '▲ ' : ''}{notice.text} ✕
+            </button>
+          )}
           {panicked && (
             <button type="button" onClick={() => setPanicked(null)} title="dismiss"
               style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.mono(600, 11), letterSpacing: '.1em', padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>

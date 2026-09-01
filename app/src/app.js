@@ -192,7 +192,7 @@ Object.assign(hud.h, {
     hud.sig = null; scheduleRender();
   },
   onCloseDiag: () => hud.toggleDiag(),
-  onReconnectGun: () => { if (link.deviceId) link._reconnect(); },
+  onReconnectGun: () => { if (link.deviceId) link.retryNow(); },   // cuts the backoff short; _reconnect() alone was a no-op mid-loop
   onReconnectMc: () => {
     const url = settings.mcUrl || lastMcUrl;
     // with neither a remembered nor a discovered target there is nothing to dial, and a button that
@@ -226,11 +226,15 @@ Object.assign(hud.h, {
       if (transport && transport.state === 'bound') {
         const text = bundle();
         const bytes = new TextEncoder().encode(text);
-        transport.report('log_offer', { bytes: bytes.length, lines: logLines.length });
+        // report() returns false when the socket is closing but `state` has not flipped yet, and
+        // these frames do NOT go through the retry ring — so an unchecked send is a log that
+        // silently never arrives while the HUD says it did (review 2026-09-01).
+        let sent = transport.report('log_offer', { bytes: bytes.length, lines: logLines.length }) !== false;
         const CHUNK = 40 * 1024;
         for (let o = 0, seq = 0; o < text.length; o += CHUNK, seq++) {
-          transport.report('log_data', { seq, chunk: text.slice(o, o + CHUNK), last: o + CHUNK >= text.length });
+          if (transport.report('log_data', { seq, chunk: text.slice(o, o + CHUNK), last: o + CHUNK >= text.length }) === false) sent = false;
         }
+        if (!sent) throw new Error('the socket refused part of the log');
         log(`log sent to MC — ${bytes.length} bytes, ${frameCount} BLE frames ✓`, 'lk');
         return;                       // delivered: nothing to copy, nothing for the operator to do
       }

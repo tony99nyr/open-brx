@@ -17,7 +17,7 @@ export function Armory() {
   // NOT SEEN without a reload. NOT on `readiness.t`: that is a clock, and at 4 snapshots a second it
   // refetches the armory ~4x/s for as long as this screen is open (review 2026-09-01).
   const sig = registrySig(state);
-  useEffect(() => { api.armory().then(setRegistry).catch(() => setRegistry([])); }, [api, sig]);
+  useEffect(() => { api.armory().then(setRegistry).catch(() => { /* keep the last good list — a transient failure must not empty KNOWN GUNS */ }); }, [api, sig]);
   if (!state) return null;
   const { readiness } = state;
   const board = readiness.board;

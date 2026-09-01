@@ -515,7 +515,7 @@ export class Engine {
         if (this.phase === 'live' || this.phase === 'armed' || this.phase === 'lobby') this._endLocal(cmd);
         // Silently ignoring it is why "END MATCH EARLY did not reach the HUDs" was undiagnosable:
         // both phones were already in `kitted`, where this is a no-op, and nothing said so anywhere.
-        else this.log(`control ${cmd} ignored — phase is ${this.phase}`, 'le');
+        else this.log(`control ${cmd} ignored — phase is ${this.phase}`, 'li');   // correct on an unkitted phone: info, not error
         return;
       case 'abort_start':
         if (this.phase === 'armed' && (seq == null || (this.start && this.start.seq === seq))) { this.start = null; this.cuesFired = new Set(); this._write([PLAYX], 'abort'); this._set('lobby'); }
@@ -653,7 +653,9 @@ export class Engine {
     // shortly after ARMOUR reaches 0 and HP starts dropping (capture 2026-08-23-two-tagger-combat:
     // 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets stayed dark.
     if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
-        && !this.hurtFired && this.armor === 0 && this.hp > 0 && this.hp < this.maxHp) {
+        // maxArmor 0 means the player never HAD armour, so "armour is gone" is not a state change —
+        // without this the alert fires on the first scratch of such a loadout (review 2026-09-01).
+        && !this.hurtFired && this.maxArmor > 0 && this.armor === 0 && this.hp > 0 && this.hp < this.maxHp) {
       this.hurtFired = true;
       const c = this.frames && this.frames.cues;
       const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];

@@ -7,7 +7,7 @@ import random
 import time
 from typing import Callable
 
-from .compile import VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
 from .types import (ArmoryRecord, FrameBundle, GameConfig, Player, ScanRow, ScoreRow, Team, Weapon,
                     MAX_PLAYERS)
 
@@ -97,7 +97,7 @@ class FakeCompiler:
         # demo, and a node bug in it could only ever be found on hardware (review 2026-09-01).
         return {"countdown": "$PLAY,VA81,4,6,,,,,*", "kill": "$PLAY,,4,6,VAA,,,,*",
                 "game_over": "$PLAY,VSF,4,6,JAY,,,,*",
-                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": "$HLED,7,4,90,90,10,15,*"}
+                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*"}
 
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []

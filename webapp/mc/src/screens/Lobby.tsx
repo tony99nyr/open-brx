@@ -105,9 +105,9 @@ export function Lobby() {
               ? 'Arms the countdown anyway. Nodes still red will not be armed — everyone else starts on time.'
               : 'Compiles and pushes to every bound node anyway. A gun that is not linked will simply not ack.'}
             onClick={() => pushAndArm(true)}>
-            [ {lobby.pushed ? 'ARM' : 'PUSH'} ANYWAY OVER {blockedCount} {reds.length ? 'RED' : 'MISSING'} ]
+            [ {lobby.pushed ? 'ARM' : 'PUSH'} ANYWAY OVER {[reds.length && `${reds.length} RED`, waitRows.length && `${waitRows.length} MISSING`].filter(Boolean).join(' + ')} ]
           </button>
-          <span style={{ color: T.micro }}>{redWhy || waitWhy}</span>
+          <span style={{ color: T.micro }}>{[redWhy, waitWhy].filter(Boolean).join('  ·  ')}</span>
         </div>
       )}
       {!allReady && players.length > 0 && (

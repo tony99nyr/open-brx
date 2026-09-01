@@ -158,7 +158,9 @@ directions 2026-08-25). So attribution is **exact, victim-side, BLE-native** —
 **Node-observable events** (a node emits these about ITS gun/player):
 ```jsonc
 Event =
- | { type:"hit_taken",   t, match_id, node_id, player_id, shooter_num, shooter_team, dmg, ir_proto? } // $HIR + the $HP delta it caused
+ | { type:"hit_taken",   t, match_id, node_id, player_id, shooter_num, shooter_team, dmg, ir_proto?, sensor? } // $HIR + the $HP delta it caused
+ //   sensor = $HIR tok1: 0-3 are ALL HEADSET sensors (four of them), 4 = gun body. Added 2026-09-01;
+ //   before that `ir_proto` was read from tok1 and so carried the SENSOR, with no version marker.
  |   // ⚠ `dmg` = the hp+armor delta, so it is BLIND TO SHIELDS: a hit a shield fully absorbs moves
  |   // neither pool and, strictly read, emits no event at all. Latent until a shield-granting station
  |   // exists (now buildable). Decision pending — node.md §10-Q12. NB `dmg` is deliberately NOT $HIR

@@ -23,13 +23,21 @@ from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team,
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
 # The on-gun menu maps L1=60 L2=70 L3=80 L4=90 L5=100 (protocol/brx-protocol.md $VOL), so play
 # volume is now taken from the venue: L3 indoors, L4 outdoors (the level he asked for).
-# `$HLED` token 5 is BRIGHTNESS — the same position `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`
-# uses, pinned by the per-field sweep on 2026-08-30. Callsign ships **10** in every LED frame in all
-# 19 captures, and Tony asked for the on-hit alert to be brighter than that in daylight.
-# ⚠ The SCALE IS UNVERIFIED: 10 is the only value anyone has been observed to send, though this same
-# frame carries 90 in two other positions, so the field is clearly not 0-10. If the alert stops
-# firing entirely at 100, the gun is rejecting the value — drop back toward 10 and bisect.
-HEADSET_ALERT_BRIGHTNESS = 100
+# `$HLED` token 5: Callsign ships **10** in every populated LED frame on disk. Tony asked for the
+# on-hit alert to be brighter and I raised it to 100 — that was WRONG and is reverted.
+# ⛔ We do NOT know this token is brightness. The 2026-08-30 per-field sweep pinned token 5 on
+# `$GLED` (the GUN), not on `$HLED` (the HEADSET), and the two commands demonstrably do not share a
+# layout: `$GLED,,,,5` blanks via token 4, `$HLED,,6` blanks via token 2. The APK's headset LED
+# family exposes `LedColorType` / `BlinkLoopType(Once, ThreeTimes, Infinite)` / `LedEffectType` —
+# counts and effects, not a brightness scale. Given tokens 3/4 are `90,90` (an on/off ms pair), the
+# likeliest alternative is a REPEAT COUNT, in which case 100 would turn Callsign's ~1.8 s alert into
+# ~18 s of blinking: it would light a player up for the next ten seconds of a firefight.
+# It also destroyed the experiment. Raising it in the same commit that added the "did the cue fire?"
+# log meant the next field test could not separate "our code never fired" from "the gun rejected the
+# value". Callsign's 10 is the known-good control and it stays until the cue is confirmed firing.
+# ➡ To make it brighter, first FIND OUT what token 5 is: sweep it on `$HLED` alone, one value at a
+#   time, with the alert confirmed working at 10 (docs/verify-together.md V2).
+HEADSET_ALERT_BRIGHTNESS = 10
 
 VOL_BY_ENV = {"indoor": 80, "outdoor": 90}
 VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (see play_volume)
@@ -43,6 +51,25 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
 # `weapon_view(..., pool=)` follows it (docs/weapon-design.md §2.5). Only `stats.dmg`, whose
 # definition *is* "share of a 115 pool", is pinned here.
 DEFAULT_POOL = 115
+
+
+# Token 1 is a headset colour index. NO capture has ever carried anything but 0, 1, 6 or 7, and the
+# APK's `LedColorType` has only a handful of members — so a 4-team game's tid 2/3, and certainly any
+# larger tid, would be a token we cannot name. Emit it only for the values Callsign has been seen to
+# send, and stay silent otherwise rather than guess.
+_HLED_SEEN_COLOURS = (0, 1)
+
+
+def _headset_colour(tid: int, leds: bool) -> list[str]:
+    """The pre-game headset team colour, or nothing.
+
+    Skipped when the game has LEDs off: `gc._led_frames()` blanks the GUN for night/blackout play, and
+    lighting the headset in the same head would mark every player in the lobby — exactly what that
+    setting exists to prevent (review 2026-09-01).
+    """
+    if not leds or tid not in _HLED_SEEN_COLOURS:
+        return []
+    return [f"$HLED,{tid},0,,,10,,*"]
 
 
 def play_volume(environment: str | None) -> int:
@@ -467,7 +494,7 @@ class Compiler:
         # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
         # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
         # eyeball test, and do not cite this frame as confirmed until that is done.
-        head += list(_SIR_TABLE) + bmap + gc._led_frames() + [f"$HLED,{tid},0,,,10,,*", f"$TID,{tid},*"]
+        head += list(_SIR_TABLE) + bmap + gc._led_frames() + _headset_colour(tid, gc.leds) + [f"$TID,{tid},*"]
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]

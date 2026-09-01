@@ -66,7 +66,7 @@ _PSET_FOOT = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]   # shared
 _VOICE_SLOTS = ("3", "I", "C", "G", "E", "7")
 
 # Family prefix -> display name (sound-bank.md "Voice (V) prefixes").
-# The pack layout is shared: all 16 families carry all six slot ids, the by-ear doc shows the death
+# The pack layout is shared: all 15 families carry all six slot ids, the by-ear doc shows the death
 # scream at suffix 3/4/5 for Heavy, Medic, Male AND Scout alike, and the durations agree by role
 # across every family (shortPain is the shortest slot everywhere; longPain runs ~2.5x it).
 # ⚠ Only HEAVY is confirmed by ear. The rest are a well-founded inference from that structure — a
@@ -81,9 +81,16 @@ VOICE_PACKS = {
 DEFAULT_VOICE = "male"
 
 
+# An unknown name falls back to HEAVY, not to the default: Heavy is the pack Callsign itself ships in
+# every captured $PSET and the only one decoded by ear, so garbage input lands on measured ground
+# rather than on an inferred family (review 2026-09-01 — the docstring used to promise this and the
+# code did something else).
+FALLBACK_VOICE = "heavy"
+
+
 def voice_tail(voice: str | None) -> list[str]:
-    """The six voice-slot ids for a family, or Heavy's if the name is unknown."""
-    fam = VOICE_PACKS.get((voice or DEFAULT_VOICE).lower(), VOICE_PACKS[DEFAULT_VOICE])
+    """The six voice-slot ids for a family, or HEAVY's if the name is unknown."""
+    fam = VOICE_PACKS.get((voice or DEFAULT_VOICE).lower(), VOICE_PACKS[FALLBACK_VOICE])
     return [fam + s for s in _VOICE_SLOTS]
 
 # $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG

@@ -143,7 +143,7 @@ class MockNode:
         return seq
 
     # scripted gun behaviour
-    def take_hit(self, shooter_num: int, shooter_team: int, dmg: int = 9, ir_proto: int = 4) -> None:
+    def take_hit(self, shooter_num: int, shooter_team: int, dmg: int = 9, ir_proto: int = 0) -> None:
         if not self.alive:
             return
         absorbed = min(self.armor, dmg)
