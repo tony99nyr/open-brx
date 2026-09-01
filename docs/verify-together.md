@@ -18,8 +18,10 @@ failing to record, and it is the leading suspect in V1.
 (`session-8bbf96ab`, 35 min, 170 hits) the **first dome hit landed 17 s in**, and the opening five
 minutes ran at **6 dome / 50 body ≈ 11%** — which is Callsign's own native rate (3 of 23 ≈ 13%).
 The dome-dominated block at 30–40 min (75 dome / 17 body) is the deliberate nozzle test once it
-started working. Guns had been powered **minutes**, so a stale-gun state is out too, along with
-`outdoorMode` and daylight.
+started working. Guns were **power-cycled before every game**, so gun uptime is out in both
+directions — it cannot explain the broken period OR the recovery. So are `outdoorMode` and daylight.
+**Every environmental theory is now refuted**, which is why V1 tests aim first: 11% is exactly what
+"not hitting a small target" looks like.
 
 So the question is not "do the domes register" — they do, from the first minute. It is **why
 point-blank on the dome failed at that moment and worked later**.
