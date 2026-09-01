@@ -67,19 +67,30 @@ Everything below came out of that single match.
 Neither can be started on Windows. Callsign is **iOS-only** and PacketLogger is **macOS-only**
 (`CLAUDE.md` → Machine roles), and the second needs the taggers in hand.
 
-### M1 · Why don't the headsets flash green? 🔴 highest value
-**126 landed hits, 12 kills, both headsets healthy all match (`preflight.headset_ok == true` in all 328
-live status envelopes) — and no green, on a hit or on a death.**
-This **contradicts** the 2026-08-27 experiment-log entry, which recorded green-on-hit/kill as
-*autonomous* and concluded "we get them free… nothing in our config needs to reproduce it". That entry
-is **corrected in place**. If the green were autonomous it would have fired regardless of host. It did
-not, so Callsign sends something on hit/kill that we never send — the only `$HLED` we emit all game is
-the blanking frame in `END_SEQUENCE`.
-**Method:** capture a Callsign game on the Mac (PacketLogger → File → New iOS Trace → export btsnoop →
-`python -m brx_mcp.btsnoop`), then diff its **in-play** frames against ours. The feedback frame is in
-that delta.
-*Unaffected by this:* rainbow-on-disconnect and pre-game team colour were both observed with no host
-driving them, so the muster gate that rests on rainbow still stands.
+### M1 · Why don't the headsets flash green? — ✅ **DECODED 2026-09-01. Do NOT run a new capture.**
+
+**It was already on disk, twice.** The `$SFLASH` capture (shooter, 3 kills) and
+`2026-08-23-two-tagger-combat.btsnoop` (victim, 23 hits, 2 deaths) cover both sides of a fight. Full
+write-up in the 2026-09-01 `experiment-log.md` entry. What Callsign sends to the headset:
+
+| when | frame | which player |
+|---|---|---|
+| pre-game, with `$GLED` | `$HLED,<team>,0,,,10,,*` | every gun, every captured game |
+| armour 0 → HP dropping | `$PLAY,VA8B,3,6,,,,,*` then `$HLED,7,4,90,90,10,15,*` | the **victim**, once per life |
+| end of game | `$HLED,,6,,,,,*` | every gun |
+
+**There is no per-hit and no per-kill headset frame.** 23 `$HIR` hits produced 2 alerts; the shooter's
+3 kills produced none — our kill path was already byte-identical. So the *"blinks green on hit"* in the
+2026-08-27 entry is almost certainly this **low-health alert** (Tony flagged his own uncertainty about
+it at the time). The 2026-08-30 correction — green is **host-driven** — stands, and is now specific.
+
+**Both frames are shipped** (head + `cues.hurt`/`hurt_led`) and **UNCONFIRMED on hardware.** All that
+remains is an eyeball check at the next match: do the headsets show **team colour pre-game**, and do
+they **light when someone's armour breaks**? If a per-hit blink then appears on its own, that is the
+autonomous behaviour — we had simply never lit the headset at all.
+
+*Unaffected:* rainbow-on-disconnect was observed with no host driving it, so the muster gate that rests
+on rainbow still stands. Pre-game team colour, however, turns out to be **host-sent**.
 
 ### M2 · Does the gun stop sending `$ALCD` during sustained full-auto?
 Emptying a mag on full auto showed **no reload prompt and no empty-clip state**. The data path is fine —
