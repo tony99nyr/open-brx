@@ -15,6 +15,10 @@ they are the variables we keep failing to write down, which is why two theories 
 ## V1 · Why did point-blank on the headset fail, when the headset was catching most hits? 🔴
 **Shipped:** nothing — this is a diagnosis. The protocol doc has been corrected (below).
 
+**It may well be an anomaly.** n=1, and the aggregate does not support a broken headset. Do not spend
+a session hunting it. The point of this entry is that **the next occurrence is now cheap to capture**,
+so play normally and look only if it happens again.
+
 **The headset has FOUR sensors** (operator-confirmed 2026-09-01): `$HIR` tok1 **0, 1, 2 and 3 are all
 headset**, `4` is the gun body. The doc previously listed only 0 = front, 1 = back, 4 = gun — so 2 and
 3 read as unknown and every count that used "0 or 1" undercounted the headset by half.
@@ -37,6 +41,11 @@ live rows — `sensor` is reported now, so you can see WHICH of the four caught 
 **Proves a real fault:** a sensor that reported hits earlier in the session stops reporting entirely —
 then **change nothing**, Share log from that phone at once, and note gun uptime.
 **Bonus:** this also maps 2 and 3 to physical positions, which nobody has done.
+
+**If it recurs, three things now record it without you doing anything:** `hit_taken` carries the
+sensor (so the live board shows a dome going quiet as it happens), the full game config and the
+compiled head are stored per match, and the recap no longer drifts from the facts. The only manual
+step left is **Share log before closing the app**.
 **Worth knowing:** point-blank IR floods and `gotchas.md` warns it gets mis-attributed across sensors,
 so 30–50 cm may be the more honest test.
 
