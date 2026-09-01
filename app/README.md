@@ -133,8 +133,12 @@ builds a correct site. `site/test/site.spec.mjs` steps **9** (the button hands o
 bytes) and **9b** (no-APK and two-APK builds) are the gate.
 
 The build is debug-signed. It sideloads fine, but a future release-signed build will **not**
-upgrade over it, and anyone who installed the debug build has to uninstall first. When we want
-real updates in place, add a keystore and switch this script to `assembleRelease`.
+upgrade over it, and anyone who installed the debug build has to uninstall first. It is also
+`android:debuggable="true"`, so anything attached over USB debugging can read the app's data, and it
+is signed with `~/.android/debug.keystore` — a key unique to whichever machine built it, so two
+people building the same commit get different bytes and different checksums. When we want real
+updates in place (and none of the above), add a keystore and switch this script to `assembleRelease`
+(FOLLOWUPS B21). `*.jks`, `*.keystore` and `keystore.properties` are git-ignored already.
 
 **Version:** `android-setup.sh` stamps `versionName` from `package.json` and derives `versionCode`
 from it (`0.1.0` -> `100`). Bump `package.json` before cutting a build, or every build claims to be

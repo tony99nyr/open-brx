@@ -20,6 +20,8 @@ REPO="$(cd .. && pwd)"
 
 # --- JDK 21 ------------------------------------------------------------------------------------
 jdk_major() { [ -x "$1/bin/javac" ] && "$1/bin/javac" -version 2>&1 | sed -n 's/^javac \([0-9]*\).*/\1/p'; }
+# macOS ships `shasum`, not `sha256sum` (the match-day machine is a MacBook)
+sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d" " -f1; else shasum -a 256 "$1" | cut -d" " -f1; fi; }
 if [ -z "${JAVA_HOME:-}" ] || [ "$(jdk_major "$JAVA_HOME")" != "21" ]; then
   found=""
   # macOS keeps JDKs where java_home knows about them; Linux in ~/.jdks or /usr/lib/jvm
@@ -55,7 +57,10 @@ VERSION="$(node -p "require('./package.json').version")"
 # What goes in the apk is the WORKING TREE, not the last commit: npm run build bundles src/ as it is
 # right now. Publishing someone's half-finished edit is silent and unrecoverable-looking, so say it.
 GIT_SHA="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-DIRTY="$(git -C "$REPO" status --porcelain -- app/src app/www app/package.json app/capacitor.config.json 2>/dev/null)"
+# `|| true`: without it, `set -e` kills the run here (exit 128, no output) on a tarball checkout or
+# a machine without git — after the whole gradle build, one line before the apk would be copied.
+# Pathspec is all of app/ except docs: android-setup.sh writes the manifest that ships in the apk.
+DIRTY="$(git -C "$REPO" status --porcelain -- app ':(exclude)app/*.md' 2>/dev/null || true)"
 if [ -n "$DIRTY" ]; then
   echo
   echo "WARNING: app sources are not committed; this apk bakes in the working tree:" >&2
@@ -66,9 +71,11 @@ fi
 OUT="${APK_OUT_DIR:-$REPO/webapp/download}"   # override for a trial build that must not touch the site
 NAME="brx-companion-${VERSION}-android-debug.apk"
 mkdir -p "$OUT"
-# exactly one apk lives there: the site build refuses to guess between two
-find "$OUT" -maxdepth 1 -name '*.apk' ! -name "$NAME" -print -delete
 cp "$APK" "$OUT/$NAME"
+# exactly one apk lives there: the site build refuses to guess between two. Prune AFTER the copy so a
+# failure never leaves the folder empty, and case-insensitively so a stray .APK cannot survive to
+# hard-fail the site build.
+find "$OUT" -maxdepth 1 -iname '*.apk' ! -name "$NAME" -print -delete
 
 # A sidecar for the site: the build date cannot be read back off the apk (a checkout rewrites the
 # mtime, the zip entries are normalised), and the site refuses the sidecar if it stops matching.
@@ -92,5 +99,5 @@ fs.writeFileSync(dir + "/build.json", JSON.stringify({
 
 echo
 echo "==> $OUT/$NAME"
-echo "    $(du -h "$OUT/$NAME" | cut -f1)  sha256 $(sha256sum "$OUT/$NAME" | cut -c1-16)…"
+echo "    $(du -h "$OUT/$NAME" | cut -f1)  sha256 $(sha256_of "$OUT/$NAME" | cut -c1-16)…"
 echo "    Next: (cd site && npm run build && npm test), then commit webapp/ and push (a push to main deploys)."

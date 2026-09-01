@@ -3,13 +3,14 @@ _The Android test build of the phone HUD: one phone, one gun, over Bluetooth._
 Last verified: 2026-08-27
 
 ## This is a test build, not a release.
-The BRX Combat HUD is still being built, and what is below is a **debug build**. It sideloads and runs, but it is signed with Android's throwaway debug key, so a future release-signed build will not install over it (uninstall first). It never touches the tagger's firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun.
+The BRX Combat HUD is still being built, and what is below is a **debug build**. It sideloads and runs, but it is signed with Android's throwaway debug key, so a future release-signed build will not install over it (uninstall first). It is also **debuggable**, which is what `debug` means to Android: anything attached over USB debugging can inspect it and read its data. Fine on your own phone at the bench; a reason not to hand this build to a stranger. It never touches the tagger's firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun.
 Source: app/README.md, CLAUDE.md §Hard rules
 
 ## BRX Combat HUD for Android
 One phone drives one BRX tagger over native Bluetooth LE, runs the match loop (spawn, ammo, lives, respawn clock) and reports to Mission Control over the field Wi-Fi. On the phone it installs as **BRX Companion**.
 Download: https://open-brx.iamrossi.workers.dev/download/brx-companion-0.1.0-android-debug.apk (5.3 MB, version 0.1.0, built 2026-08-30, sha256 720eba2694550b0ac04582414e5dc3dbc1feabb87f44ef81310b8f5e7c2f3f74)
 
+Source: app/README.md, docs/spec/node.md §3
 
 ## What is already proven on real guns.
 On 2026-08-25 this app, built from this codebase, passed every core gate on a bench tagger over native Bluetooth: connect, stream trigger and ammo frames, speak (`$VOL` + `$PLAY`), green the sight (`$SFLASH`), push a full config and arm a game (the gun counted 3-2-1 and went live), and hold a link for 5+ minutes with no drops. Later that night a phone talked to Mission Control and an MC-pushed kit-out fired the real gun. What is *not* finished is the game and HUD layer around that. ✅ (BLE path) / 🚧 (app)
@@ -26,7 +27,7 @@ Source: app/README.md, app/scripts/android-setup.sh, mcp/brx_mcp/mc/API.md
 ## What it needs
 - **Android**: 7.0 (API 24) or newer. There is no Play Store listing; this is a sideload.
 - **A tagger**: BRX gen 2/3 (Bluetooth LE). Gen 1 uses Bluetooth Classic serial and is not supported.
-- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera only if you scan the Mission Control QR code. No Location, and no internet.
+- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera, only used if you scan the Mission Control QR code. **No Location**: the scan is flagged `neverForLocation`, so it works with the Location toggle off. The manifest does declare network access (Capacitor always adds it) and the app uses it for exactly one thing: the `ws://` link to your own Mission Control. No cloud, no account, no telemetry.
 - **Wi-Fi**: only to reach Mission Control, and only if you are running a hosted match. The field LAN is a laptop and a travel router with no internet behind it.
 - **Screen**: landscape, mounted on the rail. The app locks the orientation itself.
 Source: app/README.md, app/scripts/android-setup.sh, docs/adr/0002-laptop-mission-control-host.md
@@ -40,5 +41,5 @@ There is no download. iOS is first-class in the code (the same codebase ran on a
 Source: app/README.md §Prerequisites, docs/adr/0003-native-app-over-web-bluetooth.md
 
 ## Prefer to build it yourself?
-`git clone`, then `npm ci && npm run android:apk` in `app/` produces exactly this file (JDK 21 and the Android SDK required). The whole project is MIT.
+`git clone`, then `npm ci && npm run android:apk` in `app/` builds the same app from the same source (JDK 21 and the Android SDK required). It will **not** be byte-identical to the file above: Android signs a debug build with a keystore unique to the machine that built it, so your checksum will differ. The SHA-256 on this page is there to tell you the download arrived intact, not to prove where it came from. The whole project is MIT.
 Source: app/README.md, app/scripts/android-apk.sh

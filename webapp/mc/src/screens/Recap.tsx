@@ -29,6 +29,11 @@ export function Recap() {
   // order between renders, which is a React invariant, not a lint preference.
   const stale = sel != null && !archive.some(h => h.match_id === sel);
   useEffect(() => { if (stale) setSel(null); }, [stale]);
+  // An export error belongs to the match it was raised for. It used to persist across a selection
+  // change, so a failed archived export left "THIS MC IS TOO OLD…" sitting next to the LIVE export
+  // link, which works fine — an error about a match the operator is no longer looking at
+  // (merge review 2026-09-01). Clearing on `sel` covers the chips and the stale-drop above alike.
+  useEffect(() => { setCsvErr(null); }, [sel]);
   if (!state) return null;
   const past = sel && !stale ? archive.find(h => h.match_id === sel) ?? null : null;
   const rc: RecapView | null = past ? past.recap : live;
@@ -123,6 +128,11 @@ export function Recap() {
               route the operator gets the 404's JSON body in a file named .csv. `serverOld` only
               watches /api/perks, so check this route itself before letting the download start
               (review 2026-09-01). The live export needs no check: that route has always existed. */}
+          {/* The href stays the REAL url even for an archived match: dropping it would strip the
+              link's keyboard focus and context menu to close a middle-click edge case that only
+              misfires against a pre-W1 server. The click handler fetches first, so the ordinary
+              path never saves a 404 body; "Save link as" on an old MC still would (merge review
+              2026-09-01, accepted as the cheaper trade). */}
           <a href={csv} download={csvName} className="hov-acc"
             onClick={past ? async e => {
               e.preventDefault();

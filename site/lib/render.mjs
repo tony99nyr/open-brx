@@ -208,7 +208,7 @@ function downloadCard(b, ctx) {
     ['SHA-256', `<code class="sha">${esc(d.sha256)}</code>`],
   ];
   return `<div class="dl">
-<a class="dl-btn" href="${d.href}" download>Download for Android<span>APK · ${esc(d.size)}</span></a>
+<a class="dl-btn" href="${esc(d.href)}" download>Download for Android<span>APK · ${esc(d.size)}</span></a>
 <dl class="dl-meta">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
 </div>`;
 }
@@ -354,7 +354,9 @@ export function markdownTwin(page, ctx = {}) {
       if (b.title) out.push(`## ${b.title}`);
       if (b.head) out.push(b.head);
       out.push(d ? `Download: ${ctx.site || ''}${d.href} (${d.size}, version ${d.version || 'unversioned'}, built ${d.date}, sha256 ${d.sha256})` : 'No build is published yet.', '');
-      out.push(...b.body, '');
+      out.push(...b.body);
+      if (b.src.length) out.push(`Source: ${b.src.join(' · ')}`);
+      out.push('');
       continue;
     }
     if (b.type === 'image' || b.type === 'diagram') { out.push(`_[${b.type} ${b.arg}: ${b.head || ''}]_`, ''); continue; }

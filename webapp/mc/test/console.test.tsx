@@ -391,3 +391,80 @@ describe('the designer seeds a late snapshot without stomping edits', () => {
     m.unmount();
   });
 });
+
+describe('the RECAP selection and its export error', () => {
+  it('drops a selection whose match is gone, instead of silently showing the live one', async () => {
+    // Lane A's fix (`stale` in Recap.tsx). The merge review found it had NO test at all: deleting
+    // `const stale` and `&& !stale` left all 66 green. It is the change the merge was most likely
+    // to break, and nothing would have said so (2026-09-01).
+    const d = await demo();
+    // TWO archived matches, so the picker still renders after one of them disappears. With an empty
+    // archive the picker is hidden entirely and `archive.find()` returns undefined anyway — the bug
+    // is invisible in that setup, which is how it went untested (merge review 2026-09-01).
+    let rows: MatchHistoryRow[] = [archived('m7'), archived('m8', 'tdm')];
+    const state = withLive(d.state);
+    const base = makeStore({ ...d, state, view: 'recap', api: { matchHistory: async () => rows,
+                                                                matchCsvUrl: (id: string) => `/api/matches/${id}.csv` } });
+    const render = (phase: State['phase'] = 'recap') =>
+      <StoreCtx.Provider value={{ ...base, state: { ...state, phase } }}><Recap /></StoreCtx.Provider>;
+    const m = await mount(render());
+    await m.click('· FFA');
+    expect(m.text()).toContain('ARCHIVED MATCH');
+
+    // NEW MATCH: the session is rebuilt, the history is empty, and the phase moves — which is what
+    // re-runs the fetch. The selection now points at a match the server no longer lists.
+    rows = [archived('m8', 'tdm')];        // m7 is gone; m8 remains so the picker still shows
+    await m.update(render('muster'));
+    expect(m.text(), 'a vanished selection must not still render as archived').not.toContain('ARCHIVED MATCH');
+    expect(m.text(), 'the live match must be fully in charge again').toContain('NEW MATCH');
+
+    // The real symptom: the screen shows the LIVE recap while the picker highlights NOTHING, so the
+    // operator cannot tell which match they are reading. THIS MATCH must be selected again.
+    const chipFor = (label: string) => m.find('button').find(b => (b.textContent ?? '').includes(label));
+    const thisMatch = chipFor('THIS MATCH');
+    expect(thisMatch, 'the picker must still be on screen').toBeTruthy();
+    expect(thisMatch!.style.background, 'THIS MATCH must be highlighted once the selection is dropped')
+      .not.toBe('transparent');
+    expect(chipFor('· TDM')!.style.background, 'the surviving archived chip must NOT be selected').toBe('transparent');
+    m.unmount();
+  });
+
+  it('clears an export error when the operator selects a different match', async () => {
+    // The error belonged to the SCREEN, not the selection: a failed archived export left
+    // "THIS MC IS TOO OLD…" sitting beside the live export link, which works fine.
+    const d = await demo();
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"error":"no"}', { status: 404 })) as typeof fetch;
+    try {
+      const m = await mountScreen(<Recap />, {
+        ...d, state: withLive(d.state), view: 'recap',
+        api: { matchHistory: async () => [archived('m7')], matchCsvUrl: (id: string) => `/api/matches/${id}.csv` },
+      });
+      await m.click('· FFA');
+      await m.click('EXPORT CSV');
+      expect(m.text()).toContain('TOO OLD');
+      await m.click('THIS MATCH');
+      expect(m.text(), 'an error about another match must not follow the operator').not.toContain('TOO OLD');
+      m.unmount();
+    } finally { globalThis.fetch = orig; }
+  });
+});
+
+describe('a weapon with no reload time', () => {
+  it('reads as an em dash on every screen, never a bare unit', async () => {
+    // `views.weapon_view` returns `reload_s: null` deliberately — a confident "RELOAD 0.0S" was
+    // wrong. CATALOG handled it; KIT rendered the label over a bare "s" because the TS type still
+    // said `number`, so nothing flagged it (merge 2026-09-01).
+    const d = await demo();
+    const weapons = d.weapons.map(w => ({ ...w, reload_s: null }));
+    for (const [name, screen] of [['kit', <Kit />], ['catalog', <Catalog />]] as const) {
+      const m = await mountScreen(screen, { ...d, weapons, view: name });
+      const cells = m.find('span').filter(s => (s.textContent ?? '').startsWith('RELOAD')
+                                            && (s.textContent ?? '').length < 20);
+      for (const c of cells) {
+        expect(c.textContent, `${name}: a reload cell must not be a bare unit`).not.toBe('RELOADs');
+      }
+      m.unmount();
+    }
+  });
+});

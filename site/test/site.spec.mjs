@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SITE = path.resolve(HERE, '..');
@@ -645,6 +646,10 @@ it('9 · /platform/app: the download button serves the committed APK, and the pa
   const ver = path.basename(onDisk).match(/-(\d+\.\d+\.\d+)-/)?.[1];
   expect(ver, 'the filename carries the version').toBeTruthy();
   expect(meta).toContain(ver);
+  // the Built row comes from the sidecar, not from the file's mtime, which a checkout rewrites
+  const sidecar = JSON.parse(fs.readFileSync(path.join(WEB, 'download', 'build.json'), 'utf8'));
+  expect(sidecar.sha256, 'sidecar must describe the served apk').toBe(sha);
+  expect(meta).toContain(sidecar.built.slice(0, 10));
 
   // the honesty the page owes a sideloader
   const body = (await page.locator('main').innerText()).toLowerCase();
@@ -682,5 +687,62 @@ it('9b · a manual with [download] but no apk renders a TODO; two apks fail the 
     expect(b.code, 'two apks must fail the build').not.toBe(0);
     expect(b.output).toContain('keep exactly one');
     expect(JSON.parse(fs.readFileSync(path.join(two, '.site-manifest.json'), 'utf8')).ok).toBe(false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// The page's whole premise is that it cannot state a fact about a build it is not serving. That
+// rests on the sidecar contract, so every way the sidecar can stop describing the bytes must fail
+// the build rather than publish a plausible-looking date.
+it('9c · the build.json contract: missing, mismatched or dirty fails the build; a good one dates the page', async () => {
+  const dir = fs.mkdtempSync(path.join(SITE, 'test', 'tmp-dl-meta-'));
+  const apk = Buffer.from('PK\u0003\u0004 pretend apk');
+  const sha = createHash('sha256').update(apk).digest('hex');
+  const NAME = 'brx-companion-9.9.9-android-debug.apk';
+  const build = out => {
+    try { return { code: 0, output: execFileSync('node', [path.join(SITE, 'build.mjs'), '--manual', dir, '--out', out], { stdio: 'pipe' }).toString() }; }
+    catch (e) { return { code: e.status, output: String(e.stdout) + String(e.stderr) }; }
+  };
+  const withSidecar = (name, meta) => {
+    const out = path.join(dir, name);
+    fs.mkdirSync(path.join(out, 'download'), { recursive: true });
+    fs.writeFileSync(path.join(out, 'download', NAME), apk);
+    if (meta) fs.writeFileSync(path.join(out, 'download', 'build.json'), JSON.stringify(meta));
+    return { out, ...build(out) };
+  };
+  try {
+    for (const f of fs.readdirSync(path.join(HERE, 'fixtures/manual-stale'))) fs.copyFileSync(path.join(HERE, 'fixtures/manual-stale', f), path.join(dir, f));
+    const home = path.join(dir, '00-home.md');
+    const src = fs.readFileSync(home, 'utf8');
+    const cut = src.indexOf('\n### Page:', src.indexOf('\n### Page:') + 1);
+    fs.writeFileSync(home, src.slice(0, cut) + '\n[download] **The app** Get it here. src: fixture\n' + src.slice(cut));
+
+    const good = { file: NAME, sha256: sha, built: '2019-07-04T10:00:00.000Z', dirty: false };
+    for (const [label, meta, expected] of [
+      ['missing', null, 'build.json is missing'],
+      ['wrong sha', { ...good, sha256: 'deadbeef' }, 'does not describe'],
+      ['wrong file', { ...good, file: 'something-else.apk' }, 'does not describe'],
+      ['dirty tree', { ...good, dirty: true, git: 'abc1234' }, 'dirty tree'],
+    ]) {
+      const r = withSidecar('out-' + label.replace(/ /g, '-'), meta);
+      expect(r.code, `${label} must fail the build`).not.toBe(0);
+      expect(r.output, label).toContain(expected);
+      expect(JSON.parse(fs.readFileSync(path.join(r.out, '.site-manifest.json'), 'utf8')).ok).toBe(false);
+    }
+
+    // and the honest case: the page shows the sidecar's date, not today's mtime
+    const ok = withSidecar('out-good', good);
+    expect(ok.code, ok.output).toBe(0);
+    const html = fs.readFileSync(path.join(ok.out, 'index.html'), 'utf8');
+    expect(html).toContain('2019-07-04');
+    expect(html).toContain(`href="/download/${NAME}"`);
+    expect(html).not.toContain('data-todo');
+
+    // a hand-dropped file the script could never have produced is refused, not linked
+    const odd = path.join(dir, 'out-odd');
+    fs.mkdirSync(path.join(odd, 'download'), { recursive: true });
+    fs.writeFileSync(path.join(odd, 'download', 'my build".apk'), apk);
+    const r = build(odd);
+    expect(r.code, 'an unexpected filename must fail the build').not.toBe(0);
+    expect(r.output).toContain('unexpected filename');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

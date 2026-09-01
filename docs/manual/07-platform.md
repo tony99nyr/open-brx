@@ -381,7 +381,7 @@ src: `README.md` §Roadmap
 ### Page: Get the app  (`/platform/app`)
 _The Android test build of the phone HUD: one phone, one gun, over Bluetooth._
 
-[callout:warn] **This is a test build, not a release.** The BRX Combat HUD is still being built, and what is below is a **debug build**. It sideloads and runs, but it is signed with Android's throwaway debug key, so a future release-signed build will not install over it (uninstall first). It never touches the tagger's firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun. 🚧 src: `app/README.md`, `CLAUDE.md` §Hard rules
+[callout:warn] **This is a test build, not a release.** The BRX Combat HUD is still being built, and what is below is a **debug build**. It sideloads and runs, but it is signed with Android's throwaway debug key, so a future release-signed build will not install over it (uninstall first). It is also **debuggable**, which is what `debug` means to Android: anything attached over USB debugging can inspect it and read its data. Fine on your own phone at the bench; a reason not to hand this build to a stranger. It never touches the tagger's firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun. 🚧 src: `app/README.md`, `CLAUDE.md` §Hard rules
 
 [download] **BRX Combat HUD for Android** One phone drives one BRX tagger over native Bluetooth LE, runs the match loop (spawn, ammo, lives, respawn clock) and reports to Mission Control over the field Wi-Fi. On the phone it installs as **BRX Companion**. 🚧 src: `app/README.md`, `docs/spec/node.md` §3
 
@@ -398,7 +398,7 @@ src: `app/README.md`, `app/scripts/android-setup.sh`, `mcp/brx_mcp/mc/API.md`
 [spec-sheet] **What it needs**
 - **Android**: 7.0 (API 24) or newer. There is no Play Store listing; this is a sideload.
 - **A tagger**: BRX gen 2/3 (Bluetooth LE). Gen 1 uses Bluetooth Classic serial and is not supported.
-- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera only if you scan the Mission Control QR code. No Location, and no internet.
+- **Permissions**: Nearby devices (Bluetooth) to reach the gun. Camera, only used if you scan the Mission Control QR code. **No Location**: the scan is flagged `neverForLocation`, so it works with the Location toggle off. The manifest does declare network access (Capacitor always adds it) and the app uses it for exactly one thing: the `ws://` link to your own Mission Control. No cloud, no account, no telemetry.
 - **Wi-Fi**: only to reach Mission Control, and only if you are running a hosted match. The field LAN is a laptop and a travel router with no internet behind it.
 - **Screen**: landscape, mounted on the rail. The app locks the orientation itself.
 src: `app/README.md`, `app/scripts/android-setup.sh`, `docs/adr/0002-laptop-mission-control-host.md`
@@ -407,7 +407,7 @@ src: `app/README.md`, `app/scripts/android-setup.sh`, `docs/adr/0002-laptop-miss
 
 [callout:info] **On an iPhone?** There is no download. iOS is first-class in the code (the same codebase ran on an iPhone X against real taggers), but Apple has no sideload-a-file path: you build it yourself with Xcode and a free Apple ID, which gives a 7-day on-device build. `app/README.md` has the steps. ✅ (it runs) / 🚧 (no distribution) src: `app/README.md` §Prerequisites, `docs/adr/0003-native-app-over-web-bluetooth.md`
 
-[callout:tip] **Prefer to build it yourself?** `git clone`, then `npm ci && npm run android:apk` in `app/` produces exactly this file (JDK 21 and the Android SDK required). The whole project is MIT. src: `app/README.md`, `app/scripts/android-apk.sh`
+[callout:tip] **Prefer to build it yourself?** `git clone`, then `npm ci && npm run android:apk` in `app/` builds the same app from the same source (JDK 21 and the Android SDK required). It will **not** be byte-identical to the file above: Android signs a debug build with a keystore unique to the machine that built it, so your checksum will differ. The SHA-256 on this page is there to tell you the download arrived intact, not to prove where it came from. The whole project is MIT. src: `app/README.md`, `app/scripts/android-apk.sh`
 
 ---
 

@@ -441,7 +441,9 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
           {w.dmg_per_hit != null && <NumberCell label="DAMAGE / HIT" value={w.dmg_per_hit} size={20} pad="6px 14px" />}
           <NumberCell label="MAGAZINE" value={w.clip} size={20} pad="6px 14px" />
           <NumberCell label="RESERVE" value={w.reserve} size={20} pad="6px 14px" />
-          <NumberCell label="RELOAD" value={w.reload_s} unit="s" size={20} pad="6px 14px" />
+          {/* null means "no reload time", not zero — a bare unit with no number reads as a broken
+              cell. CATALOG already showed `—`; this one did not (merge review 2026-09-01). */}
+          <NumberCell label="RELOAD" value={w.reload_s ?? '—'} unit={w.reload_s == null ? undefined : 's'} size={20} pad="6px 14px" />
           {/* both follow the host's health config now, not a hardcoded 115 (W2) — say which pool */}
           {w.htk != null && <NumberCell label={w.pool ? `HITS TO KILL · ${w.pool}` : 'HITS TO KILL'} value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}

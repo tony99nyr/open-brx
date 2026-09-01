@@ -16,3 +16,8 @@ site/playwright-report/
 
 # wrangler local state (deploy runs from Cloudflare git builds, not this cache)
 .wrangler/
+
+# signing material: never commit a keystore or its password (FOLLOWUPS B21 adds a release key)
+*.jks
+*.keystore
+keystore.properties

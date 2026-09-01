@@ -16,7 +16,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.start
 const MANUAL = path.resolve(args.manual || path.join(REPO, 'docs/manual'));
 const OUT = path.resolve(args.out || path.join(REPO, 'webapp'));
 const SITE = args.site || 'https://open-brx.iamrossi.workers.dev';
-const PROTECTED = new Set(['mc', 'download']); // never written or deleted by this build
+const PROTECTED = new Set(['mc', 'download']); // committed by hand; the stale-file sweep skips these
 const NOW = new Date().toISOString();
 
 const written = new Set();
@@ -67,7 +67,11 @@ const dlDir = path.join(OUT, 'download');
 const dlProblems = [];
 function findDownload() {
   if (!fs.existsSync(dlDir)) return null;
-  const apks = fs.readdirSync(dlDir).filter(f => f.toLowerCase().endsWith('.apk')).sort();
+  const all = fs.readdirSync(dlDir).filter(f => f.toLowerCase().endsWith('.apk'));
+  // a name this build could not have produced never reaches an href: it would need escaping, and it
+  // is a sign someone dropped a file in by hand rather than running `npm run android:apk`
+  const apks = all.filter(f => /^[A-Za-z0-9][A-Za-z0-9._-]*\.apk$/.test(f)).sort();
+  for (const bad of all.filter(f => !apks.includes(f))) dlProblems.push(`webapp/download/${bad}: unexpected filename, cut the build with \`npm run android:apk\``);
   if (!apks.length) return null;
   if (apks.length > 1) { dlProblems.push(`webapp/download/: ${apks.length} apks (${apks.join(', ')}): keep exactly one, the site links a single build`); return null; }
   const file = apks[0];
@@ -79,10 +83,14 @@ function findDownload() {
   // is trusted only while it still describes these exact bytes.
   let date = fs.statSync(path.join(dlDir, file)).mtime.toISOString().slice(0, 10);
   const sidecar = path.join(dlDir, 'build.json');
-  if (fs.existsSync(sidecar)) {
+  if (!fs.existsSync(sidecar)) {
+    // without it the page would date the build from the checkout's mtime and state it as fact
+    dlProblems.push(`webapp/download/build.json is missing, so the build date is unknown (rerun \`npm run android:apk\`)`);
+  } else {
     let meta = null;
     try { meta = JSON.parse(fs.readFileSync(sidecar, 'utf8')); } catch { /* handled below */ }
     if (!meta || meta.file !== file || meta.sha256 !== sha256) dlProblems.push(`webapp/download/build.json does not describe ${file} (rerun \`npm run android:apk\`)`);
+    else if (meta.dirty === true) dlProblems.push(`${file} was built from a dirty tree (build.json git ${meta.git || '?'}): commit app/ and cut it again before publishing`);
     else if (meta.built) date = meta.built.slice(0, 10);
   }
   return {
@@ -264,7 +272,7 @@ for (const rel of written) {
   const html = fs.readFileSync(path.join(OUT, rel), 'utf8');
   for (const m of html.matchAll(/href="(\/[^"#?]*)"/g)) {
     const h = m[1];
-    if (h.startsWith('/download/')) { if (!fs.existsSync(path.join(OUT, h.slice(1)))) problems.push(`${rel}: missing download ${h}`); continue; }
+    if (h.startsWith('/download/')) { const f = path.join(OUT, h.slice(1)); if (!fs.existsSync(f) || !fs.statSync(f).isFile()) problems.push(`${rel}: missing download ${h}`); continue; }
     if (h.startsWith('/assets/') || h.startsWith('/data/') || h.startsWith('/img/')) { if (!written.has(h.slice(1))) problems.push(`${rel}: missing asset ${h}`); continue; }
     if (/\.(md|txt|xml|svg)$/.test(h)) { if (!written.has(h.slice(1))) problems.push(`${rel}: missing file ${h}`); continue; }
     const target = h === '/' ? 'index.html' : h.replace(/^\//, '').replace(/\/?$/, '/index.html');

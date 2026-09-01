@@ -160,7 +160,11 @@ export interface ModeInfo {
 
 export interface WeaponView {
   weapon_id: string; name: string; cls: string; clip: number; mags: number; reserve: number;
-  reload_s: number; dmg: number; rpm: number; rng: number; verified: boolean;
+  /** seconds, or **null** when the weapon has no reload time — render `—`, never `0.0` and never a
+   *  bare unit. `views.weapon_view` returns null deliberately (a confident "RELOAD 0.0S" was wrong);
+   *  the type said `number` so nothing flagged the screens that did not handle it (merge 2026-09-01). */
+  reload_s: number | null;
+  dmg: number; rpm: number; rng: number; verified: boolean;
   desc?: string;
   role: string;        // assault | cqb | marksman | support | power — the human class label
   tags: string[];      // heavy | sniper | … — what loadout rules match on
