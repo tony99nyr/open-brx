@@ -135,7 +135,11 @@ def test_cues_are_full_play_frames():
     assert cues["countdown"] == "$PLAY,VA81,4,6,,,,,*"
     assert cues["kill"] == "$PLAY,,4,6,VAA,,,,*"
     # a cue may be "" = deliberately silent (runway_30/20 until distinct lines are pinned — bench 2026-08-25)
-    assert all(v.startswith("$PLAY") for v in cues.values() if v)
+    # Cues are frames the node writes VERBATIM. All are $PLAY except the headset half of the
+    # low-health alert, which is the $HLED Callsign sends alongside VA8B (capture 2026-08-23).
+    assert all(v.startswith("$PLAY") for k, v in cues.items() if v and not k.endswith("_led"))
+    assert cues["hurt_led"] == "$HLED,7,4,90,90,10,15,*"
+    assert all(v.startswith("$") and v.endswith(",*") for v in cues.values() if v)
     assert cues["runway_10"].startswith("$PLAY"), "the T-10 count stays audible"
 
 

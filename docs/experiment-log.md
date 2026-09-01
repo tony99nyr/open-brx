@@ -3862,3 +3862,51 @@ HP and preflight time series for both phones, which is what settled "did hits re
 copy the SQLite off after every session** — `field-runbook-mc.md §0a`. The one gap was the phone-side
 frame ring, which nobody hit "Share log" for; that is the difference between fixing bug 2 and
 speculating about it.
+
+## 2026-09-01 (Claude, MacBook) — 🆕 THE HEADSET FEEDBACK IS DECODED, from captures we already had
+
+**No new capture session was needed.** M1 in `handoff-post-first-match.md` asked for a fresh Callsign
+game on two phones. It was already on disk — twice. The `$SFLASH` capture and
+`2026-08-23-two-tagger-combat.btsnoop` between them cover both sides of a fight, and they answer it.
+
+### What Callsign actually sends to the headset
+
+| when | frame | which player |
+|---|---|---|
+| pre-game, with `$GLED` | `$HLED,<team>,0,,,10,,*` | **every** gun, every captured game |
+| armour 0 → HP dropping | `$PLAY,VA8B,3,6,,,,,*` then `$HLED,7,4,90,90,10,15,*` | the **victim** |
+| end of game | `$HLED,,6,,,,,*` | every gun |
+
+**We sent none of the first two.** Our only `$HLED` all game is the blanking frame at the end. That is
+why our headsets were dark for a whole match while Callsign's are not.
+
+### ⛔ There is NO per-hit and NO per-kill headset frame
+
+- **Shooter side, on a kill** (`2026-08-25-two-gun-3-kills-sflash`, 3 kills): every kill is
+  `$SFLASH,*` + `$PLAY,,4,6,V3A,,,,*` and **nothing else**. Our kill path is already byte-identical.
+- **Victim side** (`2026-08-23-two-tagger-combat`): **23 `$HIR` hits, 2 `$HLED` alerts.** The alert is
+  not per hit. Both fired once per life, ~0.9 s after armour reached 0 and HP began dropping — 2
+  deaths, 2 alerts, both at `$HP,34,0,0` (@340.5 s and @361.5 s), each paired with `VA8B`.
+
+⇒ **The "blinks green on hit" in the 2026-08-27 entry is almost certainly this low-health alert**, which
+Tony flagged his own uncertainty about at the time. It is a *state* alert, not a hit flash.
+⇒ The 2026-08-30 correction ("green is host-driven") **stands and is now specific**: the frames exist,
+we have them, and they are these.
+⇒ **Still open:** whether a per-hit blink happens autonomously *once the headset has been lit* by the
+pre-game `$HLED`. Our headsets never got that frame, so we have never seen the lit state at all. That is
+now an eyeball test, not a capture.
+
+### Shipped
+- `compile.py` head now ends `… $HLED,<tid>,0,,,10,,* → $TID,<tid>,*`. **`$HLED` token 1 is a palette
+  index on the same scale as `$GLED`** (0 red · 1 blue · 2 yellow · 3 green) and our `$TID` values
+  already use exactly that mapping (`state.TEAM_DEFS`), so the tid *is* the colour — no lookup needed.
+- `cues.hurt` + `cues.hurt_led`, fired by the node once per life on the armour-0 → HP-damage
+  transition (`engine._onHp`). Byte-identical to the capture.
+- Both are **UNCONFIRMED on hardware.** Next match: look at the headsets pre-game (team colour?) and
+  when someone's armour breaks (alert?). That is the whole test.
+
+### Method note, again
+This is the third time an unread capture answered a question we were about to spend a hardware session
+on — `$SFLASH` sat unread for two days, `$ALCD` heat telemetry for days, and now this. **Before planning
+a capture, grep the ones in `protocol/captures/raw/` for the command you expect to find.** It cost ten
+minutes here and would have cost an evening with two phones and a hub.

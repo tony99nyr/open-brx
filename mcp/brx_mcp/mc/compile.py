@@ -330,7 +330,12 @@ class Compiler:
             # button-map state on real guns (brx-opus review 2026-08-27). Cycle only to slot 0 instead, so ALT is a
             # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: bench-tomorrow.md.
             bmap = [("$BMAP,1,100,0,0,99,99,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
-        head += list(_SIR_TABLE) + bmap + gc._led_frames() + [f"$TID,{tid},*"]
+        # Pre-game headset team colour. Callsign sends this in EVERY captured game and we never have,
+        # which is why our headsets sat dark (2026-08-23-two-tagger-combat @211.7s, solo-game @21.4s).
+        # $HLED token 1 is a palette index on the same scale as $GLED (0 red · 1 blue · 2 yellow ·
+        # 3 green) and our $TID values already use exactly that mapping (state.TEAM_DEFS), so tid IS
+        # the colour. Token 5 = brightness, 10 as captured.
+        head += list(_SIR_TABLE) + bmap + gc._led_frames() + [f"$HLED,{tid},0,,,10,,*", f"$TID,{tid},*"]
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
@@ -392,6 +397,12 @@ class Compiler:
             "kill":      f"$PLAY,,4,6,{kill},,,,*",       # confirmed kill line (slot 4, voice-family)
             "game_over": "$PLAY,VA33,4,6,,,,,*",         # CONFIRMED by ear 2026-08-25: "game over" (neutral — a node ending on its own timer does not know the winner)
             "victory":   "$PLAY,VSF,4,6,JAY,,,,*",        # CONFIRMED by ear 2026-08-25: victory sting + "victory" (winners only, MC-sent at recap when in coverage)
+            # Victim-side low-health alert, byte-identical to Callsign. Fires once per life shortly
+            # after ARMOUR reaches 0 and HP starts dropping — 2 deaths, 2 alerts, both at $HP,34,0,0
+            # in 2026-08-23-two-tagger-combat (@340.5s, @361.5s). This, not a per-hit flash, is almost
+            # certainly the "headset blinks green" Tony remembered (he flagged his own uncertainty).
+            "hurt":      "$PLAY,VA8B,3,6,,,,,*",
+            "hurt_led":  "$HLED,7,4,90,90,10,15,*",
             "tick":      "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25) SFX tick (real bank id)
             "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
             "multi":     "$PLAY,,4,6,VA46,,,,*",          # provisional (nRF-native is silent over BLE)

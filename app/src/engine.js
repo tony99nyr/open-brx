@@ -93,6 +93,7 @@ export class Engine {
     this.probeSent = false;
     this.night = false;
     this.lastVoltsAt = 0;
+    this.hurtFired = false;         // low-health alert already sent this life
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
     this.lastSwitchMs = null;       // measured duration of the last completed swap
     this._prevAmmo = {};            // per weapon slot ($ALCD token 3): last mag seen
@@ -409,6 +410,7 @@ export class Engine {
     if (!this.frames) return;
     if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
     this._write([...this.frames.spawn, SFLASH], 'spawn');
+    this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
@@ -457,6 +459,7 @@ export class Engine {
   _revive(resync) {
     if (!this.frames) return;
     this._write(this.frames.revive, 'revive');
+    this.hurtFired = false;
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}) });
@@ -640,6 +643,16 @@ export class Engine {
     const before = this.hp + this.armor + this.shield;
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
+    // Victim-side low-health alert. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15 once per life
+    // shortly after ARMOUR reaches 0 and HP starts dropping (capture 2026-08-23-two-tagger-combat:
+    // 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets stayed dark.
+    if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
+        && !this.hurtFired && this.armor === 0 && this.hp > 0 && this.hp < this.maxHp) {
+      this.hurtFired = true;
+      const c = this.frames && this.frames.cues;
+      const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
+      if (fr.length) this._write(fr, 'low health');
+    }
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num, shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto });
       this.lastHitAt = this.now();

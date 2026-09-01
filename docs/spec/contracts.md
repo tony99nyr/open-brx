@@ -108,7 +108,12 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   end:     string[],   // game-over teardown (END_SEQUENCE)
   panic:   string[],   // ["$CLEAR,*", "$SP,99,*"]
   team_flip?: { [tid: string]: string[] }, // infection: frames to move THIS gun to another team mid-match
-  cues: { countdown: string, kill: string, game_over?, tick?, klaxon?, multi?, medal?, runway_30?, runway_20?, runway_10?, [k: string]?: string }
+  cues: { countdown: string, kill: string, game_over?, victory?, tick?, klaxon?, multi?, medal?,
+          hurt?, hurt_led?, runway_30?, runway_20?, runway_10?, [k: string]?: string }
+  // hurt/hurt_led = the victim-side low-health alert ($PLAY,VA8B + $HLED), fired ONCE PER LIFE
+  // when armour reaches 0 and HP starts dropping. Byte-identical to Callsign
+  // (protocol/captures/raw/2026-08-23-two-tagger-combat.btsnoop @340.5s, @361.5s).
+  // `*_led` cues are $HLED, not $PLAY — every cue is still a complete frame written verbatim.
                        // A6.3: values are PRE-COMPOSED `$PLAY,…,*` FRAMES (slot placement decided by the compiler), e.g.
                        //   countdown: "$PLAY,VA81,4,6,,,,,*", kill: "$PLAY,,4,6,VAA,,,,*". Open map; a missing key is skipped, never guessed.
 }

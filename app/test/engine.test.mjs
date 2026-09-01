@@ -693,3 +693,26 @@ test('death clears the swap indicator', () => {
   h.frame('$HIR,4,0,19,2,24,0,0,*'); h.frame('$HP,0,0,0,*');
   assert.equal(h.eng.state().switching, false, 'indicator must not outlive the player');
 });
+
+// ── victim-side low-health alert (capture 2026-08-23-two-tagger-combat, decoded 2026-09-01) ──────
+test('the low-health alert fires once per life when armour is gone and HP is dropping', () => {
+  const h = goLive(harness());
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,16,0,*');   // armour still up
+  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 0, 'armour up: no alert');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');    // armour gone, HP taking damage
+  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'alert on the transition');
+  assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1, 'headset lights with it');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,34,0,0,*');
+  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'once per life, not per hit');
+});
+
+test('a respawn re-arms the low-health alert', () => {
+  const h = goLive(harness());
+  h.frame('$HP,43,0,0,*');
+  h.writes.length = 0;
+  h.frame('$HP,0,0,0,*');                                        // dead
+  h.eng._spawn(false);                                           // back on your feet
+  h.frame('$HP,43,0,0,*');
+  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'a new life gets a new alert');
+});
