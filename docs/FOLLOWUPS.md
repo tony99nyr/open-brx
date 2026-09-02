@@ -638,10 +638,39 @@ drifting emitter cannot explain:
 Those still show the headset needs more signal than the gun body. They no longer establish that any
 headset is defective.
 
-**Next test, one shot:** fire a REAL TAGGER at board A (COM7). Decodes → the receiver is fine and the
-emitter is the dead part. Nothing → board A has failed and the emitter may be healthy. Until then,
-**no IR-based conclusion from the later part of 2026-09-02 should be trusted, and no hardware should
-be replaced.**
+### ✅ CONFIRMED: the RECEIVER is fine, the EMITTER (board B) is DEAD
+
+A real tagger was fired at board A and it decoded perfectly:
+
+```
+0000000101010001011000010  ->  player=5 team=1 dmg=22 proto=0 subtype=0 crit=0 parity=ok
+```
+
+**So board A is healthy and board B produces nothing it can see** — 15 shots, zero frames, static
+geometry, where the same pair worked this morning.
+
+**Our EMITTER died partway through 2026-09-02.** Hours of "the headset is fading" were our own rig
+declining, watched through the only thing we were instrumenting.
+
+**What this costs:**
+- every IR-based measurement from the later part of the session is **void**, not merely suspect
+- the F1 config hunt never ran (it needs a working emitter)
+- the R0BAT "fade curve" measures the emitter, not the headset
+
+**What it does NOT cost — the SIMULTANEOUS comparisons, which a drifting emitter cannot explain:**
+- **R0BAT took hits fine while R0BQT registered nothing, same emitter, same session.** R0BQT is
+  genuinely worse than R0BAT. That stands.
+- the gun body registered while the headset did not, in the same burst
+- 3 inches worked while 3 feet did not, in one sitting
+- the fn 36/37 multiplier results, which required an fn 1 control to read exactly the magnitude
+
+**Repair before any further IR work:** board B (2N2222A + IR LED on GPIO5). A loose wire on it was
+already found and re-seated earlier the same day, so the driver stage is the first suspect.
+
+**Re-test after repair, with a working emitter:** is R0BQT's headset actually less sensitive than
+R0BAT's, measured **simultaneously** — same burst, both units in frame — rather than in sequence.
+That is the only form of that comparison that survives a drifting rig, and it is the one question
+worth re-asking.
 
 **Unaffected:** results with a built-in control, notably the fn 36/37 multipliers, where an fn 1
 control had to read exactly the magnitude or the trial was void. A weak emitter cannot fake that.
