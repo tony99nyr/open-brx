@@ -152,7 +152,11 @@ class Rig:
         return self._classify_all(grab(), self.ref)
 
     def line(self, label, r):
-        cells = "  ".join(f"{k}={r[k][0]:<7}" for k in self.rois if k != "CONTROL")
+        def cell(k):
+            name, (rr, gg, bb) = r[k]
+            mx = max(rr, gg, bb, 1.0)
+            return f"{k}={name:<6}[{rr/mx:.2f},{gg/mx:.2f},{bb/mx:.2f}]"
+        cells = " ".join(cell(k) for k in self.rois if k != "CONTROL")
         ok, amb = r.get("_ok", (True, (0, 0, 0)))
         flag = "" if ok else f"   <<< AMBIENT UNSTABLE (canary {sum(amb):.0f}) - DISCARD"
         print(f"   {label:<34} {cells}{flag}", flush=True)

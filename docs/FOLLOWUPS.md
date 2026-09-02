@@ -392,6 +392,39 @@ rejoined. Connect-grace at START passed cleanly (`playing with 2/3 taggers`, ~11
 attempts). Whether a gun absent at start can ever join a running match is **untested** — it may be by
 design. Worth one deliberate test.
 
+## 🔴 F11 — A gun can arm, spawn and look healthy while SILENTLY registering no hits (2026-09-02)
+
+**Observed at the bench.** Mid-session the victim stopped registering IR entirely: ~80 shots, zero
+`$HIR`. Everything else looked correct — it connected, took the full arm sequence, echoed
+`$LCD,45,70,0,0,32,384` on `$SPAWN`, reported `$VOLTS`, and drove its own LEDs and the headset's on
+command. **Nothing in the BLE stream said anything was wrong.**
+
+**Root cause: the headset had dropped its link to the gun.** It showed up in a BLE scan as
+`BC-HEADSET-8F8C` advertising **standalone**. Power-cycling the headset restored hits immediately
+(3/3 on the next burst). Tony also saw the headset **flash green and take a hit** at one point in the
+dead window, so the headset's own sensors were alive — the path from headset to gun was what was gone.
+
+**Why this matters beyond the bench.** `gotchas.md` records that a gun whose headset has dropped
+*"silently refuses to join a game"*. This is a **different and worse symptom**: the game arms and
+spawns completely normally and simply never scores. In a match that is a player who appears fine to
+MC, to their phone and to themselves, and is invisible to everyone shooting them.
+
+**The diagnostic ladder that found it** (it cost ~40 minutes without one):
+1. **Have the RECEIVER decode the emitter** (`ir-capture COM7` while `ir-emit COM8`). A clean decode
+   separates *"not transmitting"* from *"not aimed"* — this is the step that saved us, and it also
+   incidentally closed bench 0.2.
+2. If TX is good, **scan for `BC-HEADSET-*` advertising on its own**. That is the tell.
+
+**Open:**
+- **What breaks the link?** Ours went during a session in which the gun's own hit-vibration walked it
+  off its stand — so mechanical shock is the leading suspect, but it is not proven.
+- **Can the gun tell us over BLE?** `armory.json` has a `headset_linked` field harvested over USB;
+  find whether anything on the BLE side exposes it (`$QUERY`?). **If it does, MC and the node should
+  surface an unlinked headset as a RED preflight** — this is exactly the class of fault the preflight
+  exists for, and right now it would pass.
+- Does a `$HIR` ever arrive from the **gun body** sensor while the headset is unlinked? If the gun's
+  own sensor still works, the failure is partial, not total, and looks even more like flaky scoring.
+
 ## 🟢 F1 — POOL-STATUS LEDs: show health/armour/shield on change, revert to team colour (2026-08-30)
 
 **Tony's spec, verbatim:** *"during game we want to be able to take over and show shield health. after a
