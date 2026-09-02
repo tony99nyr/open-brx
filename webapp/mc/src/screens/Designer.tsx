@@ -130,14 +130,14 @@ export function Designer() {
           <section>
             <SectionRule label="2 // RULES" hint={mode ? `${mode.teams_text} · ${mode.win_text}` : undefined} style={{ marginBottom: 12 }} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: '6px 24px', background: T.panel, border: `1px solid ${T.line}`, padding: '8px 18px' }}>
-              <Row label={<>TIME LIMIT <Hint>REQUIRED</Hint></>}><ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" label="time limit minutes" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} /></Row>
-              <Row label={<>SCORE TO WIN <Hint>0 = TIME ONLY</Hint></>}><ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} /></Row>
+              <Row label={<>TIME LIMIT <Hint>Required</Hint></>}><ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" label="time limit minutes" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} /></Row>
+              <Row label={<>SCORE TO WIN <Hint>0 means time only</Hint></>}><ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} /></Row>
               <Row label="RESPAWN"><Seg value={cfg.respawn.type} options={[{ value: 'scanner', label: 'SCANNER' }, { value: 'auto', label: 'AUTO' }, { value: 'none', label: 'NONE' }]} onChange={v => put({ respawn: { ...cfg.respawn, type: v } })} pad="5px 11px" /></Row>
               <Row label="RESPAWN DELAY"><ValueBox value={cfg.respawn.delay_s} unit="S" label="respawn delay seconds" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: v } })} /></Row>
               <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="health" onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>
-              <Row label={<>ARMOR <Hint>0 = ONE-SHOT WITH A SNIPER</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
+              <Row label={<>ARMOR <Hint>0 means one-shot with a sniper</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
             </div>
-            <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, marginTop: 6 }}>VENUE (INDOOR / OUTDOOR, NIGHT OPS) IS SET ON THE GAMES PAGE EACH TIME — IT IS NOT PART OF THE GAME.</div>
+            <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>Venue (indoor / outdoor, night ops) is set on the Games page each time — it is not part of the game.</div>
           </section>
 
           {/* 3 LOADOUT */}
@@ -263,10 +263,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
       {showWeapons && !fixed && (
         <>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro, marginRight: 4 }}>CLASSES</span>
+            <span style={{ font: F.mono(600, 10.5), letterSpacing: '.16em', color: T.micro, marginRight: 6 }}>CLASSES</span>
             {TAGS.map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
           </div>
-          <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>A CHIP SWITCHES A WHOLE CLASS · TAP A WEAPON TO SWITCH JUST THAT ONE · A PARTIAL CHIP (1/5) MEANS SOME OF ITS WEAPONS ARE OFF · A WEAPON IN TWO CLASSES (ION SNIPER: HEAVY + SNIPER) IS OFF WHEN EITHER CHIP IS OFF</div>
+          <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, lineHeight: 1.5, maxWidth: '68ch' }}>A chip switches a whole class. Tap a weapon to switch just that one. A partial chip (1/5) means some of its weapons are off, and a weapon in two classes is off when either chip is off.</div>
         </>
       )}
       {showWeapons && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
@@ -278,7 +278,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
             const byTag = !inPool && !byId && !fixed;   // off because of a class chip
             const on = fixed ? rule.fixed_id === w.weapon_id : inPool;
             const role = roleOf(w.role, w.cls);
-            const tip = fixed ? 'Tap to make this the fixed weapon' : byTag ? `Off by the ${role.label || 'class'} chip — tap to allow just this one` : byId ? 'Off — tap to allow' : 'Allowed — tap to switch off';
+            const tip = fixed ? `${w.name} · ${role.label} — tap to make this the fixed weapon` : byTag ? `Off by the ${role.label || 'class'} chip — tap to allow just this one` : byId ? `${w.name} · ${role.label} — off, tap to allow` : `${w.name} · ${role.label} — allowed, tap to switch off`;
             // a tag-excluded tile is still tappable: allowing it lifts the class exclusion and switches the rest of that class off by id
             const allowThroughTag = () => {
               const mates = weapons.filter(x => x.weapon_id !== w.weapon_id && (x.tags ?? []).some(t => (w.tags ?? []).includes(t) && rule.exclude_tags.includes(t))).map(x => x.weapon_id);
@@ -289,10 +289,12 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
                 onClick={() => fixed ? onRule({ fixed_id: w.weapon_id }) : byTag ? allowThroughTag() : onRule({ exclude_ids: toggle(rule.exclude_ids, w.weapon_id) })}
                 style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 4, padding: 5, textAlign: 'left', cursor: 'pointer', background: on ? (fixed ? 'rgba(57,180,255,.12)' : T.panel) : T.panelDeep, border: `${fixed && on ? 2 : 1}px solid ${on ? (fixed ? T.acc : T.line2) : T.line}`, minHeight: 44 }}>
                 <span style={{ display: 'block', height: 40, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, opacity: on || fixed ? 1 : .25, filter: on || fixed ? undefined : 'grayscale(1)' }} />
-                <span style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline' }}>
-                  <span style={{ font: F.chk(700, 10), letterSpacing: '.04em', color: on || fixed ? T.ink : T.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixed && on ? '✓ ' : ''}{w.name}</span>
-                  <span style={{ font: F.mono(600, 9), letterSpacing: '.1em', color: role.color, flex: 'none' }}>{role.label}</span>
-                </span>
+                {/* Just the name. The class was printed on every one of 36 tiles in its own saturated
+                    colour, on both sides of the screen, duplicating the chips directly above — Tony,
+                    2026-09-02: "too much color, too much caps. maybe we just do names of guns". The
+                    class is still in the tooltip, and still switchable by its chip. */}
+                <span style={{ font: F.chk(700, 11), letterSpacing: '.02em', color: on || fixed ? T.ink : T.dim,
+                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixed && on ? '✓ ' : ''}{w.name}</span>
               </button>
             );
           })}
@@ -319,16 +321,34 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   );
 }
 
+// Was a solid fill in the class's own saturated colour — five of them, twice on screen. The colour
+// now rides on a 3px left edge, so the chips still read as a set without shouting (2026-09-02).
 function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?: string; color: string; onClick: () => void; children: React.ReactNode }) {
   const mixed = on && !!partial;
   return (
     <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed — tap to allow all` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
-      style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.14em', padding: '7px 10px', minHeight: 36, cursor: 'pointer', border: `1px solid ${on ? color : T.line}`, color: mixed ? color : on ? T.accInk : T.micro, background: mixed ? 'transparent' : on ? color : 'transparent' }}>
+      style={{ ...BTN_RESET, font: F.chk(700, 11.5), letterSpacing: '.04em', padding: '7px 12px', minHeight: 36, cursor: 'pointer',
+               // longhand only: mixing `borderLeft` with `borderLeftWidth` makes React warn about
+               // shorthand/longhand conflicts, which their no-console-error test rightly fails on
+               borderStyle: 'solid', borderColor: on ? T.line2 : T.line, borderWidth: 1,
+               borderLeftColor: on ? color : T.line, borderLeftWidth: 3,
+               color: on ? T.ink : T.micro, background: on ? T.panelAlt : 'transparent' }}>
       {mixed ? `◐ ${partial} ` : on ? '✓ ' : ''}{children}
     </button>
   );
 }
+// `space-between` inside auto-fit cells of differing widths put every control at its own cell edge,
+// and an inline hint wrapped the label and shoved the control further — Tony, 2026-09-02: "these
+// controls dont align with the labels that great, its confusing". A fixed label column fixes both.
 function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 52 }}><span style={{ font: F.chk(600, 13), letterSpacing: '.1em' }}>{label}</span>{children}</div>;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14, minHeight: 56 }}>
+      <span style={{ font: F.chk(600, 13), letterSpacing: '.06em', display: 'flex', flexDirection: 'column', gap: 2 }}>{label}</span>
+      {children}
+    </div>
+  );
 }
-function Hint({ children }: { children: React.ReactNode }) { return <span style={{ font: F.mono(500, 10.5), color: T.micro, marginLeft: 8 }}>// {children}</span>; }
+/** Its own line, in sentence case: a hint must never change where the control sits. */
+function Hint({ children }: { children: React.ReactNode }) {
+  return <span style={{ font: F.chk(500, 11), letterSpacing: '.02em', color: T.micro, textTransform: 'none' }}>{children}</span>;
+}
