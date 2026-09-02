@@ -491,6 +491,30 @@ software. **R0BQT has a genuine intermittent fault in its IR receive path.**
 - The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
   attempts, so there is no reliable field workaround.
 
+### 🔑 RECOVERY PATTERN: it takes TWO power cycles, not one (operator observation)
+
+Tony, after the second recovery: *"the second power cycle of the tagger fixed it both times."* The
+session log bears that out — on 2026-09-02 the sequence was:
+
+| action | result |
+|---|---|
+| cycle the tagger alone | still deaf |
+| cycle the headset alone | still deaf |
+| cycle **both** (1st round) | ✅ hits, 4/4 — then failed again within minutes |
+| cycle both, gun on first then headset (2nd round) | still deaf |
+| cycle **both** again (3rd round) | ✅ hits, 6/6, killed cleanly |
+
+**A single power cycle does not reliably clear it; a second round does.** That is strange for a true
+power-off and suggests a mechanism worth chasing: **the headset may retain state across one cycle** —
+a soft power / sleep rather than a real power-down, so the first "off" does not drain it and the
+second does. If that is right, the fix is a genuine power-down (battery pull, or holding the button
+longer), not a quick off-on.
+
+**Test that would confirm it:** next occurrence, cycle ONCE and verify with a test shot, then cycle a
+SECOND time and verify again. If one never works and two always do, the retained-state hypothesis is
+confirmed and the field instruction becomes "cycle it twice", which is a cheap and immediately usable
+workaround even before the underlying cause is found.
+
 ### ⏪ IT PREDATES TODAY'S EXPERIMENTS
 
 **Operator report: the same headset was unhittable during a test game on 2026-09-01**, a day before any
