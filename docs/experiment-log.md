@@ -5045,3 +5045,30 @@ Five trials, alternating outcome, one question to the operator per trial. Earlie
 same question was asked with eight frames sent back-to-back and no chance to answer between them,
 which destroyed the answer — Tony: *"well you didnt follow the protocol and let me type did you?!"*.
 One change per run, then stop and ask. That is what made this measurable.
+
+### 2026-09-02 (night, last) — MC's REAL zero-gap arming burst: TESTED, and it is fine
+
+Every bench tool this session armed with `bench_common.arming_frames` at **0.12 s** between frames.
+MC's driver has **no sleep anywhere** — `setup_frames()` then `spawn_frames()` go out back-to-back as
+fast as BLE accepts them, and `resetup()` does the same mid-match after a reconnect. So all fifteen
+F11 hypotheses had been tested against a GENTLER setup than the one we ship, and the shipped one had
+never been on the bench.
+
+`mc_burst.py` arms with the REAL frames from `GameConfig` (not a bench copy — the point is to test
+what ships), interleaved A/B, 2 s equal settle for both arms before any shot:
+
+| arm | rate | sensor |
+|---|---|---|
+| **ZERO GAP** (exactly MC's driver, 32 frames back-to-back) | **24/24 — 100%** | dome0 |
+| **SPACED** (same 32 frames, 0.30 s apart) | **24/24 — 100%** | dome0 |
+
+**No difference.** The zero-gap burst is not the trigger, and `$AMMO`/`$AMMO`/`$BMAP` landing
+immediately behind `$SPAWN` does not harm hit registration.
+
+This is a NEGATIVE result worth having on two counts: it removes a live suspect, and it is the first
+hardware validation of **MC's actual arming path** rather than the bench's slower imitation.
+
+⚠️ What it does NOT clear: it only measured **hit registration**. The respawn finding above was a
+**display** desync, and this run did not check headset LED state across the two arms. A burst could
+still land headset presentation wrong while hits keep working — that is exactly what the wedged
+out-blink was.
