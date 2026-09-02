@@ -573,7 +573,32 @@ power-on**: full range for about a minute, then fading to nothing within a few m
 after a cycle. The "two power cycles are needed" pattern, the `$GSET` recovery, the apparent
 arm/spawn trigger — all of them were the clock, not the treatment.
 
-### Why the battery is the leading suspect
+### 🔌 ON CHARGE it partially recovers — supply is involved, but is not the whole story
+
+Tested with the headset **plugged in and NO power cycle**, so the "fresh boot" confound is absent.
+Same emitter, same 3 ft, same target:
+
+| condition | result |
+|---|---|
+| before, on battery | **0 / 6** |
+| plugged in, burst 1 | **3 / 6** (sensor 1) |
+| plugged in, burst 2 | **1 / 6** |
+
+**0/6 → 3/6 with no reset is not noise**, so the supply is genuinely part of it. But it **still faded
+within a minute or two while plugged in**, and external power should hold the rail steady. So a flat
+cell alone does not explain it.
+
+**What that leaves:** a supply that is marginal even while charging (limited charge current, or a
+fault between the cell and the receiver), or a second time-dependent factor such as thermal drift.
+Both are consistent with everything seen: fine when rested, fading under use, partially helped by
+external power.
+
+**Do not close this as "flat battery".** The next measurement is the one that separates them: charge
+the headset FULLY, then run `range_decay.py` for ten minutes. Range that returns **and holds** on a
+full cell means charge state; range that fades again on a full cell means the receiver or its supply
+path, and the unit needs service.
+
+### Why the battery was the leading suspect
 
 The behaviour is the classic signature of a supply sagging under load: works when rested, fades as it
 runs, recovers after being off. USB-read headset voltages (`armory.json`, 2026-08-26):
