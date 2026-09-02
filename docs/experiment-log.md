@@ -2825,6 +2825,82 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 (later) — ⭐ THE FULL LED PALETTE, MEASURED: indices 7 and 8 finally read off a gun
+
+Camera rig at **2x zoom** (the change that made it work), gun **armed but NOT spawned**, every reading
+referenced against a verified-blank frame with a CONTROL patch as the ambient canary.
+
+## `$GLED` tokens 1-3 — the palette is 0-8, and 7/8 are now measured
+
+Normalised channel signatures, and **all three gun LEDs agreed on every row** (the internal
+consistency check that says the measurement is real, not an artefact):
+
+| idx | signature R/G/B | colour |
+|---|---|---|
+| 0 | 1.00 / 0.46 / 0.46 | **red** |
+| 1 | 0.30 / 0.78 / 1.00 | **blue** |
+| 2 | 0.81 / 1.00 / 0.61 | **yellow** |
+| 3 | 0.27 / 1.00 / 0.73 | **green** |
+| 4 | 0.62 / 0.61 / 1.00 | **purple** |
+| 5 | 0.29 / 1.00 / 0.83 | **teal** (distinct from 3: more blue, 0.83 vs 0.73) |
+| 6 | 0.75 / 0.91 / 1.00 | **white** (most balanced signature) |
+| **7** | **1.00 / 0.49 / 0.77** | **PINK/magenta** — R max, B high, G low |
+| **8** | **1.00 / 0.64 / 0.50** | **ORANGE** — R max, G above B |
+| 9, 10 | dark | out of range |
+
+**Indices 7 and 8 had never been read off a gun** (`manual/06-developer.md` research backlog). They
+are exactly what the community lead claimed: **7 pink, 8 orange**. That backlog item is closed, and
+the palette is **nine colours, 0-8**, with 9+ dark.
+
+## `$GLED` token 4 — only 5 does anything
+
+Colour held at green, token 4 swept 0-10: **every value renders solid green except t4 = 5, which is
+dark.** 0, 1, 2, 3, 4, 6, 7, 8, 9, 10 are all indistinguishable.
+
+⚠️ **This contradicts our own docs.** `brx-protocol.md` and `manual/06-developer.md` say **"token 4 = 3
+blanks all three"**. It does not: `$GLED,3,3,3,3,10` is lit green. Confirmed twice by different
+methods -- an A/B from a lit state earlier the same day showed red staying red through
+`$GLED,,,,3,,,*` ([91,29,36] -> [94,35,50]) while t4=5 dropped to ambient.
+**The shipped night-mode frame is Callsign's `$GLED,,,,5,,,*`, so the product was never affected --
+only the documented value is wrong.**
+
+## `$HLED` token 1 — same palette, one divergence at 8
+
+All three visible headset modules agreed: 0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal,
+6 white, 7 pink, **8 reads as plain RED on the headset** ([1.00,0.08,0.08]) where the gun renders it
+orange. 9 and 10 dark. So the two devices share the palette for 0-7 and differ at 8.
+
+## What the rig can and cannot do (recorded so nobody over-trusts it)
+
+**Reliable:** presence/absence, timing, counts, and *relative* comparison within a frame. The pulse
+was measured at **1.77 s (0.56 Hz)**, two cycles agreeing to 0.01 s.
+
+**NOT reliable: absolute hue naming.** The phone's auto white balance compensates against a warm
+room, so a white LED measures blue-violet ([62,77,118]). The palette table above survives that only
+because every index has a *distinct* signature and they were compared against each other in identical
+conditions -- not because the camera names colours correctly.
+
+**Single frames CANNOT characterise the effect enum.** The `$HLED` token-2 sweep produced
+phase-dependent nonsense: one screencap of a blinking LED catches whichever phase it lands in, so
+t2=2 read "dark" and 4-10 read assorted hues. Worse, a bright headset flash **illuminates the gun**,
+so the gun ROIs lit up while the gun was blanked. **The effect enum needs video** (`ledcam.py pulse`),
+which is exactly what that subcommand exists for. Tony's by-ear/by-eye reading from earlier the same
+day (0 solid, 1/2 pulse, 3 solid, 4 blink, 5-8 dark) stands; the single-frame sweep does not overturn
+it and must not be read as if it did.
+
+## Rig traps found today, all now handled in the tools
+
+- **2x zoom was the unlock.** At 1x the LEDs were too small and oblique to separate.
+- **A blank that does not blank poisons everything.** Two entire palette sweeps were garbage before
+  this was found -- one called a known-blue index "dark".
+- **Per-row re-blanking is worse than one good reference.** The reference kept capturing the previous
+  row's colour. One verified-blank reference + a CONTROL canary is the stable design.
+- **The phone sleeps, locks and rotates**, silently invalidating every pixel ROI. `screen_off_timeout`
+  is now maxed, a background poker runs every 3 minutes, and the harness hard-aborts on a portrait
+  frame rather than carrying on.
+- **The control patch must be where NEITHER device can throw light** -- carpet near the gun is lit by
+  the gun and reports our own experiment as ambient drift.
+
 ### 2026-09-02 — ⭐ `$HLED` DECODED, the headset state model, and F1 answered NO (Tony + rig + phone camera)
 
 Bench: gun **R0BQT**, ESP32 board B (COM8) emitting, later a Pixel on wireless adb watching the LEDs.

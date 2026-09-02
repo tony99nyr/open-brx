@@ -133,6 +133,16 @@ def _classify(patch: np.ndarray) -> tuple[str, tuple[float, float, float]]:
     br = patch.sum(1)
     if br.mean() < 45:
         return "dark", (0.0, 0.0, 0.0)
+    # WHICH SAMPLE carries the colour depends on how big the emitter is in frame:
+    #   gun LEDs are pinpoints that blow out to white  -> the hue is only in the dim FRINGE
+    #   headset modules fill most of their box         -> the fringe is just dark surround, use MEAN
+    # Same rule as ledsweep.classify -- they must not drift apart.
+    if len(patch) > 1500:
+        r, g, b = patch.mean(0)
+        if r + g + b < 30:
+            return "dark", (r, g, b)
+        mx = max(r, g, b, 1.0)
+        return _name(r / mx, g / mx, b / mx), (r, g, b)
     lo, hi = np.percentile(br, _HALO_LO), np.percentile(br, _HALO_HI)
     halo = patch[(br >= lo) & (br <= hi)]
     if len(halo) == 0:
