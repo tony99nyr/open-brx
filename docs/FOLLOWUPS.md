@@ -474,6 +474,21 @@ aimed directly at the headset and the board had not moved:
 So a **gun** power cycle does not clear it. Recovery required cycling the **headset** itself, both
 times it has happened.
 
+### ⚠️ IT RECURS WITHIN MINUTES — this unit is not field-usable
+
+After cycling both gun and headset, hits worked perfectly: **4/4 on the next burst**, armour
+70 → 50 → 30 → 10 → 0 with normal spill into HP. A config sweep was started **immediately** afterwards
+against the same rig, same aim, same arming, and its very first row registered **zero hits from 14
+shots**.
+
+So the recovery is **not durable**. The fault returned inside a few minutes of normal use, which makes
+this tagger **unusable for a match** rather than merely flaky: a player would pass muster, take a
+successful test shot, and then go dark partway through the game with nobody able to score on them.
+
+**It also blocks bench work.** The F1 config hunt needs a victim that registers hits reliably across
+ten arm/damage cycles, and this unit cannot sustain that — a long IR experiment on it silently fills
+with VOID rows, which is exactly how a rig fault gets mistaken for a protocol result.
+
 ### The full signature, and why no cheap preflight can catch it
 
 | check | result while broken |
