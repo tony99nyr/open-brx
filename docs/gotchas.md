@@ -107,6 +107,23 @@ were then wrongly blamed on the LEDs "animating". **Never advance an operator-in
 timer.** Send one frame, wait for the call, then send the next. If a timer is unavoidable, have the
 script announce a cell id the operator repeats back.
 
+**A sweep of a field that can NO-OP reads differently depending on what you do between rows.**
+`$GLED` token 4 is an *apply gate*: some values apply the frame's colour tokens, and **1-4 do nothing
+at all**, leaving whatever the previous row lit. Four sweeps of that one token disagreed with each
+other on identical hardware for exactly this reason — a sweep that blanks between rows reports
+"nothing is lit", one that does not reports "everything is lit". Worse, a sweep started from **dark**
+cannot tell "applied a colour" apart from "did nothing"; the discriminator is to start from a known
+**lit** state and send a *different* colour, so apply / no-op / off are three visibly distinct
+outcomes. Blank between rows, verify the pre-state before every trial, and never let a sweep print a
+verdict for a row whose setup state was not confirmed.
+
+**A correct frame can carry a wrong reason, and the reason is what gets reused.**
+`$GLED,,,,5,,,*` blanks a gun and is the right night-mode frame; but "t4 = 5 is the off value" was
+wrong — it blanks because its **colour tokens are empty** and t4=5 *applies* them. The frame worked
+throughout, so nothing failed to warn us, while the false rule ("5 means off") was the part that would
+have been generalised into the next design. **When a frame is verified, verify the sentence explaining
+it separately** — they are two different claims and only one of them was tested.
+
 **Never write a headset sticker id into the repo.**
 The stickers on our headsets are the **headset serials/PINs**, not just friendly names. In committed
 docs, code and logs use the PIN-free `Tactix-XXXX` (BLE name = last MAC bytes) or "gun 1/2"; the

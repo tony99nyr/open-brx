@@ -27,7 +27,7 @@ from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team,
 # on-hit alert to be brighter and I raised it to 100 — that was WRONG and is reverted.
 # ⛔ We do NOT know this token is brightness. The 2026-08-30 per-field sweep pinned token 5 on
 # `$GLED` (the GUN), not on `$HLED` (the HEADSET), and the two commands demonstrably do not share a
-# layout: `$GLED,,,,5` blanks via token 4, `$HLED,,6` blanks via token 2. The APK's headset LED
+# layout: `$GLED,,,,5` blanks by APPLYING empty colour tokens, `$HLED,,6` blanks via token 2. The APK's headset LED
 # family exposes `LedColorType` / `BlinkLoopType(Once, ThreeTimes, Infinite)` / `LedEffectType` —
 # counts and effects, not a brightness scale. Given tokens 3/4 are `90,90` (an on/off ms pair), the
 # likeliest alternative is a REPEAT COUNT, in which case 100 would turn Callsign's ~1.8 s alert into

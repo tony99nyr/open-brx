@@ -259,11 +259,21 @@ class GameConfig:
         # are the three gun LEDs, each a direct palette index (0 red, 1 blue, 2 yellow, 3 green,
         # 4 purple, 5 teal, 6 white, 7 pink, 8 orange; 9+ dark -- all nine measured 2026-09-02).
         #
-        # ⚠ CORRECTED 2026-09-02: this comment used to say "TOKEN 4 = 3 blanks all three" and cite
-        # `$GLED,0,0,0,3,10,,*`. It does NOT blank. With the gun lit red, t4=3 left it red
-        # ([91,29,36] -> [94,35,50]), sending it twice or with explicit zeros made no difference.
-        # THE SHIPPED FRAME BELOW WAS ALWAYS CORRECT -- it is Callsign's own death frame and t4=5
-        # does blank -- so nothing here changed; only the wrong claim beside it did.
+        # ⚠ CORRECTED 2026-09-02: TOKEN 4 IS AN APPLY GATE, not an effect enum and not an off
+        # switch. 0/6/7/8/9/10 apply the frame's colour tokens at full brightness; 5 applies them
+        # at about 1/3 brightness; 1/2/3/4 are NO-OPs that ignore the colour tokens and leave the
+        # gun showing whatever it already showed. Nothing animates.
+        # So THE SHIPPED FRAME BELOW BLANKS BECAUSE ITS COLOUR TOKENS ARE EMPTY AND t4=5 APPLIES
+        # THEM -- applying an empty colour is what turns the LEDs off. 5 is not "the off value";
+        # there may be no dedicated off value at all. (This also retracts two older claims in this
+        # comment's history: "t4=3 blanks all three" -- no, 3 is a no-op, which is why a lit red gun
+        # stayed red at [91,29,36] -> [94,35,50]; and "t4=5 is the off value" -- no, it is an apply.)
+        # THE FRAME ITSELF WAS ALWAYS CORRECT and has never changed: it is Callsign's own death
+        # frame, and it does blank. Only the explanation beside it was wrong.
+        #
+        # Token 5 (brightness) is separate and three-state: 0 off, 1 dim (~70%), >=2 full
+        # (saturates at 2). $GLED therefore has two apparent brightness controls (t4=5 and token 5);
+        # whether they compose or one overrides the other is UNTESTED.
         #
         # The value before that ("$GLED,0,4,0,0,0,,*") was an unconfirmed guess built on the
         # retracted "colour index 0 = off" reading -- index 0 is RED, so it turned nothing off.

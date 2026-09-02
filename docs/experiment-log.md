@@ -2825,6 +2825,52 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 — ⭐ `$HLED` has TWO blinks, and the timing tokens are confirmed to the millisecond
+
+## The instrument fault that hid this, and the fix
+
+The first `$HLED` effect sweep found **nothing** — every value read static. That was wrong, and the
+reason is worth keeping: `screenrecord` takes **1-2 s to start**, and Callsign's count of 5 flashes at
+300 ms on/off is over in ~3 s. The recorder was still spinning up while the effect played out. The
+positive control had worked only because a spawned gun's native pulse is **continuous**.
+
+**Fix: drive the effect with count = 200 so it outlives the recorder's start-up.** The signal has to
+still be running when the instrument starts looking.
+
+## t2 = 2 is a full-brightness repeating BLINK, and tokens 3/4 are on/off milliseconds
+
+| on, off | predicted period | measured |
+|---|---|---|
+| 150, 150 | 0.30 s | **0.30 s** (3.39 Hz) |
+| 300, 300 | 0.60 s | **0.59 s** (1.69 Hz) |
+| 500, 500 | 1.00 s | **0.98 s** (1.02 Hz) |
+
+Duty ~50% in every case, exactly as programmed. Period = `(t3 + t4)` ms and duty = `t3/(t3+t4)`.
+This is a **joint confirmation**: it pins t2=2 as the blink effect AND independently confirms tokens
+3 and 4 are on/off milliseconds, which had only been shown by eye ("300,300 is visibly slower than
+90,90").
+
+## There are TWO blinks, and they differ in brightness
+
+At identical timing (`300,300`, count 200):
+
+| effect | measurement |
+|---|---|
+| **t2 = 2** | BLINK, swing **231** on mean 208 |
+| **t2 = 4** | STATIC lit, sd 17.8 |
+
+t2=4 is Callsign's alert effect, and this is the camera confirming what Tony saw by eye: **it flashes
+BRIGHT ONCE and then dim.** A recorder that starts late misses the single bright flash and sees only
+the low-amplitude tail, which is why it reads static.
+
+**Product consequence:** `t2 = 2` is a native full-brightness repeating flash at any rate we choose.
+Tony asked earlier whether the LEDs could be flashed bright throughout; the answer we gave then was to
+drive solid/blank from the host at 2 BLE writes per flash. **That is no longer necessary** — one frame
+does it, on the gun, at an exact period.
+
+Noise floor for reference: static states measure swing 21-83; the validated positive control measures
+~494. The 231 here is unambiguous.
+
 ### 2026-09-02 — `$HLED` does NOT address the headset modules individually
 
 The headset has **four LEDs** (operator-confirmed; three are in the camera's view, the fourth faces
@@ -2909,8 +2955,22 @@ All eleven values resolved, three trials each, verified pre-state: 0/6/7/8/9/10 
 brightness, 5 applies dim, 1-4 are no-ops. **No value animates** — trustworthy because the positive
 control (a spawned gun's native pulse) gives swing ~494 against 24-70 for every static state here.
 
+## Token 5 is a THREE-STATE brightness (same session)
+
+`0 = off · 1 = dim (~70%) · >=2 = full`. It **saturates by 2** — 2 through 255 are indistinguishable.
+Measured 3x alternating, no overlap between the two populations:
+
+| trial | t5 = 1 | t5 = 2 |
+|---|---|---|
+| 1 | 172 | 267 |
+| 2 | 181 | 254 |
+| 3 | 184 | 247 |
+
+So the token map to state is `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*`.
+
 Left for a future session: **why two brightness controls?** Token 5 gives off/dim/full and token 4=5
-gives a dim apply. Whether they compose (t4=5 with t5=1) or one overrides the other is untested.
+gives a dim apply. Whether they compose (t4=5 with t5=1) or one overrides the other is **UNTESTED** —
+do not guess.
 
 ## Method note worth keeping
 
@@ -2951,6 +3011,13 @@ are exactly what the community lead claimed: **7 pink, 8 orange**. That backlog 
 the palette is **nine colours, 0-8**, with 9+ dark.
 
 ## `$GLED` token 4 — only 5 does anything
+
+> ⚠️ **SUPERSEDED the same day** — see *"`$GLED` token 4 is an APPLY GATE, not an effect enum"* above.
+> This sweep ran from a DARK start, which cannot separate "applies a colour" from "does nothing", and
+> its t4=5 row read dark only because **t4=5 is a DIM apply** sitting on the still classifier's dark
+> threshold. What actually holds: token 4 is an **apply gate** (0/6/7/8/9/10 apply at full brightness,
+> 5 applies at ~1/3, 1/2/3/4 are no-ops), and `$GLED,,,,5,,,*` blanks because its colour tokens are
+> **empty**, not because 5 means "off". The rows below are kept for provenance.
 
 Colour held at green, token 4 swept 0-10: **every value renders solid green except t4 = 5, which is
 dark.** 0, 1, 2, 3, 4, 6, 7, 8, 9, 10 are all indistinguishable.
@@ -3247,13 +3314,17 @@ for his call, then the next. No timers.
 
 **0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal/cyan · 6 white** (7-8 exist, unnamed)
 
-> ⚠️ **CORRECTED 2026-09-02** (see the entry "THE FULL LED PALETTE, MEASURED" above): the palette is
-> **nine colours, 0-8** — **7 = pink, 8 = orange**, measured on a gun — and **`<t4>` = 3 does NOT blank.
-> Only `<t4>` = 5 does.** The rest of this entry stands.
+> ⚠️ **CORRECTED 2026-09-02** (see the entries "THE FULL LED PALETTE, MEASURED" and "`$GLED` token 4 is
+> an APPLY GATE" above): the palette is **nine colours, 0-8** — **7 = pink, 8 = orange**, measured on a
+> gun — and **token 4 is an apply gate, not an effect enum and not an off switch**. The rest of this
+> entry stands.
 
-- ~~**`<t4>` = 3 blanks all three**~~ ❌ **WRONG, retracted 2026-09-02.** **`<t4>` = 5** is the
-  night-mode frame (P17), i.e. the app's own `$GLED,,,,5,,,*`.
-- **`<brightness>`** is token 5.
+- ~~**`<t4>` = 3 blanks all three**~~ ❌ **WRONG, retracted 2026-09-02.** Token 4 gates whether the
+  frame's colour tokens are applied: **0/6/7/8/9/10 apply at full brightness, 5 applies at ~1/3
+  brightness, 1/2/3/4 are no-ops** that leave the previous colour lit (which is all `t4=3` was doing).
+  The night-mode frame (P17) is the app's own `$GLED,,,,5,,,*`, and it blanks because **its colour
+  tokens are empty and t4=5 applies them** — 5 is not an "off value", and there may be no off value.
+- **`<brightness>`** is token 5: **0 off · 1 dim (~70%) · >=2 full** (saturates at 2).
 - ⚠️ **`$SPAWN` is what makes the colours alternate.** A spawned gun runs its own **team-colour pulse**
   and `$GLED` is composited over it, so a gauge flickers between your colour and the team colour and is
   unreadable. **Arm WITHOUT `$SPAWN` (and without `$TID`) and the colours hold SOLID** — verified:
@@ -3322,16 +3393,18 @@ which confirms red is the palette **default** (index 0), not the team colour sho
 
 **Verdict: token 4 did NOT unlock the middle LED.** Two useful results, but not the one we were after:
 
-1. ~~**`$GLED,<c>,0,0,3,10,,*` blanks every LED**~~ ❌ **RETRACTED 2026-09-02** — a full t4 sweep with the
-   colour held at green showed `t4=3` rendering **solid green**; only `t4=5` goes dark. The night-mode
-   frame is the app's `$GLED,,,,5,,,*` (item 2), which is what we ship.
+1. ~~**`$GLED,<c>,0,0,3,10,,*` blanks every LED**~~ ❌ **RETRACTED 2026-09-02** — `t4=3` is a **no-op**:
+   it ignores the frame's colour tokens and leaves whatever was already lit, which in that dark-start
+   run looked like blanking. The night-mode frame is the app's `$GLED,,,,5,,,*` (item 2), which is what
+   we ship.
 2. **The app's `$GLED,,,,5,,,*` also blanks.** Note its **colour field is EMPTY**, so "no colour" may be
    what blanks it rather than token 4 = 5 specifically. Two candidate blanking mechanisms; not yet
-   separated.
+   separated. ✅ **This guess was RIGHT — confirmed 2026-09-02.** Token 4 is an apply gate; t4=5 applies
+   the colour tokens, and applying an **empty** colour is what turns the LEDs off.
 3. **Red is confirmed as the palette DEFAULT**, not the team colour — the team was **yellow** throughout
    and no LED ever showed yellow.
 
-**A/B CONFIRMED:** token 4 = 0 vs 7 alternated back-to-back, three rounds, 14 s each — Tony: *"no difference"*. So token 4 is **inert except for the off value**; the other values are not doing anything subtle we missed on a single pass. ⚠️ **Corrected 2026-09-02: that off value is 5, not 3.** (With explicit colours supplied, 0-4 and 6-10 all render solid; with the colour tokens left EMPTY, 6 and 7 blanked too, which is unexplained.)
+**A/B CONFIRMED:** token 4 = 0 vs 7 alternated back-to-back, three rounds, 14 s each — Tony: *"no difference"*. So token 4 is **inert except for the off value**; the other values are not doing anything subtle we missed on a single pass. ⚠️ **Corrected 2026-09-02: token 4 is an APPLY GATE, and there is no "off value".** 0 and 7 look identical because **both apply** the colour tokens at full brightness — that A/B could not have separated them. With the colour tokens left EMPTY, 5, 6 and 7 all blank for the same reason: they apply an empty colour. The values that really are inert are **1, 2, 3 and 4**, which are no-ops.
 
 **LED 2 never moved across all ten values** — but see the effect sweep below: **it was never token 4.
 It was the EFFECT field.**

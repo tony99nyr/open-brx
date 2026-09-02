@@ -31,7 +31,7 @@ A phone camera will not show a low-power 38 kHz IR emitter. If both cameras show
 Source: docs/gotchas.md
 
 ## Where you can be tagged
-- **Headset domes**: the main target. Our bench can tell a **front** dome hit from a **back** dome hit on the wire. Battle Company sells front, left and right sensor boards as spares. ✅ 👥
+- **Headset domes**: the main target. There are **four sensor domes and four LEDs** on the headset, one of each at the back. Our bench can tell a **front** dome hit from a **back** dome hit on the wire. Battle Company sells front, left and right sensor boards as spares. ✅ 👥
 - **Gun body sensor**: a hit sensor on the rifle itself. ✅ 📖
 - **The tagger says which sensor caught it**: at normal range it knows whether a tag landed front, back or on the gun. Point-blank, IR floods every receiver and you cannot trust the answer. ✅
 Source: protocol/brx-protocol.md §"$HIR token 1 - sensor id map", docs/reference/community-notes.md

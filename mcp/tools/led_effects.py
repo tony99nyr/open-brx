@@ -106,7 +106,12 @@ async def main():
         if which == "gled":
             cases = [(f"$GLED,3,3,3,{t4},10,,*", f"t4={t4}") for t4 in vals]
         else:
-            cases = [(f"$HLED,3,{t2},300,300,10,5,*", f"t2={t2}") for t2 in vals]
+            # count=200, NOT Callsign's 5. screenrecord takes 1-2 s to start and a 5-flash effect at
+            # 300 ms on/off is over in ~3 s, so the recorder misses it and every value reads static.
+            # That is why the first $HLED effect sweep found nothing: the instrument needs the signal
+            # to still be running when it starts looking. The positive control (a spawned gun's own
+            # native pulse) only worked because it is CONTINUOUS.
+            cases = [(f"$HLED,3,{t2},300,300,10,200,*", f"t2={t2}") for t2 in vals]
 
         print(f"=== {which.upper()} effect enum, from {SECS}s of video, roi {roi_name} ===")
         print("    (a still frame cannot tell these apart -- it samples one arbitrary phase)\n")

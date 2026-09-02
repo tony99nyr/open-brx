@@ -49,9 +49,15 @@ groups is the expensive part, not the tests.
 > ⚠️ **Closed on 2026-08-30, do not run:** **4.1** (P13 — `$GLED` tokens 1-3 are three independently
 > addressable LEDs, each a direct palette index; the palette is nine colours, 0 red · 1 blue · 2 yellow ·
 > 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange, with 7/8 read off a gun on 2026-09-02) and
-> **4.2** (P17 — **token 4 = 5 turns the LEDs off**: Callsign's own `$GLED,,,,5,,,*`).
-> `$GLED` is solved: `<led1>,<led2>,<led3>,<t4>,<brightness>`. ⚠️ **Corrected 2026-09-02: the earlier
-> "token 4 = 3 blanks all three" is wrong** — a full t4 sweep 0-10 at green went dark only at 5. Also
+> **4.2** (P17 — night mode is Callsign's own `$GLED,,,,5,,,*`; it blanks because token 4 is an
+> **apply gate** and that frame's colour tokens are empty, not because 5 means "off").
+> `$GLED` is solved: `<led1>,<led2>,<led3>,<apply-gate>,<brightness>`. ⚠️ **Corrected 2026-09-02:
+> token 4 is an APPLY GATE, not an effect enum and not an off switch** — 0/6/7/8/9/10 apply the
+> frame's colour tokens at full brightness, 5 applies them at ~1/3 brightness, 1/2/3/4 are no-ops
+> that leave the previous colour lit, and nothing animates. Both "t4=3 blanks all three" and
+> "t4=5 is the off value" are retracted. Beware when sweeping this token: **a no-op leaves the
+> previous row's colour lit**, so a sweep that does not blank between rows reads "everything is
+> lit" and one that does reads "nothing is lit", from identical hardware. Also
 > closed: `bench-next-30.md` item 3, which is the same pair.
 
 ## HOW TO RUN ANYTHING (read once — the items below assume this)

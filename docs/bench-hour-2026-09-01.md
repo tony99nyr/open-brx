@@ -103,7 +103,9 @@ low-health alert uses **7**, so this is not idle curiosity.
 > 0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · **7 pink · 8 orange** on the gun,
 > 9/10 dark. `$HLED` token 1 matches the gun for **0-7** and **diverges at 8**, which reads plain red on
 > the headset. The `manual/06-developer.md` backlog item for indices 7/8 is closed. Unrelated but from
-> the same sweep: **`$GLED` token 4 = 5**, not 3, is what turns the gun LEDs off.
+> the same sweep: **`$GLED,,,,5,,,*`**, not `$GLED,,,,3,,,*`, is what turns the gun LEDs off.
+> (Corrected 2026-09-02: token 4 is an **apply gate**, so that frame blanks because its colour
+> tokens are empty and t4=5 applies them; t4=3 is a no-op. 5 is not an "off value".)
 
 ### 1c · The low-health alert, and the per-hit question · 3 min
 Send `$HLED,7,4,90,90,10,15,*` on a live headset. Note the **colour** (index 7) and the **behaviour** —

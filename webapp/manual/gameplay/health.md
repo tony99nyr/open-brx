@@ -24,7 +24,7 @@ Source: protocol/brx-protocol.md §7r + §7r addendum, docs/weapon-design.md §6
 | What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event. A phone cannot just set it. | ✅ 📖 |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal *shot*, and the community confirms it heals by shooting teammates. A host can also grant health directly. | 📖 👥 ✅ |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. | ✅ |
-| Head shots? | The headset has two sensors (front and back domes) and the gun body has a third. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: ×1.5 at the shipped t7=50, and t7=0 turns crits off. | ✅ |
+| Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: ×1.5 at the shipped t7=50, and t7=0 turns crits off. | ✅ |
 | Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. | ✅ 📖 |
 Source: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)
 
