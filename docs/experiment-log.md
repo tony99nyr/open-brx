@@ -2825,6 +2825,57 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 — ⭐ WHAT WE CAN ACTUALLY SHIP: the gun LEDs cannot hold a colour in a game, the headset can
+
+Everything else measured today was on an **unspawned** gun, because a spawned one runs its own
+animation on the same LEDs. That is fine for decoding a command and useless for deciding whether a
+feature is possible. This tests the thing a mode actually needs: does our paint SURVIVE, mid-match?
+Sampled repeatedly rather than once, because the failure mode is "works for a moment and is then
+repainted", which a single reading cannot tell from success.
+
+## The gun's three LEDs: transient only
+
+| state | result |
+|---|---|
+| UNSPAWNED, we set green | **HELD**, stable over 9.3 s |
+| SPAWNED, our green | **wiped** — the gun shows its own team blue |
+| SPAWNED, we set red | **alternates** blue <-> red |
+| SPAWNED, we set white | **alternates** blue <-> white |
+| SPAWNED, red re-sent before every sample (~1 Hz) | **still alternates** |
+
+**Re-asserting does not win.** So a sustained display on the gun (a pool gauge, a flag-holder colour)
+would flicker against the team colour. This is the same wall F1 hit, now quantified.
+
+## The headset: a colour HOLDS
+
+| state | result |
+|---|---|
+| UNSPAWNED, headset set | HELD |
+| SPAWNED | disturbed — flickering/fading as the spawn runs |
+| **SPAWNED, colour re-sent once after the spawn** | **HELD, stable over 8.4 s** |
+| SPAWNED, `t2=2` blink running | blinking, as programmed |
+
+The headset is natively **dark** during play, so nothing competes for it. **Re-send once after
+`$SPAWN` and it stays.**
+
+## The capability map this gives us
+
+| want | surface | verdict |
+|---|---|---|
+| sustained state (flag held, powerup active, low health) | **headset** | ✅ one colour, re-send after spawn |
+| flash on hit, pickup, kill | either | ✅ transient, alternation irrelevant |
+| 3-segment pool gauge | gun LEDs | ⚠️ flickers against the native animation |
+| sustained colour on the gun | gun LEDs | ❌ alternates; re-asserting loses |
+
+**⚠ The caveat that will bite in a match, not on a bench.** The native hit flash returns the headset
+to **DARK, not to the previous colour** (measured earlier today). So a held headset colour dies on
+that player's FIRST HIT. The host must re-assert it on `$HIR`. That is one BLE write per hit and it
+is cheap, but it has to be designed in: without it the feature works perfectly in testing and
+silently degrades the moment someone is shot.
+
+**Decode note:** the headset renders palette index 4 as blue-ish where the gun renders it purple, as
+its own palette sweep showed. The two devices share indices 0-7 but not their exact rendering.
+
 ### 2026-09-02 — ⭐ `$HLED` has TWO blinks, and the timing tokens are confirmed to the millisecond
 
 ## The instrument fault that hid this, and the fix
