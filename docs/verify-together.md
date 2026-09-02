@@ -57,10 +57,13 @@ two hits later, so an HP threshold fits its behaviour as well as "armour 0" does
 **Proves working:** their headset lights, and the HUD log shows `low-health alert: armour 0, hp NN`.
 **Proves broken:** log line present but no light → the frame itself is wrong. No log line at all → our
 trigger never fired, and that is ours to fix.
-**Only once it is confirmed firing:** sweep `$HLED` token 5 (`HEADSET_ALERT_BRIGHTNESS`) one value at a
-time to find out what it actually is. ⚠ It may be a REPEAT COUNT, not brightness — the 2026-08-30 sweep
-pinned token 5 on `$GLED`, not `$HLED`, and the APK's headset enums are colour/blink-loop/effect. If it
-is a count, a big value means many seconds of blinking on a victim mid-firefight.
+**On making it brighter — probably impossible, and worth knowing before anyone tries.** The Windows
+lane measured `$GLED` token 5 by luminance on 2026-09-02: it is a brightness with exactly **two levels
+above off** (1 ≈ 70%, anything ≥2 is full and identical up to 255), and **Callsign's 10 is already in
+the saturated region**. If `$HLED` matches, we are already at maximum and no value will help — a dim
+alert would be a hardware limit. That is still an inference across two different commands, but it is
+far cheaper to check than to sweep: confirm the alert fires, then look at whether it is bright enough
+at 10. Only if it is genuinely dim is a sweep worth running.
 **Why:** it did not fire last session and we could not tell whether it had even been attempted.
 
 ## V3 · Does the pre-game headset team colour show? 🟠

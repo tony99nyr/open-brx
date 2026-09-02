@@ -35,8 +35,12 @@ from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team,
 # It also destroyed the experiment. Raising it in the same commit that added the "did the cue fire?"
 # log meant the next field test could not separate "our code never fired" from "the gun rejected the
 # value". Callsign's 10 is the known-good control and it stays until the cue is confirmed firing.
-# ➡ To make it brighter, first FIND OUT what token 5 is: sweep it on `$HLED` alone, one value at a
-#   time, with the alert confirmed working at 10 (docs/verify-together.md V2).
+# ➡ 2026-09-02, from the Windows lane's video rig: on `$GLED` token 5 is a brightness with exactly
+#   TWO levels above off — 1 is dim (~70%), anything >=2 is full, identical all the way to 255 —
+#   and **Callsign's 10 already sits in the saturated region**. If `$HLED` behaves the same, 10 is
+#   ALREADY maximum and raising it can do nothing: a dim on-hit alert would be a hardware limit,
+#   not a value we are under-driving. Measured on the GUN LEDs, so still an inference for the
+#   headset — but it is now the likely answer, and it is cheaper to test than to sweep.
 HEADSET_ALERT_BRIGHTNESS = 10
 
 VOL_BY_ENV = {"indoor": 80, "outdoor": 90}
