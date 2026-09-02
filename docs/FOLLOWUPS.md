@@ -573,6 +573,31 @@ power-on**: full range for about a minute, then fading to nothing within a few m
 after a cycle. The "two power cycles are needed" pattern, the `$GSET` recovery, the apparent
 arm/spawn trigger — all of them were the clock, not the treatment.
 
+### ✅ CONTROL: a HEALTHY headset does NOT fade — R0BQT's decline is abnormal
+
+The control this entry badly needed. Every claim that R0BQT is "faulty" rested on an assumption that
+a good headset holds its range, and that had never been measured. Same emitter, same **3 ft**, same
+target position, bursts of 6:
+
+| minutes after power-on | **R0BAT** (healthy) | **R0BQT** (suspect) |
+|---|---|---|
+| ~0.2 | **6/6** | — |
+| ~1 | **6/6** | 5/6 |
+| ~1.7 | **6/6** | — |
+| ~2 | — | **1/6** |
+| ~4 | — | **0/6** |
+
+**R0BAT holds 6/6 flat across the window in which R0BQT collapses from 5/6 to nothing.** So the fade
+is real and specific to R0BQT — it is not how these headsets behave, and not a limitation of our
+emitter or of 3 ft as a distance.
+
+*(R0BAT run recorded to 1.7 min at the time of writing; it was still 6/6 at every point.)*
+
+This is also the measurement that should have been taken first. Hours were spent deciding whether
+R0BQT's behaviour was abnormal without ever measuring a normal unit, and several wrong conclusions
+(a two-power-cycle pattern, a `$GSET` recovery, an arming trigger) came from reading structure into
+one unit's noisy decline with nothing to compare it against.
+
 ### 🔌 ON CHARGE it partially recovers — supply is involved, but is not the whole story
 
 Tested with the headset **plugged in and NO power cycle**, so the "fresh boot" confound is absent.
