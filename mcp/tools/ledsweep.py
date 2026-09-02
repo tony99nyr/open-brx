@@ -46,11 +46,28 @@ BLANK = ["$GLED,,,,3,,,*", "$HLED,,6,,,,,*"]
 PALETTE = {0: "red", 1: "blue", 2: "yellow", 3: "green", 4: "purple", 5: "teal", 6: "white"}
 
 
+_grabs = 0
+
+
 def grab() -> np.ndarray:
-    subprocess.run(["wsl.exe", "-d", "Ubuntu-24.04", "-e", "bash", "-c",
-                    f"{_WSL_ADB} exec-out screencap -p > /mnt/c/Users/Tony/.brx-mcp/_shot.png"],
+    """One screenshot of the phone (= the camera preview), as float RGB.
+
+    Every 25th grab also pokes KEYCODE_WAKEUP. The phone sleeping mid-sweep does not just pause the
+    run -- it ROTATES the screen back to portrait on wake, which silently invalidates every pixel ROI
+    and turns the rest of the sweep into confident nonsense. WAKEUP on an awake screen is a no-op.
+    """
+    global _grabs
+    _grabs += 1
+    poke = " ; ".join([f"{_WSL_ADB} shell input keyevent KEYCODE_WAKEUP"]) if _grabs % 25 == 1 else ""
+    cmd = (poke + " ; " if poke else "") + \
+        f"{_WSL_ADB} exec-out screencap -p > /mnt/c/Users/Tony/.brx-mcp/_shot.png"
+    subprocess.run(["wsl.exe", "-d", "Ubuntu-24.04", "-e", "bash", "-c", cmd],
                    capture_output=True, timeout=90)
-    return np.asarray(Image.open(_SHOT).convert("RGB"), dtype=float)
+    im = np.asarray(Image.open(_SHOT).convert("RGB"), dtype=float)
+    if im.shape[0] > im.shape[1]:
+        raise SystemExit("phone is PORTRAIT -- it slept and rotated. ROIs are invalid; "
+                         "re-open the camera and recalibrate with ledcam.py diff.")
+    return im
 
 
 def classify(patch: np.ndarray) -> tuple[str, tuple]:
@@ -91,30 +108,54 @@ class Rig:
         await asyncio.sleep(0.5)
         self.ref = grab()
 
-    def _classify_all(self, im, ref) -> dict:
+    def _classify_all(self, im, ref, ambient=None) -> dict:
         out = {}
         for name, (x, y, w, h) in self.rois.items():
             p = np.clip(im[y:y + h, x:x + w].reshape(-1, 3)
                         - ref[y:y + h, x:x + w].reshape(-1, 3), 0, None)
+            if ambient is not None and name != "CONTROL":
+                p = np.clip(p - ambient, 0, None)     # residual room-light shift
             out[name] = classify(p)
         return out
 
-    async def measure(self, frame: str, settle: float = 0.45) -> dict:
-        """Blank -> reference -> apply -> read. The reference is fresh for THIS reading, so the
-        office's slowly cycling Hue lamp cannot drift between the two captures."""
-        for f in BLANK:
-            await self.send(f, 0.15)
-        await asyncio.sleep(0.35)
-        ref = grab()
-        await self.send(frame, settle)
-        return self._classify_all(grab(), ref)
+    async def measure(self, frame: str, settle: float = 0.45, tries: int = 6) -> dict:
+        """Blank -> reference -> apply -> read, REJECTING any reading the ambient contaminated.
+
+        The room has RGB lighting that cycles, and a blank->read cycle takes ~2 s -- longer than the
+        cycle. So a fresh reference is NOT enough on its own. CONTROL is a patch of bare carpet with
+        no LED in it: if it is anything but "dark", the ambient moved between the two captures and
+        the whole row is fiction. We retry rather than report it. Whatever residual is left in
+        CONTROL is also subtracted from every other ROI.
+
+        This is the check that caught a completely bogus palette sweep on 2026-09-02, in which
+        $GLED,3,3,3 (a known green) read "dark" and a BLANKED headset read "yellow".
+        """
+        last = None
+        for attempt in range(tries):
+            for f in BLANK:
+                await self.send(f, 0.12)
+            await asyncio.sleep(0.30)
+            ref = grab()
+            await self.send(frame, settle)
+            im = grab()
+            cx, cy, cw, ch = self.rois["CONTROL"]
+            amb = np.clip(im[cy:cy + ch, cx:cx + cw].reshape(-1, 3)
+                          - ref[cy:cy + ch, cx:cx + cw].reshape(-1, 3), 0, None).mean(0)
+            last = self._classify_all(im, ref, ambient=amb)
+            if amb.sum() < 24:                       # canary dark => ambient held still
+                last["_ok"] = (True, tuple(amb))
+                return last
+        last["_ok"] = (False, tuple(amb))
+        return last
 
     def read(self) -> dict:
         return self._classify_all(grab(), self.ref)
 
     def line(self, label, r):
-        cells = "  ".join(f"{k}={r[k][0]:<7}" for k in self.rois)
-        print(f"   {label:<34} {cells}", flush=True)
+        cells = "  ".join(f"{k}={r[k][0]:<7}" for k in self.rois if k != "CONTROL")
+        ok, amb = r.get("_ok", (True, (0, 0, 0)))
+        flag = "" if ok else f"   <<< AMBIENT UNSTABLE (canary {sum(amb):.0f}) - DISCARD"
+        print(f"   {label:<34} {cells}{flag}", flush=True)
 
 
 async def main():
