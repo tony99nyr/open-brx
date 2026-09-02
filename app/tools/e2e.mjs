@@ -783,12 +783,13 @@ const D = {
   pSum: () => mc.getByTestId('primary-summary').textContent(), sSum: () => mc.getByTestId('secondary-summary').textContent(),
   rail: () => mc.locator('aside').textContent(),
   /** the art strip is the tile's first span: dimmed = opacity ≤ .3 + a grayscale filter */
-  art: async (name) => mc.locator(`[aria-label="primary slot rules"] button[aria-label^="${name}"] > span`).first().evaluate(el => ({ opacity: parseFloat(getComputedStyle(el).opacity), filter: getComputedStyle(el).filter })),
+  // The weapon grid became an alphabetical TABLE (2026-09-02) — no images to dim and no filled
+  // chips, so allowed/off is read from aria-pressed, which is what a screen reader gets too.
+  art: async (name) => mc.locator(`[aria-label="primary slot rules"] button[aria-label^="${name}"]`).first().getAttribute('aria-pressed'),
   chip: (label) => mc.locator(`[aria-label="primary slot rules"] button:has-text("${label}")`).first(),
-  fill: async (loc) => loc.evaluate(el => getComputedStyle(el).backgroundColor),
 };
-const dimmed = a => a.opacity <= 0.3 && /grayscale/.test(a.filter);
-const lit = a => a.opacity >= 0.95 && !/grayscale\(1\)/.test(a.filter);
+const dimmed = a => a === 'false';
+const lit = a => a === 'true';
 await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (13 OF 18), heavies dimmed, HEAVY chip unfilled', async () => {
   await ensureMc();
   await mc.locator('nav button').nth(1).click();
@@ -797,7 +798,7 @@ await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')) && dimmed(await D.art('Laser Cannon')), 'heavy tiles are not dimmed under NO HEAVIES');
   expect(lit(await D.art('Assault Rifle')), 'assault rifle tile should be lit');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false', 'HEAVY chip should read off');
-  expect((await D.fill(D.chip('HEAVY'))) === 'rgba(0, 0, 0, 0)', 'HEAVY chip should be unfilled when off');
+  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) !== 'true', 'HEAVY chip should be unfilled when off');
   await shot(mc, 'designer-open'); await textAudit(mc, 'designer');
 });
 await step('DESIGNER: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'designer', true); });
@@ -805,7 +806,7 @@ await step('designer-controls 1: template OPEN → 18 OF 18, heavies lit, HEAVY 
   await mc.click('button[title="Everything, players pick both slots"]');
   await until(async () => /18 OF 18/.test(await D.pSum()), 4000, 'OPEN → 18 of 18');
   expect(lit(await D.art('Rocket Launcher')), 'rocket launcher still dimmed after OPEN');
-  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'true' && (await D.fill(D.chip('HEAVY'))) !== 'rgba(0, 0, 0, 0)', 'HEAVY chip not filled/on after OPEN');
+  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'true', 'HEAVY chip not on after OPEN');
   expect((await mc.locator('button[title="Everything, players pick both slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
   await shot(mc, 'designer-open-template');
 });
@@ -826,7 +827,7 @@ await step('designer-controls 3: HEAVY chip off (from OPEN) → 13 OF 18, all fi
   await until(async () => /13 OF 18/.test(await D.pSum()), 4000, 'HEAVY chip off → 13 of 18');
   for (const n of ['Rocket Launcher', 'Rail Gun', 'Laser Cannon', 'Energy Launcher', 'Ion Sniper']) expect(dimmed(await D.art(n)), n + ' not dimmed after HEAVY off');
   expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
-  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false' && (await D.fill(D.chip('HEAVY'))) === 'rgba(0, 0, 0, 0)', 'HEAVY chip still filled');
+  expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false' && (await D.chip('HEAVY').getAttribute('aria-pressed')) !== 'true', 'HEAVY chip still filled');
   await shot(mc, 'designer-heavy-off');
 });
 await step('designer-controls 4: tap the Assault Rifle tile → 12 OF 18, that tile dimmed and labelled off', async () => {

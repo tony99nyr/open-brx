@@ -252,18 +252,22 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
         <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
         <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
           onChange={(v: SlotChoice) => onRule({ choice: v, fixed_id: v === 'fixed' ? (rule.fixed_id ?? allowedW[0] ?? allowedK[0] ?? 'assault_rifle') : rule.fixed_id })} />
+      </div>
+      {/* WEAPONS|PERKS rides on the description line, which BOTH panels have. On the WHO PICKS row it
+          wrapped to a line of its own on the secondary side only, so the two weapon tables started at
+          different heights — Tony, 2026-09-02: "the tables dont align". */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 36 }}>
+        <span style={{ font: F.chk(500, 11), color: T.dim }}>{WHO[rule.choice]}</span>
         {sec && !off && !fixed && (
-          <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>
+          <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto', flex: '0 0 auto' }}>
             <Chip on={rule.kinds.includes('weapon')} color={T.acc} onClick={() => { const k = toggle(rule.kinds, 'weapon') as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>WEAPONS</Chip>
             <Chip on={rule.kinds.includes('perk')} color={PERK_COLOR} onClick={() => { const k = toggle(rule.kinds, 'perk') as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>PERKS</Chip>
           </span>
         )}
       </div>
-      <div style={{ font: F.chk(500, 11), color: T.dim }}>{WHO[rule.choice]}</div>
       {showWeapons && !fixed && (
         <>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ font: F.mono(600, 10.5), letterSpacing: '.16em', color: T.micro, marginRight: 6 }}>CLASSES</span>
             {TAGS.map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
           </div>
           <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, lineHeight: 1.5, maxWidth: '68ch' }}>A chip switches a whole class. Tap a weapon to switch just that one. A partial chip (1/5) means some of its weapons are off, and a weapon in two classes is off when either chip is off.</div>
@@ -271,15 +275,21 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
       )}
       {showWeapons && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.acc }}>TAP THE WEAPON EVERYONE GETS</div>}
       {showWeapons && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(112px,1fr))', gap: 6 }}>
-          {weapons.map(w => {
+        // A TABLE, alphabetical. This was 36 image tiles in a 3-wide grid, each with its class
+        // printed in a saturated colour — Tony, 2026-09-02: "too loud, its difficult to quickly scan
+        // and parse... maybe a table alphabeticaly order with a little class identifier". You are
+        // picking which names are ALLOWED here, not choosing a gun to carry; the pictures belong on
+        // KIT and ARSENAL, where you are.
+        <div style={{ border: `1px solid ${T.line}`, background: T.panelDeep }}>
+          {[...weapons].sort((x, y) => x.name.localeCompare(y.name)).map((w, i) => {
             const inPool = allowedW.includes(w.weapon_id);
             const byId = rule.exclude_ids.includes(w.weapon_id);
             const byTag = !inPool && !byId && !fixed;   // off because of a class chip
             const on = fixed ? rule.fixed_id === w.weapon_id : inPool;
             const role = roleOf(w.role, w.cls);
-            const tip = fixed ? `${w.name} · ${role.label} — tap to make this the fixed weapon` : byTag ? `Off by the ${role.label || 'class'} chip — tap to allow just this one` : byId ? `${w.name} · ${role.label} — off, tap to allow` : `${w.name} · ${role.label} — allowed, tap to switch off`;
-            // a tag-excluded tile is still tappable: allowing it lifts the class exclusion and switches the rest of that class off by id
+            const tip = fixed ? `Tap to make ${w.name} the fixed weapon`
+              : byTag ? `Off by the ${role.label || 'class'} chip — tap to allow just this one`
+              : byId ? 'Off — tap to allow' : 'Allowed — tap to switch off';
             const allowThroughTag = () => {
               const mates = weapons.filter(x => x.weapon_id !== w.weapon_id && (x.tags ?? []).some(t => (w.tags ?? []).includes(t) && rule.exclude_tags.includes(t))).map(x => x.weapon_id);
               onRule({ exclude_tags: rule.exclude_tags.filter(t => !(w.tags ?? []).includes(t)), exclude_ids: Array.from(new Set([...rule.exclude_ids.filter(id => id !== w.weapon_id), ...mates])) });
@@ -287,14 +297,20 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
             return (
               <button key={w.weapon_id} type="button" aria-pressed={on} title={tip} aria-label={`${w.name}${on ? ', allowed' : ', off'}`} className="hov-acc"
                 onClick={() => fixed ? onRule({ fixed_id: w.weapon_id }) : byTag ? allowThroughTag() : onRule({ exclude_ids: toggle(rule.exclude_ids, w.weapon_id) })}
-                style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 4, padding: 5, textAlign: 'left', cursor: 'pointer', background: on ? (fixed ? 'rgba(57,180,255,.12)' : T.panel) : T.panelDeep, border: `${fixed && on ? 2 : 1}px solid ${on ? (fixed ? T.acc : T.line2) : T.line}`, minHeight: 44 }}>
-                <span style={{ display: 'block', height: 40, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, opacity: on || fixed ? 1 : .25, filter: on || fixed ? undefined : 'grayscale(1)' }} />
-                {/* Just the name. The class was printed on every one of 36 tiles in its own saturated
-                    colour, on both sides of the screen, duplicating the chips directly above — Tony,
-                    2026-09-02: "too much color, too much caps. maybe we just do names of guns". The
-                    class is still in the tooltip, and still switchable by its chip. */}
-                <span style={{ font: F.chk(700, 11), letterSpacing: '.02em', color: on || fixed ? T.ink : T.dim,
-                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fixed && on ? '✓ ' : ''}{w.name}</span>
+                style={{ ...BTN_RESET, width: '100%', display: 'grid', gridTemplateColumns: '22px 1fr auto', alignItems: 'center', gap: 10,
+                         padding: '0 12px', minHeight: 38, cursor: 'pointer', textAlign: 'left',
+                         borderTop: i ? `1px solid ${T.line}` : 'none',
+                         background: fixed && on ? 'rgba(57,180,255,.10)' : 'transparent' }}>
+                <span style={{ font: F.chk(700, 12), color: on ? (fixed ? T.acc : T.ok) : T.faint }}>{on ? '✓' : '·'}</span>
+                <span style={{ font: F.chk(on ? 700 : 500, 13), letterSpacing: '.02em', color: on ? T.ink : T.micro,
+                               textDecoration: on ? undefined : 'line-through', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
+                {/* Every class the weapon is in, not just its role. The chips filter on TAGS and a
+                    weapon can carry several — the AMR is support AND sniper, the Ion Sniper is heavy
+                    AND sniper — so a row labelled only SUPPORT was being switched off by the SNIPER
+                    chip with nothing on screen explaining why (Tony, 2026-09-02). */}
+                <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, whiteSpace: 'nowrap' }}>
+                  {(TAGS.filter(t => (w.tags ?? []).includes(t.tag)).map(t => t.label).join(' · ')) || role.label}
+                </span>
               </button>
             );
           })}
@@ -327,13 +343,15 @@ function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?
   const mixed = on && !!partial;
   return (
     <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed — tap to allow all` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
-      style={{ ...BTN_RESET, font: F.chk(700, 11.5), letterSpacing: '.04em', padding: '7px 12px', minHeight: 36, cursor: 'pointer',
-               // longhand only: mixing `borderLeft` with `borderLeftWidth` makes React warn about
-               // shorthand/longhand conflicts, which their no-console-error test rightly fails on
+      style={{ ...BTN_RESET, font: F.chk(600, 12), letterSpacing: '.02em', padding: '7px 12px', minHeight: 36, cursor: 'pointer',
+               // No fill. Five saturated blocks, twice on screen, were the loudest thing on the page —
+               // "the colors of the buttons are too harsh maybe just border color or a dimmer hue"
+               // (2026-09-02). The class colour survives on the tick and a 3px edge, nowhere else.
+               // longhand only: mixing `borderLeft` with `borderLeftWidth` makes React warn.
                borderStyle: 'solid', borderColor: on ? T.line2 : T.line, borderWidth: 1,
                borderLeftColor: on ? color : T.line, borderLeftWidth: 3,
-               color: on ? T.ink : T.micro, background: on ? T.panelAlt : 'transparent' }}>
-      {mixed ? `◐ ${partial} ` : on ? '✓ ' : ''}{children}
+               color: on ? T.ink : T.micro, background: 'transparent' }}>
+      <span style={{ color: on ? color : T.faint, marginRight: 6 }}>{mixed ? `◐ ${partial}` : on ? '✓' : '·'}</span>{children}
     </button>
   );
 }

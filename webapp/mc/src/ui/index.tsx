@@ -97,8 +97,14 @@ export function Seg<V extends string>({ value, options, onChange, size = 11, pad
         const on = o.value === value;
         return (
           <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on}
-            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, size), letterSpacing: '.14em', padding: pad, background: on ? T.acc : 'transparent',
-              color: on ? T.accInk : T.micro, cursor: on ? 'default' : 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
+            // Selected used to be a solid T.acc block. With several Segs on one screen (START FROM,
+            // WHO PICKS, WEAPONS|PERKS, RESPAWN) that is a lot of bright fill for a toggle — Tony,
+            // 2026-09-02: "the colors of the buttons are too harsh maybe just border color or a
+            // dimmer hue". A tinted panel plus an accent underline reads just as selected.
+            style={{ ...BTN_RESET, font: F.chk(on ? 700 : 600, size), letterSpacing: '.08em', padding: pad,
+              background: on ? T.panelAlt : 'transparent', color: on ? T.acc : T.micro,
+              boxShadow: on ? `inset 0 -2px 0 ${T.acc}` : undefined,
+              cursor: on ? 'default' : 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
             {o.label}
           </button>
         );
