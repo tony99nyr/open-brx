@@ -79,6 +79,12 @@ or floor space. This is the biggest category and the highest-value one.
 *The biggest single unlock left: if we can replay a station beacon, the Utility Box can impersonate a
 grenade and the whole objective tier opens.*
 
+> 🔴 **Every item here is gated on the receiver first — see [`FOLLOWUPS.md`](FOLLOWUPS.md) F12.** Board
+> A splits one arriving frame into 2-4 pieces and decodes none of them (measured 2026-09-02: our
+> emitter 4/20 clean, a REAL BRX gun 3/44). Capturing what the grenade beacons is exactly the long
+> accessory word this fails hardest on, and `IDLE_GAP_US` was already raised once *for the grenade*
+> and did not reach. **Anything captured on this board today would be fragments read as facts.**
+
 | id | unknown |
 |---|---|
 | **3.1** | What each mode actually beacons (predicted: protocol 15, mode in the magnitude field — Respawn 6, Hill 8) |

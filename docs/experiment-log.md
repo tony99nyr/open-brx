@@ -4782,3 +4782,59 @@ Propagated the same day into `protocol/brx-protocol.md` §5 + §7r, `docs/weapon
 **`hits_to_kill()` still computes on raw t5 and therefore over-estimates htk for the five fn 36/37
 weapons** — the behaviour was left alone deliberately; the docstring and the `validate()` warning now
 say so.
+
+### 2026-09-02 (evening) — 🔴 THE IR RECEIVER FRAGMENTS FRAMES: our emitter is clean, board A is not
+
+Ran the loopback rig check the handoff asked for, before touching a tagger. It did not go where I
+expected, twice.
+
+**Emitter -> receiver, known 25-bit word, 20 shots:** 4 decoded whole, 16 failed. But every single
+one of the 20 delivered **exactly 52 edges** — a complete word — split across 1-4 bursts, and the
+first fragment always decoded a correct PREFIX of what we sent. Nothing is lost in the air. The
+board chops the frame up and then fails each piece.
+
+**Control that settled it:** Tony fired a REAL BRX GUN at the same board. It fragments identically —
+44 bursts, 3 decoded whole, fragments pairing to 52 (18+34, 43+9, 24+28, 6+46, 15+37). Real guns hit
+real taggers, so this cannot be a property of the transmission. **The receiver is the broken part;
+our emitter is clean at 20/20 full frames.**
+
+⚠️ **Retracted mid-session: "the emitter is stalling mid-frame."** I reasoned that serial printing can
+only *merge* frames and never split one, so a split had to mean genuine IR silence, so the emitter
+had to be stalling — and I went further and said this probably explained the whole F11 afternoon. The
+logic is fine and the conclusion was wrong. The real-gun control killed it in ten minutes. **Cost of
+not having run that control first: an entire afternoon of tagger hypotheses.** It is the cheapest
+control on this bench and it was available the whole time.
+
+**Suspected cause, NOT established:** VS1838B AGC blanking. The part is built for short bursts and
+desensitises under sustained carrier, which fits Tony's observation that the boards stopped working
+when they were too close. One anecdote, no measurement. Written up as **F12** with a cheapest-first
+plan (move the receiver back and re-run before changing any code).
+
+**Consequence for the grenade:** F12 blocks it. `IDLE_GAP_US` was raised 8 ms -> 30 ms on 2026-08-27
+*specifically because the `$GREN` accessory word was splitting*, and it is still splitting. Long
+words are this bug's worst case, so anything captured from the grenade on this board today would be
+fragments recorded as facts.
+
+**What we salvaged, and it is the useful half.** The edge COUNT survives the fragmentation perfectly.
+So the receiver is unusable as a decoder but excellent as a **witness**: "did a full frame's worth of
+light arrive at the victims' position?" Both controls run before trusting it —
+
+| control | result |
+|---|---|
+| firing (must all say yes) | **6/6** |
+| quiet (must all say no) | **0/6 false alarms** |
+
+That is the instrument today's F11 work never had. With it, "both victims silent" finally splits into
+"the emitter did not fire" and "both taggers are deaf" — two things that were confused for each other
+all afternoon. `f11_ab.py` now grades every shot with it and marks unwitnessed shots **VOID** rather
+than counting them as misses, because a shot that was never fired at anyone is not a miss.
+
+**Two tool bugs found and fixed on the way, both of which fake a negative result:**
+- `loopback.py` probed the receiver with `PING`. The capture firmware does not implement it — only
+  the emitter does. A perfectly good board reported as dead.
+- `irbridge.parse_frames()` drops any `DECODE` line not preceded by a `RAW` line, and the firmware's
+  `r` toggle turns `RAW` off and *persists until power-cycle*. With RAW off, a perfectly received
+  shot decodes and is then silently thrown away. Bench tools now read the `DECODE` line directly.
+
+Also: non-ASCII in bench-tool output aborts the run on this cp1252 Windows console, and both new
+tools ran their `main()` at import. Fixed; entrypoints are guarded now.

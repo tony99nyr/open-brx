@@ -1049,6 +1049,74 @@ done we know the unit is faulty but not which half.
 - Does a `$HIR` ever arrive from the **gun body** sensor while the headset is unlinked? If the gun's
   own sensor still works, the failure is partial, not total, and looks even more like flaky scoring.
 
+## 🔴 F12 — THE IR RECEIVER SPLITS ONE ARRIVING FRAME INTO 2-4 PIECES AND DECODES NONE OF THEM (2026-09-02)
+
+**Blocks the grenade work.** Long accessory words are the worst case for this bug, and the grenade is
+the reason the current setting exists at all: `IDLE_GAP_US` was RAISED from 8 ms to 30 ms on
+2026-08-27 *because the `$GREN` accessory word was being split*. It is still being split. The knob was
+turned in the right direction and did not reach.
+
+### The measurement
+
+Our emitter (board B) firing a known 25-bit word at board A, 20 shots:
+
+| bursts the frame was split into | shots | decodes? |
+|---|---|---|
+| 1 | 4 | ✅ perfect, `parityOK=1` |
+| 2 | 13 | ❌ every piece fails |
+| 3 | 2 | ❌ |
+| 4 | 1 | ❌ |
+
+**All 20 shots summed to EXACTLY 52 edges** — a full 25-bit word, every time, nothing lost. The first
+fragment always decodes a correct PREFIX of the sent word (`0000101`, `0000101010100001`,
+`00001010101000010100`). So the photons arrive complete and in order; the board mis-assembles them.
+
+### It is the receiver, not our emitter — the control that proves it
+
+A **real BRX gun** fired at the same board fragments identically: 44 bursts, only **3** decoded whole,
+and the fragments pair to 52 the same way (18+34, 43+9, 24+28, 6+46, 15+37). Real guns demonstrably
+hit real taggers, so a fragmentation that also happens to real gun frames cannot be a property of the
+transmission. **Our emitter is clean: 20/20 full frames.**
+
+⚠️ Retracted en route: "the emitter is stalling mid-frame". It was stated confidently off the
+loopback numbers alone and the real-gun control killed it ten minutes later. The reasoning that
+produced it ("printing can only merge frames, never split them, so a split means real IR silence")
+is still sound in isolation and still gave the wrong answer, which is the point of running a control.
+
+### Suspected cause — NOT yet established
+
+The 30 ms silence rule can only fire mid-frame if the receiver genuinely stops seeing edges for
+30 ms. Leading candidate is **VS1838B AGC blanking**: it is built for short bursts and desensitises
+under strong or sustained carrier, which fits Tony's own observation that the boards *stopped* working
+when they were moved too close together. Do not treat this as settled — it is a hypothesis with one
+supporting anecdote, and this file has an eight-hypothesis graveyard directly above it (F11).
+
+### What to try, cheapest first
+
+1. **Move the receiver back / off-axis and re-run `loopback.py`.** If the clean-decode rate climbs
+   with distance, it is saturation and the answer is an attenuator, not a code change. Costs nothing
+   and discriminates the leading hypothesis in one run. Ties into **Q15/Q16** (IR power + divergence).
+2. **Raise `IDLE_GAP_US`** past the observed hole. Measure the hole first — log `micros()` at frame
+   start/end so the gap between fragments is a NUMBER rather than a guess. ⚠️ Raising it fuses
+   back-to-back shots into one capture, so it trades this bug for a burst-fire bug; the firmware
+   comment already warns about that.
+3. **Stitch in software instead of firmware.** If a fragment train is really one word, concatenate the
+   duration lists across fragments separated by less than a shot interval and decode the join. Keeps
+   the firmware honest about what it saw and puts the interpretation where it can be tested.
+4. **Try a different receiver part.** A TSOP384xx-family demodulator with a longer burst tolerance, or
+   simply a second VS1838B at a different distance, would separate "this part" from "this design".
+
+### What is usable RIGHT NOW, and what is not
+
+- ❌ **Not usable as a bit-exact decoder** at this geometry — 20% success. Any experiment that grades
+  on a clean decode will silently discard 80% of good shots.
+- ✅ **Usable as a WITNESS**, graded on EDGE COUNT rather than decode: "did a full frame's worth of
+  light arrive?" Validated 2026-09-02 with both controls — **6/6 when firing, 0/6 false alarms when
+  quiet**. `f11_ab.witnessed()` does exactly this and is the reason F11 can finally be measured.
+
+**Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
+before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
+
 ## 🟢 F1 — POOL-STATUS LEDs: show health/armour/shield on change, revert to team colour (2026-08-30)
 
 **Tony's spec, verbatim:** *"during game we want to be able to take over and show shield health. after a
