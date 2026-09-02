@@ -23,8 +23,10 @@ const Grid = ({ children }: { children: React.ReactNode }) => (
 export function Debug() {
   const { state, connected, mock, api, error, hasToken, authRequired, setToken } = useStore();
   const [tok, setTok] = useState('');
-  const [voices, setVoices] = useState<number | null>(null);
-  useEffect(() => { api.getVoices().then(v => setVoices(v.voices.length)).catch(() => setVoices(null)); }, [api]);
+  const [voices, setVoices] = useState<{ n: number; verified: number } | null>(null);
+  useEffect(() => { api.getVoices()
+    .then(v => setVoices({ n: v.voices.length, verified: v.voices.filter(x => x.verified).length }))
+    .catch(() => setVoices(null)); }, [api]);
 
   const linked = state?.nodes.filter(n => (n.last_seen_ms ?? 1e9) < 8000).length ?? 0;
   const synced = state?.nodes.filter(n => n.synced).length ?? 0;
@@ -99,7 +101,8 @@ export function Debug() {
       <Grid>
         {Object.entries(state?.config ?? {}).filter(([k]) => k !== 'teams').map(([k, v]) =>
           <Row key={k} k={k.toUpperCase()} v={typeof v === 'object' ? JSON.stringify(v) : String(v)} />)}
-        <Row k="VOICE PACKS" v={voices == null ? '—' : `${voices} personas available`} />
+        <Row k="VOICE PACKS" v={voices == null ? '—'
+          : `${voices.n} personas · ${voices.verified} confirmed by ear, the rest inferred from the pack layout`} />
       </Grid>
     </div>
   );

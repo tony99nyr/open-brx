@@ -29,7 +29,7 @@ export function Kit() {
   }, [api]);
   // The full persona list. `$PSET`'s trailing tokens are a positional voice pack and every family in
   // the bank carries one; the console offered two of ~15, and `female` was a duplicate of `male`.
-  const [voices, setVoices] = useState<{ id: string; name: string; verified: boolean }[]>([]);
+  const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => { api.getVoices().then(v => setVoices(v.voices)).catch(() => setVoices([])); }, [api]);
   const [newName, setNewName] = useState('');
   const [slot, setSlot] = useState<Slot>('primary');
@@ -221,7 +221,11 @@ export function Kit() {
                 {voices.length > 2 ? (
                   <select aria-label={`voice for ${sp.display}`} value={sp.voice ?? 'male'} onChange={e => patch({ voice: e.target.value })}
                     style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
-                    {voices.map(v => <option key={v.id} value={v.id}>{v.name}{v.verified ? '' : ' ·'}</option>)}
+                    {/* No "unverified" marker here. A bare `·` in a native <select> has no legend and
+                        no tooltip — Tony asked what it meant, which is the answer. Whether a pack has
+                        been confirmed BY EAR is a developer's concern, and the operator finds out the
+                        instant they pick one. The count lives on the Debug page instead. */}
+                    {voices.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
                 ) : (
                   <Seg value={sp.voice === 'female' ? 'female' : 'male'} options={[{ value: 'male', label: 'MALE' }, { value: 'female', label: 'FEMALE' }]} onChange={v => patch({ voice: v })} pad="4px 12px" />
