@@ -491,6 +491,42 @@ software. **R0BQT has a genuine intermittent fault in its IR receive path.**
 - The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
   attempts, so there is no reliable field workaround.
 
+### ✅✅ ROOT CAUSE LOCALISED: the GUN sensor works, the HEADSET's four do not
+
+The decisive test, and it took one aim change. With the unit in the deaf state and the **headset**
+registering nothing from 14+ shots, the emitter was pointed at the **GUN BODY** instead:
+
+```
+$HIR,4,0,42,2,20,0,0     <- tok1 = 4 = GUN BODY
+$HP,45,50,0 -> 45,30,0 -> 45,10,0 -> 35,0,0
+```
+
+**Four shots, four hits**, armour 70 → 50 → 30 → 10 → 0 with normal spill into HP.
+
+**So the gun's own sensor and its entire IR-to-BLE reporting chain are HEALTHY.** The fault is
+confined to the **headset's four sensors** (`$HIR` tok1 = 0, 1, 2, 3).
+
+**The complete picture of a unit in this state:**
+
+| subsystem | status |
+|---|---|
+| gun IR sensor (tok1 = 4) | ✅ **registers normally** |
+| gun → BLE hit reporting | ✅ works (that is how we saw the above) |
+| gun → headset commands (`$HLED`) | ✅ headset lights on demand |
+| headset link + firmware (`$VERSION` → `hds.59`) | ✅ reported |
+| headset battery | ✅ fine |
+| headset knows it is alive | ✅ shows the normal dark in-play state |
+| **headset's four IR sensors** | ❌ **report nothing** |
+
+**Action: the HEADSET is the faulty part.** Swap it. The gun does not need servicing, and a swap
+should move the fault with the headset — that is the confirming test, and the prediction is explicit.
+
+**Why this matters beyond one unit:** in a real match this player is not fully invisible — their
+**gun body still scores**. So they take hits when shot from the front at gun level and nothing when
+shot anywhere else, which reads as "the tagging is unreliable today" rather than as a broken headset.
+That is far harder to notice than a total failure, and is very likely what was happening in the
+2026-09-01 test game.
+
 ### ❌ RULED OUT: it is NOT stuck in the death state
 
 The best remaining software explanation, and it is wrong. Hypothesis (Tony's): we killed the gun, the
