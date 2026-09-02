@@ -554,6 +554,28 @@ Both halves matter:
 **Action: replace or service the headset.** Confirming test, and the prediction is explicit: swap this
 headset onto a known-good gun and the reduced range should follow the headset.
 
+### ❌ NOT `$GSET` outdoorMode
+
+A promising config hypothesis, tested and dead. Every arm we send has `$GSET` token 2 = 0 (indoor),
+and indoor mode exists to shorten IR range (operator, 2026-08-30: *"native indoor is way too powerful,
+the ir hits after bouncing way too easily"*). If it also desensitised the receiver, it would explain
+short range in our games and normal range natively.
+
+At 3 feet, same emitter, same dome, nothing else changed:
+
+| `$GSET` t2 | result |
+|---|---|
+| 0 (indoor) | 0 of 6 |
+| 1 (outdoor) | 0 of 6 |
+
+**No difference.** `outdoorMode` does not affect receive sensitivity, and the config explanation for
+F11 is not this token.
+
+⚠️ **The hardware-degradation conclusion below is NOT yet confirmed.** The operator doubts it, and the
+control that settles it has not been run: **does this headset tag normally in a NATIVE on-gun game?**
+If it does, the fault is in something *we* send and the degradation reading is wrong. That test is
+outstanding and should be done before anyone replaces hardware.
+
 ### 📏 The range figure
 
 Operator-measured, same emitter, same dome, same session:
