@@ -8,16 +8,21 @@ import { GhostButton, ScreenHeader, SectionRule } from '../ui';
 // lets pull debug stuff out into the new page." The telemetry strip lived across the top of every
 // screen in 11px uppercase mono — permanent noise for information you want perhaps twice a session.
 
+// One key column width for the WHOLE page. Each section used its own `auto` column, so SESSION's
+// short keys and GAME CONFIG's long ones sized differently and the values stepped in and out down the
+// page (Tony, 2026-09-02: "bit of an alignment issue on debug for keys and values").
+const KEY_COL = 172;
+
 function Row({ k, v, color }: { k: string; v: React.ReactNode; color?: string }) {
   return (
     <>
-      <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro }}>{k}</span>
-      <span style={{ font: F.chk(600, 13), color: color ?? T.ink, wordBreak: 'break-word' }}>{v}</span>
+      <span style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro, paddingTop: 2 }}>{k}</span>
+      <span style={{ font: F.chk(600, 13), color: color ?? T.ink, wordBreak: 'break-word', minWidth: 0 }}>{v}</span>
     </>
   );
 }
 const Grid = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 18px', alignItems: 'baseline', padding: '12px 2px 20px' }}>{children}</div>
+  <div style={{ display: 'grid', gridTemplateColumns: `${KEY_COL}px minmax(0,1fr)`, gap: '9px 16px', alignItems: 'baseline', padding: '12px 2px 20px' }}>{children}</div>
 );
 
 export function Debug() {
@@ -100,10 +105,30 @@ export function Debug() {
       <SectionRule label="GAME CONFIG IN EFFECT" hint="WHAT THE NEXT PUSH WILL COMPILE FROM" />
       <Grid>
         {Object.entries(state?.config ?? {}).filter(([k]) => k !== 'teams').map(([k, v]) =>
-          <Row key={k} k={k.toUpperCase()} v={typeof v === 'object' ? JSON.stringify(v) : String(v)} />)}
+          <Row key={k} k={k.replace(/_/g, ' ').toUpperCase()} v={readable(v)} />)}
         <Row k="VOICE PACKS" v={voices == null ? '—'
           : `${voices.n} personas · ${voices.verified} confirmed by ear, the rest inferred from the pack layout`} />
       </Grid>
     </div>
+  );
+}
+
+
+/** `{"type":"auto","delay_s":15}` is not something you read at a glance. Flatten one level into
+ *  `type auto · delay_s 15`, and give a nested object its own indented lines rather than a JSON blob. */
+function readable(v: unknown): React.ReactNode {
+  if (v === null || v === undefined) return '—';
+  if (Array.isArray(v)) return v.length ? v.map(String).join(', ') : 'none';
+  if (typeof v !== 'object') return String(v);
+  const rows = Object.entries(v as Record<string, unknown>);
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {rows.map(([k, val]) => (
+        <span key={k} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, minWidth: 128 }}>{k.replace(/_/g, ' ')}</span>
+          <span>{typeof val === 'object' && val !== null ? readable(val) : String(val)}</span>
+        </span>
+      ))}
+    </span>
   );
 }
