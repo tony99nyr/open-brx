@@ -41,13 +41,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    if not any("frames=" in l for l in rx._readlines(0.6)):
-        raise SystemExit("receiver did not answer -- no witness, no experiment")
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
@@ -89,9 +83,16 @@ async def main():
     tot_h = sum(v[0] for v in by_team.values())
     tot_f = sum(v[1] for v in by_team.values())
     print(f"     TOTAL : {tot_h}/{tot_f}")
-    print("\n  all teams register      -> the gun is healthy; our config is what deafens it.")
-    print("  exactly ONE team fails  -> that is its own team. Friendly fire, NOT deafness.")
-    print("  nothing registers       -> deaf even in its native game; our frames are exonerated.")
+    print("\n  ⚠️  READ THIS BEFORE BELIEVING ANY ZERO ABOVE.")
+    print("  `$HIR` DOES NOT REACH BLE IN A NATIVE GAME. A natively-running gun registers hits,")
+    print("  flashes its headset and takes damage while sending NOTHING over Bluetooth. This tool")
+    print("  therefore CANNOT detect a hit here, and a total of 0/N is its NORMAL output on a")
+    print("  perfectly healthy gun. It measured 0/11 on 2026-09-02 while the operator watched the")
+    print("  gun get hit every single time, and that reading was briefly written up as deafness.")
+    print("\n  Only two readings mean anything:")
+    print("    ANY registrations at all -> the gun is in OUR game state, not a native one.")
+    print("    exactly ONE team fails   -> that is its own team. Friendly fire, NOT deafness.")
+    print("  Score a native game BY EYE (headset flash) or with hit_flash.py. Never from this zero.")
     rx.close()
     tx.close()
 

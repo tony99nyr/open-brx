@@ -97,3 +97,42 @@ async def connected(mgr, *pairs: tuple[str, str]):
         for alias in reversed(opened):
             with contextlib.suppress(Exception):
                 await mgr.disconnect(alias)
+
+
+# --- rig + verdict helpers (added after the 2026-09-02 polish review) ---------- #
+# Ten tools each open-coded the receiver setup and THREW AWAY its liveness reply, and none checked
+# that the RAW-dump toggle actually took. A wrong port or a RAW-OFF board makes every shot read
+# "not witnessed", which silently turns into 0/0 and then into a confident verdict about a tagger.
+
+def arm_receiver(rx) -> None:
+    """Verify the capture board is answering AND that RAW is ON. Raise if not.
+
+    RAW must be ON because `f11_ab.witnessed()` grades on EDGE COUNTS, which only appear on RAW
+    lines. The firmware's 'r' is a TOGGLE and its state survives until the board is power-cycled, so
+    "send r once" is not enough -- it can just as easily turn RAW off.
+    """
+    rx._ser.write(b"s\n")
+    if not any("frames=" in ln for ln in rx._readlines(0.6)):
+        raise SystemExit(
+            "ABORT: the capture board did not answer 's'. Wrong COM port, or the board is not\n"
+            "  running ir_capture.ino. Every shot would read 'not witnessed' and the run would\n"
+            "  produce a table of zeros that looks like a result.")
+    for _ in range(2):
+        rx._ser.write(b"r\n")
+        if any("RAW dump ON" in ln for ln in rx._readlines(0.5)):
+            return
+    raise SystemExit(
+        "ABORT: could not confirm RAW dump is ON. The witness grades on EDGE COUNTS, which only\n"
+        "  appear on RAW lines, so with RAW off every shot reads 'not witnessed'.")
+
+
+def is_alive(lcd: str) -> bool | None:
+    """True/False from an `$LCD` line, or None when we have NO reading.
+
+    None is not False. A missing `$QUERY` reply means we do not know the gun's state, and scoring
+    that as "dead" silently discards a trial; scoring it as "alive" lets a corpse be reported as a
+    deaf gun. Callers must handle all three.
+    """
+    if not lcd:
+        return None
+    return not lcd.startswith("$LCD,0,0")

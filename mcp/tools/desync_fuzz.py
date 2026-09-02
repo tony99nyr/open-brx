@@ -54,12 +54,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
@@ -110,14 +105,17 @@ async def main():
             tx.write(("TX " + word(200, 0, ENEMY_TEAM) + "\n").encode())
             tx.flush()
 
+        # ⚠️ ORDER MATTERS. The `$CLEAR` cases are the KNOWN, SOLVED F11 cause (`$CLEAR` wipes the
+        # `$SIR` table), so they trip on trial one and the early `return` below would hide every
+        # other case. They are kept LAST as a positive control that the rig can still see the fault.
         CASES = [
-            ("$CLEAR -> $SPAWN",        ["$CLEAR,*"],            ["$SPAWN,*"]),
-            ("$CLEAR -> $START,$SPAWN", ["$CLEAR,*"],            ["$START,*", "$SPAWN,*"]),
-            ("$STOP  -> $SPAWN",        ["$STOP,*"],             ["$SPAWN,*"]),
-            ("$STOP  -> $START,$SPAWN", ["$STOP,*"],             ["$START,*", "$SPAWN,*"]),
             ("MC full burst",           mc_setup,                mc_spawn),
             ("KILL   -> $SPAWN",        None,                    ["$SPAWN,*"]),
             ("KILL   -> RESPAWN_SEQ",   None,                    ["$HLOOP,0,0,*", "$SPAWN,,*"]),
+            ("$STOP  -> $SPAWN",        ["$STOP,*"],             ["$SPAWN,*"]),
+            ("$STOP  -> $START,$SPAWN", ["$STOP,*"],             ["$START,*", "$SPAWN,*"]),
+            ("CONTROL: $CLEAR -> $SPAWN (known F11)", ["$CLEAR,*"], ["$SPAWN,*"]),
+            ("CONTROL: $CLEAR -> $START,$SPAWN (known F11)", ["$CLEAR,*"], ["$START,*", "$SPAWN,*"]),
         ]
 
         print(f"   {'case':26s} {'gap':>6s}  pools            rate", flush=True)
@@ -146,7 +144,14 @@ async def main():
                     mark = "   (dead -- discarded, not deafness)"
                 print(f"   {label:26s} {gap:5.2f}s  {pools[:16]:16s} {h}/{f}{mark}", flush=True)
                 if mark.startswith("   <<--"):
-                    print("\n   *** CAPTURED. Gun alive and in game, registering nothing.")
+                    known = label.startswith("CONTROL:")
+                    print(f"\n   *** CAPTURED by: {label}")
+                    if known:
+                        print("   This is the KNOWN cause (`$CLEAR` wipes the `$SIR` table). It is a")
+                        print("   positive control, NOT a new finding -- the rig can still see the fault.")
+                    else:
+                        print("   Gun alive and in game, registering nothing, by a path that is NOT")
+                        print("   the known $CLEAR cause. That would be new.")
                     print("   STOPPING with the state intact -- look at the headset now, and do NOT")
                     print("   power-cycle. One hit is a lead: it must repeat before it is a cause.")
                     rx.close(); tx.close()

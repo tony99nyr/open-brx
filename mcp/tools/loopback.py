@@ -114,8 +114,11 @@ def main():
 
     print(f"\n  3. decoded {heard}/{shots}   bit-exact {exact}/{shots}")
     if exact == shots:
-        print("     OK RIG GOOD. The emitter works, the receiver works, and the link is clean.\n"
-              "        A tagger that fails to register now is the TAGGER, not us.")
+        print("     OK INSTRUMENT GOOD: the emitter emits, the receiver decodes, the link is clean.\n"
+              "        ⚠️ This says NOTHING about emitter->tagger geometry at bench range. A board\n"
+              "        aimed squarely at the emitter is far more sensitive than a headset dome:\n"
+              "        10/10 witnessed vs 4/10 registered was measured on 2026-09-02. Do not read\n"
+              "        this as 'the tagger is at fault'.")
     elif heard == 0:
         print("     FAIL NOTHING GETS ACROSS. Both boards are alive (step 1), so this is aim, distance,\n"
               "        or the emitter LED itself. Re-aim them at each other, a few inches apart, and\n"

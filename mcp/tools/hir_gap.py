@@ -51,12 +51,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()

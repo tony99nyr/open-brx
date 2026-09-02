@@ -59,12 +59,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     firing = threading.Event()
     stop = threading.Event()
@@ -134,10 +129,14 @@ async def main():
                 # wait for the gun's own $HP to report death, fire never pausing
                 died = False
                 t_start = time.time()
+                # Mark the buffer at CYCLE START. Reading since_seq=0 re-sees the PREVIOUS cycle's
+                # `$HP,0,0` on the very first poll, so cycle 2+ "died" instantly and the respawn
+                # landed on a full-HP gun -- the scenario in the docstring never actually ran.
+                death_mark = mgr.get_events("v", since_seq=0).get("last_seq", 0)
                 while time.time() - t_start < 25:
                     await asyncio.sleep(0.4)
                     evs = [e.get("raw", "").strip() for e in
-                           mgr.get_events("v", since_seq=0).get("events", [])[-25:]
+                           mgr.get_events("v", since_seq=death_mark).get("events", [])
                            if isinstance(e, dict)]
                     if any(e.startswith("$HP,0,0") for e in evs):
                         died = True

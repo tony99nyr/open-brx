@@ -100,3 +100,62 @@ def test_a_gun_still_off_the_air_gets_a_power_cycle_hint_not_a_raw_bleak_error()
         assert "FAILED" in err                      # still reported as a failure...
         assert "power-cycle" in err.lower()          # ...but with the known cause, not a raw trace
     _with_tmp_base(body)
+
+
+# --- What actually goes ON THE WIRE ------------------------------------------ #
+# The hole that let the bad fix ship, found by mutation on 2026-09-02: changing the send loop to
+# `$NAME,{name}` (the RAW operator input) instead of `{nm}` (the sanitized, tail-stripped name) left
+# the ENTIRE suite green while the CLI would write `$NAME,R0BAT-3D4F-3D4F,*` to a real gun. Every
+# other test asserts stderr text or the armory record, and the armory value comes from the same
+# variable rather than from the transmitted frame. So: assert the frame.
+
+def _tx_frames(mgr, alias="rn"):
+    sess = next(iter(mgr.sessions.values())) if mgr.sessions else None
+    buf = sess.buffer if sess is not None else []
+    return [e.raw for e in buf if getattr(e, "direction", "") == "tx"]
+
+
+def test_the_NAME_frame_ON_THE_WIRE_carries_the_stripped_name():
+    def body():
+        mgr = FakeConnectionManager([FakeTagger(ADDR)])
+        sent = {}
+        real_send = mgr.send
+
+        async def spy(alias, command, reply_window_ms=0):
+            sent.setdefault("frames", []).append(command)
+            return await real_send(alias, command, reply_window_ms)
+
+        mgr.send = spy
+        # feed it the ADVERTISED name, tail and all -- what `scan` prints and an operator pastes
+        _rename_capturing_stderr(mgr, ADDR, "R0BAT-ee01")
+        names = [f for f in sent.get("frames", []) if f.startswith("$NAME")]
+        assert names, "no $NAME frame was ever sent"
+        assert names[-1] == "$NAME,R0BAT,*", f"wrong name on the wire: {names[-1]}"
+        assert "ee01" not in names[-1].lower(), "the gun's own tail was sent back to it"
+
+    _with_tmp_base(body)
+
+
+def test_a_macos_uuid_address_does_not_mangle_a_legitimate_name_on_the_wire():
+    """No MAC means no known tail, so nothing may be stripped.
+
+    Deriving a tail from a CoreBluetooth UUID invented one, which both disabled the protection on
+    the match-day machine and ate 5 characters off names that merely ended in those hex digits.
+    """
+    uuid = "0B1C2D3E-4F50-6172-8394-A5B6C7D8E9FA"
+
+    def body():
+        mgr = FakeConnectionManager([FakeTagger(uuid)])
+        sent = []
+        real_send = mgr.send
+
+        async def spy(alias, command, reply_window_ms=0):
+            sent.append(command)
+            return await real_send(alias, command, reply_window_ms)
+
+        mgr.send = spy
+        _rename_capturing_stderr(mgr, uuid, "SQUAD-E9FA")
+        names = [f for f in sent if f.startswith("$NAME")]
+        assert names and names[-1] == "$NAME,SQUAD-E9FA,*", f"name was mangled: {names}"
+
+    _with_tmp_base(body)

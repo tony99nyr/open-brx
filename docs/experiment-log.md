@@ -3250,7 +3250,7 @@ it and must not be read as if it did.
 
 ### 2026-09-02 — ⭐ `$HLED` DECODED, the headset state model, and F1 answered NO (Tony + rig + phone camera)
 
-Bench: gun **R0BQT**, ESP32 board B (COM8) emitting, later a Pixel on wireless adb watching the LEDs.
+Bench: gun **the victim tagger**, ESP32 board B (COM8) emitting, later a Pixel on wireless adb watching the LEDs.
 
 ## 1. `$HLED` is fully decoded
 

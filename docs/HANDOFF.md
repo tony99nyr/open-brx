@@ -45,7 +45,12 @@
 > ⚠️ **When a tagger seems deaf, CHECK IT IS ALIVE FIRST.** A dead gun and a `$SIR`-less gun are
 > indistinguishable through `$HIR`, and most of one session was spent reading corpses as deafness.
 >
-> ## 🔴 2026-09-02 (evening/night) — F11 IS REAL AND WITNESSED, BUT UNREPRODUCIBLE; TWO BLE-TRUST FACTS; F12 OPENED
+> ## ❌ SUPERSEDED — 2026-09-02 (evening/night) — F11 "unreproducible"; TWO BLE-TRUST FACTS (still true); F12 OPENED (still open)
+>
+> ⚠️ **F11 WAS SOLVED LATER THE SAME NIGHT — see the banner above.** It is not
+> unreproducible and it was never intermittent. The two BLE-trust facts and F12 in this
+> banner remain correct; the F11 verdict and its next-session plan do not. Kept because
+> the elimination list is what stops the next session re-running fifteen dead leads.
 >
 > Same day, after the LED work below. Full write-up: `experiment-log.md` 2026-09-02 (evening / night /
 > late / end) entries; `FOLLOWUPS.md` F11 (rewritten) and **F12** (new); `gotchas.md` top entry.
@@ -165,8 +170,12 @@
 > drifting variable.
 >
 > **The rule this earns: on this bench a difference is real only if both sides were measured in the
-> same burst.** The three claims that survived are all simultaneous — R0BAT took hits while R0BQT
-> registered nothing (same emitter, same session, so **R0BQT is genuinely worse**); the gun body
+> same burst.**
+>
+> ❌ **SUPERSEDED 2026-09-02 (see the F11 solve at the top of this file).** Two of the three "surviving" claims below did not survive: the victim tagger is NOT a worse unit, and the gun-body-vs-dome split was never a real signal. F11 was `$CLEAR` wiping the `$SIR` table, which discards hits ABOVE the sensor layer, so every per-sensor and per-unit reading here was noise. The METHOD lesson stands; the conclusions do not.
+>
+> ~~The three claims that survived are all simultaneous — the control tagger took hits while the victim tagger
+> registered nothing (same emitter, same session, so **the victim tagger is genuinely worse**); the gun body
 > registered while the headset did not; 3 inches worked while 3 feet did not. Nothing else about that
 > fault is established, and **no hardware should be replaced on the strength of it.**
 >

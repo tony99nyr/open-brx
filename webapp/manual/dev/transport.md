@@ -57,7 +57,7 @@ _[diagram DEV-03: Annotated frame anatomy.]_
 Source: protocol/brx-protocol.md §7a, §7b, §7m, §7r; docs/gotchas.md
 
 ## The safety model.
-Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` returns a gun to a sane state. Battle Company's official USB updater is the factory-restore path.
+Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` silences and stops a gun. **Note it leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed or power cycled**, which is intended for a panic stop but must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path.
 Source: README.md "Safety", protocol/brx-protocol.md §8, mcp/brx_mcp/protocol.py
 
 ```python

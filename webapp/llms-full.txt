@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-09-02T23:40:27.146Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-09-02T23:49:33.928Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -2295,7 +2295,7 @@ _[diagram DEV-03: Annotated frame anatomy.]_
 Source: protocol/brx-protocol.md §7a, §7b, §7m, §7r; docs/gotchas.md
 
 ## The safety model.
-Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` returns a gun to a sane state. Battle Company's official USB updater is the factory-restore path.
+Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` silences and stops a gun. **Note it leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed or power cycled**, which is intended for a panic stop but must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path.
 Source: README.md "Safety", protocol/brx-protocol.md §8, mcp/brx_mcp/protocol.py
 
 ```python
@@ -2424,31 +2424,15 @@ Source: protocol/callsign-extract/protocol-classes.md
 <!-- https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence/ -->
 
 # The arm sequence: from `$CLEAR` to a live gun
-
+_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
 Last verified: 2026-08-27
 
-## The headset is a second device, and it needs time.
-A command that the tagger must
-relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within
-about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green
-out-blink while the gun is alive and registering hits normally, so the player looks dead while
-playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are
-clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect,
-such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame
-echoing back proves the gun received it, not that the headset executed it. ✅ src:
-docs/experiment-log.md 2026-09-02 (night, last)
+## The headset is a second device and it needs time
+A command that the tagger must relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green out-blink while the gun is alive and registering hits normally, so the player looks dead while playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect, such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame echoing back proves the gun received it, not that the headset executed it.
+Source: docs/experiment-log.md 2026-09-02 (night, last)
 
-**`$CLEAR` wipes the `$SIR` table, and an empty table means the gun ignores every
-hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports
-full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it
-is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as
-a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word
-does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all.
-Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5,
-and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the
-table SIZE does not matter, only its absence: a one-row table and the full ten-row table both
-registered 24/24 in an interleaved A/B.
-_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
+## `$CLEAR` wipes the `$SIR` table and the gun then ignores every hit
+This is the single most confusing failure mode we have found: the gun arms, spawns, reports full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all. Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5, and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the table SIZE does not matter, only its absence: a one-row table and the full ten-row table both registered 24/24 in an interleaved A/B.
 Source: docs/experiment-log.md 2026-09-02 (night, FINAL)
 
 This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
@@ -3750,7 +3734,7 @@ the complete interoperability spec for the BRX tagger + headset: transport, fram
 
 - [Transport, framing & safety](https://open-brx.iamrossi.workers.dev/manual/dev/transport/): How you reach the gun, what a frame looks like, and why nothing here can brick one. Start here if you want your own code to talk to a tagger.
 - [Command reference](https://open-brx.iamrossi.workers.dev/manual/dev/commands/): Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written.
-- [The arm sequence: from `$CLEAR` to a live gun](https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence/): 
+- [The arm sequence: from `$CLEAR` to a live gun](https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence/): The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host.
 - [`$WEAP`: the weapon definition](https://open-brx.iamrossi.workers.dev/manual/dev/weap/): Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own.
 - [`$GSET` and `$PSET`: game and player settings](https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset/): The two frames that set on-gun rules and the player's pools, identity and voice pack. Read this page to give each player their health, armor and id.
 - [`$SIR`: the incoming-IR effects matrix](https://open-brx.iamrossi.workers.dev/manual/dev/sir/): What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon. This page shows how to write that table.

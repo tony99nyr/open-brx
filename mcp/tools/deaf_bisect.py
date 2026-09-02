@@ -66,12 +66,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
@@ -120,9 +115,19 @@ async def main():
         for label, frame in SUSPECTS:
             await mgr.send("v", frame, reply_window_ms=200)
             await asyncio.sleep(0.6)
+            # $STOP is in SUSPECTS and 78 mag-1 shots accumulate against 185 of pools, so the gun
+            # can simply be DEAD or out of the game by now -- both score 0/N like a deaf gun.
+            mark = mgr.get_events("v", since_seq=0).get("last_seq", 0)
+            await mgr.send("v", "$QUERY,*", reply_window_ms=1200)
+            await asyncio.sleep(0.9)
+            q = [e.get("raw", "").strip() for e in
+                 mgr.get_events("v", since_seq=mark).get("events", []) if isinstance(e, dict)]
+            alive = B.is_alive(next((x for x in q if x.startswith("$LCD")), ""))
             h, f = await volley()
             flag = ""
-            if f and h < f * 0.5 and broke is None:
+            if alive is not True:
+                flag = "   (not alive / unknown -- discarded, not a collapse)"
+            elif f and h < f * 0.5 and broke is None:
                 broke = label
                 flag = "   <<-- COLLAPSED HERE"
             print(f"   {label:22s} {frame[:30]:30s} {h}/{f}{flag}", flush=True)

@@ -48,12 +48,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
@@ -102,6 +97,11 @@ async def main():
         pct = 100.0 * h / f if f else 0.0
         print(f"   {name:18s}  {h}/{f}   {pct:.0f}%")
     a, b = tally[ARMS[0][0]], tally[ARMS[1][0]]
+    if not a[1] or not b[1]:
+        print("\n   ABORT: an arm has ZERO confirmed-fired shots, so there is nothing to compare.")
+        print("   Fix the aim/rig and re-run. A verdict from no observations is how this bench")
+        print("   produced several confident wrong answers on 2026-09-02.")
+        rx.close(); tx.close(); return
     ra = a[0] / a[1] if a[1] else 0
     rb = b[0] / b[1] if b[1] else 0
     print()

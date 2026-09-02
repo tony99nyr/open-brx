@@ -1152,6 +1152,21 @@ async def _reset(address: str) -> None:
           f"team colour). Same sequence the game teardown uses.", file=sys.stderr)
 
 
+def _mac_tail(address: str) -> str:
+    """The 4 hex characters the GUN appends to its advert, or "" if this is not a MAC.
+
+    ⚠️ macOS gives CoreBluetooth UUIDs, not MACs. Taking the last 4 alphanumerics of a UUID invents
+    a "tail" that has nothing to do with the gun, which (a) left this protection inert on the
+    match-day machine and (b) silently ate 5 characters off any legitimate name ending in those hex
+    digits. Refuse to guess: no MAC, no stripping.
+    """
+    parts = address.split(":")
+    if len(parts) == 6 and all(len(x) == 2 and all(c in "0123456789abcdefABCDEF" for c in x)
+                               for x in parts):
+        return "".join(parts)[-4:].lower()
+    return ""
+
+
 def name_for_rename(name: str, address: str) -> tuple[str, bool]:
     """The name to actually put in `$NAME`: tail stripped FIRST, then sanitized/truncated.
 
@@ -1161,13 +1176,23 @@ def name_for_rename(name: str, address: str) -> tuple[str, bool]:
     """
     from .modes.driver import clean_callsign
     stripped, changed = strip_advert_tail(str(name or "").strip(), address)
+    # Truncating to CALLSIGN_MAX can land exactly ON the tail and RE-CREATE it
+    # ("ABCDEFG-3d4fZZZZ" -> "ABCDEFG-3d4f"), which is this bug again one layer down and with no
+    # NOTE printed because `changed` stayed False. Iterate to a fixed point.
+    for _ in range(4):
+        once = clean_callsign(stripped)
+        again, did = strip_advert_tail(once, address)
+        if not did:
+            stripped = once
+            break
+        stripped, changed = again, True
     # strip_advert_tail deliberately refuses to reduce a name to nothing (its own guard),
     # so a name that IS just this gun's tail -- "-3D4F", or bare "3D4F" -- comes back
     # untouched instead of empty. Left alone it gets sent verbatim and the gun's advert
     # becomes "-3D4F-3D4F": the exact doubling bug this whole path exists to prevent, just
     # reached from a typed name instead of a copy-pasted advert. Nothing meaningful
     # survives the tail here, so blank it -- the empty-name guard below refuses to send it.
-    tail = "".join(c for c in address if c.isalnum())[-4:].lower()
+    tail = _mac_tail(address)
     if tail and stripped.lower() in (tail, "-" + tail):
         return "", True
     return clean_callsign(stripped), changed
@@ -1185,7 +1210,7 @@ def strip_advert_tail(name: str, address: str) -> tuple[str, bool]:
     `SQUAD-BEEF` on a different gun) survives. Repeats are stripped to a fixed point, which repairs a
     gun that has already been doubled. Returns (name, changed).
     """
-    tail = "".join(c for c in address if c.isalnum())[-4:].lower()
+    tail = _mac_tail(address)
     out = name
     if tail:
         while out.lower().endswith("-" + tail) and len(out) > len(tail) + 1:
@@ -1198,7 +1223,6 @@ async def _rename(address: str, name: str) -> None:
     Mirrors the app ritual ($STOP → $PLAYX,0 → $NAME) — no $PHONE, so the on-gun
     menu isn't locked. Verify with a re-scan / USB QUERY afterwards."""
     from .ble import ConnectionManager
-    from .modes.driver import clean_callsign
     from .usbconsole import mark_rename, load_inventory
     nm, stripped = name_for_rename(name, address)
     if not nm:

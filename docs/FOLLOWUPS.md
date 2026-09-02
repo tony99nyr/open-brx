@@ -387,7 +387,7 @@ recoveries could abandon a gun that would otherwise have come back.
 **Fix:** verify with a real round trip before printing "reconnected" and before charging the attempt
 against `RECONNECT_CAP` — send something harmless and require a reply, or re-check after a short settle.
 
-**Still open, and now genuinely uncertain:** R0BAT was off at start, powered on mid-game, and never
+**Still open, and now genuinely uncertain:** the control tagger was off at start, powered on mid-game, and never
 rejoined. Connect-grace at START passed cleanly (`playing with 2/3 taggers`, ~110 s after five
 attempts). Whether a gun absent at start can ever join a running match is **untested** — it may be by
 design. Worth one deliberate test.
@@ -444,7 +444,7 @@ why 25 cycles left the headset wedged).
    MC's `setup_frames()` burst was tested for hit REGISTRATION only (`mc_burst.py`, 24/24 both arms);
    headset LED state across the two arms was never compared.
 
-Repro: `mcp/tools/respawn_timing.py` pattern — see `experiment-log.md` 2026-09-02 (night, last).
+Repro: see `experiment-log.md` 2026-09-02 (night, last) for the exact sequence (kill at mag 200, wait `gap`, send `RESPAWN_SEQUENCE`).
 
 ## ✅ F11 — SOLVED 2026-09-02. `$CLEAR` wipes the `$SIR` table; a gun with no `$SIR` rows ignores every hit
 
@@ -490,10 +490,10 @@ Repro: `mcp/tools/respawn_timing.py` pattern — see `experiment-log.md` 2026-09
 
 > ### 🔻 2026-09-02 (evening) — THE SURVIVING CLAIM DID NOT SURVIVE, and there is a real suspect
 >
-> **R0BQT registers 16/16.** Solo run with the validated edge-count witness (`f11_ab.py`), mag-1
+> **the victim tagger registers 16/16.** Solo run with the validated edge-count witness (`f11_ab.py`), mag-1
 > shots so nothing died and nothing respawned: 15/15 of witnessed shots, 16/16 of all shots, on both
-> the gun body and headset dome0. The one finding this entry had left — *"R0BQT is genuinely worse
-> than R0BAT"* — is now contradicted by the same tagger measured with a better instrument.
+> the gun body and headset dome0. The one finding this entry had left — *"the victim tagger is genuinely worse
+> than the control tagger"* — is now contradicted by the same tagger measured with a better instrument.
 >
 > That does **not** mean it was never deaf. Tony watched it fail, repeatedly, and that observation
 > stands. Nor can the intervening battery charge be credited: "works now" against "failed hours ago"
@@ -503,8 +503,8 @@ Repro: `mcp/tools/respawn_timing.py` pattern — see `experiment-log.md` 2026-09
 > do taggers get into?"* — which is what Tony said at the outset: *"it maybe is a bad state it gets
 > in."* A comparison cannot catch that. Only a repro can.
 >
-> **🔴 New leading suspect: A SECOND PROCESS WAS HOLDING THE GUN.** Four `brx_mcp` servers from
-> previous sessions (2026-08-26 x2, 2026-08-30 x2) were still running. One had R0BAT held: the gun
+> **❌ RETRACTED suspect (kept for the trap it documents): A SECOND PROCESS WAS HOLDING THE GUN.** Four `brx_mcp` servers from
+> previous sessions (2026-08-26 x2, 2026-08-30 x2) were still running. One had the control tagger held: the gun
 > was invisible to three scans, announced "phone connected" the instant it was power-cycled, and
 > announced "phone disconnected" the moment the processes were killed. A forgotten process can arm,
 > configure or spawn a gun underneath you, and it fits the symptom exactly — *arms, spawns, looks
@@ -578,7 +578,13 @@ That rules out the whole obvious set: not unlinked, not unpowered, not a BLE fau
 (88%), not the emitter (the receiver decoded the word). **The fault is confined to the IR sensor path**
 — either the sensors themselves or the headset's reporting of them back to the gun.
 
-### 🚨 THE PREFLIGHT MUST HIT A HEADSET DOME, NOT JUST "SOMETHING"
+### ⚠️ THE PREFLIGHT MUST LAND A REAL TEST SHOT  *(was: "must hit a headset DOME")*
+
+> ❌ **The per-dome mechanism below is RETRACTED (2026-09-02).** F11 was `$CLEAR` wiping the
+> `$SIR` table, which discards hits **above** the sensor layer, so every dome and the gun body
+> go silent together and no dome-specific theory was ever needed. **What survives:** a preflight
+> must fire a real test shot and see it register. Do NOT build dome-specific logic, and do not
+> flag `tok1 = 4` as meaningful.
 
 **Operator: this happened in a real game on 2026-09-01.** It went unidentified for the whole game,
 and the root cause explains why: the player was **partially scoring**. Their gun body registered
@@ -617,24 +623,24 @@ aimed directly at the headset and the board had not moved:
 So a **gun** power cycle does not clear it. Recovery required cycling the **headset** itself, both
 times it has happened.
 
-### ✅ CONFIRMED TWICE: the rig is fine, ONE TAGGER (R0BQT) is faulty
+### ✅ CONFIRMED TWICE: the rig is fine, ONE TAGGER (the victim tagger) is faulty
 
-The discriminator, run twice hours apart: with R0BQT registering nothing, the **same emitter, same
-aim, same moment killed a DIFFERENT tagger** (R0BAT) outright. A second run after several power
+The discriminator, run twice hours apart: with the victim tagger registering nothing, the **same emitter, same
+aim, same moment killed a DIFFERENT tagger** (the control tagger) outright. A second run after several power
 cycles and a fresh arm reproduced it exactly.
 
 So this is **not** our emitter, our encoding, our arming, team gating, aim, or anything in the
-software. **R0BQT has a genuine intermittent fault in its IR receive path.**
+software. **the victim tagger has a genuine intermittent fault in its IR receive path.**
 
 **Practical consequences:**
-- **Pull R0BQT from field use** until the headset-swap test says which half is bad. It will pass every
+- **Pull the victim tagger from field use** until the headset-swap test says which half is bad. It will pass every
   check an operator can run and then fail to score during a match.
-- **Use a different tagger as the bench victim.** R0BQT cannot sustain a multi-cycle IR experiment,
+- **Use a different tagger as the bench victim.** the victim tagger cannot sustain a multi-cycle IR experiment,
   and a long run against it silently fills with VOID rows.
 - The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
   attempts, so there is no reliable field workaround.
 
-### 🏁 ROOT CAUSE: the headset's sensors have DEGRADED SENSITIVITY, not a fault state
+### ❌ RETRACTED (was: ROOT CAUSE): the headset's sensors have DEGRADED SENSITIVITY, not a fault state
 
 **The decisive test.** With the unit "deaf" (0 hits from 6 at working distance), the emitter was held
 **right against a headset dome**:
@@ -697,10 +703,10 @@ arm/spawn trigger — all of them were the clock, not the treatment.
 
 ### ⚠️⚠️ RETRACTED: the HEALTHY headset fades too — the shared suspect is OUR EMITTER
 
-**The control was run to completion and it reverses the conclusion below.** R0BAT, the known-good
+**The control was run to completion and it reverses the conclusion below.** the control tagger, the known-good
 unit, also fades:
 
-| minutes after power-on | **R0BAT** (healthy) | **R0BQT** (suspect) |
+| minutes after power-on | **the control tagger** (healthy) | **the victim tagger** (suspect) |
 |---|---|---|
 | 0.2 – 3.9 | **6/6 throughout** | — |
 | ~1 | 6/6 | 5/6 |
@@ -709,7 +715,7 @@ unit, also fades:
 | 4.7 | **5/6** | — |
 | 5.4 | **1/6** | — |
 
-**Both headsets fade.** R0BQT in about 2 minutes, R0BAT in about 5. So this is **not a fault specific
+**Both headsets fade.** the victim tagger in about 2 minutes, the control tagger in about 5. So this is **not a fault specific
 to one unit** — it is systemic, and the component shared by every test is **our ESP32 emitter**.
 
 **Why that is now the leading explanation.** If the IR LED or its drive weakens with sustained firing
@@ -718,21 +724,21 @@ confounding pattern of the whole session: **every "recovery" followed a PAUSE.**
 re-aiming the board, waiting for the operator — all of them rested the emitter. We were repeatedly
 crediting the tagger for the emitter cooling down.
 
-**⚠️ Everything below in this entry that concludes R0BQT is faulty is therefore SUSPECT**, including
+**⚠️ Everything below in this entry that concludes the victim tagger is faulty is therefore SUSPECT**, including
 the "root cause localised" and "degraded sensitivity" sections. What still stands unaltered:
 - the gun body registers when the headset does not (that was a *simultaneous* comparison)
 - the headset works at 3 inches and not at 3 feet (also simultaneous)
 - muster needs a headset-dome shot at realistic range
 
-What does **not** stand: that R0BQT is defective and should be pulled or serviced. **Do not replace
+What does **not** stand: that the victim tagger is defective and should be pulled or serviced. **Do not replace
 that headset on the strength of this entry.**
 
-**Emitter rest: TESTED, and it does NOT explain it.** With R0BAT faded to 1/6, the emitter was left
+**Emitter rest: TESTED, and it does NOT explain it.** With the control tagger faded to 1/6, the emitter was left
 idle for 3 minutes with the tagger untouched, then fired: **still 1/6**. A `$CLEAR`/`$START` re-arm
 immediately before that burst also failed to restore it, so game state is not the factor either.
 
 **So neither emitter heating nor game state explains the fade.** What still tracks it is **time since
-the TAGGER was powered on**: R0BAT was 6/6 for its first ~4 minutes and was still 1/6 at ~10 minutes
+the TAGGER was powered on**: the control tagger was 6/6 for its first ~4 minutes and was still 1/6 at ~10 minutes
 regardless of the emitter resting.
 
 ### 🚨 THE EMITTER HAS DEGRADED — and the boards never moved
@@ -752,7 +758,7 @@ the "fade" seen on BOTH taggers: hits at the start of the day, then only at 3 in
 all — and it looks like a tagger problem because the tagger is what we were watching.
 
 ⚠️ **Everything in this entry treating the fade as a property of a HEADSET is now in doubt**,
-including the R0BAT-vs-R0BQT comparison. What survives are the SIMULTANEOUS comparisons, which a
+including the the control tagger-vs-the victim tagger comparison. What survives are the SIMULTANEOUS comparisons, which a
 drifting emitter cannot explain:
 - the gun body registered while the headset did not, **in the same burst**
 - 3 inches worked while 3 feet did not, **in the same sitting**
@@ -778,7 +784,7 @@ infrared too well to see this LED.
 
 ⚠️ **So the emitter-decline explanation for the "fade" is withdrawn**, and the fade observations are
 back to being unexplained. What remains solid are only the SIMULTANEOUS comparisons:
-- **R0BAT took hits while R0BQT registered nothing, same emitter, same session** — R0BQT is worse
+- **the control tagger took hits while the victim tagger registered nothing, same emitter, same session** — the victim tagger is worse
 - the gun body registered while the headset did not, same burst
 - 3 inches worked while 3 feet did not, one sitting
 
@@ -791,7 +797,7 @@ only real if both sides of it were measured in the same burst.
 
 ### ~~CORRECTION: "the emitter is dead" was OVER-CLAIMED~~ (now fully retracted, see above)
 
-**Board B is NOT dead.** It produced a registered hit on R0BAT minutes before that conclusion was
+**Board B is NOT dead.** It produced a registered hit on the control tagger minutes before that conclusion was
 written — a dead emitter gives zero hits, not one. The claim was contradicted by data already in this
 entry, and it was stated far too strongly.
 
@@ -826,11 +832,11 @@ declining, watched through the only thing we were instrumenting.
 **What this costs:**
 - every IR-based measurement from the later part of the session is **void**, not merely suspect
 - the F1 config hunt never ran (it needs a working emitter)
-- the R0BAT "fade curve" measures the emitter, not the headset
+- the the control tagger "fade curve" measures the emitter, not the headset
 
 **What it does NOT cost — the SIMULTANEOUS comparisons, which a drifting emitter cannot explain:**
-- **R0BAT took hits fine while R0BQT registered nothing, same emitter, same session.** R0BQT is
-  genuinely worse than R0BAT. That stands.
+- **the control tagger took hits fine while the victim tagger registered nothing, same emitter, same session.** the victim tagger is
+  genuinely worse than the control tagger. That stands.
 - the gun body registered while the headset did not, in the same burst
 - 3 inches worked while 3 feet did not, in one sitting
 - the fn 36/37 multiplier results, which required an fn 1 control to read exactly the magnitude
@@ -838,8 +844,8 @@ declining, watched through the only thing we were instrumenting.
 **Repair before any further IR work:** board B (2N2222A + IR LED on GPIO5). A loose wire on it was
 already found and re-seated earlier the same day, so the driver stage is the first suspect.
 
-**Re-test after repair, with a working emitter:** is R0BQT's headset actually less sensitive than
-R0BAT's, measured **simultaneously** — same burst, both units in frame — rather than in sequence.
+**Re-test after repair, with a working emitter:** is the victim tagger's headset actually less sensitive than
+the control tagger's, measured **simultaneously** — same burst, both units in frame — rather than in sequence.
 That is the only form of that comparison that survives a drifting rig, and it is the one question
 worth re-asking.
 
@@ -852,18 +858,18 @@ adapted to a repeated code it would look exactly like a fade and would never hap
 three different shooter ids (7, 13, 55) and a different magnitude at the faded headset: **none
 registered.** So it is not the repetition.
 
-**Next test (needs the operator):** power cycle R0BAT and fire immediately.
-- back to 6/6 → the fade tracks **uptime on both units** (R0BQT simply faster), which is a systemic
+**Next test (needs the operator):** power cycle the control tagger and fire immediately.
+- back to 6/6 → the fade tracks **uptime on both units** (the victim tagger simply faster), which is a systemic
   behaviour that would affect real matches and is worth understanding properly
 - still 1/6 → uptime is not it either, and the emitter returns to the suspect list
 
 ### ~~CONTROL: a healthy headset does NOT fade~~ (SUPERSEDED by the completed run above)
 
-The control this entry badly needed. Every claim that R0BQT is "faulty" rested on an assumption that
+The control this entry badly needed. Every claim that the victim tagger is "faulty" rested on an assumption that
 a good headset holds its range, and that had never been measured. Same emitter, same **3 ft**, same
 target position, bursts of 6:
 
-| minutes after power-on | **R0BAT** (healthy) | **R0BQT** (suspect) |
+| minutes after power-on | **the control tagger** (healthy) | **the victim tagger** (suspect) |
 |---|---|---|
 | ~0.2 | **6/6** | — |
 | ~1 | **6/6** | 5/6 |
@@ -871,14 +877,14 @@ target position, bursts of 6:
 | ~2 | — | **1/6** |
 | ~4 | — | **0/6** |
 
-**R0BAT holds 6/6 flat across the window in which R0BQT collapses from 5/6 to nothing.** So the fade
-is real and specific to R0BQT — it is not how these headsets behave, and not a limitation of our
+**the control tagger holds 6/6 flat across the window in which the victim tagger collapses from 5/6 to nothing.** So the fade
+is real and specific to the victim tagger — it is not how these headsets behave, and not a limitation of our
 emitter or of 3 ft as a distance.
 
-*(R0BAT run recorded to 1.7 min at the time of writing; it was still 6/6 at every point.)*
+*(the control tagger run recorded to 1.7 min at the time of writing; it was still 6/6 at every point.)*
 
 This is also the measurement that should have been taken first. Hours were spent deciding whether
-R0BQT's behaviour was abnormal without ever measuring a normal unit, and several wrong conclusions
+the victim tagger's behaviour was abnormal without ever measuring a normal unit, and several wrong conclusions
 (a two-power-cycle pattern, a `$GSET` recovery, an arming trigger) came from reading structure into
 one unit's noisy decline with nothing to compare it against.
 
@@ -914,15 +920,15 @@ runs, recovers after being off. USB-read headset voltages (`armory.json`, 2026-0
 
 | unit | headset volts |
 |---|---|
-| **R0BAT** (known good, tags normally) | **4.6** |
+| **the control tagger** (known good, tags normally) | **4.6** |
 | R0BAS | 3.911 |
-| **R0BQT** (faulty) | **3.833** |
+| **the victim tagger** (faulty) | **3.833** |
 | R0BP1 | 3.677 |
 
-R0BAT sits well above the others. ⚠️ Not a clean correlation — R0BP1 is lower still and has not been
+the control tagger sits well above the others. ⚠️ Not a clean correlation — R0BP1 is lower still and has not been
 tested — and the snapshot is a week stale, so this is a lead, not a conclusion.
 
-**Next step, cheap and decisive: fully charge R0BQT's headset, then re-test at 3 ft over several
+**Next step, cheap and decisive: fully charge the victim tagger's headset, then re-test at 3 ft over several
 minutes.** If range returns *and holds*, the cause is charge state, not a broken part — which would
 also explain it appearing partway through a real game, after the headset had been on a while.
 
@@ -1130,7 +1136,7 @@ mandatory in muster and in MC preflight rather than a nice-to-have.
 The decisive test, arrived at by accident: while the faulty unit was registering nothing, the **same
 emitter at the same aim killed Tony's OTHER tagger**, which was sitting in a native FFA game.
 
-So the rig is fully exonerated and the fault is **specific to that one tagger (R0BQT)**, not to our
+So the rig is fully exonerated and the fault is **specific to that one tagger (the victim tagger)**, not to our
 emitter, our word encoding, our arming, or team gating.
 
 **Free corroboration worth keeping:** our synthetic IR words are accepted by a stock tagger running a

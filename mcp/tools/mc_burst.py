@@ -60,12 +60,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
@@ -121,6 +116,9 @@ async def main():
         print(f"   {name:9s}  {h}/{f}  {100.0*h/f if f else 0:.0f}%   sensors={sorted(set(sensors[name]))}")
     z = tally["ZERO GAP"]
     s = tally["SPACED"]
+    if not z[1] or not s[1]:
+        print("\n   ABORT: an arm has ZERO confirmed-fired shots -- nothing to compare. Fix the rig.")
+        rx.close(); tx.close(); return
     rz = z[0] / z[1] if z[1] else 0
     rs = s[0] / s[1] if s[1] else 0
     print()

@@ -58,11 +58,13 @@ async def main():
 
     print()
     clean = [d for d, g in rows if g >= n]
-    if clean and clean[0] > DELAYS[0]:
+    if not rows:
+        print("   no rows measured -- nothing to conclude.")
+    elif clean and clean[0] > DELAYS[0]:
         print(f"   *** frames are DROPPED below ~{clean[0]*1000:.0f}ms spacing.")
         print(f"   Our arming ritual uses 120ms and the respawn burst 350ms -- check both against")
         print("   that number. A dropped $PSET or $TID would silently mis-configure a player.")
-    elif clean:
+    elif len(clean) == len(rows):
         print("   No drops at any rate tested, including the fastest. Frame pacing is NOT the")
         print("   problem -- record that as tested, and do not keep it on the suspect list.")
     else:

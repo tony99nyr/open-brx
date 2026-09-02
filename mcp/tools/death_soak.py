@@ -52,12 +52,7 @@ async def main():
     tx.reset_input_buffer()
     rx = IRBridge(port=recv_com)
     time.sleep(1.2)
-    rx._ser.write(b"s\n")
-    rx._readlines(0.5)
-    for _ in range(2):
-        rx._ser.write(b"r\n")
-        if any("RAW dump ON" in l for l in rx._readlines(0.5)):
-            break
+    B.arm_receiver(rx)
 
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
@@ -107,16 +102,29 @@ async def main():
                 await mgr.send("v", fr, reply_window_ms=250)
                 await asyncio.sleep(0.35)
             await asyncio.sleep(1.2)
+            # Read POOLS before scoring. The respawn above is sent 1.4 s after the kill, inside the
+            # 2.0-2.5 s window that swallows a respawn (F13), so the commonest outcome here is a gun
+            # that is simply still DEAD -- and a dead gun scores 0/N exactly like a deaf one.
+            mark = mgr.get_events("v", since_seq=0).get("last_seq", 0)
+            await mgr.send("v", "$QUERY,*", reply_window_ms=1200)
+            await asyncio.sleep(0.9)
+            q = [e.get("raw", "").strip() for e in
+                 mgr.get_events("v", since_seq=mark).get("events", []) if isinstance(e, dict)]
+            alive = B.is_alive(next((x for x in q if x.startswith("$LCD")), ""))
             ha, fa, pools = await volley()
             t = time.time() - t0
             flag = ""
-            if fa and ha == 0:
+            if alive is None:
+                flag = "   (no $QUERY reply -- state UNKNOWN, trial discarded)"
+            elif not alive:
+                flag = "   (still DEAD after the respawn -- discarded, that is not deafness)"
+            elif fa and ha == 0:
                 flag = "   <<-- DEAF AFTER RESPAWN"
             elif fa and ha < fa * 0.5:
                 flag = "   <<-- degraded"
             print(f"   {c:5d}  {t:6.0f}s  {hb}/{fb}     {ha}/{fa}   {pools or '-'}{flag}",
                   flush=True)
-            if fa and ha == 0 and fb > 0 and hb > 0:
+            if alive and fa and ha == 0 and fb > 0 and hb > 0:
                 print(f"\n   *** REPRODUCED on cycle {c} after {t:.0f}s.")
                 print("   It registered BEFORE the kill and not after the respawn, in the same")
                 print("   cycle, seconds apart -- so this is not drift.")

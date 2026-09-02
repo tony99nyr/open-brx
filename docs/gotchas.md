@@ -72,7 +72,7 @@ reported `connected: false` while a *different* process held the gun. You can on
 process; enumerate them at the OS level.
 
 **Why this matters beyond a missing scan result:** a second process holding a gun can arm, configure
-or spawn it underneath you. That is a live candidate for **F11** ("a gun arms, spawns and looks
+or spawn it underneath you. That WAS a candidate for **F11** (F11 is now solved: `$CLEAR` wipes the `$SIR` table). It is still a real trap ("a gun arms, spawns and looks
 healthy while registering no hits") and it fits Tony's instinct at the time — *"you must be doing
 SOMETHING which puts it in this cant get hit state."* Something was. It just was not this session.
 

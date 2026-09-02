@@ -61,7 +61,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 6. **The headset must be linked** or the gun will connect, answer a quick `$PING`, then drop within seconds and echo nothing to config. After a gun-initiated `$DISCONNECT,*`, back off ≥ 5 s before reconnecting.
 ✅ src: protocol/brx-protocol.md §7a, §7b, §7m, §7r; docs/gotchas.md
 
-[callout:warn] **The safety model.** Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` returns a gun to a sane state. Battle Company's official USB updater is the factory-restore path. ✅ src: README.md "Safety", protocol/brx-protocol.md §8, mcp/brx_mcp/protocol.py
+[callout:warn] **The safety model.** Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` silences and stops a gun. **Note it leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed or power cycled**, which is intended for a panic stop but must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path. ✅ src: README.md "Safety", protocol/brx-protocol.md §8, mcp/brx_mcp/protocol.py
 
 [code python] (copy-to-clipboard)
 ```python
@@ -177,27 +177,11 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 
 ### Page: The arm sequence: from `$CLEAR` to a live gun  (`/manual/dev/arm-sequence`)
 
-[callout:warn] **The headset is a second device, and it needs time.** A command that the tagger must
-relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within
-about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green
-out-blink while the gun is alive and registering hits normally, so the player looks dead while
-playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are
-clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect,
-such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame
-echoing back proves the gun received it, not that the headset executed it. ✅ src:
-docs/experiment-log.md 2026-09-02 (night, last)
-
-[callout:warn] **`$CLEAR` wipes the `$SIR` table, and an empty table means the gun ignores every
-hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports
-full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it
-is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as
-a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word
-does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all.
-Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5,
-and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the
-table SIZE does not matter, only its absence: a one-row table and the full ten-row table both
-registered 24/24 in an interleaved A/B. ✅ src: docs/experiment-log.md 2026-09-02 (night, FINAL)
 _The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
+
+[callout:warn] **The headset is a second device and it needs time** A command that the tagger must relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green out-blink while the gun is alive and registering hits normally, so the player looks dead while playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect, such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame echoing back proves the gun received it, not that the headset executed it. ✅ src: docs/experiment-log.md 2026-09-02 (night, last)
+
+[callout:warn] **`$CLEAR` wipes the `$SIR` table and the gun then ignores every hit** This is the single most confusing failure mode we have found: the gun arms, spawns, reports full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all. Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5, and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the table SIZE does not matter, only its absence: a one-row table and the full ten-row table both registered 24/24 in an interleaved A/B. ✅ src: docs/experiment-log.md 2026-09-02 (night, FINAL)
 
 [callout:info] This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**. ✅ src: protocol/brx-protocol.md §7e, §7o; protocol/captures/2026-08-23-ios-callsign-game-start.txt
 
