@@ -4986,3 +4986,62 @@ Something about that fuller context is, or the trigger is rarer than a 7-minute 
 above it). The remaining approach is a long unattended soak under conditions closer to the F1 work —
 repeated arm / damage / kill / respawn / re-config cycles over tens of minutes — with the run halting
 and preserving the state the moment registration collapses.
+
+### 2026-09-02 (night, last) — ⭐ REPRODUCED ON DEMAND: respawning within ~2 s of death WEDGES THE HEADSET
+
+The first thing all night that fails when we ask it to. Tony's hypothesis, Tony's mechanism.
+
+## The measurement
+
+Kill the gun outright (mag 200), wait `gap`, send MC's real `RESPAWN_SEQUENCE`
+(`$HLOOP,0,0,*`, `$SPAWN,,*`), then look at the headset. Identical script every trial; only `gap`
+changed. Operator reports the headset; the gun is read over BLE.
+
+| gap after death | headset | gun (`$LCD`) |
+|---|---|---|
+| 1.0 s | 🔴 **stuck in the out-blink** | 45/70 — alive |
+| 2.0 s | 🔴 **stuck in the out-blink** | 45/70 — alive |
+| 2.5 s | ✅ dark (correct) | 45/70 |
+| 3.0 s | ✅ dark (correct) | 45/70 |
+| 6.0 s | ✅ dark (correct) | 45/70 |
+
+**Monotonic, both directions, five trials. The threshold is between 2.0 s and 2.5 s.** In the wedged
+state the gun reports full pools and registers hits normally (8/8 measured, `$HP` decrementing) —
+only the headset's presentation is wrong. So it is a DISPLAY desync, not a loss of function.
+
+## The mechanism — Tony's, and it generalises
+
+> *"the ir signal on the tagger needs to bt connect to headset to give it command, headset has to
+> receive, process, and execute command. I think any commands that have to be executed by tagger, but
+> ALSO executed by headset need a safe processing gap."*
+
+The headset is a SECOND DEVICE behind a relay. `$SPAWN` has to reach the gun, be relayed, then be
+received, processed and executed by the headset — and if it arrives while the death sequence is still
+running there, it is lost. The gun's own state updates regardless, which is exactly why the two ends
+disagree.
+
+**This is not specific to respawn.** It applies to anything with a headset-side effect: `$SPAWN`,
+`$HLOOP`, `$HLED`, and plausibly hit processing.
+
+## ⚠️ Severity — CORRECTED, and lower than first stated
+
+Mid-session this was called a live-match bug that would "wedge headsets routinely". **That was wrong.**
+`GameConfig.respawn_s` defaults to **15 s**, six times the threshold, so a default MC match never
+respawns fast enough to trigger it. What triggered it here was BENCH tooling respawning instantly —
+`death_soak.py` used a 1.4 s gap, which is why 25 cycles left the headset wedged.
+
+What survives as real work:
+- **A floor on `respawn_s`.** Anything below ~3 s is unsafe, and nothing currently stops an operator
+  setting it there.
+- **Frame pacing for headset-side commands is UNVERIFIED at our current spacing.** `arming_frames`
+  sends at **0.12 s** and MC compiles FrameBundles as bursts. Frames are not DROPPED at that rate —
+  measured separately tonight, echoes 20/20 at every spacing from 20 ms to 500 ms — but an echo
+  proves RECEIPT BY THE GUN, not execution by the headset. That distinction is the whole finding
+  here, and the arming burst has never been checked against it.
+
+## Method note
+
+Five trials, alternating outcome, one question to the operator per trial. Earlier in the session the
+same question was asked with eight frames sent back-to-back and no chance to answer between them,
+which destroyed the answer — Tony: *"well you didnt follow the protocol and let me type did you?!"*.
+One change per run, then stop and ask. That is what made this measurable.
