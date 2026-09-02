@@ -45,6 +45,10 @@ Evidence: `~/.brx-mcp/mc/session-8bbf96ab.sqlite` (both phones' BLE frame rings 
 | F2-24 | KIT lists players with no phone or tagger as KITTED | ✅ | A restored roster outlives the gear. The loadout exists, the hardware does not, and calling that KITTED is a lie — those rows now read **NO PHONE**, and the KITTED count only counts players we can actually reach. (The full device-first restructure is still F2-12.) |
 | F2-25 | Status line under CONTINUE was shouted and redundant | ✅ | Removed; the button carries its own state (`CONTINUE ▸` / `2 GUNS BLOCKED`) with the reason in its tooltip. Careful: it disables on **reds only** — amber never blocked continuing, and a first cut that required all-green would have stalled a board with a firmware advisory. |
 
+| F2-26 | Voice picker showed a bare `·` after most names | ✅ | It marked "not confirmed by ear" — real information in a place that could not carry it: a `·` inside a native `<select>` has no legend and no tooltip. Asking what it meant *was* the failure. Gone; the Debug page says `15 personas · 1 confirmed by ear, the rest inferred`. |
+| F2-27 | Designer: too much colour, too much caps, labels misaligned | ✅ | The class was printed on all 36 weapon tiles in its own saturated colour, on both halves of the screen, duplicating the five chips above — which were themselves solid colour fills. Tiles now show just the name (class stays in the tooltip). Chips carry colour on a 3px edge. The RULES row used `space-between` inside auto-fit cells of differing widths, so no control lined up with any other; now a fixed two-column grid with hints on their own line. Explainer paragraphs are sentence case. |
+| F2-28 | LIVE and RECAP should be one view | ✅ | A match is either running or finished, never both, and the two screens shared their whole scoreboard. One **MATCH** tab now; it lands on the result if there is one, otherwise the live board. The views stay separate internally, so the phase-follow into `recap` is unchanged. |
+
 ## Session 1 — 2026-08-30, two iPhones, FFA
 All ✅. See `experiment-log.md` 2026-08-30 for the full write-up.
 

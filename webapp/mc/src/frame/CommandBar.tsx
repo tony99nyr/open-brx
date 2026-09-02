@@ -5,8 +5,12 @@ import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
 import { HazardButton, GhostButton, PrimaryButton } from '../ui';
 
-const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'LIVE'], ['recap', 'RECAP']];
-const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : PH.findIndex(x => x[0] === p));
+// LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
+// of overlap" — a match is either running or finished, never both, and the two screens shared their
+// whole scoreboard. The VIEWS stay separate (the store still follows the phase into `recap` on its
+// own); only the nav collapses, and MATCH lands you on whichever one is real right now.
+const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit', 'KIT'], ['lobby', 'LOBBY'], ['live', 'MATCH']];
+const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : p === 'recap' ? 4 : PH.findIndex(x => x[0] === p));
 // Views that are not phases need their own label: viewIdx() returns -1 for them, and `PH[-1][1]`
 // threw, blanking the whole console (the WEAPONS tab rendered a black page, 2026-08-31).
 
@@ -46,7 +50,10 @@ export function CommandBar() {
           {PH.map(([id, label], i) => {
             const active = i === cur;
             return (
-              <button key={id} onClick={() => setView(id === 'lobby' && state?.phase === 'armed' ? 'armed' : id)}
+              <button key={id} onClick={() => setView(
+                id === 'lobby' && state?.phase === 'armed' ? 'armed'
+                  : id === 'live' && (state?.phase === 'recap' || (!state?.live && state?.recap)) ? 'recap'
+                  : id)}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'", background: active ? '#0c1420' : 'transparent',
                   border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, padding: '8px 16px 7px', cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44 }}>
                 <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
