@@ -432,7 +432,11 @@ BLE scan.
 it is the first BLE-visible headset field we have found, and it did NOT flag this fault. So it is
 necessary but not sufficient for a preflight check.
 
-**Recovery both times: a power cycle** (headset the first time, the whole tagger the second).
+**Recovery: cycle BOTH the gun and the headset.** This matters and was learned the hard way. On the
+second occurrence, cycling the tagger alone did not clear it and cycling the headset alone did not
+clear it; the fault persisted through each. Doing **both** restored hits immediately (4/4 on the next
+burst, armour 70 -> 0 with normal spill). So "I power cycled it" is not a sufficient description of the
+fix, and an operator who tries one, sees no change, and concludes the unit is dead would be wrong.
 
 ### ⭐ ISOLATED: the link is alive in ONE DIRECTION only
 
@@ -509,8 +513,9 @@ that the ESP32 rig produces genuine, firmware-legal BRX shots.
 | team gating | all four `$TID` values fired, zero hits |
 | the BLE link | headset lights on `$HLED` |
 | battery | 87% |
-| gun power cycle | fault survived it |
-| headset power cycle | fault survived it |
+| gun power cycle **alone** | fault survived it |
+| headset power cycle **alone** | fault survived it |
+| **BOTH cycled together** | ✅ **CLEARED IT** — 4/4 hits on the next burst |
 | game state | armed, spawned, `$LCD,45,70`, trigger and `$ALCD` both live |
 
 **Next, and it is the only branch left:** swap a known-good headset onto the faulty gun, or the faulty
