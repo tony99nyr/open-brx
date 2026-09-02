@@ -2825,6 +2825,34 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 — `$HLED` does NOT address the headset modules individually
+
+The headset has **four LEDs** (operator-confirmed; three are in the camera's view, the fourth faces
+away). `$GLED` puts a separate palette index in each of tokens 1-3, one per gun LED, so the obvious
+question was whether `$HLED` does the same. The token map derived from Callsign's captures says no,
+but Callsign never had a reason to light them separately, and absence from a capture is not evidence
+of absence.
+
+**Answer: no. Token 1 is a single GLOBAL colour.** Every pattern put the same colour on all three
+visible modules:
+
+| frame | HS_L | HS_C | HS_R |
+|---|---|---|---|
+| `$HLED,0,0,,,10,,*` (control) | 1.00/0.04/0.24 | 1.00/0.11/0.31 | 1.00/0.02/0.19 |
+| `$HLED,3,0,,,10,,*` (control) | 0.08/1.00/0.42 | 0.12/1.00/0.49 | 0.05/1.00/0.33 |
+| `$HLED,0,3,1,,10,,*` | 1.00/0.92/0.92 | 0.90/0.98/1.00 | 1.00/0.73/0.88 |
+| `$HLED,0,3,1,6,10,,*` | 1.00/0.73/0.95 | 0.90/0.71/1.00 | 1.00/0.57/0.95 |
+| `$HLED,2,4,5,7,10,,*` | 1.00/0.68/0.75 | 1.00/0.72/0.83 | 1.00/0.60/0.80 |
+
+The two controls behave exactly as expected (all red, then all green), so the rig was reading
+correctly. The three multi-token frames put an identical mixed/whitish colour on all three modules
+rather than three different colours: **tokens 2+ are not per-LED colour.** They do change the output
+globally, which is consistent with the effect/timing roles already measured.
+
+**Consequence for the product:** a per-module headset display (direction-of-fire, a segmented pool
+gauge on the head) is NOT available over `$HLED`. The headset is one lamp with one colour. The gun's
+three LEDs remain the only per-segment display we can drive.
+
 ### 2026-09-02 (later still) — `$GLED` token 4 is an APPLY GATE, not an effect enum
 
 Measured against a BLACK background (camera exposure dropped until only the LEDs are visible), gun
