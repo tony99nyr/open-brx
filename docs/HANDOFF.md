@@ -2,6 +2,86 @@
 
 **Updated:** 2026-09-02.
 
+> ## 🔴 2026-09-02 (evening/night) — F11 IS REAL AND WITNESSED, BUT UNREPRODUCIBLE; TWO BLE-TRUST FACTS; F12 OPENED
+>
+> Same day, after the LED work below. Full write-up: `experiment-log.md` 2026-09-02 (evening / night /
+> late / end) entries; `FOLLOWUPS.md` F11 (rewritten) and **F12** (new); `gotchas.md` top entry.
+>
+> ### F11 — caught with instruments, then it would not come back
+>
+> **0/22 witnessed shots registered with NO headset flash at all, while a native gun beside it took
+> the same shots.** That is the fault, finally seen with instruments. Then, for the rest of the night,
+> it would not recur: **78/78** ($GLED-suspect bisect) · **24/24** (`$SIR` A/B, a native gun alongside
+> also 24/24) · **18/18** (link toggle, plus a headset flash on every disconnected shot too) ·
+> **198/200** (25-cycle death/respawn soak). Every deliberate attempt to induce it failed.
+>
+> **⚠️ Fifteen hypotheses are dead by test across the day — do not re-run any of them:** emitter
+> stalling mid-frame, `$GLED` frames deafening the gun, "deaf" in its own native game (it was BLE
+> blindness, see below), headset orientation/geometry, `$SIR` table size, `$STOP`, losing the BLE
+> link, a marginal/weak emitter, arming order, spawn state, team gating, tagger uptime, receiver
+> adaptation, `$GSET outdoorMode` — plus **two that were previously waved off without ever being
+> tested**, finally run tonight: **death/respawn** (25 cycles: verify → kill at mag 200 →
+> `RESPAWN_SEQUENCE` → verify, **198/200**) and **battery** (closed on `$VOLTS,8429,4164,100,100` —
+> gun/headset both 100% — captured **DURING** the 0/22 deaf run; no new test needed).
+>
+> **It is bimodal, not marginal.** Healthy runs read 16/16 up to 198/200; the one broken run read
+> 0/22 with zero headset flash — nothing in between. And it happened **at zero range with a live BLE
+> link**, so any hypothesis requiring distance or a dropped connection is already refuted.
+>
+> **The only lead:** episodes clustered around the F1 gauge-hunt work (repeated arm/damage/kill/
+> respawn/re-config cycles) and around long runs. Next session needs a **long unattended soak** under
+> those conditions that **halts and preserves state** the instant registration collapses — that is the
+> only untested shape left.
+>
+> ### Three findings that invalidate whole classes of past measurement
+>
+> - ⭐ **`$HIR` does not reach BLE unless OUR game state is applied.** A gun running its own native FFA
+>   registered hits, flashed its headset and took damage while sending **nothing** over BLE
+>   (`native_watch.py`: **0/11**). **Every "deaf tagger" conclusion drawn from BLE silence on a
+>   natively-running gun is worthless** — that includes both phases of the old `deaf_catch.py`.
+> - ⭐ **Inside a game we started, `$HIR` is exactly honest.** Of 10 witnessed shots: operator-counted
+>   headset flashes **4**, `$HIR` frames over BLE **4**, `$HP` pool drop **4** (70→66). Three
+>   independent channels agree exactly on what actually registered — MC can trust `$HIR` inside a game
+>   it started.
+> - ⚠️ **The IR witness board proves photons reached a POSITION, not that a sensor was hit.** Same run:
+>   the board witnessed **10/10** shots fired, the tagger registered only **4/10** of them. A bare
+>   VS1838B aimed at the emitter is far more sensitive than a headset dome — it correctly voids
+>   un-fired shots but cannot certify a hit.
+>
+> ### F12 (new) — the IR receiver fragments frames; blocks the grenade
+>
+> Our emitter decoded whole **4/20**; a **real BRX gun** at the same board decoded whole **3/44** —
+> every frame still arrived as a complete **52-edge** word, split into 1-4 bursts, first fragment
+> always a correct prefix of the sent word. The receiver is the broken part, not the transmission (the
+> real-gun control proves it: same fragmentation on a real hit). Suspected, unproven cause: VS1838B
+> AGC blanking. **Blocks the grenade** — `$GREN` is a long word, this bug's worst case, and
+> `IDLE_GAP_US` (raised 8→30 ms on 2026-08-27 for exactly this) still isn't enough. **Usable right now
+> only as an edge-count WITNESS** ("did a full frame's worth of light arrive"), validated **6/6 firing,
+> 0/6 quiet**.
+>
+> ### 🔴 Stale `brx_mcp` servers silently own a gun
+>
+> A tagger invisible to three scans, then announcing "phone connected" with no phone anywhere near it
+> on power-cycle, was held by forgotten server processes from previous sessions (2026-08-26 ×2,
+> 2026-08-30 ×2). **`list_connections` is NOT sufficient** — on the process you're attached to it read
+> `connected: false` while a *different* process held the gun. **Enumerate and kill every `brx_mcp`
+> process at the OS level before any bench session** (procedure in `gotchas.md`).
+>
+> ### New tools, one line each
+>
+> `loopback.py` rig check (PING/alive/decode-rate, run before any IR session) · `f11_ab.py` A/B
+> against a tagger, graded by the edge-count witness · `deaf_catch.py` (⚠️ phases A/B are BLE-blind and
+> worthless — kept only as a documented dead end) · `deaf_bisect.py` bisects suspect frame batches ·
+> `native_watch.py` BLE vs a tagger's own native game · `hit_flash.py` operator flash count vs `$HIR` ·
+> `hir_gap.py` · `sir_hitrate.py` · `range_step.py` · `link_toggle.py` BLE disconnect/reconnect during
+> fire · `death_soak.py` scripted kill/respawn cycling.
+>
+> ### The method rule this session earned
+>
+> **On an intermittent fault, nothing is a cause until it has been reproduced on demand.** Six
+> confident single-run explanations — emitter stall, `$GLED`, native deafness, geometry, `$SIR`,
+> `$STOP` — were each stated from n=1 and killed by a control within minutes.
+
 > ## 💡 2026-09-02 — THE GUN AND HEADSET LEDs ARE FULLY REVERSE ENGINEERED
 >
 > Both commands are decoded end to end, measured through a **phone-camera rig** rather than by eye.
