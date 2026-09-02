@@ -104,7 +104,7 @@ async def main():
             await mgr.send("v", "$SPAWN,*", reply_window_ms=0)
             await asyncio.sleep(2.5)
             pools = await lcd()
-            alive = bool(pools) and not pools.startswith("$LCD,0,0")
+            alive = B.is_alive(pools) is True   # None (no reply) is NOT alive and NOT dead
             h, f = await volley(3)
             if not alive:
                 print(f"   {t:5d}  {hb}/{fb}      {pools[:16]:16s} {h}/{f}  (dead - discarded)",

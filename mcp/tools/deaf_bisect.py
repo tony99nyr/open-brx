@@ -111,7 +111,7 @@ async def main():
                 "  is what it takes), re-arm, and re-run once the baseline is clean.")
 
         print(f"\n   {'suspect':22s} {'frame':30s} rate")
-        broke = None
+        broke, scored = None, 0
         for label, frame in SUSPECTS:
             await mgr.send("v", frame, reply_window_ms=200)
             await asyncio.sleep(0.6)
@@ -127,7 +127,7 @@ async def main():
             flag = ""
             if alive is not True:
                 flag = "   (not alive / unknown -- discarded, not a collapse)"
-            elif f and h < f * 0.5 and broke is None:
+            elif (scored := scored + 1) and f and h < f * 0.5 and broke is None:
                 broke = label
                 flag = "   <<-- COLLAPSED HERE"
             print(f"   {label:22s} {frame[:30]:30s} {h}/{f}{flag}", flush=True)
@@ -149,7 +149,12 @@ async def main():
             print("   verified-working gun and re-test. Today has already killed four confident")
             print("   explanations that looked at least this good.")
         else:
-            print("   Never collapsed. The trigger is NOT in this list -- so it is not something we")
+            if not scored:
+                print("   NO SUSPECT WAS SCORED: every row was discarded (gun not alive, or state")
+                print("   unknown). NOTHING IS CONCLUDED -- re-arm and re-run.")
+                rx.close(); tx.close(); return
+            print(f"   Never collapsed across {scored} scored suspect(s). The trigger is NOT in this")
+            print("   list -- so it is not something we")
             print("   send, or not something we send ONCE. Next: soak it (repeat volleys for many")
             print("   minutes) and watch for the state to appear on its own.")
     rx.close()

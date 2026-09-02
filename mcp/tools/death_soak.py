@@ -90,6 +90,7 @@ async def main():
         await mgr.send("v", "$SPAWN,*", reply_window_ms=300)
         await asyncio.sleep(1.5)
 
+        valid = 0
         print(f"   {'cycle':>5s}  {'t':>6s}  before   after   pools", flush=True)
         for c in range(1, cycles + 1):
             hb, fb, _ = await volley()
@@ -124,6 +125,8 @@ async def main():
                 flag = "   <<-- degraded"
             print(f"   {c:5d}  {t:6.0f}s  {hb}/{fb}     {ha}/{fa}   {pools or '-'}{flag}",
                   flush=True)
+            if alive and fa:
+                valid += 1
             if alive and fa and ha == 0 and fb > 0 and hb > 0:
                 print(f"\n   *** REPRODUCED on cycle {c} after {t:.0f}s.")
                 print("   It registered BEFORE the kill and not after the respawn, in the same")
@@ -132,9 +135,16 @@ async def main():
                 print("   then probe it before anything clears it. Do NOT power-cycle yet.")
                 break
         else:
-            print(f"\n   Never went deaf in {cycles} kill/respawn cycles ({time.time()-t0:.0f}s).")
-            print("   Death/respawn alone does not do it. Record that as tested, not assumed --")
-            print("   it was written off once already without ever being run.")
+            if not valid:
+                print(f"\n   NO VALID CYCLES out of {cycles}: every one was discarded (gun still")
+                print("   dead after the respawn, or state unknown). NOTHING IS CONCLUDED. The")
+                print("   respawn here lands 1.4 s after the kill, inside the 2.0-2.5 s window that")
+                print("   swallows one (F13) -- raise the gap and re-run.")
+            else:
+                print(f"\n   Never went deaf in {valid} VALID cycles of {cycles} "
+                      f"({time.time()-t0:.0f}s).")
+                print("   Death/respawn alone does not do it. Record that as tested, not assumed --")
+                print("   it was written off once already without ever being run.")
     rx.close()
     tx.close()
 

@@ -67,6 +67,9 @@ async def main():
     elif len(clean) == len(rows):
         print("   No drops at any rate tested, including the fastest. Frame pacing is NOT the")
         print("   problem -- record that as tested, and do not keep it on the suspect list.")
+    elif clean:
+        print("   MIXED: the fastest rate was clean but a SLOWER one dropped echoes. That is not a")
+        print("   pacing curve -- something else varied during the run. Re-run before concluding.")
     else:
         print("   Echoes were lost at EVERY rate, including the slowest. That means the echo is not")
         print("   a reliable acceptance signal, so this test cannot answer the question -- say so")

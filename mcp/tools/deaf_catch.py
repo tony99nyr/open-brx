@@ -115,7 +115,7 @@ async def main():
     print("\n   ⚠️ PHASES A AND B ARE BLE-BLIND -- treat their numbers as UNKNOWN, not as zero.")
     print("   Only phase C, which puts the gun in our game state, can detect a hit at all.")
     print("   A already good      -> it is NOT deaf now; the fault had already cleared.")
-    print("   A deaf, B good      -> the gun was simply not spawned. Cheap fix, and a REAL answer.")
+    print("   A deaf, B good      -> UNRELIABLE (both are BLE-blind); confirm with phase C.")
     print("   B deaf, C good      -> something in the arming set is required; bisect the frames next.")
     print("   C still deaf        -> not a config state at all. Look at the headset link / hardware.")
     rx.close()

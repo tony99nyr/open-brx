@@ -146,9 +146,13 @@ async def main():
                 # shots/s of mag-20 into a freshly respawned gun just kills it again, and the
                 # verification volley then measures a CORPSE. The first run of this tool did
                 # exactly that and printed "REPRODUCED" at a gun that was merely dead.
-                if c == cycles:
-                    firing.clear()
-                    await asyncio.sleep(0.8)
+                # Stop firing before EVERY respawn, not just the last. Continuing to pour 10
+                # shots/s of mag-20 into a freshly respawned gun re-kills it immediately, so the
+                # next cycle starts on a corpse -- it then emits no new `$HP,0,0`, prints
+                # died=False and burns the full 25 s timeout waiting for a death that already
+                # happened.
+                firing.clear()
+                await asyncio.sleep(0.8)
                 await send_all(RESPAWN_SEQUENCE)     # MC's real respawn, zero gap
                 await asyncio.sleep(1.5)
                 firing.clear()
@@ -167,8 +171,13 @@ async def main():
                  mgr.get_events("v", since_seq=mark).get("events", []) if isinstance(e, dict)]
             lcd = next((x for x in q if x.startswith("$LCD")), "")
             print(f"   pools before verifying: {lcd or '(no reply)'}", flush=True)
-            dead = lcd.startswith("$LCD,0,0")
-            if dead:
+            alive = B.is_alive(lcd)
+            if alive is None:
+                print("   ABORT: no $QUERY reply, so the gun's state is UNKNOWN. A missing reply"
+                      "\n   must not be read as 'alive' -- that scores a corpse as a repro.",
+                      flush=True)
+                return
+            if not alive:
                 print("   gun is DEAD -- reviving before the verification volley, because a corpse"
                       "\n   scores 0/N and that is not deafness.", flush=True)
                 await send_all(RESPAWN_SEQUENCE)

@@ -118,7 +118,8 @@ async def main():
             ("CONTROL: $CLEAR -> $START,$SPAWN (known F11)", ["$CLEAR,*"], ["$START,*", "$SPAWN,*"]),
         ]
 
-        print(f"   {'case':26s} {'gap':>6s}  pools            rate", flush=True)
+        control_fired = False
+        print(f"   {'case':38s} {'gap':>6s}  pools            rate", flush=True)
         for label, pre, post in CASES:
             for gap in GAPS:
                 await known_good()
@@ -135,14 +136,16 @@ async def main():
                 await send(post)
                 await asyncio.sleep(2.5)
                 pools = await lcd()
-                alive = bool(pools) and not pools.startswith("$LCD,0,0")
+                alive = B.is_alive(pools) is True   # None (no reply) is NOT alive and NOT dead
                 h, f = await volley(nshot)
                 mark = ""
                 if alive and f and h == 0:
                     mark = "   <<-- GUN ALIVE AND IN GAME, REGISTERS NOTHING"
                 elif not alive:
                     mark = "   (dead -- discarded, not deafness)"
-                print(f"   {label:26s} {gap:5.2f}s  {pools[:16]:16s} {h}/{f}{mark}", flush=True)
+                if mark.startswith("   <<--") and label.startswith("CONTROL:"):
+                    control_fired = True
+                print(f"   {label:38s} {gap:5.2f}s  {pools[:16]:16s} {h}/{f}{mark}", flush=True)
                 if mark.startswith("   <<--"):
                     known = label.startswith("CONTROL:")
                     print(f"\n   *** CAPTURED by: {label}")
@@ -156,7 +159,13 @@ async def main():
                     print("   power-cycle. One hit is a lead: it must repeat before it is a cause.")
                     rx.close(); tx.close()
                     return
-        print("\n   No combination produced it. The sequence/gap grid is not the trigger.")
+        if not control_fired:
+            print("\n   🔴 THE POSITIVE CONTROL DID NOT FIRE. `$CLEAR` -> `$SPAWN` is a KNOWN,")
+            print("   deterministic 5/5 repro, so if it did not trip here the rig cannot see the")
+            print("   fault at all and THIS NEGATIVE MEANS NOTHING. Fix the rig, then re-run.")
+        else:
+            print("\n   No new combination produced it (the known $CLEAR control did fire, so the")
+            print("   rig CAN see the fault). The rest of the sequence/gap grid is not a trigger.")
     rx.close()
     tx.close()
 
