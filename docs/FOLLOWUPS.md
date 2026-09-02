@@ -492,25 +492,55 @@ dropping to one as health falls. So:
 `$GLED` per-LED control remains real and useful for **night mode, hit flash, per-player colour and FFA
 white**. It is simply the wrong tool for **health**, because the gun does health itself.
 
-### ⬜ The one open question — and it is a five-minute test
+### ✅ ANSWERED 2026-09-02 — the gun LEDs CANNOT hold a colour in a live game
 
-**Does the native gauge appear in OUR compiled games, or only in native on-gun ones?** Every confirmed
-sighting (FFA above, Supremacy's Marauder) was a **native** game.
+Both halves are now measured, on hardware, with a camera rig.
 
-- **If yes:** F1 is *already shipped* by the hardware. Close it, build nothing, and the only work left
-  is finding the config field that selects the Marauder's armour-then-health variant.
-- **If no:** F1 becomes "find the field that turns the native gauge ON in a compiled game" — still a
-  config hunt, still not an LED driver.
+**1. The native gauge does NOT appear in our compiled games.** Armed and spawned from our own frames,
+damaged to armour 0 / HP 15 of 45: still three LEDs pulsing, no step-down at any point. The 2026-08-30
+"the pulse IS the gauge" sighting was a **native** FFA and does not transfer; in our games the same
+pulse is only team colour.
 
-Either answer **deletes the planned feature**, which is why it is worth doing before anything else in
-this section. Procedure: compile and start one of our games, take damage, and watch whether the three
-gun LEDs step down. No new tooling.
+**2. And we cannot paint over it either.** Sampled repeatedly rather than once, because the failure
+mode is "works for a moment and is then repainted":
 
-### Cost note
+| state | result |
+|---|---|
+| UNSPAWNED, we set green | **HELD**, stable over 9.3 s |
+| SPAWNED, our green | **wiped** — the gun shows its own team blue |
+| SPAWNED, we set red / white | **alternates** blue ↔ ours |
+| SPAWNED, re-sent before every sample (~1 Hz) | **still alternates** |
 
-One BLE write per pool change per player, plus one on revert. At 10 players in a firefight that is a
-real write rate on a host already driving respawns and announcer audio — worth measuring before it goes
-into a mode.
+**Re-asserting does not win.** So F1 as originally specified — a persistent 3-segment pool gauge on
+the gun — is **NOT BUILDABLE** over `$GLED`, and no amount of write-rate fixes it. The "cost note"
+below about one write per pool change is moot: the writes are not the problem, the repaint is.
+
+### ⭐ What IS buildable, and where F1 should go instead
+
+**The headset holds a colour.** It is natively dark during play, so nothing competes for it:
+
+| state | result |
+|---|---|
+| SPAWNED, colour re-sent once after `$SPAWN` | **HELD**, stable over 8.4 s |
+
+| want | surface | verdict |
+|---|---|---|
+| sustained state (low health, flag held, powerup active) | **headset** | ✅ one colour, re-send after spawn |
+| flash on hit / pickup / kill | either | ✅ transient, alternation irrelevant |
+| 3-segment pool gauge | gun | ⚠️ flickers against the native animation |
+| sustained gun colour | gun | ❌ not available |
+
+**So F1 becomes: pool state as a single headset colour, plus optional transient gun flashes.** Not the
+three-segment gauge, which the hardware will not give us.
+
+⚠️ **The caveat that bites in a match and not on a bench.** The native hit flash returns the headset
+to **DARK, not to the previous colour**. A held headset colour therefore dies on that player's **first
+hit**. The host must re-assert on `$HIR` — one BLE write per hit, cheap, but it has to be designed in
+or the feature tests perfectly and silently degrades the moment someone is shot.
+
+**Still open (config, not driver):** what selects the Marauder's armour-then-health native gauge, and
+whether that field can be set in a compiled game. That would give us the gauge for free and is the
+only route to it.
 
 ## ✅ Q14 — the fn 36/37 multipliers are REAL (CLOSED 2026-09-02)
 
