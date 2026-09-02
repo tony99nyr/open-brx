@@ -4943,3 +4943,46 @@ timestamps, and catch the transition happening. Both deaf episodes tonight follo
 (`deaf_catch` after a full session, the deaf state after `deaf_bisect`'s 78 shots). That is a
 suggestion of accumulation, not evidence of it -- but it is the only untested shape left, and it is
 the one thing a machine can do unattended.
+
+### 2026-09-02 (end) — death/respawn TESTED (not assumed) — and the deaf state can no longer be reproduced at all
+
+## Death -> respawn does not do it
+
+25 cycles: verify with witnessed shots -> kill outright (mag 200) -> respawn with MC's real
+`RESPAWN_SEQUENCE` (`$HLOOP,0,0,*`, `$SPAWN,,*`) -> verify again. 7 minutes.
+
+**198/200 shots registered.** It registered before every kill and after every respawn, every cycle.
+Two cycles read 3/4; none read 0.
+
+This matters because "death/respawn" was written off earlier the same day **without ever being
+tested** — every experiment used magnitude 1 *specifically so nothing would die*, which designed the
+suspected condition out of the entire session and then recorded it as eliminated. It is now tested.
+(`mcp/tools/death_soak.py`.)
+
+## Battery is ruled out by evidence already in hand
+
+The gun volunteered `$VOLTS,8429,4164,100,100` **during** the 0/22 deaf run — gun 8.43 V, headset
+4.16 V, both at 100%, while it was deaf. No new test needed.
+
+## The fault cannot currently be reproduced by anything we can do
+
+Healthy across everything since: 78/78 (bisect), 24/24 (`$SIR` A/B, with a native gun beside it also
+24/24), 18/18 (link toggle, plus a flash on every disconnected shot), 198/200 (death soak). Every
+deliberate attempt to induce it has failed.
+
+**So the honest position is: the fault is real, it has been seen with instruments (0/22 with no
+headset flash, alongside a native gun taking the same shots), and NOTHING we know how to do brings it
+back.** It is not a config state, not a frame we send, not the link, not the battery, not death, not
+distance, not geometry, not the emitter.
+
+## Where it clustered, which is the only lead left
+
+Tony: *"it kept dieing when we would line up to do the led f1."* The episodes clustered around the F1
+gauge-hunt work — which damages toward ~30% and overshoots into kills — and around long runs. But the
+death soak just failed to reproduce it in 25 clean cycles, so "death" alone is not the ingredient.
+Something about that fuller context is, or the trigger is rarer than a 7-minute soak.
+
+**Next session should NOT re-run any of the fifteen eliminated hypotheses** (this entry plus the two
+above it). The remaining approach is a long unattended soak under conditions closer to the F1 work —
+repeated arm / damage / kill / respawn / re-config cycles over tens of minutes — with the run halting
+and preserving the state the moment registration collapses.
