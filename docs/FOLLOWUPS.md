@@ -638,7 +638,27 @@ drifting emitter cannot explain:
 Those still show the headset needs more signal than the gun body. They no longer establish that any
 headset is defective.
 
-### ✅ CONFIRMED: the RECEIVER is fine, the EMITTER (board B) is DEAD
+### ⚠️ CORRECTION: "the emitter is dead" was OVER-CLAIMED
+
+**Board B is NOT dead.** It produced a registered hit on R0BAT minutes before that conclusion was
+written — a dead emitter gives zero hits, not one. The claim was contradicted by data already in this
+entry, and it was stated far too strongly.
+
+**What the evidence actually supports:**
+
+| fact | status |
+|---|---|
+| board A (receiver) is healthy | ✅ decoded a real gun cleanly, parity OK |
+| board B still emits | ✅ the tagger registered a hit from it |
+| board A no longer sees board B | ✅ 15 shots, 0 frames, where it worked this morning |
+
+Those are consistent with board B's output **weakening**, and equally consistent with **the path
+between the two boards being blocked** — taggers, headsets and props were moved around that bench all
+day, and neither board being moved does not mean nothing came to sit between them.
+
+**Check before concluding anything: is there now an obstruction between board B and board A?**
+
+### ~~CONFIRMED: the RECEIVER is fine, the EMITTER (board B) is DEAD~~ (over-claimed, see above)
 
 A real tagger was fired at board A and it decoded perfectly:
 
