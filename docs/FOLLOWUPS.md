@@ -488,8 +488,34 @@ response, battery — PASSES while the headset cannot score.** There is no cheap
 registered hit distinguishes a working headset from this fault**, which makes a **test shot**
 mandatory in muster and in MC preflight rather than a nice-to-have.
 
-**Still to try next occurrence:** fire at the **GUN BODY**. If `$HIR` tok1 = 4 still registers, the
-gun's own sensor is fine and only the headset's four are deaf, which would localise it further.
+### ⭐ ISOLATED TO ONE UNIT: the same emitter kills a DIFFERENT tagger
+
+The decisive test, arrived at by accident: while the faulty unit was registering nothing, the **same
+emitter at the same aim killed Tony's OTHER tagger**, which was sitting in a native FFA game.
+
+So the rig is fully exonerated and the fault is **specific to that one tagger (R0BQT)**, not to our
+emitter, our word encoding, our arming, or team gating.
+
+**Free corroboration worth keeping:** our synthetic IR words are accepted by a stock tagger running a
+**native** on-gun game, not only by one we armed ourselves over BLE. That is the cleanest evidence yet
+that the ESP32 rig produces genuine, firmware-legal BRX shots.
+
+### Everything eliminated, on the record
+
+| suspect | ruled out by |
+|---|---|
+| our emitter / encoding | **the same shots killed another tagger** |
+| aim | operator confirmed, board unmoved |
+| team gating | all four `$TID` values fired, zero hits |
+| the BLE link | headset lights on `$HLED` |
+| battery | 87% |
+| gun power cycle | fault survived it |
+| headset power cycle | fault survived it |
+| game state | armed, spawned, `$LCD,45,70`, trigger and `$ALCD` both live |
+
+**Next, and it is the only branch left:** swap a known-good headset onto the faulty gun, or the faulty
+headset onto a known-good gun. **Whichever side the fault follows is the broken part.** Until that is
+done we know the unit is faulty but not which half.
 
 **The diagnostic ladder that found the FIRST one** (it cost ~40 minutes without one):
 1. **Have the RECEIVER decode the emitter** (`ir-capture COM7` while `ir-emit COM8`). A clean decode
