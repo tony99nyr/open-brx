@@ -1,6 +1,66 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-09-01.
+**Updated:** 2026-09-02.
+
+> ## 💡 2026-09-02 — THE GUN AND HEADSET LEDs ARE FULLY REVERSE ENGINEERED
+>
+> Both commands are decoded end to end, measured through a **phone-camera rig** rather than by eye.
+> Full write-up: `experiment-log.md` 2026-09-02 entries.
+>
+> ```
+> $GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*      tokens 6,7 are INERT
+> $HLED,<colour>,<effect>,<on_ms>,<off_ms>,<enable>,<count>,*
+> ```
+>
+> - **Palette is NINE colours, 0-8:** red · blue · yellow · green · purple · teal · white · **pink** ·
+>   **orange**; 9+ dark. Indices 7 and 8 were read off a gun for the first time, closing the manual's
+>   research-backlog item. `$HLED` shares 0-7 and renders 8 differently.
+> - **`$GLED` token 4 is an APPLY GATE, not an effect enum.** 0/6/7/8/9/10 apply the colour at full
+>   brightness, **5 applies at ~1/3**, and **1-4 are NO-OPS** that leave the previous colour showing.
+>   That last fact explains why four sweeps of this token disagreed: a sweep that blanks between rows
+>   reports "nothing lit" and one that does not reports "everything lit", from identical hardware.
+>   `$GLED,,,,5,,,*` blanks because its colour tokens are **empty**, not because 5 means off.
+> - **`$HLED` t2=2 is a full-brightness repeating blink** and its period tracks tokens 3/4 to the
+>   millisecond (150,150 → 0.30 s · 300,300 → 0.59 s · 500,500 → 0.98 s). Callsign's alert (t2=4)
+>   flashes bright once then dim. Token 6 is the flash count; token 5 is an enable, not a level.
+> - **No per-module headset addressing** — the headset is one lamp, one colour. A direction indicator
+>   or a head-mounted segmented gauge is not available.
+> - **In game, our colour HOLDS**: on a spawned gun it is the dominant hue in 100% of frames, with the
+>   native animation only rippling brightness 10-25%. **So F1's three-segment pool gauge IS
+>   buildable**, as per-LED colour at full brightness. Encode with colour, not brightness: the dim
+>   setting loses hue dominance.
+>
+> **Also settled: the fn 36/37 multipliers are REAL** — `floor(mag × 1.25)` and `mag × 2`, from 16
+> trials over four magnitudes and eight `$SIR` row shapes, each carrying an fn 1 control. Q14 closed.
+>
+> ### ⚠️ The bench rig, and the lesson that cost the afternoon
+>
+> **Read `FOLLOWUPS.md` F11 before any IR session.** A tagger that registers hits poorly was
+> attributed, in one afternoon, to a stuck death state, accumulated hits, arming order, `$GSET`
+> outdoorMode, headset battery, tagger uptime, receiver adaptation, and our own emitter — **all eight
+> retracted.** Every one came from comparing measurements taken at *different times* on a rig with a
+> drifting variable.
+>
+> **The rule this earns: on this bench a difference is real only if both sides were measured in the
+> same burst.** The three claims that survived are all simultaneous — R0BAT took hits while R0BQT
+> registered nothing (same emitter, same session, so **R0BQT is genuinely worse**); the gun body
+> registered while the headset did not; 3 inches worked while 3 feet did not. Nothing else about that
+> fault is established, and **no hardware should be replaced on the strength of it.**
+>
+> **Rig state:** emitter (board B) **works** — it killed a tagger. Receiver (board A) **works** — it
+> decoded a real gun. They are **not aimed at each other**, so the loopback reads zero. Align it and
+> record a decode-rate baseline before the next IR run: it is the only instrument that checks our
+> emitter independently of a tagger, and having it would have saved most of this session.
+>
+> **Camera rig** (`mcp/tools/ledcam.py`, `ledsweep.py`, `led_effects.py`): drop the camera exposure
+> until only the LEDs are visible against black — that removes the need for a reference frame and with
+> it a whole family of faults. Pin the phone's brightness and timeout first; a sleep rotates the screen
+> and silently invalidates every pixel ROI. Both tools now abort on a portrait or black frame rather
+> than producing fiction.
+>
+> **Still open:** the F1 config hunt (does a `$GSET`/`$PSET` field switch on the *native* gauge?) never
+> ran — it needs a victim that registers reliably across ten arm/damage cycles. `mcp/tools/gauge_hunt.py`
+> is written and ready.
 
 > ## 🏆 2026-08-30/31 — THE FIRST FULL MATCH RAN ON OUR OWN STACK, and 16 things it exposed.
 > Two phones, two taggers, one MacBook hosting: a 300 s FFA start to finish — **12 kills, 126 landed
