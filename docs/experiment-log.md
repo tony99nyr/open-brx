@@ -2825,6 +2825,127 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 — ⭐ `$HLED` DECODED, the headset state model, and F1 answered NO (Tony + rig + phone camera)
+
+Bench: gun **R0BQT**, ESP32 board B (COM8) emitting, later a Pixel on wireless adb watching the LEDs.
+
+## 1. `$HLED` is fully decoded
+
+`$HLED,<colour>,<effect>,<on_ms>,<off_ms>,<t5>,<count>,*`
+
+| token | meaning | evidence |
+|---|---|---|
+| 1 | **colour**, same palette as `$GLED` | swept by eye: 1 blue, 2 yellow, 3 green, 4 dark purple, 7 brighter purple |
+| 2 | **effect** | 0 solid · 1,2 pulse/breathe · 3 solid · 4 blink · **5,6,7,8 dark** |
+| 3 / 4 | **on / off milliseconds** | `300,300` visibly slower than `90,90` |
+| 5 | **enable / envelope only** | 0 = dark; **10 and 100 are indistinguishable**; 255 changed the trailing flashes to a decay ramp |
+| 6 | **flash count** | 3 → 3 flashes, 5 → 5, 15 → ~15. Three points |
+
+**The first flash is always bright and the remainder dim** — firmware, not ours. No effect value gives
+all-bright blinking. To flash bright throughout, drive it from the host: alternate
+`$HLED,<c>,0,,,10,,*` and `$HLED,,6,,,,,*` (proven at 6 flashes, "max bright").
+
+⚠️ **This kills the open question in `compile.py`** ("we do NOT know token 5 is brightness… the likeliest
+alternative is a REPEAT COUNT, in which case 100 would turn a 1.8 s alert into ~18 s"). **Token 5 is
+neither.** At 100 the alert did **not** lengthen. The duration knob is **token 6**. The fear was
+reasonable and the caution was right; the answer is simply different.
+
+**`$HLED` drives the HEADSET only** — the gun never followed it. Clean split from `$GLED`.
+
+**Token 1 is a real colour index, measured not inferred.** It was previously guarded to values 0/1
+(`_HLED_SEEN_COLOURS`) because no capture linked it to a team. **2 → yellow and 3 → green**, values in
+no capture at all and exactly our tids. The guard can come off.
+
+**Placement/pairing worries are moot:** a bare `$HLED` on an idle gun lights the headset. No `$GLED`
+pairing needed, no lobby placement needed.
+
+## 2. The native headset state model (all in-play states are AUTONOMOUS)
+
+| state | headset | driven by |
+|---|---|---|
+| pre-game team assign | team colour | **host** (`$HLED`) |
+| normal play | dark | — |
+| on hit | **one green flash → back to dark** | firmware |
+| out / dead | **sustained bright green blink** | firmware |
+| respawn | stops, dark | firmware |
+| disconnected from gun | rainbow | firmware |
+
+**F10 resolves, and `docs/manual/`'s ✅ is EARNED.** The per-hit green flash fires with **no host frame
+at all** — proven by blanking the headset (`$HLED,,6`) and shooting it: one green flash from dark, back
+to dark. My first reading, from a *lit* headset, was that the flash needed the lit state; **that was
+wrong**, and Tony's native-play knowledge corrected it: in native games the headset is dark in play and
+only lights pre-game, on hit, when out, and rainbow when disconnected.
+
+So our dark headsets were never a missing hit flash. **The only thing we were missing is the pre-game
+team assignment.**
+
+⚠️ **Consequence for the shipped head:** the flash returns to **dark**, not to the previous colour. We
+send `$HLED` *after* `$START`, so a headset holds team colour into play and then goes dark on that
+player's first hit — drifting out of sync player by player. Callsign sends it in the **lobby**, before
+`$CLEAR`/`$START`, which avoids this entirely. Worth moving.
+
+## 3. F1 — the native health gauge does NOT appear in our compiled games
+
+Armed and spawned from our own frames on `$TID,1`: three gun LEDs pulsing blue. Damaged to
+**armour 0, HP 15/45** — still **three** LEDs pulsing, no change at any point.
+
+**The 2026-08-30 conclusion does not transfer.** "The pulse IS the health gauge" was observed in a
+**native FFA** and is true there; in *our* games the same pulse is only team colour. F1 is therefore a
+**config hunt** (`$GSET`/`$PSET` diff against a native game), not a deletion and not an LED driver.
+
+Measured, so "slow pulse" is no longer an impression: **period 1.77 s (0.56 Hz)**, two consecutive
+cycles agreeing to 0.01 s, smooth breathing ramp.
+
+Other LED states seen: **armed-but-not-spawned = LEDs OFF** (bench item 4.4); death = still the slow
+pulse (no distinct death flash on the GUN); grants and status functions = no LED change.
+
+## 4. Bench item 1.5a — ally functions, with the ceiling artifact removed
+
+| fn | result |
+|---|---|
+| **11** | **shield +100** — positive control passes, and confirms P16 (shield is IR-only) |
+| **9** | hp +20 **and** armour +70 (a full restore) |
+| **15** | armour +70 only |
+| **31, 32, 34** | land, move **no pool even with headroom** → genuine status functions |
+
+So 31/32/34 are **not** clamped grants. The stun shortlist survives.
+
+⚠️ **The first run of `ally_remeasure.py` was VOID and its own positive control caught it** — every row
+read `0/0/0`. My script depleted with 6×30 = 180 damage assuming the `$PSET` shield 150 absorbs first.
+**It does not** (P16), so the real pool is 115 and the deplete simply killed the victim; a dead gun
+takes no IR. Fixed to 3×30 = 90, plus a guard that voids a row rather than reporting a verdict off a
+dead gun, plus a spawn-verify loop (the `$SPAWN` between rows was not restoring pools, so runs
+inherited the previous row's damage).
+
+## 5. Free results from the same rig
+
+- **Bench 0.3 (does the struck sensor change the applied function?)** — the rig produced **both**
+  `$HIR` tok1 = **0** (headset dome) and **4** (gun body) from the identical word, and **both applied
+  exactly 20**. Evidence the sensor does not change the applied function, at least for fn 1. Earlier
+  runs only ever managed tok1 = 4.
+- **Armour spill confirmed at face value:** a 20 into armour 10 left armour 0 and took HP 45 → 35.
+
+## 6. Method: the camera rig (`mcp/tools/ledcam.py`, `ledsweep.py`)
+
+The recurring failure of every LED session is that a **machine sends** and a **human watches**, and the
+two are not synchronised — that is what cost 2026-08-30. A phone on wireless adb, camera app open,
+aimed at the gun and headset, makes the LED state **measurable**: colours become RGB, "slow pulse"
+becomes 1.77 s, "fast flash" becomes a count. `ledsweep.py` drives BLE **and** reads the camera in one
+process, so a reading cannot be attributed to the wrong frame and exhaustive sweeps are cheap.
+
+Traps found while building it, all handled in the tools:
+- **The LED cores blow out to white** under the phone's auto-exposure; the hue lives in the **halo**.
+- **Adjacent gun LEDs bleed** into each other.
+- **The office Hue lamp cycles a rainbow**, so ambient colour drifts and a single reference goes stale
+  → every reading is `(frame − its own blanked reference)` captured ~1 s apart, plus a **CONTROL ROI**
+  on bare carpet as a drift canary.
+- **The phone sleeps and rotates**, invalidating pixel ROIs (`screen_off_timeout` + `svc power stayon`).
+- Windows adb is **not paired** (the key is WSL's), so the Windows BLE process borrows WSL's adb and
+  writes the PNG to a file rather than piping binary through `wsl.exe`.
+
+Per-LED calibration is proven: `$GLED,0,3,1` read back as **red, green, blue** on the three individual
+LED ROIs, and `$HLED,0` read back **red** on the headset ROI.
+
 ### 2026-08-31 — MEASURING THE DOCS: three cold-read handoff tests, 5 → 7 → 8/10
 
 **No hardware. The instrument was a fresh agent with no context**, given only "you are taking over this

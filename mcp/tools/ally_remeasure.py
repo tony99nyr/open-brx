@@ -43,7 +43,12 @@ PSET = ("$PSET,40,0,45,70,150,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,"
 
 VICTIM_TEAM = 1
 ENEMY_TEAM = 2
-DEPLETE_MAG, DEPLETE_SHOTS = 30, 6      # 180 total vs shield 150 + armour 70 + hp 45
+# ⚠ 2026-09-02: was 6 shots (180 dmg) on the assumption that the $PSET shield 150 absorbs first.
+# IT DOES NOT -- P16: the shield pool is IR-only and a $PSET shield token reads back 0. The real
+# pool is armour 70 + hp 45 = 115, so 180 KILLED the gun and every row came back 0/0/0 with the
+# positive controls failing. 3 x 30 = 90 clears armour and leaves hp 25/45: headroom in BOTH pools,
+# comfortably alive.
+DEPLETE_MAG, DEPLETE_SHOTS = 30, 3      # 90 total vs armour 70 + hp 45 = 115
 ALLY_MAG, ALLY_SHOTS = 50, 2
 
 
@@ -86,6 +91,21 @@ async def main() -> None:
                    "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]:
             await mgr.send("p", fr, reply_window_ms=160)
         await asyncio.sleep(1.15)
+        # $SPAWN does not reliably restore pools between runs -- a run that ended at hp 25 could start
+        # the next deplete from 25 and DIE, which voided three rows on 2026-09-02. Re-spawn until the
+        # gun reports full health, so every function starts from the same known state.
+        for _ in range(4):
+            seq = mgr.get_events("p", since_seq=0).get("last_seq", 0)
+            await mgr.send("p", "$SPAWN,,*", reply_window_ms=700)
+            await asyncio.sleep(0.6)
+            evs = [e.get("raw", "").strip()
+                   for e in mgr.get_events("p", since_seq=seq).get("events", []) if isinstance(e, dict)]
+            lcd = [e for e in evs if e.startswith("$LCD")]
+            if lcd:
+                p_ = pools(lcd[-1])
+                if p_ and p_[0] >= 45:
+                    return
+        print("   (warning: could not confirm full pools after 4 spawns)", flush=True)
 
     async def fire(mag: int, proto: int, team: int, n: int = 1, wait: float = 1.7):
         seq = mgr.get_events("p", since_seq=0).get("last_seq", 0)
@@ -115,6 +135,11 @@ async def main() -> None:
                 print("   %-6d %s" % (fn, "(deplete did not land - VOID, see note below)"), flush=True)
                 continue
             before = pools(depleted)
+            if before is not None and before[0] <= 0:
+                voids += 1
+                print("   %-6d %s" % (fn, "(deplete KILLED the victim - VOID, a dead gun takes no IR)"),
+                      flush=True)
+                continue
             hits, after_frame = await fire(ALLY_MAG, 1, VICTIM_TEAM, n=ALLY_SHOTS)
             after = pools(after_frame) if after_frame else before
             if after is None:
