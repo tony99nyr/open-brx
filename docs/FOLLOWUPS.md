@@ -561,6 +561,28 @@ in-play state, not the blinking green of a dead player.
 
 So the headset knows it is alive and simply does not report hits.
 
+### 🎯 LEADING HYPOTHESIS: something in ARM or SPAWN disables the headset's sensors
+
+Operator: *"only the gun detected hits, so something in the respawn or game setup can cause it."* The
+timeline supports this and is the strongest evidence we have about the trigger:
+
+- a confirmed-good burst: **6/6 hits on the headset**, clean kill
+- **one arm cycle later** (`$CLEAR`/`$START`/`$GSET`/`$PSET`/`$SIR`/`$TID`/`$WEAP`/`$SPAWN`), the
+  **very first shot missed**, and so did the next 14
+
+Nothing else happened in between. If it were wear, heat or accumulated hits, the early shots of that
+run should have landed. **The headset went deaf across an arming sequence, without being shot.**
+
+**Why this is worth chasing hard: if a frame breaks it, a frame may fix it.** A software recovery
+would be enormously more useful than "power cycle it twice" — it could run automatically from MC when
+preflight detects the fault, mid-match, with no operator intervention.
+
+**The experiment** (needs the emitter aimed back at a headset dome, with the gun-body sensor kept as a
+live control proving the rig still works): with the fault present, send one candidate recovery frame
+at a time and fire after each — `$SPAWN` alone, `$CLEAR` + full re-arm, `$PSET` alone, `$TID` alone,
+`$STOP`/`$START`. Then, to find the *trigger*, do the reverse: from a known-good state, add back one
+arming frame at a time until the headset goes deaf.
+
 ### ❌ ALSO RULED OUT: it is not the hits
 
 The timeline settles this without a new experiment. After a confirmed-good burst (6/6 hits, clean
