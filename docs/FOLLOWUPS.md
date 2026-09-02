@@ -613,6 +613,12 @@ immediately before that burst also failed to restore it, so game state is not th
 the TAGGER was powered on**: R0BAT was 6/6 for its first ~4 minutes and was still 1/6 at ~10 minutes
 regardless of the emitter resting.
 
+**Also ruled out: receiver adaptation to a repeated code.** Every shot fired all session was a
+BYTE-IDENTICAL word (pid 42, mag 20, no crit). Real guns vary, so if the receiver de-duplicated or
+adapted to a repeated code it would look exactly like a fade and would never happen in a match. Fired
+three different shooter ids (7, 13, 55) and a different magnitude at the faded headset: **none
+registered.** So it is not the repetition.
+
 **Next test (needs the operator):** power cycle R0BAT and fire immediately.
 - back to 6/6 → the fade tracks **uptime on both units** (R0BQT simply faster), which is a systemic
   behaviour that would affect real matches and is worth understanding properly
