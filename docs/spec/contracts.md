@@ -131,7 +131,7 @@ Weapon {
            htk?:number, ttk_ms?:number,          // at the DEFAULT 115 pool; the views recompute per game
            dmg_hit?:number, cycle_ms?:number, charged?:boolean },   // the pool-INDEPENDENT chain, see below
   // ⚠ `damage` is the MAGNITUDE the weapon emits ($WEAP t5), not the damage that lands. What lands is
-  // decided by the victim's $SIR row for this weapon's <t3,t4>: a multiplier row lands x1.25 or x2, a
+  // decided by the victim's $SIR row for this weapon's <t3,t4>: a multiplier row lands floor(x1.25) or x2, a
   // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
   // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
   // `dmg_hit`/`cycle_ms`/`charged` are what `weapon_view(w, pool)` re-derives htk and ttk_ms from

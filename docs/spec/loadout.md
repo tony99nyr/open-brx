@@ -233,7 +233,7 @@ SavedGame {
 - Storage: `~/.brx-mcp/presets.json` (`storage.BASE_DIR`, same place as `armory.json`). Never committed.
 - One builtin example ships so the shelf is never empty on first use: **"Silenced Sniper"** — `ffa`, primary
   `fixed` → `sniper_rifle`, secondary `fixed` → `extended_mags`, `hud_select: false`, `health.max_armor: 0`
-  (one shot kills on raw magnitude alone: the sniper's 52 beats 45 HP without needing the DISPUTED fn 36 ×1.25), desc notes that "silenced" (fire-sound override) is
+  (one shot kills on raw magnitude alone: the sniper's 52 beats 45 HP without needing the fn 36 ×1.25, which is confirmed as floor(magnitude × 1.25) but not relied on here), desc notes that "silenced" (fire-sound override) is
   pending the weapon-tuning spec.
 - API (`API.md`): `GET /api/presets → SavedGame[]` · `POST /api/presets {name, desc?, config?}` (default
   `config` = the current draft) `→ SavedGame`, `409` on a name clash unless `{replace: true}` · `PUT

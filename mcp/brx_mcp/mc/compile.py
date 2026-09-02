@@ -89,11 +89,13 @@ def play_volume(environment: str | None) -> int:
 # It only looked inert because the original sweep ran with the shield at 0; re-measured with a shield
 # granted first, it drains exactly what fn 1 drains. It is plain damage and lives in _SIR_PLAIN_DAMAGE.
 _SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # registers a $HIR, moves no pool
-# ⚠ DISPUTED, do not treat as fact: two of our own datasets disagree (magnitude 20 landing as 25/40 in
-# one, as 20 in the other) and four explanatory hypotheses were tested and refuted. Settling this is
-# bench item 0.1. We still WARN on these rows — a possible multiplier is a real reason not to publish
-# an htk — but the warning must not assert the number. See docs/weapon-design.md §6.
-_SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                                     # DISPUTED magnitude scaling
+# ✅ CONFIRMED 2026-09-02 (bench item 0.1 CLOSED): fn 36 lands floor(magnitude * 1.25) and fn 37 lands
+# magnitude * 2. 16 trials, magnitudes 20/40/9/7, 8 $SIR row-tail shapes, with an fn 1 control on
+# subtype 0 in every trial. The x1.25 TRUNCATES: 7 * 1.25 = 8.75 lands as 8, not 9. Row tails do not
+# gate it. Measured through OUR $SIR table (the victim's row picks the function), which is what we ship.
+# Retracted: the 2026-08-27 "DISPUTED" reading, whose 24-cell matrix read x1.0 with a valid fn 1
+# control -- that run is OUTVOTED, NOT EXPLAINED. See docs/weapon-design.md §6 and brx-protocol.md §5.
+_SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                # magnitude scaling; applied = floor(mag * mult)
 _SIR_ARMOR_PIERCING = frozenset({2, 6})           # bypasses armor AND shields -> straight to bare HP
 _SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "damage" weapon here HELPS the target
 # ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
@@ -309,8 +311,9 @@ class WeaponCatalog:
         """The weapon's `$WEAP` t5 — the MAGNITUDE it emits, which is NOT always what lands.
 
         ⚠ The victim's `$SIR` row for this weapon's `<t3,t4>` decides what the magnitude does: a
-        multiplier row lands t5 x 1.25 or x 2, a status row lands nothing, and a missing row drops the
-        hit entirely (bench 2026-08-26; docs/weapon-design.md §6.2). `validate()` warns about all three.
+        multiplier row lands floor(t5 x 1.25) (fn 36) or t5 x 2 (fn 37), a status row lands nothing, and
+        a missing row drops the hit entirely (bench 2026-08-26, multipliers confirmed 2026-09-02;
+        docs/weapon-design.md §6.2). `validate()` warns about all three.
         For plain damage rows — the majority — this is the applied damage and `$HIR` token 5 echoes it.
 
         Rebalanced weapons carry it in `wire.dmg`; untuned ones read it back out of their captured
@@ -328,10 +331,13 @@ class WeaponCatalog:
         """Hits to drop a `pool`-point target (hp + armor), computed on RAW t5.
 
         Armor absorbs at face value and spills into HP (bench §7r). ⚠ Two things this does not model
-        (docs/weapon-design.md §6): a `$SIR` multiplier row — fn 36/37, whose scaling is **DISPUTED**,
-        so htk for those five weapons may be over-estimated or may be exactly right and we cannot yet
-        say which — and the SHIELD pool, which sits above armor and is granted only by an IR
-        function-11 event. 0 = damage unknown, caller skips."""
+        (docs/weapon-design.md §6). First, a `$SIR` multiplier row: **fn 36 lands floor(magnitude x
+        1.25) and fn 37 lands magnitude x 2 — CONFIRMED 2026-09-02** (16 trials, magnitudes 20/40/9/7,
+        8 row-tail shapes, fn 1 control in every trial; the x1.25 truncates, so 7 lands as 8, not 9).
+        Because this function computes on raw t5, it **OVER-ESTIMATES** htk for the five weapons on
+        fn 36/37 — that behaviour is deliberate and unchanged here; `validate()` warns on those rows.
+        Second, the SHIELD pool, which sits above armor and is granted only by an IR function-11 event.
+        0 = damage unknown, caller skips."""
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
@@ -716,10 +722,11 @@ class Compiler:
                 elif fn in _SIR_MULTIPLIER:
                     flagged.add(wid)
                     mult = _SIR_MULTIPLIER[fn]
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a DISPUTED "
-                                    f"multiplier row (one dataset says {mult}x its $WEAP t5, another says "
-                                    f"1x; bench item 0.1 settles it): treat the published htk/ttk_ms as "
-                                    f"unreliable for this weapon (weapon-design.md §6.2)")
+                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
+                                    f"multiplier row: it lands floor({mult}x its $WEAP t5) "
+                                    f"(bench 2026-09-02). The published htk/ttk_ms are computed on raw "
+                                    f"t5, so they OVER-ESTIMATE hits-to-kill for this weapon "
+                                    f"(weapon-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "

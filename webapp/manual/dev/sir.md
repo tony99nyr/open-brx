@@ -16,8 +16,8 @@ Source: protocol/brx-protocol.md §5; docs/experiment-log.md (clean negatives)
 ```text
 # The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…): plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (×1.25 DISPUTED, see below)
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (×2 DISPUTED, see below)
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (floor of magnitude ×1.25)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (magnitude ×2)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -31,13 +31,13 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 Source: protocol/brx-protocol.md §5; docs/experiment-log.md (shipped-table consequence)
 
 ## Function map
-measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a **headset-dome** hit behaves the same is **untested**.
+measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a **headset-dome** hit behaves the same is **untested**. The two multiplier functions, 36 and 37, were measured again on 2026-09-02 across magnitudes 20, 40, 9 and 7 and across 8 different `$SIR` row-tail shapes, 16 trials, each with an fn 1 control that had to read the magnitude exactly. The row tail does not change the multiplier.
 | Class | Function ids | Measured behaviour | Polarity | Conf |
 |---|---|---|---|---|
 | Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45→25→5 with armor **and shields** untouched | enemy only | ✅ |
-| ×1.25 damage ⚠️ | 36 | magnitude 20 lands as 25 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
-| ×2 damage ⚠️ | 37 | magnitude 20 lands as 40 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
+| **×1.25 damage (truncated)** | 36 | magnitude 20 lands as **25**, 40 as **50**, 9 as **11**, 7 as **8**. The result is the **floor**: 7 × 1.25 = 8.75 lands as 8, not 9 | enemy only | ✅ |
+| **×2 damage** | 37 | magnitude 20 lands as **40**, 40 as **80**, 9 as **18**, 7 as **14** | enemy only | ✅ |
 | Add HP, overflow → armor | 9, 12, 16, 19 | 15→35→45, then +armor | ally only (16/19 also damage enemies) | ✅ |
 | Add HP, clamp | 10, 17 | 15→35→45, no overflow | ally only (17 also AP-damages enemies) | ✅ |
 | Add HP, overflow → shield | 14, 21 | 15→35→45, then +shield | ally only | ✅ |
@@ -46,7 +46,7 @@ measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-bod
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100→0 and recovers over ~6–8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy | ✅ |
 | Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. **Two measurement artifacts apply to this row.** The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as "no pool change". That is what mis-binned **fn 10**, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also read as no change. **That second artifact has since been closed by re-testing with a shield granted first, and it caught one wrong entry: fn 3 drains shield exactly as plain damage does, so it has moved to the damage class.** The seven functions left in this row moved no pool with 150 shield available, so for them the reading is real. | n/a | ⚠️ scoped |
 | No registration | 0, 39–45 | n/a | n/a | ✅ 0/39/40 re-measured 2026-08-27; 41–45 not re-tested |
-Source: docs/experiment-log.md (2026-08-26 complete two-sided $SIR map; 2026-08-27 fn 23)
+Source: docs/experiment-log.md (2026-08-26 complete two-sided $SIR map; 2026-08-27 fn 23; 2026-09-02 fn 36/37 multipliers)
 
 ## Support functions are team-gated in firmware.
 With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.

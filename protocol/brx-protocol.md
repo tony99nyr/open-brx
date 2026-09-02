@@ -143,45 +143,43 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 | Example | Interpretation |
 |---|---|
 | `$SIR,0,0,,1,0,0,1,,*` | Standard weapons (AR, Energy Rifle, Ion Sniper, Laser Cannon, Plasma Sniper, Shotgun, SMG, Stinger, Suppressor) — damage shields→armor→HP |
-| `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle — fn 36 = ×1.25 damage ⚠️ **DISPUTED, see the multiplier note below** |
-| `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle — fn 37 = ×2 damage ⚠️ **DISPUTED, see the multiplier note below** |
+| `$SIR,0,1,,36,0,0,1,,*` | Force Rifle / Sniper Rifle — fn 36 = **floor(magnitude × 1.25)** ✅ **CONFIRMED 2026-09-02, see the multiplier note below** |
+| `$SIR,0,3,,37,0,0,1,,*` | AMR / Bolt Rifle / Burst Rifle — fn 37 = **magnitude × 2** ✅ **CONFIRMED 2026-09-02, see the multiplier note below** |
 
-> ### ⚠️ DISPUTED 2026-08-27 — the fn 36 / 37 damage multipliers did not reproduce
+> ### ✅ SETTLED 2026-09-02 — the fn 36 / 37 damage multipliers are REAL
 >
-> **Do not rely on ×1.25 / ×2 for weapon tuning until this is settled.**
+> **fn 36 = floor(magnitude × 1.25) · fn 37 = magnitude × 2.** Safe to use for weapon tuning.
 >
-> Two datasets disagree, both taken on this bench with the same emitter:
+> Measured 2026-09-02: **16 trials, 4 magnitudes, 8 different `$SIR` row-tail shapes.** Every trial
+> carried an **fn 1 control on subtype 0** that had to read exactly the magnitude, or the trial was
+> voided.
 >
-> | | fn 1 (control) | fn 36 | fn 37 |
+> | magnitude | control fn 1 | fn 36 | fn 37 |
 > |---|---|---|---|
-> | **earlier 2026-08-27**, row `<0,3>`, magnitude 20 | 20 | — | **40 (×2)**, 3/3; and 60 with crit, consistent with t7=50 |
-> | **later 2026-08-27**, controlled matrix | 20 ✓ | **20 (×1.0)** | **20 (×1.0)** |
+> | 20 | 20 | **25** | **40** |
+> | 40 | 40 | **50** | **80** |
+> | 9 | 9 | **11** | **18** |
+> | 7 | 7 | **8** | **14** |
 >
-> The later run swept **fn × subtype {0,1,2,3}** and **single-row vs the full 12-row `$SIR` table** —
-> 24 cells in all. Every fn 36 and fn 37 cell read **×1.0**, while the fn 1 control read a correct 20
-> in every arrangement, so the rig was working. Neither *subtype* nor *table arming* explains the
-> discrepancy, and both hypotheses were tested and refuted.
+> **The multiplier TRUNCATES, it does not round.** Magnitude 7 settles it: 7 × 1.25 = 8.75 landed as
+> **8**. This matters for hits-to-kill.
 >
-> The earlier ×2 result was internally consistent (3/3, and it stacked correctly with crit), so it is
-> unlikely to be simple noise — a systematic difference between the runs has not yet been found.
+> **Tested and NEGATIVE: the row's trailing tokens do not gate the multiplier.** Row tails
+> `0,0,1,,` / `,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none / `0,0,1,60` **all** produced ×1.25
+> and ×2.
 >
-> **✅ The emitter is EXONERATED (2026-08-27).** An earlier draft named our own word encoding as the
-> leading suspect — a magnitude that was really 40 would look exactly like ×2. **That is now ruled
-> out.** The emitter is *function-agnostic*: it sends 25 bits, and which function applies is decided
-> entirely by the victim's `$SIR` row. So an encoding fault would corrupt the magnitude identically
-> whatever the function. In the very run that produced the ×2, **fn 1 read 20 and fn 37 read 40 in the
-> same session with the same emitter and the same `damage=20`** — had the emitter been sending 40,
-> fn 1 would have read 40 too. Independently confirmed by the protocol matrix: **fn 1 = exactly ×1.0
-> on protocols 0, 5, 7, 9 and 10.**
+> **Scope:** measured through **our** `$SIR` table — the victim's row is what picks the function, and
+> that table is the configuration we ship.
 >
-> **So the doubling happened inside the gun**, which makes the earlier measurement *more* credible,
-> not less, and moves the open question to **what gun-side condition switches the multiplier on**.
-> It also means pool deltas measured through this rig (armour-piercing, add-HP, the Energy Launcher's
-> 0/3) are **not** collateral damage from this dispute — magnitudes are delivered faithfully.
+> #### What was retracted, and what is still unexplained
 >
-> **To settle it:** capture a *real BRX weapon* known to use fn 36/37 firing at a victim, and compare
-> `$HIR` token 5 (raw magnitude) against the applied `$HP` delta. That reads the multiplier off stock
-> hardware with our emitter out of the loop entirely.
+> The 2026-08-27 "controlled matrix" run read **×1.0 in all 24 multiplier cells** with a valid fn 1
+> control. That result is **outvoted, not explained** — we still do not know why it read ×1.0. It is
+> recorded here so the disagreement is not lost. The 2026-08-27 emitter exoneration still stands: the
+> emitter is function-agnostic (it sends 25 bits; the victim's `$SIR` row decides the function), so an
+> encoding fault cannot masquerade as a multiplier, and pool deltas measured through that rig
+> (armour-piercing, add-HP, the Energy Launcher's 0/3) were never in doubt.
+
 | `$SIR,1,0,H29,10,0,0,1,,*` | Respawn + add HP |
 | `$SIR,2,1,VA8C,11,0,0,1,,*` | Add shields — **adds `magnitude` per hit, saturating at `$PSET` token 5**; the spawn shield is always 0, so t5 is a ceiling to be filled, never a starting pool (bench 2026-08-27) |
 | `$SIR,3,0,VA16,13,0,0,1,,*` | Add armor |
@@ -1361,9 +1359,11 @@ Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damag
 - **`$HIR` token 5 = the RAW magnitude carried in the IR word** (= the shooter's `$WEAP` `t5`), **not
   necessarily the applied damage.** ⚠ Refined 2026-08-26 (night, brx-ir emitter) — the **applied**
   damage is `magnitude × the victim's $SIR-function multiplier × (1 + $GSET t7/100 if the crit bit is
-  set)`. ⚠️ Two caveats added 2026-08-27: the crit term is **not a fixed ×1.5** (that is only t7=50),
-  and the **fn 36 ×1.25 / fn 37 ×2 multipliers are DISPUTED** — they did not reproduce in 24
-  controlled cells, so the worked example `mag 20 @ fn 37 crit → 60` should not be relied on. Exp-2's 4-weapon
+  set)`. ⚠️ Caveat added 2026-08-27: the crit term is **not a fixed ×1.5** (that is only t7=50).
+  ✅ Settled 2026-09-02: the **fn 36 = floor(magnitude × 1.25) / fn 37 = magnitude × 2** multipliers
+  are **CONFIRMED** (16 trials, 4 magnitudes, 8 row-tail shapes, fn 1 control in every trial; the
+  ×1.25 truncates — 7 → 8), so the worked example `mag 20 @ fn 37 crit → 60` stands again. The
+  2026-08-27 24-cell ×1.0 matrix is outvoted but still unexplained — see §5. Exp-2's 4-weapon
   read (AR `t5`=9 → armor −9; Shotgun `T01` 45 → −45; Sniper 80 → 70 absorbed +10 HP; Rocket 115 → kill)
   was **correct for what it tested** — all four key to `$SIR` **fn-1** rows (mult 1, crit 0) where raw ==
   applied — a scope limit found later, not an error. Where a multiplier row or crit is in play, tok5 ≠

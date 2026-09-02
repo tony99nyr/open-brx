@@ -31,17 +31,20 @@ import time
 import numpy as np
 from PIL import Image
 
+import bench_common as B
+
 # The phone is paired to WSL's adb key, not the Windows one, so this Windows process borrows WSL's
 # adb. The screenshot is written to a FILE on the Windows filesystem rather than piped: binary PNG
 # through wsl.exe's stdout is not worth trusting.
 _SHOT = r"C:\Users\Tony\.brx-mcp\_shot.png"
 _WSL_ADB = "/home/tony/Android/Sdk/platform-tools/adb"
 
-AR = ("$WEAP,0,,100,0,0,9,0,,,,,,,,190,850,32,384,1400,0,0,100,100,,0,,,"
-      "R01,,,,D04,D03,D02,D18,,,,,32,192,75,*")
-PSET = ("$PSET,40,0,45,70,150,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,"
-        "H06,H55,H13,H21,H02,U15,W71,A10,*")
-BLANK = ["$GLED,,,,3,,,*", "$HLED,,6,,,,,*"]
+# ⚠ NOT t4=3. Measured 2026-09-02: `$GLED,,,,3,,,*` does NOT clear an already-lit gun -- red stayed
+# red at [91,29,36] -> [94,35,50], and sending it twice or as `$GLED,0,0,0,3,0` made no difference.
+# t4=5 (Callsign's own frame, and the one gameconfig ships for night mode), t4=6, t4=7 and t5=0 all
+# DO drop to ambient. Using a blank that does not blank silently poisons every reference frame, which
+# is exactly how a palette sweep came back claiming a known-blue index was "dark".
+BLANK = ["$GLED,,,,5,,,*", "$HLED,,6,,,,,*"]
 
 PALETTE = {0: "red", 1: "blue", 2: "yellow", 3: "green", 4: "purple", 5: "teal", 6: "white"}
 
@@ -70,28 +73,56 @@ def grab() -> np.ndarray:
     return im
 
 
+def _name(nr: float, ng: float, nb: float) -> str:
+    """Name a colour from channel ratios normalised to the strongest channel."""
+    if min(nr, ng, nb) > 0.80:
+        return "white"
+    i = int(np.argmax([nr, ng, nb]))
+    if i == 0:
+        return "yellow" if ng > 0.55 else ("purple" if nb > 0.55 else "red")
+    if i == 2:
+        return "purple" if nr > 0.50 else ("teal" if ng > 0.82 else "blue")
+    # 0.82, not 0.72: the gun's three LEDs sit ~25 px apart and bleed into each other, so a GREEN
+    # with a lit BLUE neighbour measures B/G ~ 0.73. A real teal reads ~1.0. Measured 2026-09-02.
+    return "teal" if nb > 0.82 else ("yellow" if nr > 0.60 else "green")
+
+
 def classify(patch: np.ndarray) -> tuple[str, tuple]:
     br = patch.sum(1)
     if br.mean() < 45:
         return "dark", (0, 0, 0)
-    lo, hi = np.percentile(br, 25), np.percentile(br, 75)
+    # WHICH SAMPLE carries the colour depends on how big the emitter is in frame:
+    #   gun LEDs are pinpoints that blow out to white  -> the hue is only in the dim FRINGE
+    #   headset modules fill most of their box         -> the fringe is just dark surround, use MEAN
+    # Guessing wrong makes a lit module read "dark" or a green read "red", so decide on box area.
+    if len(patch) > 1500:
+        r, g, b = patch.mean(0)
+        if r + g + b < 30:
+            return "dark", (r, g, b)
+        mx = max(r, g, b, 1.0)
+        return _name(r / mx, g / mx, b / mx), (r, g, b)
+    lo, hi = np.percentile(br, 1), np.percentile(br, 12)
     halo = patch[(br >= lo) & (br <= hi)]
     if len(halo) == 0:
         halo = patch
     r, g, b = halo.mean(0)
+    if r + g + b < 14:
+        # The fringe sample is black. Two very different cases, and they must not be confused:
+        #   - nothing is lit here                              -> genuinely dark
+        #   - the emitter is LARGE (the headset modules are     -> the low band sampled the dark
+        #     much bigger than the gun's pinpoint LEDs), so        surround while the module itself
+        #     most of the box is lit and the dim 1st-12th          is plainly lit
+        #     percentile lands on the surround
+        # Distinguish on the WHOLE box: if it is meaningfully brighter than the reference, it is lit
+        # and we classify on the mean instead of the fringe.
+        whole = patch.mean(0)
+        if whole.sum() < 30:
+            return "dark", (r, g, b)
+        r, g, b = whole
     mx = max(r, g, b, 1.0)
     n = (r / mx, g / mx, b / mx)
-    if min(n) > 0.80:
-        return "white", (r, g, b)
-    i = int(np.argmax([r, g, b]))
-    name = ("red", "green", "blue")[i]
-    if name == "red":
-        name = "yellow" if n[1] > 0.55 else ("purple" if n[2] > 0.55 else "red")
-    elif name == "blue":
-        name = "purple" if n[0] > 0.50 else ("teal" if n[1] > 0.60 else "blue")
-    elif name == "green":
-        name = "teal" if n[2] > 0.60 else ("yellow" if n[0] > 0.60 else "green")
-    return name, (r, g, b)
+
+    return _name(*n), (r, g, b)
 
 
 class Rig:
@@ -117,6 +148,21 @@ class Rig:
                 p = np.clip(p - ambient, 0, None)     # residual room-light shift
             out[name] = classify(p)
         return out
+
+    async def apply_read(self, frame: str, settle: float = 0.8) -> dict:
+        """Apply a frame and read it against ONE reference captured at the start.
+
+        Why not re-blank before every row: the per-row blank is what kept corrupting these sweeps.
+        A reference taken right after a blank that did not fully take contains the PREVIOUS colour,
+        and every delta is then nonsense -- that produced two entirely bogus palette tables on
+        2026-09-02, one of which called a known-blue index "dark". Applying against a single
+        verified-dark reference matches what hand-measurement showed to be correct, and the CONTROL
+        ROI still catches ambient drift (re-reference when it stops reading dark).
+        """
+        await self.send(frame, settle)
+        r = self._classify_all(grab(), self.ref)
+        r["_ok"] = (r["CONTROL"][0] == "dark", (0, 0, 0))
+        return r
 
     async def measure(self, frame: str, settle: float = 0.45, tries: int = 6) -> dict:
         """Blank -> reference -> apply -> read, REJECTING any reading the ambient contaminated.
@@ -158,7 +204,7 @@ class Rig:
             return f"{k}={name:<6}[{rr/mx:.2f},{gg/mx:.2f},{bb/mx:.2f}]"
         cells = " ".join(cell(k) for k in self.rois if k != "CONTROL")
         ok, amb = r.get("_ok", (True, (0, 0, 0)))
-        flag = "" if ok else f"   <<< AMBIENT UNSTABLE (canary {sum(amb):.0f}) - DISCARD"
+        flag = "" if ok else "   <<< CONTROL NOT DARK - ambient moved, DISCARD"
         print(f"   {label:<34} {cells}{flag}", flush=True)
 
 
@@ -174,8 +220,7 @@ async def main():
     try:
         # ARMED BUT NOT SPAWNED on purpose: a spawned gun runs its own team-colour animation on the
         # same LEDs and composites over $GLED, so a palette reading would be a mix of ours and its.
-        for fr in ["$CLEAR,*", "$START,*", "$VOL,30,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET, AR,
-                   "$SIR,0,0,,1,0,0,1,,*", "$TID,1,*"]:
+        for fr in B.arming_frames(40, 1, sirs=[B.SIR_PLAIN]):
             await rig.send(fr, 0.18)
         await rig.blank_ref()
         print("=== reference captured (all LEDs blanked); gun ARMED, NOT spawned ===\n", flush=True)
@@ -184,19 +229,19 @@ async def main():
             print("--- $GLED tokens 1-3: palette index per LED (0-10) ---", flush=True)
             for n in range(11):
                 rig.line(f"$GLED,{n},{n},{n},0,10  ({PALETTE.get(n,'?')})",
-                         await rig.measure(f"$GLED,{n},{n},{n},0,10,,*"))
+                         await rig.apply_read(f"$GLED,{n},{n},{n},0,10,,*"))
             print(flush=True)
 
         if "effect" in sections:
             print("--- $GLED token 4: effect/mode (colour held at 3,3,3 = green) ---", flush=True)
             for t4 in range(11):
-                rig.line(f"$GLED,3,3,3,{t4},10", await rig.measure(f"$GLED,3,3,3,{t4},10,,*"))
+                rig.line(f"$GLED,3,3,3,{t4},10", await rig.apply_read(f"$GLED,3,3,3,{t4},10,,*"))
             print(flush=True)
 
         if "bright" in sections:
             print("--- $GLED token 5: claimed brightness (green) ---", flush=True)
             for t5 in (0, 1, 5, 10, 25, 50, 100, 200, 255):
-                r = await rig.measure(f"$GLED,3,3,3,0,{t5},,*")
+                r = await rig.apply_read(f"$GLED,3,3,3,0,{t5},,*")
                 lum = {k: sum(r[k][1]) for k in rois}
                 rig.line(f"$GLED,3,3,3,0,{t5:<4} lum={int(lum['LED1']):4d}", r)
             print(flush=True)
@@ -205,22 +250,22 @@ async def main():
             print("--- $HLED token 1: headset palette (0-10) ---", flush=True)
             for n in range(11):
                 rig.line(f"$HLED,{n},0,,,10  ({PALETTE.get(n,'?')})",
-                         await rig.measure(f"$HLED,{n},0,,,10,,*"))
+                         await rig.apply_read(f"$HLED,{n},0,,,10,,*"))
             print(flush=True)
 
         if "hledfx" in sections:
             print("--- $HLED token 2: effect (colour held at 3 = green) ---", flush=True)
             for t2 in range(11):
                 rig.line(f"$HLED,3,{t2},300,300,10,5",
-                         await rig.measure(f"$HLED,3,{t2},300,300,10,5,*", 0.30))
+                         await rig.apply_read(f"$HLED,3,{t2},300,300,10,5,*"))
             print(flush=True)
 
         if "cross" in sections:
             print("--- CROSS-TALK: does each command touch only its own device? ---", flush=True)
             await rig.send("$GLED,,,,3,,,*"); await rig.send("$HLED,,6,,,,,*")
             rig.line("both blanked", rig.read())
-            rig.line("$GLED red only", await rig.measure("$GLED,0,0,0,0,10,,*"))
-            rig.line("$HLED green only", await rig.measure("$HLED,3,0,,,10,,*"))
+            rig.line("$GLED red only", await rig.apply_read("$GLED,0,0,0,0,10,,*"))
+            rig.line("$HLED green only", await rig.apply_read("$HLED,3,0,,,10,,*"))
             print(flush=True)
 
         if "timing" in sections:

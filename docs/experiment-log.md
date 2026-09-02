@@ -2964,8 +2964,10 @@ field map, `unknowns.md` still listed it open, two bench plans still queued the 
 damage (the floor artifact below — it only looked inert because the sweep ran at shield 0). A weapon
 keyed to fn 3 therefore got a compile-time warning saying **"the weapon DEALS NO DAMAGE"**. Nobody would
 have caught that at the bench; they would have believed it and changed the weapon. The same file also
-stated the **disputed** fn 36/37 multipliers as fact in three places, one of them calling them
-"both bench-proven 2026-08-26".
+stated the **then-disputed** fn 36/37 multipliers as fact in three places, one of them calling them
+"both bench-proven 2026-08-26". *(Footnote 2026-09-02: the multipliers turned out to be real — fn 36 =
+floor(magnitude x 1.25), fn 37 = magnitude x 2 — so those three places were right by luck. The defect
+stands as a defect: the file asserted as settled something the repo was actively disputing.)*
 
 **What the three rounds actually cost to fix:** nothing was re-measured. Every fix was propagation.
 
@@ -3651,6 +3653,12 @@ That reads the answer off the gun with nothing of ours in the signal path. **Nee
 for weapon tuning until this is resolved** — every shipped weapon mapped to fn 36 or 37 may be dealing
 base damage.
 
+> ✅ **SUPERSEDED 2026-09-02 (see the entry at the end of this file).** The multipliers are REAL:
+> **fn 36 = floor(magnitude x 1.25), fn 37 = magnitude x 2**, over 16 trials, 4 magnitudes and 8 `$SIR`
+> row-tail shapes with an fn 1 control in every trial. The "do not use x1.25 / x2" instruction above is
+> **withdrawn**. This 24-cell x1.0 matrix is **outvoted, not explained** — we still do not know why it
+> read x1.0.
+
 ### 2026-08-27 — NEGATIVE (rig): IR loopback capture failed — geometry, not encoding
 
 Attempted to verify the transmitted word over the air (emitter -> receiver -> decode), which would have
@@ -3741,6 +3749,11 @@ row `<0,3>` with word subtype 3; this sweep drove `<0,0>` with subtype 0. That s
 may belong to the **(protocol, subtype) cell rather than the function number** — which would change the
 damage model. **Deliberately not edited into the spec** until a dedicated fn x subtype matrix settles
 it; a single conflicting observation is a reason to test, not to rewrite.
+
+> ✅ **RESOLVED 2026-09-02 (entry at the end of this file).** The multipliers are real and belong to the
+> **function**, not the (protocol, subtype) cell: fn 36 = floor(magnitude x 1.25), fn 37 = magnitude x 2,
+> reproduced across 4 magnitudes and 8 row-tail shapes with an fn 1 control in every trial. Why this
+> sweep read x1.0 is still unexplained.
 
 
 ### 2026-08-27 — NEGATIVE: `$PSET` t2 and t6 are invisible to the damage instrument
@@ -4280,3 +4293,56 @@ redundancy rather than given fake coverage.
 
 **Final tally across three rounds: 5 reviewers, 19 defects in the fixes, 7 of them tests that passed
 against broken code.** Every test in this diff now has a recorded mutation that makes it fail.
+
+---
+
+## 2026-09-02 (bench, Tony firing) — ✅ BENCH 0.1 CLOSED: the fn 36 / 37 `$SIR` multipliers are REAL
+
+**Result: fn 36 = floor(magnitude x 1.25) · fn 37 = magnitude x 2.**
+
+**Design.** 16 trials across **4 magnitudes** and **8 different `$SIR` row-tail shapes**. Every trial
+carried an **fn 1 control on subtype 0** that had to read *exactly* the magnitude, or the trial was
+voided. That is the control this question needed: the 2026-08-27 dispute existed precisely because two
+runs disagreed with no per-trial control tying them together.
+
+| magnitude | control fn 1 | fn 36 | fn 37 |
+|---|---|---|---|
+| 20 | 20 | **25** | **40** |
+| 40 | 40 | **50** | **80** |
+| 9 | 9 | **11** | **18** |
+| 7 | 7 | **8** | **14** |
+
+**The multiplier TRUNCATES, it does not round.** Magnitude 7 is the trial that settles it: 7 x 1.25 =
+8.75 landed as **8**. Every prior discussion of these multipliers assumed exact arithmetic; hits-to-kill
+for fn 36 weapons must be computed on the floor.
+
+**NEGATIVE: the row's trailing tokens do not gate the multiplier.** Tails `0,0,1,,` / `,,,,` /
+`0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none / `0,0,1,60` **all** produced x1.25 and x2. That kills the
+leading remaining hypothesis for why the 2026-08-27 matrix read x1.0.
+
+**SCOPE.** Measured through **our** `$SIR` table. The victim's row is what picks the function, so this
+is a statement about the configuration we ship, which is also the one whose numbers we would publish.
+Whether stock BRX pushes the same table in every native game is a separate, still-open question.
+
+#### Honest close: what is still unexplained
+
+The **2026-08-27 "controlled matrix"** read **x1.0 in all 24 multiplier cells with a valid fn 1
+control**. We still do not know why. It is **outvoted, not explained** — two independent runs
+(2026-08-26 and this one) agree against it, and this one carries a per-trial control and varies both
+magnitude and row shape, so the weight is decisive. But no systematic difference between the runs has
+been found, and the earlier session-quality hypotheses (held gun vs bench gun, sensor struck) are now
+unsupported for the multipliers specifically. Recorded, not buried.
+
+Retracted by this entry: the "do not use x1.25 / x2 for weapon tuning" instruction from the 2026-08-27
+dispute, and the reading of the x2 result as one of "two results from the same context that failed to
+reproduce". What still stands from those entries: the **emitter exoneration** (it is function-agnostic,
+so an encoding fault cannot masquerade as a multiplier), and the single remaining non-reproduction,
+**fn 24 dealing damage on protocol 7**.
+
+Propagated the same day into `protocol/brx-protocol.md` §5 + §7r, `docs/weapon-design.md` §0/§5 U10/§6.2,
+`docs/manual/06-developer.md` + `03-gameplay.md` + `07-platform.md`, `docs/unknowns.md` Q14,
+`docs/gotchas.md`, `docs/HANDOFF.md`, `docs/FOLLOWUPS.md` Q14 + P10, `docs/bench-tomorrow.md` 0.1,
+`docs/bench-hour-2026-09-01.md`, `docs/spec/contracts.md` + `loadout.md`, and `mcp/brx_mcp/mc/compile.py`.
+**`hits_to_kill()` still computes on raw t5 and therefore over-estimates htk for the five fn 36/37
+weapons** — the behaviour was left alone deliberately; the docstring and the `validate()` warning now
+say so.

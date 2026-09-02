@@ -391,8 +391,8 @@ _What an IR hit does to this gun is decided by the victim's table, not by the sh
 ```text
 # The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…): plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (×1.25 DISPUTED, see below)
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (×2 DISPUTED, see below)
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (floor of magnitude ×1.25)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (magnitude ×2)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -405,13 +405,13 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 ```
 ✅ src: protocol/brx-protocol.md §5; docs/experiment-log.md (shipped-table consequence)
 
-[data-table:filterable] **Function map**: measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a **headset-dome** hit behaves the same is **untested**.
+[data-table:filterable] **Function map**: measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from ~40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a **headset-dome** hit behaves the same is **untested**. The two multiplier functions, 36 and 37, were measured again on 2026-09-02 across magnitudes 20, 40, 9 and 7 and across 8 different `$SIR` row-tail shapes, 16 trials, each with an fn 1 control that had to read the magnitude exactly. The row tail does not change the multiplier.
 | Class | Function ids | Measured behaviour | Polarity | Conf |
 |---|---|---|---|---|
 | Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields → armor → HP | enemy only | ✅ |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45→25→5 with armor **and shields** untouched | enemy only | ✅ |
-| ×1.25 damage ⚠️ | 36 | magnitude 20 lands as 25 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
-| ×2 damage ⚠️ | 37 | magnitude 20 lands as 40 in one dataset, **as 20 in another** | enemy only | ⚠️ **DISPUTED** |
+| **×1.25 damage (truncated)** | 36 | magnitude 20 lands as **25**, 40 as **50**, 9 as **11**, 7 as **8**. The result is the **floor**: 7 × 1.25 = 8.75 lands as 8, not 9 | enemy only | ✅ |
+| **×2 damage** | 37 | magnitude 20 lands as **40**, 40 as **80**, 9 as **18**, 7 as **14** | enemy only | ✅ |
 | Add HP, overflow → armor | 9, 12, 16, 19 | 15→35→45, then +armor | ally only (16/19 also damage enemies) | ✅ |
 | Add HP, clamp | 10, 17 | 15→35→45, no overflow | ally only (17 also AP-damages enemies) | ✅ |
 | Add HP, overflow → shield | 14, 21 | 15→35→45, then +shield | ally only | ✅ |
@@ -420,7 +420,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100→0 and recovers over ~6–8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy | ✅ |
 | Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. **Two measurement artifacts apply to this row.** The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as "no pool change". That is what mis-binned **fn 10**, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also read as no change. **That second artifact has since been closed by re-testing with a shield granted first, and it caught one wrong entry: fn 3 drains shield exactly as plain damage does, so it has moved to the damage class.** The seven functions left in this row moved no pool with 150 shield available, so for them the reading is real. | n/a | ⚠️ scoped |
 | No registration | 0, 39–45 | n/a | n/a | ✅ 0/39/40 re-measured 2026-08-27; 41–45 not re-tested |
-✅ src: docs/experiment-log.md (2026-08-26 complete two-sided `$SIR` map; 2026-08-27 fn 23)
+✅ src: docs/experiment-log.md (2026-08-26 complete two-sided `$SIR` map; 2026-08-27 fn 23; 2026-09-02 fn 36/37 multipliers)
 
 [callout:warn] **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic. ✅ src: protocol/brx-protocol.md §5; docs/experiment-log.md (dual-polarity, FF table)
 
@@ -809,7 +809,7 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 1. **`$WEAP` frame builder**: sliders/selects for damage (t5), fire interval (t14), fire mode (t20: auto/single/burst/charge variants/melee), burst cycle (t23), clip/reserve (t16/t39/t40, with t17 auto-derived as 2×t40), reload ms (t18), IR protocol (t3, DamageType enum names), overheat (t24/t35/t37/t38), and sound-id pickers from the bank for t27–t36. Outputs the exact frame string with copy-to-clipboard; locks t15 to 850 and greys the dormant t7–t11.
 2. **Frame decoder**: paste any `$…,*` frame; it tokenises and labels every position from the tables on these pages (`$WEAP`, `$GSET`, `$PSET`, `$SIR`, `$HIR`, `$HP`, `$LCD`, `$ALCD`, `$PLAY`, `$AMMO`, `$BMAP`), flags empty tokens, shows the per-token confidence, and validates against the framing regex.
 3. **IR word encoder/decoder**: six fields → 25-bit string, pulse-train visualisation (sync + long/short marks), true parity vs the gun's `Z0≠Z1` test, and the `$SIR` cell `<B,U>` it would key into; paste a bit string to reverse it.
-4. **Damage calculator**: pick a weapon (magnitude, protocol/subtype), the victim's `$SIR` row function, crit on/off, `$GSET` friendly-fire, teams, and starting pools; shows applied damage, drain order across shields→armor→HP, hits-to-kill, and the resulting `$HIR`/`$HP` frames. **Must model the team gate honestly:** when the shot is rejected (damage from an ally, or support from an enemy, with friendly fire off) the correct output is **no frames at all**, not zero damage. Showing a `$HIR` there would teach the opposite of how the hardware behaves. Crit uses `1 + $GSET t7/100`, and the fn 36/37 multipliers must stay out until the dispute is settled.
+4. **Damage calculator**: pick a weapon (magnitude, protocol/subtype), the victim's `$SIR` row function, crit on/off, `$GSET` friendly-fire, teams, and starting pools; shows applied damage, drain order across shields→armor→HP, hits-to-kill, and the resulting `$HIR`/`$HP` frames. **Must model the team gate honestly:** when the shot is rejected (damage from an ally, or support from an enemy, with friendly fire off) the correct output is **no frames at all**, not zero damage. Showing a `$HIR` there would teach the opposite of how the hardware behaves. Crit uses `1 + $GSET t7/100`, and the fn 36/37 multipliers apply as **floor(magnitude × 1.25)** and **magnitude × 2**.
 5. **`$SIR` matrix explorer**: a 16 × 4 grid of `<protocol, subtype>` cells; click a cell to assign a function class and sound, see stock rows pre-filled, and export the full `$SIR` block for a game head.
 
 ## Sources used

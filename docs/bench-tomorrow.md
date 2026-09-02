@@ -151,7 +151,8 @@ $PY -m brx_mcp ir-capture COM7 60                    # 0.2 loopback: aim board B
 $PY ../gitrepos/battlecompany/mcp/tools/sensor_bench.py <shooter> <victim>    # 0.3 which sensor was struck
 ```
 
-**0.1 needs no script** — it is a real BRX weapon fired at a victim while you read the victim's frames.
+**0.1 is CLOSED (2026-09-02)** — the multipliers are real; the method note below is kept for its scope
+caveat, which still applies to the result.
 
 > ⚠️ **Which `$SIR` table is in play, and why it matters for 0.1.** The applied function is chosen by the
 > **victim's** `$SIR` row for the incoming (protocol, subtype) — *not* by the shooter. So "nothing of ours
@@ -159,9 +160,10 @@ $PY ../gitrepos/battlecompany/mcp/tools/sensor_bench.py <shooter> <victim>    # 
 > and that means **our** `$SIR` table decides that fn 36 is what gets applied.
 >
 > That is fine — it is exactly the configuration we ship, and it is the one whose numbers we would publish.
-> **What it rules out** is concluding anything about *native* games from this test. If the result is
-> `delta = tok5` (no multiplier), the honest finding is "**fn 36 applies no multiplier in our table**",
-> and whether stock BRX does something different is a separate question needing a native-game capture.
+> **What it rules out** is concluding anything about *native* games from this test. The finding that
+> landed is therefore "**fn 36 lands floor(magnitude × 1.25) and fn 37 lands magnitude × 2 in our
+> table**"; whether stock BRX ships a different table is a separate question needing a native-game
+> capture.
 > **Record which gun was the victim** — 0.4 exists because a previous run did not.
 Put the victim on BLE and watch: `$HIR` **token 5** is the raw magnitude, and the `$HP` delta is the
 applied damage. Compare the two. That is the whole test, and it works because **our emitter is out of
@@ -170,7 +172,7 @@ the signal path**.
 
 | # | Goal | Do this | Pass |
 |---|---|---|---|
-| **0.1** | **Settle the DISPUTED fn 36/37 multipliers** — two of our own datasets disagree (x2 vs x1.0) and four hypotheses were tested and refuted. Until this is resolved, **every weapon mapped to fn 36/37 may be dealing base damage** and we must not publish x1.25/x2 | **Weapon: the Force Rifle** (`R23`, magnitude 9) or the **Sniper Rifle** — both sit on `$SIR,0,1,,36` in our table. Arm a **shooter** gun with it, arm the **victim** from our stack, spawn both on **opposing teams**, fire, and compare the victim's **`$HIR` token 5** (raw magnitude) against its applied **`$HP` delta**. See the note below on which `$SIR` table is in play | delta = 2 x tok5 ⇒ multiplier real, our emitter path is at fault · delta = tok5 ⇒ the x1.25/x2 claim is wrong |
+| ~~**0.1**~~ | ✅ **CLOSED 2026-09-02 — the fn 36/37 multipliers are REAL.** **fn 36 = floor(magnitude x 1.25) · fn 37 = magnitude x 2** | Measured: 16 trials, magnitudes **20 / 40 / 9 / 7**, **8 different `$SIR` row-tail shapes**, with an **fn 1 control on subtype 0 in every trial** (had to read exactly the magnitude or the trial was voided). 20→25/40 · 40→50/80 · 9→11/18 · 7→**8**/14. **The x1.25 TRUNCATES**: 7 x 1.25 = 8.75 lands as **8**, not 9 — this matters for hits-to-kill. **Negative:** the row tail does **not** gate the multiplier (`0,0,1,,` / `,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none / `0,0,1,60` all gave x1.25 and x2). Measured through **our** `$SIR` table, which is what we ship | **DONE.** Still unexplained: the 2026-08-27 24-cell x1.0 matrix (valid fn 1 control) is **outvoted, not explained** |
 | **0.2** | **Re-aim the emitter at the receiver** so loopback capture works | Point board B's LED at board A's VS1838B, **attenuated** (it saturates point-blank). Then `TX` any word and confirm a DECODE line | a decoded 25-bit word ⇒ we can verify transmitted words over the air, not just in software. Currently the two boards cannot see each other at all |
 | **0.3** | **Does the SENSOR STRUCK change the applied function?** The single cheapest test for the two results that would not reproduce (fn 36/37 ×2, and fn 24 damaging in an operator-held run). **Note the protocol framing is dead** — a 50-cell matrix showed the function classes do not vary across protocols 0/5/7/9/10, so the difference is not the protocol. **20/20 of my hits landed on `$HIR` tok1 = 4, the gun body** — this rig cannot produce a dome hit at all; a held gun is struck at a different angle | Fire the **same word** twice: once at the **headset dome** (expect `$HIR,0` or `,1`), once at the **gun body** (`$HIR,4`). Use fn 24 on protocol 7, magnitude 20 x2, and read the `$HP` delta | different pool delta between sensors ⇒ **both anomalies explained by one mechanism**, and the function map needs a sensor qualifier · identical ⇒ sensor is ruled out and the cause is elsewhere (different gun, or gun state) |
 | **0.4** | **Which gun did the non-reproducing runs use?** | Just tell me, or re-run fn 24 protocol 7 on a *different* gun | a different gun reproducing 70→30 ⇒ per-unit difference, and every cross-session comparison needs the gun recorded |
@@ -297,15 +299,16 @@ Kit a player in MC (or `python -m brx_mcp.mc.mock_node … ` then `pick secondar
 ---
 
 ## If you only have ONE hour
-**0.1 (disputed multipliers) → 0.3 (sensor) → 1.5 (status functions, incl. the stun shortlist) → 3.1+3.3 (grenade capture + replay).**
+**~~0.1~~ (CLOSED 2026-09-02) → 0.3 (sensor) → 1.5 (status functions, incl. the stun shortlist) → 3.1+3.3 (grenade capture + replay).**
 
-Why this order changed: **0.1 and 0.3 are cheap and they gate what we can publish.** Five shipped
-weapons map to fn 36/37 and may be dealing base damage; until 0.1 settles it we cannot print a
-hits-to-kill table. 0.3 is five minutes and may explain **two** unreproduced results at once. Then 1.5
-is the only way left to identify the status functions — the wire has given up everything it can.
+**0.1 is done:** the multipliers are real (fn 36 = floor(mag x 1.25), fn 37 = mag x 2), so the five
+weapons on fn 36/37 are **not** dealing base damage. 0.3 is still worth five minutes, but note its
+premise has shrunk: the only unreproduced result it can now explain is **fn 24 damaging in an
+operator-held run**, not the multipliers. Then 1.5 is the only way left to identify the status
+functions — the wire has given up everything it can.
 
 *(Previously this list led with the Sentinel EMP capture and melee. Both still matter — 1.1 melee and
-`bench-next-30.md` §1 — but neither blocks a published number the way 0.1 does.)*
+`bench-next-30.md` §1.)*
 
 ## Do NOT re-run (already answered overnight)
 B13 · B4 emit proof · U7 · P16 · B5 · the `$SIR` function map (both polarities, and it does **not**
@@ -313,10 +316,10 @@ vary by protocol — 50 cells) · **the crit FORMULA** (`magnitude × (1 + $GSET
 levels) · `$GSET` t1 = enforced friendly fire · dead guns accept no
 IR · `$HIR` tok5 = raw magnitude · AP bypasses shields · heals clamp · `$GREN` emits a second IR protocol · **fn 23 = AUDIO SUPPRESSION, not a stun** (trigger pull disproved the disable) · the `$ALCD` **token 2 audio meter**'s ~6–8 s recovery and the fact `$SPAWN` clears it / `$AMMO` does not — *those are meter facts, not stun facts* · **K3 the death nova** (proto 10, MAG 125, credits the corpse).
 
-> ⚠️ **EXCEPTION — do NOT read the above as covering the fn 36/37 multipliers.** An earlier version of
-> this list said "crit ×1.5 and its multiplicative stacking with fn 36/37" was settled. **It is not.**
-> ×1.5 was only ever the shipped `t7=50` case, and the ×1.25/×2 multipliers are **DISPUTED** — they did
-> not reproduce in 24 controlled cells. That is exactly **item 0.1**, which is the one thing in this
-> plan that most needs doing.
+> ✅ **The fn 36/37 multipliers are now settled too (2026-09-02, item 0.1):** fn 36 = floor(magnitude
+> × 1.25), fn 37 = magnitude × 2, the ×1.25 truncating. One caveat from the old exception note still
+> stands: **×1.5 was only ever the shipped `t7=50` crit case**, not a constant. *Retracted:* the
+> "DISPUTED, did not reproduce in 24 controlled cells" warning — that matrix is outvoted, though still
+> unexplained.
 
 *(P4 is only half closed: `$AS`/`$UP` are proven **silent** — no reply on v4.32 — but their **effect** was never probed. If you have a spare minute it belongs in Group 1.)*

@@ -5,9 +5,11 @@ says both land x1.0. Four explanatory hypotheses were tested and refuted. Until 
 cannot publish an htk/ttk table, because five shipped weapons key to those rows.
 
 THE DESIGN. One arming, three $SIR rows on the SAME protocol, differing only in subtype:
-    $SIR,0,0,,1   subtype 0 -> fn 1   PLAIN DAMAGE = the CONTROL, must read exactly the magnitude
-    $SIR,0,1,,36  subtype 1 -> fn 36  the x1.25 claim
-    $SIR,0,3,,37  subtype 3 -> fn 37  the x2 claim
+    subtype 0 -> fn 1    PLAIN DAMAGE = the CONTROL, must read exactly the magnitude
+    subtype 1 -> fn 36   the x1.25 claim
+    subtype 3 -> fn 37   the x2 claim
+(the rows themselves come from bench_common.SIRS, so this test arms exactly what every other bench
+tool arms -- see test_bench_common's no-drift rule)
 Every trial fires the identical word except for the 2 subtype bits, from a full respawn, and reads
 the $HP delta. If the control is not exactly the magnitude the trial is void -- that is the whole
 point of carrying it.
@@ -24,13 +26,14 @@ import time
 
 import serial
 
+import bench_common as B
 from brx_mcp.irbridge import payload_parity
 
-AR = ("$WEAP,0,,100,0,0,9,0,,,,,,,,190,850,32,384,1400,0,0,100,100,,0,,,"
-      "R01,,,,D04,D03,D02,D18,,,,,32,192,75,*")
-PSET = ("$PSET,40,0,45,70,150,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,"
-        "H06,H55,H13,H21,H02,U15,W71,A10,*")
 VICTIM_TEAM, ENEMY_TEAM = 1, 2
+PID = 40
+# The three rows this test turns on: plain damage as the CONTROL, then the two multiplier rows,
+# taken from the SHARED table so this test cannot drift away from what every other bench tool arms.
+SIRS = [B.SIR_PLAIN, B.SIRS[1], B.SIRS[2]]
 CASES = [("fn 1  CONTROL", 0, 1.0), ("fn 36 (x1.25?)", 1, 1.25), ("fn 37 (x2?)", 3, 2.0)]
 
 
@@ -92,9 +95,8 @@ async def main():
     print("    control = fn 1 on subtype 0; it MUST read exactly the magnitude or the trial is void\n")
     print("    %-16s %-7s %-9s %-8s %s" % ("case", "sub", "delta", "ratio", "verdict"))
     try:
-        for fr in ["$CLEAR,*", "$START,*", "$VOL,30,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET, AR,
-                   "$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*",
-                   f"$TID,{VICTIM_TEAM},*", "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]:
+        for fr in (B.arming_frames(PID, VICTIM_TEAM, sirs=SIRS)
+                   + [B.AR, "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]):
             await snd(fr)
         await asyncio.sleep(0.8)
 

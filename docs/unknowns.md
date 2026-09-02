@@ -165,7 +165,7 @@ that file is already the right home.** Read it before a field day.
 | G · decisions | 3 |
 | H · field/scale proofs | ~24 (see verification-checklist) |
 
-| **Q14** | **fn 36/37 multipliers DISPUTED — blocks hits-to-kill for 5 weapons** | the only open item that gates a published number. Settle with a real BRX weapon, our emitter out of the loop (`bench-tomorrow.md` 0.1) |
+| ~~**Q14**~~ | ~~fn 36/37 multipliers DISPUTED~~ ✅ **CLOSED 2026-09-02: the multipliers are REAL — fn 36 = floor(magnitude × 1.25), fn 37 = magnitude × 2** (16 trials, magnitudes 20/40/9/7, 8 `$SIR` row-tail shapes, fn 1 control every trial; ×1.25 truncates, 7 → 8). The 2026-08-27 24-cell ×1.0 matrix is **outvoted, not explained** | what still gates a published hits-to-kill is that this is measured through **our** `$SIR` table; whether the app pushes the same table every game is untested |
 | **Q13** | **Friendly fire is invisible on the wire** — a team-blocked shot emits no `$HIR` at all | a DECISION, not a test: no teamkill feedback can be built from gun telemetry while `$GSET` t1=0 |
 | **B20** | **Is `$LCD` token 3 the shield?** | one-line check; gates whether a mid-life client can learn the shield from anything but `$HP` |
 | **R2** | **Add a `DUTY` command to the IR emitter** | would make the sensor and range tests answerable unattended |

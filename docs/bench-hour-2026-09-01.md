@@ -129,11 +129,18 @@ that error already cost an afternoon.
 
 ---
 
-# 3 · 0.1 — settle the DISPUTED fn 36/37 multipliers · 15 min · two guns + trigger
+# 3 · 0.1 — ✅ SETTLED 2026-09-02: the fn 36/37 multipliers are REAL
 
-**Why:** it gates **every published weapon number** — `weapons.json`, the ARSENAL and KIT screens, the
-damage calculator, and the W2/W3 work the other session is doing right now. Two of our own datasets
-disagree (×2 vs ×1.0) and four hypotheses were tested and refuted.
+**Result: fn 36 = floor(magnitude × 1.25) · fn 37 = magnitude × 2.** 16 trials, magnitudes
+20/40/9/7, 8 different `$SIR` row-tail shapes, an **fn 1 control on subtype 0 in every trial** that had
+to read the magnitude exactly or the trial was voided. 20 → 25/40 · 40 → 50/80 · 9 → 11/18 ·
+7 → **8**/14. **The ×1.25 truncates**: 7 × 1.25 = 8.75 lands as 8, not 9. **Negative result:** the row
+tail does not gate the multiplier (`0,0,1,,` / `,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none /
+`0,0,1,60` all gave ×1.25 and ×2). *Still unexplained:* the 2026-08-27 24-cell ×1.0 matrix, which had a
+valid fn 1 control, is **outvoted, not explained**.
+
+**Why it mattered:** it gates **every published weapon number** — `weapons.json`, the ARSENAL and KIT
+screens, the damage calculator, and the W2/W3 work. The plan as written is kept below.
 
 **Weapon:** the **Force Rifle** (`R23`, magnitude 9) or the **Sniper Rifle** — both sit on
 `$SIR,0,1,,36` in our table.

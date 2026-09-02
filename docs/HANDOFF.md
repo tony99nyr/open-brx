@@ -98,8 +98,11 @@ lore, indexed by symptom; several of those quirks each cost a whole session.
 >
 > **3. The crit formula and the damage multipliers changed.** `crit = magnitude × (1 + $GSET t7/100)`.
 > It is a **per-game knob**, not a fixed ×1.5 — that value is only the shipped t7=50. And the
-> **fn 36 ×1.25 / fn 37 ×2 multipliers are DISPUTED**: they did not reproduce in 24 controlled cells.
-> **Do not tune weapons on them** until bench item 0.1 settles it.
+> **fn 36 / fn 37 multipliers are ✅ CONFIRMED (2026-09-02, bench item 0.1 CLOSED): fn 36 =
+> floor(magnitude × 1.25), fn 37 = magnitude × 2** — 16 trials, magnitudes 20/40/9/7, 8 `$SIR` row-tail
+> shapes, an fn 1 control in every trial; the ×1.25 **truncates** (7 → 8). Tune weapons on them.
+> *Retracted:* the "DISPUTED, did not reproduce in 24 controlled cells" reading. That 24-cell matrix is
+> **outvoted, not explained** — we still do not know why it read ×1.0.
 >
 > Also since: `$GSET` t1 = friendly fire (enforced) · `$PSET` t5 = shield **capacity**, spawn shield is
 > always 0 · pools are **not 8-bit** (armour and HP exact to 1000; shield not measured that far) ·
@@ -141,7 +144,7 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 >   damage land as real $HIR) — the Utility Box (B4) emit side is PROVEN. Emitter has standalone AUTO-TX.
 > - **$SIR is a programmable 16-protocol × 4-subtype effects matrix (64 cells, all writable over BLE)**
 >   with a complete two-sided function map: damage / armor-piercing (fn 2,6) / fn 36 and fn 37 multipliers
->   (**×1.25 / ×2 — DISPUTED, see the banner above**) / heal variants / add-armor / add-shield / **dual-polarity heal-ally+damage-enemy**
+>   (**floor(mag ×1.25) / mag ×2 — ✅ CONFIRMED 2026-09-02, see the banner above**) / heal variants / add-armor / add-shield / **dual-polarity heal-ally+damage-enemy**
 >   (fn 16,17,20…) / status-only ids. The IR damage field is a **magnitude** whose meaning the row's
 >   function sets. **B = the DamageType enum**; with the 2-bit subtype it forms the `$SIR` composite key (16 x 4 = 64 cells, all writable by us). *(An earlier "~10 free slots is a real design constraint" framing is retracted — see `brx-ir-protocol.md`.)*
 > - **P16 CLOSED — shields DO activate** (IR event, never a BLE pool value; drain shields→armor→HP).
@@ -156,7 +159,7 @@ ledger), then the newest `docs/experiment-log.md` entries. Protocol ground truth
 
 > **⚡ LATEST (2026-08-26) — the protocol map is essentially DONE and the arsenal is real.**
 > Bench-proven on live taggers, all committed with evidence + instruments:
-> - **$WEAP**: t5=the RAW magnitude (applied = magnitude x the victim's $SIR-function multiplier x (1 + $GSET t7/100) if crit; the fn 36/37 multipliers are DISPUTED) · t14=fire interval · t15=850 constant (never write) ·
+> - **$WEAP**: t5=the RAW magnitude (applied = magnitude x the victim's $SIR-function multiplier x (1 + $GSET t7/100) if crit; fn 36 = floor(mag x 1.25), fn 37 = mag x 2, confirmed 2026-09-02) · t14=fire interval · t15=850 constant (never write) ·
 >   **t20=FIRE MODE** (0 auto / 7 single-bolt / 9 burst / 2·3·14 charge variants / 13 melee — proven
 >   by one-field flip) · t23=burst cycle · **overheat = t24+t35 GATED by t37/t38** (transplantable).
 > - **$HIR fully decoded**: tok1 sensor (0=headset FRONT dome, 1=BACK dome, 4=gun — shield-isolated),

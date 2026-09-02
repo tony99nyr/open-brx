@@ -508,26 +508,35 @@ One BLE write per pool change per player, plus one on revert. At 10 players in a
 real write rate on a host already driving respawns and announcer audio — worth measuring before it goes
 into a mode.
 
-## 🔴 Q14 — the fn 36/37 multiplier dispute BLOCKS a published number (2026-08-29)
+## ✅ Q14 — the fn 36/37 multipliers are REAL (CLOSED 2026-09-02)
 
-**This is the highest-value open item and it previously had no id**, existing only as an aside inside
-the P10 row and as an unnumbered decision. Filing it so it can be prioritised.
+**fn 36 = floor(magnitude × 1.25) · fn 37 = magnitude × 2.**
 
-**What is blocked:** `docs/manual/03-gameplay.md` currently **withholds hits-to-kill** for the **Burst
-Rifle, Force Rifle, Bolt Rifle, AMR and Energy Launcher** because their damage depends on whether
-fn 36 (×1.25) and fn 37 (×2) are real. Five shipped weapons cannot have a published TTK until this
-resolves.
+**Measured 2026-09-02:** 16 trials, 4 magnitudes, 8 different `$SIR` row-tail shapes, with an **fn 1
+control on subtype 0 in every trial** that had to read exactly the magnitude or the trial was voided.
 
-**The dispute:** two of our own datasets disagree. An earlier run measured fn 37 as ×2, 3/3, and it
-stacked correctly with crit. A later 24-cell controlled matrix read **×1.0** for both, with a clean
-fn 1 control in every cell. Four hypotheses (subtype, table arming, emitter encoding, arithmetic) were
-tested and **refuted**. The emitter is **exonerated** by a structural argument: it is function-agnostic,
-and fn 1 read 20 while fn 37 read 40 in the same session, so the gun did the doubling.
+| magnitude | control fn 1 | fn 36 | fn 37 |
+|---|---|---|---|
+| 20 | 20 | 25 | 40 |
+| 40 | 40 | 50 | 80 |
+| 9 | 9 | 11 | 18 |
+| 7 | 7 | 8 | 14 |
 
-**Settle it with stock hardware, our emitter out of the loop** (`bench-tomorrow.md` item 0.1): fire a
-real BRX weapon that uses fn 36/37 at a victim and compare `$HIR` token 5 (the raw magnitude) against
-the applied `$HP` delta. delta = 2 × tok5 ⇒ the multiplier is real. delta = tok5 ⇒ the ×1.25/×2 claim
-is wrong and five weapons are dealing base damage in every shipped game.
+**The ×1.25 TRUNCATES:** 7 × 1.25 = 8.75 landed as **8**, not 9. That matters for hits-to-kill.
+**Negative result:** the row's trailing tokens do **not** gate the multiplier — tails `0,0,1,,` /
+`,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none / `0,0,1,60` all produced ×1.25 and ×2.
+
+**Still unexplained, recorded not buried:** the 2026-08-27 24-cell controlled matrix read **×1.0 in
+every multiplier cell** with a clean fn 1 control. It is **outvoted, not explained** — we do not know
+why it read ×1.0. The 2026-08-27 emitter exoneration still stands (the emitter is function-agnostic).
+
+**Scope:** measured through **our** `$SIR` table, which is the configuration we ship; the victim's row
+picks the function.
+
+**What is still blocked:** `docs/manual/03-gameplay.md` still withholds hits-to-kill for the **Burst
+Rifle, Force Rifle, Bolt Rifle, AMR and Energy Launcher** — not because of the multiplier any more, but
+because whether the Callsign app pushes this same `$SIR` table in every game is not established, and
+the Energy Launcher's fn 24 lands no damage at all.
 
 ## 🟠 Q13 — friendly fire is INVISIBLE on the wire; MC cannot log or score it (2026-08-27)
 
@@ -631,7 +640,7 @@ Full write-up: `docs/spec/node.md` §10-Q12.
 | **1** (FF on) | 4, 3 | 3, 3 | 3, 5 | 5, 3 |
 
 FF off ⇒ team identity is enforced in both directions (damage enemies only, heal allies only). FF on ⇒ team is ignored entirely. The earlier "same-team damage lands under both values" reading came from a single un-repeated probe; a controlled matrix does not reproduce it. **MC keeping `friendly_kills` separately is still right** — but "FF off" is now *also* enforced on the gun, so a mode can rely on it. See exp-log + `brx-protocol.md` `$TID` row. |
-| P10 | **IR damage value in the hit payload** | ⚠️ **PARTLY OVERTURNED 2026-08-26 (night)** — **tok5 is the RAW MAGNITUDE from the IR word, NOT the applied damage.** Measured with the emitter at magnitude 20: fn 1 → tok5 20 / pool −20 · ⚠️ **DISPUTED — see brx-protocol.md §5** fn 36 → tok5 20 / pool −25** · **fn 37 → tok5 20 / pool −40**. The original reading held only because every weapon tested sat on a `$SIR` **fn-1** row, where raw and applied coincide. ⇒ **tok5 is unusable as a damage source wherever a multiplier row is in play**; derive damage from the `$HP` delta instead (our node path already does). Original text: | `$HIR` **token 5 = the applied damage, EXACT** across 4 weapons (AR 9, Shotgun 45, Sniper 80, Rocket 115) — it equals the `$WEAP` `t5` field, so **damage-weighted scoring and heavy-weapon balance are BLE-native** (no IR-payload bit-decode needed). **Token 2 = the shooter's IR protocol** (0 standard, 10 on the rocket) — the explosive/tag-type signal Jay described; **token 7 = weapon subtype** (sniper 1). **Armor model pinned:** armor absorbs 1:1, overflow spills to HP, **no per-hit cap** (feeds the engine/sim — B15). See `brx-protocol.md` §7r. |
+| P10 | **IR damage value in the hit payload** | ⚠️ **PARTLY OVERTURNED 2026-08-26 (night)** — **tok5 is the RAW MAGNITUDE from the IR word, NOT the applied damage.** Measured with the emitter at magnitude 20: fn 1 → tok5 20 / pool −20 · ✅ **CONFIRMED 2026-09-02 — see brx-protocol.md §5** fn 36 → tok5 20 / pool −25** · **fn 37 → tok5 20 / pool −40**. The original reading held only because every weapon tested sat on a `$SIR` **fn-1** row, where raw and applied coincide. ⇒ **tok5 is unusable as a damage source wherever a multiplier row is in play**; derive damage from the `$HP` delta instead (our node path already does). Original text: | `$HIR` **token 5 = the applied damage, EXACT** across 4 weapons (AR 9, Shotgun 45, Sniper 80, Rocket 115) — it equals the `$WEAP` `t5` field, so **damage-weighted scoring and heavy-weapon balance are BLE-native** (no IR-payload bit-decode needed). **Token 2 = the shooter's IR protocol** (0 standard, 10 on the rocket) — the explosive/tag-type signal Jay described; **token 7 = weapon subtype** (sniper 1). **Armor model pinned:** armor absorbs 1:1, overflow spills to HP, **no per-hit cap** (feeds the engine/sim — B15). See `brx-protocol.md` §7r. |
 | P11 | Health-write semantics | ✅ RESOLVED | exp-log #33: **`$LIFE` and `$BUMP` are both ADDITIVE grants, clamped at max** (send the delta to add; neither is an absolute-set). **NO native regen** — armor held at 18 through 30 s idle. ⇒ shields/overshield/medic/Syphon are buildable via **host-driven** writes (heal on event; Halo-shields = host timer refill). Writes **don't self-emit `$HP`** — value shows on next hit/HUD refresh. |
 | P16 | **Do shields activate?** | ✅ **CLOSED 2026-08-26** — **YES, via an IR `$SIR` function-11 event**, never a BLE pool value: shield 0→50→70 on our emitter, and a later hit drains **shield first** (order shields→armor→HP). `$PSET` shield=70 alone does nothing, which is why G-2 saw 0. Original note: | The `$HP` **shield** field stayed **0** all through G-2 despite `$PSET` shield=70/99. Shields may need explicit **activation** (APK `ActivateShield` ability / a `$SIR` or mode setting), not just a pool value — so armor+HP are the working health pools today. Find how to turn shields on (needed for overshield / energy-shield modes). |
 | P12 | **`$PB*` playbook enum tables + re-test on v4.32** | ❎ **NEGATIVE on v4.32 (2026-08-27)** — all 12 `$PB*` shapes plus `$INIT` are **silent**: no reply, no state change. The v4.30 FB sequence does not respond on our firmware, so the enums cannot be mapped this way. Enum values would have to come from P8 (the HTTPS capture). Original note: | FB captured the full `$PB*` remote-start sequence on **v4.30** with enum values (`$PBGAME 0=FFA`, `$PBWEAP 0=M4 AUTO`, `$PBPERK 2=Body Armor`, `$PBLIVES 2=5`, `$PBTIME 5=Inf`; `$INIT` blocks start) — `brx-protocol.md` §7j. Map the **full enum tables** for each `$PB*` and confirm the sequence on our **v4.32** (behaviour is version-sensitive). |

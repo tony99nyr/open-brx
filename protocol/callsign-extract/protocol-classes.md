@@ -279,7 +279,7 @@ them as two independent knobs.** Likewise `t39 == t16` in every frame (clip star
 weapon's **raw magnitude** — the number it puts in the IR word. Exp-2 read `$HIR` token 5 == `t5` on four
 weapons (AR 9, Shotgun 45, Sniper 80, Rocket 115), which held because all four key to `$SIR` **fn-1** rows.
 In general the **applied** damage = `magnitude × the victim's $SIR-function multiplier × (1.5 if crit)`
-(fn 36 = ×1.25, fn 37 = ×2) — so tok5 == applied only on fn-1 rows. The AR really emits **9**; the 2-frame
+(fn 36 = **floor(magnitude × 1.25)**, fn 37 = **magnitude × 2**, both confirmed 2026-09-02) — so tok5 == applied only on fn-1 rows. The AR really emits **9**; the 2-frame
 table's **24** was the stale manual M-4 anchor. (Weapon stats are server-fetched — a weapon's `t5` is
 whatever the app last sent.)
 

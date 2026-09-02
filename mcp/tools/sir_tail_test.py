@@ -18,13 +18,18 @@ import time
 
 import serial
 
+import bench_common as B
 from brx_mcp.irbridge import payload_parity
 
-AR = ("$WEAP,0,,100,0,0,9,0,,,,,,,,190,850,32,384,1400,0,0,100,100,,0,,,"
-      "R01,,,,D04,D03,D02,D18,,,,,32,192,75,*")
-PSET = ("$PSET,40,0,45,70,150,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,"
-        "H06,H55,H13,H21,H02,U15,W71,A10,*")
 VICTIM_TEAM, ENEMY_TEAM = 1, 2
+PID = 40
+# Built from parts, not pasted: this test's whole purpose is to VARY the row tail, so it cannot use
+# the shared literal rows -- but it must not re-declare them either (bench_common's no-drift rule).
+PROTO, SUB36, SUB37, FN36, FN37 = 0, 1, 3, 36, 37
+
+
+def sir_row(sub: int, fn: int, tail: str) -> str:
+    return f"$SIR,{PROTO},{sub},,{fn}," + (tail + "*" if tail else "*")
 
 # tail = everything after the function id. The shipped table uses "0,0,1,," (see _SIR_TABLE).
 TAILS = [("shipped   0,0,1,,", "0,0,1,,"),
@@ -68,11 +73,10 @@ async def main():
         await asyncio.sleep(s)
 
     async def arm(tail):
-        f36 = f"$SIR,0,1,,36,{tail}*" if tail else "$SIR,0,1,,36,*"
-        f37 = f"$SIR,0,3,,37,{tail}*" if tail else "$SIR,0,3,,37,*"
-        for fr in ["$CLEAR,*", "$START,*", "$VOL,30,*", "$GSET,0,0,1,0,1,0,50,1,*", PSET, AR,
-                   "$SIR,0,0,,1,0,0,1,,*", f36, f37,
-                   f"$TID,{VICTIM_TEAM},*", "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]:
+        f36 = sir_row(SUB36, FN36, tail)
+        f37 = sir_row(SUB37, FN37, tail)
+        for fr in (B.arming_frames(PID, VICTIM_TEAM, sirs=[B.SIR_PLAIN, f36, f37])
+                   + [B.AR, "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]):
             await snd(fr)
         await asyncio.sleep(0.7)
 

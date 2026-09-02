@@ -41,8 +41,8 @@
 </dd></dl><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (clean negatives)</p></section>
 <section class="blk blk-code" data-type="code"><pre><code class="language-text"># The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…): plain damage
-$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (×1.25 DISPUTED, see below)
-$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (×2 DISPUTED, see below)
+$SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (floor of magnitude ×1.25)
+$SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (magnitude ×2)
 $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
@@ -54,7 +54,7 @@ $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
 $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)
 </code></pre>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (shipped-table consequence)</p></section>
-<section class="blk blk-data-table" data-type="data-table"><h2 id="function-map">Function map</h2><p class="lead">measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, <strong>at the gun-body sensor (<code>$HIR</code> tok1 = 4) from ~40 cm</strong>. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a <strong>headset-dome</strong> hit behaves the same is <strong>untested</strong>.</p><div class="dt" data-rows="12"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">12 rows</span></div><div class="table-wrap"><table>
+<section class="blk blk-data-table" data-type="data-table"><h2 id="function-map">Function map</h2><p class="lead">measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, <strong>at the gun-body sensor (<code>$HIR</code> tok1 = 4) from ~40 cm</strong>. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a <strong>headset-dome</strong> hit behaves the same is <strong>untested</strong>. The two multiplier functions, 36 and 37, were measured again on 2026-09-02 across magnitudes 20, 40, 9 and 7 and across 8 different <code>$SIR</code> row-tail shapes, 16 trials, each with an fn 1 control that had to read the magnitude exactly. The row tail does not change the multiplier.</p><div class="dt" data-rows="12"><div class="dt-bar"><input type="search" placeholder="Filter this table…" aria-label="Filter table"><span class="dt-count" aria-live="polite">12 rows</span></div><div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Class</th>
@@ -79,18 +79,18 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
-<td>×1.25 damage ⚠️</td>
+<td><strong>×1.25 damage (truncated)</strong></td>
 <td>36</td>
-<td>magnitude 20 lands as 25 in one dataset, <strong>as 20 in another</strong></td>
+<td>magnitude 20 lands as <strong>25</strong>, 40 as <strong>50</strong>, 9 as <strong>11</strong>, 7 as <strong>8</strong>. The result is the <strong>floor</strong>: 7 × 1.25 = 8.75 lands as 8, not 9</td>
 <td>enemy only</td>
-<td>⚠️ <strong>DISPUTED</strong></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
-<td>×2 damage ⚠️</td>
+<td><strong>×2 damage</strong></td>
 <td>37</td>
-<td>magnitude 20 lands as 40 in one dataset, <strong>as 20 in another</strong></td>
+<td>magnitude 20 lands as <strong>40</strong>, 40 as <strong>80</strong>, 9 as <strong>18</strong>, 7 as <strong>14</strong></td>
 <td>enemy only</td>
-<td>⚠️ <strong>DISPUTED</strong></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
 <td>Add HP, overflow → armor</td>
@@ -149,7 +149,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> 0/39/40 re-measured 2026-08-27; 41–45 not re-tested</td>
 </tr>
 </tbody></table></div>
-</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 complete two-sided $SIR map; 2026-08-27 fn 23)</p></section>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (2026-08-26 complete two-sided $SIR map; 2026-08-27 fn 23; 2026-09-02 fn 36/37 multipliers)</p></section>
 <section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="support-functions-are-team-gated-in-firmware"><strong class="co-title">Support functions are team-gated in firmware.</strong><p>With <code>$GSET</code> friendlyFire = 0, heals/armor/shield grants register <strong>only from a same-team source</strong>, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces &quot;allies only&quot; with zero host logic.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §5; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (dual-polarity, FF table)</p></aside></section>
 <section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="DEV-07" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch &quot;no row → dropped silently&quot; / &quot;row found&quot; → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×(1 + $GSET t7/100) if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches."><span class="ph-id">DEV-07</span><span class="ph-kind">diagram pending</span></div><figcaption>Damage pipeline: IR word (B,U,D,C) → victim <code>$SIR[B,U]</code> → function multiplier → ×(1 + <code>$GSET</code> t7/100) if crit → drain shields → armor → HP → emit <code>$HIR</code> + <code>$HP</code>.</figcaption></figure><p class="src"><span>Source:</span> below</p></section>
 <section class="blk blk-stat-row" data-type="stat-row"><ul class="stats"><li><strong>applied = magnitude × fn multiplier × (1 + <code>$GSET</code> t7/100 if crit)</strong><span>: the crit modifier is a <strong>per-game tunable</strong>, not a fixed ×1.5: t7=0 disables crits, t7=100 doubles. ×1.5 is simply the shipped t7=50. Exact at seven levels, 3/3 each. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>Drain order: shields → armor → HP.</strong><span>Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper&#39;s 80 split exactly 70/10). <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>Heals clamp</strong><span>at the pool max. Magnitude 200 is a fill, not a stack. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>No function is a damage-over-time.</strong><span>18 s watched after each status hit: no ticks. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>Dead guns accept no IR at all.</strong><span><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li></ul><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7r addendum; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)</p></section>

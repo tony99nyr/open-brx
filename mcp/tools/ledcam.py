@@ -105,9 +105,28 @@ def diff(a: str, b: str, min_px: int = 40) -> None:
         print(f"     -> pulse args:  {x} {y} {w} {h}")
 
 
-# The LED cores BLOW OUT to white on the phone camera (auto-exposure), so the core carries no
-# colour. The hue lives in the HALO around it -- sample the mid-brightness band, never the peak.
-_HALO_LO, _HALO_HI = 45, 88
+# The LED cores BLOW OUT to white on the phone camera (auto-exposure), so the core carries no colour
+# at all -- a box tight on the core reads "white" for every index. The hue lives in the DIM FRINGE.
+# Calibrated 2026-09-02 by sweeping ROI size x percentile band against a known $GLED,0,3,1 (red,
+# green, blue): a GENEROUS box (~52px, wider than the LED) sampled at a LOW band (3rd-25th percentile)
+# separates them cleanly -- R1.00/G0.24/B0.14, R0.36/G1.00/B0.81, R0.03/G0.54/B1.00. Tight boxes and
+# mid bands both collapse to white. The box overlapping its neighbours is fine: the dim fringe is
+# dominated by the nearest emitter.
+_HALO_LO, _HALO_HI = 1, 12
+
+
+def _name(nr: float, ng: float, nb: float) -> str:
+    """Name a colour from channel ratios normalised to the strongest channel."""
+    if min(nr, ng, nb) > 0.80:
+        return "white"
+    i = int(np.argmax([nr, ng, nb]))
+    if i == 0:
+        return "yellow" if ng > 0.55 else ("purple" if nb > 0.55 else "red")
+    if i == 2:
+        return "purple" if nr > 0.50 else ("teal" if ng > 0.82 else "blue")
+    # 0.82, not 0.72: the gun's three LEDs sit ~25 px apart and bleed into each other, so a GREEN
+    # with a lit BLUE neighbour measures B/G ~ 0.73. A real teal reads ~1.0. Measured 2026-09-02.
+    return "teal" if nb > 0.82 else ("yellow" if nr > 0.60 else "green")
 
 
 def _classify(patch: np.ndarray) -> tuple[str, tuple[float, float, float]]:
@@ -119,18 +138,24 @@ def _classify(patch: np.ndarray) -> tuple[str, tuple[float, float, float]]:
     if len(halo) == 0:
         halo = patch
     r, g, b = halo.mean(0)
+    if r + g + b < 14:
+        # The fringe sample is black. Two very different cases, and they must not be confused:
+        #   - nothing is lit here                              -> genuinely dark
+        #   - the emitter is LARGE (the headset modules are     -> the low band sampled the dark
+        #     much bigger than the gun's pinpoint LEDs), so        surround while the module itself
+        #     most of the box is lit and the dim 1st-12th          is plainly lit
+        #     percentile lands on the surround
+        # Distinguish on the WHOLE box: if it is meaningfully brighter than the reference, it is lit
+        # and we classify on the mean instead of the fringe.
+        whole = patch.mean(0)
+        if whole.sum() < 30:
+            return "dark", (r, g, b)
+        r, g, b = whole
     mx = max(r, g, b, 1.0)
     n = (r / mx, g / mx, b / mx)
     if min(n) > 0.86:                       # all three channels close => white, not a hue
         return "white", (r, g, b)
-    name = {0: "red", 1: "green", 2: "blue"}[int(np.argmax([r, g, b]))]
-    if name == "red" and n[1] > 0.75:
-        name = "yellow"
-    if name == "blue" and n[0] > 0.72:
-        name = "purple"
-    if name == "green" and n[2] > 0.80:
-        name = "teal"
-    return name, (r, g, b)
+    return _name(*n), (r, g, b)
 
 
 def probe(rois_json: str, ref: str | None = None) -> None:
@@ -191,10 +216,12 @@ def pulse(video: str, x: str, y: str, w: str, h: str) -> None:
     print(f"FLASH/CYCLE COUNT in window: {len(up)}")
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
+def main(argv: list[str]) -> None:
+    """CLI dispatch. In a function, not at module scope, so the module imports cleanly (and so a
+    typo here cannot NameError a bench tool before it ever opens a link -- test_bench_common)."""
+    if len(argv) < 2:
         raise SystemExit(__doc__)
-    cmd, args = sys.argv[1], sys.argv[2:]
+    cmd, args = argv[1], argv[2:]
     fn = {"shot": shot, "diff": diff, "crop": crop, "record": record, "pulse": pulse,
           "probe": probe}.get(cmd)
     if fn is None:
@@ -204,3 +231,7 @@ if __name__ == "__main__":
         fn(args[0], args[1], int(args[i + 1]))
     else:
         fn(*args)
+
+
+if __name__ == "__main__":
+    main(sys.argv)
