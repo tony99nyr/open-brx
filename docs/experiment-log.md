@@ -2825,6 +2825,59 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 (later still) — `$GLED` token 4 is an APPLY GATE, not an effect enum
+
+Measured against a BLACK background (camera exposure dropped until only the LEDs are visible), gun
+armed but not spawned, three trials per value, with the setup state VERIFIED before each trial.
+
+## The test that finally separated the cases
+
+From a DARK start, "does nothing" and "turns off" are indistinguishable, which is why four earlier
+sweeps could only ever split token 4 into two groups and then disagreed about which group was which.
+The discriminator is to start from a KNOWN LIT colour and send a DIFFERENT one:
+
+  goes RED    -> the frame APPLIED its colour tokens
+  stays GREEN -> NO-OP: colour tokens ignored, previous state kept
+  goes DARK   -> the frame turned the LEDs OFF
+
+| t4 | outcome (3 trials, verified green pre-state) |
+|---|---|
+| 0 | **APPLY** |
+| 1, 2, 3, 4 | **NO-OP** — keeps the previous colour |
+| 5 | inconsistent (mostly applied, one DARK) — see below |
+| 6, 7, 8 | **APPLY** |
+
+## What this reframes
+
+**There may be no dedicated "off" value at all.** `$GLED,,,,5,,,*` blanks because its colour tokens
+are **EMPTY** and it applies them, not because 5 means off. The same explains the earlier A/B in which
+`$GLED,,,,6,,,*` and `$GLED,,,,7,,,*` also blanked a lit gun while `$GLED,,,,3,,,*` did not: 6 and 7
+apply (empty -> dark), and 3 is a NO-OP so the red it was showing simply stayed.
+
+Every contradictory reading of this token today is explained by one thing: **a NO-OP leaves the
+previous row's colour lit.** A sweep that does not blank between rows therefore reports "everything
+is lit", and a sweep that does blank reports "nothing is lit" — from the same hardware.
+
+**The shipped frame was always right, and still is.** `gameconfig._led_frames` sends Callsign's
+`$GLED,,,,5,,,*` and it does blank the gun. Only our EXPLANATION of why was wrong.
+
+## Still open on token 4
+
+- **t4 = 5 is not stable** across trials (RED, RED, DARK). The candidate explanation is that it
+  applies with some animation, so a still frame catches an arbitrary phase — the same trap that
+  wrecked the first effect sweep. Not yet tested with video at the new (much higher SNR) exposure.
+- **t4 = 9, 10** were still running when this was written.
+- **No t4 value animates on the earlier video pass**, and that null is trustworthy because the
+  positive control (a spawned gun's native pulse) gives swing ~494 against 32-70 for anything static.
+  But that pass predates the black-background exposure, so t4=5 deserves a re-check.
+
+## Method note worth keeping
+
+The run before this one produced four VOID rows (`pre=DARK`) and still printed verdicts for them.
+Verifying the setup state before measuring, and retrying it, is not optional on this rig: the gun
+does not always accept a frame, and a trial that starts from the wrong state measures nothing while
+looking exactly like a result.
+
 ### 2026-09-02 (later) — ⭐ THE FULL LED PALETTE, MEASURED: indices 7 and 8 finally read off a gun
 
 Camera rig at **2x zoom** (the change that made it work), gun **armed but NOT spawned**, every reading
