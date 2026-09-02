@@ -6,6 +6,22 @@ not synchronised (2026-08-30 cost an afternoon to exactly that). A camera makes 
 MEASURABLE: colours become RGB, "slow pulse" becomes a period in seconds, "fast flash" becomes a
 count. Answers stop depending on who was looking.
 
+⭐ SET THE CAMERA EXPOSURE DOWN until the room goes BLACK and only the LEDs are visible.
+   This is the single biggest quality win found on 2026-09-02, and it removes an entire class of bug
+   rather than mitigating it. On a black background:
+     - no reference frame is needed at all (absolute readings work), so stale/blanked-wrong
+       references, per-row re-blanking and exposure drift between reference and reading all stop
+       mattering -- every one of those produced a confidently wrong table earlier that day;
+     - there is no ambient to drift, so the room's cycling RGB lighting is irrelevant;
+     - LED cores stop blowing out, so the hue is in the pixels instead of only in the halo.
+   Verified: red/green/blue read 1.00/0.29/0.34, 0.25/1.00/0.54, 0.20/0.59/1.00 with the control
+   patch at (3, 0.1, 3.4), i.e. black.
+   ⚠ The phone DIMS its screen after a while and the camera app then re-meters, silently discarding
+   the exposure setting mid-run (operator-observed). Pin it first:
+       adb shell settings put system screen_brightness_mode 0
+       adb shell settings put system screen_brightness 255
+       adb shell settings put system screen_off_timeout 2147483647
+
 SETUP (once per session)
     adb pair 192.168.0.x:PPPPP <6-digit code>     # phone: Wireless debugging > Pair device
     adb connect 192.168.0.x:CCCCC                 # port from `adb mdns services` (run it on WINDOWS

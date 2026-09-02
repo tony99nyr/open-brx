@@ -6,6 +6,10 @@ they saw. The two are not synchronised: on 2026-08-30 a timed sweep raced the op
 produced two confidently wrong theories. Here the sender and the observer are the same process, so a
 reading cannot be attributed to the wrong frame. It also means exhaustive sweeps are cheap.
 
+⭐ FIRST: turn the camera exposure DOWN until only the LEDs are visible against black. See
+ledcam.py's header -- it removes the need for a reference frame entirely, and with it the whole
+family of stale-reference / exposure-drift faults that produced several wrong tables on 2026-09-02.
+
 CAMERA. An Android phone on wireless adb, camera app open, aimed at the gun and headset, propped
 still. ROIs are pixel boxes in the phone's SCREEN (the camera preview), calibrated by `ledcam.py
 diff`. If the phone moves, recalibrate -- the coordinates are meaningless otherwise.
