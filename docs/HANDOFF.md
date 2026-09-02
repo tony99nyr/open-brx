@@ -58,7 +58,9 @@
 > and silently invalidates every pixel ROI. Both tools now abort on a portrait or black frame rather
 > than producing fiction.
 >
-> **Still open:** the F1 config hunt (does a `$GSET`/`$PSET` field switch on the *native* gauge?) never
+> **Still open:** `$GLED` token 5's brightness *curve* — two internally-consistent runs disagree about
+> where its step falls (1→2 in one, 2→10 in the other), so only **0 = off, higher = brighter** is
+> established. Not a blocker: F1 encodes with colour, not brightness. And the F1 config hunt (does a `$GSET`/`$PSET` field switch on the *native* gauge?) never
 > ran — it needs a victim that registers reliably across ten arm/damage cycles. `mcp/tools/gauge_hunt.py`
 > is written and ready.
 

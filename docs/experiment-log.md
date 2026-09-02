@@ -3138,8 +3138,10 @@ Measured 3x alternating, no overlap between the two populations:
 So the token map to state is `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*`.
 
 Left for a future session: **why two brightness controls?** Token 5 gives off/dim/full and token 4=5
-gives a dim apply. Whether they compose (t4=5 with t5=1) or one overrides the other is **UNTESTED** —
-do not guess.
+gives a dim apply. ✅ **ANSWERED later the same session** (see "the last three LED unknowns, closed"):
+they do **not** compose — `t4=5` pins the output to ~15-21 regardless of token 5. That entry also
+downgrades token 5's curve: two internally-consistent runs disagree about where its step is, so only
+**0 = off, higher = brighter** survives both.
 
 ## Method note worth keeping
 
