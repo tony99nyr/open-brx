@@ -554,9 +554,26 @@ Both halves matter:
 **Action: replace or service the headset.** Confirming test, and the prediction is explicit: swap this
 headset onto a known-good gun and the reduced range should follow the headset.
 
-**Still worth measuring:** whether all four domes are equally degraded or only some, and at what
-distance it starts failing. A range figure would let muster specify a real distance instead of "across
-the room".
+### 📏 The range figure
+
+Operator-measured, same emitter, same dome, same session:
+
+| distance | result |
+|---|---|
+| **3 feet** | **0 of 6** |
+| **3 inches** | **5 of 6** |
+
+So the headset's effective range has collapsed to **under a metre**, against a stock unit that has to
+work across a field. That is the quantified signature of the fault, and it makes the muster check
+specifiable: **the test shot must be taken from at least ~3 m / 10 ft.** Anything closer passes a
+headset this badly degraded.
+
+For comparison the same emitter, at working distance, killed a **different** tagger outright — so this
+is not an emitter-power limitation, it is this headset.
+
+**Still worth measuring** (not needed for the diagnosis, useful for the spec): whether all four domes
+are equally degraded or only some, and where between 3 inches and 3 feet it starts failing. A
+threshold distance would let muster state an exact number rather than "across the room".
 
 ### ✅ Earlier localisation (still valid): the GUN sensor works, the HEADSET's four do not
 
