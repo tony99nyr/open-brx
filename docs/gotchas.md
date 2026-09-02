@@ -1,5 +1,31 @@
 # Gotchas — the field lore
 
+## 🔴 `$CLEAR` WIPES THE `$SIR` TABLE, AND A GUN WITH NO `$SIR` ROWS IGNORES EVERY HIT (2026-09-02)
+
+**Symptom:** the gun arms, spawns, reports full pools, answers `$QUERY` normally, is alive and in
+game, and **registers nothing**. No `$HIR`, no headset flash, pools never move, every dome AND the
+gun body silent. It looks exactly like a dead headset or a broken sensor.
+
+**Cause:** `$CLEAR` clears the `$SIR` matrix, and unmatched `$SIR` cells are silently ignored. With no
+rows, every incoming hit matches nothing and is discarded above the sensor layer.
+
+**Cure:** re-send the `$SIR` rows. That alone restores it (4/4 immediately). `$START`, `$GSET`,
+`$PSET`, `$TID` and any number of `$SPAWN`s do NOT.
+
+**Rule: never send `$CLEAR` without sending `$SIR` behind it.** The arm sequence already does this;
+the danger is a PARTIAL bundle, or a bare `$CLEAR` sent by a probe or a panic sequence mid-session.
+
+⚠️ **Table size is not the issue — absence is.** A one-row table and the full ten-row table both
+registered 24/24 in an interleaved A/B. Do not "fix" this by making tables longer.
+
+⚠️ **When a tagger seems deaf, check that it is ALIVE first.** A dead gun and a `$SIR`-less gun are
+indistinguishable through `$HIR`, and a whole session was lost to reading corpses as deafness. Read
+`$LCD`/`$QUERY` pools before concluding anything.
+
+Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
+Repro: `mcp/tools/clear_spawn_repro.py`.
+
+
 ## 🔴 A STALE `brx_mcp` SERVER SILENTLY OWNS A GUN — it looks like broken hardware (2026-09-02)
 
 **Symptom:** a powered-on tagger never appears in `scan` (three scans, one 25 s), and the moment you

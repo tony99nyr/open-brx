@@ -100,7 +100,7 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 | `$STOP,*` | >> | n/a | Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail. | ✅ |
 | `$PHONE,*` | >> | n/a | App-controlled mode: opens the live event tap (buttons, `$VOLTS`), locks the on-gun menu. Reply `$BUT,3,0,*`. | ✅ |
 | `$CONNECT,*` / `$INIT,*` | >> | n/a | On the known-safe list. Sent on v4.32: **no observable reply**. | ✅ |
-| `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. | ✅ |
+| `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. **It also wipes the `$SIR` table**, and because unmatched `$SIR` cells are silently ignored, a gun left with no rows ignores every hit while still reporting alive: no `$HIR`, no headset flash, pools untouched. Always re-send `$SIR` after `$CLEAR`. | ✅ |
 | `$START,*` | >> | n/a | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. | ✅ |
 | `$GSET,…,*` | >> | 8 tokens | Global game settings: friendly fire, indoor/outdoor, region, ambient light, gyro, BT secondaries, crit modifier, mods. **No respawn/time/lives token.** → GSET page | ✅ |
 | `$PSET,…,*` | >> | id, 0, HP, armor, shield, 50, , voice-pack… | Player settings: **token 1 = player id (0–63)**, tokens 3–5 = HP/armor/shield pools, then a positional voice pack. → PSET page | ✅ |
@@ -176,6 +176,17 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 ---
 
 ### Page: The arm sequence: from `$CLEAR` to a live gun  (`/manual/dev/arm-sequence`)
+
+[callout:warn] **`$CLEAR` wipes the `$SIR` table, and an empty table means the gun ignores every
+hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports
+full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it
+is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as
+a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word
+does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all.
+Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5,
+and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the
+table SIZE does not matter, only its absence: a one-row table and the full ten-row table both
+registered 24/24 in an interleaved A/B. ✅ src: docs/experiment-log.md 2026-09-02 (night, FINAL)
 _The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
 
 [callout:info] This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**. ✅ src: protocol/brx-protocol.md §7e, §7o; protocol/captures/2026-08-23-ios-callsign-game-start.txt

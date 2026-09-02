@@ -2,6 +2,39 @@
 
 **Updated:** 2026-09-02.
 
+> ## 🎯 2026-09-02 (night) — **F11 SOLVED: `$CLEAR` WIPES THE `$SIR` TABLE**
+>
+> **A gun with no `$SIR` rows silently ignores EVERY hit.** No `$HIR`, no headset flash, pools
+> untouched, while it reports alive, in-game and healthy. Unmatched `$SIR` cells are silently ignored
+> (already documented); after `$CLEAR` there are no cells at all.
+>
+> | step | result |
+> |---|---|
+> | armed normally | 4/4 registered |
+> | `$CLEAR,*` then `$SPAWN,*` | **0/2** — `$LCD,45,70` alive, headset DARK |
+> | re-send the `$SIR` rows, nothing else | **4/4** restored |
+>
+> Deterministic **5/5**, and 3/3 at every `$CLEAR`→`$SPAWN` gap from 0.05 s to 1.0 s — **not a timing
+> race**. Table SIZE is irrelevant (1 row and 10 rows both 24/24, interleaved A/B); only ABSENCE
+> matters. `$START`/`$GSET`/`$PSET`/`$TID`/`$SPAWN` do NOT restore it. Repro:
+> `mcp/tools/clear_spawn_repro.py`.
+>
+> Explains every symptom of two sessions: headset dark with the gun in game; all four domes **and**
+> the gun body silent together (discarded above the sensor layer); native games unaffected and power
+> cycles "fixing" it (the gun falls back to its own `$SIR` config). **It was never intermittent.**
+>
+> ### 🔴 DO THIS FIRST NEXT SESSION — the live-match exposure is still unfixed
+>
+> `setup_frames()` orders `$CLEAR` before `$SIR`, so a COMPLETE bundle is safe. But
+> **`GameDriver._send()` swallows every send error by design**, so if `$CLEAR` lands and a later
+> `$SIR` write fails, that player is **silently unhittable for the entire match** — no error, gun
+> healthy, pools full, scoreboard showing them alive and simply never hit. See `FOLLOWUPS.md` F11 for
+> the four fixes (verify `$SIR` landed · never bare `$CLEAR` mid-game · stop swallowing setup
+> failures · flag a player with zero hits all match).
+>
+> ⚠️ **When a tagger seems deaf, CHECK IT IS ALIVE FIRST.** A dead gun and a `$SIR`-less gun are
+> indistinguishable through `$HIR`, and most of one session was spent reading corpses as deafness.
+>
 > ## 🔴 2026-09-02 (evening/night) — F11 IS REAL AND WITNESSED, BUT UNREPRODUCIBLE; TWO BLE-TRUST FACTS; F12 OPENED
 >
 > Same day, after the LED work below. Full write-up: `experiment-log.md` 2026-09-02 (evening / night /

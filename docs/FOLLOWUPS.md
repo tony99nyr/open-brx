@@ -392,7 +392,47 @@ rejoined. Connect-grace at START passed cleanly (`playing with 2/3 taggers`, ~11
 attempts). Whether a gun absent at start can ever join a running match is **untested** — it may be by
 design. Worth one deliberate test.
 
-## 🔴 F11 — A gun can arm, spawn and look healthy while SILENTLY registering no hits (2026-09-02)
+## ✅ F11 — SOLVED 2026-09-02. `$CLEAR` wipes the `$SIR` table; a gun with no `$SIR` rows ignores every hit
+
+> **ROOT CAUSE.** `$CLEAR` clears the `$SIR` matrix. Unmatched `$SIR` cells are silently ignored (this
+> was already documented), so a gun with NO rows discards **every** incoming hit: no `$HIR`, no
+> headset flash, pools untouched, while it reports alive, in-game and healthy to `$QUERY`.
+>
+> | step | result |
+> |---|---|
+> | armed normally | 4/4 registered |
+> | `$CLEAR,*` then `$SPAWN,*` | **0/2**, gun `$LCD,45,70` alive, headset DARK |
+> | re-send the `$SIR` rows, nothing else | **4/4** restored |
+>
+> **Deterministic 5/5**, and 3/3 at every `$CLEAR`→`$SPAWN` gap from 0.05 s to 1.0 s, so it is not a
+> timing race. Table SIZE is irrelevant: one row and ten rows both gave 24/24 in an interleaved A/B.
+> Only ABSENCE matters. `$START`, `$GSET`, `$PSET`, `$TID` and any number of `$SPAWN`s do NOT restore
+> it. Repro: `mcp/tools/clear_spawn_repro.py`; found by `mcp/tools/desync_fuzz.py`.
+>
+> **It explains every symptom** across two sessions: gun in game and alive with the headset dark;
+> all four domes AND the gun body silent together (the hit is discarded above the sensor layer, so no
+> per-dome theory was ever needed); native games unaffected (the gun falls back to its own built-in
+> `$SIR` config); a power cycle "fixing" it for the same reason. **It was never intermittent** — it
+> follows a `$CLEAR` with no `$SIR` behind it, and nothing else.
+>
+> ### 🔴 STILL TO FIX in Mission Control — the live-match exposure
+>
+> `setup_frames()` orders `$CLEAR` before the `$SIR` rows, so a COMPLETE bundle is safe. A PARTIAL one
+> is not, and **`GameDriver._send()` swallows every send error by design** (one gun's BLE hiccup must
+> not abort a game). So if `$CLEAR` lands and a later `$SIR` write fails, that player is **silently
+> unhittable for the whole match**: no error surfaces, the gun reports healthy, pools stay full, and
+> the scoreboard shows them alive and simply never hit.
+>
+> 1. **Verify the `$SIR` table landed** after any bundle containing `$CLEAR`; re-send if not.
+> 2. **Never send a bare `$CLEAR` mid-game** without re-sending `$SIR` behind it.
+> 3. **Stop swallowing setup-frame failures silently** — a failed `$SIR` write must be visible and
+>    should fail that player's arming rather than being announced and forgotten.
+> 4. **Flag a player who has registered no hits all match** — cheap, and it catches this class live.
+>
+> The original investigation and its ~20 dead hypotheses are kept below: they are the reason this
+> entry exists, and re-running any of them would be wasted work.
+
+## 🔴 F11 (original report) — A gun can arm, spawn and look healthy while SILENTLY registering no hits (2026-09-02)
 
 > ### 🔻 2026-09-02 (evening) — THE SURVIVING CLAIM DID NOT SURVIVE, and there is a real suspect
 >

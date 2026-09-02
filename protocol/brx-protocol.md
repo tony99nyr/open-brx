@@ -34,7 +34,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | Command | Purpose | Notes / observed examples |
 |---|---|---|
 | `$PING,*` | Connectivity check | Reply: `$PONG,*` |
-| `$CLEAR,*` | Clear current game state | Sent before configuring a new game |
+| `$CLEAR,*` | Clear current game state — **⚠️ this WIPES the `$SIR` table** | Sent before configuring a new game. **A gun with no `$SIR` rows silently ignores EVERY hit** (no `$HIR`, no headset flash, pools untouched) while still reporting alive and in-game. Always re-send `$SIR` after `$CLEAR`. Bench-proven 2026-09-02, deterministic 5/5 |
 | `$START,*` | Begin configuration/start sequence | |
 | `$SPAWN,,*` | **Takes the tagger live** | The empty token matters — `$SPAWN,,*`, not `$SPAWN,*`. See §7e |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | **Load magazines** (verified 2026-08-23) | Sent immediately after `$SPAWN,,*`. Without it the gun goes live with no ammunition. e.g. `$AMMO,0,36,108,1,*` |
