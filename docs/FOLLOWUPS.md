@@ -434,11 +434,34 @@ necessary but not sufficient for a preflight check.
 
 **Recovery both times: a power cycle** (headset the first time, the whole tagger the second).
 
-**What to try next time it happens, before clearing it:**
-- Fire at the **GUN BODY** rather than the headset. If `$HIR` tok1 = 4 still registers, only the
-  headset's sensors are deaf and the gun's own sensor is fine — that halves the search.
-- Check whether the headset still responds to `$HLED`. If it lights on command but does not report
-  hits, the link is alive in one direction only, which is a very specific fault.
+### ⭐ ISOLATED: the link is alive in ONE DIRECTION only
+
+Tested while the fault was live, before clearing it. **`$HLED,0` lit all three visible headset modules
+RED** (measured 1.00/0.07/0.37, 1.00/0.09/0.27, 1.00/0.03/0.20) **while the same headset registered
+zero hits from a verified-transmitting emitter.**
+
+So in this state:
+
+| path | status |
+|---|---|
+| host → gun (BLE) | ✅ works |
+| gun → headset (commands, `$HLED`) | ✅ **works — the headset lights on demand** |
+| headset → gun (IR hit reporting) | ❌ **dead** |
+
+That rules out the whole obvious set: not unlinked, not unpowered, not a BLE fault, not a flat battery
+(88%), not the emitter (the receiver decoded the word). **The fault is confined to the IR sensor path**
+— either the sensors themselves or the headset's reporting of them back to the gun.
+
+### ⚠️ Consequence: lighting the headset is NOT a valid health check
+
+A preflight that lights the headset and calls it good **passes a headset that cannot score**. Same for
+`$VERSION` reporting `hds.59`: it does too. **The only signal that distinguishes a working headset from
+this fault is an actual registered hit**, so muster/preflight needs a **test shot**, not a light test.
+That is a concrete change to `docs/field-process.md`'s Armory/Muster flow and to MC's preflight.
+
+**Still to try next time it happens:** fire at the **GUN BODY** rather than the headset. If `$HIR`
+tok1 = 4 still registers, the gun's own sensor is fine and only the headset's four are deaf, which
+would localise it further.
 
 **The diagnostic ladder that found the FIRST one** (it cost ~40 minutes without one):
 1. **Have the RECEIVER decode the emitter** (`ir-capture COM7` while `ir-emit COM8`). A clean decode
