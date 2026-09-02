@@ -100,10 +100,13 @@ async def main():
             await mgr.send("g", fr, reply_window_ms=140)
             await asyncio.sleep(0.18)
 
+        # optional 5th arg: a comma-separated list of token values, to re-check one suspect value
+        # rather than re-running the whole enum.
+        vals = [int(v) for v in sys.argv[5].split(",")] if len(sys.argv) > 5 else list(range(11))
         if which == "gled":
-            cases = [(f"$GLED,3,3,3,{t4},10,,*", f"t4={t4}") for t4 in range(11)]
+            cases = [(f"$GLED,3,3,3,{t4},10,,*", f"t4={t4}") for t4 in vals]
         else:
-            cases = [(f"$HLED,3,{t2},300,300,10,5,*", f"t2={t2}") for t2 in range(11)]
+            cases = [(f"$HLED,3,{t2},300,300,10,5,*", f"t2={t2}") for t2 in vals]
 
         print(f"=== {which.upper()} effect enum, from {SECS}s of video, roi {roi_name} ===")
         print("    (a still frame cannot tell these apart -- it samples one arbitrary phase)\n")

@@ -2842,10 +2842,24 @@ The discriminator is to start from a KNOWN LIT colour and send a DIFFERENT one:
 
 | t4 | outcome (3 trials, verified green pre-state) |
 |---|---|
-| 0 | **APPLY** |
-| 1, 2, 3, 4 | **NO-OP** — keeps the previous colour |
-| 5 | inconsistent (mostly applied, one DARK) — see below |
-| 6, 7, 8 | **APPLY** |
+| 0, 6, 7, 8, 9, 10 | **APPLY** the colour tokens, full brightness |
+| **5** | **APPLY at ~1/3 BRIGHTNESS** (see below) |
+| 1, 2, 3, 4 | **NO-OP** — colour tokens ignored, previous state kept |
+
+**t4 = 5 is a DIM apply, and that is why stills disagreed about it.** It first read
+"inconsistent" (RED, RED, DARK) because a dim LED sits right on the classifier's dark threshold.
+Video ruled out animation (swing 24-26, against ~494 for the validated positive control) but showed
+a mean of ~56 where t4=0 gives ~200. Alternating the two directly, same colour, same trial:
+
+| trial | t4=0 (LED1/LED3) | t4=5 (LED1/LED3) | ratio |
+|---|---|---|---|
+| 1 | 61.9 / 120.5 | 18.0 / 49.7 | 0.29 / 0.41 |
+| 2 | 64.5 / 122.6 | 19.6 / 54.5 | 0.30 / 0.44 |
+| 3 | 64.0 / 121.8 | 21.1 / 54.0 | 0.33 / 0.44 |
+
+Both LEDs, three trials, no overlap: **t4=5 is the same colour at roughly a third of the brightness.**
+So token 4 carries brightness information as well as the apply gate, and `$GLED` has TWO independent
+brightness controls — token 5 (off / dim / full, measured earlier) and this.
 
 ## What this reframes
 
@@ -2861,15 +2875,14 @@ is lit", and a sweep that does blank reports "nothing is lit" — from the same 
 **The shipped frame was always right, and still is.** `gameconfig._led_frames` sends Callsign's
 `$GLED,,,,5,,,*` and it does blank the gun. Only our EXPLANATION of why was wrong.
 
-## Still open on token 4
+## Token 4 is CLOSED
 
-- **t4 = 5 is not stable** across trials (RED, RED, DARK). The candidate explanation is that it
-  applies with some animation, so a still frame catches an arbitrary phase — the same trap that
-  wrecked the first effect sweep. Not yet tested with video at the new (much higher SNR) exposure.
-- **t4 = 9, 10** were still running when this was written.
-- **No t4 value animates on the earlier video pass**, and that null is trustworthy because the
-  positive control (a spawned gun's native pulse) gives swing ~494 against 32-70 for anything static.
-  But that pass predates the black-background exposure, so t4=5 deserves a re-check.
+All eleven values resolved, three trials each, verified pre-state: 0/6/7/8/9/10 apply at full
+brightness, 5 applies dim, 1-4 are no-ops. **No value animates** — trustworthy because the positive
+control (a spawned gun's native pulse) gives swing ~494 against 24-70 for every static state here.
+
+Left for a future session: **why two brightness controls?** Token 5 gives off/dim/full and token 4=5
+gives a dim apply. Whether they compose (t4=5 with t5=1) or one overrides the other is untested.
 
 ## Method note worth keeping
 
