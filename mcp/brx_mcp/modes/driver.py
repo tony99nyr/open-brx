@@ -39,7 +39,12 @@ def clean_callsign(name: Optional[str]) -> str:
         return ""
     safe = "".join(c for c in str(name).strip()
                    if c.isprintable() and c not in ",$*")
-    return safe[:CALLSIGN_MAX].strip()
+    # CALLSIGN_MAX is a budget on the WIRE, i.e. bytes -- but a multi-byte character
+    # (accents, emoji) is one Python code point that costs several. Slicing by code
+    # point (the old `safe[:CALLSIGN_MAX]`) let a 12-character name smuggle 30+ bytes
+    # onto a field sized for "Tactix2". Truncate on the encoded bytes instead, and drop
+    # any partial character left dangling at the cut (errors="ignore").
+    return safe.encode("utf-8")[:CALLSIGN_MAX].decode("utf-8", errors="ignore").strip()
 
 
 def assign_teams(mode: str, addresses: list[str],

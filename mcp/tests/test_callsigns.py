@@ -15,6 +15,20 @@ def test_clean_callsign_strips_frame_breakers_and_caps():
     assert clean_callsign("   ") == ""
 
 
+def test_clean_callsign_caps_by_wire_bytes_not_python_characters():
+    from brx_mcp.modes.driver import CALLSIGN_MAX
+    # "Ω" is one Python character but TWO UTF-8 bytes. 20 of them is well inside
+    # CALLSIGN_MAX by character count, but 40 bytes on a wire field sized for
+    # "Tactix2" — the old `safe[:CALLSIGN_MAX]` sliced code points, not bytes, and
+    # would ship a frame several times the field's real budget.
+    out = clean_callsign("Ω" * 20)
+    assert len(out.encode("utf-8")) <= CALLSIGN_MAX
+    assert out == "Ω" * 6                       # 12 bytes / 2 bytes-per-char, exact cut
+    # a cut that lands mid-character (1-byte "A" + 2-byte "Ω"s, budget of 12) must drop
+    # the dangling partial character rather than ship a mangled trailing byte
+    assert clean_callsign("A" + "Ω" * 20) == "A" + "Ω" * 5
+
+
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 

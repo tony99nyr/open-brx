@@ -67,3 +67,31 @@ def test_plain_name_passes_through():
 
 def test_framing_chars_still_sanitized():
     assert "," not in name_for_rename("R0B,AT-3D4F", ADDR)[0]
+
+
+# --- a name that IS just this gun's own tail. `strip_advert_tail` deliberately won't
+# reduce a name to nothing (test_does_not_eat_the_whole_name above), so on its own it
+# leaves "-3D4F" untouched -- and untouched means `_rename` would happily ship it,
+# producing "-3D4F-3D4F" on the gun: the exact doubling bug, from a typed name instead
+# of a copy-pasted advert. `name_for_rename` is the one place that can catch this (it
+# knows both the stripped result AND the tail), so it must blank it, not pass it through.
+def test_name_that_is_only_the_tail_with_dash_is_refused():
+    assert name_for_rename("-3D4F", ADDR) == ("", True)
+
+
+def test_name_that_is_only_the_bare_tail_is_refused():
+    assert name_for_rename("3D4F", ADDR) == ("", True)
+
+
+def test_a_tail_only_name_on_the_macos_uuid_path_is_unaffected():
+    # no MAC on this address form → no tail computed → nothing to refuse
+    uuid = "0B1C2D3E-4F50-6172-8394-A5B6C7D8E9FA"
+    assert name_for_rename("-3D4F", uuid) == ("-3D4F", False)
+
+
+# --- unicode: CALLSIGN_MAX is a budget in WIRE BYTES; name_for_rename must not let a
+# multi-byte name (accents, emoji) sail past it by counting Python characters instead.
+def test_multibyte_name_is_capped_in_bytes_not_characters():
+    from brx_mcp.modes.driver import CALLSIGN_MAX
+    nm, _ = name_for_rename("Ω" * 20, ADDR)
+    assert len(nm.encode("utf-8")) <= CALLSIGN_MAX

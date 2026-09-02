@@ -1161,6 +1161,15 @@ def name_for_rename(name: str, address: str) -> tuple[str, bool]:
     """
     from .modes.driver import clean_callsign
     stripped, changed = strip_advert_tail(str(name or "").strip(), address)
+    # strip_advert_tail deliberately refuses to reduce a name to nothing (its own guard),
+    # so a name that IS just this gun's tail -- "-3D4F", or bare "3D4F" -- comes back
+    # untouched instead of empty. Left alone it gets sent verbatim and the gun's advert
+    # becomes "-3D4F-3D4F": the exact doubling bug this whole path exists to prevent, just
+    # reached from a typed name instead of a copy-pasted advert. Nothing meaningful
+    # survives the tail here, so blank it -- the empty-name guard below refuses to send it.
+    tail = "".join(c for c in address if c.isalnum())[-4:].lower()
+    if tail and stripped.lower() in (tail, "-" + tail):
+        return "", True
     return clean_callsign(stripped), changed
 
 
@@ -1193,7 +1202,10 @@ async def _rename(address: str, name: str) -> None:
     from .usbconsole import mark_rename, load_inventory
     nm, stripped = name_for_rename(name, address)
     if not nm:
-        print("empty/invalid name after sanitize", file=sys.stderr); return
+        print("# empty/invalid name after sanitize -- a name that's only this gun's own "
+              "'-<MACtail>' has nothing left once the tail is dropped; pick a real name.",
+              file=sys.stderr)
+        return
     if stripped:
         print(f"# NOTE: dropped the '-<MACtail>' the gun appends itself -- sending $NAME,{nm}.\n"
               f"#       (`scan` shows the ADVERT, which is $NAME + the tail; renaming with the\n"
@@ -1210,17 +1222,28 @@ async def _rename(address: str, name: str) -> None:
     mgr = ConnectionManager()
     try:
         await mgr.connect(address, "rn")
-        try:
-            for cmd in ("$STOP,*", "$PLAYX,0,*", f"$NAME,{nm},*"):
-                r = await mgr.send("rn", cmd, reply_window_ms=200)
-                print(">> " + cmd
-                      + "".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', [])))
-            await asyncio.sleep(0.4)
-        finally:
-            await mgr.disconnect("rn")
+        for cmd in ("$STOP,*", "$PLAYX,0,*", f"$NAME,{nm},*"):
+            r = await mgr.send("rn", cmd, reply_window_ms=200)
+            print(">> " + cmd
+                  + "".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', [])))
+        await asyncio.sleep(0.4)
     except Exception as e:  # noqa: BLE001 — a raw traceback here is useless to the operator
-        print(f"# rename FAILED to reach {address}: {type(e).__name__}: {e}", file=sys.stderr)
+        # if THIS was a repeat rename right after a prior one, the gun is off the air by
+        # design (see disconnect() below) — say so instead of dumping a bare Bleak error.
+        print(f"# rename FAILED to reach {address}: {type(e).__name__}: {e}\n"
+              f"#       if this gun was JUST renamed, this is EXPECTED: a rename knocks it\n"
+              f"#       off the air until it's power-cycled. Power-cycle it and retry.",
+              file=sys.stderr)
         return
+    finally:
+        # the gun goes off the air as soon as it accepts $NAME (bench-confirmed
+        # 2026-09-02), so disconnecting from an already-vanished link is the NORMAL
+        # outcome of a successful rename, not a failure of it. Don't let it mask a
+        # sequence that actually completed, and don't let it skip the armory update.
+        try:
+            await mgr.disconnect("rn")
+        except Exception:  # noqa: BLE001
+            pass
     # update the armory map (only if this address is already bound to a record) and
     # mark it unconfirmed — the advert won't match until the gun reboots.
     updated = mark_rename(nm, address=address)
