@@ -605,9 +605,18 @@ the "root cause localised" and "degraded sensitivity" sections. What still stand
 What does **not** stand: that R0BQT is defective and should be pulled or serviced. **Do not replace
 that headset on the strength of this entry.**
 
-**The test in progress:** with R0BAT faded to 1/6, rest the emitter without firing and without
-touching the tagger, then fire again. Recovery with the tagger untouched implicates the emitter
-outright.
+**Emitter rest: TESTED, and it does NOT explain it.** With R0BAT faded to 1/6, the emitter was left
+idle for 3 minutes with the tagger untouched, then fired: **still 1/6**. A `$CLEAR`/`$START` re-arm
+immediately before that burst also failed to restore it, so game state is not the factor either.
+
+**So neither emitter heating nor game state explains the fade.** What still tracks it is **time since
+the TAGGER was powered on**: R0BAT was 6/6 for its first ~4 minutes and was still 1/6 at ~10 minutes
+regardless of the emitter resting.
+
+**Next test (needs the operator):** power cycle R0BAT and fire immediately.
+- back to 6/6 → the fade tracks **uptime on both units** (R0BQT simply faster), which is a systemic
+  behaviour that would affect real matches and is worth understanding properly
+- still 1/6 → uptime is not it either, and the emitter returns to the suspect list
 
 ### ~~CONTROL: a healthy headset does NOT fade~~ (SUPERSEDED by the completed run above)
 
