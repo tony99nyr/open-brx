@@ -459,9 +459,37 @@ A preflight that lights the headset and calls it good **passes a headset that ca
 this fault is an actual registered hit**, so muster/preflight needs a **test shot**, not a light test.
 That is a concrete change to `docs/field-process.md`'s Armory/Muster flow and to MC's preflight.
 
-**Still to try next time it happens:** fire at the **GUN BODY** rather than the headset. If `$HIR`
-tok1 = 4 still registers, the gun's own sensor is fine and only the headset's four are deaf, which
-would localise it further.
+### ⭐ AND IT SURVIVES A TAGGER POWER CYCLE — the fault is in the HEADSET
+
+Re-tested immediately after a full tagger recycle, with the operator confirming the emitter LED was
+aimed directly at the headset and the board had not moved:
+
+- `$HLED,3` lit all three visible modules **green** (0.28/1.00/0.52, 0.23/1.00/0.52, 0.12/1.00/0.33)
+- the same headset registered **zero hits** from 45+ shots
+
+So a **gun** power cycle does not clear it. Recovery required cycling the **headset** itself, both
+times it has happened.
+
+### The full signature, and why no cheap preflight can catch it
+
+| check | result while broken |
+|---|---|
+| advertising standalone? | **no** — still linked |
+| `$VERSION` reports `hds.59`? | **yes** — the gun sees it |
+| responds to `$HLED`? | **yes** — lights on demand, all modules |
+| battery | **88%** |
+| registers hits? | **NO** |
+| survives a tagger power cycle? | **yes, the fault persists** |
+| emitter transmitting? | verified — the receiver decoded the word |
+| aim? | ruled out by the operator |
+
+**Every non-invasive check a preflight could plausibly run — link status, firmware presence, LED
+response, battery — PASSES while the headset cannot score.** There is no cheap proxy. **Only a real
+registered hit distinguishes a working headset from this fault**, which makes a **test shot**
+mandatory in muster and in MC preflight rather than a nice-to-have.
+
+**Still to try next occurrence:** fire at the **GUN BODY**. If `$HIR` tok1 = 4 still registers, the
+gun's own sensor is fine and only the headset's four are deaf, which would localise it further.
 
 **The diagnostic ladder that found the FIRST one** (it cost ~40 minutes without one):
 1. **Have the RECEIVER decode the emitter** (`ir-capture COM7` while `ir-emit COM8`). A clean decode
