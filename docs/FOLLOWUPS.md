@@ -613,6 +613,39 @@ immediately before that burst also failed to restore it, so game state is not th
 the TAGGER was powered on**: R0BAT was 6/6 for its first ~4 minutes and was still 1/6 at ~10 minutes
 regardless of the emitter resting.
 
+### 🚨 THE EMITTER HAS DEGRADED — and the boards never moved
+
+**Operator confirms both ESP32 boards have been in a STATIC location all day**, which makes the
+loopback a valid before/after comparison rather than a geometry change:
+
+| when | shots | frames at board A | clean 25-bit decodes |
+|---|---|---|---|
+| earlier today | 6 | several | **yes**, full word, parity OK |
+| now | 15 | **0** | **0** |
+
+**Same boards, same positions, and the receiver now sees nothing at all.**
+
+**This reframes the back half of this investigation.** A steadily weakening emitter produces exactly
+the "fade" seen on BOTH taggers: hits at the start of the day, then only at 3 inches, then barely at
+all — and it looks like a tagger problem because the tagger is what we were watching.
+
+⚠️ **Everything in this entry treating the fade as a property of a HEADSET is now in doubt**,
+including the R0BAT-vs-R0BQT comparison. What survives are the SIMULTANEOUS comparisons, which a
+drifting emitter cannot explain:
+- the gun body registered while the headset did not, **in the same burst**
+- 3 inches worked while 3 feet did not, **in the same sitting**
+
+Those still show the headset needs more signal than the gun body. They no longer establish that any
+headset is defective.
+
+**Next test, one shot:** fire a REAL TAGGER at board A (COM7). Decodes → the receiver is fine and the
+emitter is the dead part. Nothing → board A has failed and the emitter may be healthy. Until then,
+**no IR-based conclusion from the later part of 2026-09-02 should be trusted, and no hardware should
+be replaced.**
+
+**Unaffected:** results with a built-in control, notably the fn 36/37 multipliers, where an fn 1
+control had to read exactly the magnitude or the trial was void. A weak emitter cannot fake that.
+
 **Also ruled out: receiver adaptation to a repeated code.** Every shot fired all session was a
 BYTE-IDENTICAL word (pid 42, mag 20, no crit). Real guns vary, so if the receiver de-duplicated or
 adapted to a repeated code it would look exactly like a fade and would never happen in a match. Fired
