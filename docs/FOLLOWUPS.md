@@ -474,6 +474,30 @@ aimed directly at the headset and the board had not moved:
 So a **gun** power cycle does not clear it. Recovery required cycling the **headset** itself, both
 times it has happened.
 
+### ✅ CONFIRMED TWICE: the rig is fine, ONE TAGGER (R0BQT) is faulty
+
+The discriminator, run twice hours apart: with R0BQT registering nothing, the **same emitter, same
+aim, same moment killed a DIFFERENT tagger** (R0BAT) outright. A second run after several power
+cycles and a fresh arm reproduced it exactly.
+
+So this is **not** our emitter, our encoding, our arming, team gating, aim, or anything in the
+software. **R0BQT has a genuine intermittent fault in its IR receive path.**
+
+**Practical consequences:**
+- **Pull R0BQT from field use** until the headset-swap test says which half is bad. It will pass every
+  check an operator can run and then fail to score during a match.
+- **Use a different tagger as the bench victim.** R0BQT cannot sustain a multi-cycle IR experiment,
+  and a long run against it silently fills with VOID rows.
+- The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
+  attempts, so there is no reliable field workaround.
+
+**Still unresolved and worth keeping open:** whether something WE send latches it into this state.
+Tony's hypothesis, and a fair one — the frames swept today are ones Callsign never sends, notably
+`$HLED,...,200,*` (a count of 200 at 600 ms is a **two-minute** animation, fired back to back across
+eleven effect values), `$HLED` effect values 5-8, and token values of 255 on both commands. A
+software-only clear was attempted and FAILED (`$HLED,,6` + `$GLED,,,,5` + `$CLEAR` + full re-arm), so
+if a frame does latch it, it latches below the command layer.
+
 ### ⚠️ IT RECURS WITHIN MINUTES — this unit is not field-usable
 
 After cycling both gun and headset, hits worked perfectly: **4/4 on the next burst**, armour
