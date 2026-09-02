@@ -638,7 +638,36 @@ drifting emitter cannot explain:
 Those still show the headset needs more signal than the gun body. They no longer establish that any
 headset is defective.
 
-### ⚠️ CORRECTION: "the emitter is dead" was OVER-CLAIMED
+### ❌ RETRACTED IN FULL: the emitter is FINE — it killed a tagger during the very test
+
+**Operator, while the LED was being filmed: "that ir test hit the robat and killed him."** The same
+burst that board A could not see **killed a tagger outright.** So board B emits perfectly well, and
+the "emitter has degraded" conclusion is **wrong**, not merely over-claimed.
+
+**What board A's silence actually means:** the two boards are not aimed at each other well enough.
+That fits the morning loopback, which was already marginal — **one** clean decode among a pile of
+partial frames (13 bits, 11 bits, 6 bits, 2 bits). A marginal path can fall to zero without anything
+failing. "Static boards" told us nothing moved; it did not tell us the path was ever good.
+
+**The camera check was inconclusive, and the analysis says why:** apparent luma spikes in the LED ROI
+recur every ~0.74 s **including before firing began**, and the firing window (2-8 s) had a *lower*
+mean than the pre-firing window. That is a periodic display artefact, not IR. The phone filters near
+infrared too well to see this LED.
+
+⚠️ **So the emitter-decline explanation for the "fade" is withdrawn**, and the fade observations are
+back to being unexplained. What remains solid are only the SIMULTANEOUS comparisons:
+- **R0BAT took hits while R0BQT registered nothing, same emitter, same session** — R0BQT is worse
+- the gun body registered while the headset did not, same burst
+- 3 inches worked while 3 feet did not, one sitting
+
+**Method note this whole sequence earns:** across one afternoon this fault was attributed to a stuck
+death state, accumulated hits, arming order, `$GSET` outdoorMode, headset battery, tagger uptime,
+receiver adaptation, and finally our own emitter. **Every one of those came from comparing
+measurements taken at different times on a rig with at least one drifting variable.** Only the
+simultaneous comparisons ever survived contact with the next test. On this bench, a difference is
+only real if both sides of it were measured in the same burst.
+
+### ~~CORRECTION: "the emitter is dead" was OVER-CLAIMED~~ (now fully retracted, see above)
 
 **Board B is NOT dead.** It produced a registered hit on R0BAT minutes before that conclusion was
 written — a dead emitter gives zero hits, not one. The claim was contradicted by data already in this
