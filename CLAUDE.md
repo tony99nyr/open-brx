@@ -44,6 +44,8 @@ token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/s
   - Installed editable from `\\wsl.localhost\Ubuntu-24.04\home\tony\gitrepos\battlecompany\mcp`
     — code edits in WSL take effect immediately, no reinstall.
   - CLI first contact: `python.exe -m brx_mcp scan|identify|listen`.
+- Working **on the MacBook** (dev or field): read **`docs/mac-dev-runbook.md`** first — the setup
+  that is not in git, and the restart-MC-vs-hard-reload rule that has caused three false bug reports.
 - Match-day target is a **MacBook**: everything in `mcp/` must stay cross-platform
   (bleak: WinRT/CoreBluetooth/BlueZ). macOS gives BLE UUIDs, not MAC addresses — never
   assume address formats.

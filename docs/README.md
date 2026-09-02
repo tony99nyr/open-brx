@@ -93,6 +93,9 @@ A stale answer is worse than an open question: an open question warns you, a sta
 | Node↔MC wire + game data model | `spec/contracts.md` |
 | Open work (all items) | `FOLLOWUPS.md` |
 
+- **[mac-dev-runbook.md](mac-dev-runbook.md)** — 🆕 **working on the MacBook**: the setup that is not
+  in git, the change-to-screen loop (restart MC vs hard reload — the biggest time-waster there is),
+  the test suites' two traps, and how to read a session store without drawing a wrong conclusion.
 - **[verify-together.md](verify-together.md)** — 🆕 **the bench checklist: shipped-but-unconfirmed
   fixes and reports I could not reproduce.** Each says what would prove it AND what would
   disprove it. Ten minutes with two guns.
