@@ -125,6 +125,23 @@ def classify(patch: np.ndarray) -> tuple[str, tuple]:
     return _name(*n), (r, g, b)
 
 
+def renormalise(im, bg, rois):
+    """Undo per-frame AUTO-EXPOSURE and AUTO-WHITE-BALANCE before differencing (see ledcam.py).
+
+    The phone re-meters every frame: lighting the LEDs makes it stop DOWN, so every static surface
+    darkens (a wall went [42,44,48] -> [8,9,15]) and colour re-balances. Differencing a lit frame
+    against a dark reference therefore compares two different cameras. A GREY roi on a static neutral
+    surface no LED can reach is rescaled to match the reference, per channel, per frame. Google Camera
+    exposes no AE/AF lock, so this is the only way to make readings comparable across scenes.
+    """
+    if bg is None or "GREY" not in rois:
+        return im
+    x, y, w, h = rois["GREY"]
+    cur = im[y:y + h, x:x + w].reshape(-1, 3).mean(0)
+    want = bg[y:y + h, x:x + w].reshape(-1, 3).mean(0)
+    return im * np.where(cur > 1.0, want / np.maximum(cur, 1e-6), 1.0)
+
+
 class Rig:
     def __init__(self, mgr, rois):
         self.mgr, self.rois, self.ref = mgr, rois, None
@@ -140,8 +157,11 @@ class Rig:
         self.ref = grab()
 
     def _classify_all(self, im, ref, ambient=None) -> dict:
+        im = renormalise(im, ref, self.rois)
         out = {}
         for name, (x, y, w, h) in self.rois.items():
+            if name == "GREY":
+                continue
             p = np.clip(im[y:y + h, x:x + w].reshape(-1, 3)
                         - ref[y:y + h, x:x + w].reshape(-1, 3), 0, None)
             if ambient is not None and name != "CONTROL":
@@ -202,7 +222,7 @@ class Rig:
             name, (rr, gg, bb) = r[k]
             mx = max(rr, gg, bb, 1.0)
             return f"{k}={name:<6}[{rr/mx:.2f},{gg/mx:.2f},{bb/mx:.2f}]"
-        cells = " ".join(cell(k) for k in self.rois if k != "CONTROL")
+        cells = " ".join(cell(k) for k in self.rois if k not in ("CONTROL", "GREY"))
         ok, amb = r.get("_ok", (True, (0, 0, 0)))
         flag = "" if ok else "   <<< CONTROL NOT DARK - ambient moved, DISCARD"
         print(f"   {label:<34} {cells}{flag}", flush=True)

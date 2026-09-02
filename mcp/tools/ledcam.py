@@ -17,7 +17,8 @@ SUBCOMMANDS
     shot <out.png>                          one still of the phone screen (= the camera preview)
     diff <off.png> <on.png> [--min N]       find what LIT UP between two stills -> ROI boxes
     crop <img.png> <x> <y> <w> <h> <out>    verify an ROI is on the LED you think it is
-    probe <rois.json> [ref.png]             capture + NAME the colour in every ROI (the fast loop).
+    calibrate <rois.json> <ref.png> <wb.json>   shoot a known WHITE -> per-ROI white points
+    probe <rois.json> [ref.png] [wb.json]             capture + NAME the colour in every ROI (the fast loop).
                                             ref.png = a frame with everything BLANK; strongly
                                             recommended, it cancels blown-out cores and room tint.
     record <secs> <out.mp4>                 record the preview
@@ -117,7 +118,9 @@ _HALO_LO, _HALO_HI = 1, 12
 
 def _name(nr: float, ng: float, nb: float) -> str:
     """Name a colour from channel ratios normalised to the strongest channel."""
-    if min(nr, ng, nb) > 0.80:
+    mx = max(nr, ng, nb, 1e-6)
+    nr, ng, nb = nr / mx, ng / mx, nb / mx
+    if min(nr, ng, nb) > 0.72:
         return "white"
     i = int(np.argmax([nr, ng, nb]))
     if i == 0:
@@ -129,7 +132,28 @@ def _name(nr: float, ng: float, nb: float) -> str:
     return "teal" if nb > 0.82 else ("yellow" if nr > 0.60 else "green")
 
 
-def _classify(patch: np.ndarray) -> tuple[str, tuple[float, float, float]]:
+def _wb_load(path: str | None) -> dict:
+    """Per-ROI white points from `calibrate`, or {} if none."""
+    try:
+        return json.load(open(path)) if path else {}
+    except Exception:
+        return {}
+
+
+def _wb_apply(rgb, wp):
+    """Divide out the camera's colour cast using a measured WHITE as the reference.
+
+    The phone auto-white-balances against a warm room, so a genuinely white LED measures blue-violet
+    (~0.64/0.73/1.00) and every hue is dragged the same way. Lowering exposure does NOT fix it -- it
+    is a white-balance shift, not saturation. But it is a CONSTANT shift, so shooting a known white
+    (palette index 6) once and dividing by it cancels the cast exactly.
+    """
+    if not wp:
+        return rgb
+    return tuple(c / w if w > 1e-6 else c for c, w in zip(rgb, wp))
+
+
+def _classify(patch: np.ndarray, wp=None) -> tuple[str, tuple[float, float, float]]:
     br = patch.sum(1)
     if br.mean() < 45:
         return "dark", (0.0, 0.0, 0.0)
@@ -142,7 +166,7 @@ def _classify(patch: np.ndarray) -> tuple[str, tuple[float, float, float]]:
         if r + g + b < 30:
             return "dark", (r, g, b)
         mx = max(r, g, b, 1.0)
-        return _name(r / mx, g / mx, b / mx), (r, g, b)
+        return _name(*_wb_apply((r / mx, g / mx, b / mx), wp)), (r, g, b)
     lo, hi = np.percentile(br, _HALO_LO), np.percentile(br, _HALO_HI)
     halo = patch[(br >= lo) & (br <= hi)]
     if len(halo) == 0:
@@ -162,13 +186,58 @@ def _classify(patch: np.ndarray) -> tuple[str, tuple[float, float, float]]:
             return "dark", (r, g, b)
         r, g, b = whole
     mx = max(r, g, b, 1.0)
-    n = (r / mx, g / mx, b / mx)
-    if min(n) > 0.86:                       # all three channels close => white, not a hue
-        return "white", (r, g, b)
-    return _name(*n), (r, g, b)
+    return _name(*_wb_apply((r / mx, g / mx, b / mx), wp)), (r, g, b)
 
 
-def probe(rois_json: str, ref: str | None = None) -> None:
+def calibrate(rois_json: str, ref: str, out: str) -> None:
+    """Shoot a known WHITE (send `$GLED,6,6,6,0,10,,*` / `$HLED,6,0,,,10,,*` first) and store each
+    ROI's measured white as its white point. Everything measured afterwards is divided by it."""
+    rois = json.load(open(rois_json))
+    r = _adb(["exec-out", "screencap", "-p"])
+    open("/tmp/_lcwb.png", "wb").write(r.stdout)
+    im = np.asarray(Image.open("/tmp/_lcwb.png").convert("RGB"), dtype=float)
+    bg = np.asarray(Image.open(ref).convert("RGB"), dtype=float)
+    im = _renormalise(im, bg, rois)
+    wp = {}
+    for name, (x, y, w, h) in rois.items():
+        if name == "GREY":
+            continue
+        p = np.clip(im[y:y + h, x:x + w].reshape(-1, 3) - bg[y:y + h, x:x + w].reshape(-1, 3), 0, None)
+        v = p.mean(0) if len(p) > 1500 else p[p.sum(1) >= np.percentile(p.sum(1), 60)].mean(0)
+        mx = max(*v, 1.0)
+        if v.sum() > 30:
+            wp[name] = [float(c / mx) for c in v]
+            print(f"  {name:<10} white point {wp[name][0]:.2f},{wp[name][1]:.2f},{wp[name][2]:.2f}")
+        else:
+            print(f"  {name:<10} not lit - skipped (no white point)")
+    json.dump(wp, open(out, "w"), indent=1)
+    print(f"-> {out}")
+
+
+def _renormalise(im, bg, rois):
+    """Undo the camera's per-frame AUTO-EXPOSURE and AUTO-WHITE-BALANCE before differencing.
+
+    The phone re-meters the whole scene every frame. Light the LEDs and it stops DOWN to protect the
+    highlights, so every static surface goes darker: a wall measured [42,44,48] with the LEDs off read
+    [8,9,15] with them on, and the carpet [88,76,81] -> [48,55,56]. It also re-balances colour, so a
+    genuinely white LED lands blue-violet. Both effects mean `lit_frame - dark_reference` is comparing
+    two different cameras, which is why hues drifted between scenes and why lowering exposure did not
+    help.
+
+    Fix: put a GREY roi on a STATIC neutral surface that no LED can reach. Scale each channel of the
+    frame so that patch matches its value in the reference, then difference. Per frame, per channel,
+    so it tracks both effects with no camera control (Google Camera exposes no AE/AF lock).
+    """
+    if bg is None or "GREY" not in rois:
+        return im
+    x, y, w, h = rois["GREY"]
+    cur = im[y:y + h, x:x + w].reshape(-1, 3).mean(0)
+    want = bg[y:y + h, x:x + w].reshape(-1, 3).mean(0)
+    scale = np.where(cur > 1.0, want / np.maximum(cur, 1e-6), 1.0)
+    return im * scale
+
+
+def probe(rois_json: str, ref: str | None = None, wb: str | None = None) -> None:
     """Capture one still and name the colour in every calibrated ROI. The fast iteration loop.
 
     Pass a REFERENCE image (everything blanked: `$GLED,,,,3,,,*` + `$HLED,,6,,,,,*`) and each ROI is
@@ -181,11 +250,15 @@ def probe(rois_json: str, ref: str | None = None) -> None:
     open("/tmp/_lcprobe.png", "wb").write(r.stdout)
     im = np.asarray(Image.open("/tmp/_lcprobe.png").convert("RGB"), dtype=float)
     bg = np.asarray(Image.open(ref).convert("RGB"), dtype=float) if ref else None
+    wps = _wb_load(wb)
+    im = _renormalise(im, bg, rois)
     for name, (x, y, w, h) in rois.items():
+        if name == "GREY":
+            continue
         patch = im[y:y + h, x:x + w].reshape(-1, 3)
         if bg is not None:
             patch = np.clip(patch - bg[y:y + h, x:x + w].reshape(-1, 3), 0, None)
-        col, (rr, gg, bb) = _classify(patch)
+        col, (rr, gg, bb) = _classify(patch, wps.get(name))
         print(f"  {name:<10} {col:<7}  (R{rr:3.0f} G{gg:3.0f} B{bb:3.0f})")
 
 
@@ -233,7 +306,7 @@ def main(argv: list[str]) -> None:
         raise SystemExit(__doc__)
     cmd, args = argv[1], argv[2:]
     fn = {"shot": shot, "diff": diff, "crop": crop, "record": record, "pulse": pulse,
-          "probe": probe}.get(cmd)
+          "probe": probe, "calibrate": calibrate}.get(cmd)
     if fn is None:
         raise SystemExit(__doc__)
     if cmd == "diff" and "--min" in args:

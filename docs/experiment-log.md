@@ -2837,16 +2837,20 @@ consistency check that says the measurement is real, not an artefact):
 
 | idx | signature R/G/B | colour |
 |---|---|---|
-| 0 | 1.00 / 0.46 / 0.46 | **red** |
-| 1 | 0.30 / 0.78 / 1.00 | **blue** |
-| 2 | 0.81 / 1.00 / 0.61 | **yellow** |
-| 3 | 0.27 / 1.00 / 0.73 | **green** |
-| 4 | 0.62 / 0.61 / 1.00 | **purple** |
-| 5 | 0.29 / 1.00 / 0.83 | **teal** (distinct from 3: more blue, 0.83 vs 0.73) |
-| 6 | 0.75 / 0.91 / 1.00 | **white** (most balanced signature) |
-| **7** | **1.00 / 0.49 / 0.77** | **PINK/magenta** — R max, B high, G low |
-| **8** | **1.00 / 0.64 / 0.50** | **ORANGE** — R max, G above B |
+| 0 | 1.00 / 0.16 / 0.26 | **red** |
+| 1 | 0.19 / 0.59 / 1.00 | **blue** |
+| 2 | 0.88 / 1.00 / 0.59 | **yellow** |
+| 3 | 0.18 / 1.00 / 0.54 | **green** |
+| 4 | 0.59 / 0.49 / 1.00 | **purple** |
+| 5 | 0.23 / 1.00 / 0.85 | **teal** (cleanly apart from green: B 0.85 vs 0.54) |
+| 6 | 0.73 / 0.79 / 1.00 | **white** (most balanced; still blue-cast by AWB) |
+| **7** | **1.00 / 0.30 / 0.66** | **PINK/magenta** — R max, B high, G low |
+| **8** | **1.00 / 0.38 / 0.30** | **ORANGE** — R max, G above B (vs 0, where G ~ B) |
 | 9, 10 | dark | out of range |
+
+*(Signatures re-measured after Tony lowered the camera exposure, which materially improved channel
+separation: red went G 0.46 -> 0.16, and teal/green separated from 0.83/0.73 to 0.85/0.54. It did NOT
+fix the blue cast on white, because that is white balance, not saturation.)*
 
 **Indices 7 and 8 had never been read off a gun** (`manual/06-developer.md` research backlog). They
 are exactly what the community lead claimed: **7 pink, 8 orange**. That backlog item is closed, and
@@ -2899,7 +2903,18 @@ it and must not be read as if it did.
   is now maxed, a background poker runs every 3 minutes, and the harness hard-aborts on a portrait
   frame rather than carrying on.
 - **The control patch must be where NEITHER device can throw light** -- carpet near the gun is lit by
-  the gun and reports our own experiment as ambient drift.
+  the gun and reports our own experiment as ambient drift. Worse, one control ROI sat in the phone's
+  black LETTERBOX, outside the camera preview entirely: it read "dark" forever and gave false
+  reassurance on every row it appeared in.
+- **The camera re-meters EVERY frame** -- both auto-exposure and auto-white-balance. Lighting the LEDs
+  makes it stop down, so static surfaces darken (a wall [42,44,48] -> [8,9,15], carpet
+  [88,76,81] -> [48,55,56]). So `lit - dark_reference` compares two different cameras. Google Camera
+  offers no AE/AF lock.
+- **Per-frame renormalisation against a static grey patch is the right fix and is IMPLEMENTED, but it
+  is OFF.** It needs a neutral patch NO LED can reach, and this scene has none: with the patch on
+  carpet, an all-blue row turned the patch blue, and dividing by it reported blue as GREEN. Enabling
+  it without a spill-free patch is worse than leaving it off. Add a `GREY` roi only when there is a
+  genuinely shadowed neutral surface in frame.
 
 ### 2026-09-02 — ⭐ `$HLED` DECODED, the headset state model, and F1 answered NO (Tony + rig + phone camera)
 
