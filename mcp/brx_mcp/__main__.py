@@ -1152,6 +1152,38 @@ async def _reset(address: str) -> None:
           f"team colour). Same sequence the game teardown uses.", file=sys.stderr)
 
 
+def name_for_rename(name: str, address: str) -> tuple[str, bool]:
+    """The name to actually put in `$NAME`: tail stripped FIRST, then sanitized/truncated.
+
+    Order matters and getting it wrong is silent. `clean_callsign` truncates to CALLSIGN_MAX, so
+    stripping afterwards never matches -- feeding it `R0BAT-3D4F-3D4F` yielded `R0BAT-3D4F-3` and
+    wrote that to a real gun on 2026-09-02. Test THIS function, not the two halves.
+    """
+    from .modes.driver import clean_callsign
+    stripped, changed = strip_advert_tail(str(name or "").strip(), address)
+    return clean_callsign(stripped), changed
+
+
+def strip_advert_tail(name: str, address: str) -> tuple[str, bool]:
+    """Drop the `-<MACtail>` the GUN appends itself, so a re-fed advert name cannot double.
+
+    The gun advertises as `<$NAME>-<last 4 hex of its MAC>`, and `scan` prints exactly that. So the
+    obvious operator move -- copy the name you can see and rename with it -- silently produces
+    `R0BAT-3D4F-3D4F`, which is what R0BAT was actually called when we found it on 2026-09-02. The
+    tail is not part of `$NAME` and never should be sent in one.
+
+    Only a tail that MATCHES THIS ADDRESS is stripped, so a legitimate name ending in hex (say
+    `SQUAD-BEEF` on a different gun) survives. Repeats are stripped to a fixed point, which repairs a
+    gun that has already been doubled. Returns (name, changed).
+    """
+    tail = "".join(c for c in address if c.isalnum())[-4:].lower()
+    out = name
+    if tail:
+        while out.lower().endswith("-" + tail) and len(out) > len(tail) + 1:
+            out = out[: -(len(tail) + 1)]
+    return out, out != name
+
+
 async def _rename(address: str, name: str) -> None:
     """Set a tagger's persistent name over BLE via `$NAME` (the app's rename path).
     Mirrors the app ritual ($STOP → $PLAYX,0 → $NAME) — no $PHONE, so the on-gun
@@ -1159,9 +1191,14 @@ async def _rename(address: str, name: str) -> None:
     from .ble import ConnectionManager
     from .modes.driver import clean_callsign
     from .usbconsole import mark_rename, load_inventory
-    nm = clean_callsign(name)
+    nm, stripped = name_for_rename(name, address)
     if not nm:
         print("empty/invalid name after sanitize", file=sys.stderr); return
+    if stripped:
+        print(f"# NOTE: dropped the '-<MACtail>' the gun appends itself -- sending $NAME,{nm}.\n"
+              f"#       (`scan` shows the ADVERT, which is $NAME + the tail; renaming with the\n"
+              f"#        advert verbatim is what produced 'R0BAT-3D4F-3D4F'.)", file=sys.stderr)
+
     # a duplicate name can't be mapped — correlate refuses to bind two guns that
     # share a name. Warn before renaming into a collision.
     dupes = [s for s, r in load_inventory().items()
