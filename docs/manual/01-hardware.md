@@ -101,7 +101,7 @@ src: protocol/brx-ir-protocol.md, docs/reference/lasertagmods.md
 [callout:warn] **You cannot see the beam.** A phone camera will not show a low-power 38 kHz IR emitter. If both cameras show nothing, the gun can still be perfectly fine. Test with a receiver or another tagger, never with a camera. ✅ src: docs/gotchas.md
 
 [cards] "Where you can be tagged"
-- **Headset domes**: the main target. Our bench can tell a **front** dome hit from a **back** dome hit on the wire. Battle Company sells front, left and right sensor boards as spares. ✅ 👥
+- **Headset domes**: the main target. There are **four sensor domes and four LEDs** on the headset, one of each at the back. Our bench can tell a **front** dome hit from a **back** dome hit on the wire. Battle Company sells front, left and right sensor boards as spares. ✅ 👥
 - **Gun body sensor**: a hit sensor on the rifle itself. ✅ 📖
 - **The tagger says which sensor caught it**: at normal range it knows whether a tag landed front, back or on the gun. Point-blank, IR floods every receiver and you cannot trust the answer. ✅
 src: protocol/brx-protocol.md §"$HIR token 1 - sensor id map", docs/reference/community-notes.md
@@ -371,7 +371,7 @@ Nothing below appears on the site. Each item is published only once confirmed; c
 - **When the headset-drop firing lockout arrived.** Removed "since a 2018/2019 firmware revision" from the headset hero (the lockout itself stays). src: docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
 - **v2 headset = Battle Rifle Pro headset hardware, firmware-only difference.** Removed row from the Headset facts table, a secondhand internals claim. src: docs/reference/community-notes.md
 - **Gen2 vs Gen3 hardware differences** beyond the headset re-pair procedure: over the air they look identical to us. src: docs/reference/community-notes.md
-- **Headset sensor count and placement.** Battle Company sells front/left/right sensor boards; our wire decode distinguishes front and back. A definitive dome map is still owed. src: protocol/brx-protocol.md §"$HIR token 1", docs/reference/community-notes.md
+- **Headset dome to sensor-id map.** The count is settled: **four domes and four LEDs**, one of each at the back (2026-09-02). What is still owed is the full map from each dome to its `$HIR` token-1 id; our wire decode distinguishes front and back today. src: protocol/brx-protocol.md §"$HIR token 1", docs/reference/community-notes.md
 - **Grenade firmware updates.** Owners report `.bin` updates exist, but the grenade's USB-C exposed no data interface on our bench, so the update path is unknown. src: docs/reference/grenade.md
 - **Images:** no IDs removed. HW-10 (gun LED gauge) description and prompt edited to drop the "shifted colour in the last frame" (held, see life-gauge item above).
 - Whether a tagger booted with **no** headset fires locally: the manual says it does; owners report post-2018 firmware refuses. Contradicted, held (docs/reference/brx-manual-notes.md, docs/reference/community-notes.md).

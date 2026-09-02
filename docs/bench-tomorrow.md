@@ -47,10 +47,12 @@ groups is the expensive part, not the tests.
 > `bench-plan-hardware.md` is **superseded** (it says so at its own top). If they disagree, this wins.
 >
 > ⚠️ **Closed on 2026-08-30, do not run:** **4.1** (P13 — `$GLED` tokens 1-3 are three independently
-> addressable LEDs, each a direct palette index: 0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
-> 5 teal · 6 white) and **4.2** (P17 — **token 4 blanks all three**; Callsign's own `$GLED,,,,5,,,*`
-> does too). `$GLED` is solved: `<led1>,<led2>,<led3>,<t4>,<brightness>`. Also closed:
-> `bench-next-30.md` item 3, which is the same pair.
+> addressable LEDs, each a direct palette index; the palette is nine colours, 0 red · 1 blue · 2 yellow ·
+> 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange, with 7/8 read off a gun on 2026-09-02) and
+> **4.2** (P17 — **token 4 = 5 turns the LEDs off**: Callsign's own `$GLED,,,,5,,,*`).
+> `$GLED` is solved: `<led1>,<led2>,<led3>,<t4>,<brightness>`. ⚠️ **Corrected 2026-09-02: the earlier
+> "token 4 = 3 blanks all three" is wrong** — a full t4 sweep 0-10 at green went dark only at 5. Also
+> closed: `bench-next-30.md` item 3, which is the same pair.
 
 ## HOW TO RUN ANYTHING (read once — the items below assume this)
 

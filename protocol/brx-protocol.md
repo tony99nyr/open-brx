@@ -51,7 +51,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$WEAP,<slot>,...` | Define a weapon in slot 0–5 | ~44 tokens: damage, fire rate/delay, mag size, reload time, sounds, IR signature, ammo counts. See §6. |
 | `$SIR,<protocol>,<subtype>,<sound>,<function>,...` | Configure how incoming IR events are interpreted | Maps IR signatures to effects: damage, add HP, add shields, add armor, etc. See §5. |
 | `$BMAP,<button>,<function>,...` | Remap physical controls | Trigger=0, Alt-fire=1, Reload handle=2, Select=3, Left=4, Right=5, Gyro=8. Function 97=reload, **100=weapon-cycle (verified on hardware 2026-08-23)**. Note: with only one `$WEAP` slot loaded, function 100 has nothing to cycle to and **falls back to reloading** — which looks like a wrong mapping but is not. Load a secondary to see it switch. |
-| `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>,,*` | **SOLVED 2026-08-30 — three INDEPENDENTLY ADDRESSABLE gun LEDs.** Tokens 1-3 are the three body LEDs front-to-back, each a **direct palette index**: **0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal/cyan · 6 white** (7-8 exist, unnamed). Verified one field at a time under a synchronous protocol, then predicted and confirmed: `$GLED,3,2,1,0,10` → **green / yellow / blue**. **`<t4>` = 3 blanks all three (night mode, P17)**; the Callsign app's `$GLED,,,,5,,,*` also blanks (sent on death). `<brightness>` is token 5. The set colour **alternates with the team colour** rather than replacing it outright. ⚠️ The APK's `mid, effect, optionA, optionB` field names do NOT match this behaviour — that teardown recovers names in declaration order with no types, and it also wrongly claims colour is team-derived. **This makes a 3-segment health/armour gauge buildable.** |
+| `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>,,*` | **SOLVED 2026-08-30 — three INDEPENDENTLY ADDRESSABLE gun LEDs; palette completed 2026-09-02.** Tokens 1-3 are the three body LEDs front-to-back, each a **direct palette index**, **nine colours 0-8**: **0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal/cyan · 6 white · 7 pink · 8 orange** (9 and 10 are dark). Indices 7 and 8 were read off a gun for the first time on 2026-09-02 with the camera rig; normalised R/G/B signatures, all three LEDs agreeing: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. Verified one field at a time under a synchronous protocol, then predicted and confirmed: `$GLED,3,2,1,0,10` → **green / yellow / blue**. **`<t4>` = 5 turns the LEDs off** — that is Callsign's own frame, `$GLED,,,,5,,,*`, sent on death, and the frame we ship for night mode. ⚠️ **RETRACTED 2026-09-02: `<t4>` = 3 does NOT blank.** A full t4 sweep 0-10 with colour held green (`$GLED,3,3,3,<t4>,10`) renders **solid green for every value except 5**; and from a lit state `$GLED,,,,3,,,*` left a red gun red ([91,29,36] → [94,35,50]) while t4 = 5 dropped to ambient. Nuance worth keeping: with **empty** colour tokens (`$GLED,,,,N,,,*`) values **5, 6 and 7** all blanked, but with **explicit** colours only 5 blanked and 6/7 stayed lit — unexplained, so use the Callsign frame and nothing else. `<brightness>` is token 5. The set colour **alternates with the team colour** rather than replacing it outright. ⚠️ The APK's `mid, effect, optionA, optionB` field names do NOT match this behaviour — that teardown recovers names in declaration order with no types, and it also wrongly claims colour is team-derived. **This makes a 3-segment health/armour gauge buildable.** |
 | `$PLAY,<soundID>,<volume?>,<priority?>,<announcerID?>,,,,*` | Play a sound/voice line by ID | **Complete 2166-id bank in `callsign-extract/sound-bank.md`.** e.g. `VA20`="connection established". **Two independent slots (§7o):** token 1 = local/effect sound; **token 4 = the announcer/voice channel** — `$PLAY,,4,6,V3A,,,,*` leaves token 1 empty and speaks `V3A` ("kill"). Both can carry an id at once (`$PLAY,VSF,4,6,JAY,,,,*` at game end). Any id not in the bank is invalid |
 | `$AS,...` | Applicator/game-control settings | e.g. `$AS,1,0,4,0,10,0,95,*` |
 | `$SP,<n>,*` | End-of-game / stop | e.g. `$SP,99,*` |
@@ -770,6 +770,12 @@ against the probe above, **token 2 as the colour index fits 5 of our 6 observati
 mid-hold colour flip the operator saw. **Re-probe with `$GLED,<0-8>,0,0,1,2000,2000,*` varying
 only field 1 (and field 2), mid-game.** Source: https://www.facebook.com/groups/712027809192113/posts/1691669094561308/
 
+✅ **CONFIRMED 2026-09-02.** The nine-colour map is right, including the two indices we had never seen: a
+camera-rig sweep read **7 = pink** and **8 = orange** off a gun, with all three body LEDs agreeing on every
+row. See the `$GLED` row in the command table for the measured signatures. The community lead's *token*
+positions were still off (colour is tokens 1-3, one per LED; token 4 is not an effect enum in any way we can
+measure) — only the palette itself was correct.
+
 ### RESOLVED (same day): LED colour comes from `$TID`, not `$GLED`
 
 Two taggers were given identical configs differing **only** in team id — `$TID,1,*` vs
@@ -788,8 +794,8 @@ addressable body LEDs**, each a direct palette index, and a gun held on `$TID,1`
 colours on command. The §7i probe corroborated the wrong reading because it ran on a
 tagger that was already blue **and** was walking the wrong token positions.
 
-**Still unknown:** the full team→colour table, what `$GLED`'s tokens actually do, and
-whether a neutral/no-team colour exists. **Next test: `$TID,0,*`** — free-for-all has no
+**Still unknown:** the full team→colour table and whether a neutral/no-team colour exists.
+(`$GLED`'s tokens are now known — see the command table.) **Next test: `$TID,0,*`** — free-for-all has no
 teams, so if a null team yields white that is the semantically correct way to set an FFA
 LED rather than forcing a colour.
 

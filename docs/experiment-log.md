@@ -3153,7 +3153,12 @@ for his call, then the next. No timers.
 
 **0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal/cyan · 6 white** (7-8 exist, unnamed)
 
-- **`<t4>` = 3 blanks all three** — the night-mode frame (P17). The app's `$GLED,,,,5,,,*` also blanks.
+> ⚠️ **CORRECTED 2026-09-02** (see the entry "THE FULL LED PALETTE, MEASURED" above): the palette is
+> **nine colours, 0-8** — **7 = pink, 8 = orange**, measured on a gun — and **`<t4>` = 3 does NOT blank.
+> Only `<t4>` = 5 does.** The rest of this entry stands.
+
+- ~~**`<t4>` = 3 blanks all three**~~ ❌ **WRONG, retracted 2026-09-02.** **`<t4>` = 5** is the
+  night-mode frame (P17), i.e. the app's own `$GLED,,,,5,,,*`.
 - **`<brightness>`** is token 5.
 - ⚠️ **`$SPAWN` is what makes the colours alternate.** A spawned gun runs its own **team-colour pulse**
   and `$GLED` is composited over it, so a gauge flickers between your colour and the team colour and is
@@ -3223,14 +3228,16 @@ which confirms red is the palette **default** (index 0), not the team colour sho
 
 **Verdict: token 4 did NOT unlock the middle LED.** Two useful results, but not the one we were after:
 
-1. **`$GLED,<c>,0,0,3,10,,*` blanks every LED** — a real night-mode frame (P17), on the correct axis.
+1. ~~**`$GLED,<c>,0,0,3,10,,*` blanks every LED**~~ ❌ **RETRACTED 2026-09-02** — a full t4 sweep with the
+   colour held at green showed `t4=3` rendering **solid green**; only `t4=5` goes dark. The night-mode
+   frame is the app's `$GLED,,,,5,,,*` (item 2), which is what we ship.
 2. **The app's `$GLED,,,,5,,,*` also blanks.** Note its **colour field is EMPTY**, so "no colour" may be
    what blanks it rather than token 4 = 5 specifically. Two candidate blanking mechanisms; not yet
    separated.
 3. **Red is confirmed as the palette DEFAULT**, not the team colour — the team was **yellow** throughout
    and no LED ever showed yellow.
 
-**A/B CONFIRMED:** token 4 = 0 vs 7 alternated back-to-back, three rounds, 14 s each — Tony: *"no difference"*. So token 4 is **inert except for 3 (all off)**; the other values are not doing anything subtle we missed on a single pass.
+**A/B CONFIRMED:** token 4 = 0 vs 7 alternated back-to-back, three rounds, 14 s each — Tony: *"no difference"*. So token 4 is **inert except for the off value**; the other values are not doing anything subtle we missed on a single pass. ⚠️ **Corrected 2026-09-02: that off value is 5, not 3.** (With explicit colours supplied, 0-4 and 6-10 all render solid; with the colour tokens left EMPTY, 6 and 7 blanked too, which is unexplained.)
 
 **LED 2 never moved across all ten values** — but see the effect sweep below: **it was never token 4.
 It was the EFFECT field.**

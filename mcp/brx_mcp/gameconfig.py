@@ -255,13 +255,18 @@ class GameConfig:
         return f"$WEAP,{slot}{tail}"
 
     def _led_frames(self) -> list[str]:
-        # P17 CLOSED on hardware 2026-08-30. $GLED is NOT "mid/effect/optionA/optionB":
-        # tokens 1-3 are the three gun LEDs, each a direct palette index, and TOKEN 4 = 3
-        # blanks all three. This frame is the one Callsign itself sends on death, observed
-        # blanking the gun; `$GLED,0,0,0,3,10,,*` (t4=3) was observed doing the same.
-        # The previous value here ("$GLED,0,4,0,0,0,,*") was an unconfirmed guess built on
-        # the retracted "colour index 0 = off" reading -- index 0 is RED, so that frame did
-        # not turn anything off.
+        # P17 CLOSED on hardware 2026-08-30. $GLED is NOT "mid/effect/optionA/optionB": tokens 1-3
+        # are the three gun LEDs, each a direct palette index (0 red, 1 blue, 2 yellow, 3 green,
+        # 4 purple, 5 teal, 6 white, 7 pink, 8 orange; 9+ dark -- all nine measured 2026-09-02).
+        #
+        # ⚠ CORRECTED 2026-09-02: this comment used to say "TOKEN 4 = 3 blanks all three" and cite
+        # `$GLED,0,0,0,3,10,,*`. It does NOT blank. With the gun lit red, t4=3 left it red
+        # ([91,29,36] -> [94,35,50]), sending it twice or with explicit zeros made no difference.
+        # THE SHIPPED FRAME BELOW WAS ALWAYS CORRECT -- it is Callsign's own death frame and t4=5
+        # does blank -- so nothing here changed; only the wrong claim beside it did.
+        #
+        # The value before that ("$GLED,0,4,0,0,0,,*") was an unconfirmed guess built on the
+        # retracted "colour index 0 = off" reading -- index 0 is RED, so it turned nothing off.
         if self.leds:
             return []
         return ["$GLED,,,,5,,,*"]  # blank all three (bench + Callsign capture)

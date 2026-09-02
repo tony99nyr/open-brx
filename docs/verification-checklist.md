@@ -108,7 +108,7 @@ The whole M0 engine ran end-to-end on real guns — **team2 won 3–1**; full na
 - ⚠ **Shields** — `shield=` / any shield-pool effect: **P16** — shields read 0 despite `$PSET` shield=99. ~~Confirm whether shields can be activated at all~~ ✅ **P16 CLOSED 2026-08-26 — yes, via an IR `$SIR` function-11 event, never a BLE pool value** (drain order shields→armor→HP); until then use **armor**, not shield.
 
 ## Session C — environment / config knobs (1 tagger, ~10 min)
-- ✅ **Night mode / LEDs off — PASSED 2026-08-30 (P17 closed).** `$GLED` **token 4** blanks all three LEDs; `gameconfig` now ships Callsign's own `$GLED,,,,5,,,*`. ⬜ **Remaining:** confirm a blanked gun stays dark once **spawned** — a spawned gun runs a native health gauge on those same LEDs.
+- ✅ **Night mode / LEDs off — PASSED 2026-08-30 (P17 closed; value corrected 2026-09-02).** `$GLED` **token 4 = 5** turns all three LEDs off; `gameconfig` ships exactly that, Callsign's own `$GLED,,,,5,,,*`. ⚠ The earlier "t4=3 blanks" reading is **retracted** — a full 0-10 sweep at green showed only 5 going dark. ⬜ **Remaining:** confirm a blanked gun stays dark once **spawned** — a spawned gun runs a native health gauge on those same LEDs.
 - ⬜ **Outdoor mode** — `outdoor=1` (`$GSET` token 2) changes IR range/behaviour as expected.
 - ⬜ **Kid mode** — `kid_mode=1` → more health, friendly fire off (verify FF actually off).
 - ⬜ **Volume** — the 1–5 ≈ 60/70/80/90/100 estimate; confirm `volume=80` is a comfortable level-3.

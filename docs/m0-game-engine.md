@@ -18,7 +18,7 @@ Every operator-settable knob, mapped to the BRX frame(s) that apply it:
 | Frag limit | `frag_limit` | host |
 | Volume | `volume` (0–100; 1–5 ≈ 60/70/80/90/100) | `$VOL` |
 | Indoor/outdoor | `outdoor` | `$GSET` token 2 |
-| **Night mode** (outdoor + LEDs off) | `outdoor=True, leds=False` | `$GSET` + `$GLED,,,,5,,,*` ✅ (P17 closed 2026-08-30: token 4 blanks all three LEDs) |
+| **Night mode** (outdoor + LEDs off) | `outdoor=True, leds=False` | `$GSET` + `$GLED,,,,5,,,*` ✅ (P17 closed 2026-08-30; **token 4 = 5** is the off value, corrected 2026-09-02 — t4=3 leaves the LEDs lit) |
 | Kid mode | `kid_mode` (health floor, no FF, soft crits) | preset |
 | Friendly fire | `friendly_fire` | `$GSET` token 1 |
 | Crit modifier | `crit_modifier` | `$GSET` token 7 |
@@ -34,7 +34,7 @@ low-HP class can't drop below the kid minimum; kid-mode deliberately forces frie
 The Mission Control config→frames compiler now lives in **`mcp/brx_mcp/mc/compile.py`** — it turns a
 `GameConfig` + roster into a per-player **`FrameBundle`** the node writes verbatim.
 
-⚠ **Note:** LEDs-off (`$GLED`) is **confirmed** (P17 closed 2026-08-30 — token 4 blanks all three); shields are inactive until
+⚠ **Note:** LEDs-off (`$GLED`) is **confirmed** (P17 closed 2026-08-30 — **token 4 = 5** blanks all three, per the 2026-09-02 sweep; the earlier "t4=3" reading is retracted); shields are inactive until
 granted only by an IR `$SIR` function-11 event (P16 CLOSED 2026-08-26) — over BLE set `armor`/`hp`, not `shield`; a Companion/station with an IR emitter can grant real shields.
 
 ## Modes (`modes/`)

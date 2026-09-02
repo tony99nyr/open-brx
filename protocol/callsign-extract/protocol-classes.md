@@ -348,7 +348,7 @@ positional sound set — each slot is a named game-event sound. Note fields are 
 |---|---|---|
 | **BMAP** | buttonNumber, function, swapSlot0..3 | button remap + 4 weapon-swap slots |
 | **AMMO** | metadata fields = `clip, functionToApply` (partial parse) | **Wire form is `$AMMO,<slot>,<clip>,<reserve>,<flag>,*` — hardware-verified** from the §7e iOS capture that ran a live game (e.g. `$AMMO,0,36,108,1,*`). The metadata field list is incomplete (missing the leading slot and the reserve); trust the captured wire form. |
-| **GLED** | mid, effect, optionA, optionB | gun LED — **not** r,g,b (see LedEffect enum); colour is team-derived |
+| **GLED** | mid, effect, optionA, optionB | gun LED — **not** r,g,b. ⚠️ **These field names are WRONG on the wire** (the teardown recovers names in declaration order, with no types). Bench truth: `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>` — three independently addressable body LEDs, each a palette index 0-8 (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange), and **t4 = 5 turns them off**. Colour is **not** only team-derived. See `protocol/brx-protocol.md` §command table. |
 | **GREN** | iRType, crit, modifier, indoorMode, operationMode, channel, (GrenadeType, MaxCount) | **Smart Grenade config** — a whole command we hadn't mapped |
 | **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | "hyper/heavy fire" IR burst |
 | **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | raw IR transmit |

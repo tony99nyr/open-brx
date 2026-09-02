@@ -69,8 +69,11 @@ lore, indexed by symptom; several of those quirks each cost a whole session.
 > ### ⚠️ 2026-08-30 — `$GLED` SOLVED, and the LED "pulse" was the health gauge all along
 >
 > - **`$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`** — the three gun LEDs are **independently
->   addressable**, each a direct palette index (**0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
->   5 teal · 6 white**). **t4 = 3 blanks all three** (night mode, **P17 closed**). The old
+>   addressable**, each a direct palette index. ⚠️ **CORRECTED 2026-09-02:** the palette is **nine
+>   colours, 0-8** (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink ·
+>   8 orange**; 9/10 dark), and **t4 = 5 — not 3 — is what turns the LEDs off** (night mode,
+>   **P17 still closed**, just with the corrected value). `t4 = 3` leaves the LEDs lit. The frame to
+>   use is Callsign's own `$GLED,,,,5,,,*`, which is what we already ship. The old
 >   "colour is team-derived, `$GLED` = mid/effect/optionA/optionB" reading is **wrong**.
 > - **The pulsing LEDs on a spawned gun are the gun's OWN health gauge**, not interference. Supremacy's
 >   Marauder shows armour then health and reverts to team colour unaided. So the pool-status feature
@@ -332,7 +335,7 @@ id — P2, F, D1…). Summary below is a snapshot only:
 |---|---|
 | `$GSET` 8 tokens | ✅ **mapped + hardware-confirmed** (friendlyFire…gameMods). No respawn/time/lives token — those are host-side |
 | `$WEAP` 44 tokens | ✅ **mapped + validated** vs two live frames (`protocol-classes.md`); ~6 empty positions want a one-field capture |
-| `$GLED` tokens | ✅ **SOLVED 2026-08-30 — three independently addressable LEDs.** `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`, each LED a direct palette index (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white**). **t4=3 blanks all three** (night mode, P17 closed). ⚠️ The older "colour is team-derived, `$GLED` = mid/effect/optionA/optionB" reading is **WRONG** — a gun held on `$TID,1` took six colours on command. The APK field names do not describe this command. |
+| `$GLED` tokens | ✅ **SOLVED 2026-08-30 — three independently addressable LEDs; palette completed and t4 corrected 2026-09-02.** `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`, each LED a direct palette index over **nine colours 0-8** (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange**; 9/10 dark). **t4=5 turns the LEDs off** (night mode, P17 closed) — Callsign's own `$GLED,,,,5,,,*`, the frame we ship. ⚠️ **RETRACTED: t4=3 does NOT blank** (full 0-10 sweep at green: only 5 goes dark; `$GLED,,,,3,,,*` left a lit gun lit). Nuance: with empty colour tokens 5/6/7 all blanked, with explicit colours only 5 did — unexplained, so use the Callsign frame. ⚠️ The older "colour is team-derived, `$GLED` = mid/effect/optionA/optionB" reading is **WRONG** — a gun held on `$TID,1` took six colours on command. The APK field names do not describe this command. |
 | Sound inventory | ✅ **2166-id bank** (`sound-bank.md`) |
 | Smart Grenade | ✅ config = `$GREN` to gun (FlashBang/Gas/Confusion/Molotov). ⬜ hardware test pending (followup F) |
 | Per-player identity | ✅ **SOLVED 2026-08-25** — `$PSET` token 1 = player id (0–63), `$HIR` token 3 = shooter id on every hit (§7p/§7q). Over BLE, per game, no cable. |

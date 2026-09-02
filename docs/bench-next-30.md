@@ -63,8 +63,10 @@ shield at 0.
 ## ~~3 · P13 — the `$GLED` colour index~~  ·  ✅ **CLOSED 2026-08-30 — DO NOT RUN**
 
 **Answered:** `$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>` — **three** independently addressable body
-LEDs, each a direct palette index (**0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white**).
-**Token 4 blanks all three** (P17 also closed). And the pulsing gauge everyone was trying to explain is
+LEDs, each a direct palette index over nine colours (**0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
+5 teal · 6 white · 7 pink · 8 orange**; 9/10 dark, with 7 and 8 measured 2026-09-02).
+**Token 4 = 5 turns them off** — Callsign's own `$GLED,,,,5,,,*` (P17 also closed). ⚠️ **Corrected
+2026-09-02: "token 4 blanks all three" as originally written, meaning t4=3, is wrong** — only 5 blanks. And the pulsing gauge everyone was trying to explain is
 the gun's **own native health bar** — see FOLLOWUPS **F1**. Original text kept below for provenance only:
 
 <details><summary>original item (superseded)</summary>

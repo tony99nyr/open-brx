@@ -151,7 +151,7 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 | What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event. A phone cannot just set it. | ✅ 📖 |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal *shot*, and the community confirms it heals by shooting teammates. A host can also grant health directly. | 📖 👥 ✅ |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. | ✅ |
-| Head shots? | The headset has two sensors (front and back domes) and the gun body has a third. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: ×1.5 at the shipped t7=50, and t7=0 turns crits off. | ✅ |
+| Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: ×1.5 at the shipped t7=50, and t7=0 turns crits off. | ✅ |
 | Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. | ✅ 📖 |
 `src: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)`
 
@@ -178,11 +178,11 @@ _From trigger pull to green flash in five steps (the developer section has the b
 
 [hero] A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carrier. It carries **who fired (player id), which team, how much damage, and what kind of damage**. Your target's headset or gun catches it, looks it up, and takes off the damage. If that was the last of their health, your sight flashes green. ✅ `src: protocol/brx-ir-protocol.md, protocol/brx-protocol.md §7o + §7r`
 
-[diagram GAME-10] The kill pipeline: gun → 25-bit IR word → three receivers on the victim → pool subtraction → death → kill-confirm flash back on the shooter. `src: protocol/brx-ir-protocol.md, protocol/brx-protocol.md §7r`
+[diagram GAME-10] The kill pipeline: gun → 25-bit IR word → the receivers on the victim → pool subtraction → death → kill-confirm flash back on the shooter. `src: protocol/brx-ir-protocol.md, protocol/brx-protocol.md §7r`
 
 [steps] **The five steps**
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits) · player id (6 bits, 0–63) · team (2 bits, 4 teams) · damage (8 bits, up to 255) · crit flag · effect subtype · 2 check bits.
-2. **Catch.** Your target has three receivers: the headset's **front dome**, the headset's **back dome**, and a sensor on the **gun body**. Whichever one catches the word reports it. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
+2. **Catch.** Your target has five receivers: **four domes on the headset**, one of them at the back, and a sensor on the **gun body**. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
 3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped. Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset lights green (a blink on a hit, a hold on a kill) and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the *shooter's* sight flashes green and the announcer says "kill". In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.

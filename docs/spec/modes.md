@@ -316,8 +316,10 @@ led {
   colors?: [number, number, number],   // custom: one palette index per body LED, front to back
   brightness?: number,                 // $GLED token 5
 }
-// Palette (bench-verified 2026-08-30): 0 red · 1 blue · 2 yellow · 3 green · 4 purple ·
-// 5 teal · 6 white (7-8 exist, unnamed). "off" = $GLED token 4 blanks all three.
+// Palette (bench-verified 2026-08-30, completed 2026-09-02): nine colours, 0-8 —
+// 0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange
+// (9/10 dark). "off" = $GLED token 4 = 5, i.e. Callsign's own frame $GLED,,,,5,,,*.
+// ⚠ CORRECTED 2026-09-02: token 4 = 3 does NOT blank (it leaves the LEDs lit); only 5 does.
 // NOTE: the old `effect: solid|glow|chase|stopIR` enum came from the APK teardown's
 // declaration-order field names and does NOT describe this command. Retracted.
 ```
@@ -326,7 +328,7 @@ led {
 |---|---|---|
 | **Indoor** | `indoor` / false / `{mode:"team"}` | `$GSET,…,outdoorMode=0,…`; LED = team colour via `$TID` (no `$GLED`) |
 | **Outdoor (day)** | `outdoor` / false / `{mode:"team"}` | `$GSET,…,outdoorMode=1,…` (longer IR range profile) |
-| **Night** | `outdoor` / true / `{mode:"off"}` | `$GSET` outdoor + `$GLED,,,,5,,,*` — ✅ **CONFIRMED 2026-08-30** (token 4 blanks all three LEDs; P17 closed) |
+| **Night** | `outdoor` / true / `{mode:"off"}` | `$GSET` outdoor + `$GLED,,,,5,,,*` — ✅ **CONFIRMED 2026-08-30** (P17 closed; **token 4 = 5** is the off value, corrected 2026-09-02 — t4=3 does not blank) |
 
 - ⚠️ **RETRACTED 2026-08-30:** LED colour is *not* only team-derived, and `$GLED` is *not*
   `mid,effect,optionA,optionB`. It is **`$GLED,<led1>,<led2>,<led3>,<t4>,<brightness>`** — three
@@ -396,7 +398,7 @@ awardMedals(rows, kills)  -> {player_id: medal_id[]}
 8. **Voice sets** — `voiceOptions()` + `pset(...)`; encode the known families; VA complete,
    others best-effort; capture-plan doc for the unknown per-slot ids.
 9. **`led` object** — parse into `outdoor`/`leds` + optional per-LED `colors`; wire the 3 environment
-   presets. The night `$GLED` path is **confirmed** (token 4 blanks); no longer a guess.
+   presets. The night `$GLED` path is **confirmed** (token 4 = 5 blanks; `$GLED,,,,5,,,*`); no longer a guess.
 10. **`validate(roster, opts)`** — the §7 rule set incl. required `time_limit_s` and unique `player_num`.
 11. **Medals** — `medalCatalog()` + `awardMedals()` over `ScoreRow[]`/`Kill[]`; per-player, exact.
 12. **Mocks/fakes** — a `FakeCatalog` + sample `GameConfig`s + a sample `FrameBundle` so M-NODE/M-MC
@@ -414,7 +416,8 @@ awardMedals(rows, kills)  -> {player_id: medal_id[]}
   to gun A, no `$SPAWN`; shoot it with a try-out-armed gun B; watch for `$HIR`/`$HP` on A.
 - **Voice per-slot map** beyond VA — do we pull the `voice-profiles` endpoint (apk-harvest) or
   capture-diff each family? Endpoint is faster if reachable offline-cached.
-- ✅ **Night LED-off (P17) — CLOSED 2026-08-30.** `$GLED` token 4 blanks all three LEDs, verified on
+- ✅ **Night LED-off (P17) — CLOSED 2026-08-30, value corrected 2026-09-02.** `$GLED` **token 4 = 5**
+  turns all three LEDs off (Callsign's `$GLED,,,,5,,,*`, the frame we ship); t4=3 does **not** blank. Verified on
   hardware. Still open, and tracked in **FOLLOWUPS F1**: a *spawned* gun runs a native health gauge on
   those LEDs, so confirm a blanked gun stays dark once spawned.
 - **Max native team count** — 2-team play confirmed; 3 distinct `$TID` colours observed but 3+-team

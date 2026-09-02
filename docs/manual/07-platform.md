@@ -511,7 +511,7 @@ From `docs/architecture-topology.md` §7 and `docs/verification-checklist.md`:
 - **FFA / Infection / LMS on real guns**: the logic is sim-proven (156 scenarios). On-gun LED colours, sounds, health and scoreboard are not yet confirmed live. The attribution fuse is not exercised.
 - **Objective modes (Domination / KotH / CTF / CS / Extraction) live**: the engines wait on a station or grenade to emit the IR events. Grenade CTF team-assign (G9) and thrown-blast `$GREN` (G10) are open.
 - **Health variants live** (Syphon, regen): `$LIFE` writes are confirmed, but the modes on top are not run live. The shield pool is IR-only (fn-11), and the node/app currently drop the shield token (Q12). A hit fully absorbed by a shield would go unreported.
-- **Config knobs on-gun**: outdoor mode, kid mode, volume levels, HP/armor start values; none flipped on the bench yet. (Night-mode LEDs-off is **done**: `$GLED` token 4 blanks all three body LEDs, verified 2026-08-30.)
+- **Config knobs on-gun**: outdoor mode, kid mode, volume levels, HP/armor start values; none flipped on the bench yet. (Night-mode LEDs-off is **done**: `$GLED` token 4 set to **5** turns all three body LEDs off, which is Callsign's own frame `$GLED,,,,5,,,*`; the frame we ship was verified 2026-08-30 and the token value re-measured 2026-09-02.)
 - **Loadout v2** (two slots, perks, policy presets, phone picks): built 2026-08-27, not bench-verified.
 - **Melee in a compiled game**: it did not work on the bench, even though our frames match Callsign's byte for byte (K4). A runtime or state question.
 - **ADR-0001 confirmation still owed**: that a host-armed game does *not* self-fire feedback once disconnected.

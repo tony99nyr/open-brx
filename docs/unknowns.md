@@ -45,8 +45,8 @@ or floor space. This is the biggest category and the highest-value one.
 ### A2 · Needs EYES (5) — **the LED cluster, entirely unconfirmed**
 | id | unknown | why it matters |
 |---|---|---|
-| ~~**P13**~~ | ~~Is `$GLED` colour a single 0–8 index?~~ | ✅ **CLOSED 2026-08-30** — yes, and there are **three** independently addressable LEDs (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white). |
-| ~~**P17**~~ | ~~How do you turn the LEDs **OFF**?~~ | ✅ **CLOSED 2026-08-30** — **token 4** blanks all three (`$GLED,,,,3,,,*`, and Callsign's own `$GLED,,,,5,,,*`). |
+| ~~**P13**~~ | ~~Is `$GLED` colour a single 0–8 index?~~ | ✅ **CLOSED 2026-08-30, palette completed 2026-09-02** — yes, and there are **three** independently addressable LEDs. Nine colours: 0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · **7 pink · 8 orange** (9/10 dark). Indices 7/8 were read off a gun 2026-09-02 with the camera rig. `$HLED` token 1 shares the palette for 0-7 and diverges at 8 (red on the headset, orange on the gun). |
+| ~~**P17**~~ | ~~How do you turn the LEDs **OFF**?~~ | ✅ **CLOSED 2026-08-30, value corrected 2026-09-02** — **token 4 = 5**: Callsign's own `$GLED,,,,5,,,*`, which is what we ship. ⚠️ The originally recorded `$GLED,,,,3,,,*` was **wrong** — a full t4 sweep 0-10 with colour held green renders solid green for every value except 5, and from a lit state t4=3 left the gun lit. Nuance: with **empty** colour tokens 5, 6 and 7 all blanked; with **explicit** colours only 5 did, which is unexplained. Use the Callsign frame. |
 | ~~—~~ | ~~**LED life mode**~~ | ✅ **ANSWERED 2026-08-30** — the pulse **is** the native life gauge. Open part moved to **FOLLOWUPS F1**: does it appear in *our compiled* games? |
 | — | **Try-out LED strobe** — LEDs show the unspawned pattern during tutorials | looks broken to a player |
 | **A10c** | **Extended Mags HUD max** — does the HUD's mag/reserve cap match the `$AMMO,0` we write (64/768)? | *(loadout v2)* **eyes only, no trigger** — compare HUD to the frame |

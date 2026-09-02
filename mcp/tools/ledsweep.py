@@ -260,7 +260,7 @@ async def main():
 
         if "bright" in sections:
             print("--- $GLED token 5: claimed brightness (green) ---", flush=True)
-            for t5 in (0, 1, 5, 10, 25, 50, 100, 200, 255):
+            for t5 in (1, 2, 1, 2, 1, 2):
                 r = await rig.apply_read(f"$GLED,3,3,3,0,{t5},,*")
                 lum = {k: sum(r[k][1]) for k in rois}
                 rig.line(f"$GLED,3,3,3,0,{t5:<4} lum={int(lum['LED1']):4d}", r)
