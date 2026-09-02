@@ -554,6 +554,48 @@ Both halves matter:
 **Action: replace or service the headset.** Confirming test, and the prediction is explicit: swap this
 headset onto a known-good gun and the reduced range should follow the headset.
 
+### 🔋 IT DEGRADES WITHIN MINUTES OF POWER-ON — leading cause is now the HEADSET BATTERY
+
+**The measurement that reframed everything.** Three arms, same emitter, same 3 ft distance, same
+target, run back to back immediately after a double power cycle:
+
+| | when | result |
+|---|---|---|
+| A  our usual FAST arm | ~1 min after power-on | **5/6 hits**, sensors 1 and 2 |
+| B  our frames, SLOW 700 ms gaps | ~2 min | **1/6** |
+| C  Callsign's order, full 10-row `$SIR`, slow | ~4 min | **0/6** |
+
+**Arming order, timing and completeness are RULED OUT** — Callsign's own sequence did *worst*, purely
+because it ran last. What the data actually shows is **progressive degradation with time since
+power-on**: full range for about a minute, then fading to nothing within a few minutes.
+
+**This retro-explains every "recovery" in this entry.** They were all measured in the first minute
+after a cycle. The "two power cycles are needed" pattern, the `$GSET` recovery, the apparent
+arm/spawn trigger — all of them were the clock, not the treatment.
+
+### Why the battery is the leading suspect
+
+The behaviour is the classic signature of a supply sagging under load: works when rested, fades as it
+runs, recovers after being off. USB-read headset voltages (`armory.json`, 2026-08-26):
+
+| unit | headset volts |
+|---|---|
+| **R0BAT** (known good, tags normally) | **4.6** |
+| R0BAS | 3.911 |
+| **R0BQT** (faulty) | **3.833** |
+| R0BP1 | 3.677 |
+
+R0BAT sits well above the others. ⚠️ Not a clean correlation — R0BP1 is lower still and has not been
+tested — and the snapshot is a week stale, so this is a lead, not a conclusion.
+
+**Next step, cheap and decisive: fully charge R0BQT's headset, then re-test at 3 ft over several
+minutes.** If range returns *and holds*, the cause is charge state, not a broken part — which would
+also explain it appearing partway through a real game, after the headset had been on a while.
+
+**If charging does not fix it**, the same test still stands as the diagnostic: measure hits at a fixed
+distance at 1, 3 and 5 minutes after power-on. A unit that starts fine and fades is a supply or
+thermal problem; one that is bad from the first shot is the receiver itself.
+
 ### ❌ NOT `$GSET` outdoorMode
 
 A promising config hypothesis, tested and dead. Every arm we send has `$GSET` token 2 = 0 (indoor),
