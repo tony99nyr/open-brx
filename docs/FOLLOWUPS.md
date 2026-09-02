@@ -573,7 +573,43 @@ power-on**: full range for about a minute, then fading to nothing within a few m
 after a cycle. The "two power cycles are needed" pattern, the `$GSET` recovery, the apparent
 arm/spawn trigger — all of them were the clock, not the treatment.
 
-### ✅ CONTROL: a HEALTHY headset does NOT fade — R0BQT's decline is abnormal
+### ⚠️⚠️ RETRACTED: the HEALTHY headset fades too — the shared suspect is OUR EMITTER
+
+**The control was run to completion and it reverses the conclusion below.** R0BAT, the known-good
+unit, also fades:
+
+| minutes after power-on | **R0BAT** (healthy) | **R0BQT** (suspect) |
+|---|---|---|
+| 0.2 – 3.9 | **6/6 throughout** | — |
+| ~1 | 6/6 | 5/6 |
+| ~2 | 6/6 | **1/6** |
+| ~4 | 6/6 | **0/6** |
+| 4.7 | **5/6** | — |
+| 5.4 | **1/6** | — |
+
+**Both headsets fade.** R0BQT in about 2 minutes, R0BAT in about 5. So this is **not a fault specific
+to one unit** — it is systemic, and the component shared by every test is **our ESP32 emitter**.
+
+**Why that is now the leading explanation.** If the IR LED or its drive weakens with sustained firing
+(heat, or current sag), every target fades over a run. And it retro-explains the single most
+confounding pattern of the whole session: **every "recovery" followed a PAUSE.** Power cycling,
+re-aiming the board, waiting for the operator — all of them rested the emitter. We were repeatedly
+crediting the tagger for the emitter cooling down.
+
+**⚠️ Everything below in this entry that concludes R0BQT is faulty is therefore SUSPECT**, including
+the "root cause localised" and "degraded sensitivity" sections. What still stands unaltered:
+- the gun body registers when the headset does not (that was a *simultaneous* comparison)
+- the headset works at 3 inches and not at 3 feet (also simultaneous)
+- muster needs a headset-dome shot at realistic range
+
+What does **not** stand: that R0BQT is defective and should be pulled or serviced. **Do not replace
+that headset on the strength of this entry.**
+
+**The test in progress:** with R0BAT faded to 1/6, rest the emitter without firing and without
+touching the tagger, then fire again. Recovery with the tagger untouched implicates the emitter
+outright.
+
+### ~~CONTROL: a healthy headset does NOT fade~~ (SUPERSEDED by the completed run above)
 
 The control this entry badly needed. Every claim that R0BQT is "faulty" rested on an assumption that
 a good headset holds its range, and that had never been measured. Same emitter, same **3 ft**, same
