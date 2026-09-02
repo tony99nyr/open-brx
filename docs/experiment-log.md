@@ -2825,6 +2825,66 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 — the last three LED unknowns, closed
+
+All against BLACK (exposure down until only the LEDs are visible), absolute luminance, no reference
+frame, three trials per value reported individually rather than averaged.
+
+## 1. `$GLED` tokens 6 and 7 are INERT
+
+Baseline `$GLED,3,3,3,0,10` with both empty reads lum 53-62. Every variant lands in the same band:
+
+| variant | lum |
+|---|---|
+| both empty (baseline) | 53.2 / 62.5 / 60.3 |
+| t6 = 0, 1, 50, 255 | 57.5 - 69.1 across all |
+| t7 = 0, 1, 50, 255 | 57.4 - 70.6 across all |
+| t6 = 1 **and** t7 = 1 | 65.6 / 63.5 / 71.1 |
+
+Colour never changed (green throughout). **Nothing in tokens 6 or 7 does anything we can see**, over
+their full 0-255 range, alone or together. `$GLED` is therefore a **five-token** command in practice.
+
+## 2. The two brightness controls do NOT compose — token 4 dominates
+
+|  | t5 = 1 | t5 = 2 | t5 = 10 |
+|---|---|---|---|
+| **t4 = 0** | 47.5 | 50.1 | **64.6** |
+| **t4 = 5** | 20.9 | 20.2 | 15.4 |
+
+`t4 = 5` pins the output to ~15-21 **regardless of token 5**, about 40% of the t4=0 level (consistent
+with the ~1/3 measured earlier by a different method). Token 5 still varies the output at t4=0, so it
+is not dead — but once t4=5 is set, token 5 stops mattering.
+
+⚠️ **Honest discrepancy, not resolved.** The earlier token-5 measurement (a different exposure, delta
+against a reference) put the step between **1 and 2** (172/181/184 vs 267/254/247, 3x alternating, no
+overlap). This run puts 1 and 2 together and the step between **2 and 10**. Both were internally
+consistent. So the *shape* of token 5's curve is NOT reliably established; what survives both runs is
+only **0 = off, higher = brighter**. Recording that rather than picking the run I like better.
+
+## 3. `$HLED` token 5 is an ENABLE, not a brightness
+
+Solid mode (t2=0) to isolate it from blink behaviour:
+
+| t5 | 0 | 1 | 2 | 5 | 10 | 50 | 100 | 255 |
+|---|---|---|---|---|---|---|---|---|
+| lum | 58* | 64-70 | 68-75 | 64-73 | 72-75 | 66-75 | 73-76 | 73-76 |
+
+*t5=0 reads 58 with an unstable hue — that is the headset OFF, with the box picking up ambient.
+
+**Every non-zero value lands in the same overlapping 64-76 band.** So token 5 gates the frame on and
+off and does not set a level, which matches the earlier by-eye result that 10 and 100 were
+indistinguishable. The one place it visibly mattered was the *trailing* flashes of a blink at 255, so
+if it shapes anything it is the animation envelope, not steady brightness.
+
+## Where `$GLED` and `$HLED` now stand
+
+```
+$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*     tokens 6,7 inert
+$HLED,<colour>,<effect>,<on_ms>,<off_ms>,<enable>,<count>,*
+```
+
+Everything in both commands is now measured except the exact shape of `$GLED` token 5's curve.
+
 ### 2026-09-02 — ⭐ WHAT WE CAN ACTUALLY SHIP: the gun LEDs cannot hold a colour in a game, the headset can
 
 Everything else measured today was on an **unspawned** gun, because a spawned one runs its own
