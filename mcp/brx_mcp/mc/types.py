@@ -13,6 +13,11 @@ MULTI_KILL_MS = 4000
 FEEDBACK_MAX_AGE_MS = 3000
 STATUS_HEARTBEAT_MS = 2000
 STALE_AFTER_MS = 8000
+# Past this, a node has not merely gone quiet — it is gone (phone asleep, app closed, gear packed
+# away). Everything else the board would say about it (gun link lost, clock unsynced, wrong wi-fi,
+# screen off) is a CONSEQUENCE of that, and listing them as separate faults turns a switched-off
+# tagger into a wall of red alarms (field 2026-09-02).
+OFFLINE_AFTER_MS = 10 * 60 * 1000
 SYNC_FRESH_MS = 10000
 LATE_ARM_GRACE_MS = 8000
 CONFIG_TTL_MS = 1_800_000

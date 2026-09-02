@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from . import policy as _policy
 from .scoring import Scorer
-from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, STALE_AFTER_MS, SYNC_FRESH_MS, GameConfig, Player,
+from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OFFLINE_AFTER_MS, STALE_AFTER_MS, SYNC_FRESH_MS, GameConfig, Player,
                     ReadinessRow, ReadinessSnapshot, ScanRow, Team)
 
 PHASES = ("muster", "build", "kit", "lobby", "armed", "live", "recap")
@@ -1034,10 +1034,15 @@ class Session:
                 # read as a broken gun — Tony, 2026-09-01: "it makes it look like the guns are
                 # broken. They are simply disconnected."
                 blockers.append("WAITING FOR THE PHONE — OPEN THE APP AND SET THE GUN")
+            elif nv.get("last_seen_ms") and (now - nv["last_seen_ms"]) > OFFLINE_AFTER_MS:
+                # Gone, not faulty. Say it once instead of listing the four symptoms of it.
+                # Guarded on the key EXISTING: a node that has never reported has no last_seen at all,
+                # and treating the epoch as its timestamp read "OFFLINE — LAST SEEN 20698d16h".
+                blockers.append(f"OFFLINE — LAST SEEN {self._human_age(now - nv['last_seen_ms'])}")
             else:
                 age = now - nv.get("last_seen_ms", 0)
                 if age > STALE_AFTER_MS:
-                    ambers.append(f"STALE LINK ({age // 1000}s) — DOES NOT BLOCK")
+                    ambers.append(f"STALE LINK ({self._human_age(age)}) — DOES NOT BLOCK")
                 if not nv.get("synced"):
                     blockers.append("CLOCK NOT SYNCED — BLOCKS START")
                 if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
@@ -1077,7 +1082,9 @@ class Session:
                         # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
                         # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
                         # the sole complaint — a real problem alongside it still reads red.
-                        "status": ("waiting" if (not nid and len(blockers) == 1)
+                        # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
+                        # the start, neither is a fault, and both must read as inactive rather than red.
+                        "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith("OFFLINE"))
                                    else "red") if blockers else ("amber" if ambers else "green")})
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
@@ -1354,6 +1361,18 @@ class Session:
             r.update(self.settling())     # advisory only — never gates, see settling()
             return r
         return self.last_recap
+
+    @staticmethod
+    def _human_age(ms: int) -> str:
+        """`1093m32s` is not a duration anyone can read. Give it the right unit."""
+        s = max(0, ms // 1000)
+        if s < 60:
+            return f"{s}s"
+        if s < 3600:
+            return f"{s // 60}m"
+        if s < 86400:
+            return f"{s // 3600}h{(s % 3600) // 60:02d}m"
+        return f"{s // 86400}d{(s % 86400) // 3600:02d}h"
 
     def _mark_flushed_live(self) -> None:
         """A node that is CONNECTED, fresh, and reports pending == 0 has nothing left to flush — count its

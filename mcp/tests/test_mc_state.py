@@ -170,3 +170,33 @@ def test_config_warnings_surface():
     s, net, clock, ps = mk(1)
     s.set_config({"scoring": {"frag_limit": 25}})
     assert any("frag_limit" in w for w in s.snapshot()["config_warnings"])
+
+
+def test_a_powered_down_tagger_reads_offline_not_a_wall_of_faults():
+    """Field 2026-09-02: after a session, both cards showed BLOCKED with up to six red bars —
+    GUN LINK LOST, CLOCK NOT SYNCED, WRONG WI-FI, STALE LINK (65612s), PHONE BATTERY LOW,
+    SCREEN OFF — for taggers that were simply switched off. Every one of those is a CONSEQUENCE of
+    the node being gone. Say it once, and do not paint it as a fault.
+    """
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    assert all(r["status"] in ("green", "amber") for r in s.readiness()["board"])
+
+    clock["t"] += 30 * 60 * 1000                     # everyone packs up and goes home
+    board = s.readiness()["board"]
+    for r in board:
+        assert r["status"] == "waiting", "a gone node blocks the start but is not a fault"
+        assert len(r["blockers"]) == 1, f"one statement, not a symptom list: {r['blockers']}"
+        assert r["blockers"][0].startswith("OFFLINE — LAST SEEN"), r["blockers"][0]
+        assert "30m" in r["blockers"][0], f"a readable duration, not raw seconds: {r['blockers'][0]}"
+    assert not s.readiness()["go"], "...and it still gates the start"
+
+
+def test_durations_are_readable_at_every_scale():
+    """`1093m32s` is not something an operator can read as 18 hours."""
+    from brx_mcp.mc.state import Session
+    assert Session._human_age(5_000) == "5s"
+    assert Session._human_age(65_000) == "1m"
+    assert Session._human_age(65_612_000) == "18h13m"
+    assert Session._human_age(94_000_000) == "1d02h"

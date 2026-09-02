@@ -54,9 +54,12 @@ export const fmtClock = (s: number) => {
   const v = Math.max(0, Math.floor(s));
   return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
 };
+// Tiered: a gun powered off overnight rendered as "1093m32s AGO", which nobody can read as 18 hours
+// (field 2026-09-02). Seconds below a minute, then minutes, hours, days.
 export const fmtAge = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m${String(s % 60).padStart(2, '0')}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+  return `${Math.floor(s / 86400)}d${String(Math.floor((s % 86400) / 3600)).padStart(2, '0')}h`;
 };
