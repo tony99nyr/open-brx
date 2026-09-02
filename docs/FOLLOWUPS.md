@@ -409,7 +409,38 @@ dead window, so the headset's own sensors were alive — the path from headset t
 spawns completely normally and simply never scores. In a match that is a player who appears fine to
 MC, to their phone and to themselves, and is invisible to everyone shooting them.
 
-**The diagnostic ladder that found it** (it cost ~40 minutes without one):
+### ⚠️ SECOND OCCURRENCE 2026-09-02 (later) — and it is a DIFFERENT failure mode
+
+Caught live and characterised before clearing it. Tony: *"this headset not registering hits, it's a
+hard to repro but consistent problem... maybe a bad state it gets in."*
+
+| signal | reading | meaning |
+|---|---|---|
+| `$VERSION` | `v4.32,**hds.59**,4,,devhost.03` | the gun **SEES the headset** — reports its firmware, and token 3 = 4 (matching the four sensors) |
+| standalone advert | **absent** | the headset is **LINKED**, unlike the first occurrence |
+| `$VOLTS` | 8062 mV pack, 3796 mV cell, 88% | battery fine, not a brownout |
+| arm + spawn | `$LCD,45,70,0,0,0,0` | game state healthy |
+| emitter | receiver decoded the full 25-bit word | **transmitting correctly** |
+| `$HIR` | **ZERO** over 14+ shots | not registering |
+
+**So the first occurrence's tell does NOT generalise.** That one had the headset advertising standalone
+with a dropped link; this one is linked, visible to the gun, healthy battery, and still deaf. **There
+are at least two distinct failure modes with the same symptom**, and only one of them shows up in a
+BLE scan.
+
+**`$VERSION` token 2 is a live headset-presence signal over BLE** (`hds.59`), which is new and useful:
+it is the first BLE-visible headset field we have found, and it did NOT flag this fault. So it is
+necessary but not sufficient for a preflight check.
+
+**Recovery both times: a power cycle** (headset the first time, the whole tagger the second).
+
+**What to try next time it happens, before clearing it:**
+- Fire at the **GUN BODY** rather than the headset. If `$HIR` tok1 = 4 still registers, only the
+  headset's sensors are deaf and the gun's own sensor is fine — that halves the search.
+- Check whether the headset still responds to `$HLED`. If it lights on command but does not report
+  hits, the link is alive in one direction only, which is a very specific fault.
+
+**The diagnostic ladder that found the FIRST one** (it cost ~40 minutes without one):
 1. **Have the RECEIVER decode the emitter** (`ir-capture COM7` while `ir-emit COM8`). A clean decode
    separates *"not transmitting"* from *"not aimed"* — this is the step that saved us, and it also
    incidentally closed bench 0.2.
