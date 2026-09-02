@@ -512,7 +512,53 @@ software. **R0BQT has a genuine intermittent fault in its IR receive path.**
 - The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
   attempts, so there is no reliable field workaround.
 
-### ✅✅ ROOT CAUSE LOCALISED: the GUN sensor works, the HEADSET's four do not
+### 🏁 ROOT CAUSE: the headset's sensors have DEGRADED SENSITIVITY, not a fault state
+
+**The decisive test.** With the unit "deaf" (0 hits from 6 at working distance), the emitter was held
+**right against a headset dome**:
+
+```
+5 of 6 hits, every one $HIR tok1 = 0   (headset FRONT dome)
+$HP 45,50 -> 45,30 -> 45,10 -> 35,0 -> 15,0
+```
+
+**The headset's sensors work. They just need far more signal than they should.** This is a
+**hardware sensitivity loss**, not a logic state, not a stuck death state, not our frames, not the
+arming sequence.
+
+**It explains every observation in this entry, including the ones that misled us:**
+
+| observation | explanation under this cause |
+|---|---|
+| partial scoring in a real game | only close-range hits clear the threshold; reads as "tagging is flaky" |
+| the gun body always registered | a different sensor, unaffected |
+| one stray hit out of three | marginal signal, occasionally over threshold |
+| power cycles "fixing" it | **coincidence.** Sensitivity sits near a threshold, so any burst can look like a recovery |
+| "it takes TWO power cycles" | the same illusion — which is why nothing reproduced reliably |
+| `$GSET` appearing to clear it | one marginal hit, and it did **not** reproduce |
+| predates our LED experiments | degradation, not something we did |
+
+⚠️ **Everything in this entry above that treats recovery as reproducible is therefore SUPERSEDED.**
+The power-cycle patterns and the `$GSET` result were us reading structure into a threshold effect. The
+localisation results still stand (gun sensor healthy, headset sensors at fault) — the *mechanism* is
+what changed.
+
+### The field test that detects it, and why the earlier one was not enough
+
+A test shot must land on a **headset dome** *from realistic range* and verify `$HIR` tok1 ∈ {0,1,2,3}.
+Both halves matter:
+- a **gun-body** hit passes while the player is half-blind;
+- a **point-blank** headset hit also passes, because the sensors work at 2 cm. **Muster must shoot
+  from across the room, not at arm's length.**
+
+**Action: replace or service the headset.** Confirming test, and the prediction is explicit: swap this
+headset onto a known-good gun and the reduced range should follow the headset.
+
+**Still worth measuring:** whether all four domes are equally degraded or only some, and at what
+distance it starts failing. A range figure would let muster specify a real distance instead of "across
+the room".
+
+### ✅ Earlier localisation (still valid): the GUN sensor works, the HEADSET's four do not
 
 The decisive test, and it took one aim change. With the unit in the deaf state and the **headset**
 registering nothing from 14+ shots, the emitter was pointed at the **GUN BODY** instead:
