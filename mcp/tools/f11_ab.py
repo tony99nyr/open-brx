@@ -62,13 +62,23 @@ def word(mag, proto, team, sub=0, pid=42, crit=0):
 
 
 async def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         raise SystemExit(__doc__)
-    addrs = [sys.argv[1], sys.argv[2]]
-    com = sys.argv[3] if len(sys.argv) > 3 else "COM8"
-    nshot = int(sys.argv[4]) if len(sys.argv) > 4 else 12
-    recv_com = sys.argv[5] if len(sys.argv) > 5 else "COM7"
-    names = ["A", "B"]
+    # One victim is allowed: it cannot settle A-vs-B (that needs the same burst), but WITH the
+    # witness it still answers the sharper half of F11 -- is this tagger deaf when we know for
+    # certain a full frame reached it? Pass "-" for the second address to run solo.
+    rest = [a for a in sys.argv[1:] if a != "-"]
+    # An address is a MAC (has colons) or a macOS BLE UUID (has dashes and is long); a COM port is
+    # neither. Split on that rather than on position, so "<addr> - COM8 12" and "<addr> COM8 12" and
+    # "<addrA> <addrB> COM8 12" all parse the same way.
+    is_addr = lambda a: ":" in a or (len(a) > 20 and "-" in a)
+    addrs = [a for a in rest[:2] if is_addr(a)]
+    argv = rest[len(addrs):]
+    com = argv[0] if argv else "COM8"
+    nshot = int(argv[1]) if len(argv) > 1 else 12
+    recv_com = argv[2] if len(argv) > 2 else "COM7"
+    names = ["A", "B"][:len(addrs)]
+    solo = len(addrs) == 1
 
     tx = serial.Serial(com, 115200, timeout=0.3)
     time.sleep(1.6)
@@ -107,7 +117,8 @@ async def main():
         print("both armed + spawned (mag-1 shots: nobody will die)\n", flush=True)
 
         results = {}
-        for pos in ("POSITION 1", "POSITION 2 (swapped)"):
+        positions = ("POSITION 1",) if solo else ("POSITION 1", "POSITION 2 (swapped)")
+        for pos in positions:
             if pos.startswith("POSITION 2"):
                 input("\n>>> SWAP the two victims physically, then press ENTER: ")
             print(f"\n=== {pos} -- {nshot} shots, each graded against BOTH victims", flush=True)
@@ -135,7 +146,7 @@ async def main():
                             sen = SENSOR.get(int(hirs[-1].split(",")[1]), "?")
                         except Exception:
                             sen = "?"
-                        tally[a].append(sen)
+                        tally[a].append((sen, witness))
                         row.append(f"{a}=HIT({sen})")
                     else:
                         row.append(f"{a}=  --   ")
@@ -149,9 +160,23 @@ async def main():
             print(f"  {pos}   ({good}/{nshot} shots witnessed" + (f", {void} VOID)" if void else ")"))
             for a in names:
                 hits = tally[a]
-                print(f"     {a} ({addrs[names.index(a)]}): {len(hits)}/{good}   sensors={sorted(set(hits))}")
-        print("\n  A victim that fails in BOTH positions while the other succeeds in both is a real\n"
-              "  difference. Any other pattern is aim, and the honest answer is 'not established'.")
+                # Two denominators, because they answer different questions and one of them can lie.
+                # "of witnessed" is the clean number. "of all" matters because the WITNESS misses
+                # shots too: a tagger registering a hit the witness did not hear proves the witness
+                # false-negatived, and silently dropping that shot would throw away real data.
+                on_w = sum(1 for _, w in hits if w is not False)
+                miss_w = sum(1 for _, w in hits if w is False)
+                print(f"     {a} ({addrs[names.index(a)]}): {on_w}/{good} of witnessed"
+                      f"   ({len(hits)}/{nshot} of all shots)   sensors={sorted({x for x, _ in hits})}")
+                if miss_w:
+                    print(f"         !! {miss_w} hit(s) the witness MISSED -- the witness false-"
+                          f"negatives too; it is evidence a shot landed, never that one did not.")
+        if solo:
+            print("\n  SOLO run: this cannot compare two taggers -- that needs both in the same burst.\n"
+                  "  What it DOES answer: whether this tagger registers a frame we KNOW arrived.")
+        else:
+            print("\n  A victim that fails in BOTH positions while the other succeeds in both is a real\n"
+                  "  difference. Any other pattern is aim, and the honest answer is 'not established'.")
         if rx is not None:
             print("  Denominators are WITNESSED shots only -- a shot the receiver never heard was never\n"
                   "  fired at anyone, and counting it as a miss is how the emitter got blamed today.")

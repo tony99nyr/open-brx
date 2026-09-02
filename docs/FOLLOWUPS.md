@@ -394,6 +394,34 @@ design. Worth one deliberate test.
 
 ## 🔴 F11 — A gun can arm, spawn and look healthy while SILENTLY registering no hits (2026-09-02)
 
+> ### 🔻 2026-09-02 (evening) — THE SURVIVING CLAIM DID NOT SURVIVE, and there is a real suspect
+>
+> **R0BQT registers 16/16.** Solo run with the validated edge-count witness (`f11_ab.py`), mag-1
+> shots so nothing died and nothing respawned: 15/15 of witnessed shots, 16/16 of all shots, on both
+> the gun body and headset dome0. The one finding this entry had left — *"R0BQT is genuinely worse
+> than R0BAT"* — is now contradicted by the same tagger measured with a better instrument.
+>
+> That does **not** mean it was never deaf. Tony watched it fail, repeatedly, and that observation
+> stands. Nor can the intervening battery charge be credited: "works now" against "failed hours ago"
+> is exactly the non-simultaneous comparison that produced the eight retractions below.
+>
+> **What it does is change the shape of the question**, from *"is this unit worse?"* to *"what state
+> do taggers get into?"* — which is what Tony said at the outset: *"it maybe is a bad state it gets
+> in."* A comparison cannot catch that. Only a repro can.
+>
+> **🔴 New leading suspect: A SECOND PROCESS WAS HOLDING THE GUN.** Four `brx_mcp` servers from
+> previous sessions (2026-08-26 x2, 2026-08-30 x2) were still running. One had R0BAT held: the gun
+> was invisible to three scans, announced "phone connected" the instant it was power-cycled, and
+> announced "phone disconnected" the moment the processes were killed. A forgotten process can arm,
+> configure or spawn a gun underneath you, and it fits the symptom exactly — *arms, spawns, looks
+> healthy, registers nothing.* It also fits Tony's instinct at the time: *"you must be doing SOMETHING
+> which puts it in this cant get hit state."* Something was; it just was not this session.
+>
+> ⚠️ Suspect, not cause. Nobody has yet shown a held connection making a tagger deaf to IR. **The test
+> is a repro:** hold a gun from a second process, arm it normally from the first, and fire witnessed
+> shots at it. See `gotchas.md` for the enumerate-and-kill procedure that must now precede any bench
+> session.
+
 **Observed at the bench.** Mid-session the victim stopped registering IR entirely: ~80 shots, zero
 `$HIR`. Everything else looked correct — it connected, took the full arm sequence, echoed
 `$LCD,45,70,0,0,32,384` on `$SPAWN`, reported `$VOLTS`, and drove its own LEDs and the headset's on

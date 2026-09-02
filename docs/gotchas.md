@@ -1,5 +1,40 @@
 # Gotchas — the field lore
 
+## 🔴 A STALE `brx_mcp` SERVER SILENTLY OWNS A GUN — it looks like broken hardware (2026-09-02)
+
+**Symptom:** a powered-on tagger never appears in `scan` (three scans, one 25 s), and the moment you
+power-cycle it the gun announces **"phone connected"** with no phone anywhere near it.
+
+**Cause:** MCP server processes from previous sessions were still running — two from 2026-08-26, two
+from 2026-08-30, six days and three days old. One of them reconnects to the gun the instant it
+advertises. **A connected gun stops advertising**, so it is invisible to every scan while being held.
+
+**Check:**
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like '%python%'" |
+  Where-Object { $_.CommandLine -like '*brx_mcp*' } |
+  Select-Object ProcessId, CreationDate
+```
+
+Anything whose `CreationDate` is not from this session is stale. Kill it (`Stop-Process -Id <pid>
+-Force`); the tagger says **"phone disconnected"** and starts advertising again immediately. Confirmed
+2026-09-02: killing four stale servers made a gun that had been invisible all evening appear on the
+next scan.
+
+⚠️ `list_connections` on the server you happen to be attached to is **NOT** a sufficient check — it
+reported `connected: false` while a *different* process held the gun. You can only see inside one
+process; enumerate them at the OS level.
+
+**Why this matters beyond a missing scan result:** a second process holding a gun can arm, configure
+or spawn it underneath you. That is a live candidate for **F11** ("a gun arms, spawns and looks
+healthy while registering no hits") and it fits Tony's instinct at the time — *"you must be doing
+SOMETHING which puts it in this cant get hit state."* Something was. It just was not this session.
+
+**Rule: enumerate and kill stale `brx_mcp` processes BEFORE any bench session.** A gun held by a
+process you forgot about is indistinguishable from a broken gun, and it will cost you an afternoon.
+
+
 **Everything that will waste an hour if you don't know it.** Organised **by symptom**, because when one
 of these bites you, you search for *what you're seeing* — not for what you should have known.
 
