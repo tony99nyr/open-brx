@@ -491,6 +491,26 @@ software. **R0BQT has a genuine intermittent fault in its IR receive path.**
 - The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
   attempts, so there is no reliable field workaround.
 
+### ❌ RULED OUT: it is NOT stuck in the death state
+
+The best remaining software explanation, and it is wrong. Hypothesis (Tony's): we killed the gun, the
+`$SPAWN` did not propagate to the headset, and the headset stayed in its death state — which would
+explain a unit that takes no IR, still answers `$HLED`, and needs a power cycle. It fits the known
+death behaviour (dark in play, blinking green while out, stops on respawn).
+
+**Tested while the fault was live.** Armed and spawned with **no `$HLED` sent at all**, so the headset
+showed its own native state. Gun reported `$LCD,45,70` (alive). **The headset was DARK** — the normal
+in-play state, not the blinking green of a dead player.
+
+So the headset knows it is alive and simply does not report hits.
+
+### ❌ ALSO RULED OUT: it is not the hits
+
+The timeline settles this without a new experiment. After a confirmed-good burst (6/6 hits, clean
+kill), the next run did **one arm cycle** and then its **very first shot missed**, along with all 14
+after it. If accumulated hits were the trigger, the early shots of that run should have landed.
+**It was already deaf before any hit in that run.**
+
 ### 🔑 RECOVERY PATTERN: it takes TWO power cycles, not one (operator observation)
 
 Tony, after the second recovery: *"the second power cycle of the tagger fixed it both times."* The
