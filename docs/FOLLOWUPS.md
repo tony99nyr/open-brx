@@ -492,7 +492,7 @@ dropping to one as health falls. So:
 `$GLED` per-LED control remains real and useful for **night mode, hit flash, per-player colour and FFA
 white**. It is simply the wrong tool for **health**, because the gun does health itself.
 
-### ✅ ANSWERED 2026-09-02 — the gun LEDs CANNOT hold a colour in a live game
+### ✅ ANSWERED 2026-09-02 — F1 IS BUILDABLE (an earlier answer here was wrong, see below)
 
 Both halves are now measured, on hardware, with a camera rig.
 
@@ -511,9 +511,15 @@ mode is "works for a moment and is then repainted":
 | SPAWNED, we set red / white | **alternates** blue ↔ ours |
 | SPAWNED, re-sent before every sample (~1 Hz) | **still alternates** |
 
-**Re-asserting does not win.** So F1 as originally specified — a persistent 3-segment pool gauge on
-the gun — is **NOT BUILDABLE** over `$GLED`, and no amount of write-rate fixes it. The "cost note"
-below about one write per pool change is moot: the writes are not the problem, the repaint is.
+⚠️ **THE TABLE ABOVE IS RETRACTED.** It was measured with `screencap` at ~1 Hz. Re-measured at 60 fps,
+our colour is the **dominant hue in 100% of frames** (white 317 mean / 40 ripple, red 227/32, green
+224/61, against 65 for the native animation alone). The native pulse modulates BRIGHTNESS by 10-25%;
+it does not replace the hue. The apparent "alternation" was **aliasing** — stills landing in the
+ripple's troughs and being classified as the team colour.
+
+**So F1 as originally specified — a persistent 3-segment pool gauge on the gun — IS BUILDABLE**, as
+per-LED colour at full brightness. Use colour, not brightness, to encode: at the dim setting
+(`t4=5`) our hue stops dominating and the native colour shows through.
 
 ### ⭐ What IS buildable, and where F1 should go instead
 
@@ -525,10 +531,10 @@ below about one write per pool change is moot: the writes are not the problem, t
 
 | want | surface | verdict |
 |---|---|---|
-| sustained state (low health, flag held, powerup active) | **headset** | ✅ one colour, re-send after spawn |
-| flash on hit / pickup / kill | either | ✅ transient, alternation irrelevant |
-| 3-segment pool gauge | gun | ⚠️ flickers against the native animation |
-| sustained gun colour | gun | ❌ not available |
+| **3-segment pool gauge** | **gun** | ✅ **buildable** — per-LED colour, full brightness |
+| sustained state (low health, flag held, powerup) | gun or headset | ✅ both work |
+| flash on hit / pickup / kill | either | ✅ |
+| brightness as an encoding | gun | ❌ dim loses hue dominance |
 
 **So F1 becomes: pool state as a single headset colour, plus optional transient gun flashes.** Not the
 three-segment gauge, which the hardware will not give us.

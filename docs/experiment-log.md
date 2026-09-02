@@ -2825,6 +2825,64 @@ known to be a grant, so it is the positive control: if the re-measure does not s
 method is wrong, not the functions.**
 
 
+### 2026-09-02 — ⚠️ RETRACTION: the gun LEDs DO hold a colour in a live game. F1 is buildable.
+
+**This reverses the conclusion I published two hours earlier in "WHAT WE CAN ACTUALLY SHIP".** That
+entry said a spawned gun ALTERNATES between our colour and the team colour, that re-asserting does not
+win, and therefore that a sustained gun display is not available and F1's three-segment gauge is not
+buildable. **All of that is wrong.**
+
+## What actually happens, measured at 60 fps instead of ~1 Hz
+
+| we set | mean luminance | ripple | which hue dominates each frame |
+|---|---|---|---|
+| nothing (native only) | 65 | 22 | — |
+| **WHITE** | 317 | 40 | **B 100%** |
+| **RED** | 227 | 32 | **R 100%** |
+| **GREEN** | 224 | 61 | **G 100%** |
+
+**Our colour is the dominant hue in 100% of frames.** The native animation modulates its BRIGHTNESS by
+10-25% and does not replace the hue at all.
+
+## Why I got it wrong, and it is the same mistake twice in one day
+
+The earlier test sampled with `screencap` at roughly 1 Hz and classified each still. Against a signal
+that is our colour with a brightness ripple on top, that aliases: some stills land in a trough, the
+classifier calls them "blue", and the sequence reads as alternation. **It was under-sampling, not
+alternation.** This is the same failure that wrecked the first effect sweep earlier the same day
+(a still frame samples one arbitrary phase of a time-varying signal), and I did not carry the lesson
+across from one to the other.
+
+The rule this needs to leave behind: **anything on a SPAWNED gun is a time-varying signal, because the
+gun is always animating. Never characterise it with stills.**
+
+## Brightness: full only
+
+| setting | mean | our hue dominance |
+|---|---|---|
+| full (`t4=0`) | 219-389 | **100%** |
+| dim (`t4=5`) | 65-67 | **lost** — native shows through at 76% |
+
+So brightness IS controllable in game (a 5.8x range, 389 -> 67) but the dim state is not usable for
+encoding anything: our colour stops dominating. **Use full brightness and encode with COLOUR.**
+
+## The corrected capability map
+
+| want | verdict |
+|---|---|
+| **3-segment pool gauge on the gun** | ✅ **BUILDABLE** — per-LED colour, holds at full brightness |
+| sustained gun colour (flag held, powerup) | ✅ works |
+| white flash on hit / pickup / kill | ✅ works |
+| sustained headset colour | ✅ works (re-send after `$SPAWN`) |
+| brightness as an encoding | ❌ dim loses the hue |
+
+**F1 is buildable after all**, as a per-LED colour gauge at full brightness. The native pulse remains
+underneath as a brightness ripple, which reads as the gun "breathing" in whatever colour we set,
+rather than as interference.
+
+Caveats that stand: `$SPAWN` wipes what we set, so paint after spawning; and the headset's native hit
+flash returns it to DARK, so a held headset colour must be re-asserted on `$HIR`.
+
 ### 2026-09-02 — the last three LED unknowns, closed
 
 All against BLACK (exposure down until only the LEDs are visible), absolute luminance, no reference
