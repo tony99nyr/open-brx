@@ -5072,3 +5072,63 @@ hardware validation of **MC's actual arming path** rather than the bench's slowe
 **display** desync, and this run did not check headset LED state across the two arms. A burst could
 still land headset presentation wrong while hits keep working — that is exactly what the wedged
 out-blink was.
+
+### 2026-09-02 (night, FINAL) — 🎯 **F11 SOLVED: `$CLEAR` WIPES THE `$SIR` TABLE, AND A TAGGER WITH NO `$SIR` ROWS SILENTLY IGNORES EVERY HIT**
+
+## The chain, each step measured
+
+| step | result |
+|---|---|
+| armed normally, verified | **4/4** registered |
+| `$CLEAR,*` then `$SPAWN,*` | **0/2** — gun `$LCD,45,70` ALIVE and in game, **headset DARK** (operator-confirmed) |
+| re-send the ten `$SIR` rows and NOTHING else | **4/4** — fully restored |
+
+**Deterministic: 5/5** in `clear_spawn_repro.py`, and **3/3 at every `$CLEAR`->`$SPAWN` gap from
+0.05 s to 1.0 s** — so it is NOT a timing race, which is what it was first called. The gap is
+irrelevant; the missing `$SIR` table is the whole thing.
+
+## What it explains
+
+- **Gun in game and alive while the headset sits dark and nothing registers** — exactly Tony's
+  description from the first sighting, *"acting like death state but dark leds"*.
+- **Every dome AND the gun body go silent together.** No per-sensor or per-dome story was ever
+  needed; the hit is discarded above the sensor layer.
+- **Native games are unaffected** — the gun uses its own built-in `$SIR` config, which is why a
+  natively-running tagger took hits all evening while ours did not.
+- **A power cycle "fixes" it** — the gun comes back on its native config.
+- **Why it looked intermittent for two sessions.** It is not intermittent at all. It follows a
+  `$CLEAR` that is not followed by a fresh `$SIR` table, and nothing else.
+
+Also settled by the same run: `$START`, `$GSET`, `$PSET`, `$TID` and any number of `$SPAWN`s do
+**not** restore it. Only the `$SIR` rows do.
+
+## 🔴 The Mission Control exposure — this is the live-match bug
+
+`setup_frames()` sends `$VOL, $CLEAR, $START, $GSET, $PSET, <10 x $SIR>, ...`, so the ordering is
+correct and a complete bundle is safe. The danger is a PARTIAL one:
+
+**`GameDriver._send()` swallows every send error** (`try/except` -> `announce`, by design, so one
+gun's BLE hiccup cannot abort a game). So if `$CLEAR` lands and any `$SIR` row afterwards fails, the
+player is **silently unhittable for the entire match** — no error surfaces, the gun reports healthy,
+pools are full, and the scoreboard shows them alive and simply never being hit. That is a far better
+match for the live-game report than anything else considered across two sessions.
+
+**Fixes to make (not yet made):**
+1. **Verify the `$SIR` table landed** after any bundle that contains `$CLEAR`, and re-send if not.
+2. **Never send a bare `$CLEAR` mid-game** without re-sending `$SIR` behind it.
+3. **Stop swallowing setup-frame failures silently** — a failed `$SIR` write must be visible, and
+   should fail the player's arming rather than being announced and forgotten.
+4. Consider a cheap periodic assertion: a player who has registered no hits all match is worth
+   flagging to the operator.
+
+## Method note — what actually found it
+
+Fifteen hypotheses died across the day; this was found by **brute force, not by reasoning**.
+`desync_fuzz.py` swept sequence x gap and hit it on trial one, with the one check every earlier tool
+lacked: **read the pools first and only score a trial where the gun is ALIVE**, because a dead gun and
+a deaf gun are indistinguishable through `$HIR`. Tony, after an earlier tool reported a corpse as a
+repro: *"yes exactly, it isn't going to register a hit while dead. thats dead not deaf"*.
+
+Two mechanisms were asserted along the way and both were wrong — a queue race (killed by the gap
+sweep) and a headset/gun state desync (the headset was never the problem). The finding survived
+because each was tested rather than believed.
