@@ -31,7 +31,16 @@ def grab():
     subprocess.run(["wsl.exe", "-d", "Ubuntu-24.04", "-e", "bash", "-c",
                     f"{W} exec-out screencap -p > /mnt/c/Users/Tony/.brx-mcp/_shot.png"],
                    capture_output=True, timeout=90)
-    return np.asarray(Image.open(S).convert("RGB"), dtype=float)
+    im = np.asarray(Image.open(S).convert("RGB"), dtype=float)
+
+    if im.mean() < 12:
+        raise SystemExit(
+            "ABORT: the phone screen is OFF or LOCKED -- every reading would be of a black frame.\n"
+            "  This is NOT caught by the CONTROL roi: a locked screen darkens the canary too, so the\n"
+            "  run looks internally consistent and produces a table of pure fiction. It happened on\n"
+            "  2026-09-02 and nearly went into the docs as 'the gun dims its LEDs with health'.\n"
+            "  Unlock the phone, reopen the camera, and re-check the ROIs before re-running.")
+    return im
 
 
 def name(v):
