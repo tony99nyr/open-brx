@@ -245,11 +245,13 @@ export function Micro({ children, color = T.micro, size = 9.5 }: { children: Rea
 
 /** Progress cell: "n/N LABEL" + segmented bar (kit-out / ready). */
 export function Progress({ n, total, label, color = T.acc }: { n: number; total: number; label: string; color?: string }) {
+  // No bar. It used to render a 130px SegBar AFTER the number, so with two of these side by side the
+  // bar sat between "2/2 KITTED" and "0/2 READY" and belonged visually to whichever you looked at —
+  // Tony, 2026-09-02: "what do these blue bars represent?". The fraction already says it exactly.
   return (
-    <>
-      <span style={{ font: F.osw(700, 20), ...TAB }}>{n}<span style={{ color: T.micro }}>/{total} {label}</span></span>
-      <SegBar pct={total ? (n / total) * 100 : 0} color={color} height={9} cell={14} style={{ width: 130 }} />
-    </>
+    <span style={{ font: F.osw(700, 20), ...TAB, color: n === total && total > 0 ? color : T.ink }}>
+      {n}<span style={{ color: T.micro }}>/{total} {label}</span>
+    </span>
   );
 }
 

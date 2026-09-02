@@ -28,10 +28,13 @@ export function Armory() {
   const firstRed = board.find(g => g.status === 'red');
   // "waiting" is not a fault and must not be reported as one: it just means the phone has not
   // arrived yet (Tony, 2026-09-01 — a board full of disconnected guns "looked like critical errors").
-  const gateNote = nRed
-    ? `${firstRed?.sticker} BLOCKS START — ${firstRed?.blockers[0]?.split(' — ')[0] ?? 'CHECK IT'}`
-    : nWaiting ? `WAITING FOR ${nWaiting} PHONE${nWaiting === 1 ? '' : 'S'} — OPEN THE APP AND SET THE GUN`
-    : nGreen ? 'NO REDS — START WHEN READY' : 'NOTHING READY YET — POWER GUNS, OPEN THE APP ON EACH PHONE';
+  // No separate status line under CONTINUE. Tony, 2026-09-02: "we dont need this extra status. maybe
+  // a disabled status on the button and thats it" — so the button IS the status: it says what it is
+  // waiting for, and is disabled while it waits.
+  const gateLabel = nRed ? `${nRed} GUN${nRed === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';
+  const gateWhy = nRed ? (firstRed?.blockers[0] ?? 'Clear the fault to continue')
+    : nWaiting ? 'Open the BRX app on each phone and set its gun'
+    : nGreen ? '' : 'Power the guns and open the app on each phone';
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
@@ -45,15 +48,20 @@ export function Armory() {
             {nWaiting > 0 && <CountBlock value={nWaiting} label="NO PHONE" color={T.micro} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-            <button type="button" className={nRed ? '' : 'hov-accbg'} disabled={!!nRed} onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
-              style={{ font: F.osw(700, 22), letterSpacing: '.3em', padding: '8px 26px 8px 32px', background: nRed ? T.bad : nGreen ? T.ok : T.panelAlt, color: nRed || nGreen ? T.accInk : T.dim, border: 'none', clipPath: CHAMFER.tl14, cursor: nRed ? 'not-allowed' : 'pointer', minHeight: 44 }}>{nRed ? 'HOLD' : 'CONTINUE ▸'}</button>
-            <div role="status" aria-live="polite" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim }}>{gateNote}</div>
+            {/* Disabled on REDS only. Amber never blocked continuing and must not start now — this
+                is navigation to GAMES; the real gate is the lobby push. */}
+            <button type="button" className={!nRed ? 'hov-accbg' : ''} disabled={!!nRed} title={gateWhy}
+              onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
+              style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
+                background: nRed ? 'transparent' : nGreen ? T.ok : T.panelAlt, color: nRed ? T.micro : nGreen ? T.accInk : T.dim,
+                border: `1px solid ${nRed ? T.line2 : nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
+                cursor: nRed ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gateLabel}</button>
           </div>
         </>
       } />
       <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flexWrap: 'wrap', marginBottom: 20 }}>
         <JoinPanel />
-        <div style={{ flex: '1 1 520px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12, alignContent: 'start' }}>
+        <div style={{ flex: '1 1 520px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12, alignContent: 'start' }}>
           {board.map(g => <GunCard key={g.sticker} g={g} />)}
           {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>NO PLAYERS YET — ADD OPERATORS IN KIT, OR JUST GET PHONES JOINED FIRST ◂</div>}
         </div>
@@ -61,7 +69,7 @@ export function Armory() {
       {(state?.nodes?.length ?? 0) > 0 && (
         <div style={{ marginTop: 20 }}>
           <SectionRule label={`PHONES ON THE NET // ${state!.nodes.length}`} hint="WITH OR WITHOUT A GUN" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
             {(state?.nodes ?? []).map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
           </div>
         </div>
@@ -69,7 +77,7 @@ export function Armory() {
       {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id) && !(state?.nodes ?? []).some(n => (n.gun_tail || '').toUpperCase() === (r.ble?.tail || '—').toUpperCase())).length > 0 && (
         <div style={{ marginTop: 20 }}>
           <SectionRule label="KNOWN GUNS — NOT SEEN" hint="POWERED OFF, OUT OF RANGE, OR NOT YET CLAIMED BY A PHONE" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(248px,1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
             {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id) && !(state?.nodes ?? []).some(n => (n.gun_tail || '').toUpperCase() === (r.ble?.tail || '—').toUpperCase())).map(r => <GhostCard key={r.gun_id} r={r} />)}
           </div>
         </div>
@@ -105,14 +113,26 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const hs = stale ? 'UNKNOWN' : g.headset === 'proven' ? 'CONNECTED' : g.headset === 'absent' ? '—' : 'UNKNOWN';
   return (
     <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span style={{ font: F.osw(700, 20), letterSpacing: '.1em' }}>{g.sticker}</span>
-          <span style={{ font: F.mono(500, 11), color: T.micro }}>-{g.tail}</span>
-          {g.player_num != null && <span style={{ font: F.mono(500, 10), color: T.acc }}>#{g.player_num}</span>}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
+          {/* the sticker usually ALREADY ends in the tail ("R0BAT-3D4F"), and printing it again wrapped
+              the title onto two lines and pushed the status tag off the card edge (field 2026-09-02) */}
+          <span title={g.sticker} style={{ font: F.osw(700, 20), letterSpacing: '.06em', whiteSpace: 'nowrap',
+                                           overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{g.sticker}</span>
+          {!!g.tail && !g.sticker.toUpperCase().endsWith(g.tail.toUpperCase())
+            && <span style={{ font: F.mono(500, 11), color: T.micro, whiteSpace: 'nowrap' }}>-{g.tail}</span>}
+          {g.player_num != null && <span style={{ font: F.mono(500, 10), color: T.acc, whiteSpace: 'nowrap' }}>#{g.player_num}</span>}
         </div>
-        <Tag color={color}>{red ? 'BLOCKED' : g.status === 'waiting' ? 'NO PHONE YET' : g.status === 'amber' ? 'CHECK' : 'READY'}</Tag>
+        <Tag color={color} style={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}>
+          {red ? 'BLOCKED' : g.status === 'waiting' ? (g.node === 'none' ? 'NO PHONE YET' : 'OFFLINE') : g.status === 'amber' ? 'CHECK' : 'READY'}
+        </Tag>
       </div>
+      {g.node === 'none' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
+          <Micro>LINK</Micro><Val color={T.micro}>NO PHONE</Val>
+          <Micro>LAST SEEN</Micro><Val color={T.micro}>{age == null ? 'NEVER THIS SESSION' : `${fmtAge(age)} AGO`}</Val>
+        </div>
+      ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>GUN</Micro><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
         <Micro>HEADSET</Micro><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val>
@@ -122,16 +142,30 @@ function GunCard({ g }: { g: ReadinessRow }) {
           <SegBar pct={stale ? 0 : batt ?? 0} color={battColor} height={8} cell={7} style={{ flex: 1, maxWidth: 96 }} />
           {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
-        <Micro>LINK</Micro><Val color={g.node === 'none' ? T.micro : stale ? T.warn : T.dim}>{linkText}</Val>
+        <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked */}
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
+      )}
       {[...g.blockers, ...(g.ambers ?? [])].length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {[...g.blockers.map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)].map(([b, blocking]) => (
-            <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.06em', padding: '6px 10px',
-              background: blocking && red ? 'rgba(255,82,82,.1)' : blocking && !waiting ? 'rgba(255,176,32,.08)' : 'transparent',
-              color: blocking ? color : T.micro, borderLeft: `2px solid ${blocking ? color : T.line2}` }}>{blocking ? (waiting ? '·' : '▲') : '·'} {b}</div>
-          ))}
+          {/* Every message is `STATEMENT — INSTRUCTION`. As one uppercase run-on in a 248px card it
+              wrapped mid-phrase and read as noise; split, the statement carries and the instruction
+              sits under it quietly (field 2026-09-02). */}
+          {[...g.blockers.map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)].map(([b, blocking]) => {
+            const [head, ...rest] = b.split(' — ');
+            const hint = rest.join(' — ').replace(/\b(DOES NOT BLOCK( YET)?|BLOCKS START)\b/g, '').trim();
+            return (
+              <div key={b} style={{ display: 'flex', gap: 8, padding: '7px 10px',
+                background: blocking && red ? 'rgba(255,82,82,.1)' : blocking && !waiting ? 'rgba(255,176,32,.08)' : 'transparent',
+                borderLeft: `2px solid ${blocking ? color : T.line2}` }}>
+                <span style={{ font: F.chk(700, 11), color: blocking ? color : T.micro, flex: '0 0 auto' }}>{blocking ? (waiting ? '·' : '▲') : '·'}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  <span style={{ font: F.chk(700, 11.5), letterSpacing: '.06em', color: blocking ? color : T.micro }}>{head}</span>
+                  {hint && <span style={{ font: F.chk(500, 11), letterSpacing: '.02em', color: T.micro, textTransform: 'none' }}>{sentence(hint)}</span>}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -257,3 +291,11 @@ function JoinPanel() {
   );
 }
 
+
+
+/** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
+ *  made these cards read as noise; the STATEMENT still shouts, the instruction does not. */
+function sentence(t: string) {
+  const s = t.trim().toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}

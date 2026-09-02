@@ -23,7 +23,10 @@ describe('the command bar labels every view', () => {
   it.each(VIEWS)('renders on %s', async view => {
     const d = await demo();
     const m = await mountScreen(<CommandBar />, { ...d, view });
-    expect(m.text()).toMatch(/PHASE/);
+    // The PHASE telemetry strip moved to the Debug page when the header was simplified
+    // (2026-09-02), so assert what the bar is FOR: it still renders, and still offers the nav.
+    expect(m.text()).toMatch(/MISSION CONTROL/);
+    expect(m.text()).toMatch(/ARMORY/);
     m.unmount();
   });
 

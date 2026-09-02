@@ -51,7 +51,9 @@ export function Kit() {
   const pool = state.loadout_pool ?? { primary: weapons.map(w => w.weapon_id), secondary_weapons: weapons.map(w => w.weapon_id), secondary_perks: perks.map(k => k.perk_id) };
   const trying = state.kit.trying;
   const browsing = state.kit.browsing ?? {};
-  const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id && p.gun_id).length;   // no gun = cannot play (critic #8)
+  // counts only players we can actually reach: a loadout with no phone on the net cannot be pushed
+  const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id && p.gun_id
+    && state.nodes.some(n => n.player_id === p.player_id)).length;
   const nReady = players.filter(p => p.ready).length;
   const node = sp ? state.nodes.find(n => n.player_id === sp.player_id) : undefined;
 
@@ -147,11 +149,15 @@ export function Kit() {
               const isBrowsing = !!browsing[pl.player_id];
               const plo = pl.loadout ?? { weapons: [] };
               const p0 = wById(plo.weapons?.[0]?.weapon_id), p1 = wById(plo.weapons?.[1]?.weapon_id), pk = kById(plo.perk);
+              // A restored roster shows players whose phone and tagger are long gone. Calling that
+              // KITTED is a lie — the loadout exists, the gear does not (field 2026-09-02).
+              const liveNode = state.nodes.some(n => n.player_id === pl.player_id);
               const kittedRow = !!(p0 && pl.team_id && pl.gun_id);
               let chip: ReactNode;
               if (tw) chip = <span style={{ font: F.chk(700, 9), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '2px 7px', animation: 'tryPulse 1.6s infinite', whiteSpace: 'nowrap' }}>TRYING {(wById(tw)?.name ?? tw).toUpperCase()}</span>;
               else if (pl.ready) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.ok }}>READY ✓</span>;
               else if (isBrowsing) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.acc, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Blink color={T.acc} period={1.2} size={6} />PICKING…</span>;
+              else if (!liveNode) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.micro }}>NO PHONE</span>;
               else chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: kittedRow ? T.dim : T.micro }}>{kittedRow ? 'KITTED' : pl.gun_id ? 'FITTING' : 'NO GUN'}</span>;
               return (
                 <div key={pl.player_id} className="hov-acc kit-row" role="button" tabIndex={0} aria-pressed={on} onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}

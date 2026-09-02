@@ -2,13 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Api, FeedEntry, ModeInfo, PerkView, Phase, SavedGame, State, WeaponView } from './api/types';
 
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
-export type View = Phase | 'designer' | 'catalog';
+export type View = Phase | 'designer' | 'catalog' | 'debug';
 
 // Tony 2026-08-31: "each tab of the MC should put state in the URL so you can refresh the page."
 // The view lives in the hash (the operator token is picked out of the same hash and stripped, see
 // client.ts). Whitelisted on the way in so a hand-typed hash can never select a view that does not
 // exist — that is what blanked the console when a non-phase view reached the phase-indexed label.
-const VIEWS: View[] = ['muster', 'build', 'designer', 'kit', 'lobby', 'armed', 'live', 'recap', 'catalog'];
+const VIEWS: View[] = ['muster', 'build', 'designer', 'kit', 'lobby', 'armed', 'live', 'recap', 'catalog', 'debug'];
 function viewFromHash(): View | null {
   try {
     const h = decodeURIComponent(location.hash.replace(/^#/, '')).split('&')[0].trim();

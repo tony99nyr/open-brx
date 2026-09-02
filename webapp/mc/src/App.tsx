@@ -4,6 +4,7 @@ import { Armed } from './screens/Armed';
 import { Armory } from './screens/Armory';
 import { Designer } from './screens/Designer';
 import { Catalog } from './screens/Catalog';
+import { Debug } from './screens/Debug';
 import { Games } from './screens/Games';
 import { Kit } from './screens/Kit';
 import { Live } from './screens/Live';
@@ -41,6 +42,7 @@ function Screen() {
     case 'build': return <Games />;
     case 'designer': return <Designer />;
     case 'catalog': return <Catalog />;
+    case 'debug': return <Debug />;
     case 'kit': return <Kit />;
     case 'lobby': return <Lobby />;
     case 'armed': return <Armed />;

@@ -530,9 +530,9 @@ await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED F
   expectHttpErrors = true;
   try {
     await mc.locator('div[role="button"][aria-label*="Shotgun"]').first().click();
-    await until(async () => /WEAPON NOT ALLOWED BY THE RULES/.test(await errStrip()), 6000, 'the server\'s error in the strip');
+    await until(async () => /weapon not allowed by the rules/i.test(await errStrip()), 6000, 'the server\'s error in the strip');
     await sleep(800);
-    expect(/WEAPON NOT ALLOWED BY THE RULES/.test(await errStrip()), 'error strip was wiped by a later call');
+    expect(/weapon not allowed by the rules/i.test(await errStrip()), 'error strip was wiped by a later call');
     expect((await mc.locator('text=CHANGED FROM THEIR PHONE').count()) === 0, 'a rejected host pick was blamed on the phone');
     expect((await mc.locator('text=TRYING SHOTGUN').count()) === 0, 'a try-out started for the refused weapon');
     expect((await st()).kit.trying[pB.player_id] !== 'shotgun', 'server started a try-out of the refused weapon after the rejected PATCH');
@@ -756,8 +756,11 @@ await step('NEW MATCH → muster; the HUD LEAVES MATCH COMPLETE and shows SETTIN
 // ═══ F8 · guards: panic + evict ═══
 flow('F8 guards');
 await step('PANIC is a two-step confirm; HUDs tear down to kitted', async () => {
-  await mc.click('button:has-text("PANIC")');
-  await mc.click('button:has-text("CONFIRM PANIC")');
+  // PANIC moved out of the header into the ☰ menu when the bar was simplified (2026-09-02) — it is a
+  // fleet-wide safe, and a red button permanently in the corner was both loud and easy to brush.
+  await mc.click('button[aria-haspopup="menu"]');
+  await mc.click('button[role="menuitem"]:has-text("Panic")');
+  await mc.click('button:has-text("CONFIRM")');
   await sleep(1200);
   const a = await hudState(hudA);
   expect(a.phase === 'kitted' || a.phase === 'lobby', 'hudA not stood down after panic: ' + a.phase);

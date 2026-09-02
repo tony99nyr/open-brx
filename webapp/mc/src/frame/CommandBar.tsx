@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import { useState } from 'react';
 import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
 import { clearNotice, useNotice } from '../notice';
@@ -10,18 +9,15 @@ const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit',
 const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : PH.findIndex(x => x[0] === p));
 // Views that are not phases need their own label: viewIdx() returns -1 for them, and `PH[-1][1]`
 // threw, blanking the whole console (the WEAPONS tab rendered a black page, 2026-08-31).
-const LABEL: Partial<Record<View, string>> = { designer: 'DESIGNER', catalog: 'ARSENAL' };
 
 export function CommandBar() {
   const notice = useNotice();   // survives the screen that raised it (see notice.ts)
-  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld, hasToken, setToken } = useStore();
+  const [menu, setMenu] = useState(false);
+  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<string | null>(null);
-  const [tokDraft, setTokDraft] = useState('');
   const offline = !mock && !connected && !authRequired;   // the token prompt owns the copy while auth is pending
   const cur = viewIdx(view);
-  const linked = state?.nodes.filter(n => n.last_seen_ms < 8000).length ?? 0;
-  const sync = state?.nodes.length ? (state.nodes.every(n => n.synced) ? 'OK' : 'PARTIAL') : '—';
 
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
@@ -58,100 +54,79 @@ export function CommandBar() {
               </button>
             );
           })}
-          {/* Not a phase — a read-only reference you can open at any point in the flow, so the stats
-              can be reviewed without selecting a player or writing anybody's kit (Tony, 2026-08-31). */}
-          <button type="button" onClick={() => setView('catalog')} title="Browse every weapon and its real stats — changes nothing"
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'",
-              background: view === 'catalog' ? '#0c1420' : 'transparent', border: 'none',
-              borderBottom: `2px solid ${view === 'catalog' ? T.acc : 'transparent'}`, padding: '8px 16px 7px',
-              cursor: 'pointer', color: view === 'catalog' ? T.ink : T.dim, minHeight: 44 }}>
-            <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: view === 'catalog' ? T.acc : 'rgba(92,113,134,.7)' }}>REF</span>
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>ARSENAL</span>
-          </button>
         </nav>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* an action that failed must still say so somewhere immediate */}
+          {error && (
+            <button type="button" role="alert" onClick={clearError} title="dismiss"
+              style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad,
+                       font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer', maxWidth: 420,
+                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>▲ {error} ✕</button>
+          )}
           {notice && (
             <button type="button" onClick={clearNotice} title="dismiss"
               style={{ background: notice.bad ? 'rgba(255,82,82,.12)' : 'transparent', border: `1px solid ${notice.bad ? T.bad : T.line2}`,
-                       color: notice.bad ? T.bad : T.dim, font: F.mono(600, 11), letterSpacing: '.1em', padding: '6px 12px', cursor: 'pointer' }}>
+                       color: notice.bad ? T.bad : T.dim, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>
               {notice.bad ? '▲ ' : ''}{notice.text} ✕
             </button>
           )}
           {panicked && (
             <button type="button" onClick={() => setPanicked(null)} title="dismiss"
-              style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.mono(600, 11), letterSpacing: '.1em', padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
+              style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
           )}
-          {panic ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>FLEET-WIDE SAFE ($CLEAR → $SP,99) ON EVERY NODE IN RANGE?</span>
-              <HazardButton size={11} onClick={async () => { setPanic(false); const r = await run(() => api.control('panic', true)); setPanicked(r ? `FLEET SAFED — $CLEAR→$SP,99 SENT TO EVERY NODE IN RANGE (${new Date().toLocaleTimeString()})` : 'PANIC FAILED — CHECK THE SERVER'); }}>CONFIRM PANIC</HazardButton>
-              <GhostButton onClick={() => setPanic(false)}>CANCEL</GhostButton>
-            </span>
-          ) : (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {/* the top-right is the STATE of the game, not a big red button (Tony 2026-08-26) */}
-              {state?.phase === 'recap' ? (
-                <>
-                  <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.ok }}>■ MATCH OVER</span>
-                  <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
-                  <HazardButton size={10} onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
-                </>
-              ) : state?.phase === 'live' || state?.phase === 'armed' ? (
-                <>
-                  <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: state.phase === 'live' ? T.bad : T.warn }}>{state.phase === 'live' ? '● LIVE' : '▲ ARMED'}</span>
-                  <HazardButton onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
-                </>
-              ) : (
-                <>
-                  <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim }}>◇ SETUP</span>
-                  <HazardButton size={10} onClick={() => setPanic(true)} title="Fleet-wide safe sequence (confirm step)">PANIC</HazardButton>
-                </>
-              )}
-            </span>
+          {/* Auth is the one thing that must stay in the header: nothing works without it. */}
+          {authRequired && <button type="button" onClick={() => setView('debug')}
+            style={{ background: 'transparent', border: `1px solid ${T.warn}`, color: T.warn, font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40 }}>
+            Operator token needed ▸</button>}
+
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.16em',
+                         color: state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
+            {state?.phase === 'live' ? '● LIVE' : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
+          </span>
+          {state?.phase === 'recap' && (
+            <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
           )}
+
+          {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):
+              "the header should be cleaner and simpler. less intimidating and less confusing." */}
+          <div style={{ position: 'relative' }}>
+            <button type="button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)} title="Menu"
+              style={{ background: menu ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim,
+                       font: F.osw(700, 18), padding: '6px 14px', cursor: 'pointer', minHeight: 44, minWidth: 48 }}>☰</button>
+            {menu && (
+              <div role="menu" onMouseLeave={() => setMenu(false)}
+                style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 40, minWidth: 230,
+                         background: T.page, border: `1px solid ${T.line2}`, display: 'flex', flexDirection: 'column' }}>
+                <MenuItem onClick={() => { setView('catalog'); setMenu(false); }} label="Arsenal" hint="Every weapon and its real stats" />
+                <MenuItem onClick={() => { setView('debug'); setMenu(false); }} label="Debug" hint="Network, nodes, config, session" />
+                <div style={{ borderTop: `1px solid ${T.line}` }} />
+                {panic ? (
+                  <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ font: F.chk(600, 12), color: T.bad, lineHeight: 1.4 }}>Safe every node in range? This clears and stops every gun.</span>
+                    <span style={{ display: 'flex', gap: 8 }}>
+                      <HazardButton size={11} onClick={async () => { setPanic(false); setMenu(false); const r = await run(() => api.control('panic', true)); setPanicked(r ? `FLEET SAFED (${new Date().toLocaleTimeString()})` : 'PANIC FAILED — CHECK THE SERVER'); }}>CONFIRM</HazardButton>
+                      <GhostButton onClick={() => setPanic(false)}>Cancel</GhostButton>
+                    </span>
+                  </div>
+                ) : (
+                  <MenuItem onClick={() => setPanic(true)} label="Panic" hint="Fleet-wide safe — asks first" danger />
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 30px', padding: '6px 20px', background: T.panelAlt, borderTop: `1px solid ${T.slot}`, font: F.mono(500, 11.5), letterSpacing: '.12em', color: T.dim, alignItems: 'center' }}>
-        <span>NET ▸ <span style={{ color: T.dim }}>{state?.lan.ssid ?? state?.lan.mode?.toUpperCase() ?? '—'}</span> · <span style={{ color: linked ? T.ok : T.warn }}>{linked} NODES LINKED</span></span>
-        <span>PHASE ▸ <span style={{ color: T.dim }}>{(() => { const sp = state?.phase ?? 'muster'; const si = viewIdx(sp); const lbl = PH[si]?.[1]; return lbl ? `0${si + 1}/06 ${lbl}${sp === 'armed' ? ' · ARMED' : ''}` : String(sp).toUpperCase(); })()}{cur !== viewIdx(state?.phase ?? 'muster') && <span style={{ color: T.micro }}> · VIEWING {LABEL[view] ?? PH[cur]?.[1] ?? '—'}</span>}</span></span>
-        <span>UPLINK ▸ <span style={{ color: offline ? T.bad : state ? T.ok : T.bad }}>{offline ? 'DOWN' : state ? 'OK' : 'NO SERVER'}</span> · SYNC {sync}</span>
-        <JoinQr />
-        {error && <button type="button" role="alert" onClick={clearError} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: T.bad, cursor: 'pointer', padding: 0, minHeight: 44 }} title="dismiss">▲ {error.toUpperCase()}</button>}
-        {(authRequired || (!mock && state?.lan.auth_required !== false && !hasToken)) && (
-          <form onSubmit={e => { e.preventDefault(); if (tokDraft.trim()) { setToken(tokDraft); setTokDraft(''); } }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: T.warn }}>
-            <span role="alert"><label htmlFor="mc-tok">▲ {authRequired ? 'OPERATOR TOKEN REQUIRED' : 'OPERATOR TOKEN'}</label></span>
-            <input id="mc-tok" className="textbox" value={tokDraft} onChange={e => setTokDraft(e.target.value)} placeholder="paste from the MC console"
-              autoComplete="off" spellCheck={false} style={{ width: '14ch', borderBottom: `1px solid ${T.warn}`, color: T.ink, minHeight: 32 }} />
-            <button type="submit" style={{ background: T.warn, color: T.accInk, border: 'none', font: F.chk(700, 10), letterSpacing: '.16em', padding: '6px 10px', cursor: 'pointer', minHeight: 32 }}>APPLY</button>
-          </form>
-        )}
-        <span style={{ marginLeft: 'auto' }}>{mock ? 'MOCK // ' : ''}SESSION {state?.session_id?.slice(-6).toUpperCase() ?? '——'} // T {state ? new Date(state.t).toLocaleTimeString([], { hour12: false }) : '——:——:——'}</span>
       </div>
     </header>
   );
 }
 
-/** Small QR of the node join URL (state.lan.qr) so phones can scan to join. */
-function JoinQr() {
-  const { state } = useStore();
-  const [url, setUrl] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const qr = state?.lan.qr;
-  useEffect(() => {
-    if (!qr) return;
-    QRCode.toDataURL(qr, { margin: 0, width: 220, color: { dark: '#e8eef5', light: '#07090d' } }).then(setUrl).catch(() => setUrl(null));
-  }, [qr]);
-  if (!qr) return null;
+function MenuItem({ label, hint, onClick, danger }: { label: string; hint: string; onClick: () => void; danger?: boolean }) {
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <button type="button" className="hov-acc-ink" aria-expanded={open} onClick={() => setOpen(o => !o)} style={{ background: 'transparent', border: 'none', font: 'inherit', letterSpacing: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0, minHeight: 44 }}>JOIN ▸ <span style={{ color: T.dim }}>{state?.lan.ws_url}</span> ▦</button>
-      {open && url && (
-        <span style={{ position: 'absolute', top: 22, left: 0, zIndex: 20, background: T.page, border: `1px solid ${T.acc}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <img src={url} width={220} height={220} alt="join QR" style={{ display: 'block' }} />
-          <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>SCAN ON THE NODE — {state?.lan.ws_url}</span>
-        </span>
-      )}
-    </span>
+    <button type="button" role="menuitem" onClick={onClick} className="hov-acc"
+      style={{ background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', padding: '10px 14px',
+               display: 'flex', flexDirection: 'column', gap: 2, minHeight: 48 }}>
+      <span style={{ font: F.chk(700, 13), color: danger ? T.bad : T.ink }}>{label}</span>
+      <span style={{ font: F.chk(500, 11), color: T.micro }}>{hint}</span>
+    </button>
   );
 }
