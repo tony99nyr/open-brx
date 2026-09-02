@@ -129,7 +129,7 @@ export function Designer() {
           {/* 2 RULES */}
           <section>
             <SectionRule label="2 // RULES" hint={mode ? `${mode.teams_text} · ${mode.win_text}` : undefined} style={{ marginBottom: 12 }} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: '6px 24px', background: T.panel, border: `1px solid ${T.line}`, padding: '8px 18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '4px 28px', background: T.panel, border: `1px solid ${T.line}`, padding: '8px 18px' }}>
               <Row label={<>TIME LIMIT <Hint>Required</Hint></>}><ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" label="time limit minutes" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} /></Row>
               <Row label={<>SCORE TO WIN <Hint>0 means time only</Hint></>}><ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} /></Row>
               <Row label="RESPAWN"><Seg value={cfg.respawn.type} options={[{ value: 'scanner', label: 'SCANNER' }, { value: 'auto', label: 'AUTO' }, { value: 'none', label: 'NONE' }]} onChange={v => put({ respawn: { ...cfg.respawn, type: v } })} pad="5px 11px" /></Row>
@@ -359,10 +359,15 @@ function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?
 // and an inline hint wrapped the label and shoved the control further — Tony, 2026-09-02: "these
 // controls dont align with the labels that great, its confusing". A fixed label column fixes both.
 function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+  // Label ABOVE its control. Side by side, the control was right-aligned in a fixed-width cell while
+  // the label was left-aligned, so the gap between them was whatever the label's length left over —
+  // "TIME LIMIT" sat a mile from its box and "RESPAWN DELAY" nearly touched its own. Tony, twice:
+  // "these controls dont align with the labels", then "labels arent next to inputs". Stacked, every
+  // label sits directly on its control and every control starts on the same line.
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14, minHeight: 56 }}>
-      <span style={{ font: F.chk(600, 13), letterSpacing: '.06em', display: 'flex', flexDirection: 'column', gap: 2 }}>{label}</span>
-      {children}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 0' }}>
+      <span style={{ font: F.chk(600, 12.5), letterSpacing: '.06em', display: 'flex', flexDirection: 'column', gap: 1 }}>{label}</span>
+      <span style={{ display: 'inline-flex' }}>{children}</span>
     </div>
   );
 }
