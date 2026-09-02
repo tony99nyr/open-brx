@@ -456,6 +456,27 @@ That rules out the whole obvious set: not unlinked, not unpowered, not a BLE fau
 (88%), not the emitter (the receiver decoded the word). **The fault is confined to the IR sensor path**
 — either the sensors themselves or the headset's reporting of them back to the gun.
 
+### 🚨 THE PREFLIGHT MUST HIT A HEADSET DOME, NOT JUST "SOMETHING"
+
+**Operator: this happened in a real game on 2026-09-01.** It went unidentified for the whole game,
+and the root cause explains why: the player was **partially scoring**. Their gun body registered
+normally while all four headset domes reported nothing, so they took hits when shot head-on at gun
+level and nothing from any other angle. That presents as *"tagging is flaky today"*, not as a broken
+headset.
+
+**This invalidates the simpler fix.** An earlier note here said muster needs a *test shot*. Not
+sufficient: **a test shot at the GUN BODY passes while the headset is dead.** The check has to land on
+a **headset dome** (`$HIR` tok1 = 0, 1, 2 or 3) and verify the sensor id, not merely that *a* hit
+arrived.
+
+**Concrete requirements this creates:**
+- **Muster / Armory** (`docs/field-process.md`): the per-player check is a shot **at the headset**, and
+  it passes only on `$HIR` with tok1 in {0,1,2,3}. Ideally all four domes, since we do not yet know
+  whether they fail together or individually.
+- **MC preflight**: a player whose only registered hits are tok1 = 4 should be flagged, not green.
+- **Match data from 2026-09-01 is suspect** for any player on this unit: their hit counts are an
+  undercount of unknown size, so K/D and accuracy from that game cannot be trusted.
+
 ### ⚠️ Consequence: lighting the headset is NOT a valid health check
 
 A preflight that lights the headset and calls it good **passes a headset that cannot score**. Same for
