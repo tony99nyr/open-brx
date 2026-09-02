@@ -4892,3 +4892,54 @@ identical conditions is still unaccounted for, and no hypothesis is offered here
 target, same geometry, same detector, only the emitter changes. 10/10 says our ESP32 emitter is
 simply weak (see R2/Q15 on IR power) and closes this; ~4/10 says the tagger really does drop shots
 at 3 ft and something real remains.
+
+### 2026-09-02 (late) — F11: SEVEN hypotheses eliminated by controlled test. The fault is real and still unexplained.
+
+The night's work on the intermittent no-registration fault. **Nothing here explains it.** What this
+entry is worth is the elimination list: every item below was tested, not argued, and none of them
+should be re-run tomorrow.
+
+## Eliminated, with the test that did it
+
+| hypothesis | how it died |
+|---|---|
+| our emitter stalls mid-frame | a REAL BRX gun fragments identically at the receiver (44 bursts, 3 whole) |
+| `$GLED` frames deafen it | 12 suspects sent to a verified-working gun, one at a time: **78/78 registered** |
+| deaf in its native game | operator saw it hit every time; BLE simply cannot see a native game |
+| headset orientation / geometry | unmoved all day, 3 ft directly facing, across every run |
+| the `$SIR` table size | interleaved A/B, full 10-row vs 1-row: **24/24 both arms** |
+| `$STOP` triggers it | its own volley read 6/6, and every recovery rung after it read 6/6 |
+| losing the BLE link triggers it | 3 rounds: 18/18 connected, and BOTH headsets flashed on every disconnected shot |
+| a weak emitter (marginal margin) | a NATIVE gun beside it registered the SAME shots 24/24 |
+
+Also eliminated earlier the same day: arming order, spawn state, team gating, death/respawn, battery
+charge, tagger uptime, receiver adaptation, and `$GSET outdoorMode`.
+
+## What the fault actually looks like, now that it has been seen with instruments
+
+It is **BIMODAL, not marginal**. Working is 16/16, 24/24, 78/78. Broken is **0/22 with no headset
+flash at all**. There is no smooth degradation between them, which is why every "signal strength"
+story fails.
+
+⚠️ **The strongest constraint, from Tony, and it kills the tidiest explanations:** yesterday's phone
+HUD game failed to register hits **point blank with the phone connected**. So the fault occurs with a
+live BLE link, at zero range, in a normal game. Any hypothesis that requires a disconnect, distance,
+or an exotic frame is already refuted by that.
+
+## Method note — the actual lesson of the night
+
+Six explanations were stated confidently and killed by a control, usually within minutes: emitter
+stall, `$GLED`, native deafness, geometry, `$SIR`, `$STOP`. Every one came from a SINGLE run on an
+intermittent fault. Tony's question — *"why do you keep getting these conclusions wrong??"* — has a
+precise answer: **n=1 is worth nothing here**, and each n=1 was being reported as a cause rather than
+as a lead. The rule this earns, on top of the same-burst rule from earlier today:
+
+> **On an intermittent fault, nothing is a cause until it has been reproduced on demand.**
+
+## The one thing left to try
+
+A **soak**: repeat volleys for a long time with pools topped up, logging the rate per volley with
+timestamps, and catch the transition happening. Both deaf episodes tonight followed long runs
+(`deaf_catch` after a full session, the deaf state after `deaf_bisect`'s 78 shots). That is a
+suggestion of accumulation, not evidence of it -- but it is the only untested shape left, and it is
+the one thing a machine can do unattended.
