@@ -491,7 +491,17 @@ software. **R0BQT has a genuine intermittent fault in its IR receive path.**
 - The recovery that worked once (cycle both, gun first then headset) did **not** reproduce on later
   attempts, so there is no reliable field workaround.
 
-**Still unresolved and worth keeping open:** whether something WE send latches it into this state.
+### ⏪ IT PREDATES TODAY'S EXPERIMENTS
+
+**Operator report: the same headset was unhittable during a test game on 2026-09-01**, a day before any
+of today's LED sweeps. That largely **exonerates the frames we send** — the `$HLED` count=200
+animations, the effect values 5-8 and the 255 token values were all sent for the first time on 09-02.
+
+It also means this is **not** a fault we introduced with unusual probing, and it has now been seen in
+two independent contexts: a real test game and a bench session. Root cause matters: this is a unit
+that will silently stop scoring in a match.
+
+**Prior claim kept for the record but now unlikely:** Whether something WE send latches it into this state.
 Tony's hypothesis, and a fair one — the frames swept today are ones Callsign never sends, notably
 `$HLED,...,200,*` (a count of 200 at 600 ms is a **two-minute** animation, fired back to back across
 eleven effect values), `$HLED` effect values 5-8, and token values of 255 on both commands. A
