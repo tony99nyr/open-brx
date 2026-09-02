@@ -1,6 +1,30 @@
 # The arm sequence: from `$CLEAR` to a live gun
-_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
+
 Last verified: 2026-08-27
+
+## The headset is a second device, and it needs time.
+A command that the tagger must
+relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within
+about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green
+out-blink while the gun is alive and registering hits normally, so the player looks dead while
+playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are
+clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect,
+such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame
+echoing back proves the gun received it, not that the headset executed it. ✅ src:
+docs/experiment-log.md 2026-09-02 (night, last)
+
+**`$CLEAR` wipes the `$SIR` table, and an empty table means the gun ignores every
+hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports
+full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it
+is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as
+a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word
+does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all.
+Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5,
+and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the
+table SIZE does not matter, only its absence: a one-row table and the full ten-row table both
+registered 24/24 in an interleaved A/B.
+_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
+Source: docs/experiment-log.md 2026-09-02 (night, FINAL)
 
 This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
 Source: protocol/brx-protocol.md §7e, §7o; protocol/captures/2026-08-23-ios-callsign-game-start.txt

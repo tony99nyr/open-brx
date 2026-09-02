@@ -392,6 +392,60 @@ rejoined. Connect-grace at START passed cleanly (`playing with 2/3 taggers`, ~11
 attempts). Whether a gun absent at start can ever join a running match is **untested** — it may be by
 design. Worth one deliberate test.
 
+## 🟠 F13 — A RESPAWN SENT WITHIN ~2 s OF DEATH STICKS THE HEADSET IN THE GREEN DEATH BLINK (2026-09-02)
+
+**Distinct from F11 — do not conflate them.** F11 is the gun ignoring hits. This is presentation
+only: the headset keeps flashing the out/respawning green while the gun is alive and registering
+normally (**8/8 measured while it was blinking**, `$HP` decrementing). A respawned player looks dead
+to everyone on the field while playing perfectly well.
+
+### Measured threshold
+
+Kill outright, wait `gap`, send MC's real `RESPAWN_SEQUENCE` (`$HLOOP,0,0,*`, `$SPAWN,,*`). Identical
+script every trial; only `gap` changed.
+
+| gap after death | headset | gun |
+|---|---|---|
+| 1.0 s | 🔴 stuck in the out-blink | `$LCD,45,70` alive |
+| 2.0 s | 🔴 stuck in the out-blink | alive |
+| 2.5 s | ✅ dark (correct) | alive |
+| 3.0 s | ✅ dark | alive |
+| 6.0 s | ✅ dark | alive |
+
+**Monotonic, both directions, five trials. Threshold is between 2.0 s and 2.5 s. Use ≥ 3 s.**
+
+### Mechanism (Tony's, and it generalises past respawn)
+
+> *"the ir signal on the tagger needs to bt connect to headset to give it command, headset has to
+> receive, process, and execute command. I think any commands that have to be executed by tagger, but
+> ALSO executed by headset need a safe processing gap."*
+
+The headset is a **second device behind a relay**. `$SPAWN` must reach the gun, be relayed, then be
+received, processed and executed by the headset; arriving while the death sequence is still running
+there, it is lost. The gun's own state updates regardless, which is why the two ends disagree.
+Corroborated independently: the gun **queues** commands and drains them serially (four bolt-pull
+sounds drained from one burst).
+
+**So this applies to anything with a headset-side effect**, not just respawn: `$SPAWN`, `$HLOOP`,
+`$HLED`, and plausibly hit processing.
+
+### Severity and what to do
+
+⚠️ `GameConfig.respawn_s` defaults to **15 s**, six times the threshold, so a DEFAULT MC match never
+triggers it. This was mis-stated mid-session as a routine live-match bug; it is not, at default
+settings. What triggers it is fast respawns and bench tooling (`death_soak.py` used 1.4 s, which is
+why 25 cycles left the headset wedged).
+
+1. **Enforce a floor on `respawn_s`** (≥ 3 s). Nothing currently stops an operator setting it lower.
+2. **Document the settling gap** for any command with a headset-side effect.
+3. ❓ **Frame pacing for headset-side commands is UNVERIFIED at our spacing.** Frames are not DROPPED
+   (echo rate was 20/20 at every spacing from 20 ms to 500 ms, `frame_spacing.py`) — but an echo
+   proves RECEIPT BY THE GUN, not execution by the headset, and that distinction is this whole entry.
+   MC's `setup_frames()` burst was tested for hit REGISTRATION only (`mc_burst.py`, 24/24 both arms);
+   headset LED state across the two arms was never compared.
+
+Repro: `mcp/tools/respawn_timing.py` pattern — see `experiment-log.md` 2026-09-02 (night, last).
+
 ## ✅ F11 — SOLVED 2026-09-02. `$CLEAR` wipes the `$SIR` table; a gun with no `$SIR` rows ignores every hit
 
 > **ROOT CAUSE.** `$CLEAR` clears the `$SIR` matrix. Unmatched `$SIR` cells are silently ignored (this

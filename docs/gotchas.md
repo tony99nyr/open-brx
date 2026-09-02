@@ -1,5 +1,24 @@
 # Gotchas — the field lore
 
+## 🟠 THE GREEN DEATH BLINK STICKS ON if you respawn within ~2 s of the kill (2026-09-02)
+
+**Symptom:** a player's headset keeps flashing the out/respawning green after they are back. The gun
+is fine — alive, full pools, registering hits normally (8/8 measured while it was blinking). Only the
+presentation is wrong, so the player looks dead to everyone while playing normally.
+
+**Cause:** the headset is a second device behind a relay. `$SPAWN` has to reach the gun, be relayed,
+then be received, processed and executed by the headset. Sent while the death sequence is still
+running there, it is lost; the gun's own state updates regardless.
+
+**Threshold, measured:** 1.0 s and 2.0 s stick; 2.5 s, 3.0 s and 6.0 s are clean. **Leave ≥ 3 s
+between a death and a respawn.** `GameConfig.respawn_s` defaults to 15 s so normal matches are safe —
+this bites fast respawns and bench tooling.
+
+**Generalises:** any command that must be executed by the tagger AND the headset (`$SPAWN`, `$HLOOP`,
+`$HLED`) needs a settling gap. Note the gun QUEUES commands and drains them serially, so an echo back
+proves the GUN received it, not that the headset executed it.
+
+
 ## 🔴 `$CLEAR` WIPES THE `$SIR` TABLE, AND A GUN WITH NO `$SIR` ROWS IGNORES EVERY HIT (2026-09-02)
 
 **Symptom:** the gun arms, spawns, reports full pools, answers `$QUERY` normally, is alive and in

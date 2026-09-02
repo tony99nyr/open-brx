@@ -79,7 +79,7 @@
 <td><code>$CLEAR,*</code></td>
 <td>&gt;&gt;</td>
 <td>n/a</td>
-<td>Clear current game state. First frame of every arm sequence; half of the panic sequence.</td>
+<td>Clear current game state. First frame of every arm sequence; half of the panic sequence. <strong>It also wipes the <code>$SIR</code> table</strong>, and because unmatched <code>$SIR</code> cells are silently ignored, a gun left with no rows ignores every hit while still reporting alive: no <code>$HIR</code>, no headset flash, pools untouched. Always re-send <code>$SIR</code> after <code>$CLEAR</code>.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>
@@ -135,7 +135,7 @@
 <td><code>$SPAWN,,*</code></td>
 <td>&gt;&gt;</td>
 <td><strong>one empty token</strong></td>
-<td><strong>Go-live</strong> and <strong>respawn</strong>. Restores HP/armor and (on respawn) ammo; echoes <code>$LCD,&lt;hp&gt;,&lt;armor&gt;,0,0,&lt;mag&gt;,&lt;reserve&gt;,*</code>. Also clears the <code>$SIR</code> fn-23 state (<code>$ALCD</code> token 2 back to 100). <code>$SPAWN,*</code> (no empty token) is not the same command.</td>
+<td><strong>Go-live</strong> and <strong>respawn</strong>. Restores HP/armor and (on respawn) ammo; echoes <code>$LCD,&lt;hp&gt;,&lt;armor&gt;,0,0,&lt;mag&gt;,&lt;reserve&gt;,*</code>. Also clears the <code>$SIR</code> fn-23 state (<code>$ALCD</code> token 2 back to 100). <code>$SPAWN,*</code> (no empty token) is not the same command. <strong>Leave at least 3 seconds after a death before respawning</strong>, or the headset stays stuck in the green out-blink.</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
 </tr>
 <tr>

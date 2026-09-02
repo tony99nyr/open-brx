@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-09-02T16:47:47.274Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-09-02T23:40:27.146Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -2342,7 +2342,7 @@ Source: protocol/callsign-extract/protocol-classes.md (confidence note), protoco
 | `$STOP,*` | >> | n/a | Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail. | ✅ |
 | `$PHONE,*` | >> | n/a | App-controlled mode: opens the live event tap (buttons, `$VOLTS`), locks the on-gun menu. Reply `$BUT,3,0,*`. | ✅ |
 | `$CONNECT,*` / `$INIT,*` | >> | n/a | On the known-safe list. Sent on v4.32: **no observable reply**. | ✅ |
-| `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. | ✅ |
+| `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. **It also wipes the `$SIR` table**, and because unmatched `$SIR` cells are silently ignored, a gun left with no rows ignores every hit while still reporting alive: no `$HIR`, no headset flash, pools untouched. Always re-send `$SIR` after `$CLEAR`. | ✅ |
 | `$START,*` | >> | n/a | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. | ✅ |
 | `$GSET,…,*` | >> | 8 tokens | Global game settings: friendly fire, indoor/outdoor, region, ambient light, gyro, BT secondaries, crit modifier, mods. **No respawn/time/lives token.** → GSET page | ✅ |
 | `$PSET,…,*` | >> | id, 0, HP, armor, shield, 50, , voice-pack… | Player settings: **token 1 = player id (0–63)**, tokens 3–5 = HP/armor/shield pools, then a positional voice pack. → PSET page | ✅ |
@@ -2350,7 +2350,7 @@ Source: protocol/callsign-extract/protocol-classes.md (confidence note), protoco
 | `$SIR,<proto>,<subtype>,<sound>,<fn>,p5,p6,p7,p8,*` | >> | 8 tokens | Incoming-IR effects matrix: what an IR word with protocol B / subtype U does to this gun. **Unmatched cells are silently ignored.** → SIR page | ✅ |
 | `$BMAP,<button>,<function>,<swap0..3>,*` | >> | button id, function, 4 swap slots | Remap physical controls. Buttons: 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right · 8 gyro. Functions seen: 0 fire · 97 reload · 98 (select/left/right) · 100 weapon-cycle · 4 melee (gyro). **Mandatory**: without it the trigger only chirps "disabled". | ✅ |
 | `$TID,<team>,*` | >> | team | Team id. **Masked to 2 bits** (`team & 3`) → four native teams 0–3. Drives the gun LED colour at `$SPAWN` (1 = blue, 2 = yellow observed) and is echoed as `$HIR` token 4 on the victim. A live write changes hit resolution immediately but does not repaint LEDs. | ✅ |
-| `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. | ✅ |
+| `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. | ✅ |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. | ✅ |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. | ✅ |
 | `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (see the 2166-id bank). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel**. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2–3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app · `3,6` iOS · `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. | ✅ |
@@ -2424,8 +2424,32 @@ Source: protocol/callsign-extract/protocol-classes.md
 <!-- https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence/ -->
 
 # The arm sequence: from `$CLEAR` to a live gun
-_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
+
 Last verified: 2026-08-27
+
+## The headset is a second device, and it needs time.
+A command that the tagger must
+relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within
+about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green
+out-blink while the gun is alive and registering hits normally, so the player looks dead while
+playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are
+clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect,
+such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame
+echoing back proves the gun received it, not that the headset executed it. ✅ src:
+docs/experiment-log.md 2026-09-02 (night, last)
+
+**`$CLEAR` wipes the `$SIR` table, and an empty table means the gun ignores every
+hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports
+full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it
+is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as
+a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word
+does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all.
+Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5,
+and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the
+table SIZE does not matter, only its absence: a one-row table and the full ten-row table both
+registered 24/24 in an interleaved A/B.
+_The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host._
+Source: docs/experiment-log.md 2026-09-02 (night, FINAL)
 
 This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
 Source: protocol/brx-protocol.md §7e, §7o; protocol/captures/2026-08-23-ios-callsign-game-start.txt
@@ -3726,7 +3750,7 @@ the complete interoperability spec for the BRX tagger + headset: transport, fram
 
 - [Transport, framing & safety](https://open-brx.iamrossi.workers.dev/manual/dev/transport/): How you reach the gun, what a frame looks like, and why nothing here can brick one. Start here if you want your own code to talk to a tagger.
 - [Command reference](https://open-brx.iamrossi.workers.dev/manual/dev/commands/): Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written.
-- [The arm sequence: from `$CLEAR` to a live gun](https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence/): The exact frame order that takes a tagger live, respawns it, and ends the game. Send these frames in this order. We captured the order from the official app and reproduced it with our own host.
+- [The arm sequence: from `$CLEAR` to a live gun](https://open-brx.iamrossi.workers.dev/manual/dev/arm-sequence/): 
 - [`$WEAP`: the weapon definition](https://open-brx.iamrossi.workers.dev/manual/dev/weap/): Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own.
 - [`$GSET` and `$PSET`: game and player settings](https://open-brx.iamrossi.workers.dev/manual/dev/gset-pset/): The two frames that set on-gun rules and the player's pools, identity and voice pack. Read this page to give each player their health, armor and id.
 - [`$SIR`: the incoming-IR effects matrix](https://open-brx.iamrossi.workers.dev/manual/dev/sir/): What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon. This page shows how to write that table.

@@ -23,6 +23,16 @@
 > the gun body silent together (discarded above the sensor layer); native games unaffected and power
 > cycles "fixing" it (the gun falls back to its own `$SIR` config). **It was never intermittent.**
 >
+> ### Also found: the green death blink STICKS (separate bug, F13)
+>
+> A respawn sent within **~2 s of the kill** leaves the headset flashing the out/respawning green
+> while the gun is alive and registering normally (8/8 measured while blinking). **Presentation only
+> — not F11, do not conflate them.** Threshold measured 1.0/2.0 s stick, 2.5/3.0/6.0 s clean, so
+> leave **≥ 3 s**. `respawn_s` defaults to 15 s, so default matches are safe; fast respawns and bench
+> tooling are not. Mechanism (Tony's): the headset is a second device behind a relay and any command
+> it must also execute needs a settling gap — the gun queues commands and drains them serially, so an
+> echo proves the GUN received it, not that the headset executed it.
+>
 > ### 🔴 DO THIS FIRST NEXT SESSION — the live-match exposure is still unfixed
 >
 > `setup_frames()` orders `$CLEAR` before `$SIR`, so a COMPLETE bundle is safe. But

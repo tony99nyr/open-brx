@@ -36,7 +36,7 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$PING,*` | Connectivity check | Reply: `$PONG,*` |
 | `$CLEAR,*` | Clear current game state — **⚠️ this WIPES the `$SIR` table** | Sent before configuring a new game. **A gun with no `$SIR` rows silently ignores EVERY hit** (no `$HIR`, no headset flash, pools untouched) while still reporting alive and in-game. Always re-send `$SIR` after `$CLEAR`. Bench-proven 2026-09-02, deterministic 5/5 |
 | `$START,*` | Begin configuration/start sequence | |
-| `$SPAWN,,*` | **Takes the tagger live** | The empty token matters — `$SPAWN,,*`, not `$SPAWN,*`. See §7e |
+| `$SPAWN,,*` | **Takes the tagger live** | The empty token matters — `$SPAWN,,*`, not `$SPAWN,*`. See §7e. **⚠️ Leave ≥ 3 s after a death before respawning**: sent within ~2 s the headset never executes it and stays stuck in the green out-blink while the gun is alive and registering (measured 2026-09-02: 1.0/2.0 s stick, 2.5/3.0/6.0 s clean). The headset is a second device behind a relay, so any command it must also execute needs a settling gap |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | **Load magazines** (verified 2026-08-23) | Sent immediately after `$SPAWN,,*`. Without it the gun goes live with no ammunition. e.g. `$AMMO,0,36,108,1,*` |
 | `$CONNECT,*` | Connection handshake | |
 | `$INIT,*` | Initialize | |

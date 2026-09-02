@@ -108,7 +108,7 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 | `$SIR,<proto>,<subtype>,<sound>,<fn>,p5,p6,p7,p8,*` | >> | 8 tokens | Incoming-IR effects matrix: what an IR word with protocol B / subtype U does to this gun. **Unmatched cells are silently ignored.** → SIR page | ✅ |
 | `$BMAP,<button>,<function>,<swap0..3>,*` | >> | button id, function, 4 swap slots | Remap physical controls. Buttons: 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right · 8 gyro. Functions seen: 0 fire · 97 reload · 98 (select/left/right) · 100 weapon-cycle · 4 melee (gyro). **Mandatory**: without it the trigger only chirps "disabled". | ✅ |
 | `$TID,<team>,*` | >> | team | Team id. **Masked to 2 bits** (`team & 3`) → four native teams 0–3. Drives the gun LED colour at `$SPAWN` (1 = blue, 2 = yellow observed) and is echoed as `$HIR` token 4 on the victim. A live write changes hit resolution immediately but does not repaint LEDs. | ✅ |
-| `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. | ✅ |
+| `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. | ✅ |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. | ✅ |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. | ✅ |
 | `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (see the 2166-id bank). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel**. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2–3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app · `3,6` iOS · `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. | ✅ |
@@ -176,6 +176,16 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 ---
 
 ### Page: The arm sequence: from `$CLEAR` to a live gun  (`/manual/dev/arm-sequence`)
+
+[callout:warn] **The headset is a second device, and it needs time.** A command that the tagger must
+relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within
+about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green
+out-blink while the gun is alive and registering hits normally, so the player looks dead while
+playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are
+clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect,
+such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame
+echoing back proves the gun received it, not that the headset executed it. ✅ src:
+docs/experiment-log.md 2026-09-02 (night, last)
 
 [callout:warn] **`$CLEAR` wipes the `$SIR` table, and an empty table means the gun ignores every
 hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports

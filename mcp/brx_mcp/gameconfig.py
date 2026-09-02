@@ -111,6 +111,40 @@ _BMAP = (
 # Default spawn (default primary/secondary ammo). Prefer GameConfig.spawn_frames(),
 # which recomputes $AMMO from the SELECTED weapons.
 SPAWN_SEQUENCE = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$AMMO,1,6,12,1,*", "$BMAP,0,0,,,,,*")
+# ⚠️ F13 (bench-measured 2026-09-02): a respawn sent within ~2 s of the kill is never executed by
+# the HEADSET -- it sticks in the green out-blink while the gun is alive and registering normally.
+# 1.0 s and 2.0 s stick; 2.5 s, 3.0 s and 6.0 s are clean. The headset is a second device behind a
+# relay, so a command it must also execute needs a settling gap. 3 s buys margin over the 2.0-2.5 s
+# boundary without being noticeable next to a normal respawn timer.
+def assert_sir_follows_clear(frames) -> None:
+    """A bundle containing `$CLEAR` MUST send `$SIR` rows after it. Raises if it does not.
+
+    ⚠️ F11, the worst bug this project has had (bench-proven 2026-09-02, deterministic 5/5):
+    `$CLEAR` WIPES the `$SIR` table, and unmatched `$SIR` cells are silently ignored -- so a gun left
+    with NO rows discards EVERY incoming hit. No `$HIR`, no headset flash, pools untouched, while it
+    reports alive, in-game and healthy to `$QUERY`. It presents as a dead headset or a broken sensor
+    and it is neither. Re-sending the `$SIR` rows alone restores it; `$START`, `$GSET`, `$PSET`,
+    `$TID` and any number of `$SPAWN`s do not.
+
+    Table SIZE is irrelevant (one row and ten both registered 24/24 in an interleaved A/B); only
+    ABSENCE matters. So this checks ORDER and PRESENCE, not count.
+    """
+    last_clear = last_sir = -1
+    for i, f in enumerate(frames):
+        if f.startswith("$CLEAR"):
+            last_clear = i
+        elif f.startswith("$SIR"):
+            last_sir = i
+    if last_clear >= 0 and last_sir < last_clear:
+        raise ValueError(
+            "F11 GUARD: this frame bundle sends $CLEAR with no $SIR after it. $CLEAR wipes the "
+            "$SIR table and a gun with no rows silently ignores EVERY hit while reporting healthy. "
+            "Send the $SIR rows after the $CLEAR."
+        )
+
+
+MIN_RESPAWN_S = 3
+
 RESPAWN_SEQUENCE = ("$HLOOP,0,0,*", "$SPAWN,,*")
 # Game-over teardown (verified 2026-08-25 on Tactix-FE30): revive so a gun left DEAD at
 # game end isn't stuck showing the death-glow ($SPAWN restores 45/70), immediately
@@ -293,6 +327,7 @@ class GameConfig:
         frames += list(_SIR_TABLE) + cfg._bmap()
         frames += cfg._led_frames()
         frames += ["$PLAYX,0,*", "$PLAY,VA81,4,6,,,,,*"]  # game-start sound
+        assert_sir_follows_clear(frames)
         return frames
 
     def spawn_frames(self) -> list[str]:
@@ -312,11 +347,15 @@ class GameConfig:
         return None if self.respawns is None else self.respawns + 1
 
     def respawn_delay(self, death_index: int) -> int:
-        """Respawn delay for the Nth death (ramps if enabled: 15/30/45/90…)."""
+        """Respawn delay for the Nth death (ramps if enabled: 15/30/45/90…).
+
+        Floored at MIN_RESPAWN_S: a respawn sent too soon after the kill is never executed by the
+        HEADSET, which then sticks in the green out-blink while the gun plays on normally (F13).
+        """
         if not self.respawn_ramp:
-            return self.respawn_s
+            return max(MIN_RESPAWN_S, self.respawn_s)
         ladder = [15, 30, 45, 90]
-        return ladder[min(death_index, len(ladder) - 1)]
+        return max(MIN_RESPAWN_S, ladder[min(death_index, len(ladder) - 1)])
 
     def summary(self) -> dict:
         cfg = self.apply_presets()
