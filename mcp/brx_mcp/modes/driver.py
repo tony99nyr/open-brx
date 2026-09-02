@@ -108,6 +108,10 @@ class GameDriver:
         (the gun's `$NAME` is its permanent sticker-id hardware identity)."""
         self.config = config
         self.players = players
+        # player_id -> setup frames that FAILED to send. Empty is the only healthy state; a $SIR
+        # entry here means that player cannot be hit (F11). Surfaced via snapshot() so the operator
+        # console can flag it rather than discovering it mid-match.
+        self.arming_failures: dict[str, list[str]] = {}
         self.sender = sender
         self.engine = build_engine(config, now)
         self.announce = announce or (lambda s: print(s, flush=True))
@@ -131,13 +135,22 @@ class GameDriver:
         if roster is not None and hasattr(roster, "wire_ids"):
             roster.wire_ids = {wire: pid for pid, wire in self.player_ids.items()}
 
-    async def _send(self, pid: str, frame: str) -> None:
+    async def _send(self, pid: str, frame: str, critical: bool = False) -> None:
         """One write, guarded — a single gun's BLE error must NOT abort the game
-        (e.g. a broadcast $PLAY to a gun that just disconnected)."""
+        (e.g. a broadcast $PLAY to a gun that just disconnected).
+
+        `critical=True` additionally RECORDS the failure. Swallowing setup-frame errors silently is
+        the live-match half of F11: `$CLEAR` wipes the `$SIR` table, so if `$CLEAR` lands and a later
+        `$SIR` row does not, that player is UNHITTABLE for the whole match — no error surfaces, the
+        gun reports healthy, pools stay full, and the scoreboard shows them alive and simply never
+        hit. A dropped `$PLAY` is cosmetic; a dropped `$SIR` ends someone's game.
+        """
         try:
             await self.sender(pid, frame)
         except Exception as e:  # noqa: BLE001
             self.announce(f"(send to {pid} failed: {type(e).__name__}: {e})")
+            if critical:
+                self.arming_failures.setdefault(pid, []).append(frame)
 
     # -- action execution ---------------------------------------------------- #
     async def execute(self, actions: list[Action]) -> None:
@@ -186,14 +199,49 @@ class GameDriver:
         # Setup); a per-game vanity gamertag must never clobber it. See
         # docs/field-process.md + the tagger-naming architecture.
         for pid in self.players:
-            for f in self.config.setup_frames(self.player_ids[pid]):
-                await self._send(pid, f)
-            await self._send(pid, f"$TID,{self.players[pid]},*")
+            await self._arm_one(pid)
         # ... THEN spawn all guns back-to-back so they start ~together (B10 barrier)
         for f in spawn_frames:
             for pid in self.players:
                 await self._send(pid, f)
         self.announce(f"game live: {self.config.summary()}")
+
+    async def _arm_one(self, pid: str) -> bool:
+        """Send one gun's full config, then make sure the `$SIR` table actually landed.
+
+        F11 (bench-proven 2026-09-02, deterministic 5/5): `$CLEAR` WIPES the `$SIR` table, and a gun
+        with no rows silently ignores EVERY hit while reporting alive, in-game and healthy. The
+        ordering in `setup_frames()` is correct, so a COMPLETE bundle is safe — the danger is a
+        PARTIAL one. Retry the rows once, and if they still will not go, say so loudly instead of
+        letting a player walk onto the field unhittable.
+        """
+        self.arming_failures.pop(pid, None)
+        frames = list(self.config.setup_frames(self.player_ids[pid]))
+        for f in frames:
+            await self._send(pid, f, critical=True)
+        await self._send(pid, f"$TID,{self.players[pid]},*", critical=True)
+
+        failed = self.arming_failures.get(pid, [])
+        if any(f.startswith("$SIR") for f in failed):
+            self.announce(f"⚠ {pid}: $SIR row(s) failed to send — retrying (a gun with no $SIR "
+                          f"table silently ignores every hit)")
+            rest = [f for f in failed if not f.startswith("$SIR")]
+            if rest:
+                self.arming_failures[pid] = rest
+            else:
+                self.arming_failures.pop(pid, None)
+            for f in frames:
+                if f.startswith("$SIR"):
+                    await self._send(pid, f, critical=True)
+
+        failed = self.arming_failures.get(pid, [])
+        if any(f.startswith("$SIR") for f in failed):
+            self.announce(f"🔴 {pid} IS NOT ARMED: its $SIR table did not land, so it will NOT "
+                          f"register hits. Re-arm this player before the match starts.")
+            return False
+        if failed:
+            self.announce(f"⚠ {pid}: {len(failed)} setup frame(s) failed to send")
+        return True
 
     def _player_alive(self, pid: str) -> bool:
         """Best-effort: does the ENGINE consider this player alive? Used by the
@@ -211,9 +259,7 @@ class GameDriver:
         config + team always, but only SPAWNS it live if the engine still considers
         it alive — a gun that dropped while dead stays dead (the engine's own Respawn
         action brings it back on schedule), avoiding a gun-alive/engine-dead desync."""
-        for f in self.config.setup_frames(self.player_ids[pid]):
-            await self._send(pid, f)
-        await self._send(pid, f"$TID,{self.players[pid]},*")
+        await self._arm_one(pid)
         if self._player_alive(pid):
             for f in self.config.spawn_frames():
                 await self._send(pid, f)
@@ -238,6 +284,18 @@ class GameDriver:
         snap = self.engine.snapshot()
         if self.callsigns:
             snap["callsigns"] = dict(self.callsigns)
+        # Only report entries that actually hold a failure -- an empty list must not create the key,
+        # or every consumer has to special-case "present but empty".
+        self.arming_failures = {k: v for k, v in self.arming_failures.items() if v}
+        if self.arming_failures:
+            # Surfaced so the operator console can flag it BEFORE the match. `unhittable` is the one
+            # that ends someone's game: no $SIR table means the gun ignores every hit while looking
+            # perfectly healthy (F11).
+            snap["arming_failures"] = {k: list(v) for k, v in self.arming_failures.items()}
+            unhittable = sorted(pid for pid, frames in self.arming_failures.items()
+                                if any(f.startswith("$SIR") for f in frames))
+            if unhittable:
+                snap["unhittable"] = unhittable
         return snap
 
 

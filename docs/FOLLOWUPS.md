@@ -469,7 +469,21 @@ Repro: see `experiment-log.md` 2026-09-02 (night, last) for the exact sequence (
 > `$SIR` config); a power cycle "fixing" it for the same reason. **It was never intermittent** — it
 > follows a `$CLEAR` with no `$SIR` behind it, and nothing else.
 >
-> ### 🔴 STILL TO FIX in Mission Control — the live-match exposure
+> ### Mission Control fixes — 3 of 4 DONE 2026-09-02
+>
+> 1. ✅ **Retry the `$SIR` rows if any setup frame fails**, and refuse to call the gun armed if they
+>    still will not land — `GameDriver._arm_one()`. ⚠️ Note there is **no readback** for `$SIR` on the
+>    wire, so this verifies the SEND, not the gun's table. That limit is real; say so rather than
+>    implying we confirm it.
+> 2. ✅ **A bundle containing `$CLEAR` must carry `$SIR` after it** — `gameconfig.assert_sir_follows_clear()`,
+>    called from `setup_frames()`, raises otherwise. Checks ORDER and PRESENCE, not count.
+> 3. ✅ **Setup-frame failures are no longer swallowed** — `_send(..., critical=True)` records them;
+>    `snapshot()` exposes `arming_failures` and, when a `$SIR` row is among them, `unhittable`, so the
+>    operator console can flag a player who cannot be hit BEFORE the match.
+> 4. ⬜ **Flag a player who has registered no hits all match** — still open, and the cheapest live
+>    detector of this whole class.
+>
+> ### The exposure, for context (fixes above)
 >
 > `setup_frames()` orders `$CLEAR` before the `$SIR` rows, so a COMPLETE bundle is safe. A PARTIAL one
 > is not, and **`GameDriver._send()` swallows every send error by design** (one gun's BLE hiccup must

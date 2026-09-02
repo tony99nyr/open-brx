@@ -33,14 +33,12 @@
 > it must also execute needs a settling gap — the gun queues commands and drains them serially, so an
 > echo proves the GUN received it, not that the headset executed it.
 >
-> ### 🔴 DO THIS FIRST NEXT SESSION — the live-match exposure is still unfixed
+> ### Mission Control: 3 of 4 fixes DONE, 1 open
 >
 > `setup_frames()` orders `$CLEAR` before `$SIR`, so a COMPLETE bundle is safe. But
 > **`GameDriver._send()` swallows every send error by design**, so if `$CLEAR` lands and a later
 > `$SIR` write fails, that player is **silently unhittable for the entire match** — no error, gun
-> healthy, pools full, scoreboard showing them alive and simply never hit. See `FOLLOWUPS.md` F11 for
-> the four fixes (verify `$SIR` landed · never bare `$CLEAR` mid-game · stop swallowing setup
-> failures · flag a player with zero hits all match).
+> healthy, pools full, scoreboard showing them alive and simply never hit. Done: the `$SIR` rows are retried and a gun whose table did not land is reported `unhittable` in `snapshot()`; `setup_frames()` now refuses a bundle with `$CLEAR` and no `$SIR` behind it; setup-frame failures are recorded instead of swallowed. ⚠️ There is no `$SIR` READBACK, so we verify the send, not the gun's table. **Still open:** flag a player who has registered no hits all match.
 >
 > ⚠️ **When a tagger seems deaf, CHECK IT IS ALIVE FIRST.** A dead gun and a `$SIR`-less gun are
 > indistinguishable through `$HIR`, and most of one session was spent reading corpses as deafness.
