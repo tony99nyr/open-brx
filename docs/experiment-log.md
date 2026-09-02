@@ -4838,3 +4838,57 @@ than counting them as misses, because a shot that was never fired at anyone is n
 
 Also: non-ASCII in bench-tool output aborts the run on this cp1252 Windows console, and both new
 tools ran their `main()` at import. Fixed; entrypoints are guarded now.
+
+### 2026-09-02 (night) — ⭐ `$HIR` IS HONEST. BLE IS BLIND IN A NATIVE GAME. THE WITNESS IS NOT A SENSOR.
+
+Three findings, each of which invalidates a class of measurement we had been making all day.
+
+## 1. ⭐ `$HIR` does NOT reach BLE unless OUR game state is applied
+
+A gun running its own **native FFA** registered hits, flashed its headset and took damage while
+sending **nothing at all** over Bluetooth. `native_watch.py` reported `0/11` and Tony, watching the
+hardware, reported *"it seemed to get hit every time"*.
+
+**So BLE silence has never meant "not hit".** Every "deaf tagger" conclusion drawn from an absent
+`$HIR` on a gun that was not in our game measured our own blindness. That includes phases A and B of
+`deaf_catch.py`, which print zeros and present them as evidence — the tool is wrong and says so now.
+
+## 2. ⭐ Inside our game, `$HIR` is EXACTLY honest — three channels, three matching counts
+
+10 witnessed shots, geometry unchanged, gun armed and spawned by us:
+
+| channel | count |
+|---|---|
+| operator counting headset flashes | **4** |
+| `$HIR` frames over BLE | **4** |
+| `$HP` pool drop (70 -> 66) | **4** |
+
+Independent detectors, exact agreement. **There is no under-reporting**: the gun applies precisely
+the hits it reports. The Mission Control scoring worry this test was built to check is dead — MC can
+trust `$HIR` inside a game it started.
+
+## 3. ⚠️ THE WITNESS PROVES PHOTONS AT A POSITION, NOT A HIT ON A SENSOR
+
+The same run: **10/10 witnessed, 4/10 registered.** Six shots the receiver heard clearly never reached
+the tagger's dome at usable strength. The witness board is a bare VS1838B aimed squarely at the
+emitter and is far more sensitive than a headset dome — so "the witness heard it" and "the tagger was
+hit" are **different claims**, and this evening they were used interchangeably, by me, repeatedly.
+
+The witness is still the right instrument for what it actually proves (the emitter fired, photons
+reached that position) and it correctly voids un-fired shots. It just cannot certify a hit.
+
+## What this does to F11
+
+Most of it dissolves. The "deaf tagger" was, in varying proportion: BLE blindness on a natively-
+running gun (finding 1), and a marginal synthetic emitter whose shots the witness hears but the
+tagger's dome does not (finding 3). Neither is a fault in the tagger.
+
+**What is NOT explained:** `f11_ab` measured **16/16** earlier in the same session at the same
+distance with the same geometry, and this run measured **4/10**. Tony confirms the headset has been
+3 ft directly facing the emitter all day and was not moved. A 100% run and a 40% run under
+identical conditions is still unaccounted for, and no hypothesis is offered here.
+
+**Next control:** fire a REAL BRX gun at the same headset from the same 3 ft and count `$HIR`. Same
+target, same geometry, same detector, only the emitter changes. 10/10 says our ESP32 emitter is
+simply weak (see R2/Q15 on IR power) and closes this; ~4/10 says the tagger really does drop shots
+at 3 ft and something real remains.
