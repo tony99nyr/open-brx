@@ -1288,6 +1288,21 @@ These are the Low items, recorded so they are not rediscovered as bugs:
 3. `engine.js` drops a `gain` when a frame both damages and grants in the same tick (the `dmg > 0`
    branch wins). Rare, and the damage is the more urgent half.
 
+> ### ⭐ TUNED ON HARDWARE 2026-09-03 — the event flash is a 3-pulse BURST
+>
+> `poolgauge.event_burst()`: **3 flashes of 0.08 s, 0.10 s apart**, ending on the team colour.
+> A single frame is invisible (the firmware repaints within ~0.33 s and often sooner); holding longer
+> does not help, because nothing repaints during the hold. Played by `GameDriver` as a background
+> TASK -- 0.44 s of wall clock must not stall every other player's actions -- and a new event cancels
+> the burst in flight so two colours never interleave.
+>
+> ⚠️ **Never a fourth flash** (3-in-a-second guidance) and **never repaint during a flash** (~30 Hz
+> wins the strip and strobes). Both asserted by tests.
+>
+> Orange read cleanly even as a single flash; **green and purple are the weakest** and sit next to
+> the blue team colour. **Pink (7) and yellow (2) are unused** and are the swaps if armour/shield
+> prove unreadable in a real game.
+
 ## ✅ F1 — BUILT 2026-09-02, across THREE surfaces (the design changed twice; read this first)
 
 > **The finished shape.** One surface could not carry it, so the feedback is split by WHO the message

@@ -5357,3 +5357,52 @@ fight. Prefer it to painting the strip.
 
 **Delivery, not duty.** Event paints are sent as a few repeats ~120 ms apart -- not for duty cycle,
 but because a single BLE write that does not land would drop the event silently.
+
+### 2026-09-03 — ⭐ THE EVENT FLASH, TUNED ON HARDWARE: three 0.08 s pulses, 0.10 s apart
+
+Tony watching the gun, one variant at a time, each played three times against a settled team-colour
+baseline. Final verdict on the chosen pattern: *"that is the best so far by a lot"*.
+
+## What failed first, and why
+
+| attempt | result |
+|---|---|
+| ONE frame, 0.6 s hold | ❌ *"i didnt see it"* — invisible |
+| 3 frames 120 ms apart | ❌ *"white flashed twice, it caused the blue to flicker on the next fade in"* |
+| ONE frame, 0.12 s hold | ✅ orange read clean; ❌ green *"kinda hidden"*, purple *"barely there"* |
+| ONE frame, 0.35 s hold | ❌ no better — *"one of them it got painted over"* |
+| **3 x 0.08 s, 0.10 s apart** | ✅ **chosen** |
+
+**A single paint is a coin flip.** The firmware repaints the strip within ~0.33 s (median run,
+measured 2026-09-02) and often sooner, so one frame is sometimes overwritten before it is ever seen.
+Holding LONGER does not help: we are not repainting during the hold, so the number only decides when
+we send the team colour BACK. That is why 0.35 s looked the same as 0.12 s.
+
+**Three flashes fix it two ways** — redundancy (if the firmware swallows one, another lands) and
+rhythm (a triple-blink reads as a deliberate event rather than as a glitch). Tony's idea, after
+watching single flashes get eaten.
+
+## ⚠️ Two limits baked into the code
+
+1. **Do not add a fourth flash.** The general guidance is no more than THREE flashes in any
+   one-second window; this burst puts 3 into ~0.46 s. Tightening the SEPARATION stays inside that,
+   adding a flash does not. (The gun's LEDs are a small source, not a full field — that is the
+   mitigating factor, not a licence.)
+2. **Do not repaint DURING a flash to make it solid.** Winning the strip outright needs ~30 Hz, which
+   strobes; that is why the detailed feedback lives on the phone HUD.
+
+Both are asserted by tests (`test_the_burst_is_exactly_three_flashes`).
+
+## Colour contrast matters more than duration
+
+Orange read cleanly as a SINGLE 0.12 s flash with no burst at all. Green and purple needed the burst
+and are still the weakest — both sit next to the blue team colour they compete with. **Pink (7) and
+yellow (2) are unused by any event** and are the obvious swaps if armour/shield prove unreadable in
+a real game.
+
+## Method note
+
+The first "25 Hz" test was a **phantom**: options were read from environment variables, and env vars
+do NOT cross the WSL -> Windows interop boundary, so `PAINT_HZ=25 python.exe ...` silently arrived as
+`None`. A "pretty good at 25 Hz" verdict was actually a single frame. Options are `sys.argv` now. **If
+a knob does not visibly change behaviour, check it is being READ before believing the result.**

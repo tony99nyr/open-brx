@@ -54,6 +54,40 @@ HEALTH_BANDS = ((0.66, GREEN), (0.33, YELLOW), (0.0, RED))
 
 REVERT_AFTER_S = 4.0     # Tony: "a few seconds maybe 3-5s"
 
+# --- THE EVENT BURST, tuned on hardware 2026-09-03 --------------------------- #
+# A single paint is NOT reliably visible on a spawned gun: the firmware repaints the strip within
+# ~0.33 s (median) and often sooner, so one frame is a coin flip -- Tony, watching it: "i didnt see
+# it". Three short flashes fix it two ways: redundancy (if the firmware swallows one, another lands)
+# and rhythm (a deliberate triple-blink reads as an event, not as a glitch). Tony's verdict on this
+# pattern: "that is the best so far by a lot".
+#
+# ⚠️ DO NOT ADD A FOURTH FLASH. The general guidance is no more than THREE flashes in any one-second
+# window, and this burst already puts 3 into ~0.46 s. Tightening the separation stays within that;
+# adding a flash does not. (The gun's LEDs are a small source rather than a full field, which is the
+# mitigating factor here -- it is not licence to go further.)
+#
+# Also do NOT repaint DURING a flash to make it "solid": winning the strip outright takes ~30 Hz,
+# which strobes, and that is the whole reason the detailed feedback lives on the phone HUD.
+BURST_FLASHES = 3
+BURST_FLASH_S = 0.08
+BURST_GAP_S = 0.10
+
+
+def event_burst(event: str, team: int | None, night: bool = False) -> list[tuple[str, float]]:
+    """The full (frame, hold_seconds) sequence for one event, ending back on the team colour.
+
+    Pure: no I/O, no clock. The caller plays it. Returns [] for an unknown event.
+    """
+    frame = event_frame(event, night)
+    if frame is None:
+        return []
+    back = team_frame(team, night)
+    out: list[tuple[str, float]] = []
+    for i in range(BURST_FLASHES):
+        out.append((frame, BURST_FLASH_S))
+        out.append((back, BURST_GAP_S if i < BURST_FLASHES - 1 else 0.0))
+    return out
+
 # Brightness (token 5): 0 off, 1 dim, >=2 full. Night mode dims the strip so a lit gun does not
 # blind its own player or give their position away in the dark.
 BRIGHT_FULL, BRIGHT_DIM = 10, 1

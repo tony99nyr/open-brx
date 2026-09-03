@@ -138,11 +138,19 @@ def test_the_gauge_is_off_when_leds_are_disabled():
     assert not _frames(d.feed("p1", _hp(45, 70, 60), 1.0))
 
 
-# --- event paints on the gun (ONE frame each, never a repaint loop) ----------- #
+# --- event paints: the tuned BURST (3 short flashes back to the team colour) --- #
+# Tuned on hardware 2026-09-03. A single frame was not reliably visible: the firmware repaints the
+# strip within ~0.33 s, so one paint is a coin flip. The burst is played as a background TASK so a
+# 0.44 s light show cannot stall every other player's actions.
 
-def test_a_respawn_paints_the_respawn_colour_exactly_once():
-    """One frame. A repaint loop here would strobe, which is the whole reason this feedback is
-    mostly on the phone."""
+def _drain(d, pid="p1"):
+    """Await the in-flight burst for `pid` so the frames have actually been sent."""
+    t = d._bursts.get(pid)
+    if t is not None:
+        _run(t)
+
+
+def test_a_respawn_plays_the_burst_and_ends_on_the_team_colour():
     sent = []
 
     async def sender(pid, frame):
@@ -150,8 +158,18 @@ def test_a_respawn_paints_the_respawn_colour_exactly_once():
     d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
     d.tick(0.0)
     _run(d.execute([Respawn("p1")]))
+    _drain(d)
     gled = [f for f in sent if f.startswith("$GLED")]
-    assert gled == [pg.event_frame("respawned")], gled
+    assert gled.count(pg.event_frame("respawned")) == pg.BURST_FLASHES, gled
+    assert gled[-1] == pg.team_frame(1), f"burst must END on the team colour, got {gled[-1]}"
+
+
+def test_the_burst_is_exactly_three_flashes():
+    """Not four. Three flashes in ~0.46 s already sits at the 3-per-second guidance."""
+    seq = pg.event_burst("hit_taken", 1)
+    assert sum(1 for f, _ in seq if f == pg.event_frame("hit_taken")) == 3
+    assert pg.BURST_FLASHES == 3
+    assert sum(h for _, h in seq) < 1.0, "the burst must fit inside a one-second window"
 
 
 def test_a_death_paints_the_died_colour():
@@ -162,6 +180,7 @@ def test_a_death_paints_the_died_colour():
     d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
     d.tick(0.0)
     _run(d.execute([Eliminate("p1")]))
+    _drain(d)
     assert pg.event_frame("died") in sent
 
 
@@ -175,16 +194,19 @@ def test_event_paints_are_off_when_leds_are_disabled():
                    announce=lambda s: None)
     d.tick(0.0)
     _run(d.execute([Respawn("p1")]))
+    _drain(d)
     assert not [f for f in sent if f.startswith("$GLED")]
 
 
-def test_an_event_paint_reverts_to_the_team_colour():
+def test_a_second_event_CANCELS_the_burst_in_flight():
+    """Two events must not interleave their colours on the same strip."""
     sent = []
 
     async def sender(pid, frame):
         sent.append(frame)
     d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
     d.tick(0.0)
-    _run(d.execute([Respawn("p1")]))
-    out = [a.frame for a in d.tick(pg.event_hold_s("respawned") + 0.1) if isinstance(a, SendFrame)]
-    assert out == [pg.team_frame(1)], out
+    _run(d.execute([Respawn("p1")]))        # starts a burst
+    _run(d.execute([Eliminate("p1")]))      # supersedes it
+    _drain(d)
+    assert pg.event_frame("died") in sent

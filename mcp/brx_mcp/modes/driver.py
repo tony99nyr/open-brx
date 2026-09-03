@@ -128,6 +128,9 @@ class GameDriver:
         # repaint rather than a wrong one.
         self._pools: dict[str, tuple[int, int, int]] = {}
         self._gauge_until: dict[str, float] = {}
+        # In-flight event bursts, one per player. Cancelled and replaced when a new event arrives, so
+        # two events never interleave their colours on the same strip.
+        self._bursts: dict[str, "asyncio.Future"] = {}
         self.sender = sender
         self.engine = build_engine(config, now)
         self.announce = announce or (lambda s: print(s, flush=True))
@@ -226,26 +229,43 @@ class GameDriver:
         self.announce(f"game live: {self.config.summary()}")
 
     async def _paint_event(self, pid: str, event: str) -> None:
-        """ONE `$GLED` frame for a game event, plus a deadline to revert to the team colour.
+        """Play the tuned event burst on the gun WITHOUT blocking the game loop.
 
-        ⚠️ One frame, never a repaint loop. Winning the gun's own animation outright needs ~30 Hz
-        repaints, which STROBE, and flicker in the 10-25 Hz band is the photosensitive-epilepsy
-        trigger range (operator, on seeing it: "it looks like its having a seizure"). A single paint
-        instead BREATHES our colour in and out -- about 18% of frames on a spawned gun -- which is
-        visible and safe. The detailed feedback lives on the phone HUD, the one surface we fully
-        control. See experiment-log.md 2026-09-02 (night).
+        Three short flashes back to the team colour (`poolgauge.event_burst`, tuned on hardware
+        2026-09-03). A single frame was not reliably visible -- the firmware repaints the strip
+        within ~0.33 s -- and the burst buys both redundancy and a rhythm that reads as an event.
 
-        A kill confirm is deliberately NOT painted: the gun has a native one (`$SFLASH`, sent on
+        It runs as a background TASK because the burst takes ~0.44 s of wall clock, and awaiting that
+        inline would stall every other player's actions behind one player's light show. A new event
+        for the same player CANCELS the one in flight rather than interleaving two colours.
+
+        A kill confirm is deliberately not painted: the gun has a native one (`$SFLASH`, sent on
         `KillConfirm`) in the sight the player is already looking through.
         """
         if not self.config.leds:
             return
-        frame = pg.event_frame(event, night=self.config.is_night_mode())
-        if frame is None:
+        seq = pg.event_burst(event, self.players.get(pid), night=self.config.is_night_mode())
+        if not seq:
             return
-        await self._send(pid, frame)
-        if self._t0 is not None:            # no clock yet means no deadline to revert against
-            self._gauge_until[pid] = self._t0 + self._elapsed + pg.event_hold_s(event)
+        old = self._bursts.pop(pid, None)
+        if old is not None and not old.done():
+            old.cancel()
+        # The gauge deadline is dropped: the burst ends on the team colour itself, so a later revert
+        # would repaint a colour that is already showing.
+        self._gauge_until.pop(pid, None)
+        self._bursts[pid] = asyncio.ensure_future(self._play_burst(pid, seq))
+
+    async def _play_burst(self, pid: str, seq) -> None:
+        try:
+            for frame, hold in seq:
+                await self._send(pid, frame)
+                if hold:
+                    await asyncio.sleep(hold)
+        except asyncio.CancelledError:      # superseded by a newer event -- expected, not an error
+            pass
+        finally:
+            if self._bursts.get(pid) is not None and self._bursts[pid].done():
+                self._bursts.pop(pid, None)
 
     async def _arm_one(self, pid: str) -> bool:
         """Send one gun's full config, then make sure the `$SIR` table actually landed.
@@ -357,7 +377,12 @@ class GameDriver:
                   "shield": self.config.shield}
         level = {"health": after[0], "armor": after[1], "shield": after[2]}[pool]
         self._gauge_until[pid] = now + pg.REVERT_AFTER_S
-        return SendFrame(pid, pg.gauge_frame(pool, level, maxima[pool]))
+        # WHOLE STRIP, not the segmented bar. A live gun animates its own strip, and a mixed frame
+        # (some lit, some dark) does not render reliably against that -- the level is carried by HUE
+        # instead, which is why health shifts green/yellow/red. `gauge_frame` is the segmented form
+        # and is for a pre-game/lobby gun, where it renders cleanly (verified 10/10).
+        return SendFrame(pid, pg.pool_paint_frame(pool, level, maxima[pool],
+                                                  night=self.config.is_night_mode()))
 
     def tick(self, now: float) -> list[Action]:
         if self._t0 is None:
