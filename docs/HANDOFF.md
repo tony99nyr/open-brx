@@ -2,6 +2,8 @@
 
 **Updated:** 2026-09-02.
 
+> ### ▶ NEXT SESSION: `docs/bench-2026-09-03.md` — pre-flight + priorities (the emitter no longer reaches 3 ft; that blocks IR work)
+>
 > ## 🎯 2026-09-02 (night) — **F11 SOLVED: `$CLEAR` WIPES THE `$SIR` TABLE**
 >
 > **A gun with no `$SIR` rows silently ignores EVERY hit.** No `$HIR`, no headset flash, pools
@@ -151,11 +153,36 @@
 >   flashes bright once then dim. Token 6 is the flash count; token 5 is an enable, not a level.
 > - **No per-module headset addressing** — the headset is one lamp, one colour. A direction indicator
 >   or a head-mounted segmented gauge is not available.
-> - **In game, our colour HOLDS**: on a spawned gun it is the dominant hue in 100% of frames, with the
+> - ~~**In game, our colour HOLDS**: dominant hue in 100% of frames~~ ❌ **CORRECTED — see below.** With the
 >   native animation only rippling brightness 10-25%. **So F1's three-segment pool gauge IS
 >   buildable**, as per-LED colour at full brightness. Encode with colour, not brightness: the dim
 >   setting loses hue dominance.
 >
+
+> ### 🔻 CORRECTED 2026-09-02 (night) — what in-game LED control ACTUALLY is
+>
+> The "100% of frames" figure was measured immediately after painting, inside the window before the
+> gun's own animation repaints. The settled picture, from video at 60 fps on a spawned gun:
+>
+> | how we drive it | our colour's share of frames | verdict |
+> |---|---|---|
+> | ONE `$GLED` paint | **~18%** | BREATHES our hue in and out. Visible, and the safe option. |
+> | hammered at ~32 Hz | **93%** | Wins the hue, but **STROBES** — do not ship (see below). |
+>
+> ⚠️ **Do not hammer.** Operator, watching it: *"it looks like its having a seizure"*. Flicker in the
+> ~10-25 Hz band is the photosensitive-epilepsy trigger range, and this sits on a gun in a dark arena
+> in front of a player's face for a whole match. 93% hue-dominance per frame is NOT perceived
+> steadiness; that metric could not detect flicker at all.
+>
+> **The surface split (Tony: _"you cant see your own head to confirm a kill or know your health"_):**
+> **gun strip** = what the PLAYER sees (contested; accept the breathing pulse) · **headset `$HLED`** =
+> what OTHER players see (dark in native play, so one frame holds) · **`$SFLASH`** = kill confirm, in
+> the sight, already native · **phone HUD** = the detailed feedback, the one surface we fully control.
+>
+> Segments DO apply on a spawned gun (the operator saw one teal LED among the blue); the earlier
+> "segments do not work spawned" was measured with LUMINANCE, which a lit LED's wash across the
+> housing swamps. The three-segment bar renders cleanly on an UNSPAWNED gun (verified 10/10).
+
 > **Also settled: the fn 36/37 multipliers are REAL** — `floor(mag × 1.25)` and `mag × 2`, from 16
 > trials over four magnitudes and eight `$SIR` row shapes, each carrying an fn 1 control. Q14 closed.
 >

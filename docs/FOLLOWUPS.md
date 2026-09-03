@@ -1392,7 +1392,10 @@ mode is "works for a moment and is then repainted":
 | SPAWNED, re-sent before every sample (~1 Hz) | **still alternates** |
 
 ⚠️ **THE TABLE ABOVE IS RETRACTED.** It was measured with `screencap` at ~1 Hz. Re-measured at 60 fps,
-our colour is the **dominant hue in 100% of frames** (white 317 mean / 40 ripple, red 227/32, green
+⚠️ **CORRECTED 2026-09-02 (night):** that 100% was measured inside the window before the gun's
+own animation repaints. A SINGLE paint holds ~18% of frames (it breathes); hammering at ~32 Hz
+holds 93% but STROBES and must not ship. See the F1 entry and experiment-log 2026-09-02 (night).
+~~our colour is the dominant hue in 100% of frames~~ (white 317 mean / 40 ripple, red 227/32, green
 224/61, against 65 for the native animation alone). The native pulse modulates BRIGHTNESS by 10-25%;
 it does not replace the hue. The apparent "alternation" was **aliasing** — stills landing in the
 ripple's troughs and being classified as the team colour.
