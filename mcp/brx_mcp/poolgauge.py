@@ -71,6 +71,9 @@ REVERT_AFTER_S = 4.0     # Tony: "a few seconds maybe 3-5s"
 BURST_FLASHES = 3
 BURST_FLASH_S = 0.08
 BURST_GAP_S = 0.10
+# Minimum wall-clock between two bursts for the SAME player. Three flashes is the per-second ceiling,
+# so two bursts a second apart would double it. A dropped second paint is better than exceeding it.
+BURST_MIN_SPACING_S = 1.0
 
 
 def event_burst(event: str, team: int | None, night: bool = False) -> list[tuple[str, float]]:

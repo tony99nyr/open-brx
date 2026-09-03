@@ -131,6 +131,7 @@ class GameDriver:
         # In-flight event bursts, one per player. Cancelled and replaced when a new event arrives, so
         # two events never interleave their colours on the same strip.
         self._bursts: dict[str, "asyncio.Future"] = {}
+        self._last_burst: dict[str, float] = {}
         self.sender = sender
         self.engine = build_engine(config, now)
         self.announce = announce or (lambda s: print(s, flush=True))
@@ -154,7 +155,8 @@ class GameDriver:
         if roster is not None and hasattr(roster, "wire_ids"):
             roster.wire_ids = {wire: pid for pid, wire in self.player_ids.items()}
 
-    async def _send(self, pid: str, frame: str, critical: bool = False) -> None:
+    async def _send(self, pid: str, frame: str, critical: bool = False,
+                    reply_window_ms: int | None = None) -> None:
         """One write, guarded — a single gun's BLE error must NOT abort the game
         (e.g. a broadcast $PLAY to a gun that just disconnected).
 
@@ -165,7 +167,14 @@ class GameDriver:
         hit. A dropped `$PLAY` is cosmetic; a dropped `$SIR` ends someone's game.
         """
         try:
-            await self.sender(pid, frame)
+            if reply_window_ms is None:
+                await self.sender(pid, frame)
+            else:
+                # A sender that does not accept the kwarg (tests, fakes) is fine: fall back.
+                try:
+                    await self.sender(pid, frame, reply_window_ms=reply_window_ms)
+                except TypeError:
+                    await self.sender(pid, frame)
         except Exception as e:  # noqa: BLE001
             self.announce(f"(send to {pid} failed: {type(e).__name__}: {e})")
             if critical:
@@ -247,6 +256,14 @@ class GameDriver:
         seq = pg.event_burst(event, self.players.get(pid), night=self.config.is_night_mode())
         if not seq:
             return
+        # RATE LIMIT. The cancel below only guards OVERLAPPING bursts; two events a second apart
+        # would put six flashes into one second, and the whole point of a 3-flash burst is that three
+        # in a second is the ceiling. Drop the second event's paint rather than exceed it.
+        now = (self._t0 or 0.0) + self._elapsed
+        last = self._last_burst.get(pid)
+        if last is not None and now - last < pg.BURST_MIN_SPACING_S:
+            return
+        self._last_burst[pid] = now
         old = self._bursts.pop(pid, None)
         if old is not None and not old.done():
             old.cancel()
@@ -258,13 +275,15 @@ class GameDriver:
     async def _play_burst(self, pid: str, seq) -> None:
         try:
             for frame, hold in seq:
-                await self._send(pid, frame)
+                await self._send(pid, frame, reply_window_ms=0)
                 if hold:
                     await asyncio.sleep(hold)
         except asyncio.CancelledError:      # superseded by a newer event -- expected, not an error
             pass
         finally:
-            if self._bursts.get(pid) is not None and self._bursts[pid].done():
+            # Identity, not `.done()`: a coroutine's `finally` runs BEFORE its Task is marked done,
+            # so the old check never fired and every player kept a stale Task forever.
+            if self._bursts.get(pid) is asyncio.current_task():
                 self._bursts.pop(pid, None)
 
     async def _arm_one(self, pid: str) -> bool:
@@ -326,6 +345,12 @@ class GameDriver:
                 await self._send(pid, f)
 
     async def teardown(self) -> None:
+        # Cancel any burst still painting: without this it keeps writing $GLED for ~2 s onto a gun
+        # that has just been $CLEAR-ed, and then into a disconnected session.
+        for t in list(self._bursts.values()):
+            if not t.done():
+                t.cancel()
+        self._bursts.clear()
         for pid in self.players:
             for f in END_SEQUENCE:
                 await self._send(pid, f)
@@ -394,7 +419,8 @@ class GameDriver:
         for pid, until in list(self._gauge_until.items()):
             if now >= until:
                 del self._gauge_until[pid]
-                actions.append(SendFrame(pid, pg.team_frame(self.players.get(pid))))
+                actions.append(SendFrame(pid, pg.team_frame(self.players.get(pid),
+                                                          night=self.config.is_night_mode())))
         return actions
 
     @property
@@ -447,8 +473,11 @@ async def run_live(config: GameConfig, addresses: list[str],
         manager = ConnectionManager()
     mgr = manager
 
-    async def sender(pid: str, frame: str) -> None:
-        await mgr.send(pid, frame, reply_window_ms=250)
+    async def sender(pid: str, frame: str, reply_window_ms: int = 250) -> None:
+        # Cosmetic frames (the LED burst) pass 0: a 250 ms reply wait after EVERY write stretched the
+        # tuned 0.08 s / 0.10 s flash pattern into 0.33 s / 0.35 s and the whole burst from 0.44 s to
+        # 1.94 s, so what shipped was never the pattern that was signed off on the bench.
+        await mgr.send(pid, frame, reply_window_ms=reply_window_ms)
 
     # Connect-grace: BLE establishment is flaky (~1 in 3, §7e). Connect each gun and
     # play with whoever comes up rather than aborting the whole game on one failure.

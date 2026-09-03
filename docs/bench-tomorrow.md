@@ -99,7 +99,7 @@ and it will silently steal the board.
 | find guns | `$PY -m brx_mcp scan` |
 | run a real game | `$PY -m brx_mcp play <mode> <addr…> volume=69` — **`<mode>` is one of** `tdm ffa infection lms cs domination koth ctf extraction`. A gun may carry a gamertag: `<addr>@<Gamertag>` |
 | two guns, quick duel | `$PY -m brx_mcp arena <addr1> <addr2> [minutes] [respawn_s] [volume]` |
-| return a gun to clean idle | there is **no `reset` verb** — send `$CLEAR,*` (then `$SP,99,*` if it is still making noise). `$PY -m brx_mcp listen <addr>` to watch it settle |
+| return a gun to clean idle | `$PY -m brx_mcp reset <addr>` (the verb DOES exist now). ⚠️ It ends on `$CLEAR`, so the gun is **idle and UNHITTABLE until re-armed** (F11) -- fine for teardown, a trap mid-debug. `$PY -m brx_mcp listen <addr>` to watch it settle |
 | what the CLI actually offers | `$PY -m brx_mcp` with no args prints every verb — trust that over this table |
 | capture IR | `$PY -m brx_mcp ir-capture COM7 <secs>` |
 | emit one IR word | `$PY -m brx_mcp ir-emit <25-bits> COM8 [repeat]` |

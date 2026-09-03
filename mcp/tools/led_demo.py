@@ -23,6 +23,8 @@ it, so you are comparing against the baseline rather than against the previous f
 
 Usage: python led_demo.py <addr> [team=1] [night=0] [event] [hold_s] [paint_hz] [reps] [gap_s]
        events: hit_landed hit_taken kill_confirm healed armour_up shield_up died respawned
+       `burst <event>` plays the SHIPPED GameDriver burst (use this to judge the real thing)
+       `all` walks every distinct colour
                pool:<pool>:<level>:<max>   e.g. pool:health:10:45
 """
 import asyncio
@@ -102,6 +104,25 @@ async def main():
         # `all` walks the DISTINCT colours (hit_taken and died are both red; hit_landed and
         # respawned are both white), so this compares hues rather than replaying duplicates.
         DISTINCT = ["hit_taken", "hit_landed", "kill_confirm", "healed", "armour_up", "shield_up"]
+        if only == "burst":
+            # EXACTLY what GameDriver ships: poolgauge.event_burst, sent with no reply wait. Use this
+            # to judge the real thing; the tunable arguments below are for EXPLORING, and a verdict
+            # given on them is a verdict on something the guns never receive. That divergence has
+            # cost this project three separate wrong conclusions.
+            ev = sys.argv[5] if len(sys.argv) > 5 else "hit_taken"
+            print(f"   >>> baseline, then the SHIPPED burst for {ev}, x{REPS}", flush=True)
+            await hold(pg.team_frame(team, night), 4.0)
+            for i in range(REPS):
+                print(f"   >>> [{i + 1}/{REPS}] {ev}: {pg.BURST_FLASHES} x "
+                      f"{pg.BURST_FLASH_S}s sep {pg.BURST_GAP_S}s", flush=True)
+                for frame, secs in pg.event_burst(ev, team, night):
+                    await mgr.send("v", frame, reply_window_ms=0)
+                    if secs:
+                        await asyncio.sleep(secs)
+                await hold(pg.team_frame(team, night), GAP_S)
+            print("\n   done -- that was the shipped burst.", flush=True)
+            return
+
         if only == "all":
             print(f"   >>> baseline, then each colour x{REPS}: "
                   f"{PULSES} x {HOLD_S or 0.08:.2f}s sep {PULSE_GAP_S:.2f}s\n", flush=True)

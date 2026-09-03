@@ -198,15 +198,82 @@ def test_event_paints_are_off_when_leds_are_disabled():
     assert not [f for f in sent if f.startswith("$GLED")]
 
 
-def test_a_second_event_CANCELS_the_burst_in_flight():
-    """Two events must not interleave their colours on the same strip."""
+def test_a_second_event_INSIDE_the_spacing_is_dropped():
+    """Three flashes is the per-second ceiling, so two bursts a second apart would double it."""
     sent = []
 
-    async def sender(pid, frame):
+    async def sender(pid, frame, reply_window_ms=None):
         sent.append(frame)
     d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
     d.tick(0.0)
-    _run(d.execute([Respawn("p1")]))        # starts a burst
-    _run(d.execute([Eliminate("p1")]))      # supersedes it
+    _run(d.execute([Respawn("p1")]))
+    _drain(d)
+    _run(d.execute([Eliminate("p1")]))          # same tick -- inside BURST_MIN_SPACING_S
+    _drain(d)
+    assert pg.event_frame("died") not in sent, "a second burst fired inside the spacing window"
+
+
+def test_a_later_event_is_allowed_once_the_spacing_has_passed():
+    sent = []
+
+    async def sender(pid, frame, reply_window_ms=None):
+        sent.append(frame)
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Respawn("p1")]))
+    _drain(d)
+    d.tick(pg.BURST_MIN_SPACING_S + 0.5)        # advance past the window
+    _run(d.execute([Eliminate("p1")]))
     _drain(d)
     assert pg.event_frame("died") in sent
+
+
+def test_the_burst_sends_with_NO_reply_wait():
+    """The live sender waits 250 ms after every write by default.
+
+    That stretched the tuned 0.08 s / 0.10 s pattern into 0.33 s / 0.35 s and the whole burst from
+    0.44 s to 1.94 s, so what shipped was never the pattern signed off on the bench. The burst must
+    ask for no reply wait.
+    """
+    windows = []
+
+    async def sender(pid, frame, reply_window_ms=None):
+        if frame.startswith("$GLED"):
+            windows.append(reply_window_ms)
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Respawn("p1")]))
+    _drain(d)
+    assert windows and all(w == 0 for w in windows), f"burst reply windows were {windows}"
+
+
+def test_the_burst_does_NOT_block_the_game_loop():
+    """0.44 s of light show must not stall every other player's actions behind one player."""
+    import time
+    sent = []
+
+    async def sender(pid, frame, reply_window_ms=None):
+        sent.append(frame)
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    t0 = time.monotonic()
+    _run(d.execute([Respawn("p1")]))
+    assert time.monotonic() - t0 < 0.2, "execute() awaited the whole burst inline"
+    _drain(d)
+
+
+def test_teardown_cancels_a_burst_in_flight():
+    """Otherwise it keeps painting a gun that has just been $CLEAR-ed, then writes into a dead link."""
+    async def sender(pid, frame, reply_window_ms=None):
+        pass
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Respawn("p1")]))
+    task = d._bursts.get("p1")
+    assert task is not None
+    _run(d.teardown())
+    # Assert the TASK was cancelled, not merely that the dict was emptied: clearing the dict alone
+    # leaves the coroutine painting a gun that has just been $CLEAR-ed, and this test passed with the
+    # cancel removed until it checked the task itself.
+    assert task.cancelled() or task.done(), "teardown emptied the dict but left the burst running"
+    assert not d._bursts

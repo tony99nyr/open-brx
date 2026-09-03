@@ -23,7 +23,11 @@ token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/s
 - **Never modify stock BRX firmware.** All control is over the Bluetooth serial protocol.
 - Credit **LaserTagMods** (JEDGE/JBOX) for protocol discovery in anything public-facing.
 - MCP/server enforce the known-safe command list (`protocol.py`); unknown commands need
-  explicit confirm. Panic sequence: `$CLEAR,*` then `$SP,99,*`.
+  explicit confirm. Panic sequence: `$CLEAR,*` then `$SP,99,*` — ⚠️ this leaves the gun with
+  **no `$SIR` table**, so it cannot be hit until re-armed (F11). Never end a bench run on a
+  bare `$CLEAR`.
+- **WSL→Windows env vars do NOT cross**: `FOO=1 python.exe …` arrives unset, silently. Use
+  `sys.argv` for anything a Windows-side bench tool reads (this faked a hardware result).
 - **Volume:** the diagnostic default is `$VOL,30` (kind to ears indoors), but **30 is measurably
   inaudible for weapon/game audio**. MC now sets play volume **from the venue** —
   `compile.play_volume()`: **80 indoors (on-gun L3), 90 outdoors (L4)**; an unknown venue resolves to

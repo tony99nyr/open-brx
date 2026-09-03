@@ -1,5 +1,36 @@
 # Gotchas — the field lore
 
+## 🔴 `$HIR` NEVER REACHES BLE IN A GUN'S OWN NATIVE GAME (2026-09-02)
+
+A gun running its **native** game registers hits, flashes its headset and takes damage while sending
+**nothing at all** over Bluetooth. Measured 0/11 while the operator watched it get hit every time.
+
+**So BLE silence has never meant "not hit".** Any "deaf tagger" conclusion drawn from an absent
+`$HIR` on a gun that is not in OUR game state is measuring our blindness, not the gun. This is
+exactly how hours were lost. Score a native game BY EYE (headset flash) or with the camera.
+
+## 🔴 ENVIRONMENT VARIABLES DO NOT CROSS THE WSL -> WINDOWS BOUNDARY (2026-09-03)
+
+`FOO=1 /mnt/c/.../python.exe script.py` arrives with `os.environ["FOO"]` **unset**. There is no error;
+the flag silently does nothing.
+
+This faked a hardware result within 24 hours of being written: a `PAINT_HZ=25` repaint test was
+judged "pretty good" when the option had never applied and a single frame was actually being sent.
+**Use `sys.argv`, not env vars, for anything a Windows-side bench tool reads.** And the general rule:
+**if a knob does not visibly change behaviour, check it is being READ before believing the result.**
+
+## 🟠 A LIT LED WASHES ITS NEIGHBOURS: luminance cannot tell lit from dark (2026-09-02)
+
+A lit LED bathes the whole housing in its colour, so a **dark** neighbour's camera ROI fills with
+reflected light. Painting armour 2-of-3 measured the dark LED3 at 170 against a 134 dark baseline,
+and BOTH a flat threshold and a nearest-reference classifier called it lit. Cropping the strip and
+LOOKING settled it in seconds -- LED3 was visibly dark, merely washed.
+
+**Discriminate by SATURATED-PIXEL FRACTION, not luminance.** A lit LED core blows out to white
+(255/254/255); reflected wash does not (that LED3 peaked at G=203). The two populations then do not
+overlap: lit 0.108-0.509, dark 0.000-0.025. Cost three attempts and two retractions.
+
+
 ## 🟠 THE GREEN DEATH BLINK STICKS ON if you respawn within ~2 s of the kill (2026-09-02)
 
 **Symptom:** a player's headset keeps flashing the out/respawning green after they are back. The gun
@@ -249,6 +280,8 @@ working circuit.** Use the VS1838B to judge, never a camera.
 The capture sketch's per-frame **`RAW` print takes ~15–20 ms at 115200**, long enough for the next frame
 to start mid-print. **Send `r` to turn the RAW dump OFF for any capture that matters.** This silently
 cost four captures before it was found. (`IDLE_GAP_US` is now 30 ms.)
+
+⚠️ **RETRACTED 2026-09-02: this is NOT fixed.** `IDLE_GAP_US` 30 ms + RAW off did not cure it -- our emitter decoded whole only 4/20 and a REAL BRX GUN only 3/44, with every frame arriving as a full 52 edges. See `FOLLOWUPS.md` **F12**. Grenade capture is blocked on it.
 
 **"The receiver drops out mid-burst at close range."**
 **VS1838B AGC saturates point-blank.** For loopback work, **attenuate** — aim the emitter away, or add

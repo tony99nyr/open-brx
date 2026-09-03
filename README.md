@@ -136,7 +136,7 @@ Full prerequisites, signing notes, publishing rules, and what's generated vs com
 - Nothing here can brick a tagger — stock firmware is untouched; power-cycle restores.
 - The MCP refuses malformed frames and requires `confirm=true` for commands outside the
   known-safe list enforced in `mcp/brx_mcp/protocol.py` (documented in `brx-protocol.md` §3).
-- A `panic` tool (`$CLEAR,*` + `$SP,99,*`) returns any tagger to a sane state.
+- A `panic` tool (`$CLEAR,*` + `$SP,99,*`) silences and stops any tagger. ⚠️ Note it leaves the gun with **no `$SIR` table**, so it cannot be hit until it is re-armed or power-cycled (F11) -- correct for a panic stop, but not a playable state.
 
 ## Roadmap
 
