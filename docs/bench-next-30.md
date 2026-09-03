@@ -1,3 +1,8 @@
+> ⚠️ **RETRACTED 2026-09-02: the frame splitting is NOT fixed.** `IDLE_GAP_US` 30 ms + RAW off
+> did not cure it — our emitter decoded whole only 4/20 and a **real BRX gun** only 3/44, every
+> frame arriving as a full 52 edges. See `FOLLOWUPS.md` **F12**. **Any capture item below is
+> blocked**: what you would record are fragments, and they would go in as facts.
+
 # Next bench session — 30 minutes
 
 Written 2026-08-27 after the Supremacy session. **The rig is already set up and verified** — board A

@@ -102,6 +102,20 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | **K6** | **Per-game WEAPON TUNING (damage / fire-sound / rate overrides inside a saved game)** | ⬜ deferred — own spec | Tony's "silenced sniper" wants a fire-sound override. `SavedGame.weapon_tuning` is RESERVED in `docs/spec/loadout.md` §8 (always absent today) so it slots in without a schema change; the builtin "Silenced Sniper" preset ships with the stock sound and says so in its desc. Needs: which `$WEAP` tokens per weapon are host-tunable (t5 dmg, t14 fire interval, t27–t29 sounds — `compile._NAMED`), a per-preset override shape, and the bench for sound ids. |
 
 
+## 🔴 R2 — the emitter NO LONGER REACHES 3 FT. Power control is now a BLOCKER, not a nicety (2026-09-02)
+
+> **Measured, same rig, nothing moved:** 5/6 registered at **3 inches**, **0/6 at 3 feet**, with the
+> witness hearing 6/6 at both. A **real BRX gun registers normally at 3 ft** against the same
+> headset, so the tagger is fine and the board still emits -- our LED just does not carry. It managed
+> 78/78 and then 198/200 earlier the SAME session, so it degraded in place over a few thousand shots.
+>
+> **This blocks:** every hit experiment at realistic range, the muster/preflight test shot, F13
+> verification in a live match, and all range work (Q15/Q16).
+>
+> **First:** inspect the board (a loose wire was reported on it earlier that session). If the wiring
+> is sound, this is a power problem -- a fresh IR LED, a harder-driven stage, or the software power
+> control below.
+
 ## 🟢 R2 — add a software POWER control to the IR emitter (small, unblocks two tests)
 *(renamed from R1 on 2026-08-29: `R1` was already the Callsign HTTPS API capture, also tracked as P8.)*
 
@@ -1311,13 +1325,13 @@ These are the Low items, recorded so they are not rediscovered as bugs:
 > | surface | audience | carries | contested by firmware? |
 > |---|---|---|---|
 > | **gun strip** `$GLED` | the PLAYER | pool colour + event flashes | YES — a single paint breathes (~18% of frames) |
-> | **headset** `$HLED` | OTHER players | hit taken, out, team | no (dark in native play) — ⚠️ **UNVERIFIED, see below** |
+> | **headset** `$HLED` | OTHER players | hit taken, out, team | ⚠️ **UNVERIFIED** — assumed no (dark in native play), never measured on a SPAWNED gun |
 > | **sight** `$SFLASH` | the PLAYER | kill confirm | native, already wired on `KillConfirm` |
 > | **phone HUD** | the PLAYER | everything detailed, animated | none — the one surface we fully own |
 >
 > **Built and shipped:** `poolgauge.py` (pure mapping + event paints, night-mode dimming) wired into
-> `GameDriver` — pool gauge on `$HP` change, event paints on `Respawn`/`Heal`/`Eliminate`, each ONE
-> frame with a deadline back to the team colour. Phone HUD gained animated `hit` and `gain` moments
+> `GameDriver` — pool gauge on `$HP` change, event paints on `Respawn`/`Heal`/`Eliminate`, each a
+> 3-pulse BURST ending on the team colour (tuned 2026-09-03; see the banner above). Phone HUD gained animated `hit` and `gain` moments
 > (`app/src/hud/hud.js`, `tools/moments.mjs`, 9 screen-truth steps).
 >
 > 🔴 **NEVER hammer `$GLED` to hold a colour.** ~32 Hz wins the hue (93% of frames against 18% for a

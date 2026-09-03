@@ -1,7 +1,32 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-09-02.
+**Updated:** 2026-09-03.
 
+> ## 🗓️ 2026-09-03 — the event flash is TUNED, and the emitter is the blocker
+>
+> **LED events ship as a 3-pulse BURST**: 3 flashes of 0.08 s, 0.10 s apart, ending on the team
+> colour (`poolgauge.event_burst`, played by `GameDriver` as a background task). Tuned on hardware
+> with Tony watching one variant at a time. A SINGLE frame is invisible -- the firmware repaints the
+> strip within ~0.33 s -- and holding longer does not help, because nothing repaints during the hold.
+>
+> ⚠️ **Never a fourth flash** (3-in-a-second guidance) · **never repaint during a flash** (~30 Hz wins
+> the strip and STROBES) · **never judge the pattern from `led_demo`'s tunable args** -- use its
+> `burst` mode, which plays what actually ships. The tuned pattern silently did NOT ship at first,
+> because `run_live`'s sender waits 250 ms after every write and stretched 0.44 s into 1.94 s.
+>
+> **Colour beats duration:** orange read cleanly as a single flash; **green and purple are weakest**
+> and sit next to the blue team colour. **Pink (7) and yellow (2) are unused** and are the swaps.
+>
+> **Current fleet state:** one gun advertises as **`Tactix-9498`** -- the STOCK name, never enrolled.
+> That is not evidence Callsign was opened on it; it simply has no label. Fix with
+> `python -m brx_mcp rename <addr> <BARE-NAME>` (the gun appends its own `-<MACtail>`; feeding the
+> advert back is what produced `R0BAT-3D4F-3D4F`), then power-cycle to see the advert update.
+>
+> 🔴 **THE BLOCKER: our emitter registers 5/6 at 3 INCHES and 0/6 at 3 FEET**, while a real gun
+> registers fine at 3 ft and the witness hears every shot. It degraded IN PLACE mid-session (it did
+> 78/78 and 198/200 earlier the same day). Every IR experiment at realistic range waits on this. See
+> **R2**.
+>
 > ### ▶ NEXT SESSION: `docs/bench-2026-09-03.md` — pre-flight + priorities (the emitter no longer reaches 3 ft; that blocks IR work)
 >
 > ## 🎯 2026-09-02 (night) — **F11 SOLVED: `$CLEAR` WIPES THE `$SIR` TABLE**
@@ -176,7 +201,8 @@
 >
 > **The surface split (Tony: _"you cant see your own head to confirm a kill or know your health"_):**
 > **gun strip** = what the PLAYER sees (contested; accept the breathing pulse) · **headset `$HLED`** =
-> what OTHER players see (dark in native play, so one frame holds) · **`$SFLASH`** = kill confirm, in
+> what OTHER players see (assumed to hold because it is dark in native play — ⚠️ **UNVERIFIED on a
+> SPAWNED gun**, and reasoning has lost to the operator's eyes repeatedly) · **`$SFLASH`** = kill confirm, in
 > the sight, already native · **phone HUD** = the detailed feedback, the one surface we fully control.
 >
 > Segments DO apply on a spawned gun (the operator saw one teal LED among the blue); the earlier
@@ -204,7 +230,7 @@
 > registered while the headset did not; 3 inches worked while 3 feet did not. Nothing else about that
 > fault is established, and **no hardware should be replaced on the strength of it.**
 >
-> **Rig state:** emitter (board B) **works** — it killed a tagger. Receiver (board A) **works** — it
+> **Rig state (afternoon reading — ⚠️ SUPERSEDED that evening, see the 09-03 banner: the emitter no longer reaches 3 ft):** emitter (board B) **worked** — it killed a tagger. Receiver (board A) **works** — it
 > decoded a real gun. They are **not aimed at each other**, so the loopback reads zero. Align it and
 > record a decode-rate baseline before the next IR run: it is the only instrument that checks our
 > emitter independently of a tagger, and having it would have saved most of this session.

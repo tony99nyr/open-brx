@@ -5406,3 +5406,26 @@ The first "25 Hz" test was a **phantom**: options were read from environment var
 do NOT cross the WSL -> Windows interop boundary, so `PAINT_HZ=25 python.exe ...` silently arrived as
 `None`. A "pretty good at 25 Hz" verdict was actually a single frame. Options are `sys.argv` now. **If
 a knob does not visibly change behaviour, check it is being READ before believing the result.**
+
+
+### 2026-09-02 (end of session) — 🔴 THE EMITTER NO LONGER REACHES 3 FT (blocks all IR work)
+
+Measured with the validated witness, same rig, nothing moved:
+
+| distance | registered | witness heard |
+|---|---|---|
+| 3 ft | **0/6** | 6/6 |
+| 3 inches | **5/6** | 5/6 |
+
+The board **emits** -- the witness sees every burst -- and a **REAL BRX gun registers normally at
+3 ft against the same headset**, so the tagger is fine. Our LED simply no longer carries that far. It
+worked at 3 ft earlier in the same session (78/78, then 198/200 across a 25-cycle soak), so it
+degraded IN PLACE over a few thousand shots rather than being knocked out of alignment.
+
+**Consequences:** every hit experiment at realistic range is blocked, along with the muster/preflight
+test shot, F13 verification in a real match, and all range work. Tracked as **R2** (a software POWER
+control for the emitter) with **Q15/Q16** (IR power, beam divergence).
+
+⚠️ This is why "the tagger is deaf" was chased for an hour at the end of the session: the witness
+board is a bare VS1838B aimed squarely at the emitter and is far more sensitive than a headset dome,
+so it kept hearing shots the tagger could not.

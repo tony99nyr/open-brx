@@ -41,39 +41,24 @@ groups is the expensive part, not the tests.
 > discovery. A headset also began advertising on its own. Nothing below works until this is done.
 > **Verify** with `$PY -m brx_mcp scan` then `identify` — a clean connect means you are back.
 >
-> **1. The F1 gauge check — 5 minutes, and it can DELETE a planned feature.**
-> *Does the gun's native health gauge appear in OUR compiled games, or only in native ones?*
-> Start one of our games, take damage, watch the three gun LEDs. Step down = **FOLLOWUPS F1 is already
-> shipped by the hardware**; no step down = F1 is a one-field config hunt. Either answer removes work.
-> It is item **4.3** below, promoted here because it is cheap and it changes what is worth building.
+> **0b. Kill stale `brx_mcp` processes.** A forgotten server from a previous session HOLDS a gun: it
+> vanishes from `scan`, announces "phone connected" with no phone present, and can be armed
+> underneath you. `list_connections` is NOT sufficient — enumerate at the OS level. See `gotchas.md`.
 >
-> **2. Item 1.5a (in GROUP 1) — the ally re-measure.** Needs **no operator once the rig is up** (it is a
-> keyboard test; only the power-cycle needs hands). It decides whether ally functions 9, 15, 31, 32
-> and 34 are real status effects or just grants that were **clamped** by full pools — a ceiling
-> artifact that already mis-binned fn 10, a known heal.
+> **1. 🔴 CHECK THE EMITTER REACHES.** `$PY mcp/tools/range_step.py <addr> "range" COM8 6 COM7`.
+> As of 2026-09-02 it registers **5/6 at 3 inches and 0/6 at 3 feet** while a real gun registers fine
+> at 3 ft. **Everything below that needs a hit at realistic range is blocked until this is fixed**
+> (**R2**). Do not spend the session rediscovering it.
 >
-> **3. Then GROUP 0**, in the order written. From there, item order is priority order and the groups
-> are ordered to minimise re-rigging — do a whole group before moving on.
+> **2. Read `gotchas.md` if you have not this week.** Four traps there each cost hours in the last two
+> sessions: stale processes, `$HIR` never reaching BLE in a native game, env vars not crossing the
+> WSL→Windows boundary (a flag silently did nothing and the result was believed), and a lit LED's
+> wash defeating luminance measurement. **And never end a run on a bare `$CLEAR`** — it wipes the
+> `$SIR` table and the gun then ignores every hit while reporting healthy (**F11**).
 >
-> ---
->
-> **This file is the ONLY bench queue.** `docs/HANDOFF.md` is the entry point; this is the queue.
-> [`bench-next-30.md`](bench-next-30.md) is a 30-minute **subset** of it, not a rival plan, and
-> `bench-plan-hardware.md` is **superseded** (it says so at its own top). If they disagree, this wins.
->
-> ⚠️ **Closed on 2026-08-30, do not run:** **4.1** (P13 — `$GLED` tokens 1-3 are three independently
-> addressable LEDs, each a direct palette index; the palette is nine colours, 0 red · 1 blue · 2 yellow ·
-> 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange, with 7/8 read off a gun on 2026-09-02) and
-> **4.2** (P17 — night mode is Callsign's own `$GLED,,,,5,,,*`; it blanks because token 4 is an
-> **apply gate** and that frame's colour tokens are empty, not because 5 means "off").
-> `$GLED` is solved: `<led1>,<led2>,<led3>,<apply-gate>,<brightness>`. ⚠️ **Corrected 2026-09-02:
-> token 4 is an APPLY GATE, not an effect enum and not an off switch** — 0/6/7/8/9/10 apply the
-> frame's colour tokens at full brightness, 5 applies them at ~1/3 brightness, 1/2/3/4 are no-ops
-> that leave the previous colour lit, and nothing animates. Both "t4=3 blanks all three" and
-> "t4=5 is the off value" are retracted. Beware when sweeping this token: **a no-op leaves the
-> previous row's colour lit**, so a sweep that does not blank between rows reads "everything is
-> lit" and one that does reads "nothing is lit", from identical hardware. Also
-> closed: `bench-next-30.md` item 3, which is the same pair.
+> ⚠️ **F12 blocks every grenade/EMP capture item in this file.** The receiver fragments frames (a real
+> gun decoded whole only 3/44), so anything captured today would be fragments recorded as facts.
+
 
 ## HOW TO RUN ANYTHING (read once — the items below assume this)
 
