@@ -235,7 +235,9 @@ button:active{filter:brightness(1.15)}
 [data-env="night"] .hit .vig,[data-env="night"] .gain .gv{box-shadow:none;background:none}
 [data-env="night"] .hit .dmg,[data-env="night"] .gain .amt{text-shadow:none}
 /* Reduced motion: show the same information, without the transitions. */
-@media (prefers-reduced-motion:reduce){.frame *,.mo,.mo *{animation:none!important;transition:none!important}}
+/* `#frame`, not `.frame`: the element carries an ID and no such class exists, so the first
+   version of this rule matched nothing at all and .takingfire kept blinking. */
+@media (prefers-reduced-motion:reduce){#frame *,.mo,.mo *{animation:none!important;transition:none!important}}
 /* Night: the shooter-team chip is set INLINE (a team colour), and inline styles win over CSS.
    Class-driven at night instead, so it stops being the brightest object on a black HUD. */
 [data-env="night"] .hit .src{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none}

@@ -130,11 +130,17 @@ await step('a KILL is not clobbered by a hit landing in the same moment', async 
   await mustBeAlive(page);
   // One `moment` slot, and `hit` is the highest-frequency producer: without a priority rule the
   // KILL CONFIRMED overlay was silently lost.
+  // BOTH in ONE evaluate: the point is the SAME-TICK race, and a second round-trip lets the HUD
+  // render the kill node first, which is exactly why the earlier version of this step passed with
+  // the guard disabled.
   await page.evaluate(() => {
-    window.brx.engine.onMcMessage({ kind: 'feedback',
+    const e = window.brx.engine;
+    e.onMcMessage({ kind: 'feedback',
       body: { kind: 'kill', victim: 'BRAVO', victim_team: 'yellow', t: Date.now() } });
+    e.feedFrame('$HIR,4,0,19,2,9,0,3,*');
+    e.feedFrame(`$HP,${e.hp},${Math.max(0, e.armor - 1)},0,*`);
+    if (e.moment && e.moment.kind !== 'kill') throw new Error('the hit overwrote the kill moment');
   });
-  await hitOnce(page, 9);
   await page.locator('.mo.kill').first().waitFor({ state: 'visible', timeout: 3000 });
   must(/CONFIRMED/.test((await page.locator('.mo.kill').first().textContent()) || ''),
     'the kill overlay was replaced by the hit');
@@ -237,6 +243,31 @@ await step('moment overlays do NOT cover the match clock', async () => {
     must(!overlap, `hit overlay overlaps the clock: dmg=${JSON.stringify(dmg)} clock=${JSON.stringify(clock)}`);
   }
   await shot('hit-placed');
+});
+
+await step('reduced motion stops the HUD blinkers, not just the overlays', async () => {
+  // The first version of this rule was `.frame *`, which matched NOTHING (the element is
+  // id="frame"), so `.takingfire` kept blinking infinitely while the CSS claimed otherwise. The
+  // strobe step could not see it: it only queries `.mo, .mo *`.
+  const p3 = await b.newPage({ viewport: { width: 891, height: 411 }, reducedMotion: 'reduce' });
+  p3.on('pageerror', e => pageErrors.push('rm2:' + e.message));
+  await p3.goto('http://127.0.0.1:4187/?demo');
+  await p3.waitForFunction(() => window.brx && window.brx.engine
+    && window.brx.engine.phase === 'live' && window.brx.engine.spawned, null, { timeout: 45000 });
+  await hitOnce(p3, 1);
+  await p3.waitForTimeout(300);
+  const spinning = await p3.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('#frame *').forEach(n => {
+      const c = getComputedStyle(n);
+      if (String(c.animationIterationCount).includes('infinite') && c.animationName !== 'none') {
+        out.push(`${n.className || n.id}:${c.animationName}`);
+      }
+    });
+    return out;
+  });
+  must(spinning.length === 0, `still animating under reduced motion: ${spinning.slice(0, 4).join(', ')}`);
+  await p3.close();
 });
 
 await step('no page errors were thrown during any of it', async () => {

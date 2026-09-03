@@ -471,10 +471,23 @@ export class Hud {
   _swap(kind, el, outAt, gone) {
     this._live = this._live || {};
     const prev = this._live[kind];
-    if (prev) { clearTimeout(prev.t1); clearTimeout(prev.t2); prev.el.remove(); }
-    this.overlay.appendChild(el);
-    const rec = { el, t1: setTimeout(() => el.classList.add('out'), outAt),
-                  t2: setTimeout(() => { el.remove(); if (this._live[kind] === rec) delete this._live[kind]; }, gone) };
+    let node = el;
+    if (prev && prev.el.isConnected) {
+      // REUSE the live node rather than replacing it. Replacing re-ran the entrance animation on
+      // every event, so under sustained fire the vignette sawtoothed 0 -> 0.96 -> 0 at the hit rate
+      // and the damage number never settled -- a new ~10 Hz modulation, below the hazard threshold
+      // but exactly the kind of thing this design exists to avoid.
+      clearTimeout(prev.t1); clearTimeout(prev.t2);
+      prev.el.classList.remove('out');
+      prev.el.innerHTML = el.innerHTML;
+      prev.el.className = el.className;
+      node = prev.el;
+    } else {
+      if (prev) { clearTimeout(prev.t1); clearTimeout(prev.t2); prev.el.remove(); }
+      this.overlay.appendChild(el);
+    }
+    const rec = { el: node, t1: setTimeout(() => node.classList.add('out'), outAt),
+                  t2: setTimeout(() => { node.remove(); if (this._live[kind] === rec) delete this._live[kind]; }, gone) };
     this._live[kind] = rec;
   }
 
@@ -489,9 +502,9 @@ export class Hud {
       <div class="bars"><i style="width:90px;background:var(--warn)"></i><i style="width:34px;background:var(--glow)"></i><i style="width:12px;background:var(--glow);opacity:.5"></i></div></div>
       <div class="foot"><span class="vt" style="background:${TEAM_COLOR[vk] || 'var(--team-yellow)'};color:${TEAM_INK[vk] || '#1a1400'}"><span class="unskew">${esc((m.data && m.data.victim) || (vk.toUpperCase() + ' OPERATIVE'))} DOWN</span></span>
       <span class="by">K ${st.kills != null ? st.kills : ''} · CONFIRMED BY MISSION CONTROL</span></div>`;
-    this._flash(); this.overlay.appendChild(el);
+    this._flash();
+    this._swap('kill', el, 1800, 2200);   // three confirms 300ms apart used to stack three banners
     this.h.onHaptic && this.h.onHaptic('kill');
-    setTimeout(() => el.classList.add('out'), 1800); setTimeout(() => el.remove(), 2200);
   }
   // TAKING A HIT. Deliberately a single fade, never a repeating flicker: this feedback moved off the
   // gun's LEDs precisely because winning that surface needed ~30 Hz repaints that strobe, and
@@ -503,13 +516,13 @@ export class Hud {
     const el = document.createElement('div');
     el.className = 'mo hit';
     const where = d.sensor === 4 ? 'GUN' : d.sensor != null ? 'HEADSET' : '';
-    // The team colour is applied as a CLASS at night so the night stylesheet can override it; an
-    // inline style cannot be overridden by CSS, which left the chip glaring bright on a black HUD.
-    const night = this.frame.dataset.env === 'night';
-    const chipStyle = night ? '' : `style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"`;
+    // The team colour stays INLINE and the night stylesheet overrides it with `!important`, which
+    // beats a non-important inline style. Stripping the inline style at night instead worked, but
+    // made the chip depend on that one CSS rule existing: delete the rule and the chip would have no
+    // background at all. This way the day colour is the fallback.
     el.innerHTML = `<div class="vig"></div>
       <div class="hc"><span class="dmg tab">-${esc(d.dmg)}</span>
-      <span class="src" ${chipStyle}><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
+      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
     this._swap('hit', el, 260, 700);
     this.h.onHaptic && this.h.onHaptic('hit');
   }
@@ -533,8 +546,7 @@ export class Hud {
     el.innerHTML = `<div class="wipe"></div><div class="slash"></div>
       <div class="r"><span class="t">REDEPLOYED</span><span class="h">WEAPONS HOT ▸▸▸</span><span class="s">${st.maxHp} · ${st.maxArmor} · MAG FULL</span></div>
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
-    this.overlay.appendChild(el);
-    setTimeout(() => el.classList.add('out'), 1100); setTimeout(() => el.remove(), 1500);
+    this._swap('redeploy', el, 1100, 1500);
   }
 
   // ---------- diagnostics ----------
