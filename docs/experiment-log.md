@@ -5332,3 +5332,28 @@ the headset is both safer and more visible.
 **Next:** verify a single `$HLED` frame holds steady on a SPAWNED gun mid-game (the equivalent test to
 the one that caught the gun strip), then move the event paints to `$HLED` and keep `$GLED` for
 pre-game and lobby, where it renders cleanly and nothing is animating.
+
+### 2026-09-02 (night, F1) — ⭐ THE SURFACE SPLIT: gun = what YOU see, headset = what OTHERS see
+
+Tony, on the proposal to move the event paints to the headset: *"you cant see your own head to
+confirm a kill or know your health"*.
+
+That reorders the design, and the previous entry's "move the events to the headset" was wrong as
+stated. The two surfaces have different AUDIENCES:
+
+| surface | audience | carries | contested? |
+|---|---|---|---|
+| **gun strip** (`$GLED`) | **the player** | health / armour / shield, anything they must act on | YES -- firmware animates it |
+| **headset** (`$HLED`) | **everyone else** | hit taken, out, team | NO -- dark in native play |
+
+**The gun strip stays contested and that is fine.** A single paint breathes our colour in and out
+(~18% of frames) rather than holding, and Tony's call is to accept exactly that: *"lets just do it as
+soon as we can so it ends up breathing into our color"*. It is also the only safe option -- winning
+the strip outright needs ~30 Hz hammering, which strobes (see the previous entry).
+
+**Kill confirm has a native answer already:** `$SFLASH`, the green sight flash, which `GameDriver`
+already sends on `KillConfirm`. It is in the sight the player is looking through and costs no LED
+fight. Prefer it to painting the strip.
+
+**Delivery, not duty.** Event paints are sent as a few repeats ~120 ms apart -- not for duty cycle,
+but because a single BLE write that does not land would drop the event silently.

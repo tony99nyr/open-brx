@@ -1,9 +1,15 @@
 """Play the F1 event paints on a live, SPAWNED gun so a human can watch them.
 
-Each paint is HAMMERED at ~30 Hz for its hold window, because that is what it takes to beat the gun's
-native animation: a single frame holds ~18% of video frames, hammering holds 93% (measured
-2026-09-02). Between events the strip returns to the team colour, also hammered briefly so the
-revert is visible rather than a flicker.
+ONE frame per event -- deliberately NOT hammered. Hammering at ~30 Hz does win the hue (93% of frames
+against 18% for a single paint) but it STROBES, and flicker in the 10-25 Hz band is the
+photosensitive-epilepsy trigger range. Tony, watching it: *"it looks like its having a seizure"*.
+
+A single paint instead lets the gun's own animation BREATHE our colour in and out, which is what the
+18% actually looks like to a person: a pulse of our hue rather than a solid block or a strobe. Tony:
+*"lets just do it as soon as we can so it ends up breathing into our color"*.
+
+A couple of repeats spaced ~120 ms are sent per event, not for duty cycle but for DELIVERY -- a
+single BLE write that does not land would drop the event silently.
 
 Announces each event before it plays, with a pause, so the operator can name what they saw without
 having to guess which one is which.
@@ -17,7 +23,7 @@ import time
 import bench_common as B
 from brx_mcp import poolgauge as pg
 
-HAMMER_HZ = 30
+REPEATS, REPEAT_GAP_S = 3, 0.12   # delivery insurance, NOT duty cycle
 
 
 async def main():
@@ -42,10 +48,11 @@ async def main():
               flush=True)
 
         async def hold(frame, secs):
-            end = time.time() + secs
-            while time.time() < end:
+            """Send the frame a few times for delivery, then LET IT BREATHE for the rest of `secs`."""
+            for _ in range(REPEATS):
                 await mgr.send("v", frame, reply_window_ms=0)
-                await asyncio.sleep(1.0 / HAMMER_HZ)
+                await asyncio.sleep(REPEAT_GAP_S)
+            await asyncio.sleep(max(0.0, secs - REPEATS * REPEAT_GAP_S))
 
         async def show(label, frame, secs):
             print(f"   >>> {label}", flush=True)

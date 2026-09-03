@@ -68,6 +68,22 @@ BRIGHT_FULL, BRIGHT_DIM = 10, 1
 # The headset is the right surface: in native play it is DARK, so a single `$HLED` frame has nothing
 # to fight. Keep `$GLED` for pre-game and lobby, where nothing is animating and it renders cleanly.
 #
+# --- WHICH SURFACE? Split by WHO THE MESSAGE IS FOR ------------------------- #
+# Tony: *"you cant see your own head to confirm a kill or know your health"*. That decides the
+# split, and it is not the one this file first assumed:
+#
+#   GUN STRIP  = what the PLAYER sees. Health / armour / shield, and anything they must act on.
+#                Contested by the firmware's own animation, so a single paint BREATHES our colour in
+#                and out (~18% of frames) rather than holding. That is acceptable for a pulse and is
+#                the ONLY safe option: winning it outright needs ~30 Hz hammering, which strobes.
+#   HEADSET    = what OTHER PLAYERS see. Hit taken, out, team. Dark in native play, so a single
+#                `$HLED` frame has nothing to fight -- no hammering, no strobe. Nobody needs to read
+#                their own headset, which is exactly why it is the safe surface.
+#
+# And for a kill confirm the gun already has a NATIVE answer: `$SFLASH`, the green sight flash, which
+# `GameDriver` already sends on `KillConfirm`. It is in the sight the player is already looking
+# through, and it costs no LED fight at all. Prefer it over painting the strip.
+#
 # --- EVENT PAINTS ----------------------------------------------------------- #
 # Tony: "when we get a hit we should flash something. when we get hit we should flash something.
 # when we get healed or get shields or get armor we should paint leds. when we die, when we respawn."
