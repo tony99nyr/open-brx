@@ -235,7 +235,12 @@ button:active{filter:brightness(1.15)}
 [data-env="night"] .hit .vig,[data-env="night"] .gain .gv{box-shadow:none;background:none}
 [data-env="night"] .hit .dmg,[data-env="night"] .gain .amt{text-shadow:none}
 /* Reduced motion: show the same information, without the transitions. */
-@media (prefers-reduced-motion:reduce){.mo,.mo *{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){.frame *,.mo,.mo *{animation:none!important;transition:none!important}}
+/* Night: the shooter-team chip is set INLINE (a team colour), and inline styles win over CSS.
+   Class-driven at night instead, so it stops being the brightest object on a black HUD. */
+[data-env="night"] .hit .src{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none}
+[data-env="night"] .gain.armor .amt{color:#7a5aa8}
+[data-env="night"] .gain.shield .amt{color:#3a8f96}
 [data-env="night"] .mo{animation:none!important}
 [data-env="night"] .kill,[data-env="night"] .whiteout{display:none}
 [data-env="night"] .down{background:#000}[data-env="night"] .down .wash,[data-env="night"] .down .ghost{display:none}

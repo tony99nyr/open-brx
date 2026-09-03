@@ -461,6 +461,23 @@ export class Hud {
       else if (m.kind === 'go') this._flash();
     }
   }
+  /** Replace the live overlay of this KIND rather than stacking another on top of it.
+   *
+   * Appending unconditionally is fine for a rare event and wrong for a frequent one: at 10 hits/s
+   * eight hit overlays were alive at once, compositing to a near-opaque red wash that hid the HP and
+   * ammo readouts at exactly the moment a player is being focused, and stacking two damage numbers
+   * at identical coordinates into an unreadable mash. One node per kind, re-triggered.
+   */
+  _swap(kind, el, outAt, gone) {
+    this._live = this._live || {};
+    const prev = this._live[kind];
+    if (prev) { clearTimeout(prev.t1); clearTimeout(prev.t2); prev.el.remove(); }
+    this.overlay.appendChild(el);
+    const rec = { el, t1: setTimeout(() => el.classList.add('out'), outAt),
+                  t2: setTimeout(() => { el.remove(); if (this._live[kind] === rec) delete this._live[kind]; }, gone) };
+    this._live[kind] = rec;
+  }
+
   _flash() { if (this.frame.dataset.env === 'night') return; const w = document.createElement('div'); w.className = 'whiteout'; this.overlay.appendChild(w); setTimeout(() => w.remove(), 120); }
   _kill(st, m) {
     if (this.frame.dataset.env === 'night') return;
@@ -486,13 +503,15 @@ export class Hud {
     const el = document.createElement('div');
     el.className = 'mo hit';
     const where = d.sensor === 4 ? 'GUN' : d.sensor != null ? 'HEADSET' : '';
+    // The team colour is applied as a CLASS at night so the night stylesheet can override it; an
+    // inline style cannot be overridden by CSS, which left the chip glaring bright on a black HUD.
+    const night = this.frame.dataset.env === 'night';
+    const chipStyle = night ? '' : `style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"`;
     el.innerHTML = `<div class="vig"></div>
       <div class="hc"><span class="dmg tab">-${esc(d.dmg)}</span>
-      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
-    this.overlay.appendChild(el);
+      <span class="src" ${chipStyle}><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
+    this._swap('hit', el, 260, 700);
     this.h.onHaptic && this.h.onHaptic('hit');
-    setTimeout(() => el.classList.add('out'), 260);
-    setTimeout(() => el.remove(), 700);
   }
 
   // GAINING a pool: heal, armour pickup, shield grant. Colour matches the pool so the player learns
@@ -504,9 +523,8 @@ export class Hud {
     const label = d.pool === 'armor' ? 'ARMOUR' : d.pool === 'shield' ? 'SHIELD' : 'HEALTH';
     el.innerHTML = `<div class="gv"></div>
       <div class="gc"><span class="amt tab">+${esc(d.amount)}</span><span class="lab">${label}</span></div>`;
-    this.overlay.appendChild(el);
-    setTimeout(() => el.classList.add('out'), 500);
-    setTimeout(() => el.remove(), 1000);
+    this._swap('gain', el, 500, 1000);
+    this.h.onHaptic && this.h.onHaptic('gain');   // a pickup you are not looking at should be FELT
   }
 
   _redeploy(st) {

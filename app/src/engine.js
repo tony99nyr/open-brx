@@ -680,7 +680,22 @@ export class Engine {
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
     // the detailed feedback — it is the one surface we fully control. See experiment-log 2026-09-02.
     if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial) {
-      if (dmg > 0 && hp > 0) {
+      // A hit must not overwrite a rarer, more important moment that is still on screen. There is
+      // ONE moment slot and `hit` is by far the most frequent producer, so without this a kill
+      // confirm landing in the same tick as a hit is silently lost -- verified, it rendered only the
+      // hit. Kill/redeploy/down own the screen for their own duration.
+      // ONE RENDER TICK, not the overlay's display duration. The race is only that a rarer moment
+      // set in the same tick is overwritten before the HUD has rendered it -- once rendered, the
+      // kill/redeploy overlay is its own DOM node and a later hit does not disturb it.
+      // Guarding for the full display duration was worse than the bug: a player shot while a kill
+      // banner was up would never be told they were hit, and being hit is the one thing they cannot
+      // afford to miss.
+      const RARE_GUARD_MS = 250;
+      const m = this.moment;
+      const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
+        && (this.now() - m.at) < RARE_GUARD_MS;
+      if (busy) { /* let the rarer moment survive long enough to be rendered */ }
+      else if (dmg > 0 && hp > 0) {
         // A death sets its own 'down' moment; a hit that kills must not flash "hit" first.
         this.moment = { kind: 'hit', at: this.now(),
           data: { dmg, shooter_team: this.latch ? this.latch.shooter_team : 0,
