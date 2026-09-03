@@ -5132,3 +5132,51 @@ repro: *"yes exactly, it isn't going to register a hit while dead. thats dead no
 Two mechanisms were asserted along the way and both were wrong — a queue race (killed by the gap
 sweep) and a headset/gun state desync (the headset was never the problem). The finding survived
 because each was tested rather than believed.
+
+### 2026-09-02 (night, F1) — ⭐ F1 CONFIG HUNT ANSWERED: **NO** config switches the native gauge on. We must paint it ourselves.
+
+The hunt that had been blocked all day, finally run. `gauge_hunt.py` sends **no `$GLED` at all**, so
+everything the camera sees is the gun's own behaviour. ROIs were calibrated and then **verified with a
+3x3 response matrix** (drive each LED alone, confirm the diagonal dominates) immediately before the
+run -- twice, because the gun shifted between attempts and the first map failed its own check.
+
+Every variant reached low health: **pools (35, 0, 0)** -- armour and shield gone, HP 35 of 45, about
+30% of total pools.
+
+| variant | full health L1/L2/L3 | after damage | per-LED ratios |
+|---|---|---|---|
+| BASELINE (what we ship) | 207 / 220 / 205 | 194 / 207 / 193 | 0.94 / 0.94 / 0.94 |
+| `$GSET` t8 gameMods=1 | 195 / 207 / 191 | 154 / 164 / 157 | 0.79 / 0.79 / 0.82 |
+| `$GSET` t8 gameMods=2 | 202 / 215 / 200 | 127 / 134 / 136 | 0.63 / 0.63 / 0.68 |
+| `$GSET` t8 gameMods=4 | 211 / 222 / 209 | 199 / 210 / 201 | 0.95 / 0.95 / 0.96 |
+| `$GSET` t8 gameMods=8 | 182 / 191 / 185 | 165 / 173 / 172 | 0.91 / 0.91 / 0.93 |
+| `$GSET` t8 gameMods=16 | 192 / 204 / 191 | 200 / 210 / 200 | 1.04 / 1.03 / 1.05 |
+| `$GSET` t4 autoAmbientLight=1 | 197 / 208 / 200 | 202 / 212 / 204 | 1.02 / 1.02 / 1.02 |
+| `$GSET` t5 gyroscope=0 | 182 / 191 / 186 | 214 / 223 / 213 | 1.17 / 1.17 / 1.15 |
+| `$PSET` t2=1 | 195 / 207 / 196 | 179 / 187 / 187 | 0.92 / 0.90 / 0.96 |
+| `$PSET` t2=2 | 160 / 167 / 165 | 193 / 202 / 198 | 1.20 / 1.21 / 1.20 |
+
+## The reading, and why the ratios are the right measure
+
+**The three LEDs always move TOGETHER.** Every ratio triple is near-uniform. A gauge kills a
+SEGMENT: that segment's ratio would collapse while its neighbours stayed near 1. Nothing here has a
+spread above 0.05, against a 0.45 threshold.
+
+The whole-strip drift BETWEEN variants (0.63 to 1.20) is the native animation plus the phone's
+auto-exposure, and it is exactly why each LED is compared against **its own** full-health value
+rather than against its neighbours. Comparing LEDs to each other would have made this table
+unreadable: the three ROIs do not sit identically on their cores.
+
+## Answer
+
+**No.** None of `$GSET` t8 `gameMods` (1/2/4/8/16), `$GSET` t4 `autoAmbientLight`, `$GSET` t5
+`gyroscope`, or `$PSET` t2 turns the native segmented health gauge on in a host-driven game.
+
+**We paint it ourselves.** Already proven possible earlier the same day: on a spawned gun our colour
+is the dominant hue in **100%** of frames at full brightness, so a three-segment pool display is
+buildable with per-LED `$GLED`. The cost is a BLE write on every change -- precisely what the native
+gauge would have saved -- so drive it on CHANGE, not on a timer.
+
+⚠️ **Scope.** This tested ten candidate fields, not the whole config space. `$GSET` t8 was swept only
+as single bits (1/2/4/8/16); combinations were not tried. A negative here is "not these ten", not
+"impossible".
