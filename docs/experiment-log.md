@@ -5180,3 +5180,40 @@ gauge would have saved -- so drive it on CHANGE, not on a timer.
 ⚠️ **Scope.** This tested ten candidate fields, not the whole config space. `$GSET` t8 was swept only
 as single bits (1/2/4/8/16); combinations were not tried. A negative here is "not these ten", not
 "impossible".
+
+### 2026-09-02 (night) — ⭐ F1 BUILT: the pool gauge is painted over BLE and verified on the gun
+
+`poolgauge.py` + `GameDriver` wiring, then checked against the hardware rather than against itself.
+
+**All 10 cases matched**, plus the revert to team colour:
+
+| case | expect | measured | saturated fraction per LED |
+|---|---|---|---|
+| shield 70/70 | 3 | 3 | 0.210 / 0.236 / 0.214 |
+| shield 45/70 | 2 | 2 | 0.509 / 0.421 / **0.007** |
+| shield 20/70 | 1 | 1 | 0.435 / **0.000** / **0.000** |
+| armour 70/70 | 3 | 3 | 0.179 / 0.286 / 0.257 |
+| armour 35/70 | 2 | 2 | 0.220 / 0.297 / **0.000** |
+| armour 1/70 | 1 | 1 | 0.493 / **0.025** / **0.000** |
+| health 45/45 | 3 | 3 | 0.118 / 0.187 / 0.172 |
+| health 30/45 | 2 | 2 | 0.470 / 0.398 / **0.000** |
+| health 10/45 | 1 | 1 | 0.108 / **0.000** / **0.000** |
+| health 0/45 | 0 | 0 | 0.000 / 0.000 / 0.000 |
+
+## ⚠️ The measurement took three attempts and the code was right the whole time
+
+Attempt 1 (luminance rise > 15) and attempt 2 (nearest lit/dark reference per colour) BOTH reported
+armour 2-of-3 and armour 1-of-3 as mismatches, reproducibly, three runs. The frames were correct
+throughout.
+
+**A lit LED bathes the whole housing in its colour**, so a dark neighbour's ROI fills with reflected
+light: LED3 read 170 against a 134 dark baseline. Cropping the strip and LOOKING settled it in
+seconds — LED3 was visibly dark, merely washed.
+
+The discriminator is that a lit LED **core blows out to white** (max RGB 255/254/255) while reflected
+wash does not (that LED3 peaked at G=203). `ledcam.py` documents the blow-out as a nuisance; here it
+is the signal. Judged by saturated-pixel fraction the two populations do not overlap: **lit
+0.108-0.509, dark 0.000-0.025.**
+
+Worth naming because the tempting move was to nudge the threshold until the table went green, which
+would have "passed" a measurement that could not tell a lit LED from its neighbour's glow.

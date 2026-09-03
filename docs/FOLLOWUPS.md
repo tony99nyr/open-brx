@@ -1272,7 +1272,40 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
-## 🟢 F1 — POOL-STATUS LEDs: show health/armour/shield on change, revert to team colour (2026-08-30)
+## ✅ F1 — BUILT 2026-09-02. Pool-status LEDs, painted over BLE, verified on hardware
+
+> **The config route was ruled out first, on hardware, exactly as this entry demanded.**
+> `gauge_hunt.py`, ten candidates (`$GSET` t8 gameMods 1/2/4/8/16, `$GSET` t4 autoAmbientLight,
+> `$GSET` t5 gyroscope, `$PSET` t2), every one driven to pools (35,0,0) — about 30% of total. **No
+> gauge.** The three LEDs always moved TOGETHER; a gauge collapses ONE segment while its neighbours
+> hold near 1. No spread exceeded 0.05 against a 0.45 threshold. So there is nothing to switch on and
+> we paint it. ⚠️ Scope: ten fields, single bits only for t8, no combinations — "not these ten", not
+> "impossible".
+>
+> **Built:** `mcp/brx_mcp/poolgauge.py` (pure: frames in, frames out, no I/O and no clock) wired into
+> `GameDriver` via the existing `Action` path — `feed()` emits the gauge off `$HP`, `tick()` emits the
+> revert, so the driver's single-I/O-path rule holds. 14 unit tests.
+>
+> - shield **teal** · armour **purple** · health **green → yellow → red** as it falls. Hue says WHICH
+>   pool; only health encodes urgency, because only health is urgent.
+> - Segments: `ceil(level/max × 3)`, and **anything above zero lights at least one** — a player on
+>   1 HP must not look identical to one who is out.
+> - Reverts after **4 s**; a fresh change RESTARTS the window (a deadline, not a countdown).
+> - Encodes with COLOUR at full brightness, never brightness: at the dim setting our colour stops
+>   being the dominant hue (measured 2026-09-02).
+>
+> **Verified end-to-end on hardware** (`mcp/tools/gauge_paint_check.py`): all 10 level/pool cases plus
+> the team revert, through camera ROIs that were themselves verified with a 3×3 response matrix.
+>
+> ⚠️ **The measurement needed three attempts, and that is the lesson.** A lit LED bathes the whole
+> housing in its colour, so a DARK neighbour's ROI fills with reflected light: armour 2-of-3 measured
+> LED3 at 170 against a 134 dark baseline, and BOTH a flat threshold and a nearest-reference
+> classifier called it lit. Looking at the actual crop settled it in seconds — LED3 was visibly dark,
+> just washed. The discriminator is that a lit LED **core blows out to white** (255/254/255) while
+> reflected wash does not (that LED3 peaked at G=203). Judging by saturated-pixel fraction separates
+> them cleanly: lit 0.10–0.51, dark 0.000–0.025.
+
+## 🟢 F1 (original spec) — POOL-STATUS LEDs: show health/armour/shield on change, revert to team colour (2026-08-30)
 
 **Tony's spec, verbatim:** *"during game we want to be able to take over and show shield health. after a
 time of no damage reset to team color."* … *"on health/armor/shield change +/- the leds should indicate

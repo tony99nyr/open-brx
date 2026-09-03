@@ -21,6 +21,7 @@ from typing import Awaitable, Callable, Optional
 
 from .. import sounds as snd
 from ..gameconfig import GameConfig, RESPAWN_SEQUENCE, END_SEQUENCE
+from .. import poolgauge as pg
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, KillConfirm, PlaySound, Respawn,
     Score, SendFrame, SetTeam,
@@ -122,6 +123,11 @@ class GameDriver:
         self.hits_taken: dict[str, int] = {}
         self._t0: Optional[float] = None
         self._elapsed: float = 0.0
+        # F1 pool gauge: last pools seen per player, and when their gauge was last painted. The
+        # gauge is a DISPLAY layer -- it never affects scoring, and a missing $HP simply means no
+        # repaint rather than a wrong one.
+        self._pools: dict[str, tuple[int, int, int]] = {}
+        self._gauge_until: dict[str, float] = {}
         self.sender = sender
         self.engine = build_engine(config, now)
         self.announce = announce or (lambda s: print(s, flush=True))
@@ -289,13 +295,52 @@ class GameDriver:
             self.hits_taken[player_id] = self.hits_taken.get(player_id, 0) + 1
         if self._t0 is None:
             self._t0 = now
-        return self.engine.on_event(player_id, ev, now)
+        actions = self.engine.on_event(player_id, ev, now)
+        gauge = self._gauge_action(player_id, ev, now)
+        if gauge is not None:
+            actions = list(actions) + [gauge]
+        return actions
+
+    def _gauge_action(self, pid: str, ev: dict, now: float) -> Optional[Action]:
+        """F1: paint the pool that just changed onto the gun LEDs (see `poolgauge`).
+
+        Driven off `$HP`, which the gun sends on every damage event, so the trigger is free -- no
+        polling and no extra round trip. Returns a `SendFrame` so the driver's single I/O path still
+        owns the write.
+        """
+        if not self.config.leds:
+            return None
+        raw = (ev.get("raw") or "").strip()
+        if not raw.startswith("$HP,"):
+            return None
+        try:
+            t = raw.split(",")
+            after = (int(t[1]), int(t[2]), int(t[3]))
+        except (IndexError, ValueError):
+            return None                      # a malformed $HP must not paint a wrong gauge
+        before = self._pools.get(pid)
+        self._pools[pid] = after
+        pool = pg.changed_pool(before, after)
+        if pool is None:
+            return None
+        maxima = {"health": self.config.hp, "armor": self.config.armor,
+                  "shield": self.config.shield}
+        level = {"health": after[0], "armor": after[1], "shield": after[2]}[pool]
+        self._gauge_until[pid] = now + pg.REVERT_AFTER_S
+        return SendFrame(pid, pg.gauge_frame(pool, level, maxima[pool]))
 
     def tick(self, now: float) -> list[Action]:
         if self._t0 is None:
             self._t0 = now
         self._elapsed = now - self._t0
-        return self.engine.tick(now)
+        actions = list(self.engine.tick(now))
+        # Revert each expired gauge to the team colour. A fresh change RESTARTS the window rather
+        # than queuing, which falls out of storing a deadline instead of a countdown.
+        for pid, until in list(self._gauge_until.items()):
+            if now >= until:
+                del self._gauge_until[pid]
+                actions.append(SendFrame(pid, pg.team_frame(self.players.get(pid))))
+        return actions
 
     @property
     def over(self) -> bool:
