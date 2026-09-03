@@ -132,8 +132,9 @@ def _segments(level: int, maximum: int) -> int:
     """
     if maximum <= 0 or level <= 0:
         return 0
-    frac = min(1.0, level / maximum)
-    return max(1, min(3, -(-round(frac * 300) // 100)))   # ceil to a third, without float drift
+    # Exact integer ceiling. The earlier `-(-round(frac*300)//100)` was a rounded ceiling and
+    # mis-binned cases like 335/1000, where banker's rounding of 100.5 lands on 100.
+    return max(1, min(3, -(-min(level, maximum) * 3 // maximum)))
 
 
 def health_colour(level: int, maximum: int) -> int:

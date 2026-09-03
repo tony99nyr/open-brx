@@ -86,8 +86,14 @@ class FakeCompiler:
                 "cues": self.cues(player.get("voice", "male"))}
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
+        # ⚠️ The `$SIR` row is NOT decoration. `$CLEAR` wipes the `$SIR` table and a gun with no rows
+        # silently ignores EVERY hit while reporting alive and healthy (F11, bench-proven 2026-09-02).
+        # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler
+        # raises -- so this bundle can reach a real tagger, and without the row it would leave that
+        # player unhittable for the match. `test_clear_safety` now enumerates this file.
         return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{1 if environment == 'outdoor' else 0},1,0,1,0,50,1,*",
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
+                "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 
     def cues(self, voice: str) -> dict[str, str]:

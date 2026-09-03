@@ -52,6 +52,13 @@ MODES = [
 ]
 
 
+# End of a private try-out: the gun goes idle and stays UNHITTABLE until the game is pushed. That is
+# intended (it is a teardown), and it is a named constant so `test_clear_safety` can track the REAL
+# list rather than a hand-copied duplicate that would drift silently.
+TRYOUT_TEARDOWN = ("$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*",
+                   "$HLED,0,0,0,0,0,0,*")
+
+
 def default_config(mode: str = "tdm") -> GameConfig:
     m = next(x for x in MODES if x["mode"] == mode)
     return {"config_id": uuid.uuid4().hex[:8], "mode": mode, "environment": "outdoor", "night": False,
@@ -1141,8 +1148,8 @@ class Session:
             # tell the NODE too — without this the phone stayed on the try-out screen and the gun stayed
             # armed until the next config push (e2e find, 2026-08-26). Teardown = the known end sequence.
             if p.get("node_id"):
-                self.net.push(p["node_id"], "tutorial", {"end": True, "frames": [
-                    "$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"]})
+                self.net.push(p["node_id"], "tutorial", {"end": True,
+                                                          "frames": list(TRYOUT_TEARDOWN)})
             self._changed()
             return
         if self.lobby_pushed or self.phase in ("armed", "live"):

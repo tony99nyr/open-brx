@@ -25,7 +25,9 @@ INTENTIONAL_TEARDOWNS = {
     "cli.END_SEQUENCE": "CLI teardown",
     "golden_bundle/end": "game over (the bundle MC ships for teardown)",
     "golden_bundle/panic": "panic stop",
-    "mc.tryout_teardown": "end of a private try-out: the gun stays idle until the game is pushed",
+    "mc.TRYOUT_TEARDOWN": "end of a private try-out: the gun stays idle until the game is pushed",
+    "fakes.end": "game over (fallback compiler)",
+    "fakes.panic": "panic stop (fallback compiler)",
 }
 
 
@@ -58,13 +60,30 @@ def _shipped_sequences():
     # easiest one to get wrong: it is assembled by hand rather than by setup_frames().
     try:
         from brx_mcp.mc.compile import Compiler
+    except ImportError:           # only a MISSING module may skip: any other error must surface,
+        pass                      # or a compiler bug would silently drop this from the sweep
+    else:
         c = Compiler()
-        w = c.weapon_catalog()[0]
-        out["compile.tutorial_frames"] = list(c.tutorial_frames(w, "indoor"))
+        out["compile.tutorial_frames"] = list(c.tutorial_frames(c.weapon_catalog()[0], "indoor"))
+    from brx_mcp.mc.state import TRYOUT_TEARDOWN
+    out["mc.TRYOUT_TEARDOWN"] = list(TRYOUT_TEARDOWN)
+    # FakeCompiler is a RUNTIME FALLBACK: mc/__main__.py selects it whenever the real compiler
+    # raises, while the NetServer may still be pushing to real guns. Its bundles are shipped
+    # sequences in every sense that matters, and one of them was missing its $SIR row.
+    from brx_mcp.mc.fakes import FakeCompiler
+    fc = FakeCompiler()
+    out["fakes.tutorial_frames"] = list(fc.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor"))
+    try:
+        b = fc.compile({"config_id": "c", "mode": "tdm", "environment": "indoor",
+                        "health": {"max_hp": 45, "max_armor": 70}},
+                       {"player_id": "p", "player_num": 1, "team_id": "t",
+                        "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}, "voice": "male"},
+                       [{"team_id": "t", "tid": 1}])
+        for k in ("head", "spawn", "revive", "end", "panic"):
+            if isinstance(b.get(k), list):
+                out[f"fakes.{k}"] = list(b[k])
     except Exception:
-        pass                      # optional: the compiler needs its catalog, absent in some checkouts
-    out["mc.tryout_teardown"] = ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*",
-                                 "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"]
+        pass                      # the fake's compile() signature is not the contract under test
     bundle = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "golden_bundle.json"
     if bundle.exists():
         d = json.loads(bundle.read_text())

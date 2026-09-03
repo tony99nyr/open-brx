@@ -12,7 +12,21 @@ from brx_mcp.modes.driver import GameDriver
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """Run on the suite's SHARED loop, recreating it only if something closed it.
+
+    Two wrong versions of this preceded it. `asyncio.get_event_loop()` alone is flaky -- once any
+    earlier test leaves a closed loop behind these fail intermittently (seen as 607-pass and 604-pass
+    runs of the same suite). `asyncio.run()` is worse: it closes the loop afterwards, which broke 19
+    tests in other files that rely on the shared one.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def _driver(fail_pred):
@@ -37,8 +51,10 @@ def test_a_clean_arm_records_no_failures():
 
 def test_a_failed_SIR_row_is_retried_and_then_succeeds():
     state = {"fail": True}
+    sent = []
 
     async def sender(pid, frame):
+        sent.append(frame)
         if frame.startswith("$SIR") and state["fail"]:
             state["fail"] = False          # fails once, then the retry lands
             raise ConnectionError("link dropped")
@@ -48,6 +64,13 @@ def test_a_failed_SIR_row_is_retried_and_then_succeeds():
     assert _run(d._arm_one("p1")) is True
     assert any("retrying" in n for n in notes), notes
     assert "unhittable" not in d.snapshot()
+    # Assert the rows were ACTUALLY RE-SENT. Without this the test passes with the retry loop
+    # deleted, because _arm_one clears the failure record before retrying and "cleared but never
+    # retried" looks identical from the outside.
+    bundle_sirs = [f for f in GameConfig().setup_frames(0) if f.startswith("$SIR")]
+    sent_sirs = [f for f in sent if f.startswith("$SIR")]
+    assert len(sent_sirs) > len(bundle_sirs), (
+        f"$SIR rows were never re-sent: {len(sent_sirs)} sent vs {len(bundle_sirs)} in one bundle")
 
 
 def test_a_persistently_failing_SIR_row_makes_the_player_UNHITTABLE_and_says_so():
@@ -133,3 +156,27 @@ def test_non_HIR_events_do_not_count_as_being_hit():
     d.feed("p1", {"raw": "$HP,45,70,0,*", "cmd": "HP"}, 1.0)
     d.tick(NEVER_HIT_AFTER_S + 1)
     assert "p1" in d.snapshot()["never_hit"]
+
+
+def test_a_SPEC_CONFORMANT_parsed_event_counts_as_a_hit():
+    """`modes/base.py` parses to `command`, not `cmd`, and carries no `raw`.
+
+    Every test here fabricated `cmd`, so the suite could not see that `feed()` read the wrong key.
+    A caller feeding spec-conformant events would leave `hits_taken` at 0 for everyone, and
+    `never_hit` would then flag the entire roster.
+    """
+    d = _two_player_driver()
+    d.tick(0.0)
+    d.feed("p1", {"command": "HIR", "tokens": ["0", "0", "42", "2", "1"]}, 5.0)
+    d.tick(NEVER_HIT_AFTER_S + 1)
+    snap = d.snapshot()
+    assert snap["hits_taken"]["p1"] == 1, snap["hits_taken"]
+    assert snap.get("never_hit") == ["p2"], snap.get("never_hit")
+
+
+def test_never_hit_fires_even_if_tick_is_never_called():
+    """`_elapsed` used to advance only in tick(), so a fed-but-unticked driver never flagged."""
+    d = _two_player_driver()
+    d.feed("p1", _hit_event(), 0.0)
+    d.feed("p1", _hit_event(), NEVER_HIT_AFTER_S + 1)
+    assert d.snapshot().get("never_hit") == ["p2"]

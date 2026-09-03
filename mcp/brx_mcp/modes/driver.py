@@ -176,9 +176,11 @@ class GameDriver:
             elif isinstance(a, Respawn):
                 for f in RESPAWN_SEQUENCE:
                     await self._send(a.player_id, f)
+                await self._paint_event(a.player_id, "respawned")
                 self.announce(f"↻ respawn {a.player_id}")
             elif isinstance(a, Heal):
                 await self._send(a.player_id, f"$LIFE,{a.hp},{a.armor},{a.shield},*")
+                await self._paint_event(a.player_id, "healed")
             elif isinstance(a, SetTeam):
                 await self._send(a.player_id, f"$TID,{a.team},*")
             elif isinstance(a, KillConfirm):
@@ -197,6 +199,7 @@ class GameDriver:
             elif isinstance(a, Score):
                 self.announce(f"🎯 {a.who}: {a.total} (+{a.delta})")
             elif isinstance(a, Eliminate):
+                await self._paint_event(a.player_id, "died")
                 self.announce(f"☠ {a.player_id} eliminated")
             elif isinstance(a, GameOver):
                 self.announce(f"🏆 GAME OVER — {a.winner}  {a.detail}")
@@ -221,6 +224,28 @@ class GameDriver:
             for pid in self.players:
                 await self._send(pid, f)
         self.announce(f"game live: {self.config.summary()}")
+
+    async def _paint_event(self, pid: str, event: str) -> None:
+        """ONE `$GLED` frame for a game event, plus a deadline to revert to the team colour.
+
+        ⚠️ One frame, never a repaint loop. Winning the gun's own animation outright needs ~30 Hz
+        repaints, which STROBE, and flicker in the 10-25 Hz band is the photosensitive-epilepsy
+        trigger range (operator, on seeing it: "it looks like its having a seizure"). A single paint
+        instead BREATHES our colour in and out -- about 18% of frames on a spawned gun -- which is
+        visible and safe. The detailed feedback lives on the phone HUD, the one surface we fully
+        control. See experiment-log.md 2026-09-02 (night).
+
+        A kill confirm is deliberately NOT painted: the gun has a native one (`$SFLASH`, sent on
+        `KillConfirm`) in the sight the player is already looking through.
+        """
+        if not self.config.leds:
+            return
+        frame = pg.event_frame(event, night=self.config.is_night_mode())
+        if frame is None:
+            return
+        await self._send(pid, frame)
+        if self._t0 is not None:            # no clock yet means no deadline to revert against
+            self._gauge_until[pid] = self._t0 + self._elapsed + pg.event_hold_s(event)
 
     async def _arm_one(self, pid: str) -> bool:
         """Send one gun's full config, then make sure the `$SIR` table actually landed.
@@ -291,10 +316,15 @@ class GameDriver:
         # a gun whose `$SIR` table did not land looks completely healthy -- alive, full pools,
         # answering `$QUERY` -- and simply never registers. The only symptom visible to the host is
         # that this player is never hit, which no scoreboard would otherwise call out.
-        if (ev.get("cmd") or ev.get("raw", "")[:4]).upper().lstrip("$").startswith("HIR"):
+        cmd = (ev.get("command") or ev.get("cmd") or ev.get("raw", "")[:5])
+        if str(cmd).upper().lstrip("$").startswith("HIR"):
             self.hits_taken[player_id] = self.hits_taken.get(player_id, 0) + 1
         if self._t0 is None:
             self._t0 = now
+        # `_elapsed` was only advanced in tick(); a driver that is fed events but never ticked left
+        # it at 0.0 forever, so `never_hit` silently never fired. Fail-silent is the wrong direction
+        # for a detector whose whole job is to notice an unhittable player.
+        self._elapsed = max(self._elapsed, now - self._t0)
         actions = self.engine.on_event(player_id, ev, now)
         gauge = self._gauge_action(player_id, ev, now)
         if gauge is not None:
@@ -350,9 +380,6 @@ class GameDriver:
         snap = self.engine.snapshot()
         if self.callsigns:
             snap["callsigns"] = dict(self.callsigns)
-        # Only report entries that actually hold a failure -- an empty list must not create the key,
-        # or every consumer has to special-case "present but empty".
-        self.arming_failures = {k: v for k, v in self.arming_failures.items() if v}
         if self.arming_failures:
             # Surfaced so the operator console can flag it BEFORE the match. `unhittable` is the one
             # that ends someone's game: no $SIR table means the gun ignores every hit while looking

@@ -8,6 +8,8 @@ F13: a respawn sent within ~2 s of the kill is never executed by the headset, wh
 These test the real shipped objects, not helpers in isolation -- an earlier fix in this repo passed
 its unit tests while being wrong on hardware precisely because the tests exercised a helper.
 """
+import inspect
+
 from brx_mcp.gameconfig import (
     MIN_RESPAWN_S, GameConfig, RESPAWN_SEQUENCE, assert_sir_follows_clear,
 )
@@ -74,5 +76,11 @@ def test_a_normal_respawn_delay_is_left_alone():
 
 
 def test_the_ramp_ladder_is_also_floored():
+    """Patch the ladder BELOW the floor -- the shipped ladder is 15/30/45/90, so asserting against it
+    is unconditionally true and the test passed with the ramp floor deleted entirely."""
+    import brx_mcp.gameconfig as gcmod
     cfg = GameConfig(respawn_s=1, respawn_ramp=True)
+    src = inspect.getsource(gcmod.GameConfig.respawn_delay)
+    assert "max(MIN_RESPAWN_S, ladder[" in src, \
+        "the ramped path is not floored -- a short ladder would wedge the headset (F13)"
     assert all(cfg.respawn_delay(i) >= MIN_RESPAWN_S for i in range(5))

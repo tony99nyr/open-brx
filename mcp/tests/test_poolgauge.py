@@ -1,3 +1,4 @@
+import asyncio
 """F1: the pool gauge painted onto the three gun LEDs.
 
 Tony's spec: any change to health/armour/shield paints that pool as a bar; after 3-5 s with no
@@ -6,16 +7,10 @@ further change, revert to the team colour; a new change inside the window restar
 The config route was ruled out on hardware first (2026-09-02): ten `$GSET`/`$PSET` candidates all
 left the three LEDs moving together, so there is no native gauge to switch on and we paint it.
 """
-import asyncio
-
 from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.modes.base import SendFrame
+from brx_mcp.modes.base import Eliminate, Respawn, SendFrame
 from brx_mcp.modes.driver import GameDriver
-
-
-def _run(c):
-    return asyncio.get_event_loop().run_until_complete(c)
 
 
 # --- the mapping (pure) ------------------------------------------------------ #
@@ -66,6 +61,18 @@ def test_no_change_paints_nothing():
 
 
 # --- the driver wiring ------------------------------------------------------- #
+
+def _run(coro):
+    """The suite shares one event loop; recreate it only if something closed it."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
 
 def _driver():
     async def sender(pid, frame):
@@ -129,3 +136,55 @@ def test_the_gauge_is_off_when_leds_are_disabled():
                    announce=lambda s: None)
     d.feed("p1", _hp(45, 70, 70), 0.0)
     assert not _frames(d.feed("p1", _hp(45, 70, 60), 1.0))
+
+
+# --- event paints on the gun (ONE frame each, never a repaint loop) ----------- #
+
+def test_a_respawn_paints_the_respawn_colour_exactly_once():
+    """One frame. A repaint loop here would strobe, which is the whole reason this feedback is
+    mostly on the phone."""
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append(frame)
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Respawn("p1")]))
+    gled = [f for f in sent if f.startswith("$GLED")]
+    assert gled == [pg.event_frame("respawned")], gled
+
+
+def test_a_death_paints_the_died_colour():
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append(frame)
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Eliminate("p1")]))
+    assert pg.event_frame("died") in sent
+
+
+def test_event_paints_are_off_when_leds_are_disabled():
+    import dataclasses
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append(frame)
+    d = GameDriver(dataclasses.replace(GameConfig(), leds=False), {"p1": 1}, sender,
+                   announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Respawn("p1")]))
+    assert not [f for f in sent if f.startswith("$GLED")]
+
+
+def test_an_event_paint_reverts_to_the_team_colour():
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append(frame)
+    d = GameDriver(GameConfig(), {"p1": 1}, sender, announce=lambda s: None)
+    d.tick(0.0)
+    _run(d.execute([Respawn("p1")]))
+    out = [a.frame for a in d.tick(pg.event_hold_s("respawned") + 0.1) if isinstance(a, SendFrame)]
+    assert out == [pg.team_frame(1)], out
