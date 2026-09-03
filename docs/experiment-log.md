@@ -5298,3 +5298,37 @@ Three wrong turns on one question: 4 Hz (too slow to test the hypothesis), a bes
 by the arm animation's own red frames), and two runs scored over whole clips that were mostly native.
 The fix each time was a more honest measurement, not a cleverer inference -- and the operator's
 "are you certain?" was worth more than any of them.
+
+### 2026-09-02 (night, F1) — 🔴 THE 30 Hz OVERRIDE STROBES. Do not ship it. Use the HEADSET instead.
+
+Operator, watching the gun during the event-paint demo: *"its flashing blue/purple/teal. it looks
+like its having a seizure"*.
+
+## The metric was right and the conclusion was wrong
+
+The override measurement stands: hammering `$GLED` at ~32 Hz makes our hue dominant in **93%** of
+video frames, against 18% for a single paint. But **hue-dominance per frame is not perceived
+steadiness.** The 7% of frames the native animation wins, plus its brightness ripple, land in exactly
+the band the eye integrates as flicker. The number was measuring the wrong property.
+
+## ⚠️ This is a safety issue, not a taste issue
+
+Strobing in roughly the **10-25 Hz** band is the photosensitive-epilepsy trigger range. This is a
+product that sits on a gun and a headset, in a dark arena, in front of a player's face, for a whole
+match. **A host-driven 30 Hz fight against the gun's own animation must not ship**, whatever its duty
+cycle measures.
+
+## The better surface: the HEADSET
+
+The gun's strip is contested -- the firmware animates it and we can only interleave. The headset is
+**not**: in native play it is DARK, lighting only on a hit, at pre-game team assignment, and while a
+player is out (established 2026-09-02, `$HLED` fully decoded). Nothing to fight, so a single frame
+should hold with no hammering and no strobe.
+
+It is also the better product surface: the headset is on the player's HEAD, which is what other
+players actually see. For the immersion Tony is after -- flash on hit, on heal, on pickup, on death --
+the headset is both safer and more visible.
+
+**Next:** verify a single `$HLED` frame holds steady on a SPAWNED gun mid-game (the equivalent test to
+the one that caught the gun strip), then move the event paints to `$HLED` and keep `$GLED` for
+pre-game and lobby, where it renders cleanly and nothing is animating.

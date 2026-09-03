@@ -58,6 +58,16 @@ REVERT_AFTER_S = 4.0     # Tony: "a few seconds maybe 3-5s"
 # blind its own player or give their position away in the dark.
 BRIGHT_FULL, BRIGHT_DIM = 10, 1
 
+# ⚠️⚠️ DO NOT DRIVE THESE BY HAMMERING `$GLED` IN A LIVE GAME. ⚠️⚠️
+# Repainting at ~30 Hz does win the hue (93% of frames vs 18% for a single paint), but the result
+# STROBES -- the operator's words on seeing it were "it looks like its having a seizure". Flicker in
+# roughly the 10-25 Hz band is the photosensitive-epilepsy trigger range, and this sits on a gun in a
+# dark arena in front of a player's face for a whole match. Hue-dominance per frame is not perceived
+# steadiness, and the measurement that said 93% was answering the wrong question.
+#
+# The headset is the right surface: in native play it is DARK, so a single `$HLED` frame has nothing
+# to fight. Keep `$GLED` for pre-game and lobby, where nothing is animating and it renders cleanly.
+#
 # --- EVENT PAINTS ----------------------------------------------------------- #
 # Tony: "when we get a hit we should flash something. when we get hit we should flash something.
 # when we get healed or get shields or get armor we should paint leds. when we die, when we respawn."
