@@ -1272,6 +1272,35 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
+## ✅ F1 — BUILT 2026-09-02, across THREE surfaces (the design changed twice; read this first)
+
+> **The finished shape.** One surface could not carry it, so the feedback is split by WHO the message
+> is for (Tony: *"you cant see your own head to confirm a kill or know your health"*):
+>
+> | surface | audience | carries | contested by firmware? |
+> |---|---|---|---|
+> | **gun strip** `$GLED` | the PLAYER | pool colour + event flashes | YES — a single paint breathes (~18% of frames) |
+> | **headset** `$HLED` | OTHER players | hit taken, out, team | no (dark in native play) — ⚠️ **UNVERIFIED, see below** |
+> | **sight** `$SFLASH` | the PLAYER | kill confirm | native, already wired on `KillConfirm` |
+> | **phone HUD** | the PLAYER | everything detailed, animated | none — the one surface we fully own |
+>
+> **Built and shipped:** `poolgauge.py` (pure mapping + event paints, night-mode dimming) wired into
+> `GameDriver` — pool gauge on `$HP` change, event paints on `Respawn`/`Heal`/`Eliminate`, each ONE
+> frame with a deadline back to the team colour. Phone HUD gained animated `hit` and `gain` moments
+> (`app/src/hud/hud.js`, `tools/moments.mjs`, 9 screen-truth steps).
+>
+> 🔴 **NEVER hammer `$GLED` to hold a colour.** ~32 Hz wins the hue (93% of frames against 18% for a
+> single paint) and **STROBES** — operator: *"it looks like its having a seizure"*. Flicker in the
+> 10-25 Hz band is the photosensitive-epilepsy trigger range, and this sits on a gun in a dark arena
+> in front of a player's face for a whole match. A warning sits in `poolgauge.py` next to the event
+> table, because that is where someone would reach for the technique.
+>
+> ⚠️ **Still open:** (a) `$HLED` on a SPAWNED gun is UNVERIFIED — the claim that it holds because the
+> headset is dark natively is reasoning, not measurement, and reasoning lost to the operator's eyes
+> repeatedly this session; (b) whether the gun's breathing pulse actually READS as feedback is a human
+> judgement nobody has made yet (`mcp/tools/led_demo.py` shows it). Both are on
+> `docs/bench-2026-09-03.md`.
+
 ## ✅ F1 — BUILT 2026-09-02. Pool-status LEDs, painted over BLE, verified on hardware
 
 > **The config route was ruled out first, on hardware, exactly as this entry demanded.**
