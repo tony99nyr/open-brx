@@ -83,7 +83,7 @@ async def main():
     tot_h = sum(v[0] for v in by_team.values())
     tot_f = sum(v[1] for v in by_team.values())
     print(f"     TOTAL : {tot_h}/{tot_f}")
-    print("\n  ⚠️  READ THIS BEFORE BELIEVING ANY ZERO ABOVE.")
+    print("\n  !!  READ THIS BEFORE BELIEVING ANY ZERO ABOVE.")
     print("  `$HIR` DOES NOT REACH BLE IN A NATIVE GAME. A natively-running gun registers hits,")
     print("  flashes its headset and takes damage while sending NOTHING over Bluetooth. This tool")
     print("  therefore CANNOT detect a hit here, and a total of 0/N is its NORMAL output on a")

@@ -89,12 +89,12 @@ async def main():
             results[tag] = (hits, wit, deaf, len(real))
 
         print("\n=== PHASE A -- bad state PRESERVED, nothing sent to the gun ===")
-        print("    ⚠️ PHASE A CANNOT DETECT A HIT. If the gun is not already in OUR game state,")
+        print("    !! PHASE A CANNOT DETECT A HIT. If the gun is not already in OUR game state,")
         print("       `$HIR` never reaches BLE and this phase reads 0/N on a healthy gun.", flush=True)
         await volley("A: untouched")
 
         print("\n=== PHASE B -- $SPAWN only ===")
-        print("    ⚠️ SAME CAVEAT AS PHASE A: a zero here is not evidence of anything.", flush=True)
+        print("    !! SAME CAVEAT AS PHASE A: a zero here is not evidence of anything.", flush=True)
         await mgr.send("v", "$SPAWN,*", reply_window_ms=300)
         await asyncio.sleep(1.2)
         await volley("B: spawn only")
@@ -112,7 +112,7 @@ async def main():
     print("\n=== WHICH STEP REVIVED IT ===")
     for tag, (hits, wit, deaf, real) in results.items():
         print(f"   {tag:16s} registered {hits}/{nshot}  (deaf on {deaf}/{real} confirmed-fired)")
-    print("\n   ⚠️ PHASES A AND B ARE BLE-BLIND -- treat their numbers as UNKNOWN, not as zero.")
+    print("\n   !! PHASES A AND B ARE BLE-BLIND -- treat their numbers as UNKNOWN, not as zero.")
     print("   Only phase C, which puts the gun in our game state, can detect a hit at all.")
     print("   A already good      -> it is NOT deaf now; the fault had already cleared.")
     print("   A deaf, B good      -> UNRELIABLE (both are BLE-blind); confirm with phase C.")

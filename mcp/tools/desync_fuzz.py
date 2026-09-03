@@ -160,7 +160,7 @@ async def main():
                     rx.close(); tx.close()
                     return
         if not control_fired:
-            print("\n   🔴 THE POSITIVE CONTROL DID NOT FIRE. `$CLEAR` -> `$SPAWN` is a KNOWN,")
+            print("\n   !! THE POSITIVE CONTROL DID NOT FIRE. `$CLEAR` -> `$SPAWN` is a KNOWN,")
             print("   deterministic 5/5 repro, so if it did not trip here the rig cannot see the")
             print("   fault at all and THIS NEGATIVE MEANS NOTHING. Fix the rig, then re-run.")
         else:

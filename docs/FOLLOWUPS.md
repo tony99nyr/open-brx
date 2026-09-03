@@ -469,7 +469,17 @@ Repro: see `experiment-log.md` 2026-09-02 (night, last) for the exact sequence (
 > `$SIR` config); a power cycle "fixing" it for the same reason. **It was never intermittent** — it
 > follows a `$CLEAR` with no `$SIR` behind it, and nothing else.
 >
-> ### Mission Control fixes — 3 of 4 DONE 2026-09-02
+> ### Mission Control fixes — ✅ ALL 4 DONE, and VALIDATED ON HARDWARE 2026-09-02
+>
+> **End-to-end bench test through the SHIPPED `GameDriver`** (`mcp/tools/mc_driver_bench.py`):
+>
+> | phase | result |
+> |---|---|
+> | `GameDriver.setup()` — the real path | **6/6** registered, `snapshot()` reports no `unhittable` |
+> | strand it: `$CLEAR,*` then `$SPAWN,*` | **0/6**, gun `$LCD,45,70` ALIVE and in game — fault reproduced |
+> | `GameDriver.setup()` again | **6/6** — recovered, because the `$SIR` rows follow the `$CLEAR` |
+>
+> All three phases passed. The shipped arming path is safe AND self-recovering.
 >
 > 1. ✅ **Retry the `$SIR` rows if any setup frame fails**, and refuse to call the gun armed if they
 >    still will not land — `GameDriver._arm_one()`. ⚠️ Note there is **no readback** for `$SIR` on the
@@ -480,8 +490,11 @@ Repro: see `experiment-log.md` 2026-09-02 (night, last) for the exact sequence (
 > 3. ✅ **Setup-frame failures are no longer swallowed** — `_send(..., critical=True)` records them;
 >    `snapshot()` exposes `arming_failures` and, when a `$SIR` row is among them, `unhittable`, so the
 >    operator console can flag a player who cannot be hit BEFORE the match.
-> 4. ⬜ **Flag a player who has registered no hits all match** — still open, and the cheapest live
->    detector of this whole class.
+> 4. ✅ **Flag a player who has registered no hits all match** — `GameDriver` counts hits taken per
+>    player and `snapshot()` reports `never_hit` (plus `hits_taken`) once the match is
+>    `NEVER_HIT_AFTER_S = 90 s` old. Not at kickoff: a list that cries wolf every match start is one
+>    the operator learns to ignore. This is the cheapest LIVE detector for the whole class, because
+>    an unhittable gun looks perfectly healthy from every other angle.
 >
 > ### The exposure, for context (fixes above)
 >

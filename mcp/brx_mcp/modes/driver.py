@@ -28,6 +28,11 @@ from .base import (
 
 Sender = Callable[[str, str], Awaitable[None]]
 
+# How long a player may go un-hit before the operator is told. Long enough that a quiet opening or a
+# cautious player is not flagged, short enough to catch an unhittable gun while the match can still
+# be saved. A 5-minute default game makes 90 s about a third of the way in.
+NEVER_HIT_AFTER_S = 90.0
+
 
 CALLSIGN_MAX = 12   # BRX gun name field is short (stock name e.g. "Tactix2")
 
@@ -112,6 +117,11 @@ class GameDriver:
         # entry here means that player cannot be hit (F11). Surfaced via snapshot() so the operator
         # console can flag it rather than discovering it mid-match.
         self.arming_failures: dict[str, list[str]] = {}
+        # player_id -> hits TAKEN. A player still on zero well into a match is the live symptom of a
+        # gun that cannot be hit (F11), and is worth flagging to the operator.
+        self.hits_taken: dict[str, int] = {}
+        self._t0: Optional[float] = None
+        self._elapsed: float = 0.0
         self.sender = sender
         self.engine = build_engine(config, now)
         self.announce = announce or (lambda s: print(s, flush=True))
@@ -271,9 +281,20 @@ class GameDriver:
 
     def feed(self, player_id: str, ev: dict, now: float) -> list[Action]:
         """Feed one parsed rx event; returns the Actions (caller executes)."""
+        # Count HITS TAKEN per player. This is the cheapest live detector for the whole F11 class:
+        # a gun whose `$SIR` table did not land looks completely healthy -- alive, full pools,
+        # answering `$QUERY` -- and simply never registers. The only symptom visible to the host is
+        # that this player is never hit, which no scoreboard would otherwise call out.
+        if (ev.get("cmd") or ev.get("raw", "")[:4]).upper().lstrip("$").startswith("HIR"):
+            self.hits_taken[player_id] = self.hits_taken.get(player_id, 0) + 1
+        if self._t0 is None:
+            self._t0 = now
         return self.engine.on_event(player_id, ev, now)
 
     def tick(self, now: float) -> list[Action]:
+        if self._t0 is None:
+            self._t0 = now
+        self._elapsed = now - self._t0
         return self.engine.tick(now)
 
     @property
@@ -296,6 +317,14 @@ class GameDriver:
                                 if any(f.startswith("$SIR") for f in frames))
             if unhittable:
                 snap["unhittable"] = unhittable
+        snap["hits_taken"] = {pid: self.hits_taken.get(pid, 0) for pid in self.players}
+        # Only after NEVER_HIT_AFTER_S: at kickoff everyone is legitimately on zero, and a list that
+        # cries wolf every match start is a list the operator learns to ignore.
+        if self._elapsed >= NEVER_HIT_AFTER_S:
+            never = sorted(pid for pid in self.players if not self.hits_taken.get(pid))
+            if never:
+                snap["never_hit"] = never
+                snap["never_hit_after_s"] = round(self._elapsed)
         return snap
 
 

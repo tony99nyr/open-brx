@@ -115,7 +115,7 @@ def main():
     print(f"\n  3. decoded {heard}/{shots}   bit-exact {exact}/{shots}")
     if exact == shots:
         print("     OK INSTRUMENT GOOD: the emitter emits, the receiver decodes, the link is clean.\n"
-              "        ⚠️ This says NOTHING about emitter->tagger geometry at bench range. A board\n"
+              "        !! This says NOTHING about emitter->tagger geometry at bench range. A board\n"
               "        aimed squarely at the emitter is far more sensitive than a headset dome:\n"
               "        10/10 witnessed vs 4/10 registered was measured on 2026-09-02. Do not read\n"
               "        this as 'the tagger is at fault'.")

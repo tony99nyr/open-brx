@@ -76,3 +76,60 @@ def test_re_arming_clears_a_previous_failure():
     state["fail"] = False
     assert _run(d._arm_one("p1")) is True
     assert not d.arming_failures.get("p1")
+
+
+# --- "never hit all match" — the cheapest LIVE detector for the F11 class ------ #
+# A gun whose $SIR table did not land looks completely healthy: alive, full pools, answering
+# $QUERY. The only host-visible symptom is that the player is never hit, which no scoreboard
+# would otherwise call out.
+from brx_mcp.modes.driver import NEVER_HIT_AFTER_S
+
+
+def _hit_event():
+    return {"raw": "$HIR,0,0,42,2,1,*", "cmd": "HIR"}
+
+
+def _two_player_driver():
+    async def sender(pid, frame):
+        pass
+    return GameDriver(GameConfig(), {"p1": 1, "p2": 2}, sender, announce=lambda s: None)
+
+
+def test_nobody_is_flagged_at_kickoff():
+    d = _two_player_driver()
+    d.tick(0.0)
+    assert "never_hit" not in d.snapshot()
+
+
+def test_a_player_never_hit_is_flagged_once_the_match_is_underway():
+    d = _two_player_driver()
+    d.tick(0.0)
+    d.feed("p1", _hit_event(), 5.0)
+    d.tick(NEVER_HIT_AFTER_S + 1)
+    snap = d.snapshot()
+    assert snap["never_hit"] == ["p2"], snap.get("never_hit")
+    assert snap["hits_taken"]["p1"] == 1
+
+
+def test_a_quiet_opening_is_not_flagged_before_the_threshold():
+    d = _two_player_driver()
+    d.tick(0.0)
+    d.tick(NEVER_HIT_AFTER_S - 1)
+    assert "never_hit" not in d.snapshot()
+
+
+def test_everyone_hit_means_no_flag():
+    d = _two_player_driver()
+    d.tick(0.0)
+    d.feed("p1", _hit_event(), 1.0)
+    d.feed("p2", _hit_event(), 2.0)
+    d.tick(NEVER_HIT_AFTER_S + 1)
+    assert "never_hit" not in d.snapshot()
+
+
+def test_non_HIR_events_do_not_count_as_being_hit():
+    d = _two_player_driver()
+    d.tick(0.0)
+    d.feed("p1", {"raw": "$HP,45,70,0,*", "cmd": "HP"}, 1.0)
+    d.tick(NEVER_HIT_AFTER_S + 1)
+    assert "p1" in d.snapshot()["never_hit"]
