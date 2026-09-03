@@ -36,6 +36,8 @@ Then, by who you are:
 - **[`bench-tomorrow.md`](bench-tomorrow.md)** — ⭐ **THE bench queue, and the only one.** Everything
   still blocked on a human (trigger pulls, ears, eyes, the grenade), grouped to minimise re-rigging.
   Its **START HERE** block names the first three things in order. **Start here on bench day.**
+- **[`bench-2026-09-03.md`](bench-2026-09-03.md)** — the next dated session sheet: pre-flight,
+  the emitter-range blocker, and what is already closed. A selection from the queue above.
 - **[`bench-next-30.md`](bench-next-30.md)** — a 30-minute **subset** of the above, not a rival plan.
   If the two disagree, `bench-tomorrow.md` wins.
 - **[verification-checklist.md](verification-checklist.md)** — what needs YOU + a tagger to confirm (the

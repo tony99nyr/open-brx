@@ -1,4 +1,4 @@
-# Bench plan — what needs Tony (updated 2026-08-31)
+# Bench plan — what needs Tony (updated 2026-09-02)
 
 Built overnight from the IR session. **Everything in here is blocked on a human**: a trigger pull, an
 ear, an eye, floor space, or the grenade. Everything that could be cracked from the keyboard already
@@ -10,7 +10,22 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
-> ### 🗓️ TODAY (2026-09-01): run [`bench-hour-2026-09-01.md`](bench-hour-2026-09-01.md)
+> ### 🗓️ NEXT (2026-09-03): run [`bench-2026-09-03.md`](bench-2026-09-03.md)
+> A dated selection from this file, with the pre-flight. **This file is still the queue.**
+>
+> 🔴 **BLOCKER, read before planning anything IR:** our emitter registers **5/6 at three INCHES and
+> 0/6 at three FEET** (2026-09-02). The witness hears every shot and a REAL gun registers normally at
+> 3 ft, so the board emits and simply no longer carries — it managed 78/78 and 198/200 earlier the
+> same session, so it degraded in place. **Every item below that needs a hit at realistic range is
+> blocked until that is fixed** (R2 / Q15 / Q16).
+>
+> ✅ **Struck from this queue, solved 2026-09-02:** F11 (`$CLEAR` wipes the `$SIR` table — a gun with
+> no rows silently ignores every hit; ~20 hypotheses died first, do not re-run them), F13 (a respawn
+> within ~2 s of death sticks the headset in the green out-blink; floored at 3 s), the F1 config hunt
+> (no `$GSET`/`$PSET` field switches on the native gauge — we paint it), and the `$CLEAR` safety sweep
+> (now enforced by a test across every shipped frame list).
+>
+> ### 🗓️ PREVIOUS (2026-09-01): [`bench-hour-2026-09-01.md`](bench-hour-2026-09-01.md)
 > A dated one-hour **selection from this file** — items 1 (`$HLED`, shipped-unverified), 2 (F1 gauge),
 > 3 (0.1 multipliers), 4 (1.5a). It carries the gates and the exact commands. **This file is still the
 > queue**; the sheet expires after the session and its results get struck here.
