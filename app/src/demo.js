@@ -39,7 +39,12 @@ export function startDemo({ engine, log }) {
   // the fake Mission Control answering loadout_request / loadout_browse
   const prevReport = engine.report;
   const tutorialFor = w => ({ weapon: { ...w, stats: { mag: w.clip, reserve: w.reserve, dmg: w.dmg, rof: w.rpm, rng: w.rng } },
-    frames: ['$VOL,69,0,*', '$CLEAR,*', '$START,*', '$GSET,0,1,1,0,1,0,50,1,*', '$TID,1,*', `$WEAP,0,${w.weapon_id},*`, '$SPAWN,,*', '$PLAYX,0,*', `$AMMO,0,${w.clip},${w.reserve},1,*`, '$BMAP,0,0,,,,,*'] });
+    frames: ['$VOL,69,0,*', '$CLEAR,*', '$START,*', '$GSET,0,1,1,0,1,0,50,1,*',
+      // $CLEAR wipes the $SIR table and a gun with no rows ignores EVERY hit (F11), so the
+      // real bundle (compile.tutorial_frames) restores it here. The demo omitted the row and
+      // so taught a bundle that would leave a real gun unhittable.
+      '$SIR,0,0,,1,0,0,1,,*',
+      '$TID,1,*', `$WEAP,0,${w.weapon_id},*`, '$SPAWN,,*', '$PLAYX,0,*', `$AMMO,0,${w.clip},${w.reserve},1,*`, '$BMAP,0,0,,,,,*'] });
   engine.report = (kind, body) => {
     if (kind === 'loadout_request') {
       const lo = JSON.parse(JSON.stringify(player.loadout));
