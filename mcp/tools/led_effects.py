@@ -125,7 +125,10 @@ async def main():
     finally:
         await mgr.send("g", "$GLED,,,,5,,,*", reply_window_ms=200)
         await mgr.send("g", "$HLED,,6,,,,,*", reply_window_ms=200)
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await mgr.send("g", "$CLEAR,*", reply_window_ms=200)
+        for _sir in B.SIRS:
+            await mgr.send("g", _sir, reply_window_ms=120)
         try:
             await mgr.disconnect("g")
         except Exception:

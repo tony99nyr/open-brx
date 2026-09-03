@@ -32,6 +32,7 @@ import serial
 
 from bench_common import GSET, SIR_PLAIN   # the shared control frames (its AR/PSET are deliberately its own)
 from brx_mcp.irbridge import payload_parity
+import bench_common as B
 
 # Victim config. Shield 150 is deliberate: it gives a third pool to open headroom in, and
 # shields can only be granted by an IR function-11 event (P16), never by this $PSET token --
@@ -160,7 +161,8 @@ async def main() -> None:
                   "   gun was in the screamer state. Power-cycle, re-aim board B, and re-run." % voids,
                   flush=True)
         try:
-            await mgr.send("p", "$CLEAR,*", reply_window_ms=250)
+            for _f in B.teardown_frames():          # never sign off on a bare $CLEAR (F11)
+                await mgr.send("p", _f, reply_window_ms=250)
             await mgr.disconnect("p")
         except Exception:
             pass

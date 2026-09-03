@@ -124,7 +124,10 @@ async def main():
             note.append("x%.2f" % (d37 / mag) if d37 else "fn37 none")
             print(f"    {label:<22} {str(c):<9} {str(d36):<9} {str(d37):<9} {'  '.join(note)}")
     finally:
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("v")
         except Exception:

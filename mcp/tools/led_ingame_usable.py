@@ -94,7 +94,10 @@ async def main():
             stats(record_roi(x, y, w, h), lbl)
     finally:
         await snd("$GLED,,,,5,,,*", 0.2)
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("g")
         except Exception:

@@ -130,7 +130,10 @@ async def main():
             print(f"    {label}: {ds}  {'consistent' if same else 'INCONSISTENT ACROSS TRIALS'}"
                   f"  -> {'multiplier NOT present (= magnitude)' if ds[0] == mag else f'lands {ds[0]/mag:.2f}x'}")
     finally:
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("v")
         except Exception:

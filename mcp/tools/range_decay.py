@@ -88,7 +88,10 @@ async def main():
                      "%d" % len(body), v, domes or "-"), flush=True)
             await asyncio.sleep(max(0.0, every - SHOTS * 0.9 - 3.0))
     finally:
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("v")
         except Exception:

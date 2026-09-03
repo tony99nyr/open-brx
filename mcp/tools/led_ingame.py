@@ -116,7 +116,10 @@ async def main():
               f"{'HELD' if len(set(out))==1 else 'CHANGING %s' % sorted(set(out))}", flush=True)
     finally:
         await snd("$GLED,,,,5,,,*", 0.2)
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("g")
         except Exception:

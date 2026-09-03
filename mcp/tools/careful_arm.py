@@ -107,7 +107,8 @@ async def main():
         elif not (a or b or c):
             print("   >>> arming is NOT the cause: every variant is deaf, including Callsign's own order.")
     finally:
-        await snd("$CLEAR,*", 0.2)
+        for _f in B.teardown_frames():              # never sign off on a bare $CLEAR (F11)
+            await snd(_f, 0.15)
         try:
             await mgr.disconnect("v")
         except Exception:

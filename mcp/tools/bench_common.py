@@ -136,3 +136,15 @@ def is_alive(lcd: str) -> bool | None:
     if not lcd:
         return None
     return not lcd.startswith("$LCD,0,0")
+
+
+def teardown_frames() -> list[str]:
+    """End-of-run frames that leave the gun HITTABLE. Never end a run on a bare `$CLEAR`.
+
+    `$CLEAR` wipes the `$SIR` table and a gun with no rows silently ignores EVERY hit while
+    reporting alive and healthy (F11, bench-proven 2026-09-02, deterministic 5/5). Several bench
+    tools used to sign off with a lone `$CLEAR`, which handed the NEXT experiment a victim that could
+    not be hit -- almost certainly how "deaf taggers" kept appearing between runs. Clear, then put
+    the table back.
+    """
+    return ["$CLEAR,*"] + list(SIRS)

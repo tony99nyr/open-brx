@@ -100,7 +100,10 @@ async def main():
                 print("\n   >>> %s CLEARED IT. That is a software recovery." % label, flush=True)
                 break
     finally:
+        # $CLEAR wipes the $SIR table; a gun with no rows ignores every hit (F11). Put it back.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("v")
         except Exception:

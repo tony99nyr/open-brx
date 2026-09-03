@@ -164,7 +164,13 @@ async def main():
             print("   %-26s %-20s %-20s %s   pools %s" % (label, str(full), str(hurt), verdict, hp),
                   flush=True)
     finally:
+        # ⚠️ Do NOT end on a bare `$CLEAR`. It WIPES the `$SIR` table, and a gun with no rows
+        # silently ignores every hit while reporting alive and healthy (F11, bench-proven
+        # 2026-09-02). This tool used to leave the victim unhittable for whatever ran next, which is
+        # exactly how a "deaf tagger" gets manufactured between experiments. Re-arm the table.
         await snd("$CLEAR,*", 0.2)
+        for _sir in B.SIRS:
+            await snd(_sir, 0.1)
         try:
             await mgr.disconnect("v")
         except Exception:
