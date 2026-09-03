@@ -7,7 +7,13 @@ ROIs are verified with a 3x3 response matrix before this is worth running).
 
 Sends nothing but `$GLED`: no arming, no damage, no IR. Safe to run any time.
 
-Usage: python gauge_paint_check.py <addr>
+Pass `spawned` as the 2nd arg to arm and SPAWN first, so the gun's native LED animation is running
+underneath. That is the condition a real game has, and it is the one that matters: the animation
+ripples brightness 10-25% but does not change hue, so our colour should still dominate. Verified
+separately 2026-09-02 for a flat colour; this checks it for a partially-lit GAUGE, where a washed
+neighbour is exactly what would break it.
+
+Usage: python gauge_paint_check.py <addr> [spawned]
 """
 import asyncio
 import json
@@ -60,6 +66,15 @@ async def main():
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
     async with B.connected(mgr, (sys.argv[1], "v")):
+        if len(sys.argv) > 2 and sys.argv[2] == "spawned":
+            for fr in B.arming_frames(40, 1):
+                await mgr.send("v", fr, reply_window_ms=140)
+                await asyncio.sleep(0.15)
+            await mgr.send("v", B.AR, reply_window_ms=140)
+            await asyncio.sleep(0.2)
+            await mgr.send("v", "$SPAWN,,*", reply_window_ms=300)
+            await asyncio.sleep(3.0)
+            print("   ARMED + SPAWNED: the native animation is running underneath.\n")
 
         async def paint(frame, settle=1.3):
             await mgr.send("v", frame, reply_window_ms=140)

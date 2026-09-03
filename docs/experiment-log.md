@@ -5217,3 +5217,45 @@ is the signal. Judged by saturated-pixel fraction the two populations do not ove
 
 Worth naming because the tempting move was to nudge the threshold until the table went green, which
 would have "passed" a measurement that could not tell a lit LED from its neighbour's glow.
+
+### 2026-09-02 (night, F1 in-game) — ⚠️ IN-GAME LED CONTROL IS PARTIAL: our paint ALTERNATES with the native animation
+
+## What is established
+
+- **Our `$GLED` paint DOES apply on a spawned gun.** Operator, watching the strip while a one-segment
+  teal frame was held: *"its pulsing blue into 1 teal led"*. The segment is there.
+- **It alternates with the gun's own animation** rather than replacing it. Video at 60 fps, painting
+  RED over the native BLUE: red is the dominant hue in **24%** of frames, in runs up to **1.87 s**
+  with a **median run of 0.33 s**.
+- **Repainting at 4 Hz did not clearly improve it** (24% -> 30%).
+
+## ⚠️ What is NOT established, and why
+
+The percentages above are over the WHOLE 14 s clip while the repaint window was only its last 3 s,
+and `screenrecord` starts 1-2 s late so the video timeline is not aligned to the send times. Total red
+(4.19 s) exceeds the repaint window, so red also appears outside it. **The duty cycle inside the
+repaint window is therefore unmeasured**, and no design decision should be taken from that 30%.
+
+To settle it: align the timeline (paint a known marker colour at a known moment, or timestamp the
+first frame) and measure ONLY within the window.
+
+## ❌ Retractions — two of mine, both caught by the operator's eyes
+
+1. **"A segmented bar does not work on a spawned gun."** WRONG. It was measured with LUMINANCE, which
+   a lit LED's wash across the housing swamps -- the exact error identified and fixed an hour earlier
+   for the unspawned case, then repeated. Tony saw the teal segment directly.
+2. **"Our colour is the dominant hue in 100% of frames"** (earlier the same day) is at best
+   incomplete: measured immediately after painting, inside the window before the native animation
+   repaints. Over a 14 s clip it is 24%.
+
+**Method note.** Three different metrics were tried on this question -- luminance (swamped by wash),
+saturated-pixel fraction (too insensitive on a dimly pulsing gun), and video hue-dominance (right
+instrument, unaligned timeline). Cropping the strip and LOOKING resolved it faster than any of them,
+twice. On this rig, look first.
+
+## Consequence for the feature
+
+An event flash WILL be visible in game, but it strobes against the native pulse rather than reading
+as a clean solid colour. That is probably acceptable for a 0.6-1.5 s event -- a flicker still reads as
+"something happened" -- and it is NOT acceptable for a steady state display. Confirm the duty cycle
+before building anything that depends on a solid colour.

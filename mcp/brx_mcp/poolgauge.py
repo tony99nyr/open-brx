@@ -11,6 +11,17 @@ ten candidates (`$GSET` t8 gameMods 1/2/4/8/16, `$GSET` t4, `$GSET` t5, `$PSET` 
 three LEDs moving together with no per-segment collapse. See `experiment-log.md` 2026-09-02 (night,
 F1). So we paint it.
 
+⚠️ **A SEGMENTED BAR DOES NOT WORK ON A SPAWNED GUN** (measured 2026-09-02, 7 samples per case).
+While the native animation runs, a MIXED frame does not produce mixed output: setting `$GLED,5,9,9`
+left all three LEDs lit at 194/204/191, indistinguishable from `$GLED,5,5,5` at 199/209/195. What DOES
+work in game is the WHOLE STRIP: a uniform colour holds (our hue dominates), and `$GLED,9,9,9` really
+does blank it (155 against 209 native). So in a live game the strip is a ONE-COLOUR indicator, not a
+three-segment bar. The per-segment mapping below is still correct and still verified on an unspawned
+gun, and is kept for pre-game and lobby use.
+
+This retracts "F1's three-segment gauge is buildable", which was measured on a UNIFORM colour and
+generalised to per-segment control without testing that step.
+
 Everything here is PURE: frames in, frames out, no I/O and no clock. The driver owns the timer and
 the sending. That keeps the mapping testable without a tagger, which matters because the LED
 semantics below cost two sessions to establish and are easy to get subtly wrong.
@@ -43,6 +54,49 @@ HEALTH_BANDS = ((0.66, GREEN), (0.33, YELLOW), (0.0, RED))
 
 REVERT_AFTER_S = 4.0     # Tony: "a few seconds maybe 3-5s"
 
+# Brightness (token 5): 0 off, 1 dim, >=2 full. Night mode dims the strip so a lit gun does not
+# blind its own player or give their position away in the dark.
+BRIGHT_FULL, BRIGHT_DIM = 10, 1
+
+# --- EVENT PAINTS ----------------------------------------------------------- #
+# Tony: "when we get a hit we should flash something. when we get hit we should flash something.
+# when we get healed or get shields or get armor we should paint leds. when we die, when we respawn."
+#
+# These are WHOLE-STRIP colours on purpose: that is the only thing that reliably holds while the
+# native animation runs (see the module note). Each carries its own hold time, because the events
+# differ in how long they should own the strip -- a kill confirm is a blink, being out is a state.
+EVENT_PAINTS = {
+    #  event         colour   hold_s   why this colour
+    "hit_landed":   (WHITE,   0.6),   # you hit someone: brief, bright, unmistakable
+    "hit_taken":    (RED,     0.8),   # you were hit: red is the one colour nobody has to learn
+    "healed":       (GREEN,   1.5),   # health restored
+    "armour_up":    (PURPLE,  1.5),   # matches the armour pool hue
+    "shield_up":    (TEAL,    1.5),   # matches the shield pool hue
+    "died":         (RED,     3.0),   # you are out: long, and red so it reads across the field
+    "respawned":    (WHITE,   1.2),   # back in: a clean flash before the team colour returns
+    "kill_confirm": (ORANGE,  0.6),   # you finished someone
+}
+
+
+def event_frame(event: str, night: bool = False) -> str | None:
+    """Whole-strip paint for a game event, or None if the event has no paint.
+
+    Whole-strip because that is what survives the native animation in a live game. Night mode drops
+    to the dim brightness rather than changing colour: hue is the message, brightness is comfort.
+    """
+    spec = EVENT_PAINTS.get(event)
+    if spec is None:
+        return None
+    colour, _hold = spec
+    b = BRIGHT_DIM if night else BRIGHT_FULL
+    return f"$GLED,{colour},{colour},{colour},0,{b},,*"
+
+
+def event_hold_s(event: str) -> float:
+    """How long this event owns the strip before the team colour returns."""
+    spec = EVENT_PAINTS.get(event)
+    return spec[1] if spec else 0.0
+
 
 def _segments(level: int, maximum: int) -> int:
     """How many of the three LEDs are lit for `level` out of `maximum`.
@@ -74,18 +128,36 @@ def pool_colour(pool: str, level: int, maximum: int) -> int:
     return health_colour(level, maximum)
 
 
-def gauge_frame(pool: str, level: int, maximum: int) -> str:
-    """One `$GLED` frame showing `level`/`maximum` as a three-segment bar for `pool`."""
+def gauge_frame(pool: str, level: int, maximum: int, night: bool = False) -> str:
+    """One `$GLED` frame showing `level`/`maximum` as a three-segment bar for `pool`.
+
+    ⚠️ Segments only render on an UNSPAWNED gun (pre-game, lobby). In a live game use
+    `pool_paint_frame`, which carries the same information as a whole-strip colour.
+    """
     lit = _segments(level, maximum)
     colour = pool_colour(pool, level, maximum)
     leds = [colour if i < lit else DARK for i in range(3)]
-    return f"$GLED,{leds[0]},{leds[1]},{leds[2]},0,10,,*"
+    b = BRIGHT_DIM if night else BRIGHT_FULL
+    return f"$GLED,{leds[0]},{leds[1]},{leds[2]},0,{b},,*"
 
 
-def team_frame(team: int | None) -> str:
+def pool_paint_frame(pool: str, level: int, maximum: int, night: bool = False) -> str:
+    """The IN-GAME form: the whole strip in the pool's colour.
+
+    A live gun cannot show segments, so level is carried by HUE alone -- which is why health shifts
+    green/yellow/red as it falls, and why shield and armour keep a constant hue (their level is not
+    the urgent part; which pool moved is).
+    """
+    colour = pool_colour(pool, level, maximum)
+    b = BRIGHT_DIM if night else BRIGHT_FULL
+    return f"$GLED,{colour},{colour},{colour},0,{b},,*"
+
+
+def team_frame(team: int | None, night: bool = False) -> str:
     """Revert frame: all three LEDs to the team colour."""
     c = TEAM_COLOURS.get(team, DEFAULT_TEAM_COLOUR)
-    return f"$GLED,{c},{c},{c},0,10,,*"
+    b = BRIGHT_DIM if night else BRIGHT_FULL
+    return f"$GLED,{c},{c},{c},0,{b},,*"
 
 
 def changed_pool(before: tuple[int, int, int] | None,
