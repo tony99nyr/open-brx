@@ -65,7 +65,11 @@ export function startDemo({ engine, log }) {
   };
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const roster = [{ player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p-2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
-  const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+  const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor',
+    // `?night` is documented at the top of this file but was hardcoded false here, so the
+    // config message overwrote the flag set from the URL above and the night theme could
+    // never be previewed. Found by the HUD moment suite 2026-09-02.
+    night: q.has('night'), time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
   const bundle = { ...golden, player_id: 'p-demo' };
 

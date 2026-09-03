@@ -456,6 +456,8 @@ export class Hud {
       this._momentAt = m.at;
       if (m.kind === 'kill') this._kill(st, m);
       else if (m.kind === 'redeploy') this._redeploy(st);
+      else if (m.kind === 'hit') this._hit(st, m);
+      else if (m.kind === 'gain') this._gain(st, m);
       else if (m.kind === 'go') this._flash();
     }
   }
@@ -474,6 +476,39 @@ export class Hud {
     this.h.onHaptic && this.h.onHaptic('kill');
     setTimeout(() => el.classList.add('out'), 1800); setTimeout(() => el.remove(), 2200);
   }
+  // TAKING A HIT. Deliberately a single fade, never a repeating flicker: this feedback moved off the
+  // gun's LEDs precisely because winning that surface needed ~30 Hz repaints that strobe, and
+  // flicker in the 10-25 Hz band is the photosensitive-epilepsy trigger range. One transition only.
+  // Renders at night too (dimmer, no whiteout) -- knowing you are being shot is not optional.
+  _hit(st, m) {
+    const d = (m.data) || {};
+    const tk = d.shooter_key || 'red';
+    const el = document.createElement('div');
+    el.className = 'mo hit';
+    const where = d.sensor === 4 ? 'GUN' : d.sensor != null ? 'HEADSET' : '';
+    el.innerHTML = `<div class="vig"></div>
+      <div class="hc"><span class="dmg tab">-${esc(d.dmg)}</span>
+      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
+    this.overlay.appendChild(el);
+    this.h.onHaptic && this.h.onHaptic('hit');
+    setTimeout(() => el.classList.add('out'), 260);
+    setTimeout(() => el.remove(), 700);
+  }
+
+  // GAINING a pool: heal, armour pickup, shield grant. Colour matches the pool so the player learns
+  // one mapping across the gun strip and the HUD (poolgauge.py: shield teal, armour purple, health green).
+  _gain(st, m) {
+    const d = (m.data) || {};
+    const el = document.createElement('div');
+    el.className = `mo gain ${esc(d.pool)}`;
+    const label = d.pool === 'armor' ? 'ARMOUR' : d.pool === 'shield' ? 'SHIELD' : 'HEALTH';
+    el.innerHTML = `<div class="gv"></div>
+      <div class="gc"><span class="amt tab">+${esc(d.amount)}</span><span class="lab">${label}</span></div>`;
+    this.overlay.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 500);
+    setTimeout(() => el.remove(), 1000);
+  }
+
   _redeploy(st) {
     if (this.frame.dataset.env === 'night') return;
     const el = document.createElement('div'); el.className = 'mo redeploy';

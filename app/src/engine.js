@@ -416,6 +416,7 @@ export class Engine {
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0;
+    this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
   }
@@ -462,6 +463,7 @@ export class Engine {
     this.hurtFired = false;
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
+    this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : 'respawned', 'lk');
@@ -647,6 +649,7 @@ export class Engine {
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
     const before = this.hp + this.armor + this.shield;
+    if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
     // Victim-side low-health alert. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15 once per life
@@ -673,6 +676,31 @@ export class Engine {
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
       this.lastHitAt = this.now();
     }
+    // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
+    // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
+    // the detailed feedback — it is the one surface we fully control. See experiment-log 2026-09-02.
+    if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial) {
+      if (dmg > 0 && hp > 0) {
+        // A death sets its own 'down' moment; a hit that kills must not flash "hit" first.
+        this.moment = { kind: 'hit', at: this.now(),
+          data: { dmg, shooter_team: this.latch ? this.latch.shooter_team : 0,
+                  // the KEY, not the tid: the engine already owns tid->key (TEAM_KEY), and a second
+                  // copy of that mapping in the HUD is a divergence waiting to happen
+                  shooter_key: TEAM_KEY[this.latch ? this.latch.shooter_team : 0] || 'red',
+                  sensor: this.latch ? this.latch.sensor : null, hp, armor, shield } };
+      } else if (before > 0) {
+        // Pools went UP: a heal, an armour pickup, or a shield grant. `before > 0` keeps the
+        // spawn/respawn refill out of it — that has its own 'redeploy' moment.
+        const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
+                       ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
+        if (gains.length) {
+          gains.sort((a, b) => b[1] - a[1]);
+          this.moment = { kind: 'gain', at: this.now(),
+            data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };
+        }
+      }
+    }
+    this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
     const wasResync = !!this.resync;
     if (this.resync) this._resyncEvidence('hp');
     if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync is a desync death

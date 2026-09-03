@@ -207,6 +207,35 @@ button:active{filter:brightness(1.15)}
 .redeploy .l .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:34px;letter-spacing:.1em}
 .redeploy .l .sq{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.26em}
 .redeploy.out{animation:wipeout .3s ease-in forwards}
+/* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
+   phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
+   the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */
+.hit{pointer-events:none}
+.hit .vig{position:absolute;inset:0;box-shadow:inset 0 0 200px -20px rgba(255,40,40,.85);background:radial-gradient(ellipse 130% 100% at 50% 50%,transparent 45%,rgba(120,0,0,.35) 100%);animation:hitin .12s ease-out}
+.hit .hc{position:absolute;top:66%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:6px}
+.hit .dmg{font-family:var(--fd);font-style:italic;font-weight:700;font-size:58px;line-height:.8;color:var(--bad);text-shadow:0 0 40px rgba(255,60,60,.7);animation:slam .28s cubic-bezier(.2,1.4,.4,1)}
+.hit .src{font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.2em;padding:3px 14px;transform:skewX(-12deg)}
+.hit.out{animation:hitout .42s ease-in forwards}
+/* GAINING a pool. Colour matches poolgauge.py so one mapping is learned across gun and HUD. */
+.gain{pointer-events:none}
+.gain .gv{position:absolute;inset:0;animation:hitin .14s ease-out}
+.gain.health .gv{box-shadow:inset 0 0 170px -30px rgba(60,230,120,.7)}
+.gain.armor  .gv{box-shadow:inset 0 0 170px -30px rgba(170,110,255,.7)}
+.gain.shield .gv{box-shadow:inset 0 0 170px -30px rgba(60,220,230,.7)}
+.gain .gc{position:absolute;top:66%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px}
+.gain .amt{font-family:var(--fd);font-style:italic;font-weight:700;font-size:48px;line-height:.8;animation:slam .3s cubic-bezier(.2,1.4,.4,1)}
+.gain.health .amt{color:var(--ok);text-shadow:0 0 34px rgba(60,230,120,.6)}
+.gain.armor  .amt{color:#b07cff;text-shadow:0 0 34px rgba(170,110,255,.6)}
+.gain.shield .amt{color:#4fdce6;text-shadow:0 0 34px rgba(60,220,230,.6)}
+.gain .lab{font-size:12px;letter-spacing:.34em;color:var(--mut);font-weight:600}
+.gain.out{animation:hitout .5s ease-in forwards}
+@keyframes hitin{from{opacity:0}to{opacity:1}}
+@keyframes hitout{to{opacity:0}}
+/* Night: keep the information, drop the glare. You must still know you are being shot. */
+[data-env="night"] .hit .vig,[data-env="night"] .gain .gv{box-shadow:none;background:none}
+[data-env="night"] .hit .dmg,[data-env="night"] .gain .amt{text-shadow:none}
+/* Reduced motion: show the same information, without the transitions. */
+@media (prefers-reduced-motion:reduce){.mo,.mo *{animation:none!important;transition:none!important}}
 [data-env="night"] .mo{animation:none!important}
 [data-env="night"] .kill,[data-env="night"] .whiteout{display:none}
 [data-env="night"] .down{background:#000}[data-env="night"] .down .wash,[data-env="night"] .down .ghost{display:none}
