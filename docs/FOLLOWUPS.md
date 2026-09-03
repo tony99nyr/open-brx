@@ -1272,6 +1272,22 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
+## ⬜ F14 — HUD moment nits deferred from the 2026-09-02 polish loop (Low, not blocking)
+
+Two rounds of adversarial review; everything Critical/High/Medium is fixed and mutation-checked.
+These are the Low items, recorded so they are not rediscovered as bugs:
+
+1. **A `gain` landing inside the 250 ms rare-moment guard is silently dropped** — both the overlay
+   and its haptic. Measured: armour restored to max, nothing shown. The pool gauge on the gun still
+   updates, and the guard exists so a hit cannot erase an unrendered kill banner, so this is a
+   deliberate trade rather than a defect. If pickups turn out to matter more than the guard, give
+   `gain` its own slot instead of widening the guard.
+2. **The night hit-chip no longer carries the shooter's team colour** (it is uniformly dim maroon).
+   Intentional: at night the chip was the brightest object on a black HUD. Worth revisiting only if
+   knowing WHICH team shot you matters more than the glare.
+3. `engine.js` drops a `gain` when a frame both damages and grants in the same tick (the `dmg > 0`
+   branch wins). Rare, and the damage is the more urgent half.
+
 ## ✅ F1 — BUILT 2026-09-02, across THREE surfaces (the design changed twice; read this first)
 
 > **The finished shape.** One surface could not carry it, so the feedback is split by WHO the message
