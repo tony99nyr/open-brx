@@ -5259,3 +5259,42 @@ An event flash WILL be visible in game, but it strobes against the native pulse 
 as a clean solid colour. That is probably acceptable for a 0.6-1.5 s event -- a flicker still reads as
 "something happened" -- and it is NOT acceptable for a steady state display. Confirm the duty cycle
 before building anything that depends on a solid colour.
+
+### 2026-09-02 (night, F1) — ⭐ WE **CAN** OVERRIDE THE NATIVE LED ANIMATION: hammer the frame at ~30 Hz
+
+Tony, after I reported in-game control as "partial": *"are you certain? i thought you figured out how
+to override it earlier"* … *"did you try to brute force the led color over native?"* I had not. The
+earlier attempt repainted at **4 Hz**, which is far too slow, and then scored it with a best-window
+search that picked the gun's own arm/spawn animation.
+
+## The measurement (self-aligning: each phase paints a different hue)
+
+Per-second, LED1, spawned gun. Phases are identified by their own colour, so no wall-clock alignment
+is needed -- which is what broke the previous attempt.
+
+| t (s) | red % | green % | blue % | mean RGB | what is happening |
+|---|---|---|---|---|---|
+| 5-12 | 0 | 0 | ~100 | [90, 180, 250] | native only |
+| 13-16 | 0 | 10-35 | 57-83 | [62, 165, 200] | **ONE** green paint -> ~18% duty |
+| 18 | **93** | 0 | 7 | **[236, 63, 115]** | **HAMMERED red at 32 writes/s** |
+| 19 | 58 | 0 | 42 | [207, 91, 163] | hammering tailing off at clip end |
+
+**A single paint holds ~18% of frames. Hammering at ~32 Hz holds 93%.** Repaint rate is the lever.
+
+## What this changes
+
+- ✅ **A solid in-game colour IS available**, contrary to what I concluded an hour earlier. Retract
+  "in-game LED control is partial / our paint merely alternates".
+- **Cost:** ~30 BLE writes per second per gun. For an event flash of 0.6-1.5 s that is 20-50 frames,
+  which is affordable. As a steady-state display it is not, which is the real argument for driving
+  LEDs on EVENTS rather than continuously.
+- The earlier "24%" and "30%" figures were diluted by clips that were mostly native-only, exactly as
+  flagged at the time; they should not have been used to conclude anything, and the conclusion drawn
+  from them was wrong.
+
+## Method note
+
+Three wrong turns on one question: 4 Hz (too slow to test the hypothesis), a best-window search (fooled
+by the arm animation's own red frames), and two runs scored over whole clips that were mostly native.
+The fix each time was a more honest measurement, not a cleverer inference -- and the operator's
+"are you certain?" was worth more than any of them.
