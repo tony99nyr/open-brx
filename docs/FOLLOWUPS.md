@@ -1295,6 +1295,37 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
+## 🟠 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04, from brx-grenade's bench find)
+
+`experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (R0BQT, Tony watching): a spawned gun breathes its
+team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) first takes
+the LED out of the breathing loop**: the gun goes dark and stays dark, and any `$GLED,<c>,<c>,<c>,0,10,*`
+after that HOLDS solid, snaps between colours, and survives firing. **`$SPAWN` re-enables the breathing**, so
+the blank must follow every spawn/revive. Tony is calling it a refactor of the gun-LED game config.
+
+**What today's bundle does** (for the record, so the refactor starts from the truth): in play it sends no
+resting `$GLED`, ceding the body to the firmware breathing, BUT the A11 event bursts DO write `$GLED`
+(three flashes ending on `poolgauge.team_frame`) and `cues.hurt_led` paints the low-health blink. Those
+were tuned against the breathing (a single frame was "invisible" because the firmware repainted within
+~0.33 s -- 2026-09-03). After a blank the firmware no longer repaints, so the burst's "end on the team
+frame" step becomes a HOLD, and the single-frame-is-invisible finding no longer applies.
+
+**Design sketch (mine, not built):**
+1. `compile.py`: `$GLED,,,,5,,,*` right after `$SPAWN,,*` in `spawn` and `revive`; then the presentation's
+   in-play gun frame (`gun.in_play: team|dark|health`, default team colour so the gun looks as it does today).
+2. `presentation.py`: a `gun` block beside `headset` -- in_play (team / dark / health), hit flash colour,
+   low_ammo colour, powerup colour, and whether event bursts end on the in-play frame (they should).
+3. Node (`engine.js`): repaint the in-play gun frame after every spawn/revive (and after a hit if the bench
+   says a hit clears it); a health ramp green → yellow → red on `$HP` changes when `in_play: health`.
+4. `poolgauge.event_burst` / `led_table`: the burst's last step becomes the in-play frame, not `team_frame`.
+
+**Bench first (brx-grenade offered R0BQT):** (a) does a registered HIT clear a painted colour (2026-09-03
+said hits clear the LED -- with or without the blank?); (b) hold time with no traffic; (c) is one blank per
+life enough, or does the breathing come back on any event; (d) does the 3-flash burst still read after a
+blank, and does its final frame hold; (e) does `cues.hurt_led` (the Callsign low-health blink form) still
+run after a blank; (f) does the blank affect the `$SFLASH` sight or the headset. Then build 1-4 with the
+same test-first discipline as A11.6.
+
 ## 🟠 S3 — EXTRACTION ON THE PHONE PATH, HUD-DRIVEN (2026-09-04)
 
 Tony's reference points are **ARC Raiders** and **Fortnite's Sprite extraction** (`game-modes.md` §Extraction,
