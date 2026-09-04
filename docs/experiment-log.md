@@ -6062,6 +6062,11 @@ headset answers the station word and hits itself off a reflection, invisible in 
 Also three short bursts (14–30 edges) on dead-trigger pulls = the headset's respawn request, too short to
 decode here. Receiver on the **headset** next time, not the grenade.
 
+**Is there a hosted config we missed? Checked the APK (same day, `apk-harvest.md` §station modes):** Callsign's
+`RespawnType` is Auto / Scanner (QR by phone camera) / SquadLeaderOnly; there is no `Detect*` command for a
+station or a protocol-15 event; `GrenadeMode` is the thrown blast only; no capture ever carried `$GREN` or a
+proto-15 `$SIR` row. The app never uses the grenade's station modes in a hosted game either.
+
 **What it means:** the Utility Box respawn station is **one word repeated every ~3 s** (arm with mag 56
 before the game or crit 1 during it; revive with mag 6, owner team) — for **native** games. For **our**
 games the firmware's dead state is deaf, so the station has to talk to the node, not the gun → **B23**:

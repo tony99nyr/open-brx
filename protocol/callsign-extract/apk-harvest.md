@@ -74,6 +74,34 @@ So there is **no `$GREN` grenade-config UI** for objective modes. The Companion/
 **grenade STATE DISPLAY** instead — read the grenade's `$HIR,0,15,0,<team>,<mode>` beacons (Hill/Respawn
 broadcast; see `../../docs/reference/grenade.md`). See exp-log #35/#36 and FOLLOWUPS G8/G10.
 
+## Does Callsign integrate the grenade's STATION modes in a hosted game? (checked 2026-09-04 — NO)
+
+Asked after the bench showed a host-driven game ignores the Respawn-station words. Read straight from
+`global-metadata.dat` identifiers (the APK is still at `~/.brx-mcp/callsign-base.apk`):
+
+- **`RespawnType` enum = `AutoRespawn` · `Scanner` · `SquadLeaderOnly`.** `Scanner` is the phone camera:
+  `RespawnByQrCodeCommand`, `DecodeQrCodeCommand`, and `DetectActivateScannerByGunCommand` (a gun button
+  press opens the scanner, the same way `DetectActivateScoreboardByGunCommand` opens the scoreboard).
+  `SquadLeaderOnly` is the squad-revive path (`ReviveTeammateCommand`, `SendReviveCommandsToGun`,
+  `WaitForReviveCommand`, `_timerForReviveAbility`, FSET `SquadReviveKey`).
+- **There is no gun-event detector for a station or a beacon.** The full `Detect*Command` family
+  (~70 classes) has hits, deaths, melee, zoom, gyro, pickups (QR), CTF (QR), loot (QR), scanner and
+  scoreboard activation, connection state — nothing for protocol 15 / grenade / respawn point.
+- **The app's hit model** `BrxGunHitModel` = `shootedDeviceId`, `bulletType` (our `$HIR` tok2, the IR
+  protocol). It carries the field but nothing consumes a value of 15.
+- **`GrenadeMode` enum = FlashBang · Confusion · Molotov (· Gas)** = the *thrown* grenade's blast, i.e.
+  the whole of the app's grenade support is `$GREN` for a paired thrown grenade. Domination is
+  `CapturedDominationBoxes` / `BoxesToWinCount` / `BoxStage2Img` = printed QR "boxes"; King of the Hill
+  has `KingOfHillMoved` notifications (a virtual/moving hill, not an IR point).
+- Wire check: across every captured Callsign game the app sent only the standard set (no `$GREN`, no
+  `$SIR` row for protocol 12–15, no `$RP`/`$RV`).
+
+**Conclusion:** the grenade's Respawn/Hill/Assault/CTF station modes are an **on-gun native-mode
+feature** that Callsign's hosted games never use; the app does stations with QR codes read by the phone
+and revives with `$SPAWN`. That is exactly the shape FOLLOWUPS **B23** proposes for Mission Control.
+Scope: identifier names only (no decompiled logic), so a hidden hosted-mode path that reuses an
+unrelated name would be missed — but there is no gun→app event for it to hang on.
+
 ## Weapon fire modes (bonus — GunWeaponType enum)
 
 `FullAutoFire, Bow, ChargeAndAutoRelease, ChargeAndRelease` — the firing behaviours a `$WEAP`
