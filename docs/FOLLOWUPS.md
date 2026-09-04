@@ -2352,9 +2352,10 @@ so several of these are settled from data rather than recollection.
   "HOST STOPPED THE MATCH" pill until the next config push would do (browser-breaker, 2026-09-03).
 - **F20 · Kill confirm during a reload is deferred** until the RELOADING takeover ends (~2 s) — by construction of the
   overlay ordering; decide whether the kill should interrupt the reload takeover instead.
-- **F21 · ⓘ in the display corner.** The diagnostics button now sits at the frame's top-right corner (2px inset) with
-  `viewport-fit=cover`; on a notched phone in landscape the corner radius may clip it. Check on the first field phone;
-  a 6px inset costs nothing (suite audit, 2026-09-03).
+- **F21 · ⓘ under the status bar / display corner — VERIFY ON DEVICE.** Fixed in code 2026-09-04 (native builds inset the
+  frame 28 px top / 14 px bottom in `fit()`, `android:windowFullscreen` in `android-setup.sh`, `UIStatusBarHidden` in
+  `ios-setup.sh`; APK 0.1.6+). Open only until Tony confirms on the Pixel 4 (Android 13) and the Pixel 10 (Android 15,
+  edge-to-edge) that nothing sits under the bar or the corner radius; then close.
 - ~~**F22 · Quick Switch is HUD-side only.**~~ **RESOLVED 2026-09-04** (same bench: `switch_mult` now scales tok15 on every slot; `quick_switch` is verified). Original note: The `quick_switch` perk (2026-09-04) halves the node's assumed swap window,
   but no `$WEAP` draw-time token is known, so the gun swaps at its native speed regardless. Find the token (diff a
   `$WEAP` frame against the APK's switch-delay field, or time ALT→first `$ALCD` on the new slot with and without a
