@@ -194,7 +194,9 @@ HEADSET_BLANK = "$HLED,,6,,,,,*"
 #            "dark"    = blank only: the gun body is off in play (events still flash)
 #            "health"  = blank, then the health hue (green / yellow / red, poolgauge.HEALTH_BANDS); the node
 #                        repaints on each band change and after every event burst
-GUN_DEFAULT = {"in_play": "team"}
+#   pregame: "team" | "off"  the armed, unspawned gun body: team colour (like the headset) or dark. Walkthrough
+#                            2026-09-04, Tony: "the gun led does not get set on arm, its dark" -> default team.
+GUN_DEFAULT = {"in_play": "team", "pregame": "team"}
 GUN_IN_PLAY = ("native", "team", "dark", "health")
 GUN_BLANK = "$GLED,,,,5,,,*"
 
@@ -343,6 +345,10 @@ def merge(current: dict | None, patch: dict) -> dict:
             if gk == "in_play":
                 if gv not in GUN_IN_PLAY:
                     raise ValueError(f"presentation.gun.in_play must be one of {'|'.join(GUN_IN_PLAY)}")
+                cur[gk] = gv
+            elif gk == "pregame":
+                if gv not in ("team", "off"):
+                    raise ValueError("presentation.gun.pregame must be team|off")
                 cur[gk] = gv
             else:
                 raise ValueError(f"presentation.gun.{gk}: unknown field")
@@ -520,6 +526,15 @@ def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool) -> di
         out["bands"] = [[thr, pg.pool_paint_frame("health", int(round(thr * 1000)) + 1, 1000, night)] for thr, _c in pg.HEALTH_BANDS]
         out["rest"] = out["bands"][0][1]          # full health = the top band
     return out
+
+
+def gun_pregame(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:
+    """The armed-unspawned gun body: [team frame] when `gun.pregame` is team and LEDs are on. A paint holds on an
+    unspawned gun (no breathing loop runs before $SPAWN); the spawn tail then blanks + repaints."""
+    g = {**GUN_DEFAULT, **(profile.get("gun") or {})}
+    if not leds_on or g.get("pregame", "team") != "team":
+        return []
+    return [pg.team_frame(tid, night)]
 
 
 def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:

@@ -256,7 +256,9 @@ def test_headset_death_null_is_rejected_at_merge_not_at_push():
 def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint():
     """A11.7 / S4 (bench 2026-09-04): $GLED,,,,5 after $SPAWN suppresses the firmware breathing; a paint then holds."""
     prof = P.resolve({"mode": "tdm"})
-    assert prof["gun"] == {"in_play": "team"} and P.summary(prof)["gun"] == {"in_play": "team"}   # default since the walkthrough
+    assert prof["gun"] == {"in_play": "team", "pregame": "team"} and P.summary(prof)["gun"]["in_play"] == "team"   # defaults since the walkthrough
+    assert P.gun_pregame(prof, 1, False, True) == ["$GLED,1,1,1,0,10,,*"] and P.gun_pregame(prof, 1, False, False) == []
+    assert P.gun_pregame(P.resolve({"presentation": {"gun": {"pregame": "off"}}}), 1, False, True) == []
     native = P.resolve({"presentation": P.merge(None, {"gun": {"in_play": "native"}})})
     assert native["preset"] == "custom"
     assert P.gun_frames(native, 1, False, True) == {} and P.gun_spawn_tail(native, 1, False, True) == []
@@ -277,6 +279,6 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
     assert P.led_table(team, 1, False, True)["hit_taken"][-1][0] == "$GLED,1,1,1,0,10,,*"
     assert P.led_table(dark, 1, False, True)["hit_taken"][-1][0] == "$GLED,9,9,9,0,10,,*"
     assert P.led_table(native, 1, False, True)["hit_taken"][-1][0] == pg.team_frame(1, False)
-    for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}):
+    for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}, {"gun": {"pregame": "blue"}}):
         with raises(ValueError):
             P.merge(None, bad)

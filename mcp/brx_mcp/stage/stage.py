@@ -572,7 +572,7 @@ class GunStage:
             steps.append({"id": sid, "title": title, "look": look, "action": action, "args": args or {}, "needs_ir": needs_ir,
                           "available": (not needs_ir) or can_ir})
         add("arm", "PRE-GAME (armed, unspawned)",
-            ("headset: TEAM COLOUR held" if hs.get("pregame") else "headset: dark") + " · gun body: the firmware lobby look · no sound", "arm")
+            ("headset: TEAM COLOUR held" if hs.get("pregame") else "headset: dark") + (" · gun body: TEAM COLOUR held" if _pres.gun_pregame(prof, self.profile["tid"], self.profile["night"], bool(hs) or bool(g)) else " · gun body: dark") + " · no sound", "arm")
         add("spawn", "GAME START",
             (("headset: WHITE double flash, then " + ("TEAM colour" if hs.get("in_play") == "team" else "DARK")) if hs else "headset: nothing (LEDs off)")
             + f" · gun body: {gun_txt} · sounds: countdown{', klaxon' if cues.get('klaxon') else ''}", "spawn")

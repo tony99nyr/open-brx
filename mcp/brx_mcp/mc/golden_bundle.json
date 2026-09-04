@@ -28,7 +28,8 @@
     "$BMAP,5,98,,,,,*",
     "$BMAP,8,4,,,,,*",
     "$HLED,1,0,,,10,,*",
-    "$TID,1,*"
+    "$TID,1,*",
+    "$GLED,1,1,1,0,10,,*"
   ],
   "spawn": [
     "$PLAYX,0,*",
@@ -681,7 +682,8 @@
       "carrier": true
     },
     "gun": {
-      "in_play": "team"
+      "in_play": "team",
+      "pregame": "team"
     },
     "custom_events": []
   }

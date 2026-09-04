@@ -536,7 +536,9 @@ class Compiler:
         # spawn / revive / hit exists only when `in_play` is "team" (default: dark, native-like).
         hled = _headset_colour(tid, gc.leds) if hs.get("pregame", "team") == "team" else []
         play_hled = _headset_colour(tid, gc.leds) if hs.get("in_play") == "team" else []
-        head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + [f"$TID,{tid},*"]
+        # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
+        gun_pre = _pres.gun_pregame(prof, tid, gc.is_night_mode(), gc.leds)
+        head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + [f"$TID,{tid},*"] + gun_pre
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]

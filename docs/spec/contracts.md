@@ -667,7 +667,8 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     LED out of the breathing loop**: the body goes dark and stays dark, and any colour painted after it HOLDS
     (colour changes snap; firing, reloads and registered hits do not disturb it; 10 is already maximum
     brightness; the three body LEDs are independent). `$SPAWN` re-enables the breathing. So
-    `presentation.gun = { in_play: native|team|dark|health }`: **default `team`** since the 2026-09-04 walkthrough
+    `presentation.gun = { in_play: native|team|dark|health, pregame: team|off }`: `pregame` (default `team`) paints the
+    armed, unspawned body in the team colour at the end of `head` (a paint holds before `$SPAWN`); `in_play` **default `team`** since the 2026-09-04 walkthrough
     (with the breathing left running every burst alternated with it -- Tony: "you aren't clearing the gleds");
     `native` sends nothing (the firmware breathing, opt-in); team / dark / health put `blank` + `rest` right after `$SPAWN,,*` in BOTH
     `spawn` and `revive`, ship `bundle.gun`, and end every event burst on `rest` instead of the team frame.
