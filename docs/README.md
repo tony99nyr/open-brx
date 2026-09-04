@@ -141,6 +141,7 @@ A stale answer is worse than an open question: an open question warns you, a sta
 - [`hud-review-2026-09-03.md`](hud-review-2026-09-03.md) — the HUD screen review log: 52 items, each with its fix and the screen-truth step that guards it (`cd app && npm run ui:stage` to look, `npm run ui:screens` to prove).
 - [`bench-weap-tokens-2026-09-04.md`](bench-weap-tokens-2026-09-04.md) + [`bench-weap-tokens-discovery-2026-09-04.md`](bench-weap-tokens-discovery-2026-09-04.md) — `$WEAP` tok15 = the swap delay (proven), and the pre-bench discovery + ranked plan for the remaining blind tokens (crit, accuracy, range pair, reload type, secondary block) plus F23.
 - [`utility-roadmap.md`](utility-roadmap.md) — the order of work for the utility phone (stations): what is built, the arming loop, radio hardening, then control point / extraction / powerup / bomb, each with surface, owner, tests and bench gate.
+- [`mode-readiness.md`](mode-readiness.md) — how far off a playable end-to-end **Counter-Strike** and **Extraction** match is: what the mode/scoring code already does vs the gaps (input source, MC integration, CS round-loop/side-swap), the shared objective-station spine, and where the grenade still fits (the B23 bridge).
 - **[m0-game-engine.md](m0-game-engine.md)** — the mode engines (TDM/FFA/infection/LMS/extraction) +
   `GameConfig`; the compiler that turns config → BRX frames now lives in `mcp/brx_mcp/mc/compile.py`.
 - **[sound-architecture.md](sound-architecture.md)** — how BRX audio works: reactive sounds vs
