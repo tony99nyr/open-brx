@@ -30,7 +30,7 @@
 </main>
 <aside class="right">
   <h2>Variants <small style="color:var(--mut)">(each change reloads the state)</small></h2>
-  <label>screen <select id="size"><option value="891x411">Pixel 7 · 891×411</option><option value="852x393">iPhone 15 · 852×393</option><option value="667x375">iPhone SE · 667×375</option><option value="844x330">short · 844×330</option><option value="1180x820">tablet · 1180×820</option></select></label>
+  <label>screen <select id="size"><option value="891x411">Pixel 7 · 891×411</option><option value="852x393">iPhone 15 · 852×393</option><option value="667x375">iPhone SE · 667×375</option><option value="844x330">short · 844×330</option><option value="1180x820">tablet · 1180×820</option><option value="411x891">portrait · Pixel 411×891</option><option value="393x852">portrait · iPhone 393×852</option></select></label>
   <label>team <select id="team"><option>blue</option><option>yellow</option><option>red</option><option>green</option></select></label>
   <label>respawn <select id="respawn"><option>auto</option><option>scanner</option><option>none</option></select> <input id="delay" type="number" value="8" min="1" max="120" style="width:52px" title="respawn delay (s)"> s</label>
   <label><input type="checkbox" id="night"> night theme</label>
@@ -65,14 +65,23 @@
     ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-switch', 'weapon switch (ALT)'], ['live-switch-perk', 'switch with Quick Switch perk'], ['live-alert', 'game event banner'], ['live-medals', 'kill with medals'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['down-hold', 'scanner · at the station, delay finishing'], ['down-find', 'scanner · no station'], ['down-find-presence', 'scanner · presence gate (no trigger)'], ['down-approach', 'scanner · walking to it'], ['down-at', 'scanner · at the station'], ['redeploy', 'just respawned']]],
     ['Trouble', [['live-nogun', 'gun link lost mid-match'], ['resync', 'gun relinked → resync prompt'], ['live-mclost', 'MC connection lost'], ['panic', 'host PANIC']]],
     ['End', [['result', 'match result'], ['over', 'MATCH COMPLETE']]],
+    // the UTILITY role: a spare phone as an item on the field (www/utility.html, its own page; no brxDemo events)
+    ['Utility phone', [['util:respawn:1:1', 'respawn station · blue #1'], ['util:respawn:255:2', 'respawn station · any team #2'], ['util:powerup:2:1', 'powerup · yellow'], ['util:extraction:255:1', 'extraction zone'], ['util:bomb:0:1', 'bomb · red'], ['util:control:255:1', 'control point']]],
   ];
+  const UTIL_TEAM = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green', 255: 'any' };
   const $ = id => document.getElementById(id);
   const list = $('stages');
   for (const [grp, items] of STAGES) { const h = document.createElement('h2'); h.textContent = grp; list.appendChild(h);
     for (const [id, desc] of items) { const b = document.createElement('button'); b.dataset.stage = id; b.innerHTML = `${id}<small>${desc}</small>`; b.onclick = () => { cur = id; try { localStorage.setItem('brx-stage', id); } catch {} load(); }; list.appendChild(b); } }
   let cur = 'kitted'; try { cur = localStorage.getItem('brx-stage') || cur; } catch {}
   const iframe = $('hud');
-  function url() { const p = new URLSearchParams(); p.set('demo', ''); p.set('stage', cur);
+  function url() {
+    if (cur.startsWith('util:')) {   // preset the station (same origin → the page reads localStorage brx.utility), then load the utility page
+      const [, kind, team, id] = cur.split(':');
+      try { localStorage.setItem('brx.utility', JSON.stringify({ kind, team: +team, id: +id, tx: 'high', threshold: -74, dwell: 800, game: 0 })); } catch {}
+      return '/hud/utility.html?stage';
+    }
+    const p = new URLSearchParams(); p.set('demo', ''); p.set('stage', cur);
     for (const k of ['night', 'locked', 'reject']) if ($(k).checked) p.set(k, '');
     if ($('team').value !== 'blue') p.set('team', $('team').value);
     if ($('respawn').value !== 'auto') p.set('respawn', $('respawn').value);
@@ -81,7 +90,7 @@
   function load() { $('hlog').hidden = true; $('hlog').textContent = ''; const [w, h] = $('size').value.split('x'); iframe.width = w; iframe.height = h; const u = url(); $('url').textContent = location.origin + u; $('stage').textContent = cur;
     for (const b of list.querySelectorAll('button')) b.classList.toggle('on', b.dataset.stage === cur); iframe.src = u + '&_=' + Date.now(); }
   for (const id of ['size', 'team', 'respawn', 'delay', 'night', 'locked', 'reject']) $(id).addEventListener('change', load);
-  function ev(name, ...args) { const w = iframe.contentWindow; const d = w && w.brxDemo; const say = m => { $('hlog').textContent = m; $('hlog').hidden = false; }; if (!d || !d[name]) { say(`no brxDemo.${name} in the frame yet`); return; } try { d[name](...args); } catch (e) { say('event failed: ' + e.message); } }
+  function ev(name, ...args) { if (cur.startsWith('util:')) { say('the utility page has no event panel yet (it needs a demo hook in utility.js)'); return; } const w = iframe.contentWindow; const d = w && w.brxDemo; const say = m => { $('hlog').textContent = m; $('hlog').hidden = false; }; if (!d || !d[name]) { say(`no brxDemo.${name} in the frame yet`); return; } try { d[name](...args); } catch (e) { say('event failed: ' + e.message); } }
   setInterval(() => { try { const w = iframe.contentWindow, b = w && w.brx; if (!b) return; const s = b.engine.state();
     $('phase').textContent = s.phase + (s.ended ? (s.endAck ? ' · over' : ' · result') : '') + (s.browsing ? ' · browsing' : '') + (s.tutorial ? ' · tryout' : '');
     $('st').textContent = `hp ${s.hp}/${s.maxHp}  armor ${s.armor}/${s.maxArmor}  ammo ${s.ammo}/${s.reserve}  alive ${s.alive}  ws ${s.wsState}  ble ${s.bleUp}  ready ${s.ready}\n` +
