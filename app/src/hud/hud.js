@@ -490,7 +490,7 @@ export class Hud {
       const pct = Math.min(100, Math.round(100 * st.reloadMs / st.reloadTotalMs)), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);
       if (this._moment !== 'reload') {
         this._moment = 'reload';
-        this.overlay.innerHTML = `<div class="mo reloading"><div class="c"><span class="t">RELOADING</span><span class="s">${esc(st.weapon)} · HOLD FIRE</span>
+        this.overlay.innerHTML = `<div class="mo reloading"><div class="c"><span class="t">RELOADING</span><span class="s">${esc(st.weapon)}</span>
           <div class="track"><i id="rlbar" style="width:${pct}%"></i></div><span class="n tab" id="rlleft">${left.toFixed(1)}S</span></div></div>`;
         this.h.onHaptic && this.h.onHaptic('tap');
       } else { const b = this.overlay.querySelector('#rlbar'); if (b) b.style.width = pct + '%'; const n = this.overlay.querySelector('#rlleft'); if (n) n.textContent = left.toFixed(1) + 'S'; }
