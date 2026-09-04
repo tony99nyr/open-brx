@@ -223,7 +223,10 @@ def test_headset_block_defaults_validation_and_frames():
     assert hs["pregame"] == ["$HLED,1,0,,,10,,*"] and hs["rest"] == P.HEADSET_BLANK
     assert hs["start"][0][0] == "$HLED,6,2,120,120,10,2,*" and hs["start"][-1] == [P.HEADSET_BLANK, 0.0]
     assert hs["hit"][0][0].startswith("$HLED,0,2,") and hs["hit"][-1][0] == P.HEADSET_BLANK
-    assert hs["death"] == [] and hs["respawn"][0][0] == hs["start"][0][0]
+    # while out: OUR green slow blink. "native" (write nothing) leaves the headset DARK in a hosted game --
+    # the firmware's out-blink does not fire once the node owns the headset (Tony, phones, 2026-09-04).
+    assert hs["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]] and hs["respawn"][0][0] == hs["start"][0][0]
+    assert P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "native"}})}), 1, True)["death"] == []
     assert set(hs["carrier"]) == {"1", "2"} and hs["carrier"]["2"][0][0] == "$HLED,2,2,300,300,10,200,*"
     assert P.headset_frames(prof, 1, False) == {}
     # every flash ends on an explicit state frame (count-limited blinks ending dark are unverified)

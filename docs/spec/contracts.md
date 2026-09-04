@@ -594,12 +594,14 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     enabled) plus the live confidence, for the MC's read-only ADVANCED view.
   - **A11.6 The headset (2026-09-04, Tony).** `presentation.headset = { pregame: team|off, start_flash, in_play:
     dark|team, hit: colour|null, death: native|colour, respawn_flash, carrier }`, defaults team / on / **dark** /
-    red / native / on / on. The compiler emits **`bundle.headset`** = `{ in_play, rest, blank, pregame: string[],
+    red / **green** / on / on. (`death: native` writes nothing -- and in a hosted game the firmware's own
+    out-blink does NOT fire once the node has taken the headset, so the player stays dark; Tony, phones,
+    2026-09-04. The default is therefore OUR green slow blink, re-asserted by the node while a scanner-respawn
+    player stays down.) The compiler emits **`bundle.headset`** = `{ in_play, rest, blank, pregame: string[],
     start, hit, death, respawn: [frame, hold_s][], carrier: { [tid]: [frame, hold_s][] } }`. The node drives the
     headset from it: the lobby paint is `head`'s `$HLED` (`pregame`); at T-0 it writes `start` (a white double
     flash, then `rest` -- dark by default); on every damaging hit `hit` then `rest` (the low-health alert's own
-    `hurt_led` wins on that hit); while out, nothing by default (the firmware's green out-blink) or our slow blink
-    in `death`'s colour; on revive `respawn` then `rest`; while carrying the flag a blink in the FLAG team's colour
+    `hurt_led` wins on that hit); while out, our slow blink in `death`'s colour (green by default); on revive `respawn` then `rest`; while carrying the flag a blink in the FLAG team's colour
     (`alert{kind:"objective_taken", carrier, flag_tid}` starts it, `objective_scored`/`flag_returned`/death end it),
     and that blink survives hits. `in_play: team` restores the A11 behaviour (team colour held, repainted after
     spawn/revive/hit; `cues.team_led` and the spawn/revive `$HLED` tails exist only then). Every flash sequence

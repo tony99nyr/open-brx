@@ -6088,3 +6088,14 @@ driven by the `objective_taken` alert naming the carrier and the flag's team. Te
 test_presentation / test_headset_team, engine tests (start, hit, alert-suppressed hit, carrier survives
 a hit, scored ends it, native death, respawn; and the in_play=team variant).
 
+### 2026-09-04 — ⚠️ IN A HOSTED GAME THE HEADSET DOES NOT BLINK WHILE OUT: the F13 "native out-blink" is not there to lean on
+
+Tony, live on the phones (relayed by the brx-grenade session): a downed player's headset stays DARK in
+our host-driven game. The A11.6 default `death: "native"` assumed the firmware's green out-blink (seen
+on 2026-09-02 during bench deaths) would run underneath -- it does not once the node has taken the
+headset (dark in play, hit flashes). In scanner-respawn a player walking to a station is therefore
+invisible as "out". Default flipped to OUR green slow blink (`$HLED,3,2,400,400,10,200`); `native`
+stays as an opt-out. The blink is ~160 s at count 200 and token 6's upper range is unverified, so the
+node re-asserts it while a player stays down (brx-grenade's engine change). Server-side only: the
+death sequence lives in the compiled bundle, no APK needed for the default itself.
+

@@ -157,11 +157,18 @@ def alert_body(kind: str, extra: dict | None = None) -> dict:
 #   start_flash: bool                T-0: a white double-flash, then the in-play state
 #   in_play:     "dark" | "team"     between events: dark (native-like) or held on the team colour
 #   hit:         colour | null       a short flash of that colour on every hit taken (null = leave native)
-#   death:       "native" | colour   while out: the firmware's green out-blink, or our slow blink in a colour
+#   death:       "native" | colour   while out: our slow blink in a colour (default GREEN, the native look).
+#                "native" = write nothing -- ⚠ in a HOSTED game the firmware's own out-blink does NOT fire once
+#                the node has taken the headset (Tony, live on the phones, 2026-09-04): the headset just stays
+#                dark, and in scanner-respawn a downed player walking to a station is invisible as "out".
 #   respawn_flash: bool              back in: a white double-flash, then the in-play state
 #   carrier:     bool                holding the flag / objective: blink the FLAG colour until scored/lost/dead
 HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": pg.RED,
-                   "death": "native", "respawn_flash": True, "carrier": True}
+                   "death": pg.GREEN, "respawn_flash": True, "carrier": True}
+# The out-blink is ~0.8 s per cycle; 200 cycles is ~160 s. A scanner-respawn player can be down longer, so
+# the node re-asserts frames.headset.death while it stays down (brx-grenade, engine side); the count itself is
+# kept at 200 because token 6's upper range is unverified on hardware.
+DEATH_BLINK_COUNT = 200
 HEADSET_BLANK = "$HLED,,6,,,,,*"
 
 _BASE = {"announcer": True, "gun_flash": True, "headset_team": True, "sight_flash": True,
@@ -432,7 +439,7 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
                  "pregame": [team_paint] if (h["pregame"] == "team" and team_paint) else [],
                  "start": [[white2, 0.6], [rest, 0.0]] if h["start_flash"] else [[rest, 0.0]],
                  "hit": [[_blink(h["hit"], 100, 100, 2), 0.5], [rest, 0.0]] if h["hit"] is not None else [],
-                 "death": [] if h["death"] == "native" else [[_blink(int(h["death"]), 400, 400, 200), 0.0]],
+                 "death": [] if h["death"] == "native" else [[_blink(int(h["death"]), 400, 400, DEATH_BLINK_COUNT), 0.0]],
                  "respawn": [[white2, 0.6], [rest, 0.0]] if h["respawn_flash"] else [[rest, 0.0]],
                  "carrier": {}}
     if h["carrier"]:
