@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-09-04T16:50:34.832Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-09-04T16:55:17.914Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -3543,7 +3543,7 @@ Source: app/README.md, CLAUDE.md §Hard rules
 
 ## BRX Combat HUD for Android
 One phone drives one BRX tagger over native Bluetooth LE, runs the match loop (spawn, ammo, lives, respawn clock) and reports to Mission Control over the field Wi-Fi. On the phone it installs as **BRX Companion**.
-Download: https://open-brx.iamrossi.workers.dev/download/brx-companion-0.1.3-android-debug.apk (5.6 MB, version 0.1.3, built 2026-09-04, sha256 23a758a1bb4d9593daf06c365c6d44e2dbf97ccd341dc668ee6f263047ac5a19)
+Download: https://open-brx.iamrossi.workers.dev/download/brx-companion-0.1.4-android-debug.apk (5.4 MB, version 0.1.4, built 2026-09-04, sha256 96b2a8eb304ac57537813c34a96fa3e46dac5159b354835ea0727ef609f9a008)
 
 Source: app/README.md, docs/spec/node.md §3
 
