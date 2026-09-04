@@ -86,8 +86,13 @@ export class Hud {
     window.addEventListener('resize', () => this.fit()); this.fit();
   }
   fit() {
-    // the stage's CONTENT box: the viewport minus the safe-area padding (status bar / notch), so the frame never sits under them
-    const st = this.frame.parentElement; const w = (st && st.clientWidth) || window.innerWidth, h = (st && st.clientHeight) || window.innerHeight;
+    // On the phone the OS status bar (clock / battery / signal) is drawn OVER the web view — Android 15 forces
+    // edge-to-edge and reports env(safe-area-inset-top) as 0 — so the top-right ⓘ sat under it (Tony, device
+    // 2026-09-04). Native builds get a fixed top margin across the whole frame; the frame scales into what is left.
+    const st = this.frame.parentElement;
+    if (st && !this._nativeInset) { this._nativeInset = true; try { const C = window.Capacitor; if (C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) st.style.paddingTop = 'max(env(safe-area-inset-top, 0px), 28px)'; } catch (_) { /* browser */ } }
+    // the stage's CONTENT box: the viewport minus that padding, so the frame never sits under a bar or a notch
+    const w = (st && st.clientWidth) || window.innerWidth, h = (st && st.clientHeight) || window.innerHeight;
     const cs = st && typeof getComputedStyle === 'function' ? getComputedStyle(st) : null;
     const pw = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0, ph = cs ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) : 0;
     const s = Math.min((w - pw) / 844, (h - ph) / 390);
@@ -385,7 +390,7 @@ export class Hud {
     const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
     const bar = (cls, w) => `<div class="near ${cls}"><i style="width:${w}%"></i></div>`;
     if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">RUN TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">THEN PULL THE TRIGGER THERE</span>`;
-    if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER TO THE STATION</span>${bar('', pct)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
+    if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER</span>${bar('', pct)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
     if (hint === 'hold') return `<span class="n nn on">▣</span><span class="ins on">HOLD…</span>${bar('on hold', 100)}<span class="lab on">AT THE STATION · ALMOST THERE</span>`;
     if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="ins on">PULL THE TRIGGER TO RESPAWN</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
     return `<span class="n nn on">▣</span><span class="ins on">RESPAWNING…</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
@@ -508,7 +513,7 @@ export class Hud {
       if (this._moment !== 'down') {
         this._moment = 'down';
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
-          <div class="c"><div class="l2"><span class="t">DOWN</span><span class="kb">KILLED BY <b style="background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
+          <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">KILLED BY <b style="background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
         this._flash();

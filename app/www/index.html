@@ -206,6 +206,13 @@ button:active{filter:brightness(1.15)}
 .down .l2{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .down .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;letter-spacing:.14em;color:var(--bad);text-shadow:0 0 40px rgba(255,60,60,.6)}
 .down .kb{display:flex;align-items:center;gap:8px;font-size:13px;letter-spacing:.14em;color:var(--mut);font-weight:600}
+/* scanner mode: the title slowly alternates DOWN ⇄ RESPAWN AT STATION (a 6 s crossfade cycle — teaches the mechanic, far below any flicker band) */
+.down .tt{position:relative;display:block;height:64px;min-width:260px}
+.down .tt .t{position:absolute;right:0;top:0;line-height:1;white-space:nowrap;animation:downA 6s ease-in-out infinite}
+.down .tt .t2{font-size:34px;line-height:.92;letter-spacing:.1em;text-align:right;color:var(--num);text-shadow:0 0 30px color-mix(in srgb,var(--glow) 40%,transparent);animation:downB 6s ease-in-out infinite;opacity:0}
+@keyframes downA{0%,40%{opacity:1}50%,90%{opacity:0}100%{opacity:1}}
+@keyframes downB{0%,40%{opacity:0}50%,90%{opacity:1}100%{opacity:0}}
+[data-env="night"] .down .tt .t2{text-shadow:none}
 .down .kb b{font-family:var(--fd);font-weight:700;padding:2px 12px;transform:skewX(-12deg);display:inline-block}
 .down .n{font-family:var(--fd);font-style:italic;font-weight:700;font-size:190px;line-height:.8;animation:heartbeat 1s infinite}
 .down .lab{font-size:12px;letter-spacing:.34em;color:var(--mut);font-weight:600;text-align:center;white-space:nowrap}

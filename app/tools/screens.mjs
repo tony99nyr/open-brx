@@ -230,8 +230,10 @@ for (const view of VIEWS) {
     if (!has) { await pg.close(); console.log('       (engine without stations — step skipped)'); return; }
     const read = () => pg.evaluate(() => { const l = document.querySelector('.down .lab'), i = document.querySelector('.down .ins'); const b = document.querySelector('.down .near i'); return { hint: window.brx.engine.state().respawnHint, ins: i ? i.textContent.trim() : null, lab: l ? l.textContent.trim() : null, bar: b ? parseFloat(b.style.width) : null, on: !!document.querySelector('.down .ins.on') }; });
     let r = await read(); must(r.hint === 'find_station' && r.ins === "RUN TO YOUR TEAM'S RESPAWN STATION" && r.lab === 'THEN PULL THE TRIGGER THERE' && r.bar === null, JSON.stringify(r));
+    const title = await pg.evaluate(() => ({ a: (document.querySelector('.down .tt .t') || {}).textContent, b: (document.querySelector('.down .tt .t2') || {}).innerText, anim: getComputedStyle(document.querySelector('.down .tt .t2')).animationName }));
+    must(title.a === 'DOWN' && /RESPAWN\s+AT STATION/.test(title.b || '') && title.anim === 'downB', 'title cycle: ' + JSON.stringify(title));
     await pg.evaluate(() => window.brxDemo.station(-89, false)); await pg.waitForTimeout(500); r = await read();
-    must(r.hint === 'approach' && r.ins === 'GET CLOSER TO THE STATION' && /-89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
+    must(r.hint === 'approach' && r.ins === 'GET CLOSER' && /-89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
     await pg.evaluate(() => window.brxDemo.station(-70, true)); await pg.waitForTimeout(500); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-at.png` }); await pg.close();
     must(r.hint === 'pull_trigger' && r.ins === 'PULL THE TRIGGER TO RESPAWN' && r.bar === 100 && r.on, JSON.stringify(r));
   });
