@@ -493,7 +493,8 @@ export class Hud {
     // flag set for the whole DOWN screen and hid GUN LINK LOST exactly when it mattered (pass-2 review 2026-09-03).
     const reloadUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.reloading);
     const switchUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.switching && !reloadUp);
-    const tk = reloadUp ? 'reload' : switchUp ? 'switch' : '';
+    const reconcileUp = !!(st.phase === 'live' && st.reconciling);
+    const tk = reloadUp ? 'reload' : switchUp ? 'switch' : reconcileUp ? 'reconcile' : '';
     if ((this.frame.dataset.takeover || '') !== tk) { if (tk) this.frame.dataset.takeover = tk; else delete this.frame.dataset.takeover; }
     // T-MINUS while armed
     if (st.phase === 'armed' && st.tMinusMs != null) {
