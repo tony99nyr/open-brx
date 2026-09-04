@@ -538,7 +538,7 @@ class Compiler:
         play_hled = _headset_colour(tid, gc.leds) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
         gun_pre = _pres.gun_pregame(prof, tid, gc.is_night_mode(), gc.leds)
-        head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + [f"$TID,{tid},*"] + gun_pre
+        head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]

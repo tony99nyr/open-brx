@@ -826,10 +826,38 @@ def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn()
     assert b["spawn"][1:4] == ["$SPAWN,,*", "$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
     assert b["revive"][0:3] == ["$SPAWN,,*", "$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
     assert b["gun"] == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*"}
-    assert b["head"][-2:] == ["$TID,1,*", "$GLED,1,1,1,0,10,,*"]         # pregame: armed body in the team colour
-    assert C.compile({**_cfg(), "presentation": {"gun": {"pregame": "off"}}}, _player(), _TEAMS)["head"][-1] == "$TID,1,*"
+    assert b["head"][-2:] == ["$GLED,1,1,1,0,10,,*", "$TID,1,*"]         # pregame: armed body in the team colour, head still ends with $TID
+    off = C.compile({**_cfg(), "presentation": {"gun": {"pregame": "off"}}}, _player(), _TEAMS)["head"]
+    assert off[-1] == "$TID,1,*" and not off[-2].startswith("$GLED,1,1,1")
     assert b["leds"]["hit_taken"][-1][0] == "$GLED,1,1,1,0,10,,*"
     h = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "health"}}}, _player(), _TEAMS)
     assert h["spawn"][2:4] == ["$GLED,,,,5,,,*", "$GLED,3,3,3,0,10,,*"] and len(h["gun"]["bands"]) == 3
     off = C.compile({**_cfg(led={"mode": "off"}), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
     assert "gun" not in off and not any(f.startswith("$GLED") for f in off["spawn"])
+
+
+def test_every_mode_and_preset_paints_headset_and_gun_body_pregame():
+    """Locked in (Tony, walkthrough 2026-09-04): "seeing hled and gled on all equipment after arm is a good indicator
+    that everything is connected pregame. lets lock that in for every mode." With LEDs on, every mode's default and
+    every preset's head carries the headset team paint AND the gun-body team paint, before the closing $TID."""
+    from brx_mcp.mc import presentation as P
+    from brx_mcp.mc.state import default_config, MODES
+    for m in MODES:
+        for preset in [None] + sorted(P.PRESETS):
+            cfg = default_config(m["mode"])
+            cfg["config_id"] = "c1"
+            if preset:
+                cfg["presentation"] = P.merge(cfg["presentation"], {"preset": preset})
+            for t in cfg["teams"]:
+                tid, team = int(t["tid"]), t["team_id"]
+                b = C.compile(cfg, _player(team=team), cfg["teams"])
+                head = b["head"]
+                assert head[-1] == f"$TID,{tid},*", (m["mode"], preset)
+                assert f"$HLED,{tid},0,,,10,,*" in head, ("headset pregame missing", m["mode"], preset)
+                gled = [f for f in head if f.startswith("$GLED,") and not f.startswith("$GLED,,,,5")]
+                assert gled and gled[-1].startswith(f"$GLED,{_team_colour(tid)},"), ("gun pregame missing", m["mode"], preset, gled)
+
+
+def _team_colour(tid):
+    from brx_mcp import poolgauge as pg
+    return pg.TEAM_COLOURS.get(tid, pg.DEFAULT_TEAM_COLOUR)
