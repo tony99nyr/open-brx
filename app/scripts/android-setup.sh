@@ -83,6 +83,9 @@ ENTRIES = [
     # camera look-through (@capacitor-community/camera-preview) and the in-app MC QR scanner
     ('android.permission.CAMERA',
      '    <uses-permission android:name="android.permission.CAMERA" />\n'),
+    # utility mode: a phone that IS a station advertises (app/plugins/brx-beacon); Android 12+ runtime permission
+    ('android.permission.BLUETOOTH_ADVERTISE',
+     '    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />\n'),
 ]
 
 # 2b) allow cleartext ws:// to the private LAN (API 28+ blocks it by default). Capacitor's

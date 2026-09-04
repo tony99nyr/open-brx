@@ -9,6 +9,7 @@
 // literal templates (`$SFLASH,*`, `$PLAYX,0,*`) and the pre-config probe set (contracts §3/§8).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
+import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 export const C = {
   STATUS_HEARTBEAT_MS: W.STATUS_HEARTBEAT_MS, SYNC_FRESH_MS: W.SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS: W.FEEDBACK_MAX_AGE_MS,
   LATE_ARM_GRACE_MS: W.LATE_ARM_GRACE_MS, DEATH_LATCH_MS: W.DEATH_LATCH_MS, RESYNC_PROBE_S: W.RESYNC_PROBE_S,
@@ -108,6 +109,8 @@ export class Engine {
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.configPending = false;     // config arrived while the gun was unlinked → write head on relink
     this.pendingTeardown = null;    // 'end' | 'panic' owed to the gun once it relinks
+    this.stations = [];             // utility items in radio range (beacon.js Presence entries), newest snapshot from the app
+    this._stationSig = '';
   }
 
   // ---------- persistence (§3.7) ----------
@@ -159,6 +162,8 @@ export class Engine {
   get maxArmor() { return (this.config && this.config.health && this.config.health.max_armor) || 70; }
   get respawnDelayMs() { return ((this.config && this.config.respawn && this.config.respawn.delay_s) || 10) * 1000; }
   get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
+  /** scanner respawn: 'trigger' = at the station AND pull the trigger (default); 'presence' = being at the station is enough */
+  get respawnGate() { return (this.config && this.config.respawn && this.config.respawn.gate) || 'trigger'; }
   get timeLimitMs() { const s = this.config && this.config.time_limit_s; return s ? s * 1000 : null; }
   get goLiveT() { return this.start ? this.start.go_live_t : null; }
   get endT() { return (this.goLiveT && this.timeLimitMs) ? this.goLiveT + this.timeLimitMs : null; }
@@ -474,6 +479,11 @@ export class Engine {
     }
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
+      // Recovery: a cold boot / resync can land us DOWN (alive false) with no death time — deadAt is not
+      // persisted, and resync observes a dead gun without stamping one. Without a deadAt the respawn logic
+      // (timer, scanner hint, revive gate) all bail, so a recovered player is stuck with no way back
+      // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
+      if (!this.alive && !this.deadAt && !this.resync) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
       if (this.endT) {   // A11.4 clock callouts from the node's own synced end time: edge-triggered, once each
         const left = this.endT - now, prev = this._prevLeft != null ? this._prevLeft : left; this._prevLeft = left;
         for (const [ms, k] of [[60000, 'time_60'], [30000, 'time_30'], [10000, 'time_10']]) {
@@ -482,6 +492,11 @@ export class Engine {
       }
       if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync) {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
+      }
+      // utility.md §4: a scanner respawn with the presence gate revives the moment the player has dwelt at
+      // their team's respawn station past the delay. The trigger gate (default) waits for $BUT,0,1 instead.
+      if (this.respawnType === 'scanner' && this.respawnGate === 'presence') {
+        const st = this._stationRevivable(now); if (st) { this._resyncRevive = false; this._revive(false, st.id); }
       }
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
@@ -496,7 +511,7 @@ export class Engine {
     if (this.resync) this._resyncTick();
   }
 
-  _revive(resync) {
+  _revive(resync, stationId = null) {
     this.reloading = null;                          // a reload that started in the last life does not follow you into this one
     if (!this.frames) return;
     this._write(this.frames.revive, 'revive');
@@ -504,9 +519,9 @@ export class Engine {
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
-    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}) });
+    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
-    this.log(resync ? 'resync respawn' : 'respawned', 'lk');
+    this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._event('respawned');   // A11 (after the revive frames, so the burst ends on the fresh team colour)
     this._changed();
   }
@@ -666,11 +681,59 @@ export class Engine {
         // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
         if (+t[1] === 1 && +t[2] === 1) this._altPressed();
         if (+t[1] === 2 && +t[2] === 1) this._reloadPulled();
+        if (+t[1] === 0 && +t[2] === 1) this._triggerPulled();   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
         break;
       }
       default: break;
     }
     this._changed();
+  }
+
+  // ---------- utility items: station presence (docs/spec/utility.md) ----------
+  /** The app's latest presence snapshot (beacon.js Presence entries, strongest first). Re-renders only when the
+   *  respawn station the HUD shows actually changed (id / present / rounded RSSI), not on every advert. */
+  setStations(list) {
+    this.stations = Array.isArray(list) ? list : [];
+    const v = stationView(this._respawnStation()); const sig = v ? `${v.id}:${v.present}:${v.rssi}:${v.team}` : '';
+    if (sig !== this._stationSig) { this._stationSig = sig; this._changed(); }
+  }
+  /** My team's respawn station: a present one first, else the strongest (the HUD shows how close you are).
+   *  A station admits me when it is neutral or on my gun's $TID team; `config.stations`, when given, is the
+   *  allow-list of station ids valid in this game (a stray phone from another game cannot revive anyone). */
+  _respawnStation() {
+    const tid = this.team ? this.team.tid : null;
+    const allow = this.config && Array.isArray(this.config.stations) && this.config.stations.length
+      ? new Set(this.config.stations.map(x => (x && typeof x === 'object') ? x.id : x)) : null;
+    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === TEAM_ANY || e.team === tid) && (!allow || allow.has(e.id)));
+    return mine.find(e => e.present) || mine[0] || null;
+  }
+  /** The station a scanner revive may use RIGHT NOW, or null: dead, past the delay, link up, not resyncing, present. */
+  _stationRevivable(now) {
+    if (this.alive || !this.deadAt || this.respawnType !== 'scanner' || !this.bleUp || this.resync || this.phase !== 'live') return null;
+    if (now - this.deadAt < this.respawnDelayMs) return null;
+    const st = this._respawnStation();
+    return st && st.present ? st : null;
+  }
+  /** Trigger pulled: on a DEAD gun in scanner mode with the trigger gate, this is the revive request. */
+  _triggerPulled() {
+    if (this.respawnType !== 'scanner' || this.respawnGate !== 'trigger') return;
+    const st = this._stationRevivable(this.now());
+    if (!st) { if (!this.alive && this.phase === 'live') this.log('trigger while down: not at a respawn station', 'li'); return; }
+    this._resyncRevive = false; this._revive(false, st.id);
+  }
+  /** What the DOWN screen should tell a scanner-mode player (utility.md §4.3). */
+  respawnHint(now) {
+    if (this.alive || !this.deadAt || this.phase !== 'live') return null;
+    if (this.respawnType === 'auto') return 'timer';
+    if (this.respawnType === 'none') return 'out';
+    // Scanner: guide to a station from the instant of death (Tony 2026-09-04: a blank STAND BY for the
+    // whole respawn delay leaves a first-timer with no idea what to do). The delay only gates the actual
+    // revive (_stationRevivable), never the instructions. 'hold' = at your station, revive arms in a beat.
+    const st = this._respawnStation();
+    if (!st) return 'find_station';
+    if (!st.present) return 'approach';
+    if (now - this.deadAt < this.respawnDelayMs) return 'hold';
+    return this.respawnGate === 'trigger' ? 'pull_trigger' : 'reviving';
   }
 
   /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
@@ -965,6 +1028,8 @@ export class Engine {
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
+      // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
+      station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,

@@ -6,3 +6,4 @@ dist/
 .gradle/
 *.log
 shots/
+www/utility.js

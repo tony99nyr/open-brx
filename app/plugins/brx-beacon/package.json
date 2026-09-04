@@ -1,0 +1,13 @@
+{
+  "name": "brx-beacon",
+  "version": "0.1.0",
+  "description": "Open BRX: advertise a BLE service UUID (station / player identity) with transmit-power control where the platform allows it",
+  "private": true,
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "type": "module",
+  "files": ["android/src/main/", "android/build.gradle", "src/", "ios/Sources", "Package.swift"],
+  "license": "MIT",
+  "peerDependencies": { "@capacitor/core": ">=8.0.0" },
+  "capacitor": { "ios": { "src": "ios" }, "android": { "src": "android" } }
+}

@@ -966,3 +966,125 @@ test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(426); h.eng.tick();
   assert.equal(h.eng.state().activeSlot, 1, 'assumed done right after the real delay');
 });
+
+// ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------
+function stationEntry(o = {}) { return { role: 'station', id: 5, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -60, rssi: -50, raw: -50, present: true, ...o }; }
+function scannerHarness(gate) {
+  const h = harness({ respawn: 'scanner' });
+  if (gate) h.config.respawn.gate = gate;
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'precondition: dead');
+  return h;
+}
+
+test('scanner + trigger gate: dead past the delay, at own-team station, trigger pull → revive with the station id', () => {
+  const h = scannerHarness();
+  h.adv(9000); h.eng.tick();
+  assert.equal(h.eng.alive, false, 'scanner never auto-revives on the timer alone');
+  assert.equal(h.eng.state().respawnHint, 'find_station');
+  h.eng.setStations([stationEntry()]);
+  assert.equal(h.eng.state().respawnHint, 'pull_trigger');
+  assert.equal(h.eng.state().station.id, 5);
+  h.eng.tick(); assert.equal(h.eng.alive, false, 'presence alone is not the trigger gate');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, true);
+  const r = h.facts.filter(f => f.type === 'respawn').pop();
+  assert.equal(r.station, 5);
+  assert.ok(h.writes.includes('$SPAWN,,*'));
+});
+
+test('scanner: the trigger does nothing before the delay, away from the station, or at the wrong team\'s station', () => {
+  const h = scannerHarness();
+  h.eng.setStations([stationEntry()]);
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, false, 'delay not elapsed');
+  assert.equal(h.eng.state().respawnHint, 'hold', 'at the station but the delay is not up yet → HOLD');
+  h.eng.setStations([]);
+  assert.equal(h.eng.state().respawnHint, 'find_station', 'no station in range → guidance shows immediately, during the delay');
+  h.adv(9000); h.eng.setStations([stationEntry({ present: false, rssi: -80 })]);
+  assert.equal(h.eng.state().respawnHint, 'approach');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, false, 'not present');
+  h.eng.setStations([stationEntry({ team: 2 })]);
+  assert.equal(h.eng.state().station, null, 'a team-2 station is not mine');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, false, 'wrong team');
+  h.eng.setStations([stationEntry({ team: 255 })]);
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, true, 'a neutral station admits every team');
+});
+
+test('scanner: config.stations is an allow-list; a disabled station (state 0) does not count', () => {
+  const h = scannerHarness();
+  h.config.stations = [{ id: 9, kind: 'respawn' }];
+  h.adv(9000);
+  h.eng.setStations([stationEntry({ id: 5 })]);
+  assert.equal(h.eng.state().station, null, 'id 5 is not in this game');
+  h.eng.setStations([stationEntry({ id: 9, state: 0 })]);
+  assert.equal(h.eng.state().station, null, 'a disabled station is invisible');
+  h.eng.setStations([stationEntry({ id: 9 })]);
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, true);
+});
+
+test('scanner + presence gate: dwelling at the station past the delay revives on the tick, no trigger needed', () => {
+  const h = scannerHarness('presence');
+  h.eng.setStations([stationEntry()]);
+  h.eng.tick(); assert.equal(h.eng.alive, false, 'delay first');
+  h.adv(9000); h.eng.tick();
+  assert.equal(h.eng.alive, true);
+  assert.equal(h.facts.filter(f => f.type === 'respawn').pop().station, 5);
+});
+
+test('auto respawn ignores stations entirely; a live gun\'s trigger is not a revive', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.setStations([stationEntry()]);
+  assert.equal(h.eng.state().respawnHint, null);
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.facts.filter(f => f.type === 'respawn').length, 0);
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().respawnHint, 'timer');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, false, 'auto mode: the trigger does not revive');
+  h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.alive, true, 'the timer does');
+  assert.equal(h.facts.filter(f => f.type === 'respawn').pop().station, undefined);
+});
+
+test('setStations re-renders only when the shown station changes', () => {
+  const h = scannerHarness();
+  let changes = 0; h.eng.onChange = () => changes++;
+  h.eng.setStations([stationEntry({ rssi: -50 })]); const a = changes;
+  h.eng.setStations([stationEntry({ rssi: -50.3 })]);
+  assert.equal(changes, a, 'same rounded RSSI, same id, same presence: no re-render');
+  h.eng.setStations([stationEntry({ rssi: -58 })]);
+  assert.equal(changes, a + 1);
+});
+
+test('recovery: down after a cold boot with no death time stamps deadAt so scanner respawn works', () => {
+  // Simulate the resync outcome: live match, gun observed dead, but deadAt lost across the reload.
+  const h = harness({ respawn: 'scanner' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.alive = false; h.eng.deadAt = 0;                 // the stuck state seen on hardware 2026-09-04
+  assert.equal(h.eng.state().respawnHint, null, 'precondition: no death time → no hint (the bug)');
+  h.eng.tick();
+  assert.ok(h.eng.deadAt > 0, 'the tick stamps a death time');
+  assert.equal(h.eng.state().respawnHint, 'find_station', 'now the respawn logic runs — station guidance immediately');
+  h.adv(9000); h.eng.setStations([stationEntry()]);
+  assert.equal(h.eng.state().respawnHint, 'pull_trigger', 'delay elapsed at the station');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, true, 'and the station revive works after recovery');
+});
+
+test('scanner: at the station during the delay shows HOLD, then PULL TRIGGER once the delay is up', () => {
+  const h = harness({ respawn: 'scanner' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.eng.setStations([stationEntry()]);
+  assert.equal(h.eng.state().respawnHint, 'hold', 'present but delay not elapsed → hold, not pull_trigger');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, false, 'the trigger does nothing during the delay');
+  h.adv(9000); h.eng.setStations([stationEntry()]);
+  assert.equal(h.eng.state().respawnHint, 'pull_trigger');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, true);
+});

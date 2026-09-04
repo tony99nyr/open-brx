@@ -81,7 +81,8 @@ GameConfig {
   time_limit_s: number,               // REQUIRED and > 0 on the phone path (A4.8): the only end condition
                                       // that reaches a dispersed node. (null allowed only when validate()
                                       // is told the venue is fully LAN-covered.)
-  respawn:     { type: "auto"|"scanner"|"none", delay_s: number },
+  respawn:     { type: "auto"|"scanner"|"none", delay_s: number, gate?: "trigger"|"presence" },   // gate: A13 (scanner only)
+  stations?:   [ { id: number, kind: "respawn"|"powerup"|"extraction"|"bomb"|"control" } ],          // A13: the utility items valid in this game
   scoring:     { frag_limit: number|null, win_by: "kills"|"survival"|"objective"|string }, // frag_limit / survival ends are LAN-covered-only (A4.8)
   health:      { max_hp: number, max_armor: number },   // mode defaults; Loadout may override
   // No `max_shield`, deliberately: the shield pool is NOT BLE-writable. It is granted only by an IR
@@ -596,6 +597,18 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     `kill`/`multi`/`medal`/`victory` already resolve their cue from the bundle; objective/VIP pushes are the
     mode engines' to emit as they are built). Two LED bursts never start inside one second (three flashes per
     second is the ceiling; a fourth is the photosensitive line). The sound of a suppressed burst still plays.
+- **A13 (2026-09-04, UTILITY — `docs/spec/utility.md`; additive, no `v` bump):** phones as items on the field.
+  - **A13.1 `GameConfig.respawn.gate`** (`"trigger"` default | `"presence"`) — how a **scanner** respawn fires once the
+    player is present at their team's respawn station: on a trigger pull (a dead gun still reports `$BUT,0,1`) or by
+    dwelling there. `GameConfig.stations[]` (optional) = the allow-list of station ids valid in this game; absent =
+    any Open BRX station in range counts. Team and threshold come from the station's **advert**, not the bundle.
+  - **A13.2 `respawn` fact gains `station?: number`** — the id of the station that revived the player (absent for a
+    timer/resync revive). MC counts revives per station at recap.
+  - **A13.3 The station/player advert** — one 128-bit service UUID (`OBRX` magic, version 1, role, id, kind, team, state,
+    value, seq, game, threshold); layout and codec in `utility.md` §2 / `app/src/beacon.js`. Between phones only; the
+    gun never sees it.
+  - **A13.4 Node state** — `state().station` (the respawn station this player would use, with its smoothed RSSI and
+    threshold), `respawnGate`, `respawnHint` (`timer | find_station | approach | pull_trigger | reviving | out`).
 - **A12 (2026-09-04, SIDEARMS — `docs/spec/loadout.md` §1.1/§3; additive, no `v` bump):**
   - **A12.1 Three pistols in the catalog** — `glock`, `usp`, `deagle` (role `sidearm`, tags `sidearm`+`pistol`, cls 10).
     Ordinary weapons on the wire (`WeaponSel`; `loadout_request kind:"weapon"`; try-out as any weapon). A row with

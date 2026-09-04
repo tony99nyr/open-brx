@@ -1,0 +1,148 @@
+# M-UTILITY — phones as items on the field: stations, radius control, and the scanner respawn
+
+**Status:** v1 built 2026-09-04 (contracts **A13**). Owner: Tony (product). Implementation: `app/plugins/brx-beacon`
+(advertise), `app/src/beacon.js` (codec + presence), `app/src/engine.js` (scanner respawn gates),
+`app/src/utility.js` + `app/www/utility.html` (the utility role), `app/scripts/android-setup.sh` (permission).
+
+## 0. Why
+
+The grenade's station modes are native-firmware features that a host-driven game never sees, and a dead
+tagger hears no IR at all in a hosted game (experiment-log 2026-09-04). Callsign itself does stations with
+QR codes read by the phone and revives over BLE (`apk-harvest.md` §station modes). So a hosted station has
+to talk to the **node**, not to the gun — and the node already owns respawn. This module makes **the same
+app** either a player's HUD or a **utility item** on the field, with the node deciding presence by
+Bluetooth advertising, and the radius under the operator's control on both platforms.
+
+## 1. Roles
+
+One install, one role at a time, chosen on the phone or assigned by Mission Control at muster:
+
+| role | what the phone is | connects to |
+|---|---|---|
+| **hud** (default) | the player's node: one gun, the HUD, the M-NET wire | its tagger (BLE central), MC (LAN) |
+| **utility** | an item on the field: respawn station · powerup · extraction point · bomb site · control point | nothing; it **advertises** and **scans** |
+
+Both roles run the same BLE stack. A HUD phone keeps the scan open for the whole match (balanced duty
+cycle) and **also advertises itself as a player**; a utility phone advertises itself as a station and scans
+for players. No connections between phones, ever: adverts are broadcast state, so any number of phones read
+them and the Android 7-connection cap is irrelevant.
+
+Switching: `localStorage brx.role`; the HUD exposes `hud.h.onUtility` (the HUD session adds the control; until
+then 7 taps on the idle stage within 3 s); the utility screen has BACK TO HUD.
+
+## 2. The advert (the wire between phones)
+
+An iOS app can advertise **only** a local name and service UUIDs, so the identity is one **128-bit service
+UUID** on both platforms (Android could carry manufacturer data; one format keeps the scanner simple). The
+local name (`BRX-RESPAWN-1`) is set where the platform allows it and is decoration only.
+
+```
+byte  0-3   4F 42 52 58   'OBRX'
+      4     version        1
+      5     role           1 station · 2 player
+      6-7   id             station id 1..65535 · player_num (big-endian)
+      8     kind           station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control   (player: 0)
+      9     team           0..3 = the gun's $TID team · 255 = neutral / any
+      10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
+                            player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting)
+      11    value          kind-specific small number (seconds left, cooldown, progress %)
+      12    seq            bumps on every state change (a scanner tells fresh from stale)
+      13    game           low 8 bits of the game's config hash · 0 = any game
+      14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
+      15    reserved       0
+```
+
+Codec: `beacon.js encodeUuid()/decodeUuid()`, pinned by `app/test/beacon.test.mjs` (round trip, case and
+dash tolerance, foreign UUIDs rejected, version-gated). Adverts are non-connectable; the Android advert
+carries the TX-power field so a scanner can do path-loss later; 21–24 bytes, inside the legacy 31.
+
+## 3. Radius: two knobs, and what they cannot do
+
+| knob | where | platforms | effect |
+|---|---|---|---|
+| **transmit power** | the station, `brx-beacon start({txPower})` | **Android only** (ultraLow ≈ -21 dBm · low · medium · high ≈ +1 dBm); iOS exposes none | shrinks the whole bubble: at ultraLow a phone is barely receivable past 2–3 m |
+| **threshold** | the station's screen → byte 14 of its advert → every player phone | both | "at the station" = smoothed RSSI ≥ threshold. Per station, so a respawn point can be arm's length while an extraction zone is a room |
+
+**Calibration** (utility screen): stand where the edge should be holding a player phone, press **SET FROM
+NEAREST PLAYER**; the threshold becomes that phone's smoothed reading minus 3 dB and goes out in the advert.
+The HUD shows the live reading against the threshold on the DOWN screen (§4.3), so the edge is visible.
+
+**Presence** (`beacon.js Presence`, both roles): EMA of RSSI (α 0.35); **present** after `dwellMs` (2 s)
+continuously at/above the threshold; **gone** when the EMA drops `hysteresisDb` (6) below it, or after
+`expiryMs` (4 s) with no advert. Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
+the advertised threshold overriding the default, neutral admitting every team, other games ignored.
+
+**What radio cannot give:** a shape. The bubble is a fuzzy sphere: it leaks through drywall, shrinks behind a
+body, and is not directional. That is why the respawn gate below requires an act, not just proximity. For
+area effects (blast, extraction zone) the fuzziness is acceptable. A hard edge needs line of sight, which is
+the QR-on-screen method — a last resort, not built.
+
+## 4. The scanner respawn (v1, built and unit-tested)
+
+`config.respawn = { type: "scanner", delay_s, gate?: "trigger" | "presence" }` · optional
+`config.stations = [ { id, kind }, … ]` = the allow-list of station ids valid in this game (a stray phone from
+another game cannot revive anyone). Team comes from the **advert**, so MC can re-arm a station mid-match when
+it is in range and a capturable station is just one that rewrites its own advert.
+
+### 4.1 Rule
+A dead player revives when **all** of: phase LIVE · `now - deadAt ≥ delay_s` · BLE link up · not resyncing ·
+their team's **respawn** station (neutral or same `$TID` team, state ≠ 0, on the allow-list) is **present** ·
+and the gate:
+- **`trigger`** (default): the player **pulls the trigger**. A dead gun still reports `$BUT,0,1` over BLE
+  (bench 2026-09-04). Presence is the gate, the pull is the act — fifty feet away the gate is closed, and
+  standing near without pulling does nothing. It also feels like the native station: face it and pull.
+- **`presence`**: dwelling there past the delay is enough (a mode's choice).
+
+On revive the node writes `frames.revive` exactly as an auto respawn does, and the `respawn` fact carries
+**`station: <id>`** (A13.2). Auto and none modes ignore stations entirely.
+
+### 4.2 Engine surface (`engine.js`)
+`setStations(entries)` from the app every 250 ms · `state().station` = `{id, kind, team, state, value, rssi,
+threshold, present}` of the station this player would use (present first, else strongest) · `state().respawnGate`
+· `state().respawnHint` ∈ `timer | find_station | approach | pull_trigger | reviving | out | null`.
+`setStations` re-renders only when id / presence / rounded RSSI change. Tests: `engine.test.mjs`
+"utility items" block (trigger gate, delay, wrong team, neutral, allow-list, disabled station, presence gate,
+auto mode untouched, re-render economy).
+
+### 4.3 DOWN screen (HUD session)
+Scanner mode replaces the countdown with the hint: **FIND A RESPAWN STATION** (none in range) → **GO TO
+STATION · -78 / -62 dBm** with a closeness bar (approach) → **AT STATION · PULL TRIGGER** (present, gate
+trigger) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.
+
+## 5. Other kinds (designed, not built)
+
+Same primitive; the difference is the station's state machine and the player node's action from its bundle.
+For kinds where the station must know **who** is there, it reads **player** adverts (id, team, alive, intent
+bits) — no connection.
+
+| kind | station shows / advertises | player node does | still needs |
+|---|---|---|---|
+| powerup | what it gives; ready or depleted + cooldown (`value`) | present: `$LIFE` armor/HP · `$WEAP`+`$AMMO` swap · ammo; marks taken | shields (IR fn-11 only) |
+| extraction | zone active, who is channelling, alarm on its own speaker | present: channel starts; leave resets; death drops loot (engine already speaks ZONE/LEAVE) | — |
+| bomb | idle → planted (countdown in `value`) → defused / detonated | attacker present + plant intent → planted; defender present + defuse intent → defused; on detonate every phone in radius applies blast damage to its own gun (`$BHIT`, host-inflicted) | — |
+| control | owner by team over time | present counts for your team | shoot-to-capture = the IR box |
+
+Mission Control: at muster the operator assigns each utility phone a kind/team/id and the game bundle
+carries the allow-list; stations are self-authoritative and report at recap (MC is not live mid-match).
+
+## 6. Platform notes (verified where marked)
+
+- **Scan while connected** is normal on Android and iOS; the HUD uses the same scan the gun picker does,
+  at scanMode 1 after connecting. Android demotes a scan past ~30 min and throttles apps that restart scans
+  often (restart on a timer — TODO). iOS coalesces duplicates only in the background; the HUD is foreground.
+- **Permissions:** Android 12+ `BLUETOOTH_ADVERTISE` is a runtime permission — the plugin requests it on
+  `start()`, the manifest carries it (plugin manifest + `android-setup.sh`). iOS: the existing
+  `NSBluetoothAlwaysUsageDescription` covers peripheral mode.
+- **iOS advertising:** name + service UUIDs only; no TX power; foreground only. The Swift side queues the start
+  until the peripheral manager is powered on. ⚠️ **Not yet built on a Mac** — the Android path is the one
+  exercised first (2026-09-04).
+- **Android advertising:** non-connectable, TX power per the four levels, device name excluded (it is the
+  phone's Bluetooth name, not ours).
+
+## 7. Open
+
+- Measure RSSI vs distance at each TX level, phone-to-phone, and pick the default threshold (-62 is a guess).
+- Restart the HUD's beacon scan on a 25-min timer (Android opportunistic-scan demotion).
+- Station kinds 2–5 state machines; MC muster assignment; `config.stations` from the compiler.
+- HUD DOWN-screen states (§4.3) and a styled utility screen — brx-hud.
+- iOS build + test of `BrxBeaconPlugin.swift` on the MacBook.

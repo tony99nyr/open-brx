@@ -56,14 +56,19 @@ export class BrxLink {
   }
   ensureInit() { return (this._init ||= this.ble.initialize({ androidNeverForLocation: true })); }
 
-  /** Continuous low-latency scan; calls onHit({deviceId, name, rssi}) for every advert until stop(). */
-  async scan(onHit) {
+  /** Continuous scan; calls onHit({deviceId, name, rssi, uuids}) for every advert until stop().
+   *  scanMode 2 = low latency (the gun picker), 1 = balanced (the beacon watch that stays open all match).
+   *  Nameless adverts pass only when they carry a service UUID: utility items advertise no name on Android
+   *  (the device name is not settable per app), their whole identity is the UUID (beacon.js). */
+  async scan(onHit, { scanMode = 2 } = {}) {
     if (this._scanning) throw new Error('a scan is already open');
     await this.ensureInit(); this._scanning = true;
-    await this.ble.requestLEScan({ allowDuplicates: true, scanMode: 2 }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
+    await this.ble.requestLEScan({ allowDuplicates: true, scanMode }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
       const d = res.device || {}; if (!d.deviceId) return;
-      const name = d.name || res.localName || ''; if (!name) return;
-      onHit({ deviceId: d.deviceId, name, rssi: res.rssi });
+      const name = d.name || res.localName || '';
+      const uuids = Array.isArray(res.uuids) ? res.uuids : [];
+      if (!name && !uuids.length) return;
+      onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
     });
   }
   async stopScan() { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } this._scanning = false; }

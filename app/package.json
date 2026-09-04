@@ -2,9 +2,9 @@
   "name": "brx-companion-app",
   "version": "0.1.2",
   "private": true,
-  "description": "BRX native BLE app (Capacitor) — Android + iOS from one codebase",
+  "description": "BRX native BLE app (Capacitor) \u2014 Android + iOS from one codebase",
   "scripts": {
-    "build": "esbuild src/app.js --bundle --format=iife --outfile=www/app.js",
+    "build": "esbuild src/app.js --bundle --format=iife --outfile=www/app.js && esbuild src/utility.js --bundle --format=iife --outfile=www/utility.js",
     "test": "node --test \"test/*.test.mjs\"",
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",
@@ -35,7 +35,8 @@
     "@capacitor/screen-orientation": "^8.0.1",
     "@capacitor/share": "^8.0.1",
     "capacitor-zeroconf": "^4.0.0",
-    "jsqr": "^1.4.0"
+    "jsqr": "^1.4.0",
+    "brx-beacon": "file:plugins/brx-beacon"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

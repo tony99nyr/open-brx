@@ -10,6 +10,7 @@ import { BrxLink } from './brxlink.js';
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
 import { parseMcQr } from './mcurl.js';
+import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
 
 const APP_VER = 'hud-0.2';
 const $ = id => document.getElementById(id);
@@ -36,6 +37,7 @@ async function loadPlugins() {
     tryImport('fs', () => import('@capacitor/filesystem').then(m => ({ v: m }))),
     tryImport('cam', () => import('@capacitor-community/camera-preview').then(m => ({ v: m.CameraPreview }))),
     tryImport('zeroconf', () => import('capacitor-zeroconf').then(m => ({ v: m.ZeroConf }))),
+    tryImport('beacon', () => import('brx-beacon').then(m => ({ v: m.BrxBeacon }))),   // our advertise plugin (app/plugins/brx-beacon)
   ]);
 }
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -57,7 +59,11 @@ const settings = {
   set mcUrl(v) { try { localStorage.setItem('brx.mc_url', v); } catch (_) { /* ignore */ } },
   get night() { try { return localStorage.getItem('brx.night') === '1'; } catch (_) { return false; } },
   set night(v) { try { localStorage.setItem('brx.night', v ? '1' : '0'); } catch (_) { /* ignore */ } },
+  // 'hud' (default) or 'utility': the same install is either a player's HUD or a utility item on the field
+  get role() { try { return localStorage.getItem('brx.role') || 'hud'; } catch (_) { return 'hud'; } },
+  set role(v) { try { localStorage.setItem('brx.role', v); } catch (_) { /* ignore */ } },
 };
+function switchRole(role) { settings.role = role; location.replace(role === 'utility' ? 'utility.html' : 'index.html'); }
 
 // ---------- wiring ----------
 const hud = new Hud(document, {});
@@ -91,6 +97,72 @@ hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
 try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }
 engine.onEnd = (g) => { try { const h = hud.history || []; h.push(g); while (h.length > 50) h.shift(); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };
+
+// ---------- utility items: watch for stations while connected, and advertise ourselves as a player ----------
+// The beacon scan is the same BLE scan the gun picker uses, kept open for the whole match at the balanced
+// duty cycle, feeding Presence; the engine gets a snapshot every tick (utility.md §3). Nothing here blocks
+// the match: with no plugin (desktop) or no stations in range the HUD behaves exactly as before.
+const presence = new Presence({ defaultThreshold: -74, dwellMs: 800 });   // 0.8s dwell + -74 threshold: get-in-range, brief pause, green (bench-tuned 2026-09-04)
+let beaconScanning = false;
+const stationWas = new Map();
+async function startBeaconScan() {
+  if (beaconScanning || scanning || !isNative()) return;
+  beaconScanning = true;
+  try {
+    // scanMode 2 (low latency): a DOWN player needs the station within a second, and Android throttles
+    // a balanced-mode scan so hard that presence froze on hardware (2026-09-04). Costs battery; acceptable
+    // for a match, and the restart below keeps it from being demoted to nothing over a long game.
+    await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, Date.now()); }, { scanMode: 2 });
+    log('watching for utility items', 'li');
+  } catch (e) { beaconScanning = false; log('beacon scan: ' + (e && e.message || e), 'li'); }
+}
+// Android silently STALLS a BLE scan that is left running — `scanning` stays true but callbacks stop
+// arriving (hardware 2026-09-04: a down player at the station saw "find a respawn station" until a fresh
+// scan was forced, whereupon the station appeared at once). The cure is a periodic stop+start. Cadence
+// depends on need: while a scanner-respawn player is DOWN they need the station within a second, so
+// refresh fast; otherwise slow (Android throttles an app that starts scans more than ~5×/30s, so never
+// go below ~6 s). A fresh scan is also kicked the instant the player goes down, so the walk to the
+// station starts against a live scan.
+let _lastAlive = true, _lastRescan = 0;
+async function refreshBeaconScan() {
+  if (!beaconScanning || scanning) return;
+  try { await link.stopScan(); beaconScanning = false; await startBeaconScan(); _lastRescan = Date.now(); } catch (_) { /* ignore */ }
+}
+setInterval(() => {
+  const st = engine.state();
+  const down = st.phase === 'live' && !st.alive && st.respawnType === 'scanner';
+  if (_lastAlive && !st.alive && down) { refreshBeaconScan().catch(() => {}); }   // just died → kick immediately
+  _lastAlive = st.alive;
+  const period = down ? 6000 : 90000;                                             // fast while hunting a station, slow otherwise
+  if (Date.now() - _lastRescan >= period) refreshBeaconScan().catch(() => {});
+}, 1000);
+async function stopAnyScan() {
+  if (scanning || beaconScanning) { await link.stopScan(); scanning = false; beaconScanning = false; }
+}
+function presenceTick() {
+  const now = Date.now();
+  presence.tick(now);
+  const list = presence.stations();
+  for (const e of list) {   // log the edges, not the readings: the log is what a field fault gets debugged from
+    const k = `${e.kind}:${e.id}`; const was = stationWas.get(k);
+    if (was !== e.present) { stationWas.set(k, e.present); log(`${e.kind} station ${e.id} (team ${e.team === 255 ? 'any' : e.team}) ${e.present ? 'PRESENT' : 'left'} at ${Math.round(e.rssi)} dBm (threshold ${e.threshold || presence.defaultThreshold})`, e.present ? 'lk' : 'li'); }
+  }
+  engine.setStations(list);
+}
+let playerAdvert = null;
+async function syncPlayerAdvert() {
+  if (!plugins.beacon || !isNative()) return;
+  const st = engine.state();
+  const num = st.playerNum, tid = engine.teamTid;
+  const want = (num != null && tid != null && st.phase !== 'idle')
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: st.alive ? 1 : 0 }) : null;
+  if (want === playerAdvert) return;
+  playerAdvert = want;
+  try {
+    if (want) { await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: 'balanced' }); log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}`, 'li'); }
+    else await plugins.beacon.stop();
+  } catch (e) { log('player advert: ' + (e && e.message || e), 'li'); }
+}
 
 // preflight (contracts A4.9)
 const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cellular_off: true, dnd_on: false, phone_batt: null, screen_on: true, foreground: true, gun_linked: false, headset_ok: false };
@@ -143,7 +215,7 @@ function connectMc(url, remember = true) {
 let scanning = false; const found = new Map();
 Object.assign(hud.h, {
   onSetGun: async () => {
-    if (scanning) { await link.stopScan(); scanning = false; }   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25)
+    await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
     try {
       found.clear(); scanning = true;
       // Stable rows: first-seen order (Map insertion), RSSI updated in place, re-render at most 2×/s —
@@ -164,10 +236,11 @@ Object.assign(hud.h, {
     const d = found.get(deviceId); if (!d) return;
     await link.stopScan(); scanning = false; hud.setScan([]);
     log(`connecting to ${d.name}…`);
-    try { await link.connect(deviceId, d.name); if (settings.mcUrl && !transport) connectMc(settings.mcUrl); }
+    try { await link.connect(deviceId, d.name); if (settings.mcUrl && !transport) connectMc(settings.mcUrl); startBeaconScan().catch(() => {}); }
     catch (e) { log('connect failed: ' + (e && e.message || e), 'le'); }
     scheduleRender();
   },
+  onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)
   onReady: () => { if (engine.phase === 'kitted') { engine.setReady(!engine.ready); haptic('tap'); } },
   // A10 self-serve kitting (docs/spec/loadout.md §4.5): slot plates → LOADOUT browser → tap-to-equip / TRY IT / DONE
   onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; engine.browse(true); haptic('tap'); },
@@ -253,6 +326,22 @@ Object.assign(hud.h, {
   onDemo: () => { location.search = '?demo'; },
   onHaptic: k => haptic(k),
 });
+async function rejoinGun() {
+  const want = engine.gun && engine.gun.name; if (!want) return;
+  log(`match in progress — reconnecting to ${want}…`, 'lk');
+  let done = false;
+  await link.scan(async d => {
+    if (done || !d.name || d.name !== want) return;   // the remembered gun, by its advertised name
+    done = true;
+    try { await link.stopScan(); scanning = false; await link.connect(d.deviceId, d.name); if (settings.mcUrl && !transport) connectMc(settings.mcUrl); startBeaconScan().catch(() => {}); }
+    catch (e) { log('rejoin connect: ' + (e && e.message || e), 'le'); }
+    scheduleRender();
+  });
+  scanning = true;
+  // if it never appears, the SET GUN button (picker) is still there — leave the scan open so it can
+  setTimeout(() => { if (!done && !link.connected) log('remembered gun not seen yet — tap SET GUN to choose', 'li'); }, 12000);
+}
+
 function splitName(name, deviceId) { const m = /^(.*)-([0-9A-Fa-f]{4})$/.exec(name || ''); if (m) return { basename: m[1], tail: m[2].toUpperCase() }; return { basename: name, tail: String(deviceId || '').replace(/[^0-9a-f]/gi, '').slice(-4).toUpperCase() }; }
 
 // ---------- render loop ----------
@@ -266,9 +355,10 @@ function renderNow() {
     engine: { phase: st.phase, alive: st.alive, hp: st.hp, armor: st.armor, ammo: st.ammo, reserve: st.reserve, shots: st.shots, deaths: st.deaths, match_id: st.matchId, player_num: st.playerNum, latch: engine.latch ? `${engine.latch.shooter_num}/${engine.latch.shooter_team}` : '—', resync: st.resync ? st.resync.step : '—' },
     timings: { offset_ms: transport ? Math.round(transport.clock.offset || 0) : 0, synced: st.synced, queue: transport ? transport.ring.pending().length : 0, t_minus_ms: st.tMinusMs, clock_ms: st.clockMs },
     frames: link.frames.slice(-14), log: logLines.slice(-30),
+    stations: presence.stations().map(stationView),
   });
 }
-setInterval(() => { engine.tick(); scheduleRender(); }, 250);
+setInterval(() => { presenceTick(); engine.tick(); syncPlayerAdvert().catch(() => {}); scheduleRender(); }, 250);
 setInterval(refreshPreflight, 5000);
 setInterval(() => { try { hud.sync = { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; } catch (_) { /* ignore */ } }, 1000);
 
@@ -400,6 +490,13 @@ async function sweepForMc() {
 
 // ---------- boot ----------
 (async () => {
+  const params0 = new URLSearchParams(location.search);
+  if (settings.role === 'utility' && !params0.has('demo') && !params0.has('gun') && !params0.has('hud')) { location.replace('utility.html'); return; }
+  // 7 taps on the stage within 3 s while nothing is connected → utility mode (a hidden door until the HUD grows a button)
+  try {
+    let taps = []; const stage = document.getElementById('frame') || document.body;
+    stage.addEventListener('pointerdown', () => { const now = Date.now(); taps = taps.filter(t => now - t < 3000); taps.push(now); if (taps.length >= 7 && engine.phase === 'idle' && !link.connected) { taps = []; switchRole('utility'); } }, { passive: true });
+  } catch (_) { /* ignore */ }
   await loadPlugins();
   await lockLandscape(); await keepAwake(true);
   try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => onForeground(!!isActive)); } catch (_) { /* ignore */ }
@@ -417,7 +514,14 @@ async function sweepForMc() {
   } else {
     try { await link.ensureInit(); log('BLE ready — Set my gun', 'lk'); } catch (e) { log('BLE init: ' + (e && e.message || e), 'le'); }
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
-    if (!engine.gun) { try { await hud.h.onSetGun(); } catch (_) { /* permission denied etc. — button still works */ } }
+    // Fresh boot with no gun → open the picker. REJOIN (a match in progress, gun remembered by name but the
+    // deviceId is not persisted) → scan and auto-connect to that gun when it appears, so a recovered player
+    // is not left tapping SET GUN by hand (bench 2026-09-04). Fall back to the picker if it never shows.
+    if (!engine.gun) {
+      try { await hud.h.onSetGun(); } catch (_) { /* permission denied etc. — button still works */ }
+    } else if (!link.connected) {
+      rejoinGun().catch(e => log('rejoin scan: ' + (e && e.message || e), 'le'));
+    }
     // remembered address: CONNECT now — a gunless hello is fine (late-bind), and waiting for a gun left
     // mc_reachable=false with MC right there (Tony, 2026-08-26)
     if (settings.mcUrl && !transport) { log(`MC address remembered — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); }
@@ -430,4 +534,4 @@ async function sweepForMc() {
   }
   await refreshPreflight(); scheduleRender();
 })();
-window.brx = { engine, link, hud, get transport() { return transport; }, connectMc, log: logLines, C };
+window.brx = { engine, link, hud, get transport() { return transport; }, connectMc, log: logLines, C, presence, switchRole };

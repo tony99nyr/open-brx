@@ -1,6 +1,6 @@
 # Open BRX — End-to-End Product Spec
 
-- **Status:** Backbone ratified; contracts at amendment **A8** (2026-08-25 — A4: P2 closed over BLE, frames
+- **Status:** Backbone ratified; contracts at amendment **A13** (2026-09-04, utility items — `utility.md`; A8 (2026-08-25 — A4: P2 closed over BLE, frames
   compiled by MC, large-field reality; A5: adversarial + consistency review fixes; A7: MC→node `score` push;
   A8: operator auth, node re-claim key, input hardening). Module specs updated to A5; **A7/A8 are additive**
   (except A8's node-takeover rule), so an A5-era module spec is still valid, just silent about them.

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>BRX Utility</title>
+<style>
+/* Utility role: this phone is an item on the field. Plain, big, readable from a few feet; the brx-hud
+   session owns the look of player-facing screens and can restyle this one on the same ids. */
+:root{--team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-green:#2ecc71;--team-any:#9aa8b8;
+  --team:var(--team-blue);--ink:#e8eef5;--mut:#7fa0b8;--plate:#0b1220;--edge:#22344a;--ok:#39e07c;--bad:#ff5252;
+  --f:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--m:ui-monospace,Menlo,Consolas,monospace}
+[data-team="blue"]{--team:var(--team-blue)}[data-team="yellow"]{--team:var(--team-yellow)}[data-team="red"]{--team:var(--team-red)}
+[data-team="green"]{--team:var(--team-green)}[data-team="any"]{--team:var(--team-any)}
+html,body{margin:0;background:#04060a;color:var(--ink);font-family:var(--f);min-height:100%}
+body{display:flex;flex-direction:column;gap:12px;padding:max(12px,env(safe-area-inset-top)) 14px 20px;box-sizing:border-box}
+.hero{background:linear-gradient(180deg,color-mix(in srgb,var(--team) 28%,#000) 0%,#05080d 100%);border:2px solid var(--team);border-radius:14px;padding:18px 16px;text-align:center}
+.hero .kind{font-weight:800;font-size:clamp(26px,7vw,44px);letter-spacing:.06em;line-height:1.05}
+.hero .team{font-weight:900;font-size:clamp(40px,14vw,92px);letter-spacing:.04em;color:var(--team);line-height:1;margin:6px 0}
+.hero .sid{font-family:var(--m);color:var(--mut);letter-spacing:.2em;font-size:13px}
+.hero .status{display:inline-block;margin-top:10px;padding:4px 14px;border-radius:999px;font-family:var(--m);font-size:12px;letter-spacing:.2em;border:1px solid var(--edge)}
+.status.on{background:var(--ok);color:#03140a;border-color:var(--ok)}.status.off{color:var(--mut)}
+.hero .revives{margin-top:8px;font-family:var(--m);color:var(--ok);letter-spacing:.14em;font-size:13px;min-height:1em}
+.panel{background:var(--plate);border:1px solid var(--edge);border-radius:12px;padding:12px}
+.panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button,.btn{min-height:44px;padding:0 14px;background:#131b26;color:var(--ink);border:1px solid var(--edge);border-radius:8px;font:700 13px var(--m);letter-spacing:.08em}
+.seg button.sel{background:var(--team);color:#04121e;border-color:var(--team)}
+.seg button.blue.sel{background:var(--team-blue)}.seg button.yellow.sel{background:var(--team-yellow)}.seg button.red.sel{background:var(--team-red)}.seg button.green.sel{background:var(--team-green)}.seg button.any.sel{background:var(--team-any)}
+.rowc{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hint{font:12px var(--m);color:var(--mut)}
+input[type=range]{width:100%;accent-color:var(--team)}
+.big{font:800 22px var(--m)}
+.players .row{display:grid;grid-template-columns:44px 70px 1fr 48px 56px 1fr;gap:8px;align-items:center;padding:8px 6px;border-bottom:1px solid #101a26;font-family:var(--m);font-size:13px}
+.players .row.near{background:color-mix(in srgb,var(--team) 22%,transparent)}
+.players .row.empty{color:var(--mut);grid-template-columns:1fr}
+.players .pteam.blue{color:var(--team-blue)}.players .pteam.yellow{color:var(--team-yellow)}.players .pteam.red{color:var(--team-red)}.players .pteam.green{color:var(--team-green)}
+.players .rssi{font-weight:800;font-size:18px}.players .raw{color:var(--mut)}.players .pres{color:var(--ok);font-weight:700;text-align:right}
+.actions{display:flex;gap:10px}.actions .btn{flex:1;min-height:56px;font-size:16px}
+.btn.primary{background:var(--team);color:#04121e;border-color:var(--team)}
+#log{font:11px/1.45 var(--m);color:var(--mut);white-space:pre-wrap;max-height:140px;overflow:auto;margin:0}
+</style>
+</head>
+<body>
+  <section class="hero">
+    <div class="kind" id="kind">RESPAWN STATION</div>
+    <div class="team" id="team">BLUE</div>
+    <div class="sid" id="sid">STATION 1</div>
+    <div><span class="status off" id="status">READY</span></div>
+    <div class="revives" id="revives"></div>
+  </section>
+
+  <div class="actions">
+    <button class="btn primary" id="btnStart">START</button>
+    <button class="btn" id="btnHud">BACK TO HUD</button>
+  </div>
+
+  <section class="panel">
+    <h3>WHAT THIS PHONE IS</h3>
+    <div class="seg">
+      <button data-kind="respawn">RESPAWN</button><button data-kind="powerup">POWERUP</button><button data-kind="extraction">EXTRACTION</button><button data-kind="bomb">BOMB</button><button data-kind="control">CONTROL</button>
+    </div>
+    <h3 style="margin-top:12px">TEAM</h3>
+    <div class="seg">
+      <button data-team="1" class="blue">BLUE</button><button data-team="2" class="yellow">YELLOW</button><button data-team="0" class="red">RED</button><button data-team="3" class="green">GREEN</button><button data-team="255" class="any">ANY</button>
+    </div>
+    <h3 style="margin-top:12px">STATION ID</h3>
+    <div class="rowc"><button class="btn" id="idMinus">−</button><span class="big" id="sidn"></span><button class="btn" id="idPlus">+</button><span class="hint">must be unique on the field; MC lists the valid ids per game</span></div>
+  </section>
+
+  <section class="panel">
+    <h3>RADIUS</h3>
+    <div class="hint">Transmit power (Android only): the smaller, the smaller the bubble.</div>
+    <div class="seg" style="margin:6px 0">
+      <button data-tx="ultraLow">ULTRA LOW</button><button data-tx="low">LOW</button><button data-tx="medium">MEDIUM</button><button data-tx="high">HIGH</button>
+    </div>
+    <div class="hint" id="txhint"></div>
+    <div class="hint" style="margin-top:12px">"At the station" threshold, sent to every player in the advert. Stand where the edge should be with a player phone and press SET.</div>
+    <div class="rowc"><span class="big" id="thr">-62 dBm</span><button class="btn" id="btnSet">SET FROM NEAREST PLAYER</button></div>
+    <input type="range" id="thrRange" min="-95" max="-35" step="1" value="-62">
+    <div class="rowc" style="margin-top:8px"><span class="hint">dwell before "at station"</span><button class="btn" id="dwellMinus">−</button><span class="big" id="dwell">2.0 s</span><button class="btn" id="dwellPlus">+</button></div>
+  </section>
+
+  <section class="panel players">
+    <h3>PLAYER PHONES IN RANGE · smoothed / raw dBm</h3>
+    <div id="players"></div>
+  </section>
+
+  <section class="panel"><h3>LOG</h3><pre id="log"></pre></section>
+  <script src="utility.js"></script>
+</body>
+</html>
