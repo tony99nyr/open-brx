@@ -6379,3 +6379,11 @@ green camera flash of a NATIVE game, which is the reference Tony means. So the m
 flash with the hosted hit flash (ours ≥ that one) and says nothing yet about the native-game green flash. To measure
 that: BLE disconnected, gun power-cycled into a native quick game, emitter hit on the headset dome, same camera run.
 Design unchanged meanwhile: hits stay native (whatever the firmware does), our green flash marks kills (A11.8).
+**Retraction of the ranking (Tony):** "i can tell by how much it reflects off the walls in my room, its way less
+bright than the native fled." He is right and the numbers above cannot say otherwise: at the camera's minimum
+exposure BOTH flashes pin the sensor to 255, so core / mid / energy are sums of CLIPPED values and compress any real
+difference -- a flash 10x brighter reads only slightly larger. The camera can say "both are camera-flash class"; it
+cannot rank them at this exposure. **Standing result: our `$LED` flash is visible and useful but well below the
+native flash (by wall reflection, Tony's eyes).** To measure properly: point the camera at a dark WALL away from
+the LEDs (reflected light does not clip) and compare the mean luma change, or use an ND filter / a manual-shutter
+camera. Lesson for the ledcam method: a saturated core is a floor, not a measurement.
