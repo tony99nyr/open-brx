@@ -298,6 +298,8 @@ def test_raw_writes_only_known_safe_frames():
             assert "known-safe" in str(e)
         else:
             raise AssertionError("an unknown command went to the gun")
+        await st.raw(["$BLINK,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN
+        assert tx(mgr)[-1] == "$BLINK,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
     asyncio.run(run())
 
 

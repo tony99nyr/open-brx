@@ -423,14 +423,18 @@ class GunStage:
         self._hs_gen += 1
         self._spawn_task(self._seq(seq, why, headset=True))
 
-    async def raw(self, frames: list[str], delay_s: float = 0.0) -> dict:
+    async def raw(self, frames: list[str], delay_s: float = 0.0, confirm: bool = False) -> dict:
         """Bench escape hatch: write known-safe frames (protocol.KNOWN_SAFE_COMMANDS) after an optional delay, so a
-        timing / ordering hypothesis can be tried on the gun without recompiling. Unknown commands are refused."""
+        timing / ordering hypothesis can be tried on the gun without recompiling. Unknown commands are refused
+        unless `confirm` is true -- the same explicit-confirm rule as the MCP server (CLAUDE.md), and the write is
+        logged as UNKNOWN so the experiment log can quote it."""
         from .. import protocol
         frames = [f.strip() for f in (frames or []) if f and f.strip()]
         bad = [f for f in frames if not protocol.is_known_safe(f)]
-        if bad:
-            raise ValueError(f"not on the known-safe list: {bad}")
+        if bad and not confirm:
+            raise ValueError(f"not on the known-safe list: {bad} (pass confirm=true to send anyway)")
+        for f in bad:
+            self._log(f"UNKNOWN command sent on explicit confirm: {f}", "warn")
         if delay_s:
             await self.sleep(float(delay_s))
         await self.write(frames, f"raw{f' +{delay_s}s' if delay_s else ''}", gap_ms=60)

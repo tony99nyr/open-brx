@@ -26,7 +26,7 @@ ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "arm": (True, ()), "spawn": (True, ()), "revive": (True, ()), "end": (True, ()), "panic": (True, ()), "game_end": (True, ("outcome",)),
     "event": (False, ("kind",)), "kill": (False, ("medals",)), "headset": (False, ("name", "tid")),
     "ir": (True, ("kind", "team", "damage", "repeat")), "auto_react": (False, ("on",)),
-    "set_emitter": (False, ("port",)), "raw": (True, ("frames", "delay_s")), "walk_start": (False, ()), "walk_play": (True, ()), "walk_verdict": (False, ("ok", "note")), "walk_stop": (False, ()),
+    "set_emitter": (False, ("port",)), "raw": (True, ("frames", "delay_s", "confirm")), "walk_start": (False, ()), "walk_play": (True, ()), "walk_verdict": (False, ("ok", "note")), "walk_stop": (False, ()),
 }
 
 
