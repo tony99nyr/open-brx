@@ -129,8 +129,54 @@ bits) — no connection.
 | bomb | idle → planted (countdown in `value`) → defused / detonated | attacker present + plant intent → planted; defender present + defuse intent → defused; on detonate every phone in radius applies blast damage to its own gun (`$BHIT`, host-inflicted) | — |
 | control | owner by team over time | present counts for your team | shoot-to-capture = the IR box |
 
-Mission Control: at muster the operator assigns each utility phone a kind/team/id and the game bundle
-carries the allow-list; stations are self-authoritative and report at recap (MC is not live mid-match).
+## 5b. MC setup, arming, and placement (design, 2026-09-04 — Tony)
+
+**Setup needs WiFi; play does not.** A utility phone joins MC at muster like a node — `hello` with
+`role:"utility"` (and its current id/kind/team if it has any). Once the match is live a station is a
+passive beacon: it needs **no** MC contact for the rest of the game (same island rule as a player node).
+
+1. **Assign at muster (WiFi).** MC's KIT/muster gains an **ITEMS** panel beside the roster: the operator
+   sets each utility phone's **kind / team / station id / threshold**. MC pushes **`station_config`** to the
+   phone (M-NET, §5c); the phone applies it, shows **MC-ARMED · game N**, and **locks its controls**
+   (the on-device 7-tap gate stays only as a no-WiFi/field-fix fallback). The game bundle carries
+   `config.stations` = the allow-list of ids MC handed out, so a player phone only honours those ids.
+2. **Placement BEFORE start, not inside the countdown.** Stations advertise from the moment MC arms them;
+   presence is irrelevant until players are live. Flow: assign at muster → operators carry the phones out
+   and prop them → back at MC, start the match with the normal runway. **Putting placement inside the
+   countdown only creates a race** — a station not yet in place when the match goes live simply revives
+   nobody until it arrives. No failure mode, no countdown coupling.
+3. **Between games: stations do NOT walk back** unless their role/team changes. Revive counts are
+   self-authoritative and report at recap when the phone is next in WiFi range (§5). Re-arm over WiFi
+   only when the operator changes something. **Scoping caveat (v1):** the advert `game` byte would let a
+   stale station be ignored the moment a new bundle reaches the players — but the station must LEARN the
+   new game number, which needs MC contact. So **v1 keeps station adverts at `game 0` (any game) and
+   relies on the id allow-list**: same ids, same stations, no walk-back. Per-match `game` scoping arrives
+   with `station_config` carrying the game number (a station in WiFi range at each start picks it up).
+4. **Station status copy:** **"NOT ARMED BY MISSION CONTROL"** until the push lands; **"MC-ARMED · game N"**
+   after. The 7-tap manual path stays for a WiFi-less field.
+
+## 5c. `station_config` (M-NET, MC → utility phone) — the arming message
+
+`{ kind, team, id, threshold?, game?, valid_ids? }` — MC → the utility node at muster (and on any re-arm).
+The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
+the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
+`config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
+
+## 5d. Other kinds (designed, not built)
+
+Same primitive; the difference is the station's state machine and the player node's action from its bundle.
+For kinds where the station must know **who** is there, it reads **player** adverts (id, team, alive, intent
+bits) — no connection.
+
+| kind | station shows / advertises | player node does | still needs |
+|---|---|---|---|
+| powerup | what it gives; ready or depleted + cooldown (`value`) | present: `$LIFE` armor/HP · `$WEAP`+`$AMMO` swap · ammo; marks taken | shields (IR fn-11 only) |
+| extraction | zone active, who is channelling, alarm on its own speaker | present: channel starts; leave resets; death drops loot (engine already speaks ZONE/LEAVE) | — |
+| bomb | idle → planted (countdown in `value`) → defused / detonated | attacker present + plant intent → planted; defender present + defuse intent → defused; on detonate every phone in radius applies blast damage to its own gun (`$BHIT`, host-inflicted) | — |
+| control | owner by team over time | present counts for your team | shoot-to-capture = the IR box |
+
+Mission Control drives all of it from the ITEMS panel (§5b); stations are self-authoritative and report at
+recap (MC is not live mid-match).
 
 ## 6. Platform notes (verified where marked)
 
