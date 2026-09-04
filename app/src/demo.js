@@ -193,7 +193,7 @@ export function startDemo({ engine, log }) {
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
-      'down-wait':         [[0, () => ev.scanner(8)], ...live, [2300, 'die']],
+      'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],
       'down-find':         [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(null)]],
       'down-approach':     [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(-78, false)]],
       'down-at':           [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(-58, true)]],

@@ -169,8 +169,8 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} pass2-4 DOWN at a scanner: the glyph stays above its label`, async () => {
     // scanner mode counts the delay down first (utility.md §4.3), so wait past a 1 s delay for the station hint + glyph
-    const pg = await open(view, 'down', '&respawn=scanner&delay=1', 4200); const r = await pg.evaluate(() => { const g = document.querySelector('.down .n.nn'); if (!g) return { lab: (document.querySelector('.down .lab') || {}).textContent }; const gr = g.getBoundingClientRect(), l = document.querySelector('.down .lab').getBoundingClientRect(); return { gb: gr.bottom, lt: l.top, lab: document.querySelector('.down .lab').textContent }; }); await pg.close();
-    must(/RESPAWN (SCANNER|STATION)/.test(r.lab || '') && r.gb != null && r.gb <= r.lt + 2, JSON.stringify(r));
+    const pg = await open(view, 'down', '&respawn=scanner&delay=1', 4200); const r = await pg.evaluate(() => { const g = document.querySelector('.down .n.nn'), i = document.querySelector('.down .ins'); if (!g || !i) return { ins: i && i.textContent }; const gr = g.getBoundingClientRect(), ir = i.getBoundingClientRect(); return { gb: gr.bottom, it: ir.top, ins: i.textContent }; }); await pg.close();
+    must(/RESPAWN STATION/.test(r.ins || '') && r.gb != null && r.gb <= r.it + 2, JSON.stringify(r));
   });
   await step(`${view.name} audit-1 two pills share the band above the plates`, async () => {
     const pg = await open(view, 'kitted'); await pg.evaluate(() => { window.brxDemo.mcLost(); window.brxDemo.dropGun(); }); await pg.waitForTimeout(600);
@@ -228,17 +228,17 @@ for (const view of VIEWS) {
   await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {
     const pg = await open(view, 'down-find', '', 4200); /* death at ~2.6 s + the 1 s scanner delay */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');
     if (!has) { await pg.close(); console.log('       (engine without stations — step skipped)'); return; }
-    const read = () => pg.evaluate(() => { const l = document.querySelector('.down .lab'); const b = document.querySelector('.down .near i'); return { hint: window.brx.engine.state().respawnHint, lab: l ? l.textContent.trim() : null, bar: b ? parseFloat(b.style.width) : null, on: !!document.querySelector('.down .lab.on') }; });
-    let r = await read(); must(r.hint === 'find_station' && r.lab === 'FIND A RESPAWN STATION' && r.bar === null, JSON.stringify(r));
+    const read = () => pg.evaluate(() => { const l = document.querySelector('.down .lab'), i = document.querySelector('.down .ins'); const b = document.querySelector('.down .near i'); return { hint: window.brx.engine.state().respawnHint, ins: i ? i.textContent.trim() : null, lab: l ? l.textContent.trim() : null, bar: b ? parseFloat(b.style.width) : null, on: !!document.querySelector('.down .ins.on') }; });
+    let r = await read(); must(r.hint === 'find_station' && r.ins === "RUN TO YOUR TEAM'S RESPAWN STATION" && r.lab === 'THEN PULL THE TRIGGER THERE' && r.bar === null, JSON.stringify(r));
     await pg.evaluate(() => window.brxDemo.station(-89, false)); await pg.waitForTimeout(500); r = await read();
-    must(r.hint === 'approach' && /^GO TO STATION · -89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
+    must(r.hint === 'approach' && r.ins === 'GET CLOSER TO THE STATION' && /-89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
     await pg.evaluate(() => window.brxDemo.station(-70, true)); await pg.waitForTimeout(500); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-at.png` }); await pg.close();
-    must(r.hint === 'pull_trigger' && r.lab === 'AT STATION · PULL TRIGGER' && r.bar === 100 && r.on, JSON.stringify(r));
+    must(r.hint === 'pull_trigger' && r.ins === 'PULL THE TRIGGER TO RESPAWN' && r.bar === 100 && r.on, JSON.stringify(r));
   });
-  await step(`${view.name} #45b scanner mode's pre-revive delay is a numberless DOWN, never "00"`, async () => {
-    const pg = await open(view, 'down-wait', '', 3300); const r = await pg.evaluate(() => ({ hint: window.brx.engine.state().respawnHint, lab: (document.querySelector('.down .lab') || {}).textContent, rd: !!document.querySelector('#rd'), txt: document.querySelector('.down .c').innerText })); await pg.close();
-    if (r.hint === 'timer') { console.log('       (engine without the wait hint — step skipped)'); return; }
-    must(r.hint === 'wait' && r.lab === 'STAND BY' && !r.rd && !/\b00\b/.test(r.txt), JSON.stringify(r));
+  await step(`${view.name} #45b at the station before the delay is up: HOLD…, never a "00"`, async () => {
+    const pg = await open(view, 'down-hold', '', 3300); const r = await pg.evaluate(() => ({ hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, rd: !!document.querySelector('#rd'), txt: document.querySelector('.down .c').innerText })); await pg.close();
+    if (r.hint !== 'hold') { console.log('       (engine without the hold hint — step skipped: ' + r.hint + ')'); must(!r.rd && !/\b00\b/.test(r.txt), 'a 00 countdown on a scanner DOWN: ' + r.txt); return; }
+    must(r.ins === 'HOLD…' && !r.rd && !/\b00\b/.test(r.txt), JSON.stringify(r));
   });
   await step(`${view.name} #46 idle: a UTILITY MODE control exists (44px tap row)`, async () => {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const b = document.querySelector('[data-act="onUtility"]'); if (!b) return null; const rc = b.getBoundingClientRect(); const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1); return { txt: b.textContent.trim(), h: rc.height / sc }; }); await pg.close();

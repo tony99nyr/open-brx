@@ -382,11 +382,13 @@ button:active{filter:brightness(1.15)}
 .plate.slot .s .nw{white-space:nowrap;letter-spacing:.06em}
 .down .n.nn{font-size:96px;line-height:1;font-style:normal;animation:none;color:var(--mut)}
 .down .dn{display:flex;flex-direction:column;align-items:center;gap:6px}
-.down .n.nn.on,.down .lab.on{color:var(--ok)}.down .n.nn.dim{opacity:.35}.down .lab b{color:var(--num);font-family:var(--fd);font-size:15px;letter-spacing:.02em}
+.down .ins{font-family:var(--fd);font-style:italic;font-weight:700;font-size:26px;letter-spacing:.08em;white-space:nowrap;text-align:center;color:var(--num)}.down .ins.on{color:var(--ok)}
+.down .near.hold i{animation:holdfill 1.2s linear both}@keyframes holdfill{from{width:0}to{width:100%}}
+.down .n.nn.on,.down .lab.on{color:var(--ok)}.down .lab b{color:var(--num);font-family:var(--fd);font-size:15px;letter-spacing:.02em}
 .down .near{width:260px;height:10px;margin-top:6px;background:rgba(255,255,255,.1);border:1px solid var(--edge);transform:skewX(-14deg);overflow:hidden}
 .down .near i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--warn) 0 18px,color-mix(in srgb,var(--warn) 55%,transparent) 18px 22px);transition:width .3s}
 .down .near.on i{background:var(--ok);width:100%}
-[data-env="night"] .down .near i,[data-env="night"] .down .near.on i{background:var(--num)}[data-env="night"] .down .n.nn.on,[data-env="night"] .down .lab.on{color:var(--num)}
+[data-env="night"] .down .near i,[data-env="night"] .down .near.on i{background:var(--num)}[data-env="night"] .down .n.nn.on,[data-env="night"] .down .lab.on,[data-env="night"] .down .ins.on{color:var(--num)}
 .bigbtn.ghost.util{height:40px;width:200px;font-size:12px;letter-spacing:.2em}   /* the ▣ glyph painted 49px below its line box and through the label */
 #frame[data-screen="lobby"] .chipbar{top:98px;flex-direction:row;gap:8px}   /* the band between the callsign block and the plates */
 #frame[data-screen="lo"] .chipbar{top:auto;bottom:70px;flex-direction:row;gap:8px}   /* loadout browser: over the faded list end, clear of tabs, filters and the action bar */

@@ -370,23 +370,25 @@ export class Hud {
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
   }
-  /** The DOWN screen's middle block: the countdown, or in scanner mode the station hint (utility.md §4.3):
-   *  FIND A RESPAWN STATION → GO TO STATION + a closeness bar (RSSI vs the station's threshold) → AT STATION · PULL
-   *  TRIGGER (or REVIVING with the presence gate). Older engines without `respawnHint` get the old copy. */
+  /** The DOWN screen's middle block: the countdown in auto mode, or in scanner mode the respawn LESSON (utility.md
+   *  §4.3, live bench 2026-09-04: "the very first time someone dies… the HUD should make it obvious"):
+   *  RUN TO YOUR TEAM'S RESPAWN STATION → GET CLOSER (closeness bar vs the station's threshold) → HOLD… (at the
+   *  station, the short delay finishing) → PULL THE TRIGGER TO RESPAWN (green) / RESPAWNING… (presence gate). */
   _downHintKey(st) { const s = st.station || {}; return [st.respawnHint, st.respawnType, st.respawnIn, s.id, s.present, s.rssi != null ? Math.round(s.rssi) : null].join('|'); }
   _downHint(st) {
     this._downHintSig = this._downHintKey(st);
-    const hint = st.respawnHint || (st.respawnType === 'auto' ? 'timer' : st.respawnType === 'none' ? 'out' : (st.respawnIn ? 'wait' : 'find_station'));
+    let hint = st.respawnHint || (st.respawnType === 'auto' ? 'timer' : st.respawnType === 'none' ? 'out' : 'find_station');
+    if (st.respawnType === 'scanner' && (hint === 'timer' || hint === 'wait')) hint = 'find_station';   // an older engine: teach from the first second, never a 00
     if (hint === 'timer') return `<span class="n tab" id="rd">${pad2(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
     if (hint === 'out') return `<span class="n nn">✕</span><span class="lab">NO RESPAWNS THIS MODE</span>`;
-    if (hint === 'wait') return `<span class="n nn dim">▣</span><span class="lab">STAND BY</span>`;   // scanner mode's brief pre-revive delay: never a "00" countdown (device 2026-09-04)
-    const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (arm's length at high TX)
+    const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
     const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
-    const bar = `<div class="near ${hint === 'pull_trigger' || hint === 'reviving' ? 'on' : ''}"><i style="width:${hint === 'approach' ? pct : 100}%"></i></div>`;
-    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="lab">FIND A RESPAWN STATION</span>`;
-    if (hint === 'approach') return `<span class="n nn">▣</span><span class="lab">GO TO STATION${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>${bar}`;
-    if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="lab on">AT STATION · PULL TRIGGER</span>${bar}`;
-    return `<span class="n nn on">▣</span><span class="lab on">AT STATION · REVIVING…</span>${bar}`;
+    const bar = (cls, w) => `<div class="near ${cls}"><i style="width:${w}%"></i></div>`;
+    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">RUN TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">THEN PULL THE TRIGGER THERE</span>`;
+    if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER TO THE STATION</span>${bar('', pct)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
+    if (hint === 'hold') return `<span class="n nn on">▣</span><span class="ins on">HOLD…</span>${bar('on hold', 100)}<span class="lab on">AT THE STATION · ALMOST THERE</span>`;
+    if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="ins on">PULL THE TRIGGER TO RESPAWN</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
+    return `<span class="n nn on">▣</span><span class="ins on">RESPAWNING…</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
   }
   /** The DOWN-screen recap: three labelled tiles — time left · the team race (cap under it) · your own line. */
   _downRecap(st) {
