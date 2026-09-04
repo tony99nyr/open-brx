@@ -1312,13 +1312,13 @@ The CLI engine (`modes/extraction.py`) already models 2-4 host-side; port its ru
 ⚠️ `last_survivor` was pulled from the `last_stand` preset: MC only knows deaths from CONNECTED HUDs, so it
 is the announcement most likely to be wrong when phones drop -- kept as an opt-in event.
 
-## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BACKEND BUILT 2026-09-04, UI + APK pending
+## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BUILT 2026-09-04 (backend, read-only UI, APK 0.1.4); the WRITE UI is pending
 
 Tony: *"how the gleds and hleds behave, what sounds are used and when, these should be made into a
 config that MC can program … silenced snipers cuts out the announcer stuff and extra led flashes …
 counter-strike mode … bomb armed and bomb defused sounds … 'protect the VIP' mode … VIP hits."*
 
-**Done:** `mc/presentation.py` (events, presets standard / silenced / counter_strike / vip, merge +
+**Done:** `mc/presentation.py` (events, presets standard / silenced / counter_strike / vip / infection / last_stand / extraction, merge +
 validation against the on-gun catalog, resolve, cue + LED expansion); `GameConfig.presentation` in the
 PUT whitelist; the compiler emits per-event `cues` + a `leds` burst table + a summary; the phone
 engine plays them on hit_taken / died / respawned / healed / armour_up / shield_up with a one-burst-
@@ -1329,7 +1329,7 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
 > several per kill, played back to back instead of the kill line), scorer alerts for lead_taken /
 > lead_lost / next_kill_wins / last_survivor / infected, node-side clock callouts time_60/30/10, and
 > per-mode presets: tdm/ffa → standard · infection → infection · lms → last_stand · extraction →
-> objective · cs (CLI) → counter_strike. **Rule (Tony): events are HUD-driven; MC pushes only cross-player
+> extraction · cs (CLI) → counter_strike. **Rule (Tony): events are HUD-driven; MC pushes only cross-player
 > facts, best-effort, never waited on** (A11.4). HUD animations for the new `alert` moment and medal
 > stacks are with the **brx-hud** session. Suites: mcp 691, app 89.
 
@@ -1343,32 +1343,66 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
    `Session.mc_confidence()` gating the global-state pushes, `GET /api/presentation`. Done, tested.
 1. ✅ **MC UI, read-only (2026-09-04)**: section 5 of the DESIGNER, an **ADVANCED** disclosure that loads
    `/api/presentation` on click — preset, seven switches, MC confidence line, the event table (source
-   HUD/MC/both · when · sound id + catalog words · gun / headset colour · HUD text; muted rows struck
-   through). Older server → "THE MC SERVER PREDATES THIS UI" with the restart command; any other error
+   HUD/MC/both · when · sound id + catalog words · gun / headset colour · HUD text; a muted row carries a SOUND OFF chip). Older server → "THE MC SERVER PREDATES THIS UI" with the restart command; any other error
    → its message. Verified: console unit tests (open/close, 404, error, mounted in the Designer), the
    real-browser suite (fresh server: table rendered from the live MC; stale server: the banner), and an
    old-session boot (fixed on the way: a restored pre-A11 config now gets the mode's presentation
    default, or the console read a stock mode as TUNED). **Next**: the preset picker + switches (write).
    Until then `PUT /api/config {"presentation":{"preset":"silenced"}}`.
-2. **APK rebuild** (the engine changes) + site rebuild, before the next match.
+2. ✅ **APK rebuilt** 0.1.2 → 0.1.3 (clean tree) → 0.1.4 on 2026-09-04, site rebuilt each time; 0.1.4 is the HEAD app code.
 3. **Objective / VIP emitters**: the cues + `alert` plumbing exist; the extraction/objective engines on
    the phone path do not call `Session._alert("objective_scored", …)` yet, and `survivors_win` needs
    the infection end decided. Wire when those modes move onto the phone path.
 4. **Per-event override editor** (custom sounds from the catalog picker) — after 1.
 5. `bomb_detonated` uses X12 on Tony's ear ("X13 might actually be a sniper"); confirm and align
    `sounds.BOMB_DETONATED` + the proto-10 `$SIR` row.
-6. **HUD** (brx-hud session): `alert` moment banner + medal stack badges on the kill moment.
+6. ✅ **HUD** (brx-hud, 0a72462): `alert` moment banner + medal stack badges on the kill moment. ✅ The scanner DOWN hint now follows the respawn gate ("pull the trigger" vs "stand there", brx-hud c97e5ce, same night).
 7. **CLI `GameDriver` headset**: the direct-BLE driver still holds the team colour in play and repaints it
    after every spawn/hit (the A11 behaviour); the phone now follows the A11.6 headset block (dark in play,
    flashes). Align the driver with `presentation.headset_frames()` when the CLI grows a profile.
+
+### Polish round 2026-09-04 (night) — LOW items left for a later session (three reviewers over the day's 37 commits)
+
+Fixed in the round (see experiment-log "POLISH ROUND"): the catalog re-parse on every `describe()`, the alert
+subject id being overwritten by the recipient id, resync on a healthy gun marking it dead (bogus auto-revive),
+event `$HLED` paints over the out-blink, the low-health blink cut by a pending hit-flash rest, `reload_mult` on
+the sidearm in the HUD, `headset.death: null` accepted then failing at push, lead/last-survivor alerts skipped
+on team kills, `last_survivor` never firing in infection, the turned player hearing "infected" twice.
+
+Left as LOW (not fixed, no behaviour at stake tonight):
+- `presentation.merge`: `{"preset": "custom"}` (what `summary()` reports) is rejected -- treat as a no-op preset;
+  an unhashable preset value 500s instead of 400s (operator-token-gated); a stored bare `{"preset":…}` profile
+  would KeyError in `merge()` on `prof["events"]` (`setdefault`).
+- `presentation._colour` admits 8 (orange) and `headset_frames` paints tids 0-7, while compile's
+  `_HLED_SEEN_COLOURS` is 0-3: a tid 4-7 head omits the lobby colour but the bundle's headset block paints it;
+  `$HLED,8` is unverified on hardware.
+- An event's static `$HLED` paint while ALIVE with `in_play: dark` leaves the headset lit until the next flash
+  (hold 0 = "leave it"). Decide: follow it with the rest frame after ~1 s.
+- engine: medal `delay()`s and event GLED steps are not cancelled by `_endLocal`/panic (a `$GLED`/`$PLAY` can
+  land ≤ 6 s after `frames.end`); `_reassertDeathBlink` is not gated on `!resync`; `alert()` plays events in
+  `armed` (a parked, unspawned gun); `app.js syncPlayerAdvert` sets `playerAdvert = want` before `start()` so a
+  failed advert is not retried; `utility.js stopAdvert` swallows the plugin error.
+- `mc_confidence()` treats a rostered player with no `node_id` as missing (a phoneless player silences lead
+  alerts for the night) and trusts the node's own `pending` -- both intended; document.
+- Beacon plugin: iOS `CBUUID(string:)` on a malformed uuid throws (guard with `UUID(uuidString:)`); Android
+  catches only `SecurityException` around `startAdvertising`. `mcp/tools/webview_eval.py` carries a personal
+  adb path + default device IP. `app/capacitor.config.json` `webContentsDebuggingEnabled: true` ships in the
+  debug APK -- turn off with the release build (B21).
+- `compile.py:563` `int(f.split(",")[16])` on a legacy-template `$WEAP` has no isdigit guard (synthetic catalogs only).
+- engine `_turned` is neither persisted nor cleared in `reset()`: a player who turned and then reloads the app
+  mid-match comes back "never turned" and plays `survivors_win` at time-expiry. Persist it with the match
+  context; and the new start-reset test asserts the field, not the time-expiry behaviour -- upgrade it.
+- 3-team infection: `_infected_team` is the target of the LAST turn and the engine flips to the first other
+  tid, so with three teams the turned players scatter and the survivor count is wrong. Restrict infection to
+  two teams in `validate()` or define the infected team in the config.
 
 ## 🟢 S1 — THE SOUND CATALOG: classify all 2477 on-gun sounds so game modes can pick by meaning (2026-09-03)
 
 > **Steps 1, 3 and 5 DONE 2026-09-03 night** (experiment log "EVERY SOUND CLASSIFIED"): catalog JSON
 > + reference page shipped, `python -m brx_mcp sounds <words|category:|ids:> [addr]` searches and
 > auditions, `test_every_shipped_sound_id_is_on_the_gun` enforces on-gun ids, five mis-mapped cues
-> fixed. **Open: step 2 (Tony's by-ear audit of ~30 ids), step 4 (MC picker), and swapping VB17 for
-> the team-neutral VA6D/VA6E lead lines.**
+> fixed. **Open: step 2 (Tony's by-ear audit — 148 ids done by 2026-09-04, the rest pending), step 4 (MC picker).**
+> ✅ VB17 → the team-neutral VA6D/VA6E lead lines (presentation.py, 2026-09-04).
 
 
 Tony's ask: *"quickly and easily create new game modes that use real sound effects. for that you need

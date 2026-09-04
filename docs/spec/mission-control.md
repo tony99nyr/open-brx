@@ -125,7 +125,7 @@ default `GameConfig` (`contracts.md` §3) which the host then tunes.
 |---|---|---|
 | Environment | `environment` | indoor / outdoor |
 | Night / LED | `night` (+ `led`) | on / off → blackout HUD + LED choices |
-| **Presentation** (A11) | `presentation` | preset `standard` / `silenced` / `counter_strike` / `vip` / `custom`; switches `announcer`, `gun_flash`, `headset_team`, `sight_flash`; per-event `sound` (on-gun id, from the sound catalog) + `gun_led` / `headset` colour. Compiled into `cues` + `leds` per player (`mc/presentation.py`). UI picker: pending. |
+| **Presentation** (A11) | `presentation` | preset `standard` / `silenced` / `counter_strike` / `vip` / `infection` / `last_stand` / `extraction` / `custom` (mode defaults in `MODE_PRESET`); switches `announcer`, `gun_flash`, `headset_team`, `sight_flash`, `hud_events`, `mc_events`, `mc_confidence`; the `headset` block (A11.6); per-event `sound` (on-gun id, from the sound catalog) + `gun_led` / `headset` colour. Compiled into `cues` + `leds` per player (`mc/presentation.py`). UI picker: pending. |
 | **Time limit — required** | `time_limit_s` | minutes. **The only end condition that reaches a dispersed node** (A4.8); `validate()` refuses null unless the host marks the venue fully covered |
 | Respawn | `respawn.{type,delay_s}` | Scanner / Auto / none · delay |
 | Scoring | `scoring.{frag_limit,win_by}` | score-to-win, kills / survival / objective — shown with a **"coverage-zone only"** badge: MC can end the match early on these only for nodes it can reach |

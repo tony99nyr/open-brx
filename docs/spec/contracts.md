@@ -111,17 +111,30 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   team_flip?: { [tid: string]: string[] }, // infection: frames to move THIS gun to another team mid-match
   cues: { countdown: string, kill: string, game_over?, victory?, tick?, klaxon?, multi?, medal?,
           hurt?, hurt_led?, runway_30?, runway_20?, runway_10?, team_led?,
-          // A11: one key per presentation EVENT that carries a sound (first_blood, lead_taken, lead_lost,
-          // objective_taken, objective_scored, flag_returned, point_captured, hill_captured, bomb_planted,
-          // bomb_defused, bomb_detonated, vip_hit, vip_down, hit_taken, died, respawned, healed, armour_up,
-          // shield_up). "" = deliberately MUTE (announcer off): the node skips the sound but still flashes.
+          // A11: one key per presentation EVENT that carries a sound — the medal kinds (first_blood, double_kill,
+          // triple_kill, killtacular, killing_spree, unstoppable), match state (lead_taken, lead_lost,
+          // next_kill_wins, last_survivor, infected, survivors_win, victory, game_over), objectives
+          // (objective_taken, objective_scored, flag_returned, point_captured, hill_captured, bomb_planted,
+          // bomb_defused, bomb_detonated, vip_hit, vip_down), the player's own (hit_taken, died, respawned,
+          // healed, armour_up, shield_up, low_health), the clock (time_60, time_30, time_10) and the extraction
+          // ladder (extraction_called/open/alert/closing/complete/failed/tick, loot_picked, loot_dropped,
+          // raid_ending, raid_over) — the full list is `presentation.EVENTS`. "" = deliberately MUTE
+          // (announcer off): the node skips the sound but still flashes.
           [k: string]?: string },
   leds?: { [event: string]: [frame: string, hold_s: number][] },   // A11: the tuned $GLED burst (3 flashes back to
                        // the team colour; hardware-tuned 2026-09-03) + optional static $HLED, per event. Written
                        // verbatim with the holds; the node never repaints inside a burst and never plays two
-                       // bursts inside one second. Absent/empty = no lights for that event (night, blackout, or
+                       // bursts inside one second. A static $HLED step is skipped while the player is DOWN (the
+                       // out-blink owns the headset) and yields to any later headset sequence (hit flash, death).
+                       // Absent/empty = no lights for that event (night, blackout, or
                        // the profile's gun_flash=false).
-  presentation?: { preset, announcer, gun_flash, headset_team, sight_flash, custom_events }   // A11 summary
+  presentation?: { preset, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence,
+                   custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier } },   // A11/A11.5/A11.6 summary
+  headset?: { in_play: "dark"|"team", rest: string, blank: string,        // A11.6: the node's headset sequences, each a
+              pregame: string[],                                          // list of [frame, hold_s] ending on an explicit
+              start: [string, number][], hit: [string, number][],         // state frame. `rest` = the in-play frame the node
+              death: [string, number][], respawn: [string, number][],     // returns to after every flash ("" never; dark or
+              carrier: { [tid: string]: [string, number][] } },           // team). death [] = the "native" opt-out. {} when LEDs are off.
   // hurt/hurt_led = the victim-side low-health alert ($PLAY,VA8B + $HLED), fired ONCE PER LIFE
   // when armour reaches 0 and HP starts dropping. Byte-identical to Callsign
   // (protocol/captures/raw/2026-08-23-two-tagger-combat.btsnoop @340.5s, @361.5s).
@@ -288,7 +301,7 @@ for idempotent replay. `status` carries no `seq`.
 | `config` | `{ config: GameConfig, frames: FrameBundle, roster: RosterEntry[] }` | pushed on **all-ready** (phase 4) → node writes `frames.head` (no `$SPAWN`), replies `ack_config` → **LOBBY**. Re-pushed (new `frames`) if a player's loadout/num changes after the push. |
 | `start` | `{ match_id, go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START). MC mints `match_id` and stamps a **monotonic `seq` per session**. **Rules (A5.6):** re-push of the *same* schedule (straggler, grace re-arm) = **same `seq` + same `match_id`** (no-op on a node that holds it); a **reschedule** = **new `seq` + new `match_id`** (supersedes). A late-joining player mid-match: `assign` → `config` → the same `start` re-pushed → hot-join (M-START E5). |
 | `feedback` | `{ player_id, kind:"kill"|"victory"|(legacy "multi"|"medal"), t, cue?:string, medals?:string[] }` | MC scored you a kill → node `$SFLASH` + `$PLAY` (`cue` if present, else `frames.cues[kind]`; missing → flash only). `t` = the death time; node ignores it if older than `FEEDBACK_MAX_AGE_MS` (A4.3) |
-| `alert` | `{ kind, text, player_id, t, hud?:boolean, ...extra }` | A11.4: a named game event; node plays its own `cues[kind]`/`leds[kind]` + shows `text` as a HUD alert; stale (> `FEEDBACK_MAX_AGE_MS`) → dropped |
+| `alert` | `{ kind, text, player_id, t, hud?:boolean, player_id_subject?, carrier?, flag_tid? }` | A11.4: a named game event (`player_id` = the recipient; `player_id_subject` = who turned / the last survivor); node plays its own `cues[kind]`/`leds[kind]` + shows `text` as a HUD alert; stale (> `FEEDBACK_MAX_AGE_MS`) → dropped |
 | `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`panic`\|`abort_start`\|`recall` | **one meaning each (A5.9)**: `abort_start`=cancel a *pending* schedule (by `seq`) while ARMED → LOBBY (gun still holds `head`); if the node is already LIVE for that `seq`, it behaves as `recall`. `recall`=stop a *live/armed* game → node writes `frames.end` (+ `cues.game_over`) → **KITTED**; `end`=normal match end → same → KITTED; `panic`=`frames.panic` → KITTED. In KITTED/LOBBY an `end`/`recall` writes `frames.end` iff a bundle is held, then → KITTED. **`pause` is removed** (A4.6). |
 | `apply` | `{ frames: string[], reason?: string }` | A6.4: best-effort "write these frames now" — coverage-zone runtime effects only (syphon heal, regen refill, extraction boost). Node writes verbatim, never persists, ignores if not LIVE. |
 | `score` | `ScoreRow` + `{ shots_total, board? }` | A7: MC pushes a player's current row to its node whenever it changes (best-effort, coverage-zone). The HUD shows K/D/A (and ACC only once `hits ≥ 1` and `shots ≥ 10` — accuracy is hits-from-victims over own shots, so it reads 0% for anyone whose victims had no phone in range); still "—" until the first push or `welcome.node.score`. **`board?`** (2026-09-03, additive) = `{ teams: [{ team_id, name, score }], cap }` — the race to the frag cap for the HUD's DOWN-screen recap; in FFA the top three players stand in for teams. Older MCs omit it and the HUD shows its local `CAP` only. |
@@ -547,11 +560,13 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     created_t, updated_t, config: GameConfig, weapon_tuning?: RESERVED}` on the MC host (`~/.brx-mcp/presets.json`);
     `/api/presets*`; applying one is `PUT /api/config` with that config (fresh `config_id`).
 - **A11 (2026-09-04, PRESENTATION — `mcp/brx_mcp/mc/presentation.py`; additive, no `v` bump):**
-  - **A11.1 `GameConfig.presentation`** = `{ preset: standard|silenced|counter_strike|vip|custom, announcer,
-    gun_flash, headset_team, sight_flash, events: { <event>: { sound?, gun_led?, headset? } } }`. A preset name
+  - **A11.1 `GameConfig.presentation`** = `{ preset: standard|silenced|counter_strike|vip|infection|last_stand|
+    extraction|custom, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence,
+    headset (A11.6), events: { <event>: { sound?, gun_led?, headset? } } }`. A preset name
     replaces the profile; any field edit makes it `custom` (the A10.2 rule). `sound` must be an id physically on
     the gun (`data/sound_catalog.json`, read off the hardware 2026-09-03 — the app's list has 157 ids the gun lacks);
-    colours are the shared 9-entry palette. `cs` defaults to `counter_strike`, every other mode to `standard`.
+    colours are the shared 9-entry palette. Mode defaults (`MODE_PRESET`): `cs` → `counter_strike`, `infection` →
+    `infection`, `lms` → `last_stand`, `extraction` → `extraction`; `tdm`, `ffa` and anything unlisted → `standard`.
     Validated in `PUT /api/config` like every other key (A8.3).
   - **A11.2 Bundle.** The compiler expands it into `cues` (per-event pre-composed `$PLAY`, A6.3 — V-family ids
     on the announcer slot, everything else on the SFX slot; `""` = mute) and the new **`leds`** table (above),
@@ -565,15 +580,18 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     on the node waits for MC. MC pushes exist ONLY for facts no single gun can know (a kill credited to you and
     its medals; lead changes; next-kill-wins; last survivor; another player turning), they are best-effort
     while in coverage, and a stale one is dropped — exactly the standing `feedback` has had since A4.3.
-    MC→node **`alert { kind, text, player_id, t, hud?, ...extra }`**: a NAMED game
+    MC→node **`alert { kind, text, player_id, t, hud?, player_id_subject?, carrier?, flag_tid? }`**: a NAMED game
     event (lead_taken / lead_lost / next_kill_wins / last_survivor / infected / survivors_win / objective_taken /
     objective_scored / flag_returned / point_captured / hill_captured / bomb_planted / bomb_defused /
     bomb_detonated / vip_hit / vip_down …). MC sends only the name (+ `text`, the HUD banner); the node plays
     `cues[kind]` + `leds[kind]` from its OWN bundle, so the presentation profile is honoured per player, and shows
     `text` as an `alert` HUD moment (`hud:false` = sound/lights only). Same freshness rule as `feedback`
     (`FEEDBACK_MAX_AGE_MS`). Scope is MC's: all / one team / one player. The scorer emits lead changes (team
-    modes by team totals, FFA by player), `next_kill_wins` once at cap-1, `last_survivor` once in lms/infection,
-    `infected` on a team_change in infection; mode engines emit the objective/VIP kinds.
+    modes by team totals, FFA by player), `next_kill_wins` once at cap-1, `last_survivor` once in lms/infection
+    (in infection the survivors are the alive players still OFF the team the turns flip to, evaluated on every
+    death and every turn), `infected` on a team_change in infection (the turned node itself skips MC's copy, it
+    already played its own); mode engines emit the objective/VIP kinds. The scorer evaluates these after EVERY
+    scored death, team kills included.
     **`feedback` gains `medals: string[]`** (Halo-style stack: first_blood · double_kill / triple_kill /
     killtacular · killing_spree at 5 / unstoppable at 10 — one kill can carry several); `kind` stays `"kill"` so
     older nodes still play their kill line, while a current node plays the medal cues back to back INSTEAD of
@@ -586,7 +604,8 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     next-kill-wins, last survivor, objective/VIP callouts, the extraction alert to others) or **`both`**.
     `presentation` gains three switches: `hud_events`, `mc_events` (mute a whole class; per-event `sound`/
     `gun_led`/`headset` nulls still tune individual events) and **`mc_confidence`** (default on): MC pushes a
-    GLOBAL-STATE event (`lead_taken`, `lead_lost`, `next_kill_wins`, `last_survivor`, `survivors_win`) **only
+    GLOBAL-STATE event (`lead_taken`, `lead_lost`, `next_kill_wins`, `last_survivor` — `GLOBAL_STATE_EVENTS`;
+    `survivors_win` is HUD-sourced, fired by the node at time-expiry, and is not gated) **only
     while every rostered player's HUD has a live socket, was heard from within 6 s, and reports nothing left
     to flush** (`Session.mc_confidence()`); otherwise the event is withheld and logged to the feed as
     WITHHELD. A withheld event is never queued -- a stale "takes the lead" is worse than silence. `GET

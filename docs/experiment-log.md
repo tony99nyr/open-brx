@@ -6099,3 +6099,51 @@ stays as an opt-out. The blink is ~160 s at count 200 and token 6's upper range 
 node re-asserts it while a player stays down (brx-grenade's engine change). Server-side only: the
 death sequence lives in the compiled bundle, no APK needed for the default itself.
 
+
+### 2026-09-04 (night) — 🔍 POLISH ROUND over the day's 37 commits: one High, twelve Mediums fixed, three review passes
+
+Tony: *"can you review all changes made today and /polish-loop. update the handoff and experiment log for
+the session. is latest code built as apks?"* Scope: every commit since midnight (sound catalog, A11–A11.6,
+the event system, the ADVANCED panel, sidearms, `$WEAP` tok15, the beacon station, HUD work from the peer
+sessions). Three reviewers per pass (correctness · security/robustness · UX + contract fidelity), fresh
+contexts each pass, three passes; nothing Critical anywhere.
+
+**The one High** (engine): `alive` is not persisted and a state-line resync never set it, so an app reload
+mid-match on a HEALTHY gun ended resync with alive=false, `tick()` stamped `deadAt` ("recovered while down")
+and the auto-revive wrote `$SPAWN` + `$AMMO` to a live gun ten seconds later -- full heal, refill, a bogus
+respawn fact. A state line with hp > 0 is now alive evidence.
+
+**Mediums fixed** -- server: `sounds.describe()` re-parsed the 1.16 MB catalog per call and `GET
+/api/presentation` called it 34 times inside the async handler (~116 ms of blocked event loop per request on
+an unauthenticated LAN route) → one parse per file mtime; `Session._alert` overwrote the scorer's subject
+`player_id` with the recipient's, and the node read a `player_id_subject` nothing sent → the subject now
+travels as `player_id_subject` through an `ALERT_EXTRA` whitelist (contract row updated); `merge()`
+accepted `headset.death: null` and `int(None)` blew up at PUSH time → rejected at PUT; the scorer's
+lead/next-kill/last-survivor alerts ran only inside the enemy-kill branch (a team kill could hand the lead
+over in silence) → after every scored death; `last_survivor` counted every alive player, and the infected
+respawn alive, so it never fired in infection → survivors = alive players OFF the team the turns flip to,
+evaluated on each death and each turn. Engine: an event's static `$HLED` (infection / last-stand `died`)
+landed over the green out-blink → skipped while down, gated on the headset generation; the low-health blink
+did not bump the generation so a pending hit-flash rest cut it short; `reload_mult` shortened the HUD's
+takeover on the sidearm while the gun only honours it on the primary; the turned player heard "infected"
+twice (its own HUD-driven line, then MC's copy); the generation counter was undefined after a reload
+(`undefined === 0`), dropping every alive-event headset paint until the first hit; `_turned` was never reset
+at a new start. Console: the confidence line read as a fault before the match ("MC NOT CONFIDENT — OFFLINE
+8" on a setup screen) → neutral "GATE ARMED" wording pre-match, switch-aware (MC events off / gate off), names
+players when live; strike-through was the only mute signal and overstated the mute (sound only, lights still
+fire) → a SOUND OFF chip at 5.1:1; a re-open after a failure showed the old table under the error; a raw HTTP
+verb in operator copy. Docs: A11.1 listed 4 presets and a wrong mode map (7 presets, `MODE_PRESET`), A11.5
+gated `survivors_win` (it is HUD-sourced), the FrameBundle block had no `headset?` table and a partial
+`cues` list, API.md lacked `summary.headset` / the `presentation` PUT semantics / `State.mc_confidence`,
+utility.md §4.3 described DOWN copy the HUD never shipped. brx-hud fixed their one item the same hour
+(c97e5ce: the scanner DOWN hint follows the respawn gate).
+
+**Left as Low**, listed under FOLLOWUPS S2 "Polish round 2026-09-04 (night)": the `custom` preset round
+trip, the 0-3 vs 0-7 headset colour split, delayed writes not cancelled by end/panic, an alive-event headset
+paint that stays lit under `in_play: dark`, the beacon plugin's iOS `CBUUID` throw, a personal adb path in a
+lab tool, `webContentsDebuggingEnabled` in the debug APK (B21), 3-team infection survivor counting.
+
+**Validation**: mcp 723 (venv) · `run_tests.py` 680 pass / 43 skipped (system python) · engine 118 ·
+console 76 + `tsc`/vite build · the ADVANCED browser step against a fresh MC (13/13 in the designer flow) ·
+the panel eyeballed in the built console (`?mock`). Every fix carries a test that fails on the old code
+(round 2 ran the new engine tests against the pre-fix file to check). APK 0.1.5 + site rebuild follow.

@@ -92,6 +92,7 @@ class Scorer:
         self.frag_limit = frag_limit
         self._leader: str | None = None            # team_id (or player_id in FFA) currently in the lead
         self._announced: set[str] = set()          # once-per-match alerts already sent (next_kill_wins, last_survivor)
+        self._infected_team: str | None = None      # infection: the team players flip TO (learned from team_change)
         self.on_feed = on_feed or (lambda e: None)
         self.now_ms = now_ms or (lambda: 0)
         self.stats: dict[str, _P] = {pid: _P(p.get("team_id")) for pid, p in players.items()}
@@ -234,8 +235,11 @@ class Scorer:
             for team in self.teams.values():
                 if team["tid"] == tid:
                     st.team_id = team["team_id"]
+                    self._infected_team = team["team_id"]   # A11.4 last_survivor: who counts as a survivor
             if self.mode == "infection" and not suppress_awards and self.now_ms() - t <= FEEDBACK_MAX_AGE_MS:
                 self.on_alert("infected", "all", {"player_id": pid})     # A11.4: "The infection is spread."
+            if self.mode == "infection" and not suppress_awards:
+                self._match_state_alerts(t)                              # a turn is what changes the survivor count
             return "scored"
         return "ignored"
 
@@ -310,8 +314,10 @@ class Scorer:
                     body = {"player_id": killer, "kind": "kill", "t": t, "medals": list(kill.get("medals") or []),
                             "victim": victim, "victim_team": self.stats[victim].team_id}
                     self.on_feedback(killer, body)
-                if not suppress:
-                    self._match_state_alerts(t)
+        # Polish 2026-09-04: alerts after EVERY scored death, not only enemy kills -- a team kill (kills -= 1)
+        # can flip the lead, and a death with no known shooter still leaves a last survivor.
+        if not suppress:
+            self._match_state_alerts(t)
         self.kills.append(kill)
         if killer:
             verb = "team-killed" if friendly else "eliminated"
@@ -351,6 +357,12 @@ class Scorer:
                     self.on_alert("next_kill_wins", "all", {})
         if self.mode in ("lms", "infection") and "last_survivor" not in self._announced:
             alive = [pid for pid, st in self.stats.items() if st.alive]
+            if self.mode == "infection":
+                # the infected respawn alive, so "survivors" = the alive players still off the infected team
+                # (the team the team_change events flip to; unknown until the first turn -> no alert yet)
+                if self._infected_team is None:
+                    return
+                alive = [pid for pid in alive if self.stats[pid].team_id != self._infected_team]
             if len(alive) == 1 and len(self.stats) > 1:
                 self._announced.add("last_survivor")
                 self.on_alert("last_survivor", "all", {"player_id": alive[0]})

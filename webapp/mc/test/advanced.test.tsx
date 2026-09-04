@@ -24,7 +24,7 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     expect(lead.textContent).toMatch(/VA6D/);
     expect(lead.textContent).toMatch(/takes the lead/i);
     expect(m.find('[data-testid="presentation-preset"]')[0].textContent).toMatch(/standard/i);
-    expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/MC NOT CONFIDENT — OFFLINE 1/);
+    expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/GATE ARMED[\s\S]*OFFLINE 1/);   // pre-match: neutral wording, the counts still shown
     const hs = m.find('[data-testid="headset-block"]')[0].textContent ?? '';          // A11.6 block, read only
     expect(hs).toMatch(/PRE-GAME TEAM COLOUR/); expect(hs).toMatch(/AT THE WHISTLE WHITE FLASH, THEN DARK/);
     expect(hs).toMatch(/ON HIT RED FLASH/); expect(hs).toMatch(/WHILE OUT NATIVE GREEN OUT-BLINK/); expect(hs).toMatch(/CARRYING THE FLAG BLINK THE FLAG COLOUR/);
@@ -62,6 +62,69 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     const m = await mountScreen(<Designer />, { state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' });
     expect(m.find('[data-testid="advanced-presentation"] button[aria-expanded="false"]').length).toBe(1);
     expect(m.text()).toMatch(/ADVANCED — SOUNDS & LIGHTS/);
+    m.unmount();
+  });
+});
+
+describe('ADVANCED — polish 2026-09-04', () => {
+  it('a re-open that fails shows the error alone, never the previous table under it', async () => {
+    const d = await demo();
+    let fail = false;
+    const err = Object.assign(new Error('boom'), { status: 500 });
+    const api = { getPresentation: async () => { if (fail) throw err; return d.api.getPresentation(); } };
+    const m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api });
+    await m.click('ADVANCED');
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid^="pres-row-"]').length).toBeGreaterThan(0);
+    await m.click('ADVANCED');                                   // close
+    fail = true;
+    await m.click('ADVANCED');                                   // re-open, now failing
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[role="alert"]')[0].textContent).toMatch(/COULD NOT LOAD/);
+    expect(m.find('[data-testid^="pres-row-"]').length).toBe(0);
+    m.unmount();
+  });
+
+  it('live, the confidence line names the players instead of counting them', async () => {
+    const d = await demo();
+    const players = [{ ...(d.state.players[0] ?? {}), player_id: 'pX', display: 'REAPER' }] as typeof d.state.players;
+    const state = { ...d.state, phase: 'live' as const, players };
+    const api = { getPresentation: async () => ({ ...(await d.api.getPresentation()), mc_confidence: { confident: false, missing: ['pX'], stale: [], unflushed: [] } }) };
+    const m = await mountScreen(<AdvancedPresentation />, { state, weapons: d.weapons, perks: d.perks, api });
+    await m.click('ADVANCED');
+    await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    const line = m.find('[data-testid="mc-confidence"]')[0].textContent ?? '';
+    expect(line).toMatch(/MC NOT CONFIDENT/);
+    expect(line).toContain('OFFLINE: REAPER');
+    expect(line).not.toMatch(/OFFLINE 1/);
+    m.unmount();
+  });
+});
+
+describe('ADVANCED — confidence line follows the switches (round 2)', () => {
+  it('says MC events are off, or the gate is off, before it talks about who is connected', async () => {
+    const d = await demo();
+    const base = await d.api.getPresentation();
+    const with_ = (patch: Partial<typeof base.summary>) => ({ getPresentation: async () => ({ ...base, summary: { ...base.summary, ...patch } }) });
+    let m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api: with_({ mc_events: false }) });
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/MC-DRIVEN EVENTS OFF/);
+    m.unmount();
+    m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api: with_({ mc_confidence: false }) });
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/GATE OFF[\s\S]*SENT REGARDLESS/);
+    m.unmount();
+  });
+});
+
+describe('ADVANCED — no stray text in cells (round 3)', () => {
+  it('every sound cell shows only the id and words, never source-comment text', async () => {
+    const d = await demo();
+    const m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks });
+    await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
+    const cells = m.find('[data-testid^="pres-row-"] td:nth-child(4)').map(td => td.textContent ?? '');
+    expect(cells.length).toBeGreaterThan(0);
+    for (const c of cells) { expect(c).not.toMatch(/\/\//); expect(c).not.toMatch(/T\.micro|T\.faint/); }
     m.unmount();
   });
 });

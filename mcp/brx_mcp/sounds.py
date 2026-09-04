@@ -134,19 +134,34 @@ def catalog_path():
     return pathlib.Path(__file__).with_name("data") / "sound_catalog.json"
 
 
+_CATALOG: tuple[float, dict] | None = None     # (mtime, {id: entry}) -- one parse per catalog file
+
+
+def _catalog() -> dict:
+    """The catalog as {id: entry}, parsed ONCE per file version. Polish 2026-09-04: `describe()` used to
+    re-parse the 1.16 MB JSON per call, and `GET /api/presentation` calls it ~34 times inside an async
+    handler -- ~116 ms of blocked event loop per request, on an unauthenticated LAN route."""
+    global _CATALOG
+    import json
+    path = catalog_path()
+    mtime = path.stat().st_mtime
+    if _CATALOG is None or _CATALOG[0] != mtime:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        _CATALOG = (mtime, {e["id"]: e for e in data["sounds"]})
+    return _CATALOG[1]
+
+
 def on_gun_ids() -> set[str]:
     """Ids physically present on a v4.32 tagger (2026-09-03). The app's Sounds.json lists 157 ids the
     gun does not have; those play the fallback, so THIS is the set to validate against."""
-    import json
-    data = json.load(open(catalog_path()))
-    return {e["id"] for e in data["sounds"] if e.get("on_gun")}
+    return {i for i, e in _catalog().items() if e.get("on_gun")}
 
 
 def describe(sound_id: str) -> str:
     """Catalog description for an id (transcript for voices, shape for effects), or '' if unknown."""
-    import json
-    for e in json.load(open(catalog_path()))["sounds"]:
-        if e["id"] == sound_id:
-            return e.get("transcript") or e.get("description", "")
-    return ""
+    e = _catalog().get(sound_id)
+    if not e:
+        return ""
+    return e.get("transcript") or e.get("description", "")
 

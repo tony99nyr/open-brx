@@ -394,6 +394,7 @@ export class Engine {
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     if (body.match_id !== this.matchId) { this.score = null; this.scoreAt = null; }   // a new match: last match's K/A/board must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
+    this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed') this._set('armed');
     this._save();
     return this.resumeSchedule();
@@ -453,9 +454,13 @@ export class Engine {
     if (this._lastEventLed != null && now - this._lastEventLed < EVENT_MIN_GAP_MS) return;
     this._lastEventLed = now;
     let t = 0;
+    const gen = (this._hsGen = this._hsGen || 0);   // an event's static $HLED must not land over a later headset sequence (death blink, hit flash); seed the counter so the check is not undefined === 0 after a reload
     for (const step of seq) {
       const frame = step[0], hold = Math.max(0, Math.round((step[1] || 0) * 1000));
-      if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => this._write([frame], `event led ${kind}`));
+      if (frame.startsWith('$HLED')) {
+        if (!this.alive) { t += hold; continue; }   // down: the out-blink owns the headset (polish 2026-09-04)
+        if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => { if (this._hsGen === gen && this.alive) this._write([frame], `event led ${kind}`); });
+      } else if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => this._write([frame], `event led ${kind}`));
       t += hold;
     }
   }
@@ -661,9 +666,10 @@ export class Engine {
     const t = body.t != null ? body.t : envT;
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log(`alert ${body.kind} too old — ignored`, 'li'); return; }
     if (this.phase !== 'live' && this.phase !== 'armed') return;
+    const me = this.player && this.player.player_id;
+    if (body.kind === 'infected' && this._turned && body.player_id_subject && body.player_id_subject === me) return;   // already played on the flip (HUD-driven); MC's copy is for the others
     this._event(body.kind);
     // A11.6 carrier blink: MC names who holds it (`carrier`) and whose flag it is (`flag_tid`)
-    const me = this.player && this.player.player_id;
     if (body.kind === 'objective_taken' && me && body.carrier === me) this._carrier(true, body.flag_tid != null ? body.flag_tid : (this.team ? this.team.tid : 0));
     if ((body.kind === 'objective_scored' || body.kind === 'flag_returned') && this.carrying != null && (!body.carrier || body.carrier === me)) this._carrier(false);
     if (body.hud !== false) this.moment = { kind: 'alert', at: this.now(), data: { kind: body.kind, text: body.text || body.kind, player_id: body.player_id_subject || null } };
@@ -803,7 +809,7 @@ export class Engine {
     // takeover must shrink with it too — quick_hands halves the reload (Tony, 2026-09-04).
     const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
     const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
-    if (rm > 0 && rm !== 1) secs *= rm;
+    if (rm > 0 && rm !== 1 && this.activeSlot === 0) secs *= rm;   // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods)
     this.reloading = { at: this.now(), ms: Math.max(300, Math.round(secs * 1000)), slot: this.activeSlot };
     this._changed();
   }
@@ -881,7 +887,7 @@ export class Engine {
       // logged explicitly: after the last field session we could not tell whether the alert had
       // fired at all, because the frame ring only holds 60 frames and had rolled past it.
       this.log(`low-health alert: armour 0, hp ${this.hp} — ${fr.length} frame(s)`, 'lk');
-      if (fr.length) this._write(fr, 'low health');
+      if (fr.length) { this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health'); }   // cancels a pending hit-flash rest step (polish 2026-09-04)
     }
     if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial) {
       // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
@@ -994,7 +1000,13 @@ export class Engine {
   }
   _resyncEvidence(kind) {
     const r = this.resync; if (!r) return;
-    if (kind === 'hp' || kind === 'lcd') { this._resyncDone('state line'); return; }
+    if (kind === 'hp' || kind === 'lcd') {
+      // Polish 2026-09-04: `alive` is not persisted and a reload mid-match restores it false. A state line
+      // with hp > 0 IS the evidence the gun is up; without this, tick() stamped deadAt on a healthy gun and
+      // auto-revive wrote $SPAWN + $AMMO (full heal, refill, a bogus respawn fact) 10 s later.
+      if (this.hp > 0 && !this.alive) this.alive = true;
+      this._resyncDone('state line'); return;
+    }
     if (kind === 'alcd-dec') { this._resyncDone('alive (shot went out)'); if (!this.alive) { this.alive = true; } return; }
     if (kind === 'alcd-inc' && r.step === 2) { r.step = 3; r.since = this.now(); r.prompt = 'pull the trigger'; this._changed(); }
   }

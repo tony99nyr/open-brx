@@ -104,15 +104,17 @@ On revive the node writes `frames.revive` exactly as an auto respawn does, and t
 ### 4.2 Engine surface (`engine.js`)
 `setStations(entries)` from the app every 250 ms · `state().station` = `{id, kind, team, state, value, rssi,
 threshold, present}` of the station this player would use (present first, else strongest) · `state().respawnGate`
-· `state().respawnHint` ∈ `timer | find_station | approach | pull_trigger | reviving | out | null`.
+· `state().respawnHint` ∈ `timer | find_station | approach | hold | pull_trigger | reviving | out | null`.
 `setStations` re-renders only when id / presence / rounded RSSI change. Tests: `engine.test.mjs`
 "utility items" block (trigger gate, delay, wrong team, neutral, allow-list, disabled station, presence gate,
 auto mode untouched, re-render economy).
 
 ### 4.3 DOWN screen (HUD session)
-Scanner mode replaces the countdown with the hint: **FIND A RESPAWN STATION** (none in range) → **GO TO
-STATION · -78 / -62 dBm** with a closeness bar (approach) → **AT STATION · PULL TRIGGER** (present, gate
-trigger) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.
+Scanner mode replaces the countdown with the hint (shipped copy, `hud.js`): **RUN TO YOUR TEAM'S RESPAWN
+STATION** with the sub-label THEN PULL THE TRIGGER THERE (trigger gate) or AND STAND THERE (presence gate) (none
+in range) → **GET CLOSER** with a closeness bar and STATION IN RANGE · the live RSSI / threshold (approach) → **HOLD…** · AT THE
+STATION · ALMOST THERE (present, the respawn delay still running) → **PULL THE TRIGGER TO RESPAWN** (trigger
+gate) or **RESPAWNING…** (presence gate) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.
 
 ## 5. Other kinds (designed, not built)
 

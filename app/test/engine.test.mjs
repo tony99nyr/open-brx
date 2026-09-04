@@ -1156,3 +1156,56 @@ test('a revive stops the out-blink re-assert (no longer down)', () => {
   h.adv(200000); h.eng.tick();
   assert.equal(h.writes.filter(f => f === OUTBLINK).length, after, 'alive again → no more out-blink writes');
 });
+
+
+// --- polish 2026-09-04 (review findings) ---
+
+test('polish: a state line during resync on a HEALTHY gun marks it alive — no bogus auto-revive after an app reload', () => {
+  const h = goLive(harness());
+  h.eng.alive = false; h.eng.deadAt = 0;             // what a reload leaves: alive is not persisted, deadAt neither
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.resync, 'resync started');
+  h.frame('$LCD,45,70,0,0,36,216,*');                 // hp 45: the gun is up
+  assert.equal(h.eng.resync, null); assert.equal(h.eng.alive, true, 'a healthy state line is alive evidence');
+  h.adv(20000); h.writes.length = 0; h.eng.tick(); h.adv(9000); h.eng.tick();   // a stamp tick, then one past the respawn delay
+  assert.ok(!h.writes.some(f => f.startsWith('$SPAWN')), 'no revive written to a live gun');
+  assert.ok(!h.facts.some(f => f.type === 'respawn'), 'no respawn fact');
+});
+
+test('polish: an event\'s static headset paint is dropped while down — the out-blink owns the headset', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  const RED = '$HLED,0,0,,,10,,*';
+  h.eng.frames.leds = { ...h.eng.frames.leds, died: [...golden.leds.died, [RED, 0.0]] };   // a "last stand" style died event with a headset colour
+  h.eng.frames.headset = { ...(h.eng.frames.headset || {}), death: [[OUTBLINK, 0.0]] };
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), [OUTBLINK], 'only the out-blink reached the headset');
+  assert.ok(h.writes.includes(golden.leds.died[0][0]), 'the gun burst still played');
+});
+
+test('polish: the player who turned ignores MC\'s infected alert naming themself; everyone else plays it', () => {
+  const h = harness({ mode: 'infection' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.eng._turned = true;
+  h.writes.length = 0; h.eng.moment = null;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'infected', text: 'INFECTED', player_id: 'p1', player_id_subject: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  assert.ok(!h.writes.includes(golden.cues.infected) && h.eng.moment === null, 'no second play for the one who turned');
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'infected', text: 'INFECTED', player_id: 'p1', player_id_subject: 'p2', t: h.eng.now() }, t: h.eng.now() });
+  assert.ok(h.writes.includes(golden.cues.infected) && h.eng.moment && h.eng.moment.kind === 'alert', 'someone else turning still plays');
+});
+
+test('polish: an event headset paint survives an app reload (the generation counter is seeded, not undefined)', () => {
+  const h = goLive(harness());
+  const TEAL = '$HLED,5,0,,,10,,*';
+  h.eng.frames.leds = { ...h.eng.frames.leds, lead_taken: [...golden.leds.died, [TEAL, 0.0]] };
+  h.eng._hsGen = undefined;                                   // what a reload leaves: not persisted, not in the ctor
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  assert.ok(h.writes.includes(TEAL), 'the delayed static paint reached the headset');
+});
+
+test('polish: _turned is reset by a new start, so last match\'s flip does not score this one', () => {
+  const h = harness({ mode: 'infection', timeLimit: 20 }).kit().config_().echo().start(0);
+  h.eng._turned = true;                                      // carried over from a previous match
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  assert.equal(h.eng._turned, false);
+});

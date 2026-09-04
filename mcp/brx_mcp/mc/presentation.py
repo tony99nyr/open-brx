@@ -134,9 +134,17 @@ def alert_body(kind: str, extra: dict | None = None) -> dict:
     """The MC→node `alert` body for a named event (A11.4): the node plays cues[kind] + leds[kind] from
     its OWN bundle (so the presentation profile is honoured per player) and shows `text` as a HUD alert."""
     body = {"kind": kind, "text": TEXT.get(kind, kind.replace("_", " ").upper())}
-    if extra:
-        body.update(extra)
+    for k, v in (extra or {}).items():
+        if k not in ALERT_EXTRA:
+            raise ValueError(f"alert extra {k!r} is not a wire field")
+        body[ALERT_EXTRA[k]] = v
     return body
+
+
+# The scorer's `extra` keys and the wire field each becomes. `player_id` (who turned / who is the last
+# survivor) travels as `player_id_subject`: the body's `player_id` is the RECIPIENT, set per push by
+# `Session._alert`, and the two collided until polish 2026-09-04 (the subject was silently overwritten).
+ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid": "flag_tid", "hud": "hud"}
 
 
 # `sound` specials: "voice:kill" = the player's own voice family's kill line (compile.kill_line);
@@ -296,6 +304,8 @@ def merge(current: dict | None, patch: dict) -> dict:
             elif hk == "hit":
                 cur[hk] = _colour(hv)
             elif hk == "death":
+                if hv is None:
+                    raise ValueError("presentation.headset.death must be \"native\" or a colour (null would fail at push time)")
                 cur[hk] = "native" if hv == "native" else _colour(hv)
             else:
                 raise ValueError(f"presentation.headset.{hk}: unknown field")

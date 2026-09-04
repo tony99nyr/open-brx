@@ -206,4 +206,28 @@ def test_last_survivor_and_infected_alerts():
     assert alerts[-1] == ("last_survivor", "all", {"player_id": "p0"}), alerts
     sc2, fb2, feed2, alerts2 = mk_alerts(mode="infection")
     r = sc2.ingest("n2", {"type": "team_change", "t": T0 + 1000, "match_id": "m1", "node_id": "n2", "player_id": "p2", "tid": 2}, T0 + 1000)
-    assert alerts2 and alerts2[-1] == ("infected", "all", {"player_id": "p2"}), (r, alerts2)
+    assert ("infected", "all", {"player_id": "p2"}) in alerts2, (r, alerts2)   # a turn also re-evaluates last_survivor (polish 2026-09-04)
+
+
+def test_a_team_kill_that_flips_the_lead_still_announces_it():
+    """Polish 2026-09-04: alerts ran only inside the enemy-kill branch, so a team kill (kills -= 1) could
+    hand the lead over in silence."""
+    sc, fb, feed, alerts = mk_alerts()
+    death(sc, "n1", "p1", 1, T0 + 1000)          # p0 (blue) kills p1 -> blue leads 1-0
+    assert ("lead_taken", "blue", {}) in alerts
+    death(sc, "n0", "p0", 2, T0 + 1100)          # p1 (yellow) kills p0 -> 1-1, no change
+    alerts.clear()
+    death(sc, "n2", "p2", 1, T0 + 1200)          # p0 team-kills p2 -> blue 0, yellow 1
+    assert ("lead_lost", "blue", {}) in alerts and ("lead_taken", "yellow", {}) in alerts, alerts
+
+
+def test_infection_last_survivor_counts_only_the_uninfected_side():
+    """Polish 2026-09-04: the infected respawn ALIVE, so counting every alive player never reached one."""
+    sc, fb, feed, alerts = mk_alerts(mode="infection")
+    death(sc, "n1", "p1", 1, T0 + 1000)          # p1 goes down (still yellow); 3 alive, infected team unknown -> nothing
+    assert not any(a[0] == "last_survivor" for a in alerts)
+    sc.ingest("n1", {"type": "team_change", "t": T0 + 1500, "match_id": "m1", "node_id": "n1", "player_id": "p1", "tid": 1}, T0 + 1500)
+    # p1 turned onto tid 1 (blue) -> blue is the infected side; the only alive non-blue player is p3
+    assert alerts[-1] == ("last_survivor", "all", {"player_id": "p3"}), alerts
+    sc.ingest("n1", {"type": "respawn", "t": T0 + 2000, "match_id": "m1", "node_id": "n1", "player_id": "p1"}, T0 + 2000)
+    assert sum(1 for a in alerts if a[0] == "last_survivor") == 1     # once per match, and a turned player's respawn is not a survivor

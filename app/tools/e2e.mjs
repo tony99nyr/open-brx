@@ -933,7 +933,7 @@ await step('designer-controls A11: ADVANCED opens a read-only sounds & lights ta
   const lead = await mc.locator('[data-testid="pres-row-lead_taken"]').textContent();
   expect(/VA6D/.test(lead) && /takes the lead/i.test(lead), 'lead_taken row lacks VA6D / the words: ' + lead);
   const conf = await mc.getByTestId('mc-confidence').textContent();
-  expect(/MC (NOT )?CONFIDENT/.test(conf), 'confidence line missing: ' + conf);
+  expect(/MC (NOT )?CONFIDENT|MC CONFIDENCE GATE ARMED/.test(conf), 'confidence line missing: ' + conf);   // pre-match the line is the neutral GATE ARMED wording (polish 2026-09-04)
   expect(/standard|silenced|counter.strike|vip|infection|last.stand|extraction|custom/i.test(await mc.getByTestId('presentation-preset').textContent()), 'preset not shown');   // uppercase is CSS, textContent is not
   expect((await mc.locator('[data-testid="advanced-presentation"] input, [data-testid="advanced-presentation"] select').count()) === 0, 'ADVANCED is read-only: no inputs');
   await shot(mc, 'designer-advanced'); await textAudit(mc, 'designer-advanced');

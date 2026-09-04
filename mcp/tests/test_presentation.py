@@ -171,7 +171,7 @@ def test_medal_events_each_have_their_own_verified_line_and_alerts_carry_text():
     assert b["cues"]["next_kill_wins"] == "$PLAY,,4,6,V115,,,,*"
     assert b["cues"]["time_60"] == "$PLAY,,4,6,V113,,,,*"
     assert P.alert_body("bomb_planted") == {"kind": "bomb_planted", "text": "BOMB PLANTED"}
-    assert P.alert_body("last_survivor", {"player_id": "p0"})["player_id"] == "p0"
+    assert P.alert_body("last_survivor", {"player_id": "p0"})["player_id_subject"] == "p0"   # the subject, not the recipient
 
 
 def test_extraction_preset_follows_the_genre_loop_and_last_stand_has_no_last_survivor_by_default():
@@ -242,3 +242,12 @@ def test_headset_block_defaults_validation_and_frames():
         with raises(ValueError):
             P.merge(None, bad)
 
+
+
+def test_headset_death_null_is_rejected_at_merge_not_at_push():
+    """Polish 2026-09-04: `death: null` passed merge and then int(None) blew up in headset_frames() at PUSH."""
+    with raises(ValueError):
+        P.merge(None, {"headset": {"death": None}})
+    p = P.merge(None, {"headset": {"death": "native", "hit": None}})     # hit may be off; death must be a colour or native
+    assert p["headset"]["death"] == "native" and p["headset"]["hit"] is None
+    assert P.headset_frames(P.resolve({"mode": "tdm", "presentation": p}), 1, True)["death"] == []

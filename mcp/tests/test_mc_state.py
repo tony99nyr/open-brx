@@ -231,7 +231,12 @@ def test_global_state_alerts_are_withheld_when_not_confident_and_sent_when_confi
     assert not any(k == "alert" for _, k, b in net.pushed)
     assert any(e.get("tag") == "WITHHELD" for e in s.feed)
     # a non-global event (someone else turned) is not gated by confidence, only by the class switch
+    net.pushed.clear()
     assert s._alert("infected", "all", {"player_id": ps[0]["player_id"]}) >= 1
+    # the SUBJECT (who turned) rides as player_id_subject; player_id stays the recipient (polish 2026-09-04)
+    bodies = [b for _, k, b in net.pushed if k == "alert"]
+    assert {b["player_id"] for b in bodies} == {ps[0]["player_id"], ps[1]["player_id"]}
+    assert all(b["player_id_subject"] == ps[0]["player_id"] for b in bodies)
     s.set_config({"mode": "tdm", "time_limit_s": 60, "presentation": {"mc_events": False}})
     net.pushed.clear()
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)

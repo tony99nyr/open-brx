@@ -1,7 +1,48 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-09-04 (morning).
+**Updated:** 2026-09-04 (night).
 
+> ## 🎛️ 2026-09-04 (evening/night) — SOUNDS & LIGHTS ARE A PER-GAME PROFILE (A11–A11.6) · EVENTS ARE HUD-DRIVEN · APK 0.1.4 CARRIES ALL OF TODAY
+>
+> - **Presentation profile** (`mc/presentation.py`, contracts A11): presets `standard / silenced /
+>   counter_strike / vip / infection / last_stand / extraction` (assigned per mode), and per event a sound
+>   (validated against the on-gun catalog), a gun-LED burst colour and a headset colour. Read it with
+>   `GET /api/presentation`; change it with `PUT /api/config {"presentation": {"preset": "silenced"}}`.
+>   The compiler ships it in the bundle (`cues`, `leds`, `headset`, `presentation`); the phone plays it.
+> - **Two event classes** (A11.4/A11.5, Tony's rule: *"these events have to be hud driven"*). **HUD**
+>   events fire on the phone from the bundle it already holds (hit, death, respawn, heal, armour, clock
+>   60/30/10, own team flip) and work with MC out of range. **MC** events are cross-player facts only
+>   (kill credit + Halo-style medal stacks, lead taken/lost, next kill wins, last survivor, someone
+>   turned): best-effort pushes, dropped when stale, never waited on, and the global-state ones go out
+>   only while `Session.mc_confidence()` holds (every HUD connected, fresh, flushed). Withheld alerts
+>   are visible in the feed. Memory: `hud-driven-events`.
+> - **Headset block** (A11.6): team colour pre-game → white flash at the whistle → DARK in play → red
+>   flash on hit → our green slow blink while out, re-asserted every ~2 min while down (**the firmware's
+>   own out-blink does NOT run in a hosted game**, seen live) → white flash on respawn → flag-colour
+>   blink while carrying. `headset.in_play: "team"` restores the held colour. Every flash ends on an
+>   explicit rest frame, because a count-limited `$HLED` blink ending dark by itself is unverified.
+> - **MC console**: DESIGNER section 5, **ADVANCED — SOUNDS & LIGHTS** (read only): preset, switches,
+>   MC confidence, the headset block, the event table with SOURCE. An older server shows a restart banner.
+> - **APK 0.1.4 (debug) is the HEAD app code** (sidecar git `7188999`, `dirty: false`); site rebuilt and
+>   deployed. Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
+>   the `sidearm` slot kind), **`$WEAP` tok15 = weapon-swap delay** (F4/F22 closed, Quick Switch is real),
+>   the **BLE-beacon respawn station + utility mode** (A13, proven on hardware), and the HUD's alert
+>   banner, medal stack and scanner-mode DOWN screen.
+> - **Multi-session lessons** (now in memory + FOLLOWUPS): sessions share ONE git index, so commit with
+>   `git commit --only <paths>`; the APK sidecar's `dirty` covers all of `app/`, and 0.1.3 had to be
+>   rebuilt from a clean tree; gate the site build on its exit code (it writes pages even when it fails);
+>   `.gitignore` had swallowed a plugin's native source until ed5989f.
+> - **Polish round (night, three passes × three reviewers)**: one High fixed -- an app reload mid-match on a
+>   HEALTHY gun ended resync as "dead" and auto-revived a live gun -- plus twelve Mediums (catalog re-parse
+>   blocking the event loop, the alert subject id lost, `last_survivor` never firing in infection, alerts
+>   skipped on team kills, event `$HLED` over the out-blink, the confidence line reading as a fault pre-match,
+>   stale A11.1/A11.5 contract text, …). Every fix has a test that fails on the old code. Lows are listed in
+>   FOLLOWUPS S2 "Polish round 2026-09-04 (night)". Details: experiment-log, same heading.
+> - **Open**: count-limited `$HLED` blink end state; white start flash and carrier blink legibility at
+>   6 ft; the CLI `GameDriver` still paints the A11 team colour in play (S2 item 7); preset picker +
+>   switches as a WRITE UI; S3 HUD-side extraction engine; F15 stun in the engine; the remaining sound
+>   audits (hit, reload, …); native EMP stun inconsistency.
+>
 > ## 🎯 2026-09-04 (morning) — THE RESPAWN STATION IS ONE IR WORD (native games) · HOSTED GAMES IGNORE IT · PASSTHROUGH ROW WORKS
 >
 > - **Grenade Respawn mode fully decoded on the receiver** (`native_capture.py`, no gun needed): beacon
@@ -55,7 +96,7 @@
 >
 > **Shipped (mcp 670/670 · app 75/75):** the headset team colour is re-painted after every spawn/revive
 > and every `$HIR`, on the direct-BLE `GameDriver` AND in the MC bundle (`spawn`/`revive` end on it,
-> `cues.team_led` for the phone's per-hit repaint). ⚠️ **The phones need a NEW APK** (`cd app && npm
+> `cues.team_led` for the phone's per-hit repaint). ⚠️ ~~**The phones need a NEW APK**~~ (done: APK 0.1.2 → 0.1.4 the next day) (`cd app && npm
 > run android:apk`, then rebuild the site) before the next match sees it. V3 in `verify-together.md`
 > is rewritten accordingly. Tony's design input: *"pre-game during config, it does help to have the
 > led on headset show the team color. to organize teams."*
