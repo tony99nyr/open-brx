@@ -557,8 +557,11 @@ class GunStage:
             self.event("died")
             if hs.get("death"):
                 self._headset(hs["death"], "headset death")
+            if hs.get("death_flash"):
+                self._spawn_task(self._death_flash_loop(getattr(self, "_life", 0), hs["death_flash"]))
             self.carrying = None
             return
+
         if dmg > 0 and self.alive:
             hurt_now = False
             if armor == 0 and hp < self.max_hp and not self._hurt_fired and self.max_armor > 0:
@@ -578,6 +581,14 @@ class GunStage:
                 if r and r != self._gun_band:
                     self._gun_band = r
                     self._spawn_task(self.write([r], "gun health band", gap_ms=0))
+
+    async def _death_flash_loop(self, life: int, df: dict) -> None:
+        """A11.8: pulse the small flash LED every period while DOWN, like the native respawn blink; stops on revive."""
+        for _ in range(400):                                          # ~5 min cap
+            if self.alive or life != getattr(self, "_life", 0):
+                return
+            await self.write([df["frame"]], "death flash", gap_ms=0)
+            await self.sleep(float(df.get("period_ms", 750)) / 1000)
 
     def _gun_rest(self) -> str | None:
         g = self.bundle.get("gun")

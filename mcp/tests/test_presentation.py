@@ -227,7 +227,10 @@ def test_headset_block_defaults_validation_and_frames():
     assert red["hit"][0][0].startswith("$HLED,0,2,") and red["hit"][-1][0] == P.HEADSET_BLANK   # opt-in colour: flash then rest
     # while out: OUR green slow blink. "native" (write nothing) leaves the headset DARK in a hosted game --
     # the firmware's out-blink does not fire once the node owns the headset (Tony, phones, 2026-09-04).
-    assert hs["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]] and hs["respawn"][0][0] == hs["start"][0][0]
+    assert hs["death"] == [] and hs["death_flash"] == {"frame": "$LED,9,1,1,1,*", "period_ms": 750}   # default: small-LED pulse while out
+    assert hs["respawn"][0][0] == hs["start"][0][0]
+    green = P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "green"}})}), 1, True)
+    assert green["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]] and "death_flash" not in green
     assert P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "native"}})}), 1, True)["death"] == []
     assert set(hs["carrier"]) == {"1", "2"} and hs["carrier"]["2"][0][0] == "$HLED,2,2,300,300,10,200,*"
     assert P.headset_frames(prof, 1, False) == {}
@@ -252,6 +255,7 @@ def test_headset_death_null_is_rejected_at_merge_not_at_push():
         P.merge(None, {"headset": {"death": None}})
     p = P.merge(None, {"headset": {"death": "native", "hit": None}})     # hit may be off; death must be a colour or native
     assert p["headset"]["death"] == "native" and p["headset"]["hit"] is None
+    assert P.merge(None, {"headset": {"death": "flash"}})["headset"]["death"] == "flash"
     assert P.headset_frames(P.resolve({"mode": "tdm", "presentation": p}), 1, True)["death"] == []
 
 

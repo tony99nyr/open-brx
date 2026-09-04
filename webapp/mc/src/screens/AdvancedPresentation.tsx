@@ -93,7 +93,7 @@ export function AdvancedPresentation() {
                 const items: [string, string][] = [
                   ['PRE-GAME', hs.pregame === 'team' ? 'TEAM COLOUR' : 'OFF'], ['AT THE WHISTLE', hs.start_flash ? 'WHITE FLASH, THEN ' + hs.in_play.toUpperCase() : hs.in_play.toUpperCase()],
                   ['IN PLAY', hs.in_play === 'team' ? 'HELD ON TEAM COLOUR' : 'DARK'], ['ON HIT', hs.hit == null ? 'NATIVE FLASH ONLY' : col(hs.hit) + ' FLASH'],
-                  ['WHILE OUT', hs.death === 'native' ? 'NATIVE GREEN OUT-BLINK' : col(hs.death) + ' BLINK'], ['ON RESPAWN', hs.respawn_flash ? 'WHITE FLASH' : 'NONE'],
+                  ['WHILE OUT', hs.death === 'native' ? 'NATIVE (DARK IN A HOSTED GAME)' : hs.death === 'flash' ? 'SMALL LED PULSE, 750 MS' : col(hs.death) + ' BLINK'], ['ON RESPAWN', hs.respawn_flash ? 'WHITE FLASH' : 'NONE'],
                   ['CARRYING THE FLAG', hs.carrier ? 'BLINK THE FLAG COLOUR' : 'NOTHING'],
                 ];
                 const gunPlay = view.summary.gun?.in_play ?? 'native';

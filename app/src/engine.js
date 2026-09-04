@@ -603,6 +603,7 @@ export class Engine {
         const st = this._stationRevivable(now); if (st) { this._resyncRevive = false; this._revive(false, st.id); }
       }
       this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN
+      this._deathFlash(now);           // A11.8: the small flash LED pulsed while DOWN (native-style respawn indication)
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
@@ -840,6 +841,14 @@ export class Engine {
    *  they reach a station (scanner respawn can be a long walk). No-op when the game has no death frame, and
    *  never within a few seconds of the death/revive writes (F13: the headset is a relay, back-to-back writes
    *  to it stick). Called from tick(). */
+  /** While DOWN, pulse the headset's small flash LED every `death_flash.period_ms` (750 = the native respawn cadence):
+   *  in a hosted game the firmware gives no out-indication of its own. Stops on revive; never during resync. */
+  _deathFlash(now) {
+    const h = this.frames && this.frames.headset; const df = h && h.death_flash;
+    if (!df || this.alive || !this.deadAt || this.resync) return;
+    if (now - (this._deathFlashAt || 0) < (df.period_ms || 750)) return;
+    this._deathFlashAt = now; this._write([df.frame], 'death flash');
+  }
   _reassertDeathBlink(now) {
     if (this.alive || !this.deadAt || !this._headsetDeath().length) return;
     if (now - this.deadAt < 5000) return;                          // the _die write is still fresh

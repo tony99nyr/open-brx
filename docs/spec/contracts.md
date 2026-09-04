@@ -633,7 +633,8 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     enabled) plus the live confidence, for the MC's read-only ADVANCED view.
   - **A11.6 The headset (2026-09-04, Tony).** `presentation.headset = { pregame: team|off, start_flash, in_play:
     dark|team, hit: colour|null, death: native|colour, respawn_flash, carrier }`, defaults team / on / **dark** /
-    **native** / **green** / on / on. (`hit: null` = native since the 2026-09-04 headset ladder: the firmware's own hit
+    **native** / **flash** / on / on. (`death: flash` = the small flash LED pulsed every 750 ms while out, the native respawn
+    cadence -- in a hosted game the firmware gives no out-indication; a colour = our big-LED slow blink. `hit: null` = native since the 2026-09-04 headset ladder: the firmware's own hit
     flash is far brighter than any BLE frame -- `$HLED` at every effect and level, `$BLINK`, `$LED` -- so the node
     paints nothing on a hit; a colour is an opt-in flash on top. `death: native` writes nothing -- and in a hosted game the firmware's own
     out-blink does NOT fire once the node has taken the headset, so the player stays dark; Tony, phones,

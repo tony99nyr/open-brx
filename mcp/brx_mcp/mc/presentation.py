@@ -174,8 +174,13 @@ ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid
 # hit: None (native) since the 2026-09-04 headset ladder -- the firmware's own hit flash is "like a camera flash"
 # and NO BLE frame ($HLED any effect/level, $BLINK, $LED) comes close; painting over it only dims it. A colour here
 # adds our flash-then-rest ON TOP of the native flash (an opt-in for games that want a colour-coded hit).
+# death: "flash" (default since 2026-09-04 night, Tony: "we will need the fled for respawn indication though. out of game
+# needing to respawn. in host-game we dont get the native bright green flash for that") = the SMALL flash LED pulsed
+# every DEATH_FLASH_MS while the player is out, like the native respawn blink; a colour = our big-LED slow blink;
+# "native" = nothing (dark in a hosted game).
 HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": None,
-                   "death": pg.GREEN, "respawn_flash": True, "carrier": True}
+                   "death": "flash", "respawn_flash": True, "carrier": True}
+DEATH_FLASH_MS = 750
 # The out-blink is ~0.8 s per cycle; 200 cycles is ~160 s. A scanner-respawn player can be down longer, so
 # the node re-asserts frames.headset.death while it stays down (brx-grenade, engine side); the count itself is
 # kept at 200 because token 6's upper range is unverified on hardware.
@@ -350,7 +355,7 @@ def merge(current: dict | None, patch: dict) -> dict:
             elif hk == "death":
                 if hv is None:
                     raise ValueError("presentation.headset.death must be \"native\" or a colour (null would fail at push time)")
-                cur[hk] = "native" if hv == "native" else _colour(hv)
+                cur[hk] = hv if hv in ("native", "flash") else _colour(hv)
             else:
                 raise ValueError(f"presentation.headset.{hk}: unknown field")
         if cur != prof.get("headset"):
@@ -523,12 +528,15 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
                  "pregame": [team_paint] if (h["pregame"] == "team" and team_paint) else [],
                  "start": [[white2, 0.6], [rest, 0.0]] if h["start_flash"] else [[rest, 0.0]],
                  "hit": [[_blink(h["hit"], 100, 100, 2), 0.5], [rest, 0.0]] if h["hit"] is not None else [],
-                 "death": [] if h["death"] == "native" else [[_blink(int(h["death"]), 400, 400, DEATH_BLINK_COUNT), 0.0]],
+                 "death": [] if h["death"] in ("native", "flash") else [[_blink(int(h["death"]), 400, 400, DEATH_BLINK_COUNT), 0.0]],
                  "respawn": [[white2, 0.6], [rest, 0.0]] if h["respawn_flash"] else [[rest, 0.0]],
                  "carrier": {}}
     if h["carrier"]:
         for t, c in (team_colours or {}).items():
             out["carrier"][str(t)] = [[_blink(int(c), 300, 300, 200), 0.0]]
+    if h["death"] == "flash":
+        # the node pulses this frame every period_ms while the player is DOWN (and stops on revive)
+        out["death_flash"] = {"frame": flash_frame("green"), "period_ms": DEATH_FLASH_MS}
     return out
 
 

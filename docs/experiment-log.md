@@ -6427,3 +6427,9 @@ left power-cycled into a native quick game (BLE free). Open work is filed: S7 so
 S4 open items (hold time, blink forms), S5 station_config server build, S6 legacy shims; tomorrow's flash-control
 plan is `docs/bench-flash-control-2026-09-05.md`. Lesson of the night, twice: the operator's eyes are primary, and a
 saturated camera core is a floor, not a measurement.
+
+**Design decision (Tony, closing):** "we may need to leave hled fled alone on hit so the native green flash shows. we
+will need the fled for respawn indication though. out of game needing to respawn. in host-game we dont get the native
+bright green flash for that." Shipped: `headset.hit` stays native (nothing written on a hit); `headset.death` default =
+`flash` -- the node pulses `$LED,9,1,1,1,*` every 750 ms while the player is down (the native respawn cadence) and
+stops on revive; a colour still gives the big-LED slow blink; `native` = nothing. Engine change -> APK 0.1.7 tomorrow.

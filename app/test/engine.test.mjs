@@ -1427,3 +1427,19 @@ test('A11.8 small-LED flash: kill feedback fires the top medal\'s lights (flash)
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
   assert.ok(h.writes.includes('$LED,9,1,1,1,*'), 'a $LED step is not skipped while down, unlike a static $HLED');
 });
+
+
+test('A11.8 death flash: while DOWN the small flash LED pulses every 750 ms and stops on revive', () => {
+  const h = goLive(harness());
+  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], death_flash: { frame: '$LED,9,1,1,1,*', period_ms: 750 } };
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  h.writes.length = 0;
+  for (let i = 0; i < 12; i++) { h.adv(250); h.eng.tick(); }             // 3 s down
+  const n = h.writes.filter(f => f === '$LED,9,1,1,1,*').length;
+  assert.ok(n >= 3 && n <= 5, 'about one pulse per 750 ms, got ' + n);
+  h.adv(6000); h.eng.tick();                                              // auto respawn (8 s)
+  assert.ok(h.eng.alive);
+  h.writes.length = 0;
+  for (let i = 0; i < 8; i++) { h.adv(250); h.eng.tick(); }
+  assert.equal(h.writes.filter(f => f === '$LED,9,1,1,1,*').length, 0, 'alive: no more pulses');
+});

@@ -27,7 +27,7 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/GATE ARMED[\s\S]*OFFLINE 1/);   // pre-match: neutral wording, the counts still shown
     const hs = m.find('[data-testid="headset-block"]')[0].textContent ?? '';          // A11.6 block, read only
     expect(hs).toMatch(/PRE-GAME TEAM COLOUR/); expect(hs).toMatch(/AT THE WHISTLE WHITE FLASH, THEN DARK/);
-    expect(hs).toMatch(/ON HIT RED FLASH/); expect(hs).toMatch(/WHILE OUT NATIVE GREEN OUT-BLINK/); expect(hs).toMatch(/CARRYING THE FLAG BLINK THE FLAG COLOUR/);
+    expect(hs).toMatch(/ON HIT RED FLASH/); expect(hs).toMatch(/WHILE OUT NATIVE/); expect(hs).toMatch(/CARRYING THE FLAG BLINK THE FLAG COLOUR/);
     expect(m.find('input, select').length).toBe(0);           // read only
     await m.click('ADVANCED');
     expect(m.find('[data-testid^="pres-row-"]').length).toBe(0);

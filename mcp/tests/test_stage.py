@@ -322,3 +322,20 @@ def test_kill_button_plays_the_top_medals_lights_too():
         new = tx(mgr)[n:]
         assert "$LED,9,1,1,1,*" in new and st.bundle["cues"]["first_blood"] in new
     asyncio.run(run())
+
+
+def test_death_flash_pulses_the_small_led_while_down_and_stops_on_revive():
+    async def run():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        assert st.bundle["headset"]["death_flash"]["frame"] == "$LED,9,1,1,1,*"
+        await st.ir("kill"); st.poll(); await settle(st)
+        assert not st.alive
+        # the loop ran to its cap with the no-op sleep: many pulses, all the flash frame
+        pulses = [f for f in tx(mgr) if f == "$LED,9,1,1,1,*"]
+        assert len(pulses) >= 3
+        await st.revive(); await settle(st)
+        n = len(tx(mgr)); await settle(st)
+        assert len(tx(mgr)) == n, "alive again: the pulse loop stopped"
+    asyncio.run(run())

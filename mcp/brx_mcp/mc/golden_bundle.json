@@ -656,12 +656,7 @@
       ]
     ],
     "hit": [],
-    "death": [
-      [
-        "$HLED,3,2,400,400,10,200,*",
-        0.0
-      ]
-    ],
+    "death": [],
     "respawn": [
       [
         "$HLED,6,2,120,120,10,2,*",
@@ -685,6 +680,10 @@
           0.0
         ]
       ]
+    },
+    "death_flash": {
+      "frame": "$LED,9,1,1,1,*",
+      "period_ms": 750
     }
   },
   "gun": {
@@ -711,7 +710,7 @@
       "start_flash": true,
       "in_play": "dark",
       "hit": null,
-      "death": 3,
+      "death": "flash",
       "respawn_flash": true,
       "carrier": true
     },

@@ -110,7 +110,7 @@ def analyze(video: str, schedule_path: str, gap: float = 3.0):
     meta = json.loads(pathlib.Path(schedule_path).read_text())
     sched = meta["schedule"]; secs = float(meta.get("secs") or (sched[-1]["t"] + gap + 3 if sched else 25))
     series, fps = change_series(video, secs)
-    print(f"\n{len(series)} video frames @ {fps:.0f} fps · change vs the median frame")
+    print(f"\n{len(series)} video frames @ {fps:.0f} fps - change vs the median frame")
     print(f"{'offset':>7}  {'core>200':>8}  {'mid>100':>7}  {'wall':>6}  {'w-sum':>6}  {'frames':>6}  {'at':>6}  frame")
     for ev in sched:
         win = [s for s in series if ev["t"] - 1.0 <= s[0] <= ev["t"] + gap - 0.6]     # non-overlapping windows; measured start lag was < 0.1 s
