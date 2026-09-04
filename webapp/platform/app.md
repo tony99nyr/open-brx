@@ -8,7 +8,7 @@ Source: app/README.md, CLAUDE.md §Hard rules
 
 ## BRX Combat HUD for Android
 One phone drives one BRX tagger over native Bluetooth LE, runs the match loop (spawn, ammo, lives, respawn clock) and reports to Mission Control over the field Wi-Fi. On the phone it installs as **BRX Companion**.
-Download: https://open-brx.iamrossi.workers.dev/download/brx-companion-0.1.5-android-debug.apk (5.4 MB, version 0.1.5, built 2026-09-04, sha256 1aae12fc3561b02a140ebd146950ce0edb8d13cbaae2b76eaccaf841ec04d8dd)
+Download: https://open-brx.iamrossi.workers.dev/download/brx-companion-0.1.6-android-debug.apk (5.4 MB, version 0.1.6, built 2026-09-04, sha256 94364f863dc6db248a19b8f4199f01837575c1b28f834c743d7bfe3345fed11e)
 
 Source: app/README.md, docs/spec/node.md §3
 
