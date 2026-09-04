@@ -705,6 +705,19 @@ class GunStage:
                         "gun_led": spec.get("gun_led"), "headset": spec.get("headset")})
         return out
 
+    def ir_registers(self) -> dict:
+        """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`
+        row for its protocol (F11: no row = silently ignored). Walkthrough 2026-09-04: medic and the station words
+        'did not work' -- the table has no proto 1 / 15 rows (F15 / B23). EMP has `$SIR,8,0,,38` = PLAIN damage today."""
+        protos = set()
+        for f in self.bundle.get("head", []):
+            if f.startswith("$SIR,"):
+                t = f.split(",")
+                if len(t) > 1 and t[1].isdigit():
+                    protos.add(int(t[1]))
+        need = {"shot": 0, "kill": 0, "emp": 8, "medic": 1, "beacon": 15, "button": 15}
+        return {k: {"proto": p, "registers": p in protos} for k, p in need.items()}
+
     def state(self) -> dict:
         hs = self.bundle.get("headset") or {}
         return {
@@ -725,6 +738,7 @@ class GunStage:
             "headset_seqs": sorted(k for k, v in hs.items() if isinstance(v, list) and v and k != "pregame") + (["carrier"] if hs.get("carrier") else []),
             "events": self.event_catalog(),
             "ir_kinds": list(IR_KINDS),
+            "ir_registers": self.ir_registers(),
             "serial_ports": self.serial_ports(),
             "log": list(self.log)[-250:],
             "walk": self._walk_view(),

@@ -154,6 +154,7 @@
     $('#link').textContent = L.connected ? `LINKED · ${L.fake ? 'FAKE GUN' : L.address}` : 'NO GUN LINKED';
     $('#link').className = 'pill ' + (L.connected ? 'ok' : 'warn');
     if (document.activeElement.id !== 'ports') { const cur = $('#ports').value; $('#ports').innerHTML = '<option value="">(serial ports)</option>' + (s.serial_ports || []).map(p => `<option value="${p.device}" ${p.device === L.emitter ? 'selected' : ''}>${p.device} · ${p.desc}</option>`).join(''); if (cur && !L.emitter) $('#ports').value = cur; }
+    for (const b of document.querySelectorAll('button[data-ir]')) { const r = (s.ir_registers || {})[b.dataset.ir]; if (!r) continue; b.classList.toggle('mc', !r.registers); b.title = r.registers ? '' : `this game's $SIR table has no proto ${r.proto} row: the gun will IGNORE this word (F15 / B23), the emitter still sends it`; const sub = b.querySelector('.sub'); if (sub && !r.registers && !sub.textContent.includes('NO $SIR')) sub.textContent += ' · NO $SIR ROW: IGNORED'; }
     $('#emitter').textContent = L.emitter ? `emitter on ${L.emitter} (answered PING)` : (L.fake ? 'fake mode: SHOOT ME / KILL ME hit the emulated gun directly' : 'NO EMITTER (or it did not answer PING): pick its port and SET EMITTER PORT, or the IR buttons only log the word');
     $('#cfg').textContent = `${s.profile.mode.toUpperCase()} · ${s.summary ? s.summary.preset.toUpperCase() : ''} · ${s.config_source === 'mc' ? 'FROM MC' : 'SELECTORS'} · ${s.config_id || ''}`;
     $('#cfg').className = 'pill ' + (s.config_source === 'mc' ? 'ok' : '');

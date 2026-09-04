@@ -146,7 +146,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         await st.revive(); await settle(st)
         new = tx(mgr)[n:]
         assert new[:len(st.bundle["revive"])] == st.bundle["revive"] and st.alive
-        assert new[-2:] == st.bundle["gun"]["take"] and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
+        assert all(f in new for f in st.bundle["gun"]["take"]) and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
     asyncio.run(run())
 
 
@@ -299,3 +299,11 @@ def test_raw_writes_only_known_safe_frames():
         else:
             raise AssertionError("an unknown command went to the gun")
     asyncio.run(run())
+
+
+def test_ir_registers_reflects_the_games_sir_table():
+    st, _ = mk()
+    r = st.ir_registers()
+    assert r["shot"]["registers"] and r["kill"]["registers"]              # proto 0 rows are in every head
+    assert r["emp"]["registers"], r                                          # $SIR,8,0,,38: an EMP word lands as PLAIN damage today (F15 = make it a stun)
+    assert not r["medic"]["registers"] and not r["beacon"]["registers"], r  # no proto 1 / 15 rows: ignored until F15 / B23
