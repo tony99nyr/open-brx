@@ -222,7 +222,7 @@ provisional until every node has flushed.
 | Failure | What happens | Where |
 |---|---|---|
 | Field Wi-Fi drops | Nodes keep playing. Events queue locally and flush on return. | `spec/net.md` |
-| BLE drops mid-match | The node re-probes on reconnect; **config survives a BLE drop** ✅ | `brx-protocol.md` §7r |
+| BLE drops mid-match | The node reconciles on reconnect (live: a 3 s disarmed re-arm, no heal; lobby/armed: head re-write); **config survives a BLE drop** ✅ | `brx-protocol.md` §7r · node.md §3.10 |
 | Gun is power-cycled | Config is **wiped**; a zeroed `$LCD` is the node's tell to re-push ✅ | `brx-protocol.md` §7r |
 | Phone dies | That player is out. One phone = one gun = one node, with no failover. | ADR-0001 |
 | Node never returns | The recap stays provisional — that player's kills are missing. | `spec/README.md` §3 |
