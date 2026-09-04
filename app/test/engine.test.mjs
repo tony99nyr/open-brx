@@ -749,25 +749,54 @@ test('a hit forwards WHICH sensor caught it', () => {
 });
 
 // ── headset team colour survives hits (bench 2026-09-03: a registered hit WIPES the headset) ─────
-test('every damaging hit re-sends the headset team colour, except the one that fires the low-health alert', () => {
+test('A11.6 headset: white flash at the whistle then dark; hit flash then dark; respawn flash; carrier blink on the flag alert', () => {
   const h = goLive(harness());
-  const tl = golden.cues.team_led;
-  assert.ok(tl && tl.startsWith('$HLED,1,0,,,10'), 'bundle carries the static full-bright team frame');
+  const hs = golden.headset;
+  assert.equal(hs.in_play, 'dark');
+  // the spawn wrote the start flash and then the rest (dark) frame — harness delays run inline
+  const startFrames = hs.start.map(x => x[0]);
+  for (const f of startFrames) assert.ok(h.writes.includes(f), 'start frame missing: ' + f);
   h.writes.length = 0;
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');          // armour absorbs it
-  assert.deepEqual(h.writes.filter(f => f === tl), [tl], 'one repaint per hit, never hammered');
-  h.frame('$HP,45,61,0,*');                                              // no damage: nothing to repaint
-  assert.equal(h.writes.filter(f => f === tl).length, 1);
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');           // the low-health transition
-  assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1, 'alert lights the headset');
-  assert.equal(h.writes.filter(f => f === tl).length, 1, 'no repaint over the alert');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');          // a hit: flash then rest
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), hs.hit.map(x => x[0]));
+  h.writes.length = 0;
+  h.frame('$HP,45,61,0,*');                                              // no damage: nothing
+  assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0);
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');           // low-health alert wins over the hit flash
+  assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1);
+  assert.ok(!h.writes.includes(hs.hit[0][0]), 'no hit flash on the alert hit');
+  // carrier: MC says this player took the flag of team 2 -> team-2 blink; a hit keeps it; scoring ends it
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_taken', text: 'FLAG TAKEN', player_id: 'p1', carrier: 'p1', flag_tid: 2, t: h.eng.now() }, t: h.eng.now() });
+  assert.ok(h.writes.includes(hs.carrier['2'][0][0]), 'carrier blink in the flag colour');
+  h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,34,0,0,*');
-  assert.equal(h.writes.filter(f => f === tl).length, 2, 'repaints resume on the next hit');
-  h.frame('$HIR,4,0,19,2,40,0,0,*'); h.frame('$HP,0,0,0,*');           // death: the native out-blink owns the headset
-  assert.equal(h.writes.filter(f => f === tl).length, 2, 'never paint over a corpse');
+  assert.ok(h.writes.includes(hs.carrier['2'][0][0]) && !h.writes.includes(hs.hit[0][0]), 'the flag blink survives a hit');
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_scored', text: 'FLAG CAPTURED', player_id: 'p1', carrier: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), [hs.rest], 'scored -> back to rest');
+  // death: default leaves the firmware's green out-blink alone; respawn: white flash then rest
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0, 'native out-blink: we write nothing');
+  h.adv(9000); h.writes.length = 0; h.eng.tick();                      // the auto respawn (delay 8 s) fires in this tick
+  for (const f of hs.respawn.map(x => x[0])) assert.ok(h.writes.includes(f), 'respawn frame missing: ' + f);
 });
 
-// ---- HUD review 2026-09-03: the RELOADING takeover (#15) and the DOWN-screen recap inputs (#21/#25/#26) ----
+test('A11.6 headset in_play=team: the rest frame is the team colour and a hit restores it after the flash', () => {
+  const h = harness();
+  const teamRest = '$HLED,1,0,,,10,,*';
+  const bundle = { ...h.bundle, headset: { ...golden.headset, in_play: 'team', rest: teamRest,
+    start: [[golden.headset.start[0][0], 0.6], [teamRest, 0]], hit: [[golden.headset.hit[0][0], 0.5], [teamRest, 0]], respawn: [[golden.headset.respawn[0][0], 0.6], [teamRest, 0]] } };
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: bundle, roster: h.roster } });
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  assert.equal(h.writes.filter(f => f === teamRest).length >= 1, true, 'start ends on the team colour');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
+  const hled = h.writes.filter(f => f.startsWith('$HLED'));
+  assert.equal(hled[hled.length - 1], teamRest, 'after the hit flash the headset returns to the team colour');
+});
 test('reload handle pull opens a reload for the weapon\'s reload_s; the mag coming back closes it', () => {
   const h = harness().kit().config_().echo().start(0);
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [] } } });

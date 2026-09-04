@@ -84,6 +84,22 @@ export function AdvancedPresentation() {
                   return <span key={k} aria-label={`${label} ${on ? 'on' : 'off'}`} style={{ font: F.chk(700, 10.5), letterSpacing: '.1em', padding: '3px 8px', border: `1px solid ${on ? T.acc : T.line}`, color: on ? T.ink : T.faint, textDecoration: on ? 'none' : 'line-through' }}>{label}</span>;
                 })}
               </div>
+              {view.summary.headset && (() => {
+                const hs = view.summary.headset;
+                const col = (v: number | string | null) => v == null ? 'none' : typeof v === 'number' ? (PALETTE[v] ?? String(v)) : String(v).toUpperCase();
+                const items: [string, string][] = [
+                  ['PRE-GAME', hs.pregame === 'team' ? 'TEAM COLOUR' : 'OFF'], ['AT THE WHISTLE', hs.start_flash ? 'WHITE FLASH, THEN ' + hs.in_play.toUpperCase() : hs.in_play.toUpperCase()],
+                  ['IN PLAY', hs.in_play === 'team' ? 'HELD ON TEAM COLOUR' : 'DARK'], ['ON HIT', hs.hit == null ? 'NATIVE FLASH ONLY' : col(hs.hit) + ' FLASH'],
+                  ['WHILE OUT', hs.death === 'native' ? 'NATIVE GREEN OUT-BLINK' : col(hs.death) + ' BLINK'], ['ON RESPAWN', hs.respawn_flash ? 'WHITE FLASH' : 'NONE'],
+                  ['CARRYING THE FLAG', hs.carrier ? 'BLINK THE FLAG COLOUR' : 'NOTHING'],
+                ];
+                return (
+                  <div data-testid="headset-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', font: F.mono(500, 10.5), letterSpacing: '.12em' }}>
+                    <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim, width: '100%' }}>HEADSET</span>
+                    {items.map(([k, v]) => <span key={k}><span style={{ color: T.micro }}>{k} </span><span style={{ color: T.body }}>{v}</span></span>)}
+                  </div>
+                );
+              })()}
               <div role="status" data-testid="mc-confidence" style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: view.mc_confidence.confident ? T.ok : T.warn }}>
                 {view.mc_confidence.confident
                   ? 'MC CONFIDENT — EVERY HUD CONNECTED, FRESH AND FLUSHED: MC-DRIVEN EVENTS (LEAD, NEXT KILL WINS) WILL BE SENT'

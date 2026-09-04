@@ -6073,3 +6073,18 @@ games the firmware's dead state is deaf, so the station has to talk to the node,
 MC defines "downed" as a live-but-stunned gun (host-driven stun, F15), the passthrough row lets the
 downed gun hear the station beacon over BLE, and the node does the revive. Docs: `reference/grenade.md`
 §Respawn Station, FOLLOWUPS B12/G6/star item, `manual/03-gameplay` dead-gun callout corrected.
+
+### 2026-09-04 — A11.6: the HEADSET as its own block of the presentation profile
+
+Tony: *"we also need headset led. make sure it does the proper behavior pre game showing team color,
+going dark at start of game, maybe we have a certain white flash to mark the start of game, flash on
+hit, flash during death until spawned, maybe another white flash to indicate respawn and active.
+maybe holding flag means flashing the flag color."* Built exactly that as defaults, with the in-play
+team colour (yesterday's A11 default) kept as the `in_play: "team"` option. Hardware basis: a static
+paint holds, spawn and every hit wipe it, the t2=2 blink form works in game, the firmware blinks green
+on its own while a player is out. The one thing the node does NOT rely on is a count-limited blink
+ending dark by itself (unverified) -- every flash ends on an explicit rest frame. Carrier blink is
+driven by the `objective_taken` alert naming the carrier and the flag's team. Tests: mcp
+test_presentation / test_headset_team, engine tests (start, hit, alert-suppressed hit, carrier survives
+a hit, scored ends it, native death, respawn; and the in_play=team variant).
+

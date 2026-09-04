@@ -175,6 +175,7 @@ class FrameBundle(TypedDict):
     # A11: plus one key per presentation EVENT that carries a sound (hit_taken … vip_down); "" = deliberately mute.
     leds: NotRequired[dict[str, list]]   # A11: event -> [[frame, hold_s], ...] -- the tuned $GLED burst (+ optional $HLED)
     presentation: NotRequired[dict]      # A11: presentation.summary() -- preset + switches, for the UI/HUD
+    headset: NotRequired[dict]           # A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}}
     swap_ms: NotRequired[int]            # 2026-09-04: the weapon-swap delay the gun enforces (max tok15 of slots 0/1, after perks)
 
 

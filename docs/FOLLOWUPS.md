@@ -1333,6 +1333,12 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
 > facts, best-effort, never waited on** (A11.4). HUD animations for the new `alert` moment and medal
 > stacks are with the **brx-hud** session. Suites: mcp 691, app 89.
 
+0b. **A11.6 (same day, Tony)**: the headset as its own block -- team colour pre-game, white flash at the
+   whistle then DARK, flash on hit, native green out-blink (or our colour) while dead, white flash on respawn,
+   flag-colour blink while carrying. Default in-play is now dark; `headset.in_play: "team"` restores the held
+   team colour. **Bench to verify**: does `$HLED,<c>,2,120,120,10,2` (count-limited blink) end dark by itself?
+   The node follows every flash with an explicit rest frame until that is known; also confirm the white
+   double-flash reads as "start" at 6 ft, and that the carrier blink is legible across a field.
 0. **A11.5 (same day)**: event `source` hud/mc/both, `hud_events` / `mc_events` / `mc_confidence` switches,
    `Session.mc_confidence()` gating the global-state pushes, `GET /api/presentation`. Done, tested.
 1. ✅ **MC UI, read-only (2026-09-04)**: section 5 of the DESIGNER, an **ADVANCED** disclosure that loads
@@ -1352,6 +1358,9 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
 5. `bomb_detonated` uses X12 on Tony's ear ("X13 might actually be a sniper"); confirm and align
    `sounds.BOMB_DETONATED` + the proto-10 `$SIR` row.
 6. **HUD** (brx-hud session): `alert` moment banner + medal stack badges on the kill moment.
+7. **CLI `GameDriver` headset**: the direct-BLE driver still holds the team colour in play and repaints it
+   after every spawn/hit (the A11 behaviour); the phone now follows the A11.6 headset block (dark in play,
+   flashes). Align the driver with `presentation.headset_frames()` when the CLI grows a profile.
 
 ## 🟢 S1 — THE SOUND CATALOG: classify all 2477 on-gun sounds so game modes can pick by meaning (2026-09-03)
 

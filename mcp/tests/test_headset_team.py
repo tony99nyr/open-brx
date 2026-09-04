@@ -97,19 +97,30 @@ def test_leds_off_never_lights_a_headset():
 
 
 # --- the MC bundle the phone plays ------------------------------------------ #
-def test_spawn_and_revive_end_on_the_headset_team_colour():
+def test_default_headset_is_team_pregame_and_dark_in_play():
+    """A11.6 (Tony): team colour in the lobby, dark once the game starts; the in-play repaint after
+    spawn / revive / hit exists only when the profile's headset.in_play is "team"."""
     b = golden_bundle()
-    assert b["spawn"][-1] == "$HLED,1,0,,,10,,*", b["spawn"]
-    assert b["revive"][-1] == "$HLED,1,0,,,10,,*", b["revive"]
-    # and it comes AFTER $SPAWN, because $SPAWN is what clears it
-    assert b["spawn"].index("$SPAWN,,*") < len(b["spawn"]) - 1
-    assert b["revive"][0] == "$SPAWN,,*"
+    assert [f for f in b["head"] if f.startswith("$HLED")] == ["$HLED,1,0,,,10,,*"]   # pregame team colour
+    assert not any(f.startswith("$HLED") for f in b["spawn"] + b["revive"])              # dark in play
+    assert b["cues"]["team_led"] == ""
+    assert b["headset"]["in_play"] == "dark" and b["headset"]["rest"] == "$HLED,,6,,,,,*"
 
 
-def test_the_team_led_cue_is_the_same_frame_the_head_sends():
-    b = golden_bundle()
-    head_hled = [f for f in b["head"] if f.startswith("$HLED")]
-    assert head_hled == [b["cues"]["team_led"]]
+def test_in_play_team_restores_the_tails_and_the_repaint_cue():
+    from brx_mcp.mc import compile as C, presentation as P
+    cfg = {"config_id": "t", "mode": "tdm", "environment": "indoor", "night": False, "time_limit_s": 600,
+           "respawn": {"type": "auto", "delay_s": 15}, "scoring": {"frag_limit": 0, "win_by": "kills"},
+           "health": {"max_hp": 45, "max_armor": 70},
+           "teams": [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}, {"team_id": "yellow", "name": "Y", "color": "yellow", "tid": 2}],
+           "presentation": P.merge(None, {"headset": {"in_play": "team"}})}
+    player = {"player_id": "p1", "player_num": 7, "display": "R", "team_id": "blue", "node_id": None, "gun_id": None,
+              "voice": "male", "ready": True, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+    b = C._DEFAULT.compile(cfg, player, cfg["teams"])
+    assert b["spawn"][-1] == "$HLED,1,0,,,10,,*" and b["revive"][-1] == "$HLED,1,0,,,10,,*"
+    assert b["spawn"].index("$SPAWN,,*") < len(b["spawn"]) - 1          # after $SPAWN, which clears it
+    assert b["cues"]["team_led"] == "$HLED,1,0,,,10,,*"
+    assert b["headset"]["rest"] == "$HLED,1,0,,,10,,*"
 
 
 def test_leds_off_bundle_has_no_lit_headset_frame_anywhere():

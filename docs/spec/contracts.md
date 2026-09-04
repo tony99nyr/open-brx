@@ -592,6 +592,19 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     WITHHELD. A withheld event is never queued -- a stale "takes the lead" is worse than silence. `GET
     /api/presentation` returns the resolved profile as rows (event · source · sound + words · colours ·
     enabled) plus the live confidence, for the MC's read-only ADVANCED view.
+  - **A11.6 The headset (2026-09-04, Tony).** `presentation.headset = { pregame: team|off, start_flash, in_play:
+    dark|team, hit: colour|null, death: native|colour, respawn_flash, carrier }`, defaults team / on / **dark** /
+    red / native / on / on. The compiler emits **`bundle.headset`** = `{ in_play, rest, blank, pregame: string[],
+    start, hit, death, respawn: [frame, hold_s][], carrier: { [tid]: [frame, hold_s][] } }`. The node drives the
+    headset from it: the lobby paint is `head`'s `$HLED` (`pregame`); at T-0 it writes `start` (a white double
+    flash, then `rest` -- dark by default); on every damaging hit `hit` then `rest` (the low-health alert's own
+    `hurt_led` wins on that hit); while out, nothing by default (the firmware's green out-blink) or our slow blink
+    in `death`'s colour; on revive `respawn` then `rest`; while carrying the flag a blink in the FLAG team's colour
+    (`alert{kind:"objective_taken", carrier, flag_tid}` starts it, `objective_scored`/`flag_returned`/death end it),
+    and that blink survives hits. `in_play: team` restores the A11 behaviour (team colour held, repainted after
+    spawn/revive/hit; `cues.team_led` and the spawn/revive `$HLED` tails exist only then). Every flash sequence
+    ends on an explicit state frame because a count-limited `$HLED` blink ending dark on its own is UNVERIFIED
+    (bench item).
   - **A11.3 Node.** Plays `leds[event]` + `cues[event]` on its OWN events — `hit_taken` (alive, HP>0), `died`,
     `respawned`, `healed`/`armour_up`/`shield_up` (the pool that rose most) — and on MC pushes (`feedback` kinds
     `kill`/`multi`/`medal`/`victory` already resolve their cue from the bundle; objective/VIP pushes are the

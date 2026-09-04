@@ -25,6 +25,9 @@ describe('ADVANCED — sounds & lights (read only)', () => {
     expect(lead.textContent).toMatch(/takes the lead/i);
     expect(m.find('[data-testid="presentation-preset"]')[0].textContent).toMatch(/standard/i);
     expect(m.find('[data-testid="mc-confidence"]')[0].textContent).toMatch(/MC NOT CONFIDENT — OFFLINE 1/);
+    const hs = m.find('[data-testid="headset-block"]')[0].textContent ?? '';          // A11.6 block, read only
+    expect(hs).toMatch(/PRE-GAME TEAM COLOUR/); expect(hs).toMatch(/AT THE WHISTLE WHITE FLASH, THEN DARK/);
+    expect(hs).toMatch(/ON HIT RED FLASH/); expect(hs).toMatch(/WHILE OUT NATIVE GREEN OUT-BLINK/); expect(hs).toMatch(/CARRYING THE FLAG BLINK THE FLAG COLOUR/);
     expect(m.find('input, select').length).toBe(0);           // read only
     await m.click('ADVANCED');
     expect(m.find('[data-testid^="pres-row-"]').length).toBe(0);

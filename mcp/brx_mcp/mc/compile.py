@@ -530,7 +530,12 @@ class Compiler:
         # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
         # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
         # eyeball test, and do not cite this frame as confirmed until that is done.
-        hled = _headset_colour(tid, gc.leds)
+        prof = _pres.resolve(config)
+        hs = prof.get("headset") or _pres.HEADSET_DEFAULT
+        # A11.6: the lobby team colour is the headset block's `pregame`; the in-play repaint after
+        # spawn / revive / hit exists only when `in_play` is "team" (default: dark, native-like).
+        hled = _headset_colour(tid, gc.leds) if hs.get("pregame", "team") == "team" else []
+        play_hled = _headset_colour(tid, gc.leds) if hs.get("in_play") == "team" else []
         head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + [f"$TID,{tid},*"]
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
@@ -546,9 +551,9 @@ class Compiler:
         # after spawn holds solid, and one sent 1 s after spawn lit; it goes at the end of the tail
         # so the $AMMO writes give the headset relay a beat first. Token 5 = 10 is already maximum
         # brightness (1 dim, 2/10/255 identical), measured the same day.
-        spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"] + hled
+        spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
         # revive = $SPAWN + loadout $AMMOs (NO $HLOOP, NO $BMAP — §1.1 replaces RESPAWN_SEQUENCE)
-        revive = ["$SPAWN,,*"] + ammo + hled
+        revive = ["$SPAWN,,*"] + ammo + play_hled
 
         bundle: FrameBundle = {
             "config_id": config["config_id"],
@@ -566,13 +571,12 @@ class Compiler:
         # Every registered hit wipes the headset (native flash, then dark; bench 2026-09-03). The
         # node re-sends this after each hit so the team colour is back for the rest of the life.
         # Empty when LEDs are off or the tid has no known headset colour -- the node writes nothing.
-        bundle["cues"]["team_led"] = hled[0] if hled else ""
+        bundle["cues"]["team_led"] = play_hled[0] if play_hled else ""
 
         # A11: the PRESENTATION profile -- per-event sounds + lights, preset or custom (presentation.py).
         # Cues it names override the fixed table above; `announcer: false` mutes the voice groups but
         # keeps the $SFLASH; `gun_flash: false` empties the LED table; `headset_team: false` drops the
         # team-colour repaint frames added above.
-        prof = _pres.resolve(config)
         frames = _pres.cue_frames(prof, kill_line(player.get("voice", "male")))
         low = frames.pop("low_health", None)
         bundle["cues"].update(frames)
@@ -585,6 +589,11 @@ class Compiler:
             bundle["cues"]["team_led"] = ""
             bundle["spawn"] = [f for f in bundle["spawn"] if not f.startswith("$HLED,")]
             bundle["revive"] = [f for f in bundle["revive"] if not f.startswith("$HLED,")]
+        # A11.6: the headset table the node drives (pregame / start / in_play rest / hit / death / respawn /
+        # carrier blink per flag team). Team colours for the carrier blink: tid -> palette index (the gun's
+        # own $TID palette, 0-7 shared with the headset).
+        team_cols = {int(t["tid"]): int(t["tid"]) for t in teams if 0 <= int(t.get("tid", 99)) <= 7}
+        bundle["headset"] = _pres.headset_frames(prof, tid, gc.leds, team_cols)
         bundle["presentation"] = _pres.summary(config.get("presentation") or _pres.default_for(config.get("mode")))
         if config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)

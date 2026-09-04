@@ -35,14 +35,12 @@
     "$SPAWN,,*",
     "$AMMO,0,32,192,1,*",
     "$AMMO,1,6,24,1,*",
-    "$BMAP,0,0,,,,,*",
-    "$HLED,1,0,,,10,,*"
+    "$BMAP,0,0,,,,,*"
   ],
   "revive": [
     "$SPAWN,,*",
     "$AMMO,0,32,192,1,*",
-    "$AMMO,1,6,24,1,*",
-    "$HLED,1,0,,,10,,*"
+    "$AMMO,1,6,24,1,*"
   ],
   "end": [
     "$SPAWN,,*",
@@ -70,7 +68,7 @@
     "runway_30": "",
     "runway_20": "",
     "runway_10": "$PLAY,,4,6,VA85,,,,*",
-    "team_led": "$HLED,1,0,,,10,,*",
+    "team_led": "",
     "first_blood": "$PLAY,,4,6,VA7H,,,,*",
     "double_kill": "$PLAY,,4,6,VA7E,,,,*",
     "triple_kill": "$PLAY,,4,6,VA7Q,,,,*",
@@ -597,6 +595,59 @@
       ]
     ]
   },
+  "headset": {
+    "in_play": "dark",
+    "rest": "$HLED,,6,,,,,*",
+    "blank": "$HLED,,6,,,,,*",
+    "pregame": [
+      "$HLED,1,0,,,10,,*"
+    ],
+    "start": [
+      [
+        "$HLED,6,2,120,120,10,2,*",
+        0.6
+      ],
+      [
+        "$HLED,,6,,,,,*",
+        0.0
+      ]
+    ],
+    "hit": [
+      [
+        "$HLED,0,2,100,100,10,2,*",
+        0.5
+      ],
+      [
+        "$HLED,,6,,,,,*",
+        0.0
+      ]
+    ],
+    "death": [],
+    "respawn": [
+      [
+        "$HLED,6,2,120,120,10,2,*",
+        0.6
+      ],
+      [
+        "$HLED,,6,,,,,*",
+        0.0
+      ]
+    ],
+    "carrier": {
+      "1": [
+        [
+          "$HLED,1,2,300,300,10,200,*",
+          0.0
+        ]
+      ],
+      "2": [
+        [
+          "$HLED,2,2,300,300,10,200,*",
+          0.0
+        ]
+      ]
+    }
+  },
   "presentation": {
     "preset": "standard",
     "announcer": true,
@@ -606,6 +657,15 @@
     "hud_events": true,
     "mc_events": true,
     "mc_confidence": true,
+    "headset": {
+      "pregame": "team",
+      "start_flash": true,
+      "in_play": "dark",
+      "hit": 0,
+      "death": "native",
+      "respawn_flash": true,
+      "carrier": true
+    },
     "custom_events": []
   }
 }

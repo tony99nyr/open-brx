@@ -73,6 +73,7 @@ export class Engine {
     this.matchId = null;
     this.hp = 0; this.armor = 0; this.shield = 0; this.ammo = 0; this.reserve = null; this.mag = null;
     this.alive = false; this.deaths = 0; this.shots = 0; this.battery = null; this.fw = null;
+    this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
@@ -413,6 +414,29 @@ export class Engine {
     return { ok: true, state: 'live', reason: late <= C.LATE_ARM_GRACE_MS ? 'grace' : 'hot_join' };
   }
 
+  /** A11.6 headset: write a [frame, hold_s] sequence to the headset (frames.headset.*), each step after
+   *  the previous one's hold. A newer sequence supersedes an older one: a hit flash that lands while the
+   *  start flash is still running simply takes over (the last frame written wins on the hardware). */
+  _headset(seq, why) {
+    if (!seq || !seq.length) return;
+    const gen = (this._hsGen = (this._hsGen || 0) + 1);
+    let t = 0;
+    for (const step of seq) {
+      const frame = step[0], hold = Math.max(0, Math.round((step[1] || 0) * 1000));
+      if (t === 0) this._write([frame], `headset ${why}`);
+      else this.delay(t, () => { if (this._hsGen === gen) this._write([frame], `headset ${why}`); });
+      t += hold;
+    }
+  }
+  /** The headset's resting frame between events (dark by default, or the team colour). */
+  _headsetRest() { const h = this.frames && this.frames.headset; return h && h.rest ? [[h.rest, 0]] : null; }
+  /** Carrier blink: on while this player holds the flag/objective of team `tid`; off returns to rest. */
+  _carrier(on, tid) {
+    const h = this.frames && this.frames.headset; if (!h) return;
+    if (on) { const seq = h.carrier && h.carrier[String(tid)]; if (seq) { this.carrying = tid; this._headset(seq, `carrier ${tid}`); } }
+    else if (this.carrying != null) { this.carrying = null; this._headset(this._headsetRest(), 'carrier off'); }
+  }
+
   /** A11 presentation event: the bundle's `leds[kind]` burst (frames with holds) + `cues[kind]` sound.
    *  The burst is the hardware-tuned three-flash pattern (2026-09-03) and MUST NOT be repainted or
    *  extended -- a fourth flash in a second is the epilepsy line; so events closer than
@@ -441,6 +465,7 @@ export class Engine {
     if (!this.frames) return;
     if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
     this._write([...this.frames.spawn, SFLASH], 'spawn');
+    if (this.frames.headset) this._headset(this.frames.headset.start, 'start');   // A11.6: white flash marks the start, then dark (or team)
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
@@ -523,6 +548,7 @@ export class Engine {
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._event('respawned');   // A11 (after the revive frames, so the burst ends on the fresh team colour)
+    if (this.frames.headset) { this.carrying = null; this._headset(this.frames.headset.respawn, 'respawn'); }   // A11.6
     this._changed();
   }
 
@@ -633,6 +659,10 @@ export class Engine {
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log(`alert ${body.kind} too old — ignored`, 'li'); return; }
     if (this.phase !== 'live' && this.phase !== 'armed') return;
     this._event(body.kind);
+    // A11.6 carrier blink: MC names who holds it (`carrier`) and whose flag it is (`flag_tid`)
+    const me = this.player && this.player.player_id;
+    if (body.kind === 'objective_taken' && me && body.carrier === me) this._carrier(true, body.flag_tid != null ? body.flag_tid : (this.team ? this.team.tid : 0));
+    if ((body.kind === 'objective_scored' || body.kind === 'flag_returned') && this.carrying != null && (!body.carrier || body.carrier === me)) this._carrier(false);
     if (body.hud !== false) this.moment = { kind: 'alert', at: this.now(), data: { kind: body.kind, text: body.text || body.kind, player_id: body.player_id_subject || null } };
     this.log(`alert ${body.kind}`, 'lk');
     this._changed();
@@ -842,8 +872,15 @@ export class Engine {
       // keep seeing the team for the rest of the life. Skipped on the hit that fired the low-health
       // alert -- that alert IS the headset for the next ~3 s and a repaint would cut it short. A
       // static frame, one write per hit, never hammered. Empty cue = LEDs off or unknown colour.
-      const tl = this.frames && this.frames.cues && this.frames.cues.team_led;
-      if (tl && !hurtNow) this._write([tl], 'team led');
+      const hs = this.frames && this.frames.headset;
+      if (hs && !hurtNow) {
+        if (this.carrying != null && hs.carrier && hs.carrier[String(this.carrying)]) this._headset(hs.carrier[String(this.carrying)], 'carrier after hit');   // the flag blink survives a hit
+        else if (hs.hit && hs.hit.length) this._headset(hs.hit, 'hit');                                     // A11.6: flash, then back to rest
+        else if (hs.rest && hs.in_play === 'team') this._write([hs.rest], 'team led');                     // no flash configured: just restore
+      } else {
+        const tl = this.frames && this.frames.cues && this.frames.cues.team_led;   // pre-A11.6 bundle
+        if (tl && !hurtNow) this._write([tl], 'team led');
+      }
     }
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
       // `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are
@@ -923,6 +960,8 @@ export class Engine {
     this.switching = null;          // a swap indicator must not outlive the player
     this.moment = { kind: 'down', at: this.now() };
     this._event('died');   // A11
+    if (this.frames && this.frames.headset && this.frames.headset.death && this.frames.headset.death.length) this._headset(this.frames.headset.death, 'death');   // A11.6 (else the firmware's green out-blink)
+    this.carrying = null;
     this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
     this._changed();
   }

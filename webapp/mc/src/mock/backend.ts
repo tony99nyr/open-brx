@@ -282,7 +282,8 @@ export class MockBackend implements Api {
       { event: 'infected', source: 'both', desc: 'a survivor turned (infection)', sound: 'VB1M', words: 'The infection is spread.', gun_led: null, headset: null, text: 'THE INFECTION SPREADS', enabled: true },
     ] as const;
     return {
-      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, custom_events: [] as string[] },
+      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, custom_events: [] as string[],
+        headset: { pregame: 'team', start_flash: true, in_play: 'dark', hit: 0, death: 'native', respawn_flash: true, carrier: true } },
       events: rows.map(r => ({ ...r })),
       mc_confidence: { confident: false, missing: ['p-demo-2'], stale: [] as string[], unflushed: [] as string[] },
       presets: ['counter_strike', 'extraction', 'infection', 'last_stand', 'silenced', 'standard', 'vip'],

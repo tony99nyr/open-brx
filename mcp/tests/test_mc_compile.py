@@ -71,9 +71,9 @@ def test_spawn_shape():
     b = C.compile(_cfg(), _player(), _TEAMS)
     sp = b["spawn"]
     assert sp[0] == "$PLAYX,0,*" and sp[1] == "$SPAWN,,*"
-    # $BMAP,0,0 closes the T-0 tail; the headset team colour follows it because $SPAWN clears the
-    # headset (bench 2026-09-03) -- see test_headset_team.py.
-    assert sp[-2] == "$BMAP,0,0,,,,,*" and sp[-1].startswith("$HLED,")
+    # $BMAP,0,0 closes the T-0 tail. A11.6: the headset is DARK in play by default, so no $HLED follows;
+    # with headset.in_play == "team" one does -- see test_headset_team.py.
+    assert sp[-1] == "$BMAP,0,0,,,,,*"
     assert any(f.startswith("$AMMO,0,") for f in sp) and any(f.startswith("$AMMO,1,") for f in sp)
 
 
@@ -81,7 +81,7 @@ def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
     b = C.compile(_cfg(), _player(), _TEAMS)
     rv = b["revive"]
     assert rv[0] == "$SPAWN,,*"
-    assert all(f.startswith("$AMMO,") for f in rv[1:-1]) and rv[-1].startswith("$HLED,")
+    assert all(f.startswith("$AMMO,") for f in rv[1:])          # A11.6: dark headset in play -> no $HLED tail
     assert not any(f.startswith("$BMAP") for f in rv), "revive must not re-map buttons"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 

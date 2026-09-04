@@ -145,8 +145,27 @@ def alert_body(kind: str, extra: dict | None = None) -> dict:
 # hud_events: the node's own events (source "hud"/"both") · mc_events: MC-pushed events (source "mc"/"both") ·
 # mc_confidence: MC pushes a global-state event ONLY while every player's HUD is connected and flushed,
 # so "takes the lead" / "next kill wins" / "last survivor" are never said on a stale picture (Tony, 2026-09-04).
+# --- the HEADSET, as its own block (Tony, 2026-09-04: "we also need headset led. make sure it does the
+# proper behavior pre game showing team color, going dark at start of game, maybe we have a certain white
+# flash to mark the start of game, flash on hit, flash during death until spawned, maybe another white
+# flash to indicate respawn and active. maybe holding flag means flashing the flag color").
+# Hardware facts behind the defaults (bench 2026-09-03): a static $HLED holds solid; $SPAWN and every hit
+# wipe it (native flash, then dark); the blink form `$HLED,<c>,2,<on>,<off>,10,<count>` works in game; the
+# firmware blinks the headset GREEN on its own while a player is out (the "out-blink", F13). Whether a
+# count-limited blink ends DARK on its own is unverified, so every flash is followed by an explicit frame.
+#   pregame:     "team" | "off"      lobby: the team colour (the headset organises teams -- Tony)
+#   start_flash: bool                T-0: a white double-flash, then the in-play state
+#   in_play:     "dark" | "team"     between events: dark (native-like) or held on the team colour
+#   hit:         colour | null       a short flash of that colour on every hit taken (null = leave native)
+#   death:       "native" | colour   while out: the firmware's green out-blink, or our slow blink in a colour
+#   respawn_flash: bool              back in: a white double-flash, then the in-play state
+#   carrier:     bool                holding the flag / objective: blink the FLAG colour until scored/lost/dead
+HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": pg.RED,
+                   "death": "native", "respawn_flash": True, "carrier": True}
+HEADSET_BLANK = "$HLED,,6,,,,,*"
+
 _BASE = {"announcer": True, "gun_flash": True, "headset_team": True, "sight_flash": True,
-         "hud_events": True, "mc_events": True, "mc_confidence": True}
+         "hud_events": True, "mc_events": True, "mc_confidence": True, "headset": dict(HEADSET_DEFAULT)}
 SWITCHES = ("announcer", "gun_flash", "headset_team", "sight_flash", "hud_events", "mc_events", "mc_confidence")
 
 PRESETS: dict[str, dict] = {
@@ -249,6 +268,35 @@ def merge(current: dict | None, patch: dict) -> dict:
             if prof.get(k) != patch[k]:
                 edited = True
             prof[k] = patch[k]
+    if "headset" in patch:
+        h = patch["headset"]
+        if not isinstance(h, dict):
+            raise ValueError("presentation.headset must be an object")
+        cur = dict(prof.get("headset") or HEADSET_DEFAULT)
+        for hk, hv in h.items():
+            if hk == "pregame":
+                if hv not in ("team", "off"):
+                    raise ValueError("presentation.headset.pregame must be team|off")
+                cur[hk] = hv
+            elif hk == "in_play":
+                if hv not in ("dark", "team"):
+                    raise ValueError("presentation.headset.in_play must be dark|team")
+                cur[hk] = hv
+            elif hk in ("start_flash", "respawn_flash", "carrier"):
+                if not isinstance(hv, bool):
+                    raise ValueError(f"presentation.headset.{hk} must be true/false")
+                cur[hk] = hv
+            elif hk == "hit":
+                cur[hk] = _colour(hv)
+            elif hk == "death":
+                cur[hk] = "native" if hv == "native" else _colour(hv)
+            else:
+                raise ValueError(f"presentation.headset.{hk}: unknown field")
+        if cur != prof.get("headset"):
+            edited = True
+        prof["headset"] = cur
+        # the legacy switch mirrors the block so older readers agree with it
+        prof["headset_team"] = cur["in_play"] == "team" or cur["pregame"] == "team"
     if "events" in patch:
         if not isinstance(patch["events"], dict):
             raise ValueError("presentation.events must be an object")
@@ -288,6 +336,7 @@ def resolve(config: dict) -> dict:
             prof[k] = bool(raw[k])
     if raw.get("preset") == "custom":
         prof["preset"] = "custom"
+    prof["headset"] = {**HEADSET_DEFAULT, **(base.get("headset") or {}), **(raw.get("headset") or {})}
     prof["events"] = {**prof.get("events", {}), **(raw.get("events") or {})}
     events = {}
     for ev, d in EVENTS.items():
@@ -363,10 +412,40 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool) -> di
     return out
 
 
+def _blink(colour: int, on_ms: int, off_ms: int, count: int) -> str:
+    return f"$HLED,{colour},2,{on_ms},{off_ms},10,{count},*"
+
+
+def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: dict[int, int] | None = None) -> dict:
+    """The bundle's `headset` table (A11.6): what the NODE writes to the headset at each moment.
+
+    Every entry is a list of [frame, hold_s] steps ending on an explicit state frame, because a
+    count-limited blink ending dark on its own is not yet verified on hardware. `in_play` names the
+    resting state the node returns to after every flash. Empty when LEDs are off for the game."""
+    if not leds_on:
+        return {}
+    h = {**HEADSET_DEFAULT, **(profile.get("headset") or {})}
+    team_paint = f"$HLED,{tid},0,,,10,,*" if tid is not None and 0 <= int(tid) <= 7 else None
+    rest = team_paint if (h["in_play"] == "team" and team_paint) else HEADSET_BLANK
+    white2 = _blink(pg.WHITE, 120, 120, 2)
+    out: dict = {"in_play": h["in_play"], "rest": rest, "blank": HEADSET_BLANK,
+                 "pregame": [team_paint] if (h["pregame"] == "team" and team_paint) else [],
+                 "start": [[white2, 0.6], [rest, 0.0]] if h["start_flash"] else [[rest, 0.0]],
+                 "hit": [[_blink(h["hit"], 100, 100, 2), 0.5], [rest, 0.0]] if h["hit"] is not None else [],
+                 "death": [] if h["death"] == "native" else [[_blink(int(h["death"]), 400, 400, 200), 0.0]],
+                 "respawn": [[white2, 0.6], [rest, 0.0]] if h["respawn_flash"] else [[rest, 0.0]],
+                 "carrier": {}}
+    if h["carrier"]:
+        for t, c in (team_colours or {}).items():
+            out["carrier"][str(t)] = [[_blink(int(c), 300, 300, 200), 0.0]]
+    return out
+
+
 def summary(profile: dict) -> dict:
     """What the UI shows: preset + the four switches + which events carry a custom sound."""
     return {"preset": profile.get("preset", "standard"),
             **{k: bool(profile.get(k, True)) for k in SWITCHES},
+            "headset": {**HEADSET_DEFAULT, **(profile.get("headset") or {})},
             "custom_events": sorted(ev for ev, spec in (profile.get("events") or {}).items()
                                     if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None)}
 

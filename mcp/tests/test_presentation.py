@@ -116,7 +116,7 @@ def test_silenced_mutes_the_announcer_and_drops_the_gun_flashes_but_keeps_the_pl
         assert b["cues"][ev] == "", ev                  # present and deliberately mute -> $SFLASH only
     assert b["cues"]["hurt"] == "$PLAY,VA8B,3,6,,,,,*"  # the player's own low-health alert survives
     assert b["cues"]["countdown"] == "$PLAY,VA81,4,6,,,,,*"
-    assert b["cues"]["team_led"].startswith("$HLED,")   # headset team colour is not "announcer stuff"
+    assert b["headset"]["pregame"] == ["$HLED,1,0,,,10,,*"]   # the lobby team colour is not "announcer stuff" (A11.6: dark in play)
 
 
 def test_counter_strike_preset_uses_the_real_bomb_lines():
@@ -214,3 +214,28 @@ def test_table_rows_carry_source_words_and_enabled_for_the_advanced_view():
     assert all(r["enabled"] for r in rows.values())
     off = {r["event"]: r for r in P.table({"mode": "tdm", "presentation": P.merge(None, {"mc_events": False})})}
     assert off["lead_taken"]["enabled"] is False and off["hit_taken"]["enabled"] is True
+
+
+def test_headset_block_defaults_validation_and_frames():
+    prof = P.resolve({"mode": "tdm"})
+    assert prof["headset"] == P.HEADSET_DEFAULT
+    hs = P.headset_frames(prof, 1, True, {1: 1, 2: 2})
+    assert hs["pregame"] == ["$HLED,1,0,,,10,,*"] and hs["rest"] == P.HEADSET_BLANK
+    assert hs["start"][0][0] == "$HLED,6,2,120,120,10,2,*" and hs["start"][-1] == [P.HEADSET_BLANK, 0.0]
+    assert hs["hit"][0][0].startswith("$HLED,0,2,") and hs["hit"][-1][0] == P.HEADSET_BLANK
+    assert hs["death"] == [] and hs["respawn"][0][0] == hs["start"][0][0]
+    assert set(hs["carrier"]) == {"1", "2"} and hs["carrier"]["2"][0][0] == "$HLED,2,2,300,300,10,200,*"
+    assert P.headset_frames(prof, 1, False) == {}
+    # every flash ends on an explicit state frame (count-limited blinks ending dark are unverified)
+    for k in ("start", "hit", "respawn"):
+        assert hs[k][-1][0] in (P.HEADSET_BLANK, "$HLED,1,0,,,10,,*")
+    # edits
+    q = P.merge(None, {"headset": {"in_play": "team", "hit": "orange", "death": "red", "pregame": "off", "start_flash": False}})
+    assert q["preset"] == "custom" and q["headset"]["in_play"] == "team" and q["headset"]["hit"] == pg.ORANGE
+    assert q["headset"]["death"] == pg.RED and q["headset"]["pregame"] == "off"
+    fr = P.headset_frames(P.resolve({"presentation": q}), 1, True, {1: 1})
+    assert fr["pregame"] == [] and fr["start"] == [["$HLED,1,0,,,10,,*", 0.0]] and fr["death"][0][0] == "$HLED,0,2,400,400,10,200,*"
+    for bad in ({"headset": {"in_play": "purple"}}, {"headset": {"hit": 12}}, {"headset": {"glow": True}}, {"headset": "loud"}):
+        with raises(ValueError):
+            P.merge(None, bad)
+

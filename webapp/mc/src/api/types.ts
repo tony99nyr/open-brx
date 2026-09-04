@@ -61,7 +61,9 @@ export interface PresentationRow {
 }
 export interface PresentationView {
   summary: { preset: string; announcer: boolean; gun_flash: boolean; headset_team: boolean; sight_flash: boolean;
-    hud_events: boolean; mc_events: boolean; mc_confidence: boolean; custom_events: string[] };
+    hud_events: boolean; mc_events: boolean; mc_confidence: boolean; custom_events: string[];
+    /** A11.6 headset block: pregame team|off · start_flash · in_play dark|team · hit colour|null · death native|colour · respawn_flash · carrier */
+    headset?: { pregame: string; start_flash: boolean; in_play: string; hit: number | null; death: string | number; respawn_flash: boolean; carrier: boolean } };
   events: PresentationRow[];
   mc_confidence: { confident: boolean; missing: string[]; stale: string[]; unflushed: string[] };
   presets: string[];
