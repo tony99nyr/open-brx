@@ -1314,6 +1314,26 @@ Do it in one sweep with the golden bundle regenerated, then cut an APK: node and
   `assign.policy.secondary.allowed_perk_ids` is gone, and a pre-A14 policy shape ("perk" inside `secondary.kinds`) is a
   400 / falls to the mode default rather than being migrated.
 
+## 🟠 S7 — EVENT SOUND PASS ON THE GUN STAGE (Tony, 2026-09-04 night: "we still have many sounds in game which are off and need adjustment")
+
+The 45-step walkthrough on R0BQT failed several sounds and the fixes were only trialled, not settled. Do a
+dedicated sound pass on the stage: pick the mode, open the ADVANCED table + the stage's patch box, play each event,
+and for every wrong one patch `{"events": {"<ev>": {"sound": "<id>"}}}` until it is right, then write the id into
+`presentation.EVENTS` (and `sounds.py` where a constant exists) with a `test_sound_catalog` pin. Known wrong / open:
+- `extraction_tick`: default **K01 is a 10 s fly-by / air strike** -- wrong for a repeating tick. Trialled **U100**
+  (Tony's "single tick sound"); alternatives U13, U41. Not yet confirmed as the default.
+- `extraction_closing` (VX0R "10 Seconds Remain") and `extraction_complete` (VQ8 "Objective complete!") failed the
+  walkthrough -- confirm what was wrong (clip, voice, or fit) and re-pick.
+- `unstoppable` had NO sound ("no bank line"); trialled **VX0U "Domination."** -- confirm. `killing_spree`
+  variants: V125 / VA7K both "Killing spree".
+- `healed` / `armour_up` / `shield_up` have no sound at all and failed (possibly on the LED alone -- the breathing
+  was fighting the burst then). Decide whether they get a sound (the ui_beep family is audited, e.g. U106 "short
+  computer arming sound") or stay lights-only.
+- Walk every mode's preset (silenced / counter_strike / vip / infection / last_stand / extraction) on the stage the
+  same way; the announcer lines with "you" vs "your team" wording per mode.
+Method: one sound per verdict, Tony's ear decides, the stage log shows the exact `$PLAY` frame; record in the
+experiment log and the catalog's `known_use` (`docs/reference/sound-catalog.md`).
+
 ## 🟠 S5 — MC ARMS THE UTILITY STATIONS AT MUSTER (A13.5, 2026-09-04 night; server side NOT built)
 
 Tony's design, spec'd by brx-grenade in contracts A13.5 + `docs/spec/utility.md` §5b/§5c (a1380f8); the full
