@@ -6373,4 +6373,9 @@ as bright as the native one**; "native is orders of magnitude brighter" (by eye,
 the measurement -- colour (blue vs green), duration and viewing angle are the likely reasons, and the earlier
 `$LED,0,…` frame had also painted the big LED red. Also measured: `$HLED,3,4` fade-out blink core 101-198 (≈ 1/100th
 of the flash), static `$HLED` green 23-42; the native headset's own respawn blink in frame ~90 core px per blink.
-Design unchanged: hits stay native (the firmware flashes the team colour); our green flash marks kills (A11.8).
+**Correction (Tony, right after):** "no native flash on last hit, it went blue" -- the blue flood is the HOSTED game's hit
+flash (the firmware paints the team colour on the big LED + dome when hit under our `$SIR` table), NOT the native
+green camera flash of a NATIVE game, which is the reference Tony means. So the measurement above compares our small-LED
+flash with the hosted hit flash (ours ≥ that one) and says nothing yet about the native-game green flash. To measure
+that: BLE disconnected, gun power-cycled into a native quick game, emitter hit on the headset dome, same camera run.
+Design unchanged meanwhile: hits stay native (whatever the firmware does), our green flash marks kills (A11.8).
