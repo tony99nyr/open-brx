@@ -11,6 +11,12 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 /** Accuracy is hits/shots where hits come from the VICTIMS' phones — shown only once MC has counted at least one
  *  hit for this player and ten shots have gone out; otherwise it reads 0% for every player without a phone in range. */
 const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;
+/** A11.4: alert families → banner colour. Objective = team colour, clock = amber, danger = red, the rest = glow. */
+const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objective', flag_returned: 'objective', point_captured: 'objective', hill_captured: 'objective',
+  time_60: 'clock', time_30: 'clock', time_10: 'clock',
+  bomb_planted: 'danger', bomb_detonated: 'danger', vip_hit: 'danger', vip_down: 'danger', infected: 'danger', lead_lost: 'danger',
+  lead_taken: 'info', next_kill_wins: 'info', last_survivor: 'info', survivors_win: 'info', bomb_defused: 'info' };
+const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
 const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE' };
@@ -515,6 +521,7 @@ export class Hud {
       if (m.kind === 'kill') this._kill(st, m);
       else if (m.kind === 'redeploy') this._redeploy(st);
       else if (m.kind === 'switched') this._switched(st, m);
+      else if (m.kind === 'alert') this._alert(st, m);
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);
       else if (m.kind === 'go') this._flash();
@@ -565,8 +572,11 @@ export class Hud {
       <div class="bars"><i style="width:90px;background:var(--warn)"></i><i style="width:34px;background:var(--glow)"></i><i style="width:12px;background:var(--glow);opacity:.5"></i></div></div>
       <div class="foot"><span class="vt" style="background:${TEAM_COLOR[vk] || 'var(--team-yellow)'};color:${TEAM_INK[vk] || '#1a1400'}"><span class="unskew">${esc((m.data && m.data.victim) || (vk.toUpperCase() + ' OPERATIVE'))} DOWN</span></span>
       <span class="by">K ${st.kills != null ? st.kills : ''} · CONFIRMED BY MISSION CONTROL</span></div>`;
+    const medals = (m.data && Array.isArray(m.data.medals) ? m.data.medals : []).filter(k => MEDAL_LABEL[k]);
+    if (medals.length) el.querySelector('.c').insertAdjacentHTML('beforeend', `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>`);
     this._flash();
-    this._swap('kill', el, 1800, 2200);   // three confirms 300ms apart used to stack three banners
+    const hold = 1800 + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
+    this._swap('kill', el, hold, hold + 400);   // three confirms 300ms apart used to stack three banners
     this.h.onHaptic && this.h.onHaptic('kill');
   }
   // TAKING A HIT. Deliberately a single fade, never a repeating flicker: this feedback moved off the
@@ -615,6 +625,15 @@ export class Hud {
     const el = document.createElement('div'); el.className = 'mo switched';
     el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN'}</span></div></div>`;
     this._swap('switched', el, 900, 1200);
+  }
+
+  /** A11.4 game-event alert: a full-width banner, stronger than a hit, weaker than KILL / DOWN, ~2.5 s. Renders at night too (dim). */
+  _alert(st, m) {
+    const d = (m.data) || {}; const fam = ALERT_FAMILY[d.kind] || 'info';
+    const el = document.createElement('div'); el.className = `mo alert ${fam}`;
+    el.innerHTML = `<div class="band"><span class="k">${fam === 'objective' ? 'OBJECTIVE' : fam === 'clock' ? 'CLOCK' : fam === 'danger' ? 'ALERT' : 'MATCH'}</span><span class="t">${esc(String(d.text || d.kind || '').toUpperCase())}</span></div>`;
+    this._swap('alert', el, 2200, 2600);
+    this.h.onHaptic && this.h.onHaptic('tap');
   }
 
   _redeploy(st) {

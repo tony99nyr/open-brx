@@ -45,7 +45,8 @@
   <div class="row"><button class="ev" onclick="ev('lowAmmo')">low ammo</button><button class="ev" onclick="ev('emptyMag')">empty mag</button><button class="ev" onclick="ev('battery',12)">battery 12%</button></div>
   <div class="row"><button class="ev bad" onclick="ev('dropGun')">gun link lost</button><button class="ev" onclick="ev('relinkGun')">gun relinked</button></div>
   <h2>Mission Control events</h2>
-  <div class="row"><button class="ev" onclick="ev('killConfirm','VIPER')">kill confirm</button><button class="ev" onclick="ev('score',4,2,1)">score update</button></div>
+  <div class="row"><button class="ev" onclick="ev('killConfirm','VIPER')">kill confirm</button><button class="ev" onclick="ev('killMedals',['double_kill','killing_spree'])">kill + medals</button><button class="ev" onclick="ev('score',4,2,1)">score update</button></div>
+  <div class="row"><button class="ev" onclick="ev('alert','next_kill_wins')">next kill wins</button><button class="ev" onclick="ev('alert','bomb_planted')">bomb planted</button><button class="ev" onclick="ev('alert','point_captured')">point captured</button><button class="ev" onclick="ev('alert','time_60')">1 min left</button></div>
   <div class="row"><button class="ev" onclick="ev('config')">push game</button><button class="ev" onclick="ev('start',10)">start · T-10</button><button class="ev" onclick="ev('abort')">abort</button></div>
   <div class="row"><button class="ev bad" onclick="ev('end')">end match</button><button class="ev bad" onclick="ev('panic')">PANIC</button><button class="ev" onclick="ev('endOk')">result OK</button></div>
   <div class="row"><button class="ev" onclick="ev('mcLost')">MC lost</button><button class="ev" onclick="ev('mcBound')">MC back</button><button class="ev" onclick="ev('mcRejected')">MC rejects</button></div>
@@ -60,7 +61,7 @@
     ['Before the game', [['idle', 'no gun — scanning'], ['connected', 'gun linked, no MC'], ['mc-rejected', 'MC refused the join'], ['setup', 'MC still setting up the game']]],
     ['Kit-out', [['briefing', 'the game briefing'], ['kitted', 'loadout plates'], ['kitted-ready', 'READY tapped'], ['kitted-perk', 'a perk in slot 2'], ['loadout-primary', 'browser · primary'], ['loadout-secondary', 'browser · slot 2'], ['loadout-picked', 'browser · picked SMG'], ['tryout', 'try-out panel']]],
     ['Arming', [['lobby', 'game pushed, waiting to arm'], ['armed', 'T-minus countdown'], ['aborted', 'countdown aborted → lobby']]],
-    ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-switch', 'weapon switch (ALT)'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['redeploy', 'just respawned']]],
+    ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-switch', 'weapon switch (ALT)'], ['live-alert', 'game event banner'], ['live-medals', 'kill with medals'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['redeploy', 'just respawned']]],
     ['Trouble', [['live-nogun', 'gun link lost mid-match'], ['resync', 'gun relinked → resync prompt'], ['live-mclost', 'MC connection lost'], ['panic', 'host PANIC']]],
     ['End', [['result', 'match result'], ['over', 'MATCH COMPLETE']]],
   ];

@@ -265,6 +265,22 @@ button:active{filter:brightness(1.15)}
 [data-env="night"] .switching,[data-env="night"] .switched{background:#000}[data-env="night"] .switching .t{color:var(--num);text-shadow:none}
 [data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
 [data-env="night"] .switching .track i{background:var(--num)}
+/* A11.4 ALERT banner: full width, one fade in / one fade out, colour by family */
+.alert{pointer-events:none;animation:hitin .14s ease-out}
+.alert .band{position:absolute;left:0;right:0;top:132px;height:58px;display:flex;align-items:center;justify-content:center;gap:18px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--al) 22%,#04070c) 18%,color-mix(in srgb,var(--al) 22%,#04070c) 82%,transparent);border-top:1px solid color-mix(in srgb,var(--al) 60%,transparent);border-bottom:1px solid color-mix(in srgb,var(--al) 60%,transparent);animation:bandin .22s cubic-bezier(.2,.9,.2,1)}
+.alert .k{font-size:11px;letter-spacing:.34em;color:var(--al);font-weight:700;padding:3px 10px;border:1px solid var(--al);transform:skewX(-10deg)}
+.alert .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.12em;color:var(--num);text-shadow:0 0 30px color-mix(in srgb,var(--al) 60%,transparent);white-space:nowrap}
+.alert.objective{--al:var(--team)}.alert.clock{--al:var(--warn)}.alert.danger{--al:var(--bad)}.alert.info{--al:var(--glow)}
+.alert.out{animation:hitout .35s ease-in forwards}
+@keyframes bandin{from{transform:scaleX(.6);opacity:0}to{transform:none;opacity:1}}
+[data-env="night"] .alert .band{background:#120505;border-color:#3a1414;animation:none}[data-env="night"] .alert .t{color:var(--num);text-shadow:none}[data-env="night"] .alert .k{color:var(--mut);border-color:var(--mut)}
+/* A11.4 medal stack on the KILL takeover: badges land one at a time, 2 s apart, with the announcer lines */
+.kill .medals{display:flex;gap:10px;margin-top:14px;min-height:30px}
+.kill .medal{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.18em;padding:4px 16px;transform:skewX(-12deg);background:var(--glow);color:#04121e;box-shadow:0 0 24px -6px var(--glow);animation:medalin .35s cubic-bezier(.2,1.4,.4,1) both}   /* base opacity 1: under reduced motion every badge simply shows */
+@keyframes medalin{from{opacity:0;transform:skewX(-12deg) scale(1.8)}60%{opacity:1;transform:skewX(-12deg) scale(.96)}to{opacity:1;transform:skewX(-12deg) scale(1)}}
+.kill .medal .unskew{display:inline-block;transform:skewX(12deg)}
+.kill .medal.first_blood{background:var(--bad);color:#fff;box-shadow:0 0 24px -6px var(--bad)}
+.kill .medal.killing_spree,.kill .medal.unstoppable{background:var(--warn);color:#1a1200;box-shadow:0 0 24px -6px var(--warn)}
 /* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
    phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
    the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */

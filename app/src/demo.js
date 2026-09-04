@@ -139,6 +139,8 @@ export function startDemo({ engine, log }) {
         const w = DEMO_WEAPONS.find(x => x.weapon_id === ((player.loadout.weapons[0] || {}).weapon_id));
         setTimeout(reload, Math.round(((w && w.reload_s) || 1.5) * 1000));
       },
+      alert: (kind = 'next_kill_wins', text) => engine.onMcMessage({ kind: 'alert', body: { kind, text: text || ({ next_kill_wins: 'NEXT KILL WINS', bomb_planted: 'BOMB PLANTED', point_captured: 'POINT CAPTURED', lead_taken: 'YOUR TEAM LEADS', time_60: 'ONE MINUTE LEFT', vip_down: 'VIP DOWN' })[kind] || kind.replace(/_/g, ' ').toUpperCase(), t: Date.now() } }),
+      killMedals: (medals = ['double_kill', 'killing_spree'], victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim, medals } }),
       killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim } }),
       // the gun (what the tagger would report)
       fire: n => fire(n == null ? 1 : n), reload, hit: d => hit(d == null ? 9 : d),
@@ -181,6 +183,8 @@ export function startDemo({ engine, log }) {
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
+      'live-alert':        [...live, [2300, () => ev.alert('bomb_planted')]],
+      'live-medals':       [...live, [2300, () => ev.killMedals(['double_kill', 'killing_spree'])]],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
       'live-nogun':        [...live, [2300, 'dropGun']],
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],

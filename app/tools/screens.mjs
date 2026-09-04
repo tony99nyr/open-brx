@@ -17,7 +17,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
+const LONG = new Set(['live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -199,6 +199,20 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(700); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
     must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SMG' && r.w > 0 && r.chips === '0', JSON.stringify(r));
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
+  });
+  await step(`${view.name} #41 game-event alert banner: text, family colour, one line, gone by ~5 s`, async () => {
+    const pg = await open(view, 'live-alert', '', 2900); const r = await pg.evaluate(() => { const a = document.querySelector('.mo.alert'); if (!a) return null; const t = a.querySelector('.t'); const rg = document.createRange(); rg.selectNodeContents(t); return { txt: t.textContent, fam: a.className, lines: rg.getClientRects().length, col: getComputedStyle(a.querySelector('.k')).color, w: a.querySelector('.band').getBoundingClientRect().width, fw: document.getElementById('frame').getBoundingClientRect().width }; });
+    await pg.waitForTimeout(2500); const gone = await pg.evaluate(() => !document.querySelector('.mo.alert')); await pg.close();
+    must(r, 'no alert banner'); must(r.txt === 'BOMB PLANTED' && /danger/.test(r.fam) && r.lines === 1 && r.w >= r.fw - 2, JSON.stringify(r)); must(gone, 'alert still up after 5.4 s');
+  });
+  await step(`${view.name} #41b alert at night still shows (dim)`, async () => {
+    const pg = await open(view, 'live-alert', '&night', 2900); const r = await pg.evaluate(() => { const a = document.querySelector('.mo.alert'); return a ? { vis: getComputedStyle(a).display !== 'none', txt: a.querySelector('.t').textContent } : null; }); await pg.close(); must(r && r.vis && r.txt === 'BOMB PLANTED', JSON.stringify(r));
+  });
+  await step(`${view.name} #42 kill with medals: badges stack and the takeover holds for the announcer lines`, async () => {
+    const pg = await open(view, 'live-medals', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; return { badges: Array.from(k.querySelectorAll('.medal')).map(b => [b.textContent.trim(), getComputedStyle(b).opacity]) }; });
+    await pg.waitForTimeout(2300); const r2 = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); return { up: !!k, second: k ? getComputedStyle(k.querySelectorAll('.medal')[1]).opacity : null }; }); await pg.close();
+    must(r && r.badges.length === 2 && r.badges[0][0] === 'DOUBLE KILL' && r.badges[1][0] === 'KILLING SPREE', JSON.stringify(r)); must(+r.badges[0][1] === 1 && +r.badges[1][1] === 0, 'first badge up, second waiting: ' + JSON.stringify(r));
+    must(r2.up && +r2.second === 1, 'second badge should land at +2 s while the takeover holds: ' + JSON.stringify(r2));
   });
   await step(`${view.name} #17 resync prompt: label over instruction, each on one line`, async () => { const pg = await open(view, 'resync'); const r = [...await oneLine(pg, '.prompt .pl'), ...await oneLine(pg, '.prompt .pi')]; const stack = await pg.evaluate(() => document.querySelector('.prompt .pl').getBoundingClientRect().bottom <= document.querySelector('.prompt .pi').getBoundingClientRect().top + 1); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(r[0][1] === 'GUN RELINKED' && r[1][1] === 'PULL THE TRIGGER', 'copy'); must(stack, 'label is not above the instruction'); });
   await step(`${view.name} #15 RELOADING takeover with progress and the weapon`, async () => {
