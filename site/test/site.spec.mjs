@@ -214,17 +214,17 @@ it('2a · weapons explorer: search, every class chip, compare pick/unpick/evict,
   const errors = watchErrors(page);
   await page.goto('/manual/gameplay/weapons/');
   const ex = page.locator('[data-explorer="weapons"]');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/22 of 22 shown/);
   await expect(ex.locator('[data-x-error]')).toBeHidden();
-  await expect(ex.locator('tbody tr')).toHaveCount(19);
+  await expect(ex.locator('tbody tr')).toHaveCount(22);
   // search narrows, "no matches" row appears for junk, clearing restores
   await ex.locator('[data-x-search]').fill('sniper');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/^[1-9] of 19 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/^[1-9] of 22 shown/);
   await ex.locator('[data-x-search]').fill('zzzz-no-such-weapon');
   await expect(ex.locator('tbody')).toContainText('No matches');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/^0 of 19 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/^0 of 22 shown/);
   await ex.locator('[data-x-search]').fill('');
-  await expect(ex.locator('tbody tr')).toHaveCount(19);
+  await expect(ex.locator('tbody tr')).toHaveCount(22);
   // every facet chip changes the count and takes aria-pressed; chip set = distinct classes
   const chips = ex.locator('[data-facet]:not([data-facet="all"])');
   const roles = await page.evaluate(async () => [...new Set((await (await fetch('/data/weapons.json')).json()).weapons.map(w => w.role))].sort());
@@ -234,10 +234,10 @@ it('2a · weapons explorer: search, every class chip, compare pick/unpick/evict,
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
     await expect(ex.locator('[data-facet="all"]')).toHaveAttribute('aria-pressed', 'false');
     const txt = await ex.locator('[data-x-count]').innerText();
-    expect(txt).toMatch(/^\d+ of 19 shown/); expect(txt).not.toMatch(/^19 of/); expect(txt).not.toMatch(/^0 of/);
+    expect(txt).toMatch(/^\d+ of 22 shown/); expect(txt).not.toMatch(/^22 of/); expect(txt).not.toMatch(/^0 of/);
   }
   await ex.locator('[data-facet="all"]').click();
-  await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/22 of 22 shown/);
   // compare dock states
   await expect(ex.locator('[data-x-dock]')).toContainText('Tick two weapons');
   await ex.locator('[data-pick="assault_rifle"]').check();
@@ -474,7 +474,7 @@ it('3b · old data shape: explorer rows missing fields render n/a, never undefin
   const errors = watchErrors(page);
   await page.goto('/manual/gameplay/weapons/');
   const ex = page.locator('[data-explorer="weapons"]');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/19 of 19 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/22 of 22 shown/);
   const text = await ex.innerText();
   expect(text).not.toMatch(/\bundefined\b|\bNaN\b/);
   expect(text, 'missing values must read n/a').toContain('n/a');
@@ -503,7 +503,7 @@ it('3c · the build refuses a manual with a broken internal link (link checker i
 });
 
 // ---- 4. failure paths --------------------------------------------------------------------------
-for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2166 of 2166 match'], ['/manual/gameplay/weapons/', 'weapons', '19 of 19 shown']]) {
+for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2166 of 2166 match'], ['/manual/gameplay/weapons/', 'weapons', '22 of 22 shown']]) {
   it(`4 · ${id} explorer data 500 → visible error strip, retry recovers`, async ({ page }) => {
     let fail = true;
     await page.route(`**/data/${id}.json`, route => fail ? route.fulfill({ status: 500, body: 'boom' }) : route.continue());
