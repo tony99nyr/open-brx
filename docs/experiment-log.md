@@ -6387,3 +6387,16 @@ cannot rank them at this exposure. **Standing result: our `$LED` flash is visibl
 native flash (by wall reflection, Tony's eyes).** To measure properly: point the camera at a dark WALL away from
 the LEDs (reflected light does not clip) and compare the mean luma change, or use an ND filter / a manual-shutter
 camera. Lesson for the ledcam method: a saturated core is a floor, not a measurement.
+
+### 2026-09-04 (late night) — 📷 WALL-REFLECTION MEASUREMENT: the native green flash puts ~9-10x the light into the room
+
+Method (Tony's): the phone camera aimed at a dark WALL, LEDs out of frame, so nothing clips; metric = mean
+brightening of the frame vs the run's median (`led_flashcam.py`, `wall` column) and its integral over the flash.
+Take A (gun armed by the stage over BLE): `$LED,9,1,1,1,*` x3 -> **wall peak 44.1 / 44.3 / 41.2, integral 135-156,
+2-4 frames (33-66 ms), zero clipped pixels.** Take B (BLE released, R0BQT power-cycled into a NATIVE quick game,
+same camera position, three emitter hits on the headset dome): **wall peak 95.8 / 95.7 / 95.8 -- with ~90k of 162k
+wall pixels above +100, i.e. the WALL is beginning to clip, so the true peak is higher -- integral 1391 / 1540 /
+1049, 12-18 frames (200-300 ms).** Ratio: peak >= 2.2x (clipped, so more), total light ~9-10x, duration 5-8x.
+Tony, by eye: "its like 100x brighter". **Standing result: `$LED` fires the same small LED but at a fraction of
+the firmware's drive and for a fraction of the time; no BLE frame found tonight reaches the native flash.** Design:
+hits and native flashes stay the firmware's; our `$LED` green flash marks kills (A11.8) -- visible, not native-bright.
