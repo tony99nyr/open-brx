@@ -411,6 +411,19 @@ class GunStage:
         self._hs_gen += 1
         self._spawn_task(self._seq(seq, why, headset=True))
 
+    async def raw(self, frames: list[str], delay_s: float = 0.0) -> dict:
+        """Bench escape hatch: write known-safe frames (protocol.KNOWN_SAFE_COMMANDS) after an optional delay, so a
+        timing / ordering hypothesis can be tried on the gun without recompiling. Unknown commands are refused."""
+        from .. import protocol
+        frames = [f.strip() for f in (frames or []) if f and f.strip()]
+        bad = [f for f in frames if not protocol.is_known_safe(f)]
+        if bad:
+            raise ValueError(f"not on the known-safe list: {bad}")
+        if delay_s:
+            await self.sleep(float(delay_s))
+        await self.write(frames, f"raw{f' +{delay_s}s' if delay_s else ''}", gap_ms=60)
+        return self.state()
+
     # ---- IR ---------------------------------------------------------------------------------------
     def set_emitter(self, port: str | None) -> dict:
         """Attach (or swap) the ESP32 emitter at runtime; PINGs it so a wrong port is caught before a bench

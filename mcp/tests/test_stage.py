@@ -281,3 +281,18 @@ def test_a_dropped_link_is_noticed_and_a_write_reconnects_once():
         assert st.connected and any("reconnected" in l["text"] for l in st.log)
         assert tx(mgr)[:2] == st.bundle["head"][:2]
     asyncio.run(run())
+
+
+def test_raw_writes_only_known_safe_frames():
+    async def run():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.raw(["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"])
+        assert tx(mgr)[-2:] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+        try:
+            await st.raw(["$FORMAT,*"])
+        except ValueError as e:
+            assert "known-safe" in str(e)
+        else:
+            raise AssertionError("an unknown command went to the gun")
+    asyncio.run(run())
