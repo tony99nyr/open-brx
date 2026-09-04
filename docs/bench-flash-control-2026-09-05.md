@@ -99,3 +99,50 @@ Write-up, same evening:
 - End every loop rung with `$HLOOP,0,0,*` and `$HLED,,6,,,,,*`. End the day armed and blanked, or powered off.
 - Never open the Callsign app on our guns (it wipes `$NAME`).
 - A clipped wall is a floor, not a measurement. Never rank two clipped signals.
+
+
+## Appendix A -- the wire layouts, READ from the APK metadata (not guessed), 2026-09-04 late
+
+Source: `global-metadata.dat` type/field/attribute tables (parser: `protocol/callsign-extract/tools/il2cpp_meta*.py`).
+Token order = `[MessageParameter(index)]` on each field, calibrated on `$HLED` (Color, Effect, OptionA=on_ms,
+OptionB=off_ms, Intensity, Number) and `$GLED` (Left, Mid, Right, Effect, OptionA, OptionB). Palette `LedColorType`:
+Red 0, Blue 1, Yellow 2, Green 3, Purple 4, Cyan 5, White 6, Pink 7, Orange 8, Disabled 9. `LedEffect`: Solid 0, Glow 1,
+Blink 2, ChaseBack 3, ChaseForward 4, Stop 5, StopIR 6. Level fields carry `[Range(0,10)]` -- that is why 10 = 255.
+
+- `$LED,<Color>,<IsUsedGreenLed>,*` -- exactly two fields. Tokens 3/4 were padding the firmware ignored. **No
+  intensity, duration or count lever exists in LED.** Rung 1 below proves the 2-token form.
+- `$BLINK,<Color>,<RateBlinkOn>,<RateBlinkOff>,<BlinkLevel 0-10>,<Loop>,*` with Loop = Off 0, Once 1, ThreeTimes 3,
+  Infinite 100 (a blink COUNT). Our bench `$BLINK,3,0,300,300,10` was on=0 / off=300 / level=300 (clamped) / loop=10,
+  which is why it looked solid.
+- `$CHASE,<Color>,<Rate>,<Level 0-10>,<Loop>,*`. `$HLOOP,<LedEffectType: Disable 0 | Enable 1 | Heartbeat 2>,<RateOfPulses>,*`
+  (the post-death `$HLOOP,0,0` is Disable; `$HLOOP,2,<rate>` is an untested looping heartbeat).
+- **`$BHIT,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,<PowerLevel>,<Direction>,*`** -- the `$HIR` field
+  set, i.e. it INJECTS a hit through the firmware's own path. The 2026-08-26 "echoed, not applied" result used a
+  3-token shape; untested in its real shape. Enums: BulletType Standard 0, MedicHeal 1, EMP 7, MeleeDamage 13;
+  TeamType Red 0 Blue 1 Yellow 2 Green 3 Purple 4 Cyan 5; IRDirection Front 0 Back 1 Left 2 Right 3 Gun 4 All 100.
+- `$IRTX` (11): Direction, BulletType, PlayerId, Team, Damage, IsCriticalShot, Power, IrRange, LoopFire, IrPulse,
+  FlashLED. `$HFIRE` (11): Direction, BulletType, PlayerId, Team, Damage, IsCriticalShot, PowerLevel, Range,
+  CountIRPulses, RateOfFire, FlashLED. Earlier zero-IR probes used the old 4-field shape.
+- No request carries a flash intensity or duration; STUN = {DeploySpeed}, VIB = {IsEnableVibration}, SFLASH is a
+  0-field notification in this build. `libil2cpp.so` is not in the base APK (a split APK), so method bodies are unread.
+
+**Hypotheses re-ranked by the metadata:** (1) LED cannot reach native drive, high confidence (metadata + bench
+agree). (2) **`$BHIT` in the 7-token shape runs the firmware hit path, native flash included** -- medium; it also
+applies damage, so expect `$HP` to drop, and it is a candidate mechanism for F15 (host-driven stun / EMP) too.
+(3) `$HLOOP,2,…` heartbeat or `$CHASE` may loop the flash LED, low. (4) `$HFIRE` / `$IRTX` with FlashLED=1, low, gun-side.
+
+**Appendix frames (blank first; Tony calls the SMALL LED unless noted; `$BHIT`/`$CHASE`/`$IRTX`/`$HFIRE` need `confirm`):**
+1. `$LED,3,1,*` -- same small flash as the 4-token form (tokens 3/4 were padding).
+2. `$LED,9,0,*` -- control, expect nothing.
+3. `$BLINK,3,100,100,10,3,*` -- exactly three green blinks on the big LED (Loop = count).
+4. `$BLINK,3,300,300,10,100,*` then `$BLINK,3,300,300,10,0,*` -- infinite, then Off stops it.
+5. `$BLINK,3,300,300,5,100,*` vs level 10 -- the 0-10 scale, A/B.
+6. `$CHASE,3,100,10,100,*` then `$CHASE,3,100,10,0,*` -- both LEDs; first correctly shaped CHASE.
+7. `$HLOOP,2,500,*` then `$HLOOP,0,0,*` -- heartbeat: which LED, how bright, cadence.
+8. `$HLOOP,1,500,*` then `$HLOOP,0,0,*` -- Enable variant.
+9. `$BHIT,0,1,<enemy team>,5,0,1,0,*` on a spawned gun -- native small-LED flash? hit sound? `$HP` drop? any `$HIR`?
+10. `$BHIT,0,1,<enemy team>,5,0,10,4,*` -- PowerLevel 10, Direction Gun; compare the flash.
+11. `$HFIRE,0,0,1,0,5,0,1,50,3,100,1,*` on the receiver-first rig (FlashLED=1) -- any emission or flash.
+12. `$IRTX,0,0,1,0,5,0,1,50,0,1,1,*` same rig, same question.
+If rung 9 flashes native-bright, the design question becomes whether MC/node may inject hits (a `$BHIT` with Damage 0?)
+purely for the flash -- and F15 gets a second mechanism.

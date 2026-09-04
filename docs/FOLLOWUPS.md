@@ -1554,7 +1554,9 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
    feedback). The native hit flash is >= 2x ours by wall reflection and the wall clipped on native -- bound the ratio
    from above with an ND filter / manual shutter; try `$LED` tokens 3/4 at other values for a longer or repeated
    pulse; check whether `$LED` needs the gun spawned. `headset.hit` is native now; `death` default is `flash` = the small LED pulsed at 750 ms while out (Tony's call, same night); a colour still gives the big-LED slow blink.
-   **Plan: `docs/bench-flash-control-2026-09-05.md`** (12 rungs, wall camera, ~75 min; the APK-metadata analysis feeds its frame list).
+   **Plan: `docs/bench-flash-control-2026-09-05.md`** (12 rungs + Appendix A: the wire layouts READ from the APK metadata --
+   `$LED` has only Color + IsUsedGreenLed (no lever), `$BLINK` order corrected, **`$BHIT` 7-token = inject a hit through the
+   firmware path**, the best remaining route to the native flash).
 
 7. **CLI `GameDriver` headset**: the direct-BLE driver still holds the team colour in play and repaints it
    after every spawn/hit (the A11 behaviour); the phone now follows the A11.6 headset block (dark in play,
@@ -1628,6 +1630,11 @@ Remaining:
 5. **Sanity**: refuse any `$PLAY` id that is not on the gun (the 157 app-only ids play a fallback).
 
 ## 🟢 F15 — BUILD THE HOST-DRIVEN STUN (EMP) — mechanism PROVEN on hardware 2026-09-03
+
+> **2026-09-04 (APK metadata read):** `$BHIT,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,<PowerLevel>,<Direction>,*`
+> is the `$HIR` field set -- a host-INJECTED hit through the firmware's own path (the 2026-08-26 "echoed, not applied" used a
+> wrong 3-token shape). If the bench confirms it (bench-flash-control rung 9), an EMP = `$BHIT,7,…` needs no IR word and no
+> `$AMMO` dance; and a Damage-0 BHIT may give the native hit flash on demand.
 
 `experiment-log.md` 2026-09-03 "HOST-DRIVEN STUN WORKS". Chain, all proven live: proto-8 IR word →
 victim's `$SIR,8,0,,24` row registers it with no pool change → `$HIR,<sensor>,8,…` over BLE → host

@@ -6439,3 +6439,21 @@ will need the fled for respawn indication though. out of game needing to respawn
 bright green flash for that." Shipped: `headset.hit` stays native (nothing written on a hit); `headset.death` default =
 `flash` -- the node pulses `$LED,9,1,1,1,*` every 750 ms while the player is down (the native respawn cadence) and
 stops on revive; a colour still gives the big-LED slow blink; `native` = nothing. Engine change -> APK 0.1.7 tomorrow.
+
+
+### 2026-09-04 (late night) — 📖 HEADSET LED LAYOUTS READ FROM THE METADATA: `$LED` has two fields, `$BLINK` was mis-ordered, `$BHIT` injects a hit
+
+An agent parsed `global-metadata.dat` (v39) from `callsign-base.apk` properly -- type, field, ctor-param, enum-literal and
+custom-attribute tables, not the string dump -- and calibrated on the bench-known `$HLED` (Color, Effect, OptionA = on
+ms, OptionB = off ms, Intensity, Number) and `$GLED` (Left, Mid, Right, Effect, OptionA, OptionB). Token order is the
+`[MessageParameter(index)]` attribute per field. Read: `LedColorType` Red 0 … Orange 8, Disabled 9 (our palette);
+`LedEffect` Solid 0, Glow 1, Blink 2, ChaseBack 3, ChaseForward 4, Stop 5, StopIR 6 (matches tonight's 0 static / 1
+breathe / 2 blink / 4 fade / 6 blank); level fields are `[Range(0,10)]` (why 10 = 255 everywhere). **`$LED` =
+{Color, IsUsedGreenLed} only -- tokens 3/4 were padding; there is no intensity, duration or count field for the small
+flash LED, so the drive difference is firmware-side.** `$BLINK` = {Color, RateOn, RateOff, Level 0-10, Loop: Off 0 /
+Once 1 / ThreeTimes 3 / Infinite 100} -- our `$BLINK,3,0,300,300,10` was on 0 / off 300 / level 300 / loop 10, hence
+"solid". `$CHASE` = {Color, Rate, Level, Loop}; `$HLOOP` = {Disable 0 / Enable 1 / Heartbeat 2, RateOfPulses}. And
+**`$BHIT` = {BulletType, PlayerId, Team, Damage, IsCriticalShot, PowerLevel, Direction}, the `$HIR` field set: a
+host-injected hit through the firmware's own path** -- the 2026-08-26 "echoed, not applied" verdict used a 3-token shape.
+`$IRTX` / `$HFIRE` are 11 fields with a `FlashLED` bool. `libil2cpp.so` is not in the base APK. Nothing bench-verified
+yet; the frames are Appendix A of `docs/bench-flash-control-2026-09-05.md`. Parser kept: `protocol/callsign-extract/tools/`.

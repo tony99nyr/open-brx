@@ -65,15 +65,15 @@ The BRX exposes a plain-text serial command interface over Bluetooth. The tagger
 | `$SPAWN`, `$RP`, `$RV`, `$UR`, `$IT`, `$KK`, `$TA`, `$PT`, `$HS`, `$PH` | Respawn/revive/status family | Partially mapped — see §7 Unknowns |
 | **New commands from APK teardown (2026-08-24):** | | field maps in `callsign-extract/protocol-classes.md` |
 | `$GREN,...` | **Smart Grenade config** (sent to the GUN, which programs the grenade) | iRType,crit,modifier,indoorMode,operationMode,channel,GrenadeType,MaxCount. GrenadeMode enum = FlashBang/Gas/Confusion/Molotov. See `callsign-extract/apk-harvest.md` |
-| `$HFIRE,...` | Heavy/burst IR fire | Range,CountIRPulses,RateOfFire,FlashLED |
-| `$IRTX,...` | Raw IR transmit | iRPower,soundOnHit,rangeOutdoor,rangeIndoor |
+| `$HFIRE,<Direction>,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,<PowerLevel>,<Range>,<CountIRPulses>,<RateOfFire>,<FlashLED>,*` | Heavy/burst IR fire (11 fields, READ from the APK metadata 2026-09-04; untested in this shape) | earlier probes used a 4-field guess |
+| `$IRTX,<Direction>,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,<Power>,<IrRange>,<LoopFire>,<IrPulse>,<FlashLED>,*` | Raw IR transmit (11 fields, READ from the APK metadata 2026-09-04; untested in this shape) | earlier probes used a 4-field guess |
 | `$LIFE,...` | Grant health | addedHP,addedArmor,addedShields |
-| `$BHIT,...` | **Host-inflicted hit** | damage,isCriticalShot,powerLevel |
+| `$BHIT,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,<PowerLevel>,<Direction>,*` | **Host-INJECTED hit** -- the `$HIR` field set, READ from the APK metadata 2026-09-04: runs the firmware's own hit path (flash, sound, damage). The 2026-08-26 "echoed, not applied" verdict used a 3-token shape; **untested in the real shape** (bench-flash-control rung 9). BulletType Standard 0 / MedicHeal 1 / EMP 7 / MeleeDamage 13; Team Red 0 Blue 1 Yellow 2 Green 3; Direction Front 0 Back 1 Left 2 Right 3 Gun 4 All 100 | candidate mechanism for F15 (EMP without an IR word) and for a native-bright flash on demand |
 | `$BUMP,...` | Adjust current pools | hP,armor,shields |
 | `$MELEE,<intensity>` / `$STUN` / `$VIB,<on>` / `$ZOOM` | Melee / stun / haptics / scope | |
 | `$FSET,...` | Per-event sound-slot table | ~38 game-event→sound assignments |
 | `$DLC` / `$ASKDLC` / `$GOTDLC` | Premium unlock handshake (BattleCoins) | hiddenFeatures |
-| Headset: `$HLED` `$BLINK` `$CHASE` `$HLOOP` `$LED` | Headset LED effects | |
+| Headset: `$HLED` `$BLINK` `$CHASE` `$HLOOP` `$LED` | Headset LED effects -- all five layouts READ from the APK metadata 2026-09-04 (rows below; `LedColorType` Red 0, Blue 1, Yellow 2, Green 3, Purple 4, Cyan 5, White 6, Pink 7, Orange 8, Disabled 9; level fields are `[Range(0,10)]`, which is why 10 = 255) | |
 
 ## 4. Messages FROM the tagger (BRX → host)
 
@@ -464,10 +464,11 @@ above, and not verified by us on the wire**. Leads for probing, not confirmed pr
 | Command | Guess at purpose | Why it's interesting |
 |---|---|---|
 | `$KOTH` | King-of-the-hill game mode | A named game mode implies host-driven mode selection — directly relevant to the unsolved remote game start |
-| `$HLED` | Headset//hit LED control | Pairs with the documented `$GLED` (gun LED). Effect token (t2), bench 2026-09-04: 0 static · 1 breathe loop · 2 blink · 3 no-op · 4 fade-out blink (4 steps, Callsign's low-health form) · 5 no-op · 6 blank · 7/8 dark. Level token (t5) is NOT brightness (10 = 255). |
-| `$BLINK,<colour>,<loop>,<on_ms>,<off_ms>,<level>,*` | Headset LED (APK: BLINK {Color, RateBlinkOn, RateBlinkOff, BlinkLevel, Loop ∈ Once/ThreeTimes/Infinite}) | Bench 2026-09-04 R0BQT: `$BLINK,3,0,300,300,10,*` = solid green, stays on; level 1 dimmer, 10 = 255; `$BLINK,3,1,*` / `$BLINK,3,2,*` alone do nothing; no echo. Not brighter than `$HLED`. |
-| `$LED,<colour>,<useGreenLed>,<effect>,<pulses>,*` | **The headset's SMALL flash LED** (the native "camera flash" on a hit is a separate GREEN-ONLY part next to the big RGB LED). APK: LED {LedColorType, isUsedGreenLed, ledEffectType, rateOfPulses} | Bench 2026-09-04 R0BQT, Tony calling: **`$LED,9,1,1,1,*` = ONE clearly visible green flash on the small LED** (~66 ms). **Well below the firmware's own green hit flash**: by wall reflection on the phone camera the native flash is at least 2x ours in peak and total light, with the wall itself clipping on native so the true ratio is higher; same duration. With token 2 = 1 the big LED is also painted `<colour>` (0 red, 1 blue, 2 white, 3 green) -- use **9 (dark)** to fire the small LED alone (an empty token 1 fires nothing). With token 2 = 0 there is no small-LED flash and the big LED shows `<colour>`. Tokens 3/4 at 0-255 and the flag at 2/255 change nothing visible. Used by A11.8 `events[ev].flash`. |
-| `$HLOOP` | Looping sound/haptic on headset? | `H`-prefixed like `$HLED`/`$HS`/`$HKC` — likely the headset family |
+| `$HLED,<Color>,<Effect>,<OptionA = on_ms>,<OptionB = off_ms>,<Intensity>,<Number>,*` | Headset big RGB LED (field names READ from the APK metadata 2026-09-04; `LedEffect` enum Solid 0, Glow 1, Blink 2, ChaseBack 3, ChaseForward 4, Stop 5, StopIR 6) | Bench 2026-09-04 effect map: 0 static · 1 breathe loop (Glow) · 2 blink · 3 nothing · 4 fade-out blink, 4 steps (Callsign's low-health form) · 5 nothing · 6 blank · 7/8 dark. Intensity is `[Range(0,10)]`: 10 = 255. Pairs with `$GLED` = {Left, Mid, Right, Effect, OptionA, OptionB} (the three gun LEDs). |
+| `$BLINK,<Color>,<RateBlinkOn ms>,<RateBlinkOff ms>,<BlinkLevel 0-10>,<Loop>,*` | Headset big LED blink (READ from the APK metadata 2026-09-04; Loop = Off 0 · Once 1 · ThreeTimes 3 · Infinite 100, a blink COUNT) | Bench 2026-09-04 R0BQT: `$BLINK,3,0,300,300,10,*` = solid green -- in this layout that was on 0 / off 300 / level 300 (clamped) / loop 10, hence "solid"; `$BLINK,3,1,*` / `$BLINK,3,2,*` alone nothing. Correctly shaped probes are bench-flash-control Appendix A frames 3-5. Not brighter than `$HLED`. |
+| `$CHASE,<Color>,<Rate>,<Level 0-10>,<Loop>,*` | Headset LED chase (READ from the APK metadata 2026-09-04) | Never sent in the right shape; bench-flash-control Appendix A frame 6. |
+| `$LED,<Color>,<IsUsedGreenLed>,*` | **The headset's SMALL green flash LED** (exactly TWO fields, READ from the APK metadata 2026-09-04; the 4-token form we sent carried two ignored padding tokens) | Bench 2026-09-04 R0BQT: **`$LED,9,1,…` = ONE clearly visible green flash on the small LED** (~66 ms); Color paints the big LED at the same time (9 = Disabled leaves it alone; 0 red, 1 blue, 2 yellow, 3 green -- the bench read "white" for 2, the enum says yellow); IsUsedGreenLed 0 = no flash. **No intensity, duration or count field exists**, so the native hit flash (>= 2x ours by wall reflection, the wall clipping) is the firmware driving the same part harder on its own hit path. Used by A11.8 `events[ev].flash` and the `death: flash` out-pulse. |
+| `$HLOOP,<LedEffectType>,<RateOfPulses>,*` | Headset LED loop (READ from the APK metadata 2026-09-04: LedEffectType Disable 0 · Enable 1 · Heartbeat 2) | Only `$HLOOP,0,0,*` (Disable) has ever been seen, after each death. `$HLOOP,2,<rate>` (heartbeat) is untested -- bench-flash-control Appendix A frame 7. |
 | `$RR` | Reload/respawn related | Adjacent to documented `$RP`/`$RV` |
 | `$BRXSERVER` | Server/host mode | — |
 | `$SSID` | WiFi network name | **These three together imply a WiFi/server mode we knew nothing about.** Worth investigating: if the tagger can join a network, that is a second transport entirely |
@@ -637,7 +638,7 @@ The **host drives respawn**, the gun does not self-revive:
 | Command | Notes |
 |---|---|
 | `$SFLASH,*` | **SOLVED — the shooter's green-sight kill-confirm flash (§7o).** No arguments. The host sends exactly one per **kill the holder scores**. The "periodic, never near a hit" reading in this row was wrong: this capture is the **victim's** gun, so its kills are outgoing — correlate with `$BUT` trigger bursts, not with `$HIR`/`$HP`. |
-| `$HLOOP,<a>,<b>,*` | Seen only as `$HLOOP,0,0,*`, immediately after each death. Was a §7d lead from LaserTagMods sources; now confirmed live. |
+| `$HLOOP,<LedEffectType 0 Disable / 1 Enable / 2 Heartbeat>,<RateOfPulses>,*` (layout READ from the APK metadata 2026-09-04) | Seen only as `$HLOOP,0,0,*`, immediately after each death. Was a §7d lead from LaserTagMods sources; now confirmed live. |
 
 ## 7g. Callsign's game model (operator walkthrough, 2026-08-23)
 
