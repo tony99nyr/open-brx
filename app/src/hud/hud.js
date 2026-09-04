@@ -21,7 +21,9 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
-const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE' };
+const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' };
+/** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
+const sidearmOnly = rule => !!(rule && rule.kinds && rule.kinds.includes('sidearm') && !rule.kinds.includes('weapon'));
 const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
 const perkEffect = p => { const e = (p && p.effects) || {}; const out = [];
   if (e.max_armor_add) out.push(`+${e.max_armor_add} ARMOR`); if (e.ammo_mult) out.push(`×${e.ammo_mult} AMMO`); if (e.reload_mult) out.push(`RELOADS ${+(1 / e.reload_mult).toFixed(1)}× FASTER`); if (e.alt_reload) out.push('ALT = RELOAD'); if (e.switch_mult) out.push(`SWAPS ${+(1 / e.switch_mult).toFixed(1)}× FASTER`);
@@ -266,7 +268,7 @@ export class Hud {
     const okW = new Set((rule && rule.allowed_weapon_ids) || []), okP = new Set((rule && rule.allowed_perk_ids) || []);
     const kinds = (rule && rule.kinds) || ['weapon', 'perk'];
     if (this.lo.filter === 'perks') return kinds.includes('perk') ? (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p })) : [];
-    return kinds.includes('weapon') ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];
+    return (kinds.includes('weapon') || kinds.includes('sidearm')) ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];   // a pistol is still requested as kind "weapon"
   }
   _loadout(st) {
     const tab = this.lo.tab === 'secondary' ? 'secondary' : 'primary';
@@ -289,7 +291,7 @@ export class Hud {
       list = `<div class="lolock"><div class="big">${LOCK_SVG} SET BY THE HOST</div><div class="s">${why}</div>${equipped ? `<div class="cur">${esc(equipped.name).toUpperCase()}</div>` : ''}</div>`;
     } else {
       const nCount = { weapons: ((rule && rule.allowed_weapon_ids) || []).length, perks: ((rule && rule.allowed_perk_ids) || []).length };
-      const filt = tab === 'secondary' ? `<div class="lofilt">${['weapons', 'perks'].filter(f => !rule || !rule.kinds || rule.kinds.includes(f === 'perks' ? 'perk' : 'weapon')).map(f => `<button class="fch ${this.lo.filter === f ? 'on' : ''}" data-act="onLoFilter" data-arg="${f}"><span class="unskew">${f.toUpperCase()} · ${nCount[f]}</span></button>`).join('')}<button class="fch none ${eqKey === 'none' && pend == null ? 'on' : ''} ${pend === 'none' ? 'pend' : ''}" data-act="onLoNone"><span class="unskew">NONE${eqKey === 'none' ? ' ✓' : ''}</span></button></div>` : '';
+      const filt = tab === 'secondary' ? `<div class="lofilt">${['weapons', 'perks'].filter(f => !rule || !rule.kinds || (f === 'perks' ? rule.kinds.includes('perk') : (rule.kinds.includes('weapon') || rule.kinds.includes('sidearm')))).map(f => `<button class="fch ${this.lo.filter === f ? 'on' : ''}" data-act="onLoFilter" data-arg="${f}"><span class="unskew">${f === 'weapons' && sidearmOnly(rule) ? 'SIDEARMS' : f.toUpperCase()} · ${nCount[f]}</span></button>`).join('')}<button class="fch none ${eqKey === 'none' && pend == null ? 'on' : ''} ${pend === 'none' ? 'pend' : ''}" data-act="onLoNone"><span class="unskew">NONE${eqKey === 'none' ? ' ✓' : ''}</span></button></div>` : '';
       const head = tab === 'primary' ? `<div class="locount">${rows.length} WEAPON${rows.length === 1 ? '' : 'S'} · SCROLL FOR MORE</div>` : '';
       list = head + filt + (rows.length ? rows.map(r => {
         const eq = r.key === eqKey && !pend, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key);
@@ -305,7 +307,7 @@ export class Hud {
       const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
-    } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? 'Pick a second weapon or a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
+    } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm or a perk — or leave it on NONE.' : 'Pick a second weapon or a perk — or leave it on NONE.') : 'Pick your main weapon.'}</div>`;
     const ackChip = ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? 'EQUIPPED ✓' : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
     const canTry = can && focus && focus.kind === 'weapon';
     return `<div class="lobby lo"><div class="scan"></div><div class="edgeglow"></div>

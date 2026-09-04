@@ -335,6 +335,64 @@ export const DEMO_WEAPONS = [
   "htk": 1,
   "verified": false
  }
+,
+ {
+  "weapon_id": "glock",
+  "name": "Glock-18",
+  "desc": "The starting pistol. 9 a hit as fast as you can pull, 20 in the mag and 120 behind it: 13 hits to drop, 10 kills across the kit. Weak per shot, deep for a sidearm, and always ready.",
+  "cls": "10",
+  "role": "sidearm",
+  "tags": [
+   "sidearm",
+   "pistol"
+  ],
+  "clip": 20,
+  "reserve": 120,
+  "reload_s": 2.2,
+  "dmg": 9,
+  "rpm": 50,
+  "rng": 75,
+  "htk": 13,
+  "verified": false
+ },
+ {
+  "weapon_id": "usp",
+  "name": "USP-S",
+  "desc": "The quiet one. Suppressed and flashless: 13 a hit at a measured cadence, 9 hits to drop, 12 in the mag with 72 behind it. Nobody hears where it came from.",
+  "cls": "10",
+  "role": "sidearm",
+  "tags": [
+   "sidearm",
+   "pistol"
+  ],
+  "clip": 12,
+  "reserve": 72,
+  "reload_s": 2.2,
+  "dmg": 13,
+  "rpm": 38,
+  "rng": 75,
+  "htk": 9,
+  "verified": false
+ },
+ {
+  "weapon_id": "deagle",
+  "name": "Desert Eagle",
+  "desc": "The hand cannon. 24 a hit, five hits to drop, and the fastest kill a sidearm gets \u2014 if you land them. Seven in the mag, 36 behind it, and a slow cycle that punishes a miss.",
+  "cls": "10",
+  "role": "sidearm",
+  "tags": [
+   "sidearm",
+   "pistol"
+  ],
+  "clip": 7,
+  "reserve": 36,
+  "reload_s": 2.2,
+  "dmg": 24,
+  "rpm": 20,
+  "rng": 75,
+  "htk": 5,
+  "verified": false
+ }
 ];
 export const DEMO_PERKS = [
  {

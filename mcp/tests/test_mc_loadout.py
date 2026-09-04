@@ -88,9 +88,9 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
 # ------------------------------------------------------------------ policy engine
 def test_presets_and_pools():
     lp = P.pool(P.preset_rules("open"), W, PK)
-    assert len(lp["primary"]) == 18 and len(lp["secondary_weapons"]) == 18 and len(lp["secondary_perks"]) == 5
+    assert len(lp["primary"]) == 21 and len(lp["secondary_weapons"]) == 21 and len(lp["secondary_perks"]) == 5
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
-    assert len(lp["primary"]) == 13 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
+    assert len(lp["primary"]) == 16 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]   # 13 + the three sidearms
     assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["secondary_perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "secondary_perks": []}

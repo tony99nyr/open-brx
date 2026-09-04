@@ -171,6 +171,7 @@ export function startDemo({ engine, log }) {
       'loadout-primary':   [...kitted, [400, () => ev.openLoadout('primary')]],
       'loadout-secondary': [...kitted, [400, () => ev.openLoadout('secondary')]],
       'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'smg')]],
+      'loadout-sidearms':  [[0, () => { policy.secondary.kinds = ['sidearm', 'perk']; policy.secondary.allowed_weapon_ids = DEMO_WEAPONS.filter(w => w.role === 'sidearm').map(w => w.weapon_id); }], ...kitted, [400, () => ev.openLoadout('secondary')]],
       'kitted-perk':       [...kitted, [400, () => ev.pick('secondary', 'perk', 'quick_hands')]],
       'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
       'lobby':             lobby,
