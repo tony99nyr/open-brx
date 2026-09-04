@@ -1286,3 +1286,39 @@ test('S7: a new match started while the node is LIVE (rejoin) re-arms and spawns
   assert.equal(h.eng.alive, true);
   assert.equal(h.eng.hp, 45, 'at full health, not the stale 0');
 });
+
+test('ANTI-CHEAT: force-close alive at low HP → reopen restores that HP, no false down, no free respawn', () => {
+  // Shared storage across the two app processes (force-close = a new Engine on the same localStorage).
+  const store = mkStorage();
+  let clock = 2_000_000;
+  const cfg = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+    respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
+    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+  const team = { team_id: 'blue', tid: 1, name: 'BLUE', color: 'blue' };
+  const bundle = { ...golden, player_id: 'p1' };
+  const mk = () => new Engine({ writer: () => {}, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn() });
+
+  // process 1: live, then take damage down to 10 hp (armour gone), still alive
+  const a = mk();
+  a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  a.onMcMessage({ kind: 'assign', body: { player, team, roster: [player] } });
+  a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
+  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
+  clock += 10; a.tick();
+  a.feedFrame('$HIR,4,0,19,2,60,0,0,*'); a.feedFrame('$HP,10,0,0,*');
+  assert.equal(a.alive, true); assert.equal(a.hp, 10);
+
+  // process 2: force-close → reopen on the same storage, gun relinks (SAME match)
+  const b = mk();
+  assert.equal(b.hp, 10, '_load restored the real HP, not 0');
+  assert.equal(b.alive, true, '_load restored alive, not a default down');
+  b.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  // the cheat was: the recovery guard stamped a death here and auto-respawn healed to full. Advance well
+  // past the respawn delay and tick — a LIVE player must NOT be respawned.
+  clock += 20000; b.tick();
+  assert.equal(b.alive, true, 'still alive — no false down');
+  assert.equal(b.hp, 10, 'still 10 hp — NOT healed to 45 by a bogus respawn');
+  assert.equal(b.deadAt, 0, 'no death was stamped on the rejoin');
+});
