@@ -23,8 +23,9 @@
 >   explicit rest frame, because a count-limited `$HLED` blink ending dark by itself is unverified.
 > - **MC console**: DESIGNER section 5, **ADVANCED — SOUNDS & LIGHTS** (read only): preset, switches,
 >   MC confidence, the headset block, the event table with SOURCE. An older server shows a restart banner.
-> - **APK 0.1.5 (debug) is the HEAD app code** (sidecar git `26b9b95`, `dirty: false`; 0.1.4 = `7188999`,
->   superseded the same night by the polish fixes + brx-hud's c97e5ce); site rebuilt and deployed. Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
+> - **APK 0.1.6 (debug)** = `a1380f8` (`dirty: false`; A11.7 gun-body opt-in, utility status screen, S5.2 clean
+>   spawn), site rebuilt and deployed. One later app commit is NOT in an APK yet: brx-hud's `e3490e3` (the
+>   utility phone's MC link + `station_config` apply), inert until the S5 server push exists -- cut 0.1.7 with S5. Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
 >   the `sidearm` slot kind), **`$WEAP` tok15 = weapon-swap delay** (F4/F22 closed, Quick Switch is real),
 >   the **BLE-beacon respawn station + utility mode** (A13, proven on hardware), and the HUD's alert
 >   banner, medal stack and scanner-mode DOWN screen.
