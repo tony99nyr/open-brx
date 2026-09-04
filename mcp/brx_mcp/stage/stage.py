@@ -381,6 +381,38 @@ class GunStage:
         self._spawn_task(self._seq(seq, why, headset=True))
 
     # ---- IR ---------------------------------------------------------------------------------------
+    def set_emitter(self, port: str | None) -> dict:
+        """Attach (or swap) the ESP32 emitter at runtime; PINGs it so a wrong port is caught before a bench
+        step reads 'no ack' as 'the gun ignored the shot' (2026-09-04: auto-detect picked COM3, the emitter
+        was on COM8, and three walkthrough steps failed for nothing)."""
+        if self.bridge is not None:
+            try:
+                self.bridge.close()
+            except Exception:
+                pass
+            self.bridge = None
+        if not port:
+            self._log("emitter detached", "info")
+            return self.state()
+        from ..irbridge import IRBridge
+        br = IRBridge(None if port == "auto" else port)
+        ok = br.ping()
+        if not ok:
+            br.close()
+            self._log(f"{br.port} did not answer PING -- not the emitter (or its firmware is not ir_emit). Ports: {self.serial_ports()}", "warn")
+            raise ValueError(f"{br.port} did not answer PING; pick another port")
+        self.bridge = br
+        self._log(f"emitter on {br.port}: PONG", "ok")
+        return self.state()
+
+    @staticmethod
+    def serial_ports() -> list[dict]:
+        try:
+            import serial.tools.list_ports as lp
+            return [{"device": p.device, "desc": p.description} for p in lp.comports()]
+        except Exception:
+            return []
+
     async def ir(self, kind: str, team: int | None = None, damage: int | None = None, repeat: int = 1) -> dict:
         t = int(team) if team is not None else (self.profile["tid"] if kind in ("beacon", "button") else self.enemy_tid())
         words = ir_words(kind, t, damage)
@@ -630,6 +662,7 @@ class GunStage:
             "headset_seqs": sorted(k for k, v in hs.items() if isinstance(v, list) and v and k != "pregame") + (["carrier"] if hs.get("carrier") else []),
             "events": self.event_catalog(),
             "ir_kinds": list(IR_KINDS),
+            "serial_ports": self.serial_ports(),
             "log": list(self.log)[-250:],
             "walk": self._walk_view(),
         }

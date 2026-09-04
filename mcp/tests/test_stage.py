@@ -226,3 +226,35 @@ def test_poll_never_replays_frames_it_already_handled():
         st.poll(); st.poll(); await settle(st)
         assert hits() == n, "a second poll must not replay the same $HP"
     asyncio.run(run())
+
+
+def test_set_emitter_refuses_a_port_that_does_not_pong():
+    import brx_mcp.stage.stage as SM
+
+    class Dead:
+        def __init__(self, port=None, **_): self.port = port or "COMX"
+        def ping(self): return False
+        def close(self): pass
+    class Live(Dead):
+        def ping(self): return True
+        def emit(self, bits, repeat=1): return "TX ok"
+
+    import brx_mcp.irbridge as IB
+    real = IB.IRBridge
+    try:
+        IB.IRBridge = Dead
+        st, _ = mk()
+        try:
+            st.set_emitter("COM3")
+        except ValueError as e:
+            assert "PING" in str(e)
+        else:
+            raise AssertionError("a silent port was accepted as the emitter")
+        assert st.bridge is None and any("did not answer PING" in l["text"] for l in st.log)
+        IB.IRBridge = Live
+        st.set_emitter("COM8")
+        assert st.bridge is not None and st.state()["link"]["emitter"] == "COM8"
+        st.set_emitter(None)
+        assert st.bridge is None
+    finally:
+        IB.IRBridge = real

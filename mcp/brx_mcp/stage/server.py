@@ -26,7 +26,7 @@ ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "arm": (True, ()), "spawn": (True, ()), "revive": (True, ()), "end": (True, ()), "panic": (True, ()),
     "event": (False, ("kind",)), "kill": (False, ("medals",)), "headset": (False, ("name", "tid")),
     "ir": (True, ("kind", "team", "damage", "repeat")), "auto_react": (False, ("on",)),
-    "walk_start": (False, ()), "walk_play": (True, ()), "walk_verdict": (False, ("ok", "note")), "walk_stop": (False, ()),
+    "set_emitter": (False, ("port",)), "walk_start": (False, ()), "walk_play": (True, ()), "walk_verdict": (False, ("ok", "note")), "walk_stop": (False, ()),
 }
 
 
@@ -112,10 +112,12 @@ def build(args) -> GunStage:
         from ..ble import ConnectionManager
         mgr = ConnectionManager()
         bridge = None
-        if args.ir:
-            from ..irbridge import IRBridge
-            bridge = IRBridge(None if args.ir == "auto" else args.ir)
     stage = GunStage(mgr, bridge)
+    if not args.fake and args.ir:
+        try:
+            stage.set_emitter(args.ir)            # PINGs: a silent port is refused, not trusted
+        except Exception as e:
+            stage._log(f"emitter {args.ir}: {e}", "warn")
     if args.mode:
         stage.set_profile(mode=args.mode)
     return stage

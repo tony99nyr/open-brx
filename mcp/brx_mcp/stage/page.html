@@ -62,7 +62,11 @@
       <button data-act="connect" class="acc">CONNECT</button>
       <button data-act="disconnect">DISCONNECT</button>
     </div>
-    <div class="hint" id="emitter"></div>
+    <div class="row">
+      <select id="ports"><option value="">(serial ports)</option></select>
+      <button data-act="set_emitter">SET EMITTER PORT</button>
+      <span class="hint" id="emitter"></span>
+    </div>
   </section>
   <section>
     <h2>2 // GAME CONFIG (drives everything below)</h2>
@@ -148,7 +152,8 @@
     const L = s.link;
     $('#link').textContent = L.connected ? `LINKED · ${L.fake ? 'FAKE GUN' : L.address}` : 'NO GUN LINKED';
     $('#link').className = 'pill ' + (L.connected ? 'ok' : 'warn');
-    $('#emitter').textContent = L.emitter ? `emitter on ${L.emitter}` : (L.fake ? 'fake mode: SHOOT ME / KILL ME hit the emulated gun directly' : 'no emitter attached: start with --ir COM7 (or auto); IR buttons only log the word');
+    if (document.activeElement.id !== 'ports') { const cur = $('#ports').value; $('#ports').innerHTML = '<option value="">(serial ports)</option>' + (s.serial_ports || []).map(p => `<option value="${p.device}" ${p.device === L.emitter ? 'selected' : ''}>${p.device} · ${p.desc}</option>`).join(''); if (cur && !L.emitter) $('#ports').value = cur; }
+    $('#emitter').textContent = L.emitter ? `emitter on ${L.emitter} (answered PING)` : (L.fake ? 'fake mode: SHOOT ME / KILL ME hit the emulated gun directly' : 'NO EMITTER (or it did not answer PING): pick its port and SET EMITTER PORT, or the IR buttons only log the word');
     $('#cfg').textContent = `${s.profile.mode.toUpperCase()} · ${s.summary ? s.summary.preset.toUpperCase() : ''} · ${s.config_source === 'mc' ? 'FROM MC' : 'SELECTORS'} · ${s.config_id || ''}`;
     $('#cfg').className = 'pill ' + (s.config_source === 'mc' ? 'ok' : '');
     const m = s.model; $('#alive').textContent = !m.spawned ? 'UNSPAWNED' : m.alive ? 'ALIVE' : 'DOWN'; $('#alive').className = 'pill ' + (!m.spawned ? '' : m.alive ? 'ok' : 'bad');
@@ -198,6 +203,7 @@
     if (b.dataset.walk) { const v = b.dataset.walk === 'pass' ? true : b.dataset.walk === 'fail' ? false : null; const note = $('#walknote').value; $('#walknote').value = ''; const r = await api('walk_verdict', { ok: v, note }); if (r && r.walk && !r.walk.done) await api('walk_play'); return r; }
     if (act === 'walk_start') { const r = await api('walk_start'); if (r) await api('walk_play'); return r; }
     if (!act) return;
+    if (act === 'set_emitter') return api('set_emitter', { port: $('#ports').value || null });
     if (act === 'connect') return api('connect', { address: $('#addr').value || $('#scanlist').value });
     if (act === 'scan') { const r = await api('scan', { duration_s: 6 }); await refresh(); return; }
     if (act === 'event') return api('event', { kind: b.dataset.kind });
