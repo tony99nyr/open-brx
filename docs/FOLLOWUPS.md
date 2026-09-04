@@ -1326,6 +1326,40 @@ blank, and does its final frame hold; (e) does `cues.hurt_led` (the Callsign low
 run after a blank; (f) does the blank affect the `$SFLASH` sight or the headset. Then build 1-4 with the
 same test-first discipline as A11.6.
 
+**✅ BENCH DONE 2026-09-04 (R0BQT — experiment-log "GUN LED bench (S4)"):** (a) a hit does NOT clear a
+painted colour when the blank was sent first (flashes, returns; only `$SPAWN` re-breathes) → paint once
+per life, repaint on respawn only. **Mixed frames render per-LED after a blank** (`$GLED,3,3,0`=green/
+green/red, `$GLED,3,3,9`=green/green/dark) → the 3-segment health bar (`pool_frame`) is viable in-game.
+(d) the shipped `event_burst` reads as 3 flashes and its final frame HOLDS. Brightness is capped (255 =
+10); the "bright strobe" was the HEADSET reflecting, not a gun mode. (f) the blank is `$GLED`-only. Still
+open: (b) minutes-long hold; (e) blink-form after a blank; the separate **muzzle-flash LED**'s
+addressability. Refactor (1-4) is **brx's** — bench answers delivered, they hold until Tony says go.
+
+## 🟠 S5 — RECONNECT / NEW-MATCH RECONCILIATION on the phone node (2026-09-04, from the utility bench)
+
+Live-bench weaknesses in the §3.10 resync + hydrate path, surfaced repeatedly on 2026-09-04 (they predate
+the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
+1. **Rejoin lands alive-with-0-hp.** After force-stop → relaunch → rejoin, the gun is armed and can shoot
+   but the HUD reads `alive:true hp:0` until the player pulls the trigger (the trigger-first resync observed
+   mid-handshake). A resync in progress should show a clear "confirm your gun" state, not live-but-empty.
+2. **A new match started on a just-reconnected node doesn't spawn clean** — `alive:true hp:0`, or the
+   restored old-match "down" state tangles with the new match. A clean force-stop fixed it every time,
+   which is not shippable.
+3. **A soft reload left the native BLE link half-open**, so the rejoin scan couldn't find the still-connected
+   gun. Node should release the BLE link on teardown/reload.
+Test-first: model cold-boot-while-down and new-match-over-reconnecting-node in the engine harness, then fix
+so a rejoin reconciles to the gun's real state with no manual trigger pull and a new match always spawns
+alive. Builds on the recovery `deadAt` stamp (ee47053).
+
+## 🟠 S6 — the utility STATION intermittently doesn't see PLAYER adverts at high TX (2026-09-04)
+
+On the two-Pixel bench the respawn station (advertising at high TX) sometimes read **zero** player adverts
+though players were advertising and its own scan was open; it recovered on its own. Suspect: scanning WHILE
+advertising on one radio starves the scan (Android). **Does not affect respawn** (player-side), but **gates
+bomb / extraction**, where the station must read who is planting/defusing/extracting. Investigate: a periodic
+scan-restart on the station (like the player down-scan refresh in app.js); advertise+scan concurrency; a
+lower station TX. `app/src/utility.js`.
+
 ## 🟠 S3 — EXTRACTION ON THE PHONE PATH, HUD-DRIVEN (2026-09-04)
 
 Tony's reference points are **ARC Raiders** and **Fortnite's Sprite extraction** (`game-modes.md` §Extraction,

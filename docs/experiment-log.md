@@ -6147,3 +6147,79 @@ lab tool, `webContentsDebuggingEnabled` in the debug APK (B21), 3-team infection
 console 76 + `tsc`/vite build · the ADVANCED browser step against a fresh MC (13/13 in the designer flow) ·
 the panel eyeballed in the built console (`?mock`). Every fix carries a test that fails on the old code
 (round 2 ran the new engine tests against the pre-fix file to check). APK 0.1.5 + site rebuild follow.
+
+### 2026-09-04 — 🟢 IN-GAME GUN LED CONTROL: `$GLED,,,,5` blanks AND suppresses the firmware breathing; then a solid colour HOLDS
+
+**The find we'd given up on.** During a game a spawned BRX gun body *breathes its team colour*, and a
+plain `$GLED,<c>,<c>,<c>,0,10` painted over it just **alternates** with the breathing — the firmware
+keeps reasserting. Hours went into trying to override it (2026-09-03) and it was written off as
+"can't control the gun LED in-game, so we can't put health/state on it." **Overturned on hardware
+2026-09-04 (R0BQT / Tactix-E20D, connected over BLE from the tower, Tony watching):**
+
+Reproducible sequence (each step confirmed by eye):
+1. Arm + spawn normally (`$CLEAR…$SPAWN,,*…`) → gun **breathes blue** (team colour), can shoot.
+2. `$GLED,3,3,3,0,10,*` (solid green, apply gate 0) → **alternates** green ⇄ breathing blue. No control.
+3. **`$GLED,,,,5,,,*`** (the BLANK — empty colour tokens, apply gate 5) → gun goes **DARK and STAYS
+   dark**. The breathing is *suppressed*, not just overwritten. (Gun still shoots.)
+4. From the blanked state, `$GLED,3,3,3,0,10,*` → **SOLID GREEN, holds.** `$GLED,4,4,4,0,10,*` →
+   **solid purple, holds.** Colour changes snap cleanly; **firing does NOT break it.**
+5. **`$SPAWN,,*` RE-ENABLES the breathing** → back to breathing blue. So a spawn/respawn resets it.
+
+**Mechanism (inferred):** the blank (`$GLED,,,,5`) doesn't just paint empty — it takes the LED out of
+the firmware's breathing loop, leaving a canvas the host owns until the next `$SPAWN`. So the recipe
+for host-owned gun colour in-game is: **after every spawn, send `$GLED,,,,5` once, then paint.**
+
+**What this unlocks (design):** the gun BODY LED is now a controllable in-game display — health
+(green→yellow→red), powerup/overshield, low-ammo, hit flashes that STAY the game's colour, team
+colour we choose. The A11.6 presentation gun-LED design (which sends *no* `$GLED` in play, ceding the
+body to the firmware breathing) should be refactored: emit a `$GLED,,,,5` blank in the spawn/revive
+sequence, then let the node paint the gun per state, re-blanking after each respawn.
+
+**Still to pin (measurement discipline — not yet tested):** does taking a HIT clear the painted colour
+(bench 2026-09-03 said hits clear the LED — if so the node repaints on `$HP` change, like the headset)?
+how long does a painted colour hold with no traffic (minutes)? does `$GLED,,,,5` need re-sending, or is
+one enough per life? which apply-gate/brightness combos are cleanest. Confirmed today: blank→paint
+holds through colour changes and firing; a spawn undoes it. Credit: Tony's eyes, R0BQT.
+
+### 2026-09-04 — GUN LED bench (S4): a painted colour SURVIVES a hit when the blank was sent first
+Continuing the in-game gun-LED find. R0BQT armed + spawned over BLE, `$GLED,,,,5` (blank) then
+`$GLED,3,3,3,0,10` (solid green) → held. Emitted two magnitude-20 hits (`$HIR,0,0,42,2,20`, armour
+70→50→30, gun ALIVE). **Result (Tony's eyes): the gun flashes BRIGHT green on the hit, then RETURNS to
+the held green — the painted colour is NOT cleared.** This overturns the 2026-09-03 "a hit clears the
+LED" for the blanked case: with the blank sent first, the host-owned colour persists through hits
+(only a `$SPAWN` re-enables the firmware breathing). ⇒ the node paints once per life (blank + colour
+after spawn) and repaints only on respawn, not on every hit. (S4 measurement (a) = answered: NO.)
+
+### 2026-09-04 — GUN LED bench (S4): MIXED frames render per-LED after a blank → the 3-segment health bar is viable
+The 2026-09-03 note said a mixed `$GLED` (e.g. `5,9,9`) produced uniform output in a live game — the
+firmware breathing repainted the whole strip. **After the blank that no longer holds.** On the blanked,
+green-holding R0BQT: `$GLED,3,3,0,0,10` → **green / green / RED** (index 0 = red, so each LED took its
+own colour and held), and `$GLED,3,3,9,0,10` → **green / green / DARK** (index 9 = off). So the three
+body LEDs are an INDEPENDENT 3-segment display once blanked. ⇒ `poolgauge.pool_frame` (the health bar)
+is viable in-game: full = 3 lit, 2/3 = 2 lit + 1 dark, 1/3 = 1 lit + 2 dark, hue by health
+(green→yellow→red). (S4: mixed-frame question answered YES; the "keep $GLED for pre-game only / do not
+hammer it in a live game" warning in `poolgauge.py` is superseded FOR THE BLANKED CASE — one paint
+holds, no hammering, survives hits.)
+
+### 2026-09-04 — GUN LED bench (S4): consolidated answers for the refactor
+Continuing on R0BQT (blank + paint, live). Answers to brx's S4 questions:
+- **(a) Does a HIT clear a painted colour (blank sent first)? NO.** The gun flashes bright on the hit and
+  RETURNS to the held colour; the paint persists (armour 70→0 over many mag-5/8/15/20 hits, colour held
+  every time). Only `$SPAWN` re-enables the firmware breathing.
+- **(mixed / health bar) YES.** `$GLED,3,3,0` → green/green/RED (0 = red), `$GLED,3,3,9` → green/green/DARK
+  (9 = off). The three body LEDs are an independent 3-segment display after a blank, so `poolgauge.pool_frame`
+  works in-game.
+- **(d) Shipped event burst after a blank: reads clean.** `poolgauge.event_burst("hit_taken", team1)` =
+  3 red flashes ending on team blue; played after a blank it shows as three flashes and the final blue
+  **HOLDS** (no drift back to breathing).
+- **(c) One paint per life:** the colour survived every hit and a reload with no breathing return; only
+  `$SPAWN` reset it. So blank+paint once per life, repaint on respawn.
+- **Gun brightness is CAPPED.** `$GLED,…,255` is no brighter than `…,10` (10 already saturates, confirmed).
+  ⚠️ **Correction:** the "extremely bright strobe on hit" is the **HEADSET** flash reflecting, NOT a
+  hi-power gun mode — there is no brighter gun LED to control (Tony, self-corrected).
+- **(f) The blank is gun-only:** `$GLED,,,,5` did not affect the headset (still flashed on hit, dark in
+  play) or the sight — it is a `$GLED` (gun-body) operation.
+Still open: (b) hold-time with zero traffic over minutes; (e) whether a `$GLED` blink *form* animates
+after a blank (only static frames tested); **the MUZZLE-flash LED** (a separate element from the 3 body
+LEDs — it lights on a hit, Tony 2026-09-04) — is it `$GLED`-addressable or firmware-only? Enough is
+answered for the refactor to start.
