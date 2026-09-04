@@ -13,7 +13,7 @@ LED and sound behaviour can be judged on a bench, one click at a time, before a 
 # or from a Windows shell: python -m brx_mcp stage --gun <addr> --ir COM7
 ```
 Then open **http://127.0.0.1:8790/**. Flags: `--gun ADDR` connect on start (or SCAN / CONNECT on the page) ·
-`--ir COM7|auto` the emitter's serial port (without it the IR buttons only log the word) · `--mc http://ip:8765
+`--ir COM7|auto` the emitter's serial port -- it is PINGed on attach and a port that does not answer is refused (auto-detect once picked a different USB device); without an emitter the IR buttons only log the word · `--mc http://ip:8765
 --token …` pull a running MC's applied config so the stage plays exactly that game · `--mode` start mode ·
 `--fake` no Bluetooth, one emulated gun (for trying the page itself; `SHOOT ME` / `KILL ME` hit it directly).
 
@@ -36,7 +36,7 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    replaces all of that with what a running MC has; **the patch box** merges a `presentation` patch (the same
    shape `PUT /api/config` takes) and recompiles, so an event's sound or colour can be changed and tried in the
    same minute. Anything the server would refuse is refused here with the same message.
-3. **GAME** — ARM (head), SPAWN (T-0 tail + start flash), RESPAWN, END, PANIC (re-ARM after: F11). The tiles show
+3. **GAME** — ARM (head), SPAWN (T-0 tail + start flash; the gun body is taken 2.5 s later, blank then rest), RESPAWN, GAME END / TEARDOWN ONLY, PANIC (re-ARM after: F11). The tiles show
    what the gun reports (`$HP` / `$LCD` / `$ALCD`) and the phone-side model beside it.
 4. **IR AT THE GUN** — SHOOT ME (25), KILL ME (200), EMP (proto 8), MEDIC HEAL (proto 1 pair), RESPAWN BEACON /
    STATION BUTTON (proto 15). Shooter team is a selector. With **AUTO-REACT** on (default) the stage plays what
@@ -48,7 +48,10 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
 7. **LOG** — `tx` written to the gun, `rx` what it said, `ir` emitted, with the reason for each write.
 
 ## Rules it enforces (so a bench run cannot fake a result)
-- Every frame comes from `Compiler.compile()` of the chosen config; nothing on the page hand-rolls a frame.
+- Every button's frames come from `Compiler.compile()` of the chosen config. The one exception is the **RAW** action (used by
+  the bench scripts, not a page button): literal frames, refused unless on the known-safe list or sent with `confirm` (logged UNKNOWN).
+- A dropped BLE link is noticed on the next poll and a write reconnects once; walkthrough verdicts append to
+  `~/.brx-mcp/stage-verdicts.jsonl`.
 - Actions are a whitelist (`server.ACTIONS`); a bad value is a 400 with the validator's message.
 - PANIC leaves the gun with no `$SIR` table — the log says so; ARM again before expecting hits.
 - No gun linked = dry run: the frames are logged, not written (useful to read a profile).

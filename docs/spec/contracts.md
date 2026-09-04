@@ -131,11 +131,11 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                        // the profile's gun_flash=false).
   presentation?: { preset, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence,
                    custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier },
-                   gun: { in_play } },   // A11/A11.5/A11.6/A11.7 summary
+                   gun: { in_play, pregame } },   // A11/A11.5/A11.6/A11.7 summary
   gun?: { in_play: "team"|"dark"|"health", blank: string, rest: string,   // A11.7: the gun BODY when the game owns it (default
           after_spawn_s: number, take: string[],                           // team). The node writes `take` (blank, rest) after_spawn_s
           bands?: [fraction_above: number, frame: string][] },             // after every $SPAWN. Absent for "native" (opt-in).
-                                                                           // spawn/revive carry blank + rest after $SPAWN;
+                                                                           // spawn/revive carry NO $GLED; the node writes `take` after_spawn_s
                                                                            // health: the node paints the first band whose
                                                                            // fraction hp/max exceeds, on band change + after bursts.
   headset?: { in_play: "dark"|"team", rest: string, blank: string,        // A11.6: the node's headset sequences, each a
@@ -687,7 +687,7 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     fires; event bursts end on `rest` instead of the team frame.
     `health`: `rest` is the full-health hue and `bands` = `poolgauge.HEALTH_BANDS` as `[fraction_above, frame]`;
     the node repaints when the band changes (never per hit) and right after each burst. Open (S4): the
-    minutes-long hold with no traffic, blink forms after a blank, and which look Tony wants as the default.
+    minutes-long hold with no traffic, blink forms after a blank. Default decided on the bench the same night: `team`.
 
 - **A12 (2026-09-04, SIDEARMS — `docs/spec/loadout.md` §1.1/§3; additive, no `v` bump):**
   - **A12.1 Three pistols in the catalog** — `glock`, `usp`, `deagle` (role `sidearm`, tags `sidearm`+`pistol`, cls 10).

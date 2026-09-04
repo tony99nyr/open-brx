@@ -1362,7 +1362,7 @@ Build with the ui-build-verify discipline (fresh + stale server, old session, ev
 - Harness: screen step #49 drives `applyStationConfig`; the real push can be tried against `python -m brx_mcp.mc
   --demo` from `utility.html?mc=ws://…`.
 
-## 🟢 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04) — BUILT the same night as an OPT-IN (A11.7); default still native
+## 🟢 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04) — BUILT (A11.7); default `team` + `pregame: team`, body taken 2.5 s after `$SPAWN` (bench-corrected)
 
 `experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (R0BQT, Tony watching): a spawned gun breathes its
 team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) first takes
@@ -1387,10 +1387,10 @@ lands before the take (first 2.5 s of a life) still fights the breathing; the ex
 bundle byte-identical. The other three: `$GLED,,,,5` + the rest frame right after `$SPAWN` in spawn AND revive,
 `bundle.gun` for the node, event bursts end on the rest frame; `health` ships the HEALTH_BANDS frames and the
 node repaints on band change + after each burst (engine `_gunHealthPaint`). Shown in the ADVANCED panel as
-GUN BODY. **Next**: Tony picks the default on a field (`PUT /api/config {"presentation": {"gun": {"in_play":
-"health"}}}` to try it); the open bench items (b) hold time with no traffic and (e) blink forms after a blank.
+GUN BODY. ~~Next: Tony picks the default~~ (decided on the bench: `team`; the blank-inside-the-burst clause above is
+also superseded -- see the "Bench-corrected" paragraph). Open bench items: (b) hold time with no traffic, (e) blink forms after a blank.
 
-**Design sketch (as built):**
+**Design sketch (as first built; the blank has since moved to the 2.5 s node timer, see above):**
 1. `compile.py`: `$GLED,,,,5,,,*` right after `$SPAWN,,*` in `spawn` and `revive`; then the presentation's
    in-play gun frame (`gun.in_play: team|dark|health`, default team colour so the gun looks as it does today).
 2. `presentation.py`: a `gun` block beside `headset` -- in_play (team / dark / health), hit flash colour,
@@ -1470,7 +1470,7 @@ the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
   not healed and not auto-revived early. Should already hold (reconcile gates auto-respawn while reconciling,
   and re-arms only if alive), but verify on the gun.
 
-## 🟢 S6 — the utility STATION intermittently doesn't see PLAYER adverts at high TX (2026-09-04)
+## 🟢 S8 — the utility STATION intermittently doesn't see PLAYER adverts at high TX (2026-09-04) (was numbered S6; S6 is the legacy-shim sweep)
 
 **Status:** fixed in code (low-latency scan + 8 s restart, commit 53e62bd); two-Pixel bench confirmation pending.
 
@@ -1504,7 +1504,7 @@ The CLI engine (`modes/extraction.py`) already models 2-4 host-side; port its ru
 ⚠️ `last_survivor` was pulled from the `last_stand` preset: MC only knows deaths from CONNECTED HUDs, so it
 is the announcement most likely to be wrong when phones drop -- kept as an opt-in event.
 
-## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BUILT 2026-09-04 (backend, read-only UI, APK 0.1.4); the WRITE UI is pending
+## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BUILT 2026-09-04 (backend, read-only UI; APK 0.1.6 = a1380f8, the A11.7 take + A11.8 flash engine changes await 0.1.7); the WRITE UI is pending
 
 Tony: *"how the gleds and hleds behave, what sounds are used and when, these should be made into a
 config that MC can program … silenced snipers cuts out the announcer stuff and extra led flashes …
@@ -1526,7 +1526,8 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
 > stacks are with the **brx-hud** session. Suites: mcp 691, app 89.
 
 0b. **A11.6 (same day, Tony)**: the headset as its own block -- team colour pre-game, white flash at the
-   whistle then DARK, flash on hit, native green out-blink (or our colour) while dead, white flash on respawn,
+   whistle then DARK, NATIVE flash on hit (`hit: null`, corrected the same night), the small flash LED pulsed every
+   750 ms while dead (`death: flash`; a colour = our big-LED blink; the native out-blink does not run in a hosted game), white flash on respawn,
    flag-colour blink while carrying. Default in-play is now dark; `headset.in_play: "team"` restores the held
    team colour. **Bench to verify**: does `$HLED,<c>,2,120,120,10,2` (count-limited blink) end dark by itself?
    The node follows every flash with an explicit rest frame until that is known; also confirm the white
@@ -1541,7 +1542,7 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
    old-session boot (fixed on the way: a restored pre-A11 config now gets the mode's presentation
    default, or the console read a stock mode as TUNED). **Next**: the preset picker + switches (write).
    Until then `PUT /api/config {"presentation":{"preset":"silenced"}}`.
-2. ✅ **APK rebuilt** 0.1.2 → 0.1.3 (clean tree) → 0.1.4 on 2026-09-04, site rebuilt each time; 0.1.4 is the HEAD app code.
+2. ✅ **APK rebuilt** 0.1.2 → 0.1.3 (clean tree) → 0.1.4 → 0.1.6 (a1380f8) on 2026-09-04, site rebuilt each time. **0.1.7 pending** (gun take, A11.8, A14, utility MC link).
 3. **Objective / VIP emitters**: the cues + `alert` plumbing exist; the extraction/objective engines on
    the phone path do not call `Session._alert("objective_scored", …)` yet, and `survivors_win` needs
    the infection end decided. Wire when those modes move onto the phone path.

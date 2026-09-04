@@ -6227,6 +6227,9 @@ answered for the refactor to start.
 
 ### 2026-09-04 (late night) — 🟢 A11.7 BUILT: the gun body as an opt-in host-owned display (S4)
 
+**Superseded later the same night:** default became `team` + `pregame: team`, and the blank moved to a 2.5 s node timer
+after `$SPAWN` (see "THE BLANK MUST FOLLOW `$SPAWN` BY >= 2 s" below).
+
 brx-grenade's three "GUN LED bench (S4)" entries above answered the questions that gated the design: a held
 paint survives registered hits (armour 70 → 0), reloads and firing; only `$SPAWN` re-enables the breathing;
 the shipped 3-flash burst reads after a blank and its final frame HOLDS; the three body LEDs are independent
@@ -6353,7 +6356,7 @@ either LED.** What we have: `$LED,9,1,1,1,*` = one clearly visible green flash o
 untouched -- used for kill feedback (A11.8); the native hit flash stays native; while out we still paint our
 green slow blink on the big LED because the native out-blink does not run in a hosted game.
 
-### 2026-09-04 (late night) — 📷 MEASURED: our small-LED flash is AS BRIGHT AS the native hit flash on camera (the eye said otherwise)
+### ❌ RETRACTED — 2026-09-04 (late night) — 📷 (was: our small-LED flash is AS BRIGHT AS the native hit flash on camera) -- the camera on the LEDs clipped both; see the wall-reflection entries below
 
 Tony: "can you use my phone camera to watch the led as you brute force it?" -- the ledcam rule, applied.
 `mcp/tools/led_flashcam.py`: the Pixel 10 Pro on wireless adb (paired from WSL), camera app aimed at R0BQT's
@@ -6388,7 +6391,10 @@ native flash (by wall reflection, Tony's eyes).** To measure properly: point the
 the LEDs (reflected light does not clip) and compare the mean luma change, or use an ND filter / a manual-shutter
 camera. Lesson for the ledcam method: a saturated core is a floor, not a measurement.
 
-### 2026-09-04 (late night) — 📷 WALL-REFLECTION MEASUREMENT: the native green flash puts ~9-10x the light into the room
+### ❌ RETRACTED — 2026-09-04 (late night) — 📷 (was: WALL-REFLECTION: the native flash puts ~9-10x the light into the room)
+
+**Superseded by the entry below:** the other headset was in its respawn blink during this take, so the "200-300 ms,
+9-10x" native figures are that blink, not the hit flash. Standing result: native >= 2x ours (wall clips), same ~66 ms.
 
 Method (Tony's): the phone camera aimed at a dark WALL, LEDs out of frame, so nothing clips; metric = mean
 brightening of the frame vs the run's median (`led_flashcam.py`, `wall` column) and its integral over the flash.

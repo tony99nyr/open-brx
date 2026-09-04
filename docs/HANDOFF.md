@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-04 (night).
 
-> ## 🎛️ 2026-09-04 (evening/night) — SOUNDS & LIGHTS ARE A PER-GAME PROFILE (A11–A11.6) · EVENTS ARE HUD-DRIVEN · APK 0.1.4 CARRIES ALL OF TODAY
+> ## 🎛️ 2026-09-04 (evening/night) — SOUNDS & LIGHTS ARE A PER-GAME PROFILE (A11–A11.8) · EVENTS ARE HUD-DRIVEN · APK 0.1.6 = a1380f8, **0.1.7 REQUIRED** (gun take, A11.8 flash, A14, utility MC link)
 >
 > - **Presentation profile** (`mc/presentation.py`, contracts A11): presets `standard / silenced /
 >   counter_strike / vip / infection / last_stand / extraction` (assigned per mode), and per event a sound
@@ -33,8 +33,10 @@
 >   cap only while MC is linked; the result tally is per MC session (F24 queued for MC-owned totals); native
 >   builds inset the frame under the status bar. Open on the HUD side: F15–F21 in FOLLOWUPS.
 > - **APK 0.1.6 (debug)** = `a1380f8` (`dirty: false`; A11.7 gun-body opt-in, utility status screen, S5.2 clean
->   spawn), site rebuilt and deployed. One later app commit is NOT in an APK yet: brx-hud's `e3490e3` (the
->   utility phone's MC link + `station_config` apply), inert until the S5 server push exists -- cut 0.1.7 with S5. Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
+>   spawn), site rebuilt and deployed. **0.1.7 is REQUIRED before the next game with this server**: 15 app commits
+>   since a1380f8 are un-shipped, including the engine's 2.5 s `gun.take` timer (a 0.1.6 phone never blanks the
+>   body under the new `team` default), the A11.8 kill flash and the 750 ms out-pulse, brx-hud's A14 perk slot
+>   (5641b12) and the utility phone's MC link (e3490e3). Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
 >   the `sidearm` slot kind), **`$WEAP` tok15 = weapon-swap delay** (F4/F22 closed, Quick Switch is real),
 >   the **BLE-beacon respawn station + utility mode** (A13, proven on hardware), and the HUD's alert
 >   banner, medal stack and scanner-mode DOWN screen.
@@ -50,15 +52,16 @@
 >   FOLLOWUPS S2 "Polish round 2026-09-04 (night)". Details: experiment-log, same heading.
 > - **S4 / A11.7, the gun body LED (late night)**: brx-grenade found on R0BQT that `$GLED,,,,5` (the blank)
 >   takes the body out of the firmware breathing, after which a paint HOLDS through hits, reloads and firing
->   (`$SPAWN` resets it). Built as an OPT-IN: `presentation.gun.in_play = native | team | dark | health`,
->   default `native` (no change to any bundle). Try `health` on a field before choosing a default. Open:
+>   (`$SPAWN` resets it). ~~Built as an OPT-IN, default `native`~~ -- superseded the same night on the bench:
+>   **default `team` + `pregame: team`, the body taken 2.5 s AFTER `$SPAWN` by the node** (see the gun-stage
+>   bullet below); `native` is the opt-in. Open:
 >   hold time with no traffic, blink forms after a blank.
 > - **The GUN STAGE is built** (`python -m brx_mcp stage --gun <addr> --ir auto`, `docs/gun-stage.md`): a
 >   click-to-try page for one real gun -- arm / spawn / respawn, every event, medal stacks, headset sequences,
 >   IR shots from the emitter with the phone's victim overlay played on top, all from the chosen GAME CONFIG
 >   (selectors, the MC's applied config, or a presentation patch). **WALKTHROUGH** steps through every state of
 >   that config for a PASS/FAIL verdict each (saved to `~/.brx-mcp/stage-verdicts.jsonl`). Verified in a real
->   browser against the fake gun; **not yet run against a real gun** -- that is the next bench session.
+>   browser against the fake gun; first real-gun run the same night (next bullet).
 > - **Gun-stage bench with Tony (late night, R0BQT + emitter on COM8 + the Pixel camera)**: gun body default is
 >   now blank-then-hold (`gun.in_play: team`, taken 2.5 s AFTER `$SPAWN` -- inside the burst the blank does not
 >   take, +1.0/+1.5 s breathing, +2.0 s solid); pre-game HLED + GLED team colour is an every-mode invariant;

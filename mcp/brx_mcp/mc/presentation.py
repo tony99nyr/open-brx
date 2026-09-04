@@ -12,9 +12,12 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
       "preset": "standard" | "silenced" | "counter_strike" | "vip" | "infection" | "last_stand" | "extraction" | "custom",
       "announcer":    bool,   # kill lines, medals, lead changes, objective callouts (voice)
       "gun_flash":    bool,   # $GLED event bursts on the player's own gun
-      "headset_team": bool,   # keep the headset on the team colour (repainted after spawn / hit)
+      "headset_team": bool,   # derived mirror of headset.in_play/pregame == "team" (older readers)
+      "hud_events": bool, "mc_events": bool, "mc_confidence": bool,   # A11.5 event classes + the confidence gate
+      "headset": {pregame, start_flash, in_play, hit, death, respawn_flash, carrier},   # A11.6 (death: flash|native|colour)
+      "gun": {in_play, pregame},                                     # A11.7 (blank-then-hold, taken 2.5 s after $SPAWN)
       "sight_flash":  bool,   # $SFLASH on a credited kill
-      "events": { <event>: { "sound": <id>|null, "gun_led": 0-8|null, "headset": 0-8|null } }
+      "events": { <event>: { "sound": <id>|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null } }   # flash = the small headset LED (A11.8)
     }
 
 Every sound id must be ON THE GUN (`sounds.on_gun_ids()`, from the catalog read off the hardware);
@@ -24,9 +27,9 @@ makes it `custom` (same rule as `loadout_policy`, A10.2).
 
 What consumes it: `compile.py` turns it into the per-player bundle -- `cues[<event>]` (pre-composed
 `$PLAY` frames, A6.3; a V-family id goes in the announcer slot, anything else in the SFX slot) and
-`leds[<event>]` (the tuned 3-flash `$GLED` burst back to the team colour, hardware-tuned
+`leds[<event>]` (an optional `$LED` small-LED flash first, then the tuned 3-flash `$GLED` burst ending on the gun's rest frame, hardware-tuned
 2026-09-03, plus an optional static `$HLED`). The node plays them on its own events (hit_taken,
-died, respawned, healed, armour_up, shield_up) and on MC `feedback` pushes (kill, multi, medal,
+died, respawned, healed, armour_up, shield_up) and on MC `feedback` pushes (kill + medals,
 victory) and objective pushes. `announcer: false` empties every voice cue (the `$SFLASH` still
 fires); `gun_flash: false` empties `leds`.
 
@@ -190,7 +193,8 @@ HEADSET_BLANK = "$HLED,,6,,,,,*"
 # ---- the headset's SMALL flash LED (2026-09-04 ladder, R0BQT) -------------------------------------------------
 # The native "camera flash" on a hit is a separate GREEN-ONLY LED next to the big RGB one (the APK's
 # `isUsedGreenLed`), and `$LED` drives it: `$LED,<colour>,<useGreenLed>,<effect>,<pulses>,*` -- token 2 = 1 fires
-# the small green LED (one native-bright flash per frame; tokens 3/4 made no visible difference at 0-50); token 2 =
+# the small green LED (one clearly visible flash per frame -- well below the firmware's own hit flash by wall reflection,
+# 2026-09-04; tokens 3/4 made no visible difference at 0-50); token 2 =
 # 0 paints the BIG LED in <colour> instead (0 red -- Tony first read that as a red small-LED flash, corrected on
 # the bench: "that is the hled not fled"). Token 1 also paints the big LED WITH the flash unless it is 9 (dark).
 # `events[ev].flash = green|null` fires the small LED at the event start.
@@ -488,7 +492,7 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool) -> di
             continue                        # "no extra led flashes": neither the gun burst nor a headset paint
         seq: list[list] = []
         if spec.get("flash") in FLASH_COLOURS:
-            seq.append([flash_frame(spec["flash"]), 0.0])      # the small LED: one native-bright flash, no hold needed
+            seq.append([flash_frame(spec["flash"]), 0.0])      # the small LED: one clearly visible flash (below native), no hold needed
         c = spec.get("gun_led")
         if c is not None:
             flash = f"$GLED,{c},{c},{c},0,{pg.BRIGHT_DIM if night else pg.BRIGHT_FULL},,*"
