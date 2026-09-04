@@ -320,5 +320,5 @@ def test_kill_button_plays_the_top_medals_lights_too():
         n = len(tx(mgr))
         st.kill(["first_blood"]); await settle(st)
         new = tx(mgr)[n:]
-        assert "$LED,0,1,1,1,*" in new and st.bundle["cues"]["first_blood"] in new
+        assert "$LED,9,1,1,1,*" in new and st.bundle["cues"]["first_blood"] in new
     asyncio.run(run())

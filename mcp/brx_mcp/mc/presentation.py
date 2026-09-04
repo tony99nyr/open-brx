@@ -187,12 +187,15 @@ HEADSET_BLANK = "$HLED,,6,,,,,*"
 # `isUsedGreenLed`), and `$LED` drives it: `$LED,<colour>,<useGreenLed>,<effect>,<pulses>,*` -- token 2 = 1 fires
 # the small green LED (one native-bright flash per frame; tokens 3/4 made no visible difference at 0-50); token 2 =
 # 0 paints the BIG LED in <colour> instead (0 red -- Tony first read that as a red small-LED flash, corrected on
-# the bench: "that is the hled not fled"). `events[ev].flash = green|null` fires the small LED at the event start.
+# the bench: "that is the hled not fled"). Token 1 also paints the big LED WITH the flash unless it is 9 (dark).
+# `events[ev].flash = green|null` fires the small LED at the event start.
 FLASH_COLOURS = {"green": 1}
 
 
 def flash_frame(colour: str) -> str:
-    return f"$LED,0,{FLASH_COLOURS[colour]},1,1,*"
+    # token 1 = 9 (dark) leaves the big LED alone; 0 paints it RED alongside the flash and the mix reads yellowish
+    # (Tony, side by side with a native headset). An empty token 1 is rejected (nothing fires).
+    return f"$LED,9,{FLASH_COLOURS[colour]},1,1,*"
 
 # ---- the GUN BODY LED (A11.7, S4) ------------------------------------------------------------------
 # Bench 2026-09-04 (brx-grenade, R0BQT, Tony watching; experiment-log "IN-GAME GUN LED CONTROL" + the

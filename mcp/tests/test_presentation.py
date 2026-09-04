@@ -293,12 +293,12 @@ def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated
     prof = P.resolve({"mode": "tdm"})
     assert prof["events"]["kill"]["flash"] == "green" and prof["events"]["died"]["flash"] is None and prof["events"]["lead_taken"]["flash"] is None
     leds = P.led_table(prof, 1, False, True)
-    assert leds["kill"][0] == ["$LED,0,1,1,1,*", 0.0]                     # kill: flash only (no gun burst configured)
+    assert leds["kill"][0] == ["$LED,9,1,1,1,*", 0.0]                     # kill: flash only (no gun burst configured)
     assert leds["died"][0][0].startswith("$GLED,0,0,0")                    # died: the red gun burst only (the small LED is green-only)
-    assert leds["first_blood"][0] == ["$LED,0,1,1,1,*", 0.0]
+    assert leds["first_blood"][0] == ["$LED,9,1,1,1,*", 0.0]
     q = P.merge(None, {"events": {"lead_taken": {"flash": "green"}, "kill": {"flash": None}}})
     r = P.led_table(P.resolve({"presentation": q}), 1, False, True)
-    assert r["lead_taken"][0][0] == "$LED,0,1,1,1,*" and "kill" not in r
+    assert r["lead_taken"][0][0] == "$LED,9,1,1,1,*" and "kill" not in r
     for bad in ("blue", "red"):
         with raises(ValueError):
             P.merge(None, {"events": {"kill": {"flash": bad}}})

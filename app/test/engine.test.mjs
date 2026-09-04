@@ -1418,12 +1418,12 @@ test('A11.6 default: a hit paints NOTHING on the headset (the native flash is fa
 
 test('A11.8 small-LED flash: kill feedback fires the top medal\'s lights (flash) without re-playing the line; a $LED step also plays while down', () => {
   const h = goLive(harness());
-  h.eng.frames.leds = { ...h.eng.frames.leds, kill: [['$LED,0,1,1,1,*', 0]], first_blood: [['$LED,0,1,1,1,*', 0]], died: [['$LED,0,1,1,1,*', 0], ...golden.leds.died] };   // died given a flash here only to prove $LED is not skipped while down
+  h.eng.frames.leds = { ...h.eng.frames.leds, kill: [['$LED,9,1,1,1,*', 0]], first_blood: [['$LED,9,1,1,1,*', 0]], died: [['$LED,9,1,1,1,*', 0], ...golden.leds.died] };   // died given a flash here only to prove $LED is not skipped while down
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', medals: ['first_blood'], t: h.eng.now() }, t: h.eng.now() });
-  assert.equal(h.writes.filter(f => f === '$LED,0,1,1,1,*').length, 1, 'one green flash for the kill');
+  assert.equal(h.writes.filter(f => f === '$LED,9,1,1,1,*').length, 1, 'one green flash for the kill');
   assert.equal(h.writes.filter(f => f === golden.cues.first_blood).length, 1, 'the medal line plays once');
   h.adv(1500); h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
-  assert.ok(h.writes.includes('$LED,0,1,1,1,*'), 'a $LED step is not skipped while down, unlike a static $HLED');
+  assert.ok(h.writes.includes('$LED,9,1,1,1,*'), 'a $LED step is not skipped while down, unlike a static $HLED');
 });

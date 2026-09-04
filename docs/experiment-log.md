@@ -6338,3 +6338,9 @@ the hled not fled." The small flash LED is **green-only** (the APK's `isUsedGree
 with token 2 = 0 the frame just paints the big LED in token 1's colour (0 = red). A11.8 corrected to
 `flash: green|null`; `died` keeps its red gun burst. Next: the small LED at 1 Hz beside a native headset in
 its respawn blink, to compare brightness and cadence.
+
+**Side by side with a native headset in its respawn blink (Tony):** native blinks about every 750 ms, "a bit more
+bright green"; ours "yellowish" -- because `$LED,0,1,1,1` ALSO paints the big LED red (token 1 = 0 is red, not
+"leave alone") and red + green reads yellow. `$LED,,1,1,1` (empty token 1) fires nothing; **`$LED,9,1,1,1,*`
+(9 = dark) flashes the small LED alone**, big LED dark. Shipped: `flash_frame` uses 9. Compared at 750 ms cadence
+next; "both were pretty dang bright."
