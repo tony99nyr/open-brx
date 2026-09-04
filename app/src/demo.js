@@ -127,7 +127,9 @@ export function startDemo({ engine, log }) {
       score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
         board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
-      twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] }; ev.assign(); },
+      twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
+      perk: id => { player.loadout = { weapons: player.loadout.weapons.slice(0, 1), perk: id }; ev.assign(); },   // a perk in slot 2 (drops a second weapon)
+      quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; ev.assign(); },   // demo-only: two weapons AND the perk, to show the shorter window
       alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
@@ -183,6 +185,7 @@ export function startDemo({ engine, log }) {
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
+      'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'live-alert':        [...live, [2300, () => ev.alert('bomb_planted')]],
       'live-medals':       [...live, [2300, () => ev.killMedals(['double_kill', 'killing_spree'])]],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],

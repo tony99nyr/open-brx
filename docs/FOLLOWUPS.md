@@ -2038,3 +2038,8 @@ so several of these are settled from data rather than recollection.
 - **F21 · ⓘ in the display corner.** The diagnostics button now sits at the frame's top-right corner (2px inset) with
   `viewport-fit=cover`; on a notched phone in landscape the corner radius may clip it. Check on the first field phone;
   a 6px inset costs nothing (suite audit, 2026-09-03).
+- **F22 · Quick Switch is HUD-side only.** The `quick_switch` perk (2026-09-04) halves the node's assumed swap window,
+  but no `$WEAP` draw-time token is known, so the gun swaps at its native speed regardless. Find the token (diff a
+  `$WEAP` frame against the APK's switch-delay field, or time ALT→first `$ALCD` on the new slot with and without a
+  candidate token changed) and wire it through `compile._mods` like `reload_mult`; until then the perk is
+  `verified:false` and its desc says what it really does.

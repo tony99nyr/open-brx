@@ -74,7 +74,7 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
     for wid in ("sniper_rifle", "plasma_sniper", "ion_sniper"):
         assert "sniper" in ids[wid]
     assert "melee" not in ids
-    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "easy_reload"]
+    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "easy_reload", "quick_switch"]
     assert all(not p["hidden"] for p in PK)
     full = PerkCatalog()
     assert full.has("med_kit") and full.row("med_kit")["hidden"] and full.row("med_kit")["mechanism"] == "slot_frame"
@@ -88,10 +88,10 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
 # ------------------------------------------------------------------ policy engine
 def test_presets_and_pools():
     lp = P.pool(P.preset_rules("open"), W, PK)
-    assert len(lp["primary"]) == 18 and len(lp["secondary_weapons"]) == 18 and len(lp["secondary_perks"]) == 4
+    assert len(lp["primary"]) == 18 and len(lp["secondary_weapons"]) == 18 and len(lp["secondary_perks"]) == 5
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     assert len(lp["primary"]) == 13 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
-    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["secondary_perks"]) == 4
+    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["secondary_perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "secondary_perks": []}
     assert P.default_policy("ffa")["preset"] == "no_heavies" and P.default_policy("tdm")["preset"] == "open"
@@ -319,7 +319,7 @@ def test_assign_and_welcome_carry_catalog_and_policy():
     s.patch_player(ps[0]["player_id"], display="REAPER")            # any player change → assign
     a = net.pushes("assign", "nodeX")[-1][2]
     assert {w["weapon_id"] for w in a["catalog"]["weapons"]} >= {"smg", "rail_gun"} and all("tags" in w for w in a["catalog"]["weapons"])
-    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "easy_reload"]
+    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "easy_reload", "quick_switch"]
     pol = a["policy"]
     assert pol["hud_select"] is True and pol["primary"]["choice"] == "player"
     assert "rail_gun" not in pol["primary"]["allowed_ids"] and "smg" in pol["primary"]["allowed_ids"]

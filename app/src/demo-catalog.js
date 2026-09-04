@@ -392,5 +392,17 @@ export const DEMO_PERKS = [
   },
   "verified": true,
   "hidden": false
+ },
+ {
+  "perk_id": "quick_switch",
+  "name": "Quick Switch",
+  "desc": "Draw your second weapon in half the time. The swap window on your HUD closes twice as fast.",
+  "tags": ["passive", "handling"],
+  "mechanism": "passive",
+  "effects": {
+   "switch_mult": 0.5
+  },
+  "verified": false,
+  "hidden": false
  }
 ];
