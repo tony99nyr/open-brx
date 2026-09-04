@@ -42,6 +42,20 @@ GSET = "$GSET,0,0,1,0,1,0,50,1,*"
 GSET_FF = "$GSET,1,0,1,0,1,0,50,1,*"     # friendly fire ON (same-$TID hits register)
 
 
+# MC's button map + T-0 spawn tail (mc/compile.py). ⚠ F16 (2026-09-03): a gun armed with
+# `arming_frames()` + AR + `$SPAWN` alone CANNOT FIRE -- the trigger only produces `$BUT` events, no
+# `$ALCD`, no shot. Tony: "you didnt give me a gun. i cant shoot". Pushing these fixed it. Any bench
+# tool that asks the OPERATOR to pull the trigger must send `BMAP` before `$SPAWN` and `spawn_tail()`
+# after it; tools that only need the gun to be HIT do not.
+BMAP = ["$BMAP,0,0,,,,,*", "$BMAP,1,100,0,1,99,99,*", "$BMAP,2,97,,,,,*", "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*", "$BMAP,5,98,,,,,*", "$BMAP,8,4,,,,,*"]
+
+
+def spawn_tail(mag: int = 32, reserve: int = 384) -> list[str]:
+    """What follows `$SPAWN` in MC's bundle so the weapon is live: ammo, then the trigger map row."""
+    return [f"$AMMO,0,{mag},{reserve},1,*", "$BMAP,0,0,,,,,*"]
+
+
 def arming_frames(pid: int, tid: int, *, ff: bool = False, sirs: list[str] | None = None) -> list[str]:
     """The frames every bench tool sends before it measures anything, in order.
 

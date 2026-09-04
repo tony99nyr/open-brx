@@ -57,6 +57,7 @@ two hits later, so an HP threshold fits its behaviour as well as "armour 0" does
 **Proves working:** their headset lights, and the HUD log shows `low-health alert: armour 0, hp NN`.
 **Proves broken:** log line present but no light → the frame itself is wrong. No log line at all → our
 trigger never fired, and that is ours to fix.
+**On making it brighter — now MEASURED impossible (bench 2026-09-03): `$HLED` token 5 is 1 = dim, 2/10/255 identical and maximum. Callsign's 10 is already full.** The paragraph below predates that measurement and is kept for the reasoning.
 **On making it brighter — probably impossible, and worth knowing before anyone tries.** The Windows
 lane measured `$GLED` token 5 by luminance on 2026-09-02: it is a brightness with exactly **two levels
 above off** (1 ≈ 70%, anything ≥2 is full and identical up to 255), and **Callsign's 10 is already in
@@ -66,7 +67,17 @@ far cheaper to check than to sweep: confirm the alert fires, then look at whethe
 at 10. Only if it is genuinely dim is a sweep worth running.
 **Why:** it did not fire last session and we could not tell whether it had even been attempted.
 
-## V3 · Does the pre-game headset team colour show? 🟠
+## V3 · Does the headset show the team colour pre-game AND for the whole life? 🟠
+**Mechanism found on the bench 2026-09-03:** `$SPAWN` CLEARS the headset, and so does every registered
+hit (native flash, then dark; our colour never returns). That is why it showed "on death, not
+pre-game": the lobby frame was wiped the moment the game started. **Shipped:** the same
+`$HLED,<tid>,0,,,10` now ends the `spawn` and `revive` bundles and the phone re-sends it
+(`cues.team_led`) after every damaging hit except the low-health one. Needs a **new APK**.
+**Proves working (new):** both headsets in their team colour after KIT, again right after the whistle,
+and STILL in it after taking hits. **Proves broken:** dark after the first hit → the phone-side
+repaint is not landing; dark after the whistle → the tail frame is being dropped behind `$SPAWN`.
+Original item:
+
 **Shipped:** `$HLED,<tid>,0,,,10` at the end of the game head.
 **Do:** look at both headsets after KIT and before the countdown, in a **TDM** game so the two teams
 send different values.

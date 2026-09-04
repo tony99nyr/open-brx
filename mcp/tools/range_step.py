@@ -55,8 +55,21 @@ async def main():
             await asyncio.sleep(0.12)
         await mgr.send("v", B.AR, reply_window_ms=140)
         await asyncio.sleep(0.15)
+        mark0 = mgr.get_events("v", since_seq=0).get("last_seq", 0)
         await mgr.send("v", "$SPAWN,*", reply_window_ms=300)
         await asyncio.sleep(1.5)
+        # Read the pools before scoring a single miss. A DEAD gun and a deaf gun are identical
+        # through $HIR (pre-flight rule 3, bench-2026-09-03.md); the $SPAWN echo is an $LCD line
+        # carrying the live pools, so a rung that starts on $LCD,0,0 must not be scored at all.
+        lcds = [e.get("raw", "").strip() for e in
+                mgr.get_events("v", since_seq=mark0).get("events", [])
+                if isinstance(e, dict) and e.get("raw", "").startswith("$LCD")]
+        alive = B.is_alive(lcds[-1] if lcds else "")
+        if alive is False:
+            raise SystemExit(f"ABORT: gun reads DEAD after $SPAWN ({lcds[-1]}) -- every miss below "
+                             "would be a corpse scored as deafness. Power-cycle and re-arm.")
+        print(f"   pools after spawn: {lcds[-1] if lcds else 'NO $LCD echo -- alive state UNKNOWN'}",
+              flush=True)
         print(f"\n=== RUNG: {label} === {nshot} shots. Count the NATIVE headset's flashes.\n",
               flush=True)
 
