@@ -10,6 +10,7 @@ Then, by who you are:
 |---|---|
 | **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`build-tiers.md`](build-tiers.md) · the [root README](../README.md) quickstart |
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) |
+| **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`, the click-to-try page + walkthrough) |
 | **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
@@ -137,6 +138,7 @@ A stale answer is worse than an open question: an open question warns you, a sta
 ## Vision & strategy
 - **[VISION.md](VISION.md)** — can we supersede Edge? Capability ceiling, gaps, open-source + business.
 - **[build-tiers.md](build-tiers.md)** — what you can build at each investment level.
+- [`utility-roadmap.md`](utility-roadmap.md) — the order of work for the utility phone (stations): what is built, the arming loop, radio hardening, then control point / extraction / powerup / bomb, each with surface, owner, tests and bench gate.
 - **[m0-game-engine.md](m0-game-engine.md)** — the mode engines (TDM/FFA/infection/LMS/extraction) +
   `GameConfig`; the compiler that turns config → BRX frames now lives in `mcp/brx_mcp/mc/compile.py`.
 - **[sound-architecture.md](sound-architecture.md)** — how BRX audio works: reactive sounds vs
