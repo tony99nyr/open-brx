@@ -139,7 +139,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         await st.ir("kill"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
         assert not st.alive and st.tele["hp"] == 0
-        assert st.bundle["headset"]["death"][0][0] in new, "death blink"
+        assert st.bundle["headset"]["death_flash"]["frame"] in new, "the small-LED pulse while down (default death: flash)"
         # the died burst lands inside a second of the last hit burst, so the one-burst-per-second gate drops it --
         # exactly what engine.js does; the sound (if any) and the headset blink still play
         assert any("event died" in l["text"] or ("died" in l["text"] and "dropped" in l["text"]) for l in st.log)
