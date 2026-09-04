@@ -159,7 +159,7 @@ export function startDemo({ engine, log }) {
         const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
         if (pr) pr.stations = () => list;   // the app feeds engine.setStations(presence.stations()) every 250 ms — so the fake lives in presence
         engine.setStations(list); },
-      scanner: (delay_s = 1) => { config.respawn = { type: 'scanner', delay_s }; },   // stage-time: a scanner game with a short delay so the hint shows quickly
+      scanner: (delay_s = 1, gate = 'trigger') => { config.respawn = { type: 'scanner', delay_s, gate }; },   // stage-time: a scanner game with a short delay so the hint shows quickly
       state: () => engine.state(),
     };
     // each STAGE is a list of [delayMs, step] — the delays give the app's boot + render loop room between steps
@@ -195,6 +195,7 @@ export function startDemo({ engine, log }) {
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],
       'down-find':         [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(null)]],
+      'down-find-presence': [[0, () => ev.scanner(1, 'presence')], ...live, [2300, 'die'], [2400, () => ev.station(null)]],
       'down-approach':     [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(-78, false)]],
       'down-at':           [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(-58, true)]],
       'live-alert':        [...live, [2300, () => ev.alert('bomb_planted')]],

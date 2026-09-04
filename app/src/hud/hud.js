@@ -398,7 +398,8 @@ export class Hud {
     const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
     const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
     const bar = (cls, w) => `<div class="near ${cls}"><i style="width:${w}%"></i></div>`;
-    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">RUN TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">THEN PULL THE TRIGGER THERE</span>`;
+    const presence = st.respawnGate === 'presence';   // some games revive by just being at the station — never tell those players to pull the trigger (polish round 2026-09-04)
+    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">RUN TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">${presence ? 'AND STAND THERE' : 'THEN PULL THE TRIGGER THERE'}</span>`;
     if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER</span>${bar('', pct)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
     if (hint === 'hold') return `<span class="n nn on">▣</span><span class="ins on">HOLD…</span>${bar('on hold', 100)}<span class="lab on">AT THE STATION · ALMOST THERE</span>`;
     if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="ins on">PULL THE TRIGGER TO RESPAWN</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;

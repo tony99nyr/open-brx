@@ -17,7 +17,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
+const LONG = new Set(['down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -236,6 +236,11 @@ for (const view of VIEWS) {
     must(r.hint === 'approach' && r.ins === 'GET CLOSER' && /-89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
     await pg.evaluate(() => window.brxDemo.station(-70, true)); await pg.waitForTimeout(500); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-at.png` }); await pg.close();
     must(r.hint === 'pull_trigger' && r.ins === 'PULL THE TRIGGER TO RESPAWN' && r.bar === 100 && r.on, JSON.stringify(r));
+  });
+  await step(`${view.name} #45c presence gate: the first-death line never says "pull the trigger"`, async () => {
+    const pg = await open(view, 'down-find-presence', '', 4200); const r = await pg.evaluate(() => ({ gate: window.brx.engine.state().respawnGate, hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, lab: (document.querySelector('.down .lab') || {}).textContent })); await pg.close();
+    if (r.gate !== 'presence') { console.log('       (engine without respawnGate — step skipped)'); return; }
+    must(r.hint === 'find_station' && /RESPAWN STATION/.test(r.ins || '') && r.lab === 'AND STAND THERE', JSON.stringify(r));
   });
   await step(`${view.name} #45b at the station before the delay is up: HOLD…, never a "00"`, async () => {
     const pg = await open(view, 'down-hold', '', 3300); const r = await pg.evaluate(() => ({ hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, rd: !!document.querySelector('#rd'), txt: document.querySelector('.down .c').innerText })); await pg.close();
