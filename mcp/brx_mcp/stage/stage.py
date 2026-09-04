@@ -584,11 +584,17 @@ class GunStage:
 
     async def _death_flash_loop(self, life: int, df: dict) -> None:
         """A11.8: pulse the small flash LED every period while DOWN, like the native respawn blink; stops on revive."""
+        period = float(df.get("period_ms", 750)) / 1000
+        last = None
         for _ in range(400):                                          # ~5 min cap
             if self.alive or life != getattr(self, "_life", 0):
                 return
+            now = self.now()
+            if last is not None and now - last < period * 0.5:
+                return                                                # the clock did not advance (a broken sleep): never spin
+            last = now
             await self.write([df["frame"]], "death flash", gap_ms=0)
-            await self.sleep(float(df.get("period_ms", 750)) / 1000)
+            await self.sleep(period)
 
     def _gun_rest(self) -> str | None:
         g = self.bundle.get("gun")
