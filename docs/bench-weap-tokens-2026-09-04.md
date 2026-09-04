@@ -21,7 +21,7 @@ out of the number. The phone logs it already: `slot 0->1 confirmed Nms after ALT
 (engine.js `lastSwitchMs`, visible in the ⓘ diagnostics log), or read the `$BUT,1,1` → `$ALCD,…,1,…`
 gap straight off `python.exe -m brx_mcp listen`.
 
-**Frames.** Arm a two-weapon gun the way a try-out does (volume low, indoors):
+**Frames.** ⚠ Superseded by the Result below — this block arms `$GSET,0,1,…` (OUTDOOR profile) and lacks `$PSET`, so a gun armed from it spawns at 0 HP; the bench used the golden-bundle head (`$GSET,0,0,…` indoor). Kept for the record:
 
 ```
 $VOL,30,0,*
@@ -91,7 +91,7 @@ From `WeaponCatalog.resolve(id, 0)` across all 21 catalog weapons (2026-09-04). 
 
 | tok | we send | documented guess (APK field order) | cheapest probe |
 |---|---|---|---|
-| t2 | `100` | "scale/enable const" | send 50 on the AR: does damage, range or rate change? does the gun still fire? |
+| t2 | `100` | **gunRangeOutdoor** (discovery pass: APK field order; melee 90) | 2×2 with t41 against `$GSET` t2 — see the discovery doc |
 | t6 | `0` | primaryCriticalChance | send 100: do hits land as crits (bigger `$HIR` dmg / different sound)? |
 | t7–t11 | `∅` | the secondary-fire block (fireChance, damageType, powerType, damage, critChance) | empty in every Callsign capture too; fill t7=100,t10=5 and see whether ALT-fire changes behaviour — low priority, ALT is our swap button |
 | **t15** | `850` | **weaponSwapDelay — PROVEN 2026-09-04** | done, see Result |
@@ -101,7 +101,7 @@ From `WeaponCatalog.resolve(id, 0)` across all 21 catalog weapons (2026-09-04). 
 
 Two more that are constant on the wire but are NOT blind: t41 `75` is gun range % (documented, we
 never vary it — a range perk would live here), and t19 reloadType is `0` on 20 weapons and `2` on
-one (the Plasma Sniper's shells) — UNVERIFIED that the gun honours it.
+one (the SHOTGUN's shells — not the Plasma Sniper, corrected by the 2026-09-04 discovery pass) — and the wire already shows the gun honours it: the Shotgun reloads shell by shell, one `$ALCD` per ~400 ms. See `docs/bench-weap-tokens-discovery-2026-09-04.md`.
 
 Everything else we send either varies per weapon under a compile key (t3 t4 t5 t14 t16 t17 t18 t20
 t23 t24 t27–t29 t31–t34 t39 t40) or is a per-weapon flag we copy from the capture (t1 t12 t13 t25 t26
@@ -114,3 +114,6 @@ t35–t38 t42). Frames are 42 tokens long; there is no t43/t44.
 2. If time: t2 = 50, then t6 = 100, one token per run, control frame between runs.
 3. Log every run in `docs/experiment-log.md`; promote confirmed meanings into the token table in
    `protocol/callsign-extract/protocol-classes.md` and `docs/manual/`.
+
+**Next:** the pre-bench discovery pass on the remaining tokens (four research lenses, ranked plan, ~80 min) is
+`docs/bench-weap-tokens-discovery-2026-09-04.md`.

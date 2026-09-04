@@ -2199,3 +2199,8 @@ so several of these are settled from data rather than recollection.
   `webapp/mc/public/assets/weapons/{usp,glock,deagle}.jpg` + `app/www/assets/weapons/` (source: his Downloads, not in repo).
 - **S-A12.5 Pistol-round preset?** — a stock `pistols` template (primary `kinds:["sidearm"]`, secondary perk-only)
   in the designer's START FROM row; the rule engine already supports it, only the preset name is missing.
+- **F23 · Applied damage may depend on the SENSOR, not just the `$SIR` function.** The Callsign combat capture of
+  2026-08-23 shows one Burst Rifle shooter doing 18 per hit on headset sensor 0 and 9 per hit on gun-body sensor 4,
+  same victim, same life, crit 0. That would explain the fn 36/37 ×1.0-vs-×2 dispute (the ×1.0 matrix was measured at
+  the gun body) and it breaks every hits-to-kill number we print. Bench first thing:
+  `docs/bench-weap-tokens-discovery-2026-09-04.md` item 1.
