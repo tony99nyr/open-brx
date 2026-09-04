@@ -12,7 +12,7 @@ import pathlib
 _HERE = pathlib.Path(__file__).resolve().parent
 
 # Effect keys the compiler understands. Anything else in `effects` is a data error, not a silent no-op.
-EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult"})   # switch_mult: node-side swap window only (F22)
+EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
 
 def _load_perks() -> list[dict]:

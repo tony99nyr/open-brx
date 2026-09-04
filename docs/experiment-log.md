@@ -5985,3 +5985,20 @@ own: a text regex that matched the whole row instead of the SOURCE cell, and ass
 that only CSS produced. Concurrency note: three sessions share this working tree tonight; the e2e
 refused to run on a bundle another session had made stale, which is exactly what that gate is for.
 
+
+### 2026-09-04 — 🔬 `$WEAP` tok15 IS the weapon-swap delay (F4 + F22 closed; Quick Switch is real)
+
+Tony wanted a Quick Switch perk; the gun had no known draw-time knob, but every captured frame carried
+`850` at tok15 and the APK field order names that position `weaponSwapDelay`. Six runs on R0BP1, trigger
+HELD through every ALT press so the first shot leaves the instant the gun allows it (reaction time out
+of the number), gap = `$BUT,1,1` → first `$ALCD` on the new slot: **850 → 863 avg · 1700 → 1723 · 425 →
+437 · 100 → 120** (linear, no floor, ~15–20 ms BLE on top). Mixed slots (850/425 and 425/850) swapped
+at **850 in BOTH directions**: the gun applies the LARGER of the two loaded values, so per-weapon draw
+times only bite when every loaded weapon is quick. Tony's ear disagreed ("rifle to SMG is faster") —
+the two draw sounds differ in length; the log did not. The doc table's "do not write" for tok15 is
+retracted; the compiler now writes it (`swap_ms()`, `switch_mult` on every slot, `FrameBundle.swap_ms`)
+and the HUD's SWITCHING takeover reads the enforced value. Two arming lessons re-learned the hard way:
+the try-out frames have no `$PSET`, so a gun armed from them spawns at 0 HP and refuses to fire
+(trigger events, no `$ALCD` — it looked like a corrupt CLEAR); and `$VOL,30` is inaudible. Full table
++ the exact frames: `docs/bench-weap-tokens-2026-09-04.md`. Suites: mcp 714 green after the golden
+bundle regen, engine 76/76, screens 144/144.

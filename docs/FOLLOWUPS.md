@@ -2093,7 +2093,7 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
   `00-home.md:95`). That marker is not earned — we have never seen the lit state. Settle F10 first,
   then correct the manual in one pass rather than retracting twice. A manual edit needs a site
   rebuild before the next push (`CLAUDE.md` → Layout).
-- **F4 · A weapon swap has never been timed.** `SWITCH_MAX_MS = 1200` in `engine.js` is a guess — and since 2026-09-04 it is also the length of the HUD's SWITCHING takeover, after which the swap is ASSUMED done (activeSlot flips; the next `$ALCD` corrects it). Time it: ALT, then the first `$ALCD` on the new slot, minus reaction — or find the draw time in the `$WEAP` tokens.
+- ~~**F4 · A weapon swap has never been timed.**~~ **RESOLVED 2026-09-04:** the swap delay is `$WEAP` tok15 (850 ms stock; linear, no floor; the gun takes the larger of slots 0/1). MC writes it and ships the enforced value as `FrameBundle.swap_ms`; the HUD's SWITCHING takeover runs for exactly that (`docs/bench-weap-tokens-2026-09-04.md`).
   `engine.lastSwitchMs` now records the true figure whenever an `$ALCD` confirms a swap — pull it off
   the diagnostics log after the next match and tighten the constant.
 - **F5 · The AR ships at 140 ms, not the captured 100 ms.** Deliberate (see the log entry): native
@@ -2171,7 +2171,7 @@ so several of these are settled from data rather than recollection.
 - **F21 · ⓘ in the display corner.** The diagnostics button now sits at the frame's top-right corner (2px inset) with
   `viewport-fit=cover`; on a notched phone in landscape the corner radius may clip it. Check on the first field phone;
   a 6px inset costs nothing (suite audit, 2026-09-03).
-- **F22 · Quick Switch is HUD-side only.** The `quick_switch` perk (2026-09-04) halves the node's assumed swap window,
+- ~~**F22 · Quick Switch is HUD-side only.**~~ **RESOLVED 2026-09-04** (same bench: `switch_mult` now scales tok15 on every slot; `quick_switch` is verified). Original note: The `quick_switch` perk (2026-09-04) halves the node's assumed swap window,
   but no `$WEAP` draw-time token is known, so the gun swaps at its native speed regardless. Find the token (diff a
   `$WEAP` frame against the APK's switch-delay field, or time ALT→first `$ALCD` on the new slot with and without a
   candidate token changed) and wire it through `compile._mods` like `reload_mult`; until then the perk is

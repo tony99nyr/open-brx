@@ -63,6 +63,28 @@ per weapon into the bundle (or the HUD reads t15 off the frame) and the SWITCHIN
 real number; (3) F4 and F22 close. If B ≈ 850: t15 is not the delay, mark it "tested, inert for swap"
 in the token table, and Quick Switch falls back to the phone-driven swap idea (F22).
 
+## Result (bench 2026-09-04, gun R0BP1, Tony on the trigger, trigger held through every ALT)
+
+ALT press → first `$ALCD` on the new slot, ms:
+
+| run | slot 0 / slot 1 t15 | 0→1 | 1→0 | verdict |
+|---|---|---|---|---|
+| A control | 850 / 850 | 871 · 870 | 871 · 840 | baseline 850 + ~20 ms BLE |
+| B doubled | 1700 / 1700 | 1711 · 1771 · 1711 | 1710 · 1711 | **the token is the delay** |
+| C halved | 425 / 425 | 421 · 421 · 451 · 451 · 421 | 450 · 421 · 451 · 450 | linear |
+| D | 850 / 425 | 871 · 871 · 840 · 841 | 870 · 871 · 870 · 840 | not "incoming" |
+| E | 425 / 850 | 871 · 871 · 841 · 870 · 841 | 871 · 841 · 841 · 870 | not "outgoing" → **the LARGER value wins, both directions** |
+| F floor | 100 / 100 | 120 · 120 · 120 · 120 · 121 | 119 · 120 · 121 · 90 | no floor |
+
+Two things the try-out frames taught us on the way: a gun armed without `$PSET` spawns at 0 HP and
+silently refuses to fire (trigger events, no `$ALCD`), and `$VOL,30` is inaudible for weapon audio —
+the arming sequence in this doc is now the golden-bundle head, and try-outs use 69.
+
+**Wired in the same day:** `compile._T["swap"] = 15`, `WeaponCatalog.swap_ms()` (captured value or a
+`wire.swap_ms` override, × `switch_mult` on EVERY slot because the larger wins), `FrameBundle.swap_ms`
+(the enforced max of slots 0/1) → the node's `switchWindowMs()` reads it, so the SWITCHING takeover is
+exactly as long as the gun's refusal. `quick_switch` is `verified: true`. F4 and F22 closed.
+
 ## The list: tokens we send identical on every weapon, with no compile key and no verified meaning
 
 From `WeaponCatalog.resolve(id, 0)` across all 21 catalog weapons (2026-09-04). `∅` = empty field.
@@ -72,7 +94,7 @@ From `WeaponCatalog.resolve(id, 0)` across all 21 catalog weapons (2026-09-04). 
 | t2 | `100` | "scale/enable const" | send 50 on the AR: does damage, range or rate change? does the gun still fire? |
 | t6 | `0` | primaryCriticalChance | send 100: do hits land as crits (bigger `$HIR` dmg / different sound)? |
 | t7–t11 | `∅` | the secondary-fire block (fireChance, damageType, powerType, damage, critChance) | empty in every Callsign capture too; fill t7=100,t10=5 and see whether ALT-fire changes behaviour — low priority, ALT is our swap button |
-| **t15** | `850` | **weaponSwapDelay** | **experiment 1 above** |
+| **t15** | `850` | **weaponSwapDelay — PROVEN 2026-09-04** | done, see Result |
 | t21 | `100` | maxAccuracy | send 0 or 50: do shots stop registering / register less? (needs a target gun + the IR rig) |
 | t22 | `100` | singleShotAccuracy | same probe as t21, one token at a time |
 | t30 | `∅` | secondary mix sound | inert until t7–t11 do something |

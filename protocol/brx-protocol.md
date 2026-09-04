@@ -214,7 +214,7 @@ accuracy (%), per-slot ammo.
 
 ### 6.1 Bench-probed corrections (live tagger, 2026-08-26)
 
-> **⚠ PARTIALLY SUPERSEDED same-day:** the open questions below (t23 'suspect', 'fire-mode not located/may not exist', charge-feel 'not localized') were ALL RESOLVED hours later — **see the t20 FIRE MODE and overheat sections near the end of this file** (t20 proven by one-field flip; t23=burst cycle; charge = t20 variants 2/3/14; overheat = t24+t35 gated by t37/t38). The proven fire-interval/850-constant findings here still stand.
+> **⚠ PARTIALLY SUPERSEDED same-day:** the open questions below (t23 'suspect', 'fire-mode not located/may not exist', charge-feel 'not localized') were ALL RESOLVED hours later — **see the t20 FIRE MODE and overheat sections near the end of this file** (t20 proven by one-field flip; t23=burst cycle; charge = t20 variants 2/3/14; overheat = t24+t35 gated by t37/t38). The proven fire-interval findings here still stand; the 850 constant at tok15 was identified on 2026-09-04 as the **weapon-swap delay** (ms, linear, no floor; the gun takes the larger of the two loaded slots) — see callsign-extract/protocol-classes.md tok15 and docs/bench-weap-tokens-2026-09-04.md.
 
 Tony live-probed the built frames on a real gun (`firemode_probe.py`), one token at a time. The
 bench tool prints **raw 1-indexed** positions (slot = idx1); the field map above and the compiler

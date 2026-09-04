@@ -779,3 +779,16 @@ def test_settling_is_advisory_and_never_wedges_the_recap():
     r = s.recap()
     assert "settling" in r, "the advisory rides along on the recap"
     assert r["provisional"] is not None            # whatever it is, `settling` did not decide it
+
+
+def test_swap_delay_token_and_quick_switch():
+    """tok15 is the weapon-swap delay (bench 2026-09-04). Stock 850 on both slots; quick_switch halves it on
+    EVERY slot because the gun enforces the larger of the two; the bundle reports the enforced value."""
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}), _TEAMS)
+    f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f1 = [x for x in b["head"] if x.startswith("$WEAP,1")][0]
+    assert _tok(f0, 15) == "850" and _tok(f1, 15) == "850" and b["swap_ms"] == 850
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), _TEAMS)
+    f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f4 = [x for x in b["head"] if x.startswith("$WEAP,4")][0]
+    assert _tok(f0, 15) == "425" and b["swap_ms"] == 425
+    assert _tok(f4, 15) == "50"                                          # melee's 100 scales too (every slot)
+    assert _tok(f0, 18) == "1400"                                       # reload untouched by a swap perk

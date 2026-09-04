@@ -41,7 +41,7 @@ PerkView {
     ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40)
     reload_mult?: number,          // quick_hands: ×0.5 reload_ms on the PRIMARY (t18)
     alt_reload?: boolean,          // easy_reload: ALT button = RELOAD ($BMAP,1,97) — for players who can't work the lever
-    switch_mult?: number           // quick_switch (2026-09-04): ×0.5 the node's weapon-swap window (SWITCH_MAX_MS). NODE-SIDE ONLY for now: no $WEAP draw-time token is known, so the gun's real swap is unchanged — FOLLOWUPS F22
+    switch_mult?: number           // quick_switch (2026-09-04): ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the gun takes the larger of slots 0/1; bench-proven, linear, no floor). MC puts the resolved value in FrameBundle.swap_ms for the HUD's SWITCHING takeover
   },
   verified: boolean,               // effect proven on hardware
   hidden: boolean                  // true → never listed to UIs (med_kit, concussion until benched)

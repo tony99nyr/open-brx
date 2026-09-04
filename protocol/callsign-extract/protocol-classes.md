@@ -299,7 +299,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 6 | 0 | 0 | primaryCriticalChance | ~ |
 | 7–13 | — | — | secondary* fields (fireChance,damageType,powerType,damage,critChance) | ~ |
 | 14 | 100 | 1250 | **fire interval (ms)** — ~~chargeUp time (CR charges)~~ *refuted by live probe 2026-08-26 (brx-protocol §6.1): sniper `tok14=1250` → 1 shot/s* | ✅ |
-| 15 | 850 | 850 | **constant `850`, function unknown — do not write** — ~~rateOfFire / fire delay (ms)~~ *refuted 2026-08-26: `tok14` is the rate, not this* | ~ |
+| 15 | 850 | 850 | **weaponSwapDelay (ms) — bench-proven 2026-09-04**: 850→1700 doubled the ALT→first-shot gap (1710 ms), 425 halved it (437), 100 ran at 120; linear, no floor, ~15–20 ms BLE on top. **The gun applies the LARGER of the two loaded slots' values in both directions** (850/425 and 425/850 both swapped at 850). Melee ships 100. The compiler writes it (`quick_switch` ×0.5 on every slot). ~~constant, function unknown~~ | ✅ |
 | 16 | **32** | **100** | **maxClip** | ✓ (mag) |
 | 17 | 32768 | 32768 | maxAmmo / unlimited flag | ~ (identical in both frames — a 2-frame diff can't validate a position that doesn't change) |
 | 18 | 1400 | 2500 | reloadSpeed (ms) | ~ |

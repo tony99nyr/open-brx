@@ -281,7 +281,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
 | 13 | extraHeadsetRangeOutdoor | n/a | n/a | 80 on the same three weapons. | ✅ (correlation) |
 | 14 | **fire interval / charge time (ms)** | 100 | 1250 | **Proven by one-field flip**: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (🔍): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time. | ✅ (flip) 🔍 (cadence list) |
-| 15 | n/a | 850 | 850 | (unknown) | n/a |
+| 15 | weaponSwapDelay | 850 | 850 | Weapon-swap delay in ms: how long after an ALT (weapon-cycle) press the gun refuses to fire while it draws the other weapon. Bench 2026-09-04: 1700 doubled the swap, 425 halved it, 100 ran at 100; linear with no floor. The gun uses the larger of the two loaded slots' values in both directions, so a fast pistol paired with a rifle draws at the rifle's speed. Melee ships 100. | ✅ |
 | 16 | maxClip | 32 | 100 | Magazine size. | ✅ |
 | 17 | maxAmmo | 32768 | 32768 | Always `2 × t40` in captured frames (or 32768 as an unlimited flag). Not an independent knob. | ✅ (correlation) |
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. | 🔍 |
