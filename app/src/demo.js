@@ -103,6 +103,7 @@ export function startDemo({ engine, log }) {
     const ev = {
       // link + MC
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
+      resyncProbe: () => engine._beginResync('demo'),   // the trigger-first resync prompt (a lobby/armed reconnect, or a resume) — a live rejoin RECONCILES instead (S7.1)
       battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
       mcRejected: () => engine.setWsState('rejected', { reason: 'roster_full', code: 4003 }),
@@ -202,7 +203,8 @@ export function startDemo({ engine, log }) {
       'live-medals':       [...live, [2300, () => ev.killMedals(['double_kill', 'killing_spree'])]],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
       'live-nogun':        [...live, [2300, 'dropGun']],
-      'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],
+      'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],   // a live rejoin → the 3 s RECONCILING takeover (S7.1)
+      'resync-prompt':     [...live, [2300, 'resyncProbe']],                     // the trigger-first resync prompt itself
       'live-mclost':       [...live, [2300, 'mcLost']],
       'mc-rejected':       [...kitted, [400, 'mcRejected']],
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],

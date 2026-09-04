@@ -536,6 +536,18 @@ export class Hud {
     }
     if (this._moment === 'down' && (st.alive || st.phase !== 'live')) { this._moment = null; this.overlay.innerHTML = ''; }
 
+    // RECONCILING (S7.1): a BLE rejoin mid-match holds the gun disarmed for 3 s while the engine reconciles its
+    // real pools — it never infers a death and never heals. Tell the player to wait, not to panic or pull anything.
+    if (st.phase === 'live' && st.reconciling) {
+      if (this._moment !== 'reconcile') {
+        this._moment = 'reconcile';
+        this.overlay.innerHTML = `<div class="mo reconciling"><div class="c"><span class="k">GUN RELINKED</span><span class="t">SYNCING WITH YOUR GUN</span>
+          <div class="track"><i></i></div><span class="s">WEAPON DISARMED FOR A MOMENT · STAND BY</span></div></div>`;
+      }
+      return;
+    }
+    if (this._moment === 'reconcile' && !(st.phase === 'live' && st.reconciling)) { this._moment = null; this.overlay.innerHTML = ''; }
+
     // RELOADING (persistent for the weapon's reload time; the gun will not fire until the mag is back)
     if (reloadUp) {
       const pct = Math.min(100, Math.round(100 * st.reloadMs / st.reloadTotalMs)), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);

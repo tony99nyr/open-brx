@@ -236,6 +236,15 @@ button:active{filter:brightness(1.15)}
 .redeploy .l .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:34px;letter-spacing:.1em}
 .redeploy .l .sq{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.26em}
 .redeploy.out{animation:hitout .3s ease-in forwards}
+/* RECONCILING takeover (S7.1): a rejoin's 3 s disarmed window. One fill, no flicker. */
+.reconciling{background:rgba(3,5,10,.86);animation:hitin .12s ease-out;pointer-events:none}
+.reconciling .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:12px}
+.reconciling .k{font-size:11px;letter-spacing:.34em;color:var(--ok);font-weight:700;padding:3px 12px;border:1px solid var(--ok);transform:skewX(-10deg)}
+.reconciling .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:48px;letter-spacing:.08em;color:var(--num);text-shadow:0 0 30px color-mix(in srgb,var(--glow) 45%,transparent);line-height:.9;white-space:nowrap}
+.reconciling .track{width:360px;height:10px;background:rgba(255,255,255,.1);border:1px solid var(--edge);transform:skewX(-14deg);overflow:hidden}
+.reconciling .track i{display:block;height:100%;background:var(--glow);animation:holdfill 3s linear both}
+.reconciling .s{font-size:12px;letter-spacing:.26em;color:var(--mut);font-weight:700;white-space:nowrap}
+[data-env="night"] .reconciling{background:#000}[data-env="night"] .reconciling .t{text-shadow:none}[data-env="night"] .reconciling .k{color:var(--num);border-color:var(--num)}[data-env="night"] .reconciling .track i{background:var(--num)}
 /* RELOADING takeover (#15): the gun refuses fire until the mag is back; the HUD says so, big, for the weapon's reload time. */
 .reloading{background:rgba(3,5,10,.82);animation:hitin .12s ease-out;pointer-events:none}
 .reloading .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:12px}
