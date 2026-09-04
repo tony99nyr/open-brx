@@ -21,6 +21,7 @@ function log(msg, cls = 'li') {
 
 // ---------- settings (persisted; the station survives an app restart the way it was) ----------
 const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0 };   // -74 threshold + 0.8s dwell = arm's length, brief pause, green (bench-tuned 2026-09-04)
+const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }; } catch (_) { return { ...DEFAULTS }; } })();
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
 
@@ -46,6 +47,7 @@ function stationUuid() {
   return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: settings.team, state: 1, value: 0, seq, game: settings.game, threshold: settings.threshold });
 }
 async function startAdvert() {
+  if (DEMO) { advertising = true; settings.live = true; save(); log('stage: pretending to advertise', 'lk'); render(); return; }   // the harness has no radio (the plugin's web stub answers "no")
   if (!plugins.beacon) { log('no beacon plugin: this build cannot advertise (desktop?)', 'le'); render(); return; }
   try {
     seq = (seq + 1) & 0xff;
@@ -53,13 +55,14 @@ async function startAdvert() {
     const name = `BRX-${settings.kind.toUpperCase()}-${settings.id}`;
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: true });
     advertising = !!(r && r.advertising);
+    settings.live = advertising; save();   // a reload mid-game comes back advertising (the settings stay behind the ⓘ gate)
     log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${settings.threshold} dBm · ${uuid}`, 'lk');
   } catch (e) { advertising = false; log('advertise failed: ' + (e && e.message || e), 'le'); }
   render();
 }
 async function stopAdvert() {
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
-  advertising = false; log('advertising stopped'); render();
+  advertising = false; settings.live = false; save(); log('advertising stopped'); render();
 }
 async function restartIfLive() { if (advertising) await startAdvert(); else render(); }
 
@@ -101,7 +104,7 @@ function render() {
   $('btnStart').textContent = advertising ? 'STOP' : 'START';
   const rows = presence.players().map(p => {
     const alive = !!(p.state & PLAYER_STATE.alive);
-    return `<div class="row ${p.present ? 'near' : ''}"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small> dBm</small></span><span class="raw">${p.raw}</span><span class="st">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres">${p.present ? 'AT STATION' : ''}</span></div>`;
+    return `<div class="row ${p.present ? 'near' : ''}"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres">${p.present ? 'AT STATION' : ''}</span></div>`;
   });
   $('players').innerHTML = rows.join('') || '<div class="row empty">no player phones in range</div>';
   for (const b of document.querySelectorAll('[data-tx]')) b.classList.toggle('sel', b.dataset.tx === settings.tx);
@@ -137,10 +140,26 @@ function wire() {
   await loadPlugins();
   try { if (plugins.keepAwake) await plugins.keepAwake.keepAwake(); } catch (_) { /* ignore */ }
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
+  if (DEMO) support = { advertising: true, txPowerControl: true, platform: 'stage' };
   log(`utility mode · ${support.platform} · advertise ${support.advertising ? 'yes' : 'NO'} · tx control ${support.txPowerControl ? 'yes' : 'no'}`);
+  if (settings.live) await startAdvert();   // it was live when the phone last ran: come straight back up
   render();
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
   await startScan();
   setInterval(tick, 250);
-  window.brxUtility = { settings, presence, startAdvert, stopAdvert, log: logLines, stationUuid };
+  if (DEMO) seedDemo();
+  window.brxUtility = { settings, presence, startAdvert, stopAdvert, render, log: logLines, stationUuid };
+  window.brxUtil = window.brxUtility;
 })();
+
+/** The stage harness: three fake player phones on a 250 ms timer — one close, one far, one drifting across the threshold. */
+function seedDemo() {
+  const t0 = Date.now();
+  const fake = [{ id: 7, team: 1, alive: true, rssi: () => -58 }, { id: 19, team: 2, alive: false, rssi: () => -80 },
+                { id: 23, team: 1, alive: true, rssi: () => -74 + 9 * Math.sin((Date.now() - t0) / 4000) }];
+  setInterval(() => {
+    const now = Date.now();
+    for (const f of fake) presence.observe([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: f.alive ? PLAYER_STATE.alive : 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
+  }, 250);
+  window.brxUtilityFake = fake;
+}

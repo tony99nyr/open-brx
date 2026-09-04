@@ -251,6 +251,21 @@ for (const view of VIEWS) {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const b = document.querySelector('[data-act="onUtility"]'); if (!b) return null; const rc = b.getBoundingClientRect(); const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1); return { txt: b.textContent.trim(), h: rc.height / sc }; }); await pg.close();
     must(r && /UTILITY MODE/.test(r.txt) && r.h >= 38, JSON.stringify(r));
   });
+  await step(`${view.name} #48 utility phone: status only; ⓘ ×7 opens the settings; START sticks across a reload`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }).catch(() => {});
+    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.waitForTimeout(1600);
+    const s1 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, rows: document.querySelectorAll('#players .row:not(.empty)').length, team: document.getElementById('team').textContent, status: document.getElementById('status').textContent }));
+    for (let i = 0; i < 6; i++) await pg.click('#info'); const six = await pg.evaluate(() => document.getElementById('cfg').hidden); await pg.click('#info'); await pg.waitForTimeout(150);
+    const s2 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, defaults: document.querySelectorAll('#cfg .def').length, pressed: document.querySelectorAll('.seg button[aria-pressed="true"]').length, rangeLabel: !!document.querySelector('label[for="thrRange"]') }));
+    await pg.click('#btnStart'); await pg.waitForTimeout(200); await pg.click('#cfgClose'); await pg.waitForTimeout(150);
+    const s3 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
+    await pg.reload(); await pg.waitForTimeout(1500); const s4 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-utility.png` }); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
+    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 3 && s1.team === 'BLUE' && s1.status === 'READY', 'status screen: ' + JSON.stringify(s1));
+    must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
+    must(s3.status === 'LIVE' && s3.hidden, 'after START + close: ' + JSON.stringify(s3)); must(s4.status === 'LIVE' && s4.hidden, 'after reload: ' + JSON.stringify(s4));
+  });
   await step(`${view.name} #17 resync prompt: label over instruction, each on one line`, async () => { const pg = await open(view, 'resync'); const r = [...await oneLine(pg, '.prompt .pl'), ...await oneLine(pg, '.prompt .pi')]; const stack = await pg.evaluate(() => document.querySelector('.prompt .pl').getBoundingClientRect().bottom <= document.querySelector('.prompt .pi').getBoundingClientRect().top + 1); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(r[0][1] === 'GUN RELINKED' && r[1][1] === 'PULL THE TRIGGER', 'copy'); must(stack, 'label is not above the instruction'); });
   await step(`${view.name} #15 RELOADING takeover with progress and the weapon`, async () => {
     const pg = await open(view, 'live-reload', '', 3300); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.reloading'); if (!m) return null; return { t: m.querySelector('.t').textContent, s: m.querySelector('.s').textContent, w: parseFloat(m.querySelector('#rlbar').style.width), n: m.querySelector('#rlleft').textContent, big: parseFloat(getComputedStyle(m.querySelector('.t')).fontSize) }; });
