@@ -1,6 +1,6 @@
 {
   "name": "brx-companion-app",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "BRX native BLE app (Capacitor) — Android + iOS from one codebase",
   "scripts": {
