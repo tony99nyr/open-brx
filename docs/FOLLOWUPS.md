@@ -1529,6 +1529,10 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
 5. `bomb_detonated` uses X12 on Tony's ear ("X13 might actually be a sniper"); confirm and align
    `sounds.BOMB_DETONATED` + the proto-10 `$SIR` row.
 6. ✅ **HUD** (brx-hud, 0a72462): `alert` moment banner + medal stack badges on the kill moment. ✅ The scanner DOWN hint now follows the respawn gate ("pull the trigger" vs "stand there", brx-hud c97e5ce, same night).
+6b. **Headset flash LED (A11.8, 2026-09-04 night)**: `$LED,9,1,1,1,*` fires the small green flash LED (kill
+   feedback). The native hit flash is >= 2x ours by wall reflection and the wall clipped on native -- bound the ratio
+   from above with an ND filter / manual shutter; try `$LED` tokens 3/4 at other values for a longer or repeated
+   pulse; check whether `$LED` needs the gun spawned. `headset.hit` is native now; `death` stays our big-LED blink.
 7. **CLI `GameDriver` headset**: the direct-BLE driver still holds the team colour in play and repaints it
    after every spawn/hit (the A11 behaviour); the phone now follows the A11.6 headset block (dark in play,
    flashes). Align the driver with `presentation.headset_frames()` when the CLI grows a profile.

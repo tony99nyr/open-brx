@@ -59,6 +59,15 @@
 >   (selectors, the MC's applied config, or a presentation patch). **WALKTHROUGH** steps through every state of
 >   that config for a PASS/FAIL verdict each (saved to `~/.brx-mcp/stage-verdicts.jsonl`). Verified in a real
 >   browser against the fake gun; **not yet run against a real gun** -- that is the next bench session.
+> - **Gun-stage bench with Tony (late night, R0BQT + emitter on COM8 + the Pixel camera)**: gun body default is
+>   now blank-then-hold (`gun.in_play: team`, taken 2.5 s AFTER `$SPAWN` -- inside the burst the blank does not
+>   take, +1.0/+1.5 s breathing, +2.0 s solid); pre-game HLED + GLED team colour is an every-mode invariant;
+>   `headset.hit` is native; the headset's small flash LED is reachable over BLE (`$LED,9,1,1,1,*`, A11.8 kill
+>   flash) but the native green hit flash is at least 2x brighter by wall reflection (wall clips, so more) --
+>   `$HLED` effect map and `$BLINK`/`$LED` shapes are in brx-protocol.md. `led_flashcam.py` = the camera method
+>   (aim at a WALL; a saturated core is a floor, not a measurement). Open: what `$LED` tokens 3/4 do; an ND filter
+>   to bound the native ratio from above; `extraction_tick` sound (U100 trial), the other sound fails from the
+>   walkthrough (extraction_closing / complete, healed / armour_up / shield_up want sounds?).
 > - **Next server build (S5, A13.5)**: MC arms utility stations at muster -- `hello role:"utility"`, the ITEMS
 >   panel, the `station_config` push, `config.stations` from the assigned ids. Spec frozen by brx-grenade
 >   (a1380f8); phone apply is brx-hud's. Not started.
