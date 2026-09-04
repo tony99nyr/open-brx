@@ -199,7 +199,7 @@ Event =
  |   // token 5: tok5 is the RAW magnitude and ignores the $SIR multiplier, so the delta is the correct
  |   // source and happens to be multiplier-safe already.
  | { type:"death",       t, match_id, node_id, player_id, shooter_num, shooter_team, desync? }         // $HP→0; shooter = last $HIR if fresher than DEATH_LATCH_MS, else 0
- | { type:"respawn",     t, match_id, node_id, player_id, resync? }                                    // resync?: true when forced by the BLE resync policy (node.md §3.10)
+ | { type:"respawn",     t, match_id, node_id, player_id, resync? }                                    // resync?: LEGACY — set by the retired live-reconnect resync; the reconcile that replaced it (A6.8) emits no respawn on a live rejoin. Still set by a lobby/armed resync revive.
  | { type:"team_change", t, match_id, node_id, player_id, tid }                                        // infection: this gun moved to `tid` (A5.8)
  | { type:"status",      t, match_id?, node_id, player_id?, hp, armor, ammo, alive, shots, deadline_s?, battery?, fw?,
                          arm_state, t_minus_ms?, synced, dropped?, preflight? }
@@ -520,6 +520,18 @@ inaudible). BLE writes chunk at 20 bytes (§app).
   - **A6.7 Doc fixes:** `gun_echo` is "the gun answered", not "headset present" (unverified, NEXT #10); `$START`
     audibility at lobby unverified (NEXT #11); node lifecycle arrows → KITTED; runway text = `DEFAULT_RUNWAY_S`;
     first blood from a re-based never-synced batch is flagged provisional; module headers → A6.
+  - **A6.8 BLE reconnect reconcile supersedes A5.3/A6.6 for LIVE (S7.1, 2026-09-04; validated on R0BQT).**
+    The node now persists/restores `alive/hp/armor/shield/deadAt/killedBy` across an app kill, so a live
+    rejoin no longer probes to reconstruct state. It opens a 3 s disarmed `reconciling` window
+    (`RECONCILE_MS = 3000`): disarm both slots (`$AMMO,0,0,0,1`), keep the restored pools, then re-arm to the
+    real spawn `$AMMO` **only if alive** — never `$SPAWN`/`$PSET`, so a rejoin can never heal. **No death is
+    inferred**; only a real `$HP,0` mid-window books `death{desync:true}` (latched `$HIR` within
+    `DEATH_LATCH_MS`, else `shooter_num:0`) with the true respawn timer. New match / end / panic clear it;
+    auto-respawn, the recovery `deadAt` stamp, scanner-revive and reload-takeover are gated while reconciling.
+    The A6.6 trigger-first evidence protocol survives **only for LOBBY/ARMED reconnects and resume** (head
+    re-write). `respawn{resync:true}` is **retired for the live path** — the reconcile emits no respawn (the
+    fact field stays for schema/back-compat). Closes the force-close-at-low-HP free-respawn cheat;
+    `state().reconciling` drives the HUD RECONCILING takeover (node.md §3.10, §4.4).
 - **A7 (2026-08-25, HUD v2 integration; additive):** MC→node **`score{ScoreRow, shots_total}`** — pushed on every change while
   the node is in coverage, so the HUD's K/A/ACC ("✓MC") update mid-match instead of only on rejoin (`welcome.node.score`).
   Node treats it as display-only truth; never derives kills locally.
