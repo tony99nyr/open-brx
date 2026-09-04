@@ -224,7 +224,7 @@ button:active{filter:brightness(1.15)}
 .redeploy .kit{display:flex;gap:10px;margin-top:6px;animation:kitin .35s .4s both ease-out}
 @keyframes kitin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
 .redeploy .kit .ki{display:flex;align-items:center;gap:8px;border:1px solid var(--edge);background:var(--plate);padding:4px 10px 4px 4px;min-width:0}
-.redeploy .kit .ki .th{width:54px;height:34px;background-size:cover;background-position:center;border:1px solid var(--edge);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--glow)}
+.redeploy .kit .ki .th{width:60px;height:34px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--glow)}
 .redeploy .kit .ki .th svg{width:24px;height:24px}
 .redeploy .kit .ki .kk{font-size:10px;letter-spacing:.24em;color:var(--mut);font-weight:700}
 .redeploy .kit .ki .kn{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
@@ -263,7 +263,7 @@ button:active{filter:brightness(1.15)}
 .switching .arr{font-size:22px;color:var(--warn);letter-spacing:.1em;animation:blink 1s infinite}
 .wt{display:flex;flex-direction:column;align-items:center;gap:4px;width:220px;padding:8px 10px 10px;border:1px solid var(--edge);background:var(--plate);transform:skewX(-8deg)}
 .wt > *{transform:skewX(8deg)}
-.wt .th{width:190px;height:72px;background-size:cover;background-position:center;border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;color:var(--glow)}
+.wt .th{width:190px;height:96px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;color:var(--glow)}
 .wt .th.none{color:var(--mut);font-size:28px}.wt .th.perk svg{width:40px;height:40px}
 .wt .wl{font-size:10px;letter-spacing:.3em;color:var(--mut);font-weight:700;margin-top:4px}
 .wt .wn{font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
@@ -481,7 +481,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 /* kit-out try-out panel + loadout weapon thumb (2026-08-26) */
 .tryout{position:absolute;top:118px;left:36px;right:36px;display:flex;gap:16px;border:1px solid var(--edge);background:var(--plate);padding:8px 18px;transform:skewX(-8deg)}   /* slanted like the plates and the buttons beside it (review #28) */
 .tryout > *{transform:skewX(8deg)}
-.tryout .art{flex:0 0 220px;height:104px;background-size:cover;background-position:center;border:1px solid var(--edge)}
+.tryout .art{flex:0 0 220px;height:120px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
 .tryout .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
 .tryout .facts{margin-top:2px;line-height:1.4}
 .tryout .lbl{font-size:11px;letter-spacing:.24em;color:var(--warn);font-weight:700}
@@ -498,7 +498,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .plate.slot{display:flex;gap:12px;align-items:center;flex:0 0 288px;min-height:78px;padding:8px 14px;position:relative;pointer-events:auto}
 .lobby .plates > .plate:not(.slot){flex:1 1 120px;min-width:0}
 .lobby .plates > .plate:not(.slot) .h,.lobby .plates > .plate:not(.slot) .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.plate.slot .thumb{flex:0 0 84px;height:56px;border:1px solid var(--edge);background-size:cover;background-position:center;transform:skewX(8deg)}
+.plate.slot .thumb{flex:0 0 96px;height:56px;border:1px solid var(--edge);background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;transform:skewX(8deg)}
 .plate.slot .thumb.perk,.plate.slot .thumb.none{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .plate.slot .thumb.perk svg{width:40px;height:40px}
 .plate.slot .thumb.none span{font-size:24px;color:var(--mut)}
@@ -542,7 +542,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 /* the ::after tap-area hack is gone: the chip is 46px tall now, so the control IS the tap target */
 .lrow{display:flex;align-items:center;gap:12px;min-height:50px;padding:5px 12px 5px 6px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-6deg);flex:0 0 auto;pointer-events:auto}
 .lrow > *{transform:skewX(6deg)}
-.lrow .thumb{flex:0 0 66px;height:36px;background-size:cover;background-position:center;border:1px solid var(--edge)}
+.lrow .thumb{flex:0 0 66px;height:36px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
 .lrow .thumb.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .lrow .thumb.perk svg{width:30px;height:30px}
 .lrow .nm{font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
@@ -563,7 +563,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lo .lodetail{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden auto;padding-bottom:34px;-webkit-mask-image:linear-gradient(#000 90%,transparent);mask-image:linear-gradient(#000 90%,transparent)}
 .lo .lodetail > *{flex:0 0 auto}
 .lodetail .caution{color:var(--bad);font-family:var(--fm,monospace);font-size:11px;letter-spacing:.08em;margin-top:4px}
-.lo .lodetail .art{height:84px;border:1px solid var(--edge);background-size:cover;background-position:center;flex:0 0 auto}
+.lo .lodetail .art{height:132px;border:1px solid var(--edge);background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;flex:0 0 auto}   /* the renders are 640×350: contain, never crop the gun (review 2026-09-04) */
 .lo .lodetail .art.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .lo .lodetail .art.perk svg{width:64px;height:64px}
 .lo .lodetail .rolechip{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.18em;color:var(--mut);vertical-align:middle;margin-left:6px}
