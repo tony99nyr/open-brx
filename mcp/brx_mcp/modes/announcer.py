@@ -24,10 +24,10 @@ Multikill window = **4 s** (game-medals-config.json Key 14: 2+ kills within 4 s 
 the previous kill). Streaks are per-life and reset on the shooter's own death.
 
 The plain **kill** line is CONFIRMED (`V3A`, documented as "kill" in `sound-bank.md`
-and captured live). The **medal/streak** ids are still unconfirmed — the digested
-bank lacks them — so they live in a config map to fill from a bench `$PLAY` probe.
-Until such an id is set, only a `Callout` (the phrase) is emitted, so the driver can
-still log/surface it; a set id also emits a `PlaySound` to the shooter.
+and captured live). The **medal/streak** ids were read off the gun's own audio on
+2026-09-03 (`data/sound_catalog.json`); they live in a config map so a mode can swap them.
+Where an id is None only a `Callout` (the phrase) is emitted, so the driver can still
+log/surface it; a set id also emits a `PlaySound` to the shooter.
 """
 from __future__ import annotations
 
@@ -38,14 +38,17 @@ KILL_LINE = "V3A"
 
 MULTIKILL_WINDOW_S = 4.0  # game-medals-config.json Key 14
 
-# announcer sound ids — CONFIRM on bench; None => Callout only (no PlaySound yet).
+# announcer sound ids -- read off the gun's own audio 2026-09-03 (Whisper transcripts in
+# data/sound_catalog.json): VA7H "First Blood" · VA7E "Double Kill" · VA7Q "Triple Kill!" ·
+# V124 "KILL TACULAR!" · VA7K "Killing spree". No "unstoppable" line exists in the bank, so the
+# 10-streak stays Callout-only (None => no PlaySound).
 DEFAULT_SOUNDS: dict[str, str | None] = {
-    "first_blood": None,
-    "double_kill": None,
-    "triple_kill": None,
-    "killtacular": None,   # 4+ in a window
-    "streak_5": None,      # killing spree
-    "streak_10": None,     # unstoppable
+    "first_blood": "VA7H",
+    "double_kill": "VA7E",
+    "triple_kill": "VA7Q",
+    "killtacular": "V124",   # 4+ in a window
+    "streak_5": "VA7K",      # killing spree
+    "streak_10": None,       # "unstoppable": not in the bank
 }
 
 # multikill chain length -> (sound key, spoken phrase). 5+ in a window announces

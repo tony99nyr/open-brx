@@ -1,11 +1,17 @@
-# BRX sound bank (complete)
+# BRX sound bank (the app's list)
+
+> ⚠️ **Corrected 2026-09-03: this list is neither complete nor entirely valid.** The gun itself
+> holds **2477** sound files (read off a v4.32 tagger's `AUDIO` folder); this app-side list has
+> 2166. **468 ids exist only on the gun** (the VX and VZ voice families, H102-H155, 52 extra VA
+> lines, SH, ST, J, U, …) and **157 ids listed here are NOT on the gun** (mostly `E_`-prefixed
+> variants, V00…V90, some Z) and play the fallback. The authority for what `$PLAY` can play, with a
+> category and transcript per id, is **`docs/reference/sound-catalog.md`** /
+> `mcp/brx_mcp/data/sound_catalog.json`. This file is kept for the durations and the prefix legend.
 
 Derived from the Callsign app's `assets/Configs/Sounds.json` (Battle Company).
-**2166 sound IDs** with playback durations — the authoritative, complete list of
-valid `$PLAY,<id>,...` arguments. IDs are the app's own names; there is no friendlier
-label (the protocol uses these codes directly). This retires the microphone-sweep
-approach (which failed because unknown ids play a fallback — see experiment-log #7):
-any id NOT in this list is invalid.
+**2166 sound IDs** with playback durations. IDs are the app's own names; there is no friendlier
+label in the app (the protocol uses these codes directly). This retires the microphone-sweep
+approach (which failed because unknown ids play a fallback — see experiment-log #7).
 
 `MaxMusicVolume` = 100.
 

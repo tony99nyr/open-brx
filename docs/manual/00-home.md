@@ -15,12 +15,12 @@ _Video game style tactical laser tag. Open, and you host it yourself._
 src: docs/VISION.md, README.md
 
 [cards] "Two doors"
-- **The Ultimate BRX Manual**: everything about the tagger and headset in one place. You get anatomy, pairing, every weapon, the 2166-sound bank, repairs, and the full BLE protocol. We built it from the official docs, the community, and our own bench. ✅📖👥 → `/manual`
+- **The Ultimate BRX Manual**: everything about the tagger and headset in one place. You get anatomy, pairing, every weapon, the 2,477-sound bank, repairs, and the full BLE protocol. We built it from the official docs, the community, and our own bench. ✅📖👥 → `/manual`
 - **The Open BRX platform**: run Team Deathmatch and more on stock guns from a laptop today with `brx-mcp`. That part is proven on real hardware. The rest is under construction: a mission-control console, a phone HUD per gun, and an ESP32 rider. ✅🚧 → `/platform`
 src: docs/README.md, docs/architecture-topology.md
 
 [stat-row]
-- **2,166** sound ids decoded 🔍 (protocol/callsign-extract/sound-bank.md)
+- **2,477** sounds on the gun, every one catalogued with a category and, for voices, its words ✅ (docs/reference/sound-catalog.md)
 - **19** weapons, every stat on the wire 🔍✅ (docs/reference/weapons.md: 20 captured frames; the 20th is the default secondary, which is the Shotgun)
 - **63** player slots per game, 4 native teams ✅ (the gun accepts `$PSET` ids 0–63; Open BRX reserves 0, so ids 1–63 are playable; `$TID` 2-bit) (docs/spec/contracts.md A5.1, docs/architecture-topology.md §2)
 - **0** firmware changes, ever ✅ (CLAUDE.md hard rule)

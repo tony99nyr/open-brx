@@ -90,13 +90,18 @@ def test_multikill_tiers_announce_once_no_spam_beyond_four():
 
 def test_medal_playsound_emitted_only_when_id_configured():
     """The MEDAL line needs a configured id; the plain kill line is confirmed and
-    always plays (§7o) — so 'no ids configured' means Callout + kill line only."""
-    a = KillAnnouncer()
+    always plays (§7o) — so an id set to None means Callout + kill line only. Since
+    2026-09-03 the defaults ARE configured from the gun's own audio (VA7E = "Double Kill")."""
+    a = KillAnnouncer(sounds={"double_kill": None})
     a.on_kill("A", "B", now=0.0)
     acts = a.on_kill("A", "C", now=1.0)
     ids = [x.sound_id for x in acts if isinstance(x, PlaySound)]
     assert ids == [KILL_LINE]                    # kill confirm line, no medal sound
     assert "Double Kill" in _phrases(acts)
+    d = KillAnnouncer()                          # the shipped default speaks the real medal
+    d.on_kill("A", "B", now=0.0)
+    acts = d.on_kill("A", "C", now=1.0)
+    assert [x.sound_id for x in acts if isinstance(x, PlaySound)] == [KILL_LINE, "VA7E"]
     # configure the double-kill id → its PlaySound appears alongside the kill line
     b = KillAnnouncer(sounds={"double_kill": "VX99"})
     b.on_kill("A", "B", now=0.0)

@@ -366,7 +366,7 @@ src: `docs/architecture-topology.md` §7, `docs/verification-checklist.md`, `doc
 [timeline] **Roadmap: the project ladder**
 - **M1 · Identify**: scan, identify and listen to real taggers. ✅ done
 - **M2 · Control**: remote game start, weapons, respawn, timed matches. ✅ done
-- **M3 · Protocol depth**: the `$WEAP` map, the 2,166-id sound bank, the game-mode model, **per-player id over BLE**, and the IR word. ✅ done (2026-08-25 / 26)
+- **M3 · Protocol depth**: the `$WEAP` map, the sound bank, the game-mode model, **per-player id over BLE**, and the IR word. ✅ done (2026-08-25 / 26)
 - **M4 · Pilot game**: per-player node + Mission Control + live scoreboard. 🧪 built and tested in software. The MC↔phone field path is the next hardware muster (`docs/field-runbook-mc.md`)
 - **M5 · Arena**: objectives, items, stations (Domination / KotH / CTF / Extraction points / bomb sites). 🧪 engines · ✅ IR emit · 📐 the box
 - **M6 · Companion + scale**: ESP32 Companions on the same contracts, a mesh for instant field-wide feedback, 20+ guns. 📐
@@ -425,7 +425,7 @@ _Open source, open hardware, open protocol, and one hard rule._
 - **Change the code**: `docs/spec/README.md` → `docs/spec/contracts.md` (the node↔MC wire is the single point of coordination; interface changes go through documented amendments, not silent edits). 🧪
 - **Bench**: the hardware verification checklist and `docs/bench-tomorrow.md` list everything still blocked on a human with a tagger. Append to `docs/experiment-log.md` after every session. ✅ process
 - **Print**: no public BRX print library exists. `hardware/print-files.md` lists the asks (reload-handle push-button mod, D-pad buttons, Companion mount, station enclosures). Clean-room, version-tagged, MIT. 📐
-- **Sound**: the 2,166-id sound bank is decoded, and custom on-tagger packs swap over USB. ✅
+- **Sound**: the 2,477 on-gun sounds are catalogued by category and transcript, and custom on-tagger packs swap over USB. ✅
 src: `docs/README.md`, `docs/FOLLOWUPS.md` §Hardware / 3D printing, `hardware/print-files.md`
 
 [callout:tip] **GitHub:** https://github.com/tony99nyr/open-brx. Licence: **MIT** (`LICENSE`, © 2026 BRX Open Battle System contributors). Register the MCP server with Claude Code: `claude mcp add brx -- python -m brx_mcp`. src: `LICENSE`, `README.md`

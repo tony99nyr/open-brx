@@ -25,12 +25,16 @@
   python -m brx_mcp rename <address> <name>             # set a tagger's persistent name over BLE ($NAME); power-cycle to see the advert update
   python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
   python -m brx_mcp armory                              # QUERY the cabled tagger + print the accumulated gun<->headset inventory
+  python -m brx_mcp sounds <words|category:...> [addr]  # search the on-gun sound catalog by words or category; with an address, PLAY each match
+      e.g. sounds "kill confirmed" · sounds category:voice:medal · sounds ids:VA7H,VA7E · sounds flag DF:F5:...
+      add --audit (with an address) to step through interactively: label, play, your verdict -> ~/.brx-mcp/sound-audit.jsonl
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 import time
 
@@ -892,6 +896,81 @@ def _usb_query(port: str | None) -> None:
     add_to_inventory(rec)          # accumulate into the armory inventory
 
 
+def _sounds(query: str, addr: str | None) -> None:
+    """Search the derived on-gun catalog (data/sound_catalog.json) and optionally play the matches.
+
+    2026-09-03: every one of the 2477 sounds on a v4.32 tagger has a category and, for voices, a
+    transcript. `category:voice:medal` lists a category; anything else is matched as words against
+    transcript + description + speaker. With an address the matches are $PLAYed on that gun ~3 s
+    apart, announced by id, so an operator can audition a shortlist without typing ids.
+    """
+    from .sounds import catalog_path
+    data = json.load(open(catalog_path()))["sounds"]
+    q = query.strip()
+    if q.lower().startswith("ids:"):
+        want = [w.strip().upper() for w in q.split(":", 1)[1].split(",") if w.strip()]
+        by = {e["id"]: e for e in data}
+        hits = [by[w] for w in want if w in by]
+    elif q.lower().startswith("category:"):
+        want = q.split(":", 1)[1].lower()
+        hits = [e for e in data if e["category"].lower().startswith(want)]
+    else:
+        words = [w for w in re.findall(r"[a-z0-9']+", q.lower()) if w]
+        def hay(e):
+            return " ".join([e.get("transcript", ""), e.get("description", ""), e.get("speaker", ""),
+                             e["category"], e["id"]]).lower()
+        hits = [e for e in data if all(w in hay(e) for w in words)]
+    hits = [e for e in hits if e.get("on_gun")]
+    print(f"# {len(hits)} on-gun match(es) for {q!r}", file=sys.stderr)
+    for e in hits[:200]:
+        words = e.get("transcript") or e["description"]
+        print(f"{e['id']:6s} {e['duration_s']:5.2f}s  {e['category']:24s} {e.get('speaker', ''):28s} {words[:70]}")
+    if addr and hits:
+        audit = "--audit" in sys.argv
+        out_path = None
+        if audit:
+            import os
+            out_path = os.path.join(os.path.expanduser("~"), ".brx-mcp", "sound-audit.jsonl")
+            print("\nAUDIT MODE: each sound prints its label, then plays. Then type + Enter:\n"
+                  "  [Enter] = label is right     x = label is wrong (it asks what you heard)\n"
+                  "  any other text = CONTEXT for this sound (what it is used for / what it evokes), label kept\n"
+                  "  r = replay     q = quit\n"
+                  f"  verdicts -> {out_path}\n", flush=True)
+
+        async def _play():
+            from .ble import ConnectionManager
+            mgr = ConnectionManager()
+            await mgr.connect(addr, "s")
+            try:
+                for n, e in enumerate(hits[:60], start=1):
+                    label = e.get("transcript") or e["description"]
+                    while True:
+                        print(f"\n[{n}/{min(len(hits), 60)}] ▶ {e['id']}  ({e['category']}, {e['duration_s']:.1f}s)\n"
+                              f"      expected: {label}", flush=True)
+                        await mgr.send("s", f"$PLAY,{e['id']},4,6,,,,,*", reply_window_ms=0)
+                        if not audit:
+                            await asyncio.sleep(max(1.0, min(e["duration_s"], 8.0)) + 1.5)
+                            break
+                        raw = input("      [Enter ok / x wrong / r replay / q quit / or type context]: ").strip()
+                        ans = raw.lower()
+                        if ans == "r":
+                            continue
+                        if ans == "q":
+                            return
+                        wrong = ans == "x" or ans.startswith("x ")
+                        note = raw[1:].strip() if wrong else raw
+                        if wrong and not note:
+                            note = input("      what did you actually hear? ").strip()
+                        with open(out_path, "a") as f:
+                            f.write(json.dumps({"id": e["id"], "expected": label, "category": e["category"],
+                                                "ok": not wrong, "heard": note,
+                                                "t": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
+                        break
+            finally:
+                await mgr.disconnect("s")
+        asyncio.run(_play())
+
+
 def _armory() -> None:
     """Armory inventory sweep: QUERY the cabled tagger (if one is), then print the
     accumulated tagger↔headset identity table. Cable each tagger in turn + re-run."""
@@ -1377,6 +1456,9 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _usb_query(args[1] if len(args) > 1 else None)
     elif cmd == "armory":
         _armory()
+    elif cmd == "sounds" and len(args) > 1:
+        addr = next((a for a in args[2:] if ":" in a and len(a) >= 17), None)
+        _sounds(" ".join(a for a in args[1:] if a != addr and not a.startswith("--")), addr)
     elif cmd == "ir-range":
         port = args[1] if len(args) > 1 and not args[1].isdigit() else None
         nums = [float(a) for a in args[1:] if a.replace(".", "").isdigit()]

@@ -15,11 +15,11 @@ def _bank_ids():
 
 
 def test_every_catalog_id_is_a_real_bank_id():
-    """The whole point of the catalog: no id plays the invalid-id fallback."""
-    assert _BANK.exists(), f"bank not found at {_BANK}"
-    missing = snd.unknown_against_bank(_bank_ids())
-    assert missing == [], f"catalog ids not in the 2166 bank: {missing}"
-
+    """Since 2026-09-03 the authority is the ON-GUN catalog (2477 ids read off the hardware), not the
+    app's 2166-id Sounds.json: 468 ids exist only on the gun (VA8X "Fail." is one) and 157 app ids are
+    not on the gun at all. So validate against what the gun actually has."""
+    missing = snd.unknown_against_bank(snd.on_gun_ids())
+    assert missing == [], f"catalog ids not on the gun: {missing}"
 
 def test_names_and_ids_are_unique():
     names = [c.name for c in snd.CATALOG]
@@ -34,12 +34,11 @@ def test_sid_lookup_and_meaning():
     assert snd.meaning("ZZZ_unlisted") == "ZZZ_unlisted"   # passthrough
 
 
-def test_provisional_flagged_for_verification():
-    prov = {c.name for c in snd.provisional()}
-    # objective callouts are the by-ear TODO; game flow is confirmed
-    assert "OBJECTIVE_SCORED" in prov
-    assert "GAME_OVER" not in prov
-
+def test_no_cue_is_provisional_any_more():
+    """2026-09-03: every semantic cue was checked against the gun's own audio (Whisper transcripts
+    in data/sound_catalog.json). The objective callouts that used to be PROVISIONAL were wrong in
+    kind (a death scream, two rules explainers) and are replaced; nothing is left to confirm by ear."""
+    assert snd.provisional() == []
 
 def test_engines_use_catalog_not_raw_ids():
     """Regression: no engine emits a raw-literal PlaySound (single or double
