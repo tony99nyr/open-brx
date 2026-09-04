@@ -1369,14 +1369,14 @@ green/red, `$GLED,3,3,9`=green/green/dark) → the 3-segment health bar (`pool_f
 open: (b) minutes-long hold; (e) blink-form after a blank; the separate **muzzle-flash LED**'s
 addressability. Refactor (1-4) is **brx's** — bench answers delivered, they hold until Tony says go.
 
-## 🟠 S5 — RECONNECT / NEW-MATCH RECONCILIATION on the phone node (2026-09-04, from the utility bench)
+## 🟠 S7 — RECONNECT / NEW-MATCH RECONCILIATION on the phone node (2026-09-04, from the utility bench)
 
 Live-bench weaknesses in the §3.10 resync + hydrate path, surfaced repeatedly on 2026-09-04 (they predate
 the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
 1. **Rejoin lands alive-with-0-hp.** After force-stop → relaunch → rejoin, the gun is armed and can shoot
    but the HUD reads `alive:true hp:0` until the player pulls the trigger (the trigger-first resync observed
    mid-handshake). A resync in progress should show a clear "confirm your gun" state, not live-but-empty.
-2. **✅ FIXED (engine ee-followup): a new match started on a just-reconnected node now spawns clean** —
+2. **✅ FIXED (S7.2, commit fec301d): a new match started on a just-reconnected node now spawns clean** —
    `startAt` clears an in-flight resync (a new match supersedes the old one's reconnect resync); the T-0
    spawn is no longer blocked on `!resync`, so it goes alive at full health. Engine test added. The
    remaining two (1, 3) need hardware to validate a change safely.
