@@ -748,6 +748,25 @@ test('a hit forwards WHICH sensor caught it', () => {
   assert.deepEqual(hits.map(f => f.sensor), [0, 4], 'headset dome then gun body');
 });
 
+// ── headset team colour survives hits (bench 2026-09-03: a registered hit WIPES the headset) ─────
+test('every damaging hit re-sends the headset team colour, except the one that fires the low-health alert', () => {
+  const h = goLive(harness());
+  const tl = golden.cues.team_led;
+  assert.ok(tl && tl.startsWith('$HLED,1,0,,,10'), 'bundle carries the static full-bright team frame');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');          // armour absorbs it
+  assert.deepEqual(h.writes.filter(f => f === tl), [tl], 'one repaint per hit, never hammered');
+  h.frame('$HP,45,61,0,*');                                              // no damage: nothing to repaint
+  assert.equal(h.writes.filter(f => f === tl).length, 1);
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');           // the low-health transition
+  assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1, 'alert lights the headset');
+  assert.equal(h.writes.filter(f => f === tl).length, 1, 'no repaint over the alert');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,34,0,0,*');
+  assert.equal(h.writes.filter(f => f === tl).length, 2, 'repaints resume on the next hit');
+  h.frame('$HIR,4,0,19,2,40,0,0,*'); h.frame('$HP,0,0,0,*');           // death: the native out-blink owns the headset
+  assert.equal(h.writes.filter(f => f === tl).length, 2, 'never paint over a corpse');
+});
+
 // ---- HUD review 2026-09-03: the RELOADING takeover (#15) and the DOWN-screen recap inputs (#21/#25/#26) ----
 test('reload handle pull opens a reload for the weapon\'s reload_s; the mag coming back closes it', () => {
   const h = harness().kit().config_().echo().start(0);
@@ -831,4 +850,119 @@ test('a swap the gun never confirms is assumed done at the window; a link drop c
   let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
+});
+
+// ── A11 presentation events: the bundle's LED burst + cue per event ─────────────────────────────
+test('a hit plays the bundle\'s hit_taken burst once per second, a death its died burst, a revive its respawned burst', () => {
+  const h = goLive(harness());
+  const burst = golden.leds.hit_taken;
+  assert.ok(burst && burst.length >= 5, 'golden bundle carries an LED burst for hit_taken');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
+  const gled = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.equal(gled.length, burst.length, 'every step of the burst is written (harness delays run inline)');
+  assert.equal(gled[gled.length - 1], burst[burst.length - 1][0], 'ends on the team colour');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,52,0,*');             // 0 ms later: lights suppressed
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no second burst inside a second');
+  h.adv(1500); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');              // death
+  const died = golden.leds.died;
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), died.map(s => s[0]), 'the died burst, not hit_taken');
+  h.adv(9000); h.eng.tick(); h.adv(1000); h.eng.tick();                    // auto respawn (delay 8 s)
+  const resp = golden.leds.respawned;
+  assert.ok(h.writes.filter(f => f === resp[0][0]).length >= 1, 'respawned burst after the revive frames');
+});
+
+test('a silenced bundle (no leds, empty announcer cues) plays nothing extra on a hit', () => {
+  const h = harness();
+  const silenced = { ...h.bundle, leds: {}, cues: { ...h.bundle.cues, kill: '', multi: '', medal: '' } };
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: silenced, roster: h.roster } });
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0);
+  h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now() }, h.eng.now());
+  assert.ok(h.writes.includes('$SFLASH,*'), 'the sight flash still fires');
+  assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 0, 'no kill line when the announcer is off');
+});
+
+// ── A11.4 alerts, medal stacks, clock callouts ───────────────────────────────────────────────
+test('a kill feedback with medals plays each medal cue instead of the plain kill line', () => {
+  const h = goLive(harness());
+  h.writes.length = 0;
+  h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now(), medals: ['killtacular', 'killing_spree'] }, h.eng.now());
+  const plays = h.writes.filter(f => f.startsWith('$PLAY'));
+  assert.deepEqual(plays, [golden.cues.killtacular, golden.cues.killing_spree], 'medals in order (harness delays run inline)');
+  assert.ok(!plays.includes(golden.cues.kill), 'no plain kill line under a medal');
+  assert.deepEqual(h.eng.state().moment.data.medals, ['killtacular', 'killing_spree']);
+  h.writes.length = 0;
+  h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now(), medals: [] }, h.eng.now());
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$PLAY')), [golden.cues.kill], 'no medals: the kill line');
+});
+
+test('an MC alert plays this node\'s cue + burst for the event and raises a HUD alert moment', () => {
+  const h = goLive(harness());
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'next_kill_wins', text: 'NEXT KILL WINS', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  assert.ok(h.writes.includes(golden.cues.next_kill_wins), 'the announcer line from the bundle');
+  const m = h.eng.state().moment;
+  assert.equal(m.kind, 'alert'); assert.equal(m.data.kind, 'next_kill_wins'); assert.equal(m.data.text, 'NEXT KILL WINS');
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() - 60000 }, t: h.eng.now() - 60000 });
+  assert.equal(h.writes.length, 0, 'a stale alert is dropped');
+});
+
+test('clock callouts fire once each from the node\'s own end time', () => {
+  const h = harness({ timeLimit: 70 }).kit().config_().echo().start(0);
+  h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.writes.length = 0;
+  h.adv(11000); h.eng.tick();                          // 59 s left -> time_60
+  assert.ok(h.writes.includes(golden.cues.time_60), 'one minute left');
+  h.adv(1000); h.eng.tick();
+  assert.equal(h.writes.filter(f => f === golden.cues.time_60).length, 1, 'edge-triggered, once');
+  h.adv(29000); h.eng.tick();                          // 29 s left
+  assert.ok(h.writes.includes(golden.cues.time_30));
+  h.adv(20000); h.eng.tick();                          // 9 s left
+  assert.ok(h.writes.includes(golden.cues.time_10));
+});
+
+test('an infection survivor plays survivors_win itself at time-expiry; a turned player plays game_over', () => {
+  const h = harness({ mode: 'infection', timeLimit: 20 }).kit().config_().echo().start(0);
+  h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.adv(21000); h.writes.length = 0; h.eng.tick();
+  assert.ok(h.writes.includes(golden.cues.survivors_win), 'never turned -> survivors line');
+  assert.ok(!h.writes.includes(golden.cues.game_over));
+  const t = harness({ mode: 'infection', timeLimit: 20 }).kit().config_().echo().start(0);
+  t.adv(10); t.eng.tick(); t.frame('$LCD,45,70,0,0,36,216,*');
+  t.eng._turned = true;                                   // what a team_flip sets
+  t.adv(21000); t.writes.length = 0; t.eng.tick();
+  assert.ok(t.writes.includes(golden.cues.game_over) && !t.writes.includes(golden.cues.survivors_win));
+});
+test('a reload-speed perk shortens the RELOADING takeover to match the gun', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'quick_hands' } }, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [{ perk_id: 'quick_hands', name: 'Quick Hands', effects: { reload_mult: 0.5 } }] } } });
+  h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloadTotalMs, 700, '1.4 s × 0.5');
+});
+test('the Quick Switch perk halves the swap window: the assumed swap lands at 425 ms', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' } }, team: h.team, roster: h.roster,
+    catalog: { weapons: [], perks: [{ perk_id: 'quick_switch', name: 'Quick Switch', effects: { switch_mult: 0.5 } }] } } });
+  delete h.eng.frames.swap_ms;                       // an older MC: no enforced value in the bundle → the node applies the perk itself
+  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switchWindowMs, 425);   // 850 stock × 0.5
+  h.adv(426); h.eng.tick();
+  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
+});
+test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes the stock 850 × perk', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
+  assert.equal(h.eng.state().switchWindowMs, 850, 'no swap_ms in the golden bundle → stock 850');
+  h.eng.frames = { ...h.eng.frames, swap_ms: 425 };
+  assert.equal(h.eng.state().switchWindowMs, 425, 'MC said 425');
+  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(426); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'assumed done right after the real delay');
 });

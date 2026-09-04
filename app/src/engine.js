@@ -27,7 +27,9 @@ const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
 // showing the slot the GUN last reported. It deliberately does NOT guess a new slot: $BUT,1 is
 // "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
-const SWITCH_MAX_MS = 1200;
+const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
+const EVENT_MIN_GAP_MS = 1000;
+const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
 
@@ -236,6 +238,7 @@ export class Engine {
       case 'loadout_ack': return this._loadoutAck(body);
       case 'start': return this.startAt(body);
       case 'feedback': return this.feedback(body, t);
+      case 'alert': return this.alert(body, t);
       case 'control': return this.control(body);
       case 'apply': {
         const fr = body.frames || [];
@@ -405,6 +408,26 @@ export class Engine {
     return { ok: true, state: 'live', reason: late <= C.LATE_ARM_GRACE_MS ? 'grace' : 'hot_join' };
   }
 
+  /** A11 presentation event: the bundle's `leds[kind]` burst (frames with holds) + `cues[kind]` sound.
+   *  The burst is the hardware-tuned three-flash pattern (2026-09-03) and MUST NOT be repainted or
+   *  extended -- a fourth flash in a second is the epilepsy line; so events closer than
+   *  EVENT_MIN_GAP_MS apart drop their lights (the sound still plays). */
+  _event(kind) {
+    const f = this.frames; if (!f) return;
+    const cue = f.cues && f.cues[kind];
+    if (cue) this._write([cue], `event cue ${kind}`);
+    const seq = f.leds && f.leds[kind];
+    if (!seq || !seq.length) return;
+    const now = this.now();
+    if (this._lastEventLed != null && now - this._lastEventLed < EVENT_MIN_GAP_MS) return;
+    this._lastEventLed = now;
+    let t = 0;
+    for (const step of seq) {
+      const frame = step[0], hold = Math.max(0, Math.round((step[1] || 0) * 1000));
+      if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => this._write([frame], `event led ${kind}`));
+      t += hold;
+    }
+  }
   _cue(key) {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
     if (f && !this.cuesFired.has(key)) { this.cuesFired.add(key); this._write([f], `cue ${key}`); }
@@ -451,16 +474,22 @@ export class Engine {
     }
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
+      if (this.endT) {   // A11.4 clock callouts from the node's own synced end time: edge-triggered, once each
+        const left = this.endT - now, prev = this._prevLeft != null ? this._prevLeft : left; this._prevLeft = left;
+        for (const [ms, k] of [[60000, 'time_60'], [30000, 'time_30'], [10000, 'time_10']]) {
+          if (prev > ms && left <= ms && !this.cuesFired.has(k)) { this.cuesFired.add(k); this._event(k); this.moment = { kind: 'alert', at: now, data: { kind: k, text: k === 'time_60' ? 'ONE MINUTE LEFT' : k === 'time_30' ? '30 SECONDS' : '10 SECONDS' } }; }
+        }
+      }
       if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync) {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
       }
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
-      if (this.switching && now - this.switching.at > SWITCH_MAX_MS) {
+      if (this.switching && now - this.switching.at > this.switchWindowMs()) {
         const to = this.switching.from === 0 ? 1 : 0; this.switching = null; this.activeSlot = to;
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
-        this.log(`swap to slot ${to} assumed after ${SWITCH_MAX_MS}ms (no shot yet)`, 'li');
+        this.log(`swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
       }
       this._changed();
     }
@@ -478,6 +507,7 @@ export class Engine {
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : 'respawned', 'lk');
+    this._event('respawned');   // A11 (after the revive frames, so the burst ends on the fresh team colour)
     this._changed();
   }
 
@@ -518,7 +548,15 @@ export class Engine {
 
   _writeTeardown(kind, why) {
     if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
-    if (this.frames) { this._write(this.frames.end, `end (${why})`); const f = this.frames.cues && this.frames.cues.game_over; if (f) this._write([f], 'cue game_over'); }
+    if (this.frames) {
+      this._write(this.frames.end, `end (${why})`);
+      // A11.4 HUD-driven ending: in infection a survivor whose clock ran out KNOWS it survived -- it never
+      // turned -- so it plays "the survivors have held their ground" itself; everyone else gets game_over.
+      const c = this.frames.cues || {};
+      const survived = why === 'time-expiry' && this.config && this.config.mode === 'infection' && !this._turned && c.survivors_win;
+      const f = survived ? c.survivors_win : c.game_over;
+      if (f) this._write([f], survived ? 'cue survivors_win' : 'cue game_over');
+    }
   }
 
   // ---------- control ----------
@@ -553,13 +591,35 @@ export class Engine {
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
     const cue = body.cue || (this.frames && this.frames.cues && this.frames.cues[body.kind]);
     this._write([SFLASH], `feedback ${body.kind}`);
-    if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}`));   // hardware-proven gap (seed): flash, then the line
+    // A11.4 Halo-style medals: a kill can carry several ("killtacular" + "killing_spree"); each plays
+    // its cue from THIS node's bundle, back to back, and replaces the plain kill line. A cue that is
+    // "" is deliberately mute (announcer off) and is skipped; a missing one is skipped too.
+    const medalCues = (Array.isArray(body.medals) ? body.medals : [])
+      .map(m => ({ m, f: this.frames && this.frames.cues && this.frames.cues[m] })).filter(x => x.f);
+    if (medalCues.length) {
+      medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => this._write([x.f], `medal ${x.m}`)));
+      this.medals = body.medals.slice();
+    } else if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}`));   // hardware-proven gap (seed): flash, then the line
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
-      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: body.victim } };
+      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: body.victim, medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
     }
+    this._changed();
+  }
+
+  /** A11.4 named game event from MC (lead change, next kill wins, flag captured, bomb planted, VIP down…):
+   *  play this node's own cue + LED burst for it and show the text as a HUD alert. Stale ones are dropped
+   *  like feedback. `hud: false` on the body suppresses the banner (sound/lights still play). */
+  alert(body, envT) {
+    if (!body || !body.kind) return;
+    const t = body.t != null ? body.t : envT;
+    if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log(`alert ${body.kind} too old — ignored`, 'li'); return; }
+    if (this.phase !== 'live' && this.phase !== 'armed') return;
+    this._event(body.kind);
+    if (body.hud !== false) this.moment = { kind: 'alert', at: this.now(), data: { kind: body.kind, text: body.text || body.kind, player_id: body.player_id_subject || null } };
+    this.log(`alert ${body.kind}`, 'lk');
     this._changed();
   }
 
@@ -628,7 +688,12 @@ export class Engine {
     if (cap && this.ammo >= cap && (this.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
     if (!(this.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
     const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]);
-    const row = w && this.weaponRow(w.weapon_id); const secs = row && row.reload_s != null ? +row.reload_s : 1.5;
+    const row = w && this.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
+    // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
+    // takeover must shrink with it too — quick_hands halves the reload (Tony, 2026-09-04).
+    const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
+    const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
+    if (rm > 0 && rm !== 1) secs *= rm;
     this.reloading = { at: this.now(), ms: Math.max(300, Math.round(secs * 1000)), slot: this.activeSlot };
     this._changed();
   }
@@ -649,7 +714,15 @@ export class Engine {
   switchingMs() {
     if (!this.switching) return null;
     const ms = this.now() - this.switching.at;
-    return ms > SWITCH_MAX_MS ? null : ms;
+    return ms > this.switchWindowMs() ? null : ms;
+  }
+  /** The swap window: MC's `frames.swap_ms` (the tok15 the gun was actually given, perks applied — bench 2026-09-04);
+   *  an older MC without it falls back to the stock 850 scaled by an equipped `switch_mult` perk. */
+  switchWindowMs() {
+    if (this.frames && Number(this.frames.swap_ms) > 0) return Number(this.frames.swap_ms);
+    const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
+    const sm = pk && pk.effects && pk.effects.switch_mult ? +pk.effects.switch_mult : 1;
+    return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
   }
 
   /** $ALCD,<mag>,100,<slot>,<reserve>,0 — counts are per weapon SLOT; a weapon swap is never a shot. */
@@ -687,17 +760,27 @@ export class Engine {
     // Victim-side low-health alert. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15 once per life
     // shortly after ARMOUR reaches 0 and HP starts dropping (capture 2026-08-23-two-tagger-combat:
     // 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets stayed dark.
+    let hurtNow = false;
     if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
         // maxArmor 0 means the player never HAD armour, so "armour is gone" is not a state change —
         // without this the alert fires on the first scratch of such a loadout (review 2026-09-01).
         && !this.hurtFired && this.maxArmor > 0 && this.armor === 0 && this.hp > 0 && this.hp < this.maxHp) {
-      this.hurtFired = true;
+      this.hurtFired = true; hurtNow = true;
       const c = this.frames && this.frames.cues;
       const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
       // logged explicitly: after the last field session we could not tell whether the alert had
       // fired at all, because the frame ring only holds 60 frames and had rolled past it.
       this.log(`low-health alert: armour 0, hp ${this.hp} — ${fr.length} frame(s)`, 'lk');
       if (fr.length) this._write(fr, 'low health');
+    }
+    if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial) {
+      // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
+      // colour never comes back (bench 2026-09-03, hled_spawned.py). Re-send it so other players
+      // keep seeing the team for the rest of the life. Skipped on the hit that fired the low-health
+      // alert -- that alert IS the headset for the next ~3 s and a repaint would cut it short. A
+      // static frame, one write per hit, never hammered. Empty cue = LEDs off or unknown colour.
+      const tl = this.frames && this.frames.cues && this.frames.cues.team_led;
+      if (tl && !hurtNow) this._write([tl], 'team led');
     }
     if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
       // `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are
@@ -707,6 +790,7 @@ export class Engine {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
       this.lastHitAt = this.now();
+      if (this.alive && hp > 0) this._event('hit_taken');   // A11: a death is its own event
     }
     // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
@@ -744,6 +828,7 @@ export class Engine {
           gains.sort((a, b) => b[1] - a[1]);
           this.moment = { kind: 'gain', at: this.now(),
             data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };
+          this._event(gains[0][0] === 'health' ? 'healed' : gains[0][0] === 'armor' ? 'armour_up' : 'shield_up');   // A11
         }
       }
     }
@@ -766,12 +851,15 @@ export class Engine {
       // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
       if (tids.length) {
         const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
+        this._turned = true;
+        this._event('infected');   // A11.4: HUD-driven -- this gun just turned; MC's broadcast only tells the OTHERS
         const tm = ((this.config && this.config.teams) || []).find(x => Number(x.tid) === tid);
         this.team = tm ? { ...tm } : { ...(this.team || {}), tid, team_id: `tid-${tid}`, name: TEAM_NAME[tid] || `TEAM ${tid}` };
       }
     }
     this.switching = null;          // a swap indicator must not outlive the player
     this.moment = { kind: 'down', at: this.now() };
+    this._event('died');   // A11
     this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
     this._changed();
   }
@@ -885,7 +973,7 @@ export class Engine {
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
-      switchWindowMs: SWITCH_MAX_MS, lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
+      switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
       switchFrom: this.switching ? this.switching.from : null, switchTo: this.switching ? (this.switching.from === 0 ? 1 : 0) : null,
       ...(ms => ({ reloading: ms != null, reloadMs: ms, reloadTotalMs: this.reloading ? this.reloading.ms : null }))(this.reloadingMs()),
       hits: this.score ? this.score.hits : null, board: this.score ? this.score.board : null,
