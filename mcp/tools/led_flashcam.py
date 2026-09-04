@@ -74,47 +74,46 @@ def run(args):
     rec.wait(timeout=total + 15)
     local = out / f"flashcam-{time.strftime('%H%M%S')}.mp4"
     adb(args.serial, "pull", "/sdcard/flashcam.mp4", str(local), timeout=120)
-    sched = local.with_suffix(".json"); sched.write_text(json.dumps({"t0_note": "offsets from screenrecord process start", "schedule": schedule}, indent=1))
+    sched = local.with_suffix(".json"); sched.write_text(json.dumps({"t0_note": "offsets from screenrecord process start", "secs": total, "schedule": schedule}, indent=1))
     print(f"video {local} ({local.stat().st_size // 1024} KB)")
     analyze(str(local), str(sched), args.gap)
 
 
-def luma_series(video: str):
-    """Per-frame (t, max_luma, bright_px) via ffmpeg -> raw grey frames at 8 fps-scaled 160px wide (fast, enough for a flash)."""
+def change_series(video: str, secs: float):
+    """Per-video-frame CHANGE vs the run's median frame (ambient, the TV and the camera UI cancel out):
+    core = pixels > 200 above median (the blown-out LED core + its bloom), mid = pixels > 100. Frame-wide
+    counts at >40 are contaminated by the camera re-metering on a bright static paint, so they are not used."""
     import numpy as np
-    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,nb_frames,duration", "-of", "json", video], capture_output=True, text=True)
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", video], capture_output=True, text=True)
     info = json.loads(probe.stdout)["streams"][0]
-    w = 160; h = max(2, int(info["height"] * w / info["width"]) // 2 * 2)
-    # screenrecord's r_frame_rate tag is bogus (90000/1); the frames are variable-rate, so use count / duration
+    w = 270; h = max(2, int(info["height"] * w / info["width"]) // 2 * 2)
     p = subprocess.Popen(["ffmpeg", "-v", "error", "-i", video, "-vf", f"scale={w}:{h},format=gray", "-f", "rawvideo", "-"], stdout=subprocess.PIPE)
     frames = []
     while True:
         buf = p.stdout.read(w * h)
         if len(buf) < w * h:
             break
-        a = np.frombuffer(buf, dtype=np.uint8).reshape(h, w)
-        a = a[int(h * 0.15):int(h * 0.85), :]                      # the middle of the preview: skip the camera app's white UI bars
-        frames.append((int(a.max()), int((a > 200).sum()), int(a.mean())))
-    dur = float(info.get("duration") or 0) or (len(frames) / 30.0)
-    fps = len(frames) / dur if dur else 30.0
-    series = [(i / fps, mx, px) for i, (mx, px, _mean) in enumerate(frames)]
-    return series, fps
+        frames.append(np.frombuffer(buf, dtype=np.uint8).reshape(h, w).astype(np.int16))
+    F = np.stack(frames); n = len(F); fps = n / secs      # screenrecord's rate tag is bogus; frames / wall seconds
+    pos = np.clip(F - np.median(F, axis=0), 0, None).reshape(n, -1)
+    core = (pos > 200).sum(axis=1); mid = (pos > 100).sum(axis=1)
+    return [(i / fps, int(core[i]), int(mid[i])) for i in range(n)], fps
 
 
 def analyze(video: str, schedule_path: str, gap: float = 3.0):
-    series, fps = luma_series(video)
-    sched = json.loads(pathlib.Path(schedule_path).read_text())["schedule"]
-    base = sorted(s[1] for s in series)[len(series) // 10] if series else 0
-    print(f"\n{len(series)} video frames @ {fps:.1f} fps · dark baseline max-luma {base}")
-    print(f"{'offset':>7}  {'peak':>4}  {'px>200':>6}  {'at':>6}  frame")
+    meta = json.loads(pathlib.Path(schedule_path).read_text())
+    sched = meta["schedule"]; secs = float(meta.get("secs") or (sched[-1]["t"] + gap + 3 if sched else 25))
+    series, fps = change_series(video, secs)
+    print(f"\n{len(series)} video frames @ {fps:.0f} fps · change vs the median frame")
+    print(f"{'offset':>7}  {'core>200':>8}  {'mid>100':>7}  {'frames':>6}  {'at':>6}  frame")
     for ev in sched:
-        # screenrecord starts 1-2 s after the process; search a window that tolerates that (t-2.5 .. t+gap-0.5)
-        win = [s for s in series if ev["t"] - 2.5 <= s[0] <= ev["t"] + gap - 0.5]
+        win = [s for s in series if ev["t"] - 1.0 <= s[0] <= ev["t"] + gap - 0.6]     # non-overlapping windows; measured start lag was < 0.1 s
         if not win:
             print(f"{ev['t']:7.2f}  (no video frames in window)  {ev['frame']}"); continue
         peak = max(win, key=lambda s: (s[1], s[2]))
-        print(f"{ev['t']:7.2f}  {peak[1]:4d}  {peak[2]:6d}  {peak[0]:6.2f}  {ev['frame']}")
-    print("\nRead: peak = brightest pixel (0-255; 255 = saturated, then compare px>200 = how much of the frame saturated).")
+        dur = sum(1 for s in win if s[1] >= peak[1] * 0.5) if peak[1] else 0
+        print(f"{ev['t']:7.2f}  {peak[1]:8d}  {peak[2]:7d}  {dur:6d}  {peak[0]:6.2f}  {ev['frame']}")
+    print("\nRead: core = blown-out pixels (the LED + its bloom) at the peak; frames = how long it stayed above half the peak (60 fps).")
 
 
 def main(argv=None):
