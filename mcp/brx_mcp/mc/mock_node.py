@@ -178,7 +178,7 @@ class MockNode:
         self.emit({"type": "team_change", "tid": tid})
 
     def send_loadout_request(self, slot: str, kind: str, rid: str | None = None, try_: bool = False) -> None:
-        """A10 §4.2: pick <slot> <id> [try] — `kind` ∈ weapon|perk|none."""
+        """A10 §4.2: pick <slot> <id> [try] — `kind` ∈ weapon|perk|none; slot ∈ primary|secondary|perk (A14)."""
         body = {"node_id": self.node_id, "player_id": self.player_id, "slot": slot, "kind": kind}
         if rid:
             body["id"] = rid
@@ -430,7 +430,7 @@ class MockNode:
 # ---------------- CLI demo ----------------
 async def _repl(node: MockNode) -> None:
     print("commands: hit <num> <team> [dmg] | die <num> <team> | respawn | fire [n] | drop | up | "
-          "status | ready | pick <primary|secondary> <weapon_id|perk_id|none> [try] | browse [off] | quit")
+          "status | ready | pick <primary|secondary|perk> <weapon_id|perk_id|none> [try] | browse [off] | quit")
     loop = asyncio.get_running_loop()
     while True:
         line = await loop.run_in_executor(None, sys.stdin.readline)

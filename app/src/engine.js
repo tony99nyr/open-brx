@@ -87,7 +87,7 @@ export class Engine {
     this.tutorial = false; this.tutorialWeapon = null;
     // A10 — self-serve kitting (docs/spec/loadout.md §4)
     this.catalog = null;            // {weapons: WeaponView[], perks: PerkView[]} — arrives in `assign`
-    this.policy = null;             // {hud_select, primary:{choice, allowed_ids}, secondary:{choice, kinds, allowed_weapon_ids, allowed_perk_ids}}
+    this.policy = null;             // {hud_select, primary:{choice, allowed_ids}, secondary:{choice, kinds, allowed_weapon_ids}, perk:{choice, allowed_perk_ids}} (A14)
     this.browsing = false;          // the HUD's LOADOUT browser is open (reported to MC as loadout_browse)
     this.game = null;               // A10 §4.6: assign.game — what the BRIEFING screen shows
     this.briefSeen = false;         // the player tapped BUILD MY KIT ▸ on the briefing (reset when kit_open flips true)
@@ -281,7 +281,7 @@ export class Engine {
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();
-    if (this.browsing && !this.canPick('primary') && !this.canPick('secondary')) this.browse(false);   // A10: rules locked both slots while the browser was open
+    if (this.browsing && !this.canPick('primary') && !this.canPick('secondary') && !this.canPick('perk')) this.browse(false);   // A10: rules locked every slot while the browser was open
   }
 
   _applyConfig({ config, frames, roster }, why) {
@@ -332,17 +332,29 @@ export class Engine {
   /** The player's rights on a slot, from MC's per-player policy (never computed locally). */
   slotRule(slot) {
     const p = this.policy; if (!p) return null;
-    return slot === 'primary' ? p.primary : p.secondary;
+    return (slot === 'primary' || slot === 'secondary' || slot === 'perk') ? (p[slot] || null) : null;   // A14: three rules
   }
   canPick(slot) {
     const p = this.policy, r = this.slotRule(slot);
     return !!(p && p.hud_select && r && r.choice === 'player' && this.phase === 'kitted' && !this.ended && this.kitOpen());
   }
+  /** A14: what a pick would knock out of the OTHER slot, or null. Easy Reload (any perk with `effects.alt_reload`) takes the
+   *  ALT button, so it cannot ride with a second weapon: picking it drops the secondary; picking a secondary drops it.
+   *  The HUD asks for a second tap before sending (Tony 2026-09-04: "we should warn on that"). */
+  conflictFor(slot, kind, id) {
+    const lo = this.loadoutView();
+    const alt = row => !!(row && row.effects && row.effects.alt_reload);
+    if (slot === 'perk' && kind === 'perk' && lo.secondary && alt(this.perkRow(id))) return { slot: 'secondary', id: lo.secondary.weapon_id, name: lo.secondary.name };
+    if (slot === 'secondary' && kind === 'weapon' && lo.perk && alt(lo.perk)) return { slot: 'perk', id: lo.perk.perk_id, name: lo.perk.name };
+    return null;
+  }
   /** Tap a row = equip. `tryIt` (weapons only) also asks MC for the try-out. Returns false if the slot isn't ours. */
   requestLoadout(slot, kind, id = null, tryIt = false) {
     if (!this.canPick(slot)) { this.log(`pick refused locally: ${slot} is not player-choice`, 'le'); return false; }
     if (slot === 'primary' && kind !== 'weapon') return false;
-    if (kind === 'none' && slot !== 'secondary') return false;
+    if (slot === 'secondary' && kind !== 'weapon' && kind !== 'none') return false;   // A14: perks have their own slot
+    if (slot === 'perk' && kind !== 'perk' && kind !== 'none') return false;
+    if (kind === 'none' && slot === 'primary') return false;
     const body = { player_id: this.player && this.player.player_id, slot, kind };
     if (kind !== 'none') body.id = id;
     if (tryIt && kind === 'weapon') body.try = true;
@@ -358,10 +370,11 @@ export class Engine {
     this.report('loadout_browse', { player_id: this.player && this.player.player_id, open });
     this._changed();
   }
-  _loadoutAck({ slot, ok, reason, loadout }) {
+  _loadoutAck({ slot, ok, reason, dropped, loadout }) {
     if (loadout && this.player) this.player.loadout = loadout;   // MC's echo is the truth (applies on ok AND on a reject → reverts the optimistic row)
     const pk = this.pendingPick;
-    this.loadoutAck = { slot, ok: !!ok, reason: reason || null, t: this.now(), key: pk ? (pk.kind === 'none' ? 'none' : `${pk.kind}:${pk.id}`) : null };
+    this.loadoutAck = { slot, ok: !!ok, reason: reason || null, dropped: dropped || null, t: this.now(), key: pk ? (pk.kind === 'none' ? 'none' : `${pk.kind}:${pk.id}`) : null };   // A14: `dropped` = the other slot this pick knocked out
+    if (dropped) this.log(`pick ${slot} dropped ${dropped.slot} ${dropped.id}: ${reason || ''}`, 'lk');
     this.pendingPick = null;
     this._changed();
   }
@@ -374,10 +387,10 @@ export class Engine {
     const stub = id => ({ weapon_id: id, name: String(id).replace(/_/g, ' ') });
     const wrow = id => ({ kind: 'weapon', ...(this.weaponRow(id) || stub(id)) });
     const primary = ws[0] ? wrow(ws[0].weapon_id) : null;
-    let secondary = null;
-    if (ws[1]) secondary = wrow(ws[1].weapon_id);
-    else if (lo.perk) secondary = { kind: 'perk', ...(this.perkRow(lo.perk) || { perk_id: lo.perk, name: String(lo.perk).replace(/_/g, ' '), effects: {} }) };
-    return { primary, secondary };
+    const secondary = ws[1] ? wrow(ws[1].weapon_id) : null;
+    // A14: the perk is its own slot beside the weapons
+    const perk = lo.perk ? { kind: 'perk', ...(this.perkRow(lo.perk) || { perk_id: lo.perk, name: String(lo.perk).replace(/_/g, ' '), effects: {} }) } : null;
+    return { primary, secondary, perk };
   }
 
   setReady(ready) {
@@ -1200,7 +1213,7 @@ export class Engine {
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
       // A10 self-serve kitting
       catalog: this.catalog, policy: this.policy, loadout: this.loadoutView(), browsing: this.browsing, loadoutAck: this.loadoutAck, pendingPick: this.pendingPick,
-      canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), tryoutSeen: this.tryoutSeen,
+      canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), canPickPerk: this.canPick('perk'), tryoutSeen: this.tryoutSeen,
       game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen,
     };
   }

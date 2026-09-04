@@ -86,10 +86,15 @@ def _pol(**patch):
 
 
 def test_sidearm_kind_narrows_the_secondary_pool_to_the_pistols():
-    lp = P.pool(_pol(secondary={"kinds": ["sidearm", "perk"]}), W, PK)
-    assert lp["secondary_weapons"] == list(PISTOLS) and len(lp["secondary_perks"]) == len(PK)
     lp = P.pool(_pol(secondary={"kinds": ["sidearm"]}), W, PK)
-    assert lp["secondary_weapons"] == list(PISTOLS) and lp["secondary_perks"] == []
+    assert lp["secondary_weapons"] == list(PISTOLS) and len(lp["perks"]) == len(PK)      # A14: the perks are their own slot
+    lp = P.pool(_pol(secondary={"kinds": ["sidearm"]}, perk={"choice": "off"}), W, PK)
+    assert lp["secondary_weapons"] == list(PISTOLS) and lp["perks"] == []
+    # the pre-A14 spelling ("perk" inside slot 2's kinds) is refused, not read (S6: no legacy)
+    try:
+        _pol(secondary={"kinds": ["sidearm", "perk"]}); raise AssertionError("read a pre-A14 secondary rule")
+    except ValueError:
+        pass
     # "weapon" already includes the pistols — adding "sidearm" beside it changes nothing
     a = P.pool(_pol(secondary={"kinds": ["weapon"]}), W, PK)
     b = P.pool(_pol(secondary={"kinds": ["weapon", "sidearm"]}), W, PK)
@@ -116,12 +121,12 @@ def test_pistol_round_on_the_primary_slot():
 
 
 def test_phone_path_copy_for_a_sidearm_only_slot():
-    pol = _pol(secondary={"kinds": ["sidearm", "perk"]})
+    pol = _pol(secondary={"kinds": ["sidearm"]})
     lp = P.pool(pol, W, PK)
     assert P.check_request(pol, lp, "secondary", "weapon", "usp", W, PK) == (True, None)
     ok, why = P.check_request(pol, lp, "secondary", "weapon", "smg", W, PK)
     assert not ok and why == "Only sidearms go in the secondary slot this game"
-    assert P.check_request(pol, lp, "secondary", "perk", "body_armor", W, PK) == (True, None)
+    assert P.check_request(pol, lp, "perk", "perk", "body_armor", W, PK) == (True, None)
     # a pistol is requested as kind "weapon" — "sidearm" is not a request kind
     ok, why = P.check_request(pol, lp, "secondary", "sidearm", "usp", W, PK)
     assert not ok and why == "Unknown pick"
@@ -129,16 +134,17 @@ def test_phone_path_copy_for_a_sidearm_only_slot():
     ok, why = P.validate_loadout(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}, W, PK)
     assert not ok and why == "Only sidearms go in the secondary slot this game"
     assert P.validate_loadout(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "deagle"}]}, W, PK) == (True, None)
-    # perks-only still reads as before
-    pol2 = _pol(secondary={"kinds": ["perk"]})
+    # "no second weapon, perks open" is spelled with the perk rule now (A14)
+    pol2 = _pol(secondary={"choice": "off"})
+    assert pol2["perk"]["choice"] == "player" and P.pool(pol2, W, PK)["secondary_weapons"] == []
     ok, why = P.check_request(pol2, P.pool(pol2, W, PK), "secondary", "weapon", "usp", W, PK)
-    assert not ok and why == "A weapon can't go in the secondary slot this game"
+    assert not ok and why == "No secondary this game"
 
 
 def test_node_view_carries_the_kind_so_the_hud_can_label_the_chip():
-    pol = _pol(secondary={"kinds": ["sidearm", "perk"]})
+    pol = _pol(secondary={"kinds": ["sidearm"]})
     nv = P.node_view(pol, P.pool(pol, W, PK))
-    assert nv["secondary"]["kinds"] == ["sidearm", "perk"]
+    assert nv["secondary"]["kinds"] == ["sidearm"] and nv["perk"]["allowed_perk_ids"] == [p["perk_id"] for p in PK]
     assert nv["secondary"]["allowed_weapon_ids"] == list(PISTOLS)
 
 
@@ -146,4 +152,4 @@ def test_open_preset_is_untouched_by_the_new_kind():
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert set(PISTOLS) <= set(lp["primary"]) and set(PISTOLS) <= set(lp["secondary_weapons"])
     assert P.merge(P.preset_rules("open"), {}) ["preset"] == "open"
-    assert _pol(secondary={"kinds": ["sidearm", "perk"]})["preset"] == "custom"
+    assert _pol(secondary={"kinds": ["sidearm"]})["preset"] == "custom"

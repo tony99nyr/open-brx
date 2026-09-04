@@ -74,7 +74,7 @@ export class Hud {
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.cam = false; this.mcUrl = '';
-    this.lo = { tab: 'primary', filter: 'weapons', focus: null };   // LOADOUT browser UI state (which tab / filter / row is in the detail pane)
+    this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
     this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
@@ -126,10 +126,10 @@ export class Hud {
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // A10 loadout browser + slot plates
-      st.browsing, st.canPickPrimary, st.canPickSecondary, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus,
+      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
       st.kitOpen, st.briefSeen, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
-      st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && (st.loadout.secondary.weapon_id || st.loadout.secondary.perk_id),
+      st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length)].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
     const panel = st.phase === 'kitted' && ((st.ended && !st.endAck) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
     const screen = st.phase === 'live' ? 'live' : st.phase === 'armed' ? 'armed' : st.phase === 'idle' ? 'idle' : panel ? (st.browsing ? 'lo' : 'panel') : 'lobby';
@@ -205,11 +205,12 @@ export class Hud {
     const _mag = st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : null);
     const _res = st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : null);
     const ammoLine = (_mag == null && _res == null) ? 'SET AT ARM TIME'
-      : `<span class="nw">MAG ${_mag != null ? _mag : '—'} · RESERVE ${_res != null ? _res : '—'}</span>`;   // one line, never a dangling separator (breaker 2026-09-03)
+      : `<span class="nw">MAG ${_mag != null ? _mag : '—'} · RES ${_res != null ? _res : '—'}</span>`;   // one line, never a dangling separator (breaker 2026-09-03); RES: the A14 plate is 250px
+    // A14: three plates — PRIMARY / SECONDARY / PERK; HP · ARMOR moved up into the header line
     const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
-        ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}
-        <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div>
-        ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
+        ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}${this._slotPlate(st, 'perk', mode)}
+        ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
+    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>${st.playerNum ? ` · #${st.playerNum}` : ''}</span>` : '';
     let foot, status;
     if (mode === 'connected') {
       foot = st.wsState === 'bound'
@@ -231,7 +232,7 @@ export class Hud {
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
-      <div class="top"><span class="cs">${cs}</span><span class="row">${team}<span class="gid">${nm}-${tail}</span></span></div>${plates}
+      <div class="top"><span class="cs">${cs}</span><span class="row">${team}<span class="gid">${nm}-${tail}</span>${hpar}</span></div>${plates}
       <div class="tr">${status}</div><div class="foot">${foot}</div></div>`;
   }
 
@@ -247,7 +248,7 @@ export class Hud {
     const hp = g.health ? `${g.health.max_hp} HP · ${g.health.max_armor} ARMOR` : '—';
     const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
     const rows = [['TEAMS', g.teams_text || '—'], ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
-    const locked = !st.canPickPrimary && !st.canPickSecondary;
+    const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
     const cta = locked ? 'SEE MY KIT ▸' : 'BUILD MY KIT ▸';
     const sub = locked ? 'Your kit is set by the host — take a look.' : 'Pick your weapons when you are ready.';
     return `<div class="lobby bf" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
@@ -264,58 +265,64 @@ export class Hud {
   }
 
   // ---------- A10: slot plates + the LOADOUT browser (docs/spec/loadout.md §4.5) ----------
+  /** One KITTED plate. `slot` ∈ primary | secondary | perk (A14: the perk is its own slot). */
   _slotPlate(st, slot, mode, ammoLine) {
-    const lo = st.loadout || {}; const item = slot === 'primary' ? lo.primary : lo.secondary;
-    const rule = st.policy ? (slot === 'primary' ? st.policy.primary : st.policy.secondary) : null;
-    const can = slot === 'primary' ? st.canPickPrimary : st.canPickSecondary;
+    const lo = st.loadout || {}; const item = lo[slot] || null;
+    const rule = st.policy ? st.policy[slot] : null;
+    const can = slot === 'primary' ? st.canPickPrimary : slot === 'secondary' ? st.canPickSecondary : st.canPickPerk;
     const locked = mode === 'kitted' && st.policy && !can && rule && rule.choice !== 'player';
     const k = slot.toUpperCase();
+    const noneSub = slot === 'perk' ? (rule && rule.choice === 'off' ? 'NO PERKS' : 'NO PERK') : (rule && rule.choice === 'off' ? 'NO SECONDARY' : 'NO ALT-FIRE');
     let art = '', h = '', sub = '';
-    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item)); }   // the slot label carries "PERK"; the line is 134px wide
-    else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RESERVE ${item.reserve != null ? item.reserve : '—'}</span>`; }
-    else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = rule && rule.choice === 'off' ? 'NO SECONDARY' : 'NO ALT-FIRE'; }
-    if (locked) sub = (rule.choice === 'fixed' ? 'FIXED BY THE HOST' : rule.choice === 'off' ? 'NO SECONDARY' : 'SET BY THE HOST');
+    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item)); }   // the line is ~150px wide
+    else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RES ${item.reserve != null ? item.reserve : '—'}</span>`; }
+    else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = noneSub; }
+    if (locked) sub = (rule.choice === 'fixed' ? 'FIXED BY THE HOST' : rule.choice === 'off' ? noneSub : 'SET BY THE HOST');
     const lock = locked ? `<span class="lock" aria-label="locked">${LOCK_SVG}</span>` : (can ? '<span class="cue">▸</span>' : '');
-    return `<div class="plate wart slot ${can ? 'tap' : ''} ${locked ? 'locked' : ''}" ${can ? `data-act="onOpenLoadout" data-arg="${slot}"` : ''}>${art}<div class="in"><div class="k">${item && item.kind === 'perk' ? 'PERK' : k}${lock}</div><div class="h">${h.toUpperCase()}</div><div class="s">${sub}</div></div></div>`;
+    return `<div class="plate wart slot ${slot === 'perk' ? 'pk' : ''} ${can ? 'tap' : ''} ${locked ? 'locked' : ''}" data-slot="${slot}" ${can ? `data-act="onOpenLoadout" data-arg="${slot}"` : ''}>${art}<div class="in"><div class="k">${k}${lock}</div><div class="h">${h.toUpperCase()}</div><div class="s">${sub}</div></div></div>`;
   }
 
   /** Rows for a tab: [{key, kind, id, row, allowed}] in catalog order, filtered to the player's pool. */
   _loRows(st, tab) {
     const cat = st.catalog || { weapons: [], perks: [] }; const rule = st.policy ? st.policy[tab] : null;
     if (tab === 'primary') { const ok = new Set((rule && rule.allowed_ids) || []); return (cat.weapons || []).filter(w => ok.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })); }
-    const okW = new Set((rule && rule.allowed_weapon_ids) || []), okP = new Set((rule && rule.allowed_perk_ids) || []);
-    const kinds = (rule && rule.kinds) || ['weapon', 'perk'];
-    if (this.lo.filter === 'perks') return kinds.includes('perk') ? (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p })) : [];
+    if (tab === 'perk') { const okP = new Set((rule && rule.allowed_perk_ids) || []); return (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p })); }   // A14: its own tab
+    const okW = new Set((rule && rule.allowed_weapon_ids) || []);
+    const kinds = (rule && rule.kinds) || ['weapon'];
     return (kinds.includes('weapon') || kinds.includes('sidearm')) ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];   // a pistol is still requested as kind "weapon"
   }
   _loadout(st) {
-    const tab = this.lo.tab === 'secondary' ? 'secondary' : 'primary';
-    const lo = st.loadout || {}; const equipped = tab === 'primary' ? lo.primary : lo.secondary;
-    const eqKey = equipped ? (equipped.kind === 'perk' ? 'perk:' + equipped.perk_id : 'weapon:' + equipped.weapon_id) : (tab === 'secondary' ? 'none' : null);
-    const can = tab === 'primary' ? st.canPickPrimary : st.canPickSecondary;
+    const tab = this.lo.tab === 'secondary' ? 'secondary' : this.lo.tab === 'perk' ? 'perk' : 'primary';
+    const lo = st.loadout || {}; const equipped = lo[tab] || null;
+    const eqKey = equipped ? (equipped.kind === 'perk' ? 'perk:' + equipped.perk_id : 'weapon:' + equipped.weapon_id) : (tab === 'primary' ? null : 'none');
+    const canOf = t => t === 'primary' ? st.canPickPrimary : t === 'secondary' ? st.canPickSecondary : st.canPickPerk;
+    const can = canOf(tab);
     const rule = st.policy ? st.policy[tab] : null;
+    const cf = this.lo.confirm && this.lo.confirm.tab === tab ? this.lo.confirm : null;   // A14: the pending two-tap confirm
     const pend = st.pendingPick && st.pendingPick.slot === tab ? (st.pendingPick.kind === 'none' ? 'none' : `${st.pendingPick.kind}:${st.pendingPick.id}`) : null;
     const ack = st.loadoutAck && st.loadoutAck.slot === tab ? st.loadoutAck : null;
     const rows = this._loRows(st, tab);
-    const tabBtn = (t, item) => { const on = t === tab; const r = st.policy ? st.policy[t] : null; const lk = st.policy && !(t === 'primary' ? st.canPickPrimary : st.canPickSecondary) && r && r.choice !== 'player';
-      const nm = item ? item.name : (t === 'secondary' ? 'NONE' : '—');
+    const tabBtn = (t, item) => { const on = t === tab; const r = st.policy ? st.policy[t] : null; const lk = st.policy && !canOf(t) && r && r.choice !== 'player';
+      const nm = item ? item.name : (t === 'primary' ? '—' : 'NONE');
       return `<button class="lotab ${on ? 'on' : ''} ${lk ? 'locked' : ''}" ${lk ? 'disabled aria-disabled="true"' : ''} data-act="onLoTab" data-arg="${t}"><span class="unskew"><span class="k">${t.toUpperCase()}${lk ? ' ' + LOCK_SVG : ''}</span><span class="v">${esc(nm).toUpperCase()}</span></span></button>`; };
     const name = r => r.kind === 'perk' ? r.row.name : r.row.name;
     const focusKey = (this.lo.focus && rows.some(r => r.key === this.lo.focus)) ? this.lo.focus : (eqKey && rows.some(r => r.key === eqKey) ? eqKey : (rows[0] ? rows[0].key : null));
     const focus = rows.find(r => r.key === focusKey) || null;
     let list = '';
     if (!can) {
-      const why = rule && rule.choice === 'fixed' ? 'Fixed for this game — the host set it in Mission Control.' : rule && rule.choice === 'off' ? 'No secondary this game.' : 'The host assigns this slot from Mission Control.';
+      const why = rule && rule.choice === 'fixed' ? 'Fixed for this game — the host set it in Mission Control.' : rule && rule.choice === 'off' ? (tab === 'perk' ? 'No perks this game.' : 'No secondary this game.') : 'The host assigns this slot from Mission Control.';
       list = `<div class="lolock"><div class="big">${LOCK_SVG} SET BY THE HOST</div><div class="s">${why}</div>${equipped ? `<div class="cur">${esc(equipped.name).toUpperCase()}</div>` : ''}</div>`;
     } else {
-      const nCount = { weapons: ((rule && rule.allowed_weapon_ids) || []).length, perks: ((rule && rule.allowed_perk_ids) || []).length };
-      const filt = tab === 'secondary' ? `<div class="lofilt">${['weapons', 'perks'].filter(f => !rule || !rule.kinds || (f === 'perks' ? rule.kinds.includes('perk') : (rule.kinds.includes('weapon') || rule.kinds.includes('sidearm')))).map(f => `<button class="fch ${this.lo.filter === f ? 'on' : ''}" data-act="onLoFilter" data-arg="${f}"><span class="unskew">${f === 'weapons' && sidearmOnly(rule) ? 'SIDEARMS' : f.toUpperCase()} · ${nCount[f]}</span></button>`).join('')}<button class="fch none ${eqKey === 'none' && pend == null ? 'on' : ''} ${pend === 'none' ? 'pend' : ''}" data-act="onLoNone"><span class="unskew">NONE${eqKey === 'none' ? ' ✓' : ''}</span></button></div>` : '';
+      // A14: slot 2 is weapons only (its chip reads WEAPONS or SIDEARMS); the perk tab has its own PERKS chip; both carry NONE
+      const noneBtn = `<button class="fch none ${eqKey === 'none' && pend == null ? 'on' : ''} ${pend === 'none' ? 'pend' : ''}" data-act="onLoNone" data-arg="${tab}"><span class="unskew">NONE${eqKey === 'none' ? ' ✓' : ''}</span></button>`;
+      const filt = tab === 'secondary' ? `<div class="lofilt"><button class="fch on" data-act="onLoFilter" data-arg="weapons"><span class="unskew">${sidearmOnly(rule) ? 'SIDEARMS' : 'WEAPONS'} · ${rows.length}</span></button>${noneBtn}</div>`
+        : tab === 'perk' ? `<div class="lofilt"><button class="fch on" data-act="onLoFilter" data-arg="perks"><span class="unskew">PERKS · ${rows.length}</span></button>${noneBtn}</div>` : '';
       const head = tab === 'primary' ? `<div class="locount">${rows.length} WEAPON${rows.length === 1 ? '' : 'S'} · SCROLL FOR MORE</div>` : '';
       list = head + filt + (rows.length ? rows.map(r => {
-        const eq = r.key === eqKey && !pend, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key);
+        const eq = r.key === eqKey && !pend, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
         const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
         const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
-        return `<div class="lrow ${eq ? 'eq' : ''} ${pn ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : pn ? '…' : ''}</span></div>`;
+        return `<div class="lrow ${eq ? 'eq' : ''} ${pn ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : pn ? '…' : wn ? '▲' : ''}</span></div>`;
       }).join('') : '<div class="small" style="padding:14px 4px">Nothing to pick here for this game.</div>');
     }
     // detail pane
@@ -325,11 +332,13 @@ export class Hud {
       const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
-    } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm or a perk — or leave it on NONE.' : 'Pick a second weapon or a perk — or leave it on NONE.') : 'Pick your main weapon.'}</div>`;
-    const ackChip = ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? 'EQUIPPED ✓' : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
+    } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
+    // A14: the two-tap confirm outranks everything else in the action bar; an ack that dropped the other slot says so
+    const ackChip = cf ? `<span class="ackchip warn cf"><span class="unskew">${esc(cf.text).toUpperCase()} · TAP AGAIN</span></span>`
+      : ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : '')) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
     const canTry = can && focus && focus.kind === 'weapon';
     return `<div class="lobby lo"><div class="scan"></div><div class="edgeglow"></div>
-      <div class="lotop">${tabBtn('primary', lo.primary)}${tabBtn('secondary', lo.secondary)}<span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span></div>
+      <div class="lotop">${tabBtn('primary', lo.primary)}${tabBtn('secondary', lo.secondary)}${tabBtn('perk', lo.perk)}<span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span></div>
       <div class="lobody"><div class="lolist" data-tab="${tab}">${list}</div><div class="lodetail">${detail}</div></div>
       <div class="lobar"><span class="ackslot">${ackChip}</span>${canTry ? `<button class="lobtn try" data-act="onTryIt"><span class="unskew">TRY IT ▸</span></button>` : ''}<button class="lobtn done" data-act="onLoDone"><span class="unskew">CLOSE</span></button></div></div>`;
   }
@@ -706,7 +715,7 @@ export class Hud {
     const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th" style="background-image:url('assets/weapons/${esc(it.weapon_id)}.jpg')"></span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
     el.innerHTML = `<div class="wipe"></div><div class="slash"></div><div class="beam"></div>
       <div class="r"><span class="t">REDEPLOYED</span><span class="h">WEAPONS HOT ▸▸▸</span><span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
-        <div class="kit">${ki('PRIMARY', lo.primary)}${ki(lo.secondary && lo.secondary.kind === 'perk' ? 'PERK' : 'SECONDARY', lo.secondary)}</div></div>
+        <div class="kit">${ki('PRIMARY', lo.primary)}${ki('SECONDARY', lo.secondary)}${ki('PERK', lo.perk)}</div></div>
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
     this._flash();
     const live = this._swap('redeploy', el, 1700, 2100);

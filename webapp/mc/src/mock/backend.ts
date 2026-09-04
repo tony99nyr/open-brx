@@ -4,7 +4,7 @@ import type {
   RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, WeaponView,
 } from '../api/types';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
-import { PRESETS, apply as applyPolicy, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
+import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 
 const now = () => Date.now();
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
@@ -13,12 +13,14 @@ const BUILTIN_SNIPER = (): SavedGame => {
   ffa.health = { ...ffa.health, max_armor: 0 };
   ffa.loadout_policy = { preset: 'custom', hud_select: false,
     primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
-    secondary: { choice: 'fixed', kinds: ['weapon', 'perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'extended_mags' } };
+    secondary: { choice: 'off', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null },
+    perk: { choice: 'fixed', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'extended_mags' } };   // A14: the perk is its own slot
   return { preset_id: 'builtin:silenced_sniper', name: 'Silenced Sniper', builtin: true, created_t: 0, updated_t: 0, config: ffa,
     desc: 'Everyone gets the bolt-action sniper with extended mags, no armor — one shot kills. No teams, no picking. (Fire-sound "silencing" waits on the weapon-tuning spec.)' };
 };
-// every slot-2 state the Kit page can show: weapon / perk / empty
+// every kit shape the Kit page can show: weapon + perk (A14: all three slots), perk only, empty, weapon only
 const DEMO_LOADOUTS: (() => Loadout)[] = [
+  () => ({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'deagle' }], perk: 'quick_switch' }),
   () => ({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }], perk: null }),
   () => ({ weapons: [{ weapon_id: 'burst_rifle' }], perk: 'body_armor' }),
   () => ({ weapons: [{ weapon_id: 'smg' }], perk: null }),
@@ -126,7 +128,7 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, PERKS);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
@@ -292,7 +294,7 @@ export class MockBackend implements Api {
 
   async previewPool(policy: Partial<LoadoutPolicy>, mode?: string) {
     const base = policy.preset && policy.preset !== 'custom' ? clone(PRESETS[policy.preset]) : clone(defaultPolicy(mode ?? this.config.mode));
-    const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) } };
+    const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) }, perk: { ...base.perk, ...(policy.perk ?? {}) } };
     merged.preset = policy.preset === 'custom' ? 'custom' : presetOf(merged);
     return { policy: merged, pool: poolOf(merged, WEAPONS, PERKS) };
   }
@@ -314,6 +316,7 @@ export class MockBackend implements Api {
       const base = lp.preset && lp.preset !== 'custom' ? clone(PRESETS[lp.preset]) : clone(prevPol);
       if (lp.primary) base.primary = { ...base.primary, ...lp.primary };
       if (lp.secondary) base.secondary = { ...base.secondary, ...lp.secondary };
+      if (lp.perk) base.perk = { ...base.perk, ...lp.perk };
       if (lp.hud_select != null) base.hud_select = lp.hud_select;
       base.preset = lp.preset === 'custom' ? 'custom' : presetOf(base);
       this.config.loadout_policy = base;
@@ -331,7 +334,7 @@ export class MockBackend implements Api {
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: p.team_id ?? null, node_id: null,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool()), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
@@ -343,14 +346,15 @@ export class MockBackend implements Api {
     if (patch.loadout) {
       const lo = patch.loadout, pol = this.config.loadout_policy, pl = this.pool();
       if (!lo.weapons?.length) throw new Error('A primary weapon is required');
-      if (lo.weapons.length > 1 && lo.perk) throw new Error('Slot 2 is a weapon OR a perk, not both');
       const r0 = reject(pol, pl, 'primary', 'weapon', lo.weapons[0].weapon_id, true);
       if (r0 && lo.weapons[0].weapon_id !== p.loadout.weapons[0]?.weapon_id) throw new Error(r0);
-      const secId = lo.weapons[1]?.weapon_id ?? lo.perk ?? null;
-      const secKind = lo.weapons[1] ? 'weapon' : lo.perk ? 'perk' : 'none';
-      const prevSec = p.loadout.weapons[1]?.weapon_id ?? p.loadout.perk ?? null;
-      const r1 = reject(pol, pl, 'secondary', secKind, secId, true);
-      if (r1 && secId !== prevSec) throw new Error(r1);
+      const secId = lo.weapons[1]?.weapon_id ?? null;
+      const r1 = reject(pol, pl, 'secondary', secId ? 'weapon' : 'none', secId, true);
+      if (r1 && secId !== (p.loadout.weapons[1]?.weapon_id ?? null)) throw new Error(r1);
+      const perkId = lo.perk ?? null;                                     // A14: the perk is its own slot
+      const r2 = reject(pol, pl, 'perk', perkId ? 'perk' : 'none', perkId, true);
+      if (r2 && perkId !== (p.loadout.perk ?? null)) throw new Error(r2);
+      if (conflict(lo, PERKS)) throw new Error(`${PERKS.find(k => k.perk_id === lo.perk)?.name ?? lo.perk} takes the ALT button, so it can't ride with a second weapon`);
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];

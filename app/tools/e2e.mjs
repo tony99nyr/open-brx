@@ -279,7 +279,7 @@ await step('A10 §4.6: hudA lands on the BRIEFING (game name + loadout line) →
   expect((await hudA.locator('.bf .bfload').count()) > 0, 'briefing has no loadout line');
   await shot(hudA, 'hudA-briefing'); await tapAudit(hudA, 'hud-briefing'); await textAudit(hudA, 'hud-briefing');
   await hudA.click('[data-act="onBriefDone"]');
-  await until(async () => (await hudA.locator('.plate.slot').count()) === 2 && (await hudA.locator('[data-act="onReady"]').count()) > 0, 5000, 'plates + READY UP after the briefing');
+  await until(async () => (await hudA.locator('.plate.slot').count()) === 3 && (await hudA.locator('[data-act="onReady"]').count()) > 0, 5000, 'plates + READY UP after the briefing');
   expect((await hudA.locator('[data-act="onBriefing"]').count()) > 0, 'no BRIEFING button on the kitted screen');
   console.log('    briefing for mode', g, '→', nm.trim());
 });
@@ -291,7 +291,7 @@ await step('hudB joins on the fast path (?mc=)', async () => {
 await step('hudB: BUILD MY KIT ▸ (through the briefing) so the plates are up for the rest of the run', async () => {
   await until(async () => (await hudB.locator('[data-act="onBriefDone"]').count()) > 0, 6000, 'hudB briefing');
   await hudB.click('[data-act="onBriefDone"]');
-  await until(async () => (await hudB.locator('.plate.slot').count()) === 2, 5000, 'hudB plates');
+  await until(async () => (await hudB.locator('.plate.slot').count()) === 3, 5000, 'hudB plates');
 });
 await step('MC shows both nodes LINKED on Kit', async () => {
   await until(async () => (await mc.locator('text=LINKED').count()) >= 1, 8000, 'LINKED badge');
@@ -350,10 +350,10 @@ await step('A10 §4.1: host back on GAMES (phase build) → phones show SETTING 
   await api('POST', '/api/phase', { phase: 'kit' });
   await until(async () => (await hudA.locator('.bf .bfname').count()) > 0, 8000, 'briefing after CONTINUE to KIT');
   await hudA.click('[data-act="onBriefDone"]');
-  await until(async () => (await hudA.locator('.plate.slot').count()) === 2, 5000, 'plates back');
+  await until(async () => (await hudA.locator('.plate.slot').count()) === 3, 5000, 'plates back');
   await until(async () => (await hudB.locator('[data-act="onBriefDone"]').count()) > 0, 6000, 'hudB briefing');
   await hudB.click('[data-act="onBriefDone"]');
-  await until(async () => (await hudB.locator('.plate.slot').count()) === 2, 5000, 'hudB plates back');
+  await until(async () => (await hudB.locator('.plate.slot').count()) === 3, 5000, 'hudB plates back');
 });
 await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "16 OF 21", Rocket tile disabled', async () => {
   cfgBeforeRules = (await st()).config;
@@ -386,14 +386,13 @@ await step('(c) hudA TRY IT → MC TRYING SMG → try-out panel; DONE returns to
   await hudA.click('[data-act="onTryDone"]');
   await until(async () => (await hudA.locator('.lo .lolist').count()) > 0, 5000, 'browser back after DONE');
 });
-await step('(d) hudA SECONDARY → PERKS → Body Armor → MC card + roster show BODY ARMOR', async () => {
-  await hudA.click('.lotab[data-arg="secondary"]');
-  await hudA.click('.fch[data-arg="perks"]');
+await step('(d) hudA PERK tab → Body Armor → MC PERK card + roster show BODY ARMOR (A14: the secondary stays)', async () => {
+  await hudA.click('.lotab[data-arg="perk"]');
   await hudA.click('.lrow[data-arg="perk:body_armor"]');
   await until(async () => { const a = await hudA.evaluate(() => window.brx.engine.loadoutAck); return a && a.ok && a.key === 'perk:body_armor'; }, 6000, 'ack for the perk');
   await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).loadout.perk === 'body_armor', 5000, 'server loadout.perk');
   await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('◆ BODY ARMOR'), 6000, 'roster ◆ BODY ARMOR');
-  expect((await mc.locator('text=BODY ARMOR').count()) >= 2, 'secondary card does not show BODY ARMOR');
+  expect((await mc.locator('text=BODY ARMOR').count()) >= 2, 'PERK card does not show BODY ARMOR');
   await shot(hudA, 'hudA-loadout-perk'); await shot(mc, 'kit-phone-perk');
 });
 await step('(e) no heavy is listed on the phone under NO HEAVIES', async () => {
@@ -422,7 +421,7 @@ await step('(g) GAMES: play the saved "Silenced Sniper" → both phones padlocke
   await playCard('Silenced Sniper');
   await until(async () => { const c = (await st()).config; return c.mode === 'ffa' && c.loadout_policy.primary.choice === 'fixed' && c.loadout_policy.primary.fixed_id === 'sniper_rifle'; }, 6000, 'silenced sniper applied');
   for (const [pg, nm] of [[hudA, 'hudA'], [hudB, 'hudB']]) {
-    await until(async () => (await pg.locator('.plate.slot.locked').count()) === 2, 8000, nm + ' locked plates');
+    await until(async () => (await pg.locator('.plate.slot.locked').count()) === 3, 8000, nm + ' locked plates');
     expect((await pg.locator('text=FIXED BY THE HOST').count()) > 0, nm + ' missing FIXED BY THE HOST');
   }
   // The "N LOADOUTS RESET BY <game name>" notice must survive the venue re-assert PUT (server keeps _policy_notice
@@ -492,7 +491,7 @@ await step('(h3) copy "e2e test" → play the COPY → the copy\'s card is PLAYI
     await until(async () => (await mc.locator(`div[role="button"][aria-label="play ${nm}"]`).count()) === 0, 6000, nm + ' removed');
   }
 });
-await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster line; PERKS tab → Extended Mags → card', async () => {
+await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster line; PERK card → Extended Mags → card (A14: the weapon stays)', async () => {
   await nav(1);
   await playCard('FREE-FOR-ALL');          // back to NO HEAVIES rules (player picks)
   await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'no_heavies');
@@ -500,16 +499,16 @@ await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster 
   await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
   await mc.locator('div[role="button"]:has-text("SECONDARY")').first().click();
   await until(async () => (await mc.locator('text=ARSENAL // SECONDARY').count()) > 0, 6000, 'arsenal shows the SECONDARY slot');
-  await mc.locator('button:has-text("WEAPONS")').first().click();            // the arsenal remembers PERKS when a perk is equipped
   await until(async () => (await mc.locator('div[role="button"][aria-label*="Suppressor"]').count()) > 0, 6000, 'weapon tiles for slot 2');
   await mc.locator('div[role="button"][aria-label*="Suppressor"]').first().click();
   await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.weapons[1]?.weapon_id === 'suppressor'; }, 6000, 'server slot 2 = suppressor');
   await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('SUPPRESSOR'), 6000, 'SECONDARY card shows SUPPRESSOR');
   await until(async () => /SUPPRESSOR/.test(await mc.locator('div[role="button"]:has-text("BRAVO")').first().textContent()), 6000, 'roster line shows the secondary');
-  await mc.locator('button:has-text("PERKS")').first().click();
+  await mc.locator('div[role="button"][aria-pressed]:has-text("PERK")').first().click();     // A14: the PERK card opens the perk arsenal
+  await until(async () => (await mc.locator('text=ARSENAL // PERK').count()) > 0, 6000, 'arsenal shows the PERK slot');
   await mc.locator('div[role="button"][aria-label="Extended Mags perk"]').first().click();
-  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.perk === 'extended_mags' && p.loadout.weapons.length === 1; }, 6000, 'server perk = extended_mags, slot-2 weapon cleared');
-  await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('EXTENDED MAGS'), 6000, 'SECONDARY card shows EXTENDED MAGS');
+  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.perk === 'extended_mags' && p.loadout.weapons[1]?.weapon_id === 'suppressor'; }, 6000, 'server perk = extended_mags AND slot-2 weapon kept (A14)');
+  await until(async () => (await mc.locator('div[role="button"][aria-pressed]:has-text("PERK")').first().textContent()).includes('EXTENDED MAGS'), 6000, 'PERK card shows EXTENDED MAGS');
   await until(async () => /◆ EXTENDED MAGS/.test(await mc.locator('div[role="button"]:has-text("BRAVO")').first().textContent()), 6000, 'roster ◆ EXTENDED MAGS');
   // Picking a perk leaves the slot-2 WEAPON try-out running with no END TRY-OUT in sight (the perk hero has none) —
   // recorded as a UI finding; the host has to re-focus a weapon card to end it.
@@ -520,13 +519,12 @@ await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster 
   await shot(mc, 'kit-secondary-host');
 });
 await step('(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "SIDEARMS · 3", only pistol tiles, hint says SIDEARM; a pistol equips; rules restored', async () => {
-  await api('PUT', '/api/config', { loadout_policy: { secondary: { kinds: ['sidearm', 'perk'] } } });
+  await api('PUT', '/api/config', { loadout_policy: { secondary: { kinds: ['sidearm'] } } });
   await until(async () => JSON.stringify((await st()).loadout_pool.secondary_weapons) === JSON.stringify(['glock', 'usp', 'deagle']), 6000, 'server pool = the three pistols');
   await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
   await mc.locator('div[role="button"]:has-text("SECONDARY")').first().click();
-  await until(async () => (await mc.locator('button:has-text("SIDEARMS · 3")').count()) > 0, 6000, 'arsenal Seg reads SIDEARMS · 3');
+  await until(async () => (await mc.locator('text=ARSENAL // SECONDARY · 3 SIDEARMS').count()) > 0, 6000, 'arsenal header reads 3 SIDEARMS');   // A14: no kind Seg on slot 2 any more
   expect((await mc.locator('button:has-text("WEAPONS ·")').count()) === 0, 'a WEAPONS chip should not show under a sidearm-only rule');
-  await mc.locator('button:has-text("SIDEARMS · 3")').first().click();
   await until(async () => (await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').count()) > 0, 6000, 'pistol tiles for slot 2');
   expect((await mc.locator('text=SLOT 2 IS A SIDEARM').count()) > 0, 'the hint should read SLOT 2 IS A SIDEARM');
   await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').first().click();
@@ -704,12 +702,13 @@ await step('BLE drop → NO GUN + reconnect banner (dot blinks)', async () => {
   expect(a && a !== 'none', 'NO GUN dot does not blink');
   await shot(hudA, 'hudA-ble-drop');
 });
-await step('relink → trigger-first prompt; a fired shot clears it', async () => {
+await step('relink → RECONCILING (S7.1: a rejoin holds the gun 3 s, no trigger-first prompt); it clears on its own and a shot goes out', async () => {
   await hudA.evaluate(() => window.fakeGun.relink());
-  await until(async () => (await hudState(hudA)).resync, 6000, 'resync prompt');
-  await shot(hudA, 'hudA-resync');
+  await until(async () => { const s = await hudState(hudA); return s.reconciling || (await hudA.locator('.reconciling').count()) > 0; }, 6000, 'RECONCILING takeover after the relink');
+  await shot(hudA, 'hudA-reconciling');
+  await until(async () => { const s = await hudState(hudA); return !s.reconciling && !s.resync; }, 6000, 'reconcile window cleared with no prompt');
   await hudA.evaluate(() => window.fakeGun.fire(1));
-  await until(async () => !(await hudState(hudA)).resync, 6000, 'resync cleared');
+  await until(async () => !(await hudState(hudA)).resync, 6000, 'no resync prompt after the shot');
 });
 
 // ═══ F7 · end early (confirm) → result → over → recap → CSV → new match ═══
@@ -822,15 +821,15 @@ await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO
 });
 await step('DESIGNER: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'designer', true); });
 await step('designer-controls 1: template OPEN → 21 OF 21, heavies lit, HEAVY chip filled', async () => {
-  await mc.click('button[title="Everything, players pick both slots"]');
+  await mc.click('button[title="Everything, players pick all three slots"]');
   await until(async () => /21 OF 21/.test(await D.pSum()), 4000, 'OPEN → 21 of 21');
   expect(lit(await D.art('Rocket Launcher')), 'rocket launcher still dimmed after OPEN');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'true', 'HEAVY chip not on after OPEN');
-  expect((await mc.locator('button[title="Everything, players pick both slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
+  expect((await mc.locator('button[title="Everything, players pick all three slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
   await shot(mc, 'designer-open-template');
 });
 await step('designer-controls 2: template SNIPERS → PRIMARY "EVERYONE GETS SNIPER RIFLE", only the sniper tile lit, slot 2 OFF, rail follows', async () => {
-  await mc.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');
+  await mc.click('button[title="Everyone gets the sniper rifle, no secondary, no perks, no picking"]');
   await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await D.pSum()) && /OFF/.test(await D.sSum()), 4000, 'SNIPERS → fixed primary + slot 2 off');
   expect((await D.prim().locator('button[aria-label="Sniper Rifle, allowed"]').count()) === 1, 'sniper rifle tile not shown as the fixed pick');
   expect((await D.prim().locator('button[aria-label$=", allowed"]').count()) === 1, 'more than one tile lit under FIXED');
@@ -840,7 +839,7 @@ await step('designer-controls 2: template SNIPERS → PRIMARY "EVERYONE GETS SNI
   await shot(mc, 'designer-snipers');
 });
 await step('designer-controls 3: HEAVY chip off (from OPEN) → 16 OF 21, all five heavy tiles dimmed, nothing else changes', async () => {
-  await mc.click('button[title="Everything, players pick both slots"]');
+  await mc.click('button[title="Everything, players pick all three slots"]');
   await until(async () => /21 OF 21/.test(await D.pSum()), 4000, 'OPEN again');
   await D.chip('HEAVY').click();
   await until(async () => /16 OF 21/.test(await D.pSum()), 4000, 'HEAVY chip off → 16 of 21');
@@ -880,7 +879,7 @@ await step('designer-controls 7: slot 2 OFF → "OFF — ALT-FIRE DOES NOTHING",
   await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await D.rail()), 4000, 'summary rail follows');
   await shot(mc, 'designer-slot2-off');
 });
-await step('designer-controls 7b (A12): slot 2 PLAYER → SIDEARMS chip → "SIDEARMS ONLY · 3 OF 3 PISTOLS", only the three pistols allowed, WEAPONS chip off; SIDEARMS again → PERKS ONLY; WEAPONS → 21 OF 21', async () => {
+await step('designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → "SIDEARMS ONLY · 3 OF 3 PISTOLS", only the three pistols allowed, WEAPONS chip off; SIDEARMS again is a no-op (slot 2 always admits one kind); WEAPONS → 21 OF 21', async () => {
   await D.sec().locator('button:has-text("PLAYER")').click();
   await until(async () => /21 OF 21 WEAPONS/.test(await D.sSum()), 4000, 'slot 2 back to PLAYER (21 of 21)');
   const kind = (label) => D.sec().locator(`button:has-text("${label}")`).first();
@@ -892,8 +891,9 @@ await step('designer-controls 7b (A12): slot 2 PLAYER → SIDEARMS chip → "SID
   expect((await D.sec().locator('button[aria-label="SMG, off"]').count()) === 1, 'the SMG should read off under SIDEARMS');
   expect(/SLOT 2.*SIDEARM|SIDEARM/.test(await D.rail()), 'the rail should mention sidearms');
   await shot(mc, 'designer-sidearms-only');
-  await kind('SIDEARMS').click();
-  await until(async () => /PERKS ONLY/.test(await D.sSum()), 4000, 'SIDEARMS off → perks only');
+  await kind('SIDEARMS').click();                     // A14: perks left slot 2, so the last kind cannot be switched off
+  await sleep(400);
+  expect(/SIDEARMS ONLY · 3 OF 3 PISTOLS/.test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
   await kind('WEAPONS').click();
   await until(async () => /21 OF 21 WEAPONS/.test(await D.sSum()), 4000, 'WEAPONS on → 21 of 21');
   expect((await D.sec().locator('button[aria-label="Glock-18, allowed"]').count()) === 1, 'the pistols are ordinary weapons under WEAPONS');
@@ -983,9 +983,9 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await until(async () => (await pg.locator('[data-testid="advanced-presentation"] [role="alert"]:has-text("PREDATES THIS UI")').count()) > 0, 6000, 'ADVANCED shows the predates-this-UI line on a 404');
   expect((await pg.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 'ADVANCED rendered rows from nowhere against a stale server');
   await noCrash('DESIGNER (advanced, stale)');
-  await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');   // templates are client-side: must work here too
+  await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no perks, no picking"]');   // templates are client-side: must work here too
   await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'template applies against a stale server');
-  await pg.click('button[title="Everything, players pick both slots"]');
+  await pg.click('button[title="Everything, players pick all three slots"]');
   await until(async () => /21 OF 21/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'OPEN → 21 of 21 (pool computed locally)');
   // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
   const prim = pg.locator('[aria-label="primary slot rules"]');

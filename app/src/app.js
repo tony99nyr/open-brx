@@ -256,15 +256,24 @@ Object.assign(hud.h, {
   onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)
   onReady: () => { if (engine.phase === 'kitted') { engine.setReady(!engine.ready); haptic('tap'); } },
   // A10 self-serve kitting (docs/spec/loadout.md §4.5): slot plates → LOADOUT browser → tap-to-equip / TRY IT / DONE
-  onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; engine.browse(true); haptic('tap'); },
-  onLoTab: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot === 'secondary' ? 'secondary' : 'primary'; hud.lo.focus = null; hud.sig = null; scheduleRender(); },
+  onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; hud.lo.confirm = null; engine.browse(true); haptic('tap'); },
+  onLoTab: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot === 'secondary' ? 'secondary' : slot === 'perk' ? 'perk' : 'primary'; hud.lo.focus = null; hud.lo.confirm = null; hud.sig = null; scheduleRender(); },
   onLoFilter: f => { hud.lo.filter = f === 'perks' ? 'perks' : 'weapons'; hud.lo.focus = null; hud.sig = null; scheduleRender(); },
-  onLoNone: () => { engine.requestLoadout('secondary', 'none'); haptic('tap'); },
-  onPickItem: key => { const i = String(key || '').indexOf(':'); if (i < 0) return; const kind = key.slice(0, i), id = key.slice(i + 1); hud.lo.focus = key; if (engine.requestLoadout(hud.lo.tab, kind, id, false)) haptic('tap'); else scheduleRender(); },
-  onTryIt: () => { const st = engine.state(); const tab = hud.lo.tab; const rows = hud._loRows(st, tab); const eq = tab === 'primary' ? st.loadout.primary : st.loadout.secondary;
+  onLoNone: slot => { hud.lo.confirm = null; engine.requestLoadout(slot === 'perk' ? 'perk' : 'secondary', 'none'); haptic('tap'); },
+  // A14: a pick that would knock the other slot out (Easy Reload vs a second weapon) needs a second tap on the same row
+  onPickItem: key => { const i = String(key || '').indexOf(':'); if (i < 0) return; const kind = key.slice(0, i), id = key.slice(i + 1); hud.lo.focus = key;
+    const drop = engine.conflictFor(hud.lo.tab, kind, id);
+    if (drop && !(hud.lo.confirm && hud.lo.confirm.key === key && hud.lo.confirm.tab === hud.lo.tab)) {
+      const row = kind === 'perk' ? engine.perkRow(id) : engine.weaponRow(id); const nm = (row && row.name) || id;
+      hud.lo.confirm = { tab: hud.lo.tab, key, drop, text: kind === 'perk' ? `${nm} takes the ALT button — drops your ${drop.name}` : `${nm} needs the ALT button to switch — drops ${drop.name}` };
+      hud.sig = null; scheduleRender(); haptic('tap'); return;
+    }
+    hud.lo.confirm = null;
+    if (engine.requestLoadout(hud.lo.tab, kind, id, false)) haptic('tap'); else scheduleRender(); },
+  onTryIt: () => { const st = engine.state(); const tab = hud.lo.tab; if (tab === 'perk') return; const rows = hud._loRows(st, tab); const eq = st.loadout[tab];
     const key = (hud.lo.focus && rows.some(r => r.key === hud.lo.focus)) ? hud.lo.focus : (eq && eq.kind === 'weapon' ? 'weapon:' + eq.weapon_id : (rows[0] && rows[0].key));
-    if (!key || !key.startsWith('weapon:')) return; if (engine.requestLoadout(tab, 'weapon', key.slice(7), true)) haptic('tap'); },
-  onLoDone: () => { engine.browse(false); haptic('tap'); },
+    if (!key || !key.startsWith('weapon:')) return; hud.lo.confirm = null; if (engine.requestLoadout(tab, 'weapon', key.slice(7), true)) haptic('tap'); },
+  onLoDone: () => { hud.lo.confirm = null; engine.browse(false); haptic('tap'); },
   // A10 §4.6: BRIEFING → BUILD MY KIT ▸ reveals the plates; BRIEFING on the KITTED screen reopens it
   onBriefDone: () => { engine.closeBriefing(); haptic('tap'); },
   onBriefing: () => { engine.openBriefing(); haptic('tap'); },

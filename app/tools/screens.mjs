@@ -51,7 +51,7 @@ const text = pg => pg.evaluate(() => document.body.innerText.replace(/\s+/g, ' '
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'kitted-perk', 'tryout', 'lobby', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over']) {
+  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
   await step(`${view.name} frame keeps its design size (#6/#7/#13/#18/#22 root cause)`, async () => {
@@ -81,7 +81,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #10 loadout filter tabs on one line, list without sideways scroll`, async () => {
     const pg = await open(view, 'loadout-secondary'); const r = await oneLine(pg, '.fch'); const ov = await pg.evaluate(() => { const l = document.querySelector('.lolist'); return [getComputedStyle(l).overflowX, l.scrollWidth - l.clientWidth]; }); await pg.close();
-    must(r.length === 3 && r.every(x => x[2]), JSON.stringify(r)); must(ov[0] === 'hidden' && ov[1] <= 1, 'lolist overflow ' + ov);
+    must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(ov[0] === 'hidden' && ov[1] <= 1, 'lolist overflow ' + ov);   // A14: WEAPONS + NONE (perks moved to their own tab)
   });
   await step(`${view.name} #8/#9/#11 detail pane: title + ammo line on one line, description whole and reachable`, async () => {
     const pg = await open(view, 'loadout-primary'); const r = await pg.evaluate(() => { const d = document.querySelector('.lodetail'); const desc = d.querySelector('.desc'); const cs = getComputedStyle(desc);
@@ -139,7 +139,7 @@ for (const view of VIEWS) {
   await step(`${view.name} breaker-5 harness &team=red is the red palette`, async () => {
     const pg = await open(view, 'kitted', '&team=red'); const r = await pg.evaluate(() => ({ team: document.getElementById('frame').dataset.team, chip: document.querySelector('.lobby .chip').textContent })); await pg.close(); must(r.team === 'red' && /RED/.test(r.chip), JSON.stringify(r));
   });
-  await step(`${view.name} ux-1 plate subtitles never wrap (NO ALT-FIRE / SET AT ARM TIME)`, async () => { const pg = await open(view, 'kitted'); const r = await oneLine(pg, '.plate.slot .s'); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); });
+  await step(`${view.name} ux-1 plate subtitles never wrap (NO ALT-FIRE / SET AT ARM TIME)`, async () => { const pg = await open(view, 'kitted'); const r = await oneLine(pg, '.plate.slot .s'); await pg.close(); must(r.length === 3 && r.every(x => x[2]), JSON.stringify(r)); });   // A14: three plates
   await step(`${view.name} ux-2 night DOWN: team chips and KILLED BY are dim, not daylight`, async () => {
     const pg = await open(view, 'down', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.down .recap .tm, .down .kb b')).map(e => getComputedStyle(e).backgroundColor)); await pg.close();
     must(r.length === 3 && r.every(c => c === 'rgb(42, 13, 13)'), 'chips ' + r.join(' '));
@@ -158,9 +158,10 @@ for (const view of VIEWS) {
     const r = await pg.evaluate(() => ({ tk: document.getElementById('frame').dataset.takeover || '', chips: getComputedStyle(document.getElementById('chips')).opacity, pill: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent) })); await pg.close();
     must(r.tk === '' && r.chips === '1', 'takeover flag stuck: ' + JSON.stringify(r)); must(r.pill.some(t => /GUN LINK LOST/.test(t)), 'no link-lost pill while dead');
   });
-  await step(`${view.name} pass2-2 a perk in slot 2: plate subtitle fits on one line`, async () => {
+  await step(`${view.name} pass2-2 a perk in its own plate: subtitle fits on one line, the secondary plate is untouched`, async () => {
     const pg = await open(view, 'kitted-perk', '', 2400); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.plate.slot')).map(p => ({ k: p.querySelector('.k').textContent.trim(), s: p.querySelector('.s').textContent.trim(), clipped: p.querySelector('.s').scrollWidth > p.querySelector('.s').clientWidth + 1 }))); await pg.close();
-    must(r[1] && /PERK/.test(r[1].k) && /FASTER/.test(r[1].s), 'perk plate: ' + JSON.stringify(r)); must(r.every(x => !x.clipped), 'subtitle clipped: ' + JSON.stringify(r));
+    must(r.length === 3 && /PERK/.test(r[2].k) && /FASTER/.test(r[2].s), 'perk plate: ' + JSON.stringify(r)); must(/SECONDARY/.test(r[1].k) && /NONE/.test((r[1].s || '') + ' ') === false, 'secondary plate: ' + JSON.stringify(r[1]));
+    must(r.every(x => !x.clipped), 'subtitle clipped: ' + JSON.stringify(r));
   });
   await step(`${view.name} pass2-3 gun link drop mid-reload releases the takeover at once`, async () => {
     const pg = await open(view, 'live'); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.dropGun(), 200); }); await pg.waitForTimeout(700);
@@ -222,8 +223,39 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {
     const pg = await open(view, 'loadout-sidearms'); const r = await pg.evaluate(() => ({ chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: Array.from(document.querySelectorAll('.lrow .nm')).map(e => e.textContent.trim()), roles: Array.from(new Set(Array.from(document.querySelectorAll('.lrow .role')).map(e => e.textContent.trim()))), detail: (document.querySelector('.lodetail .rolechip') || {}).textContent }));
-    await pg.click('.fch[data-arg="perks"]'); await pg.waitForTimeout(300); const perks = await pg.evaluate(() => document.querySelectorAll('.lrow').length); await pg.close();
-    must(r.chips[0] === 'SIDEARMS · 3' && r.chips[1] === 'PERKS · 5', 'chips ' + r.chips); must(r.rows.length === 3 && r.rows.includes('GLOCK-18'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail); must(perks === 5, 'perks tab');
+    await pg.close();
+    must(r.chips[0] === 'SIDEARMS · 3' && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.length === 3 && r.rows.includes('GLOCK-18'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
+  });
+  // A14: the perk is its own slot (Tony 2026-09-04: "you should be able to have AR and pistol and quick switch perk")
+  await step(`${view.name} #52 three plates on ONE row (PRIMARY / SECONDARY / PERK), HP·ARMOR in the header, nothing clipped`, async () => {
+    const pg = await open(view, 'kitted-full', '', 2000); const r = await pg.evaluate(() => { const ps = Array.from(document.querySelectorAll('.plate.slot')).map(p => ({ k: p.querySelector('.k').textContent.trim(), h: p.querySelector('.h').textContent.trim(), top: Math.round(p.getBoundingClientRect().top), right: Math.round(p.getBoundingClientRect().right), clipped: p.querySelector('.h').scrollWidth > p.querySelector('.h').clientWidth + 1 }));
+      const f = document.getElementById('frame').getBoundingClientRect(); return { ps, hpar: (document.querySelector('.lobby .hpar') || {}).textContent || '', fright: Math.round(f.right) }; });
+    await pg.close();
+    must(r.ps.length === 3 && r.ps.map(p => p.k.replace(/[▸\s]+$/, '')).join('|') === 'PRIMARY|SECONDARY|PERK', 'plates: ' + JSON.stringify(r.ps));
+    must(new Set(r.ps.map(p => p.top)).size === 1, 'plates wrapped onto two rows: ' + JSON.stringify(r.ps)); must(r.ps.every(p => p.right <= r.fright), 'a plate leaves the frame');
+    must(r.ps[1].h === 'GLOCK-18' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
+    must(r.ps.every(p => !p.clipped), 'plate title clipped: ' + JSON.stringify(r.ps));
+  });
+  await step(`${view.name} #53 PERK tab: three tabs on one line, 5 perk rows + NONE, tapping a perk keeps the second weapon`, async () => {
+    const pg = await open(view, 'loadout-perk', '', 2000); const r = await pg.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('.lotab')).map(t => ({ k: t.querySelector('.k').textContent.trim(), top: Math.round(t.getBoundingClientRect().top) })), chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: document.querySelectorAll('.lrow').length, eq: (document.querySelector('.lrow.eq .nm2 b') || {}).textContent }));
+    await pg.click('.lrow[data-arg="perk:body_armor"]'); await pg.waitForTimeout(700);
+    const after = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary && lo.secondary.weapon_id, chip: (document.querySelector('.ackchip') || {}).textContent || '' }; }); await pg.close();
+    must(r.tabs.map(t => t.k).join('|') === 'PRIMARY|SECONDARY|PERK' && new Set(r.tabs.map(t => t.top)).size === 1, 'tabs: ' + JSON.stringify(r.tabs));
+    must(r.chips[0] === 'PERKS · 5' && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === 5 && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' ' + r.eq);
+    must(after.perk === 'body_armor' && after.sec === 'glock', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
+  });
+  await step(`${view.name} #54 Easy Reload over a loaded SMG: first tap warns (nothing sent), second tap equips and reports the SMG dropped`, async () => {
+    const pg = await open(view, 'loadout-perk-conflict', '', 2400);
+    const first = await pg.evaluate(() => ({ warn: !!document.querySelector('.lrow.warn[data-arg="perk:easy_reload"]'), chip: (document.querySelector('.ackchip') || {}).textContent || '', sent: (window.brx.log || []).filter(l => /loadout_request perk perk easy_reload/.test(l)).length, sec: window.brx.engine.state().loadout.secondary && window.brx.engine.state().loadout.secondary.weapon_id }));
+    must(first.warn && /TAKES THE ALT BUTTON/.test(first.chip) && /DROPS YOUR SMG/.test(first.chip) && /TAP AGAIN/.test(first.chip), 'first tap should warn: ' + JSON.stringify(first));
+    must(first.sent === 0 && first.sec === 'smg', 'first tap must not send: ' + JSON.stringify(first));
+    await pg.click('.lrow[data-arg="perk:easy_reload"]'); await pg.waitForTimeout(800);
+    const second = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary, chip: (document.querySelector('.ackchip') || {}).textContent || '', ack: window.brx.engine.loadoutAck }; });
+    await pg.click('.lotab[data-arg="secondary"]'); await pg.waitForTimeout(300); await pg.click('.lrow[data-arg="weapon:smg"]'); await pg.waitForTimeout(300);
+    const third = await pg.evaluate(() => ({ warn: !!document.querySelector('.lrow.warn[data-arg="weapon:smg"]'), chip: (document.querySelector('.ackchip') || {}).textContent || '' })); await pg.close();
+    must(second.perk === 'easy_reload' && second.sec === null, 'second tap should equip and drop the SMG: ' + JSON.stringify(second)); must(/EQUIPPED/.test(second.chip) && /SMG DROPPED/.test(second.chip), 'ack chip: ' + second.chip);
+    must(second.ack && second.ack.dropped && second.ack.dropped.id === 'smg', 'ack.dropped: ' + JSON.stringify(second.ack));
+    must(third.warn && /NEEDS THE ALT BUTTON/.test(third.chip) && /DROPS EASY RELOAD/.test(third.chip), 'the reverse pick warns too: ' + JSON.stringify(third));
   });
   await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {
     const pg = await open(view, 'down-find', '', 4200); /* death at ~2.6 s + the 1 s scanner delay */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');

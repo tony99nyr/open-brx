@@ -1310,6 +1310,9 @@ their tests:
 - MC console: the "server predates this UI" banners can stay (they catch a stale process, which is a real failure
   on the night) -- everything else that says "older" goes.
 Do it in one sweep with the golden bundle regenerated, then cut an APK: node and MC move together.
+- Already honoured by **A14** (the perk slot, 2026-09-04): `loadout_pool.perks` replaced `secondary_perks` with no alias,
+  `assign.policy.secondary.allowed_perk_ids` is gone, and a pre-A14 policy shape ("perk" inside `secondary.kinds`) is a
+  400 / falls to the mode default rather than being migrated.
 
 ## 🟠 S5 — MC ARMS THE UTILITY STATIONS AT MUSTER (A13.5, 2026-09-04 night; server side NOT built)
 

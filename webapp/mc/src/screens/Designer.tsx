@@ -12,9 +12,9 @@ import { TEMPLATE_RULES, admitsWeapons, computePool, gameSig, presetOf, rulesLin
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
-  { value: 'open', label: 'OPEN', hint: 'Everything, players pick both slots' },
-  { value: 'no_heavies', label: 'NO HEAVIES', hint: 'Rockets, rail, cannon and launchers off in both slots' },
-  { value: 'snipers', label: 'SNIPERS', hint: 'Everyone gets the sniper rifle, no secondary, no picking' },
+  { value: 'open', label: 'OPEN', hint: 'Everything, players pick all three slots' },
+  { value: 'no_heavies', label: 'NO HEAVIES', hint: 'Rockets, rail, cannon and launchers off in both weapon slots; every perk open' },
+  { value: 'snipers', label: 'SNIPERS', hint: 'Everyone gets the sniper rifle, no secondary, no perks, no picking' },
 ];
 const TAGS: { tag: string; label: string; color: string }[] = [
   { tag: 'heavy', label: 'HEAVY', color: ROLE.power.color }, { tag: 'sniper', label: 'SNIPER', color: ROLE.marksman.color },
@@ -73,7 +73,7 @@ export function Designer() {
   const pol = cfg.loadout_policy;
   const put = (p: Partial<GameConfig>) => setCfg(c => c ? { ...c, ...p } : c);
   const putPol = (p: Partial<LoadoutPolicy>) => setCfg(c => { if (!c) return c; const lp = { ...c.loadout_policy, ...p }; return { ...c, loadout_policy: { ...lp, preset: presetOf(lp) } }; });   // a hand-built NO HEAVIES reads NO HEAVIES (review #18)
-  const putSlot = (slot: 'primary' | 'secondary', r: Partial<SlotRule>) => putPol({ [slot]: { ...pol[slot], ...r } });
+  const putSlot = (slot: 'primary' | 'secondary' | 'perk', r: Partial<SlotRule>) => putPol({ [slot]: { ...pol[slot], ...r } });
   // templates are client-side rules — the click must work with no server round-trip (Tony: "you can't click these")
   const applyTemplate = (preset: LoadoutPreset) => { if (preset !== 'custom') setCfg(c => c ? { ...c, loadout_policy: clone(TEMPLATE_RULES[preset]) } : c); };
   const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
@@ -158,6 +158,7 @@ export function Designer() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 12 }}>
               <SlotEditor slot="primary" rule={pol.primary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('primary', r)} />
               <SlotEditor slot="secondary" rule={pol.secondary} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('secondary', r)} />
+              <SlotEditor slot="perk" rule={pol.perk} pool={pool} weapons={weapons} perks={perks} onRule={r => putSlot('perk', r)} />
             </div>
           </section>
 
@@ -188,7 +189,8 @@ export function Designer() {
               {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', cfg.scoring.frag_limit ? `${cfg.scoring.frag_limit} SCORE / TIME` : 'TIME'],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
                 ['PRIMARY', pool ? (pol.primary.choice === 'fixed' ? 'FIXED' : `${pool.primary.length} OF ${weapons.length}`) : '…'],
-                ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} ${!pol.secondary.kinds.includes('weapon') && pol.secondary.kinds.includes('sidearm') ? 'SIDEARMS' : 'WEAPONS'} · ${pool.secondary_perks.length} PERKS` : '…']].map(([l, v]) => (
+                ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} ${!pol.secondary.kinds.includes('weapon') && pol.secondary.kinds.includes('sidearm') ? 'SIDEARMS' : 'WEAPONS'}` : '…'],
+                ['PERK', pol.perk.choice === 'off' ? 'OFF' : pol.perk.choice === 'fixed' ? 'FIXED' : pool ? `${pool.perks.length} PERKS` : '…']].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 10.5), letterSpacing: '.14em' }}>
                   <span style={{ color: T.micro }}>{l}</span><span style={{ color: T.body, ...TAB, textAlign: 'right' }}>{v}</span>
                 </div>
@@ -221,21 +223,22 @@ export function Designer() {
 /* ---------- pieces ---------- */
 
 function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
-  { slot: 'primary' | 'secondary'; rule: SlotRule; pool: LoadoutPool | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
-  const sec = slot === 'secondary';
+  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: LoadoutPool | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
+  const sec = slot === 'secondary', isPerk = slot === 'perk';   // A14: the perk is its own slot
   const allowedW = pool ? (sec ? pool.secondary_weapons : pool.primary) : [];
-  const allowedK = pool ? pool.secondary_perks : [];
+  const allowedK = pool ? pool.perks : [];
   const off = rule.choice === 'off', fixed = rule.choice === 'fixed';
-  const sidearmsOnly = !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm');   // A12: pistols only (loadout.md §3)
-  const showWeapons = !off && (!sec || admitsWeapons(rule));
-  const showPerks = sec && !off && rule.kinds.includes('perk');
+  const sidearmsOnly = !isPerk && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm');   // A12: pistols only (loadout.md §3)
+  const showWeapons = !isPerk && !off && (!sec || admitsWeapons(rule));
+  const showPerks = isPerk && !off;
   const pistols = weapons.filter(w => (w.tags ?? []).includes('sidearm')).length;
-  const summary = off ? 'OFF — ALT-FIRE DOES NOTHING' : fixed ? `EVERYONE GETS ${(weapons.find(w => w.weapon_id === rule.fixed_id)?.name ?? perks.find(k => k.perk_id === rule.fixed_id)?.name ?? '—').toUpperCase()}`
-    : sec && !admitsWeapons(rule) ? `PERKS ONLY · ${allowedK.length} PERKS`
-    : sidearmsOnly ? `SIDEARMS ONLY · ${allowedW.length} OF ${pistols} PISTOLS${sec && rule.kinds.includes('perk') ? ` · ${allowedK.length} PERKS` : ''}`
-    : sec && !rule.kinds.includes('perk') ? `WEAPONS ONLY · ${allowedW.length} OF ${weapons.length}`
-    : `${allowedW.length} OF ${weapons.length} WEAPONS${sec ? ` · ${allowedK.length} PERKS` : ''}`;   // review #22
-  const WHO: Record<string, string> = { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
+  const summary = off ? (isPerk ? 'OFF — NO PERKS' : 'OFF — ALT-FIRE DOES NOTHING') : fixed ? `EVERYONE GETS ${(weapons.find(w => w.weapon_id === rule.fixed_id)?.name ?? perks.find(k => k.perk_id === rule.fixed_id)?.name ?? '—').toUpperCase()}`
+    : isPerk ? `${allowedK.length} OF ${perks.length} PERKS`
+    : sidearmsOnly ? `SIDEARMS ONLY · ${allowedW.length} OF ${pistols} PISTOLS`
+    : `${allowedW.length} OF ${weapons.length} WEAPONS`;   // review #22
+  const WHO: Record<string, string> = isPerk
+    ? { player: 'players pick a perk from what is allowed below (the host can override)', host: 'the host picks each player\'s perk on the KIT page', fixed: 'everyone gets the one perk you tap below', off: 'nobody gets a perk this game' }
+    : { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
   // a class chip is ON / PARTIAL (some of its weapons switched off by id) / OFF
   const tagState = (tag: string) => {
     if (rule.exclude_tags.includes(tag)) return 'off';
@@ -250,15 +253,15 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
                   exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
   };
   return (
-    <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${sec ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${isPerk ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{sec ? 'SECONDARY' : 'PRIMARY'}</span>
+        <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY'}</span>
         <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
-        <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
-          onChange={(v: SlotChoice) => onRule({ choice: v, fixed_id: v === 'fixed' ? (rule.fixed_id ?? allowedW[0] ?? allowedK[0] ?? 'assault_rifle') : rule.fixed_id })} />
+        <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec || isPerk ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
+          onChange={(v: SlotChoice) => onRule({ choice: v, fixed_id: v === 'fixed' ? (rule.fixed_id ?? (isPerk ? (allowedK[0] ?? perks[0]?.perk_id ?? 'body_armor') : (allowedW[0] ?? 'assault_rifle'))) : rule.fixed_id })} />
       </div>
       {/* WEAPONS|PERKS rides on the description line, which BOTH panels have. On the WHO PICKS row it
           wrapped to a line of its own on the secondary side only, so the two weapon tables started at
@@ -270,7 +273,6 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
             {/* A12: WEAPONS and SIDEARMS are exclusive — 'weapon' already admits the pistols, 'sidearm' is the narrower kind */}
             <Chip on={rule.kinds.includes('weapon')} color={T.acc} onClick={() => { const k = (rule.kinds.includes('weapon') ? rule.kinds.filter(x => x !== 'weapon') : [...rule.kinds.filter(x => x !== 'sidearm'), 'weapon']) as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>WEAPONS</Chip>
             <Chip on={rule.kinds.includes('sidearm')} color={ROLE.sidearm.color} onClick={() => { const k = (rule.kinds.includes('sidearm') ? rule.kinds.filter(x => x !== 'sidearm') : [...rule.kinds.filter(x => x !== 'weapon'), 'sidearm']) as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>SIDEARMS</Chip>
-            <Chip on={rule.kinds.includes('perk')} color={PERK_COLOR} onClick={() => { const k = toggle(rule.kinds, 'perk') as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>PERKS</Chip>
           </span>
         )}
       </div>
@@ -326,6 +328,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
           })}
         </div>
       )}
+      {showPerks && fixed && <div style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: PERK_COLOR }}>TAP THE PERK EVERYONE GETS</div>}
       {showPerks && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 6 }}>
           {perks.map(k => {
@@ -342,7 +345,8 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
           })}
         </div>
       )}
-      {off && <div style={{ font: F.chk(500, 12), color: T.dim }}>No slot 2 this game — the alt-fire button does nothing.</div>}
+      {showPerks && !fixed && <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, lineHeight: 1.5, maxWidth: '68ch' }}>A perk rides beside both weapons. Easy Reload is the exception: it takes the ALT button, so a player who picks it gives up their second weapon (the phone and KIT both warn first).</div>}
+      {off && <div style={{ font: F.chk(500, 12), color: T.dim }}>{isPerk ? 'No perks this game.' : 'No slot 2 this game — the alt-fire button does nothing.'}</div>}
     </div>
   );
 }

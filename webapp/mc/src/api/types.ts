@@ -4,20 +4,23 @@ export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'r
 export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';
 
 export interface WeaponSel { weapon_id: string }
-/** contracts A9 / docs/spec/loadout.md §2 — weapons[] is canonical: [primary] or [primary, secondary]; `perk` excludes a secondary weapon. */
+/** contracts A9/A14 / docs/spec/loadout.md §2 — weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and
+ *  rides beside a secondary weapon (AR + pistol + Quick Switch). The one exception: a perk whose `effects.alt_reload` is true (Easy
+ *  Reload) takes the ALT button, so the server refuses it beside a second weapon — the UI warns and drops the other one. */
 export interface Loadout { weapons: WeaponSel[]; perk?: string | null; overrides?: { max_hp?: number; max_armor?: number } }
 
 export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
-export type ItemKind = 'weapon' | 'perk' | 'sidearm';   // 'sidearm' (A12): a policy kind — only the pistols; never a request kind (a pistol is a 'weapon' on the wire)
+export type ItemKind = 'weapon' | 'perk' | 'sidearm';   // 'sidearm' (A12): a policy kind — only the pistols; never a request kind (a pistol is a 'weapon' on the wire). A14: 'perk' only ever in the perk rule
 export interface SlotRule {
   choice: SlotChoice; kinds: ItemKind[];
   exclude_tags: string[]; exclude_ids: string[]; only_ids: string[];
   fixed_id?: string | null;
 }
 export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
-export interface LoadoutPolicy { preset: LoadoutPreset; hud_select: boolean; primary: SlotRule; secondary: SlotRule }
-/** allowed ids per slot, catalog order — computed server-side (loadout.md §3.2) */
-export interface LoadoutPool { primary: string[]; secondary_weapons: string[]; secondary_perks: string[] }
+/** A14: `perk` is the third rule (kinds always ['perk']; choice may be 'off'). No legacy shape is supported (Tony 2026-09-04). */
+export interface LoadoutPolicy { preset: LoadoutPreset; hud_select: boolean; primary: SlotRule; secondary: SlotRule; perk: SlotRule }
+/** allowed ids per slot, catalog order — computed server-side (loadout.md §3.2). A14: `perks` is the perk slot's list. */
+export interface LoadoutPool { primary: string[]; secondary_weapons: string[]; perks: string[] }
 
 export interface Team { team_id: string; name: string; color: string; tid: number }
 
@@ -206,7 +209,7 @@ export interface WeaponView {
 export interface PerkView {
   perk_id: string; name: string; desc: string; tags: string[];
   mechanism: 'passive' | 'slot_frame';
-  effects: { max_armor_add?: number; ammo_mult?: number; reload_mult?: number; alt_reload?: boolean };
+  effects: { max_armor_add?: number; ammo_mult?: number; reload_mult?: number; alt_reload?: boolean; switch_mult?: number };
   verified: boolean; hidden?: boolean;
 }
 

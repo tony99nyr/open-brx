@@ -4,9 +4,10 @@ import type { Loadout, PerkView, Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
+import { takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, onKey, PrimaryButton } from '../ui';
 
-type Slot = 'primary' | 'secondary';
+type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 
 export function Kit() {
@@ -33,7 +34,10 @@ export function Kit() {
   useEffect(() => { api.getVoices().then(v => setVoices(v.voices)).catch(() => setVoices([])); }, [api]);
   const [newName, setNewName] = useState('');
   const [slot, setSlot] = useState<Slot>('primary');
-  const [secKind, setSecKind] = useState<'weapon' | 'perk'>('weapon');
+  // A14 two-tap confirm: Easy Reload takes the ALT button, so picking it beside a second weapon (or a second weapon
+  // beside it) drops the other one. The first tap says so on the tile; the second tap sends. Expires on its own.
+  const [confirm, setConfirm] = useState<{ pid: string; key: string; label: string } | null>(null);
+  useEffect(() => { if (!confirm) return; const h = setTimeout(() => setConfirm(null), 8_000); return () => clearTimeout(h); }, [confirm]);
   // The host's last write per slot. When choice=player BOTH the phone and the host may write; if the phone lands
   // a pick seconds after the host did, the card would just flip — say so instead (brx-opus2, 2026-08-27).
   // Kept ABOVE the `!state` early return. It used to sit 40 lines further down, so the render that
@@ -48,7 +52,7 @@ export function Kit() {
   const players = state.players;
   const sp = players.find(p => p.player_id === selPlayer) ?? players[0];
   const pol = state.config.loadout_policy?.primary ? state.config.loadout_policy : undefined;   // older MC / pre-A10 session: no rules
-  const pool = state.loadout_pool ?? { primary: weapons.map(w => w.weapon_id), secondary_weapons: weapons.map(w => w.weapon_id), secondary_perks: perks.map(k => k.perk_id) };
+  const pool = state.loadout_pool ?? { primary: weapons.map(w => w.weapon_id), secondary_weapons: weapons.map(w => w.weapon_id), perks: perks.map(k => k.perk_id) };
   const trying = state.kit.trying;
   const browsing = state.kit.browsing ?? {};
   // counts only players we can actually reach: a loadout with no phone on the net cannot be pushed
@@ -87,37 +91,56 @@ export function Kit() {
   const primary = wById(lo.weapons?.[0]?.weapon_id);
   const secondaryW = wById(lo.weapons?.[1]?.weapon_id);
   const perk = kById(lo.perk);
-  const secRule = pol?.secondary, primRule = pol?.primary;
-  const slotLocked = (s: Slot) => { const r = s === 'primary' ? primRule : secRule; return r?.choice === 'fixed' || r?.choice === 'off'; };
+  const secRule = pol?.secondary, primRule = pol?.primary, perkRule = pol?.perk;
+  const ruleOf = (s: Slot) => (s === 'primary' ? primRule : s === 'secondary' ? secRule : perkRule);
+  const slotLocked = (s: Slot) => { const r = ruleOf(s); return r?.choice === 'fixed' || r?.choice === 'off'; };
   // what the arsenal below is showing
-  const showKind: 'weapon' | 'perk' = slot === 'primary' ? 'weapon' : secKind;
-  const focusItem: WeaponView | PerkView | undefined = slot === 'primary' ? primary : (secondaryW ?? perk);
+  const showKind: 'weapon' | 'perk' = slot === 'perk' ? 'perk' : 'weapon';
+  const focusItem: WeaponView | PerkView | undefined = slot === 'primary' ? primary : slot === 'secondary' ? secondaryW : perk;
+  const prim0 = lo.weapons?.[0] ?? { weapon_id: 'assault_rifle' };
 
   const setLoadout = async (next: Loadout, tryWeapon?: string, note?: { slot: Slot; id: string | null; label: string }) => {
     if (!sp) return;
+    setConfirm(null);
     const ok = await patch({ loadout: { ...(sp.loadout ?? {}), ...next } });
     if (ok === undefined) return;   // the server refused (error strip shows why) — no override note, no try-out (review #1)
     if (note) setHostPick({ pid: sp.player_id, ...note, t: Date.now() });
     if (tryWeapon && !state.lobby.pushed) await run(() => api.tryout(sp.player_id, tryWeapon));
   };
-  const pickPrimary = (w: WeaponView) => setLoadout({ weapons: [{ weapon_id: w.weapon_id }, ...(lo.weapons ?? []).slice(1, 2)], perk: lo.perk ?? null }, w.weapon_id, { slot: 'primary', id: w.weapon_id, label: w.name });
-  const pickSecondary = (w: WeaponView) => setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }, { weapon_id: w.weapon_id }], perk: null }, w.weapon_id, { slot: 'secondary', id: w.weapon_id, label: w.name });
-  const pickPerk = async (k: PerkView) => {
-    await setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }], perk: k.perk_id }, undefined, { slot: 'secondary', id: k.perk_id, label: k.name });
-    if (sp && trying[sp.player_id]) await run(() => api.endTryout(sp.player_id));   // a perk replaces a tried-out secondary: quiet the gun (e2e lane finding)
+  /** The first tap on a conflicting tile arms the confirm and returns true; the second tap (same tile) returns false = go. */
+  const needsConfirm = (key: string, label: string) => {
+    if (!sp) return true;
+    if (confirm && confirm.pid === sp.player_id && confirm.key === key) return false;
+    setConfirm({ pid: sp.player_id, key, label }); return true;
   };
-  const clearSecondary = () => setLoadout({ weapons: [lo.weapons[0] ?? { weapon_id: 'assault_rifle' }], perk: null }, undefined, { slot: 'secondary', id: null, label: 'EMPTY' });
+  const pickPrimary = (w: WeaponView) => setLoadout({ weapons: [{ weapon_id: w.weapon_id }, ...(lo.weapons ?? []).slice(1, 2)], perk: lo.perk ?? null }, w.weapon_id, { slot: 'primary', id: w.weapon_id, label: w.name });
+  // A14: a second weapon keeps the perk — unless the perk is the ALT-button one, which it then drops (after a confirm)
+  const pickSecondary = (w: WeaponView) => {
+    const drops = takesAlt(perk) ? perk : undefined;
+    if (drops && needsConfirm(`weapon:${w.weapon_id}`, `DROPS ${drops.name.toUpperCase()} — TAP AGAIN`)) return;
+    return setLoadout({ weapons: [prim0, { weapon_id: w.weapon_id }], perk: drops ? null : (lo.perk ?? null) }, w.weapon_id, { slot: 'secondary', id: w.weapon_id, label: w.name });
+  };
+  // A14: a perk rides beside the weapons — Easy Reload is the one that takes the second weapon with it (after a confirm)
+  const pickPerk = async (k: PerkView) => {
+    const drops = takesAlt(k) ? secondaryW : undefined;
+    if (drops && needsConfirm(`perk:${k.perk_id}`, `DROPS THEIR ${drops.name.toUpperCase()} — TAP AGAIN`)) return;
+    await setLoadout({ weapons: drops ? [prim0] : (lo.weapons ?? [prim0]), perk: k.perk_id }, undefined, { slot: 'perk', id: k.perk_id, label: k.name });
+    if (drops && sp && trying[sp.player_id] === drops.weapon_id) await run(() => api.endTryout(sp.player_id));   // the dropped secondary was being tried out: quiet the gun (e2e lane finding)
+  };
+  const clearSecondary = () => setLoadout({ weapons: [prim0], perk: lo.perk ?? null }, undefined, { slot: 'secondary', id: null, label: 'EMPTY' });
+  const clearPerk = () => setLoadout({ weapons: lo.weapons ?? [prim0], perk: null }, undefined, { slot: 'perk', id: null, label: 'NO PERK' });
   // did the phone overwrite the host's pick within the hold window?
   const overridden = (s: Slot) => {
     const h = hostPick; if (!h || h.pid !== sp?.player_id || h.slot !== s) return null;
-    const cur = s === 'primary' ? (primary?.weapon_id ?? null) : (secondaryW?.weapon_id ?? perk?.perk_id ?? null);
+    const cur = s === 'primary' ? (primary?.weapon_id ?? null) : s === 'secondary' ? (secondaryW?.weapon_id ?? null) : (perk?.perk_id ?? null);
     return cur !== h.id ? h : null;
   };
   const reapply = (h: { slot: Slot; id: string | null }) => {
     if (h.slot === 'primary') { const w = wById(h.id); if (w) pickPrimary(w); return; }
-    const w = wById(h.id), k = kById(h.id);
-    if (w) pickSecondary(w); else if (k) pickPerk(k); else clearSecondary();
+    if (h.slot === 'perk') { const k = kById(h.id); if (k) pickPerk(k); else clearPerk(); return; }
+    const w = wById(h.id); if (w) pickSecondary(w); else clearSecondary();
   };
+  const confirmFor = (key: string) => (confirm && sp && confirm.pid === sp.player_id && confirm.key === key ? confirm.label : null);
 
   const rulesChip = pol && (
     <button type="button" className="hov-acc" onClick={() => setView('build')} title="Loadout rules are set in BUILD"
@@ -170,7 +193,8 @@ export function Kit() {
                       <span style={{ color: T.faint }}>·</span>
                       <span style={{ color: T.dim, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p0 ? shortName(p0.name) : '—'}
                         <span style={{ color: T.faint }}> + </span>
-                        {p1 ? shortName(p1.name) : pk ? <span style={{ color: PERK_COLOR }}>◆ {pk.name.toUpperCase()}</span> : <span style={{ color: T.faint }}>NONE</span>}</span>
+                        {p1 ? shortName(p1.name) : <span style={{ color: T.faint }}>NONE</span>}
+                        {pk && <span style={{ color: PERK_COLOR }}> ◆ {pk.name.toUpperCase()}</span>}</span>
                     </span>
                   </span>
                   {chip}
@@ -251,22 +275,30 @@ export function Kit() {
               <div className="kit-rail" style={{ flex: '1 1 280px', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <SlotCard label="PRIMARY" slot="primary" active={slot === 'primary'} onClick={() => setSlot('primary')} rule={primRule} item={primary} kind="weapon" required
                   overridden={overridden('primary')} onReapply={reapply} />
-                <SlotCard label="SECONDARY" slot="secondary" active={slot === 'secondary'} onClick={() => { setSlot('secondary'); if (perk && !secondaryW) setSecKind('perk'); }} rule={secRule}
-                  item={secondaryW ?? perk} kind={secondaryW ? 'weapon' : perk ? 'perk' : 'none'}
+                <SlotCard label="SECONDARY" slot="secondary" active={slot === 'secondary'} onClick={() => setSlot('secondary')} rule={secRule}
+                  item={secondaryW} kind={secondaryW ? 'weapon' : 'none'}
                   overridden={overridden('secondary')} onReapply={reapply}
-                  onClear={(secondaryW || perk) && !slotLocked('secondary') ? clearSecondary : undefined} />
+                  onClear={secondaryW && !slotLocked('secondary') ? clearSecondary : undefined} />
+                <SlotCard label="PERK" slot="perk" active={slot === 'perk'} onClick={() => setSlot('perk')} rule={perkRule}
+                  item={perk} kind={perk ? 'perk' : 'none'}
+                  overridden={overridden('perk')} onReapply={reapply}
+                  onClear={perk && !slotLocked('perk') ? clearPerk : undefined} />
                 <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
                   {pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
                 </div>
               </div>
 
               {/* hero: the focused slot's item */}
-              <Brackets color={slot === 'secondary' && perk && !secondaryW ? PERK_COLOR : T.acc} style={{ flex: '2 1 420px', minWidth: 0, padding: 18, display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+              <Brackets color={slot === 'perk' ? PERK_COLOR : T.acc} style={{ flex: '2 1 420px', minWidth: 0, padding: 18, display: 'flex', flexWrap: 'wrap', gap: 20 }}>
                 {!focusItem ? (
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, minHeight: 150 }}>
-                    <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', color: T.dim }}>{secRule?.choice === 'off' ? 'SECONDARY IS OFF FOR THIS GAME' : 'NO SECONDARY'}</div>
+                    <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', color: T.dim }}>
+                      {slot === 'perk' ? (perkRule?.choice === 'off' ? 'PERKS ARE OFF FOR THIS GAME' : 'NO PERK') : secRule?.choice === 'off' ? 'SECONDARY IS OFF FOR THIS GAME' : 'NO SECONDARY'}
+                    </div>
                     <div style={{ font: F.chk(500, 13), color: T.dim, maxWidth: '54ch', lineHeight: 1.5 }}>
-                      {secRule?.choice === 'off' ? 'The ruleset switched slot 2 off for everyone. Change it in BUILD.' : 'The alt-fire button does nothing. Pick a second weapon or a perk from the arsenal below — or leave it empty; that is a valid kit.'}
+                      {slot === 'perk'
+                        ? (perkRule?.choice === 'off' ? 'The ruleset switched perks off for everyone. Change it in GAMES.' : 'A perk rides beside the weapons — pick one below, or leave it empty; that is a valid kit. Easy Reload takes the ALT button, so it drops the second weapon.')
+                        : secRule?.choice === 'off' ? 'The ruleset switched slot 2 off for everyone. Change it in BUILD.' : 'The alt-fire button does nothing. Pick a second weapon from the arsenal below — or leave it empty; that is a valid kit.'}
                     </div>
                   </div>
                 ) : 'weapon_id' in focusItem ? (
@@ -279,22 +311,24 @@ export function Kit() {
 
             {/* arsenal for the focused slot */}
             <div>
-              <ArsenalHeader slot={slot} rule={slot === 'primary' ? primRule : secRule} pool={pool} weapons={weapons} preset={pol?.preset} secKind={secKind} setSecKind={setSecKind}
-                onClear={slot === 'secondary' && (secondaryW || perk) && !slotLocked('secondary') ? clearSecondary : undefined} onBuild={() => setView('build')} />
-              {(slot === 'primary' ? primRule : secRule)?.choice === 'off' ? null : showKind === 'weapon' ? (
+              <ArsenalHeader slot={slot} rule={ruleOf(slot)} pool={pool} weapons={weapons} preset={pol?.preset}
+                onClear={slot === 'secondary' && secondaryW && !slotLocked('secondary') ? clearSecondary : slot === 'perk' && perk && !slotLocked('perk') ? clearPerk : undefined} onBuild={() => setView('build')} />
+              {ruleOf(slot)?.choice === 'off' ? null : showKind === 'weapon' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(152px,1fr))', gap: 8 }}>
                   {weapons.map(w => {
                     const allowed = (slot === 'primary' ? pool.primary : pool.secondary_weapons).includes(w.weapon_id);
                     const on = slot === 'primary' ? w.weapon_id === primary?.weapon_id : w.weapon_id === secondaryW?.weapon_id;
-                    const fixed = (slot === 'primary' ? primRule : secRule)?.choice === 'fixed';
+                    const fixed = ruleOf(slot)?.choice === 'fixed';
                     const dis = !allowed || (fixed && !on);
                     const role = roleOf(w.role, w.cls);
+                    const ask = slot === 'secondary' ? confirmFor(`weapon:${w.weapon_id}`) : null;
                     return (
                       <div key={w.weapon_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
                         aria-label={`${w.name}, ${role.label}, magazine ${w.clip}${dis ? ', not allowed by the rules' : ''}`}
                         title={!allowed ? 'Not allowed by this game’s rules' : fixed ? 'Fixed by the ruleset' : undefined}
                         onClick={() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); }} onKeyDown={onKey(() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); })}
-                        style={{ background: on ? 'rgba(57,180,255,.08)' : dis ? T.panelDeep : T.panel, border: `1px solid ${on ? T.acc : T.line}`, padding: 8, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', gap: 7, minHeight: 44 }}>
+                        style={{ background: on ? 'rgba(57,180,255,.08)' : dis ? T.panelDeep : T.panel, border: `1px solid ${ask ? T.warn : on ? T.acc : T.line}`, padding: 8, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', gap: 7, minHeight: 44 }}>
+                        {ask && <span role="alert" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
                         <StripedSlot height={64} style={{ background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)`, opacity: dis ? .25 : 1, filter: dis ? 'grayscale(1)' : undefined }}
                           corner={<>
                             <span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: role.color }}>{role.label}</span>
@@ -314,15 +348,17 @@ export function Kit() {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 8 }}>
                   {perks.map(k => {
-                    const allowed = pool.secondary_perks.includes(k.perk_id);
+                    const allowed = pool.perks.includes(k.perk_id);
                     const on = k.perk_id === perk?.perk_id;
-                    const fixed = secRule?.choice === 'fixed';
+                    const fixed = perkRule?.choice === 'fixed';
                     const dis = !allowed || (fixed && !on);
+                    const ask = confirmFor(`perk:${k.perk_id}`);
                     return (
                       <div key={k.perk_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
-                        aria-label={`${k.name} perk${dis ? ', not allowed by the rules' : ''}`} title={!allowed ? 'Not allowed by this game’s rules' : undefined}
+                        aria-label={`${k.name} perk${dis ? ', not allowed by the rules' : ''}`} title={!allowed ? 'Not allowed by this game’s rules' : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
                         onClick={() => { if (!dis) pickPerk(k); }} onKeyDown={onKey(() => { if (!dis) pickPerk(k); })}
-                        style={{ background: on ? 'rgba(196,139,255,.08)' : T.panel, border: `1px solid ${on ? PERK_COLOR : T.line}`, padding: 10, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', gap: 12, alignItems: 'center', minHeight: 44, opacity: dis ? .32 : 1 }}>
+                        style={{ background: on ? 'rgba(196,139,255,.08)' : T.panel, border: `1px solid ${ask ? T.warn : on ? PERK_COLOR : T.line}`, padding: 10, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', gap: 12, alignItems: 'center', minHeight: 44, opacity: dis ? .32 : 1, flexWrap: 'wrap' }}>
+                        {ask && <span role="alert" style={{ flex: '1 0 100%', font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
                         <span style={{ width: 52, height: 52, flex: 'none', display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${on ? PERK_COLOR : T.line}` }}><PerkGlyph id={k.perk_id} size={30} color={on ? PERK_COLOR : T.dim} /></span>
                         <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -368,8 +404,8 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
           <span style={{ width: 64, height: 44, flex: 'none', border: `1px dashed ${T.line2}`, display: 'grid', placeItems: 'center', font: F.osw(700, 20), color: T.faint }}>—</span>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', color: T.dim }}>{choice === 'off' ? 'OFF' : 'EMPTY'}</span>
-            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? 'This game has no slot 2 — change it in GAMES' : 'Alt-fire does nothing · tap to pick'}</span>
+            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', color: T.dim }}>{choice === 'off' ? 'OFF' : slot === 'perk' ? 'NO PERK' : 'EMPTY'}</span>
+            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? (slot === 'perk' ? 'This game has no perks — change it in GAMES' : 'This game has no slot 2 — change it in GAMES') : slot === 'perk' ? 'Rides beside the weapons · tap to pick' : 'Alt-fire does nothing · tap to pick'}</span>
           </span>
         </div>
       ) : item && 'weapon_id' in item ? (
@@ -390,7 +426,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
         </div>
       )}
       {onClear && (
-        <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title="Leave slot 2 empty" className="hov-acc-ink"
+        <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
           style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, font: F.mono(600, 9), letterSpacing: '.14em', color: T.micro, padding: '6px 8px', minHeight: 32 }}>✕ CLEAR</button>
       )}
       {required && !item && <span style={{ font: F.mono(500, 9), color: T.bad }}>A PRIMARY IS REQUIRED</span>}
@@ -405,32 +441,30 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
   );
 }
 
-function ArsenalHeader({ slot, rule, pool, weapons, preset, secKind, setSecKind, onClear, onBuild }:
-  { slot: Slot; rule?: { choice: string; kinds?: string[] } | null; pool: { primary: string[]; secondary_weapons: string[]; secondary_perks: string[] }; weapons: WeaponView[];
-    preset?: string; secKind: 'weapon' | 'perk'; setSecKind: (k: 'weapon' | 'perk') => void; onClear?: () => void; onBuild: () => void }) {
+function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
+  { slot: Slot; rule?: { choice: string; kinds?: string[] } | null; pool: { primary: string[]; secondary_weapons: string[]; perks: string[] }; weapons: WeaponView[];
+    preset?: string; onClear?: () => void; onBuild: () => void }) {
   const choice = rule?.choice ?? 'player';
   const nAllowed = slot === 'primary' ? pool.primary.length : pool.secondary_weapons.length;
   const presetTxt = preset && preset !== 'open' ? ` · ${PRESET_LABEL[preset] ?? preset.toUpperCase()}` : '';
+  const sidearms = !!rule?.kinds && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm');   // A12: pistols only
   const summary = choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME'
-    : slot === 'secondary' && secKind === 'perk' ? `${pool.secondary_perks.length} PERKS${presetTxt}`
-    : rule?.kinds && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm') ? `${nAllowed} SIDEARMS${presetTxt}`   // A12: pistols only
+    : slot === 'perk' ? `${pool.perks.length} PERKS${presetTxt}`                                          // A14: the perk slot
+    : sidearms ? `${nAllowed} SIDEARMS${presetTxt}`
     : `${nAllowed} OF ${weapons.length} WEAPONS${presetTxt}`;
   const hint = choice === 'fixed' || choice === 'off'
     ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 32 }}>CHANGE IN GAMES ▸</button>
-    : <span>{slot === 'primary' ? 'SELECT TO ARM · TRY-OUT STARTS ON PICK' : 'SELECT · WEAPONS TRY OUT ON PICK'}</span>;
+    : <span>{slot === 'primary' ? 'SELECT TO ARM · TRY-OUT STARTS ON PICK' : slot === 'secondary' ? 'SELECT · WEAPONS TRY OUT ON PICK' : 'SELECT · APPLIED WHEN THE GAME IS PUSHED'}</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
       <SectionRule label={`ARSENAL // ${slot.toUpperCase()} · ${summary}`} hint={hint} style={{ marginBottom: 0 }} />
-      {slot === 'secondary' && choice !== 'off' && (
+      {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Seg value={secKind} onChange={setSecKind} pad="6px 14px" options={[
-            // 'sidearm' (A12): pistols only — the pool already holds just the pistols, the chip says so
-            ...(!rule?.kinds || rule.kinds.includes('weapon') ? [{ value: 'weapon' as const, label: `WEAPONS · ${pool.secondary_weapons.length}` }]
-              : rule.kinds.includes('sidearm') ? [{ value: 'weapon' as const, label: `SIDEARMS · ${pool.secondary_weapons.length}` }] : []),
-            ...(rule?.kinds?.includes('perk') !== false ? [{ value: 'perk' as const, label: `PERKS · ${pool.secondary_perks.length}` }] : []),
-          ]} />
-          {onClear && <GhostButton size={10} pad="6px 12px" onClick={onClear} title="Leave slot 2 empty — alt-fire does nothing">NONE · LEAVE EMPTY</GhostButton>}
-          <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>SLOT 2 IS A {rule?.kinds && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm') ? 'SIDEARM' : 'WEAPON'} <b style={{ color: T.dim }}>OR</b> A PERK</span>
+          {onClear && <GhostButton size={10} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
+          <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>
+            {slot === 'perk' ? <>A PERK RIDES BESIDE THE WEAPONS · <b style={{ color: T.dim }}>EASY RELOAD</b> TAKES THE ALT BUTTON AND DROPS THE SECOND WEAPON</>
+              : <>SLOT 2 IS A {sidearms ? 'SIDEARM' : 'WEAPON'} · PERKS HAVE THEIR OWN SLOT</>}
+          </span>
         </div>
       )}
     </div>
@@ -508,9 +542,10 @@ function PerkHero({ k }: { k: PerkView }) {
           {fx.ammo_mult != null && <NumberCell label="MAG & RESERVE" value={`×${fx.ammo_mult}`} color={PERK_COLOR} size={20} pad="6px 14px" />}
           {fx.reload_mult != null && <NumberCell label="RELOADS" value={`${+(1 / fx.reload_mult).toFixed(1)}× FASTER`} color={PERK_COLOR} size={20} pad="6px 14px" />}
           {fx.alt_reload && <NumberCell label="ALT BUTTON" value="RELOAD" color={PERK_COLOR} size={20} pad="6px 14px" />}
+          {fx.switch_mult != null && <NumberCell label="WEAPON SWAP" value={`${+(1 / fx.switch_mult).toFixed(1)}× FASTER`} color={PERK_COLOR} size={20} pad="6px 14px" />}
         </div>
         <div style={{ font: F.chk(500, 13), lineHeight: 1.5, color: T.body, maxWidth: '54ch' }}>{k.desc}</div>
-        <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT · ALT-FIRE DOES NOT SWITCH WEAPONS</div>
+        <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT{fx.alt_reload ? ' · TAKES THE ALT BUTTON: NO SECOND WEAPON WITH THIS ONE' : ' · RIDES BESIDE BOTH WEAPONS'}</div>
       </div>
     </>
   );
@@ -527,6 +562,7 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
     case 'extended_mags': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M8 3h8v18H8zM8 8h8M8 13h8M8 18h8" /><path {...c} d="M4 6v12M20 6v12" opacity=".5" /></svg>;
     case 'quick_hands': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M13 2 5 13h6l-1 9 9-12h-6z" /></svg>;
     case 'easy_reload': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M20 12a8 8 0 1 1-2.3-5.7" /><path {...c} d="M20 4v5h-5" /><circle cx="12" cy="12" r="2" fill={color} stroke="none" /></svg>;
+    case 'quick_switch': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M4 8h12l-3-3M20 16H8l3 3" /></svg>;
     case 'med_kit': return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...c} x="3" y="6" width="18" height="14" rx="2" /><path {...c} d="M12 10v6M9 13h6M9 6V4h6v2" /></svg>;
     default: return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...c} cx="12" cy="12" r="8" /><path {...c} d="M12 8v4l3 2" /></svg>;
   }
@@ -538,6 +574,7 @@ const effectLine = (k: PerkView) => {
   if (fx.ammo_mult != null) out.push(`×${fx.ammo_mult} AMMO`);
   if (fx.reload_mult != null) out.push(`RELOADS ${+(1 / fx.reload_mult).toFixed(1)}× FASTER`);
   if (fx.alt_reload) out.push('ALT BUTTON RELOADS');
+  if (fx.switch_mult != null) out.push(`SWAPS ${+(1 / fx.switch_mult).toFixed(1)}× FASTER`);
   return out.join(' · ') || 'PASSIVE';
 };
 const shortName = (n: string) => n.replace(/ Rifle$/i, '').replace(/ Launcher$/i, ' LNCHR').toUpperCase();

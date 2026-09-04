@@ -88,12 +88,12 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
 # ------------------------------------------------------------------ policy engine
 def test_presets_and_pools():
     lp = P.pool(P.preset_rules("open"), W, PK)
-    assert len(lp["primary"]) == 21 and len(lp["secondary_weapons"]) == 21 and len(lp["secondary_perks"]) == 5
+    assert len(lp["primary"]) == 21 and len(lp["secondary_weapons"]) == 21 and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     assert len(lp["primary"]) == 16 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]   # 13 + the three sidearms
-    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["secondary_perks"]) == 5
+    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
-    assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "secondary_perks": []}
+    assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": []}
     assert P.default_policy("ffa")["preset"] == "no_heavies" and P.default_policy("tdm")["preset"] == "open"
     assert default_config("ffa")["loadout_policy"]["preset"] == "no_heavies"
 
@@ -103,9 +103,9 @@ def test_merge_preset_name_rewrites_and_rule_edit_flips_to_custom():
     assert pol["primary"]["choice"] == "fixed" and pol["primary"]["fixed_id"] == "sniper_rifle" and pol["hud_select"] is False
     pol = P.merge(pol, {"preset": "open"})
     assert pol["preset"] == "open" and pol["hud_select"] is True
-    pol = P.merge(pol, {"secondary": {"kinds": ["perk"]}})
-    assert pol["preset"] == "custom" and P.pool(pol, W, PK)["secondary_weapons"] == []
-    pol = P.merge(pol, {"secondary": {"kinds": ["weapon", "perk"]}})
+    pol = P.merge(pol, {"perk": {"choice": "off"}})                # A14: the perk rule is its own slot
+    assert pol["preset"] == "custom" and P.pool(pol, W, PK)["perks"] == [] and len(P.pool(pol, W, PK)["secondary_weapons"]) == 21
+    pol = P.merge(pol, {"perk": {"choice": "player"}})
     assert pol["preset"] == "open"                      # matches a preset again → named again
     pol = P.merge(pol, {"primary": {"exclude_tags": ["heavy"]}, "secondary": {"exclude_tags": ["heavy"]}})
     assert pol["preset"] == "no_heavies"
@@ -130,22 +130,32 @@ def test_validate_and_apply_matrix():
     ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "smg"}]}, W, PK)
     assert not ok and "fixed to Sniper Rifle" in why and "BUILD" in why
     ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "body_armor"}, W, PK)
+    assert not ok and why == "No perks this game"
+    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}, {"weapon_id": "smg"}]}, W, PK)
     assert not ok and why == "No secondary this game"
-    # apply: fixed → set, off → cleared, out-of-pool → replaced; never both a perk and a secondary
+    # A14: a perk rides beside a secondary weapon
+    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "glock"}], "perk": "quick_switch"}, W, PK) == (True, None)
+    # apply: fixed → set, off → cleared, out-of-pool → replaced
     assert P.apply(sn, lps, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     out = P.apply(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}], "overrides": {"max_hp": 60}}, W, PK)
     assert out == {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"max_hp": 60}}
-    fixed_perk = P.merge(P.preset_rules("open"), {"secondary": {"choice": "fixed", "fixed_id": "easy_reload"}})
+    # a fixed perk is set for everyone; the ALT-button one (Easy Reload) also drops the second weapon, Body Armor keeps it
+    fixed_perk = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "easy_reload"}})
     lpf = P.pool(fixed_perk, W, PK)
-    assert lpf["secondary_perks"] == ["easy_reload"] and lpf["secondary_weapons"] == []
+    assert lpf["perks"] == ["easy_reload"] and len(lpf["secondary_weapons"]) == 21
     assert P.apply(fixed_perk, lpf, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}], "perk": "easy_reload"}
+    armor = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "body_armor"}})
+    assert P.apply(armor, P.pool(armor, W, PK), {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
 
 
 def test_check_request_matrix():
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
     assert P.check_request(op, lp, "primary", "weapon", "smg", W, PK) == (True, None)
-    assert P.check_request(op, lp, "secondary", "perk", "body_armor", W, PK) == (True, None)
+    assert P.check_request(op, lp, "perk", "perk", "body_armor", W, PK) == (True, None)
+    assert P.check_request(op, lp, "secondary", "perk", "body_armor", W, PK) == (False, "Perks have their own slot this game")   # A14
+    assert P.check_request(op, lp, "perk", "weapon", "smg", W, PK) == (False, "Only a perk goes in the perk slot")
     assert P.check_request(op, lp, "secondary", "none", None, W, PK) == (True, None)
+    assert P.check_request(op, lp, "perk", "none", None, W, PK) == (True, None)
     assert P.check_request(op, lp, "primary", "none", None, W, PK)[1] == "A primary weapon is required"
     assert "perk" in P.check_request(op, lp, "primary", "perk", "body_armor", W, PK)[1].lower()
     assert P.check_request(op, lp, "primary", "weapon", "melee", W, PK)[1] == "Unknown weapon"
@@ -155,6 +165,7 @@ def test_check_request_matrix():
     assert "locked" in P.check_request(host, P.pool(host, W, PK), "primary", "weapon", "smg", W, PK)[1]
     sn = P.preset_rules("snipers"); lps = P.pool(sn, W, PK)
     assert P.check_request(sn, lps, "secondary", "weapon", "shotgun", W, PK)[1] == "No secondary this game"
+    assert P.check_request(sn, lps, "perk", "perk", "body_armor", W, PK)[1] == "No perks this game"
     nh = P.preset_rules("no_heavies"); lpn = P.pool(nh, W, PK)
     assert P.check_request(nh, lpn, "secondary", "weapon", "rail_gun", W, PK)[1] == "Heavies are off for this game"
 
@@ -167,7 +178,9 @@ def test_check_loadout_matrix():
     assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}
     ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": None})
     assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}
-    for bad, hint in (({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, "OR"),
+    ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"})   # A14: both
+    assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
+    for bad, hint in (({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "easy_reload"}, "ALT button"),   # the one pairing the gun can't do
                       ({"weapons": [{"weapon_id": "smg"}], "perk": "laser_eyes"}, "unknown perk"),
                       ({"weapons": [{"weapon_id": "smg"}], "perk": 7}, "perk_id"),
                       ({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}, {"weapon_id": "amr"}]}, "at most"),
@@ -200,7 +213,7 @@ def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
     for p in s.players.values():
         assert p["loadout"] == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     assert len(net.pushes("assign", "node0")) == n_assign + 1
-    assert s.snapshot()["loadout_pool"] == {"primary": ["sniper_rifle"], "secondary_weapons": [], "secondary_perks": []}
+    assert s.snapshot()["loadout_pool"] == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": []}
     # a MODE CHANGE applies the mode default (same mode = "run it back", the ruleset is kept);
     # a new player obeys the ruleset from birth
     s.set_config({"mode": "tdm"})
@@ -211,7 +224,9 @@ def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
     assert p3["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}
     # PUT /api/config partial: a rule edit → custom
     s.set_config({"loadout_policy": {"secondary": {"choice": "off"}}})
-    assert s.config["loadout_policy"]["preset"] == "custom" and "perk" not in p3["loadout"]
+    assert s.config["loadout_policy"]["preset"] == "custom" and p3["loadout"]["perk"] == "body_armor"   # A14: slot 2 off leaves the perk
+    s.set_config({"loadout_policy": {"perk": {"choice": "off"}}})
+    assert "perk" not in p3["loadout"]
 
 
 def test_restore_snapshot_without_policy_fills_default(tmp_path=None):
@@ -278,7 +293,7 @@ def test_compile_validate_perks():
     r = C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "nope"})])
     assert any("unknown perk_id" in e for e in r["errors"])
     r = C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}], "perk": "body_armor"})])
-    assert any("cannot both" in e for e in r["errors"])
+    assert r["ok"] and not r["errors"]          # A14: a perk rides beside a secondary weapon; the compiler arms both
     assert C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "easy_reload"})])["ok"]
 
 
@@ -323,7 +338,8 @@ def test_assign_and_welcome_carry_catalog_and_policy():
     pol = a["policy"]
     assert pol["hud_select"] is True and pol["primary"]["choice"] == "player"
     assert "rail_gun" not in pol["primary"]["allowed_ids"] and "smg" in pol["primary"]["allowed_ids"]
-    assert pol["secondary"]["kinds"] == ["weapon", "perk"] and "body_armor" in pol["secondary"]["allowed_perk_ids"]
+    assert pol["secondary"]["kinds"] == ["weapon"] and "allowed_perk_ids" not in pol["secondary"]      # A14: perks left slot 2 …
+    assert pol["perk"]["choice"] == "player" and "body_armor" in pol["perk"]["allowed_perk_ids"]        # … for their own rule
     assert "rocket_launcher" not in pol["secondary"]["allowed_weapon_ids"]
     # every loadout change re-sends assign with the new loadout
     n = len(net.pushes("assign", "nodeX"))
@@ -342,11 +358,14 @@ def test_loadout_request_happy_paths_with_try():
     assert s.players[pid]["loadout"]["weapons"][0]["weapon_id"] == "smg"
     assert s.trying[pid] == "smg" and net.pushes("tutorial", "node0")[-1][2]["weapon"]["weapon_id"] == "smg"
     assert net.pushes("assign", "node0")[-1][2]["player"]["loadout"]["weapons"][0]["weapon_id"] == "smg"
-    # secondary weapon, then perk (replaces the weapon), then none
+    # secondary weapon, then a perk BESIDE it (A14), then none on each
     _req(net, 0, "secondary", "weapon", "shotgun")
     assert s.players[pid]["loadout"]["weapons"][1]["weapon_id"] == "shotgun" and _last_ack(net, 0)["ok"]
-    _req(net, 0, "secondary", "perk", "body_armor")
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"} and _last_ack(net, 0)["ok"]
+    _req(net, 0, "perk", "perk", "body_armor")
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
+    assert _last_ack(net, 0)["ok"] and "dropped" not in _last_ack(net, 0)
+    _req(net, 0, "perk", "none")
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]} and _last_ack(net, 0)["ok"]
     _req(net, 0, "secondary", "none")
     assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "smg"}]} and _last_ack(net, 0)["ok"]
     # a second player's request never touches the first
@@ -380,7 +399,9 @@ def test_loadout_request_reject_paths_each_deliver_an_ack():
         (("secondary", "weapon", "rocket_launcher"), "Heavies are off for this game"),
         (("primary", "none", None), "A primary weapon is required"),
         (("primary", "weapon", "melee"), "Unknown weapon"),
-        (("secondary", "perk", "med_kit"), "Unknown perk"),             # hidden = unknown to the phone
+        (("perk", "perk", "med_kit"), "Unknown perk"),                  # hidden = unknown to the phone
+        (("secondary", "perk", "body_armor"), "Perks have their own slot this game"),   # A14
+        (("perk", "weapon", "smg"), "Only a perk goes in the perk slot"),
         (("primary", "perk", "body_armor"), None),
         (("nowhere", "weapon", "smg"), "Unknown slot"),
         (("secondary", "weapon", None), "Unknown pick"),
@@ -406,8 +427,10 @@ def test_loadout_request_reject_paths_each_deliver_an_ack():
     assert _last_ack(net, 0)["reason"] == "Loadout picks are host-side for this game"
     # snipers: secondary off + primary fixed
     s.set_config({"loadout_policy": {"preset": "snipers"}})
-    _req(net, 0, "secondary", "perk", "body_armor")
+    _req(net, 0, "secondary", "weapon", "smg")
     assert _last_ack(net, 0)["reason"] == "No secondary this game"
+    _req(net, 0, "perk", "perk", "body_armor")
+    assert _last_ack(net, 0)["reason"] == "No perks this game"
     # try-outs closed once pushed: the pick still applies, the ack says why the gun didn't arm
     s.set_config({"loadout_policy": {"preset": "open"}})
     s.push_config()
@@ -513,7 +536,8 @@ def test_presets_builtin_and_crud_and_name_clash():
     assert b["builtin"] and b["name"] == "Silenced Sniper" and "silenced" in b["desc"].lower() and "config_id" not in b["config"]
     pol = b["config"]["loadout_policy"]
     assert b["config"]["mode"] == "ffa" and b["config"]["health"]["max_armor"] == 0 and pol["hud_select"] is False
-    assert pol["primary"] == {**pol["primary"], "choice": "fixed", "fixed_id": "sniper_rifle"} and pol["secondary"]["fixed_id"] == "extended_mags" and pol["preset"] == "custom"
+    assert pol["primary"] == {**pol["primary"], "choice": "fixed", "fixed_id": "sniper_rifle"} and pol["preset"] == "custom"
+    assert pol["secondary"]["choice"] == "off" and pol["perk"] == {**pol["perk"], "choice": "fixed", "fixed_id": "extended_mags"}   # A14 shape
     # create from the current draft (config_id stripped), listed after the builtin, persisted
     s.set_config({"mode": "tdm", "time_limit_s": 300, "loadout_policy": {"preset": "no_heavies"}})
     r = st.create("Friday TDM", "no heavies, 5 min", s.config)

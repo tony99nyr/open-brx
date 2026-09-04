@@ -418,6 +418,7 @@ export const PERKS: PerkView[] = [
   { perk_id: 'extended_mags', name: 'Extended Mags', desc: 'Double the magazine and the reserve on your primary. Fewer reloads, longer fights.', tags: ['passive'], mechanism: 'passive', effects: { ammo_mult: 2 }, verified: true },
   { perk_id: 'quick_hands', name: 'Quick Hands', desc: 'Reload your primary in half the time.', tags: ['passive'], mechanism: 'passive', effects: { reload_mult: 0.5 }, verified: false },
   { perk_id: 'easy_reload', name: 'Easy Reload', desc: 'The orange alt-fire button reloads — no lever pull. For players who struggle with the mechanic.', tags: ['passive'], mechanism: 'passive', effects: { alt_reload: true }, verified: true },
+  { perk_id: 'quick_switch', name: 'Quick Switch', desc: 'Draw your second weapon in half the time: the gun\'s swap delay drops from 0.85 s to 0.43 s.', tags: ['passive'], mechanism: 'passive', effects: { switch_mult: 0.5 }, verified: true },
 ];
 
 const base = (mode: string, over: Partial<GameConfig> = {}): GameConfig => ({

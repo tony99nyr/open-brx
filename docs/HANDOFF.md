@@ -627,7 +627,9 @@ on hardware across several matches, including two taggers driven simultaneously 
 laptop with a synchronised start.
 
 **Loadout v2 (2026-08-27, `docs/spec/loadout.md`, contracts A10) — BUILT, not yet bench-verified:** every
-player has two slots (primary + secondary **weapon | perk | empty**); the host sets **loadout rules** per game
+player has **three slots (A14, 2026-09-04): primary + secondary weapon | empty + perk | empty** — AR + pistol + Quick
+Switch is a legal kit; the one pairing the gun cannot do (Easy Reload takes the ALT button, so no second weapon) is
+refused server-side and warned about with a two-tap confirm on both UIs; the host sets **loadout rules** per game
 in BUILD (presets OPEN / NO HEAVIES / SNIPERS / CUSTOM, per-slot who-picks + class allow-chips; FFA defaults
 to NO HEAVIES); **players pick + try weapons from the phone** when the rules allow (`loadout_request` →
 `tutorial` → `loadout_ack`, MC roster shows PICKING… / TRYING / READY live); v1 perks are passive (Body Armor,

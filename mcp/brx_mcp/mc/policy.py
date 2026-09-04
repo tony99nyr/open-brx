@@ -3,14 +3,24 @@
 Who may pick what, per slot. Presets are named here; the derived pool (allowed ids per slot) is
 computed once server-side and published in `State.loadout_pool` + each node's `assign.policy`, so
 neither UI carries rule logic. Everything returns plain dicts (contracts shapes) — no classes to share.
+
+A14 (2026-09-04, Tony: "you should be able to have AR and pistol and quick switch perk"): a perk is its
+OWN slot, not a thing that displaces the secondary weapon. Three rules — `primary`, `secondary`
+(weapons / sidearms only) and `perk`. The one hardware exception: a perk that takes the ALT button
+(`effects.alt_reload`, Easy Reload) leaves no button to switch weapons with, so it cannot ride with a
+second weapon — the server drops the other one and says so; the UIs warn before the tap.
+No pre-A14 shape is read (FOLLOWUPS S6, Tony: "we dont need to support legacy at all"): a stored policy that
+still says "perk" inside `secondary.kinds` is a validation error and `normalize` falls back to the mode default.
 """
 from __future__ import annotations
 
 import copy
 
 CHOICES = ("player", "host", "fixed", "off")
-KINDS = ("weapon", "perk", "sidearm")          # "sidearm" (2026-09-04): only weapons tagged `sidearm` — the pistols
+SEC_KINDS = ("weapon", "sidearm")              # A14: slot 2 admits weapons only; "sidearm" (A12) = only the `sidearm`-tagged pistols
 PRIMARY_KINDS = ("weapon", "sidearm")          # a perk never goes in slot 1; "sidearm" alone = a pistol round
+PERK_KINDS = ("perk",)
+SLOTS = ("primary", "secondary", "perk")
 SIDEARM_TAG = "sidearm"
 PRESET_NAMES = ("open", "no_heavies", "snipers", "custom")
 PRESET_LABELS = {"open": "OPEN", "no_heavies": "NO HEAVIES", "snipers": "SNIPERS ONLY", "custom": "CUSTOM RULES"}
@@ -19,15 +29,27 @@ PRESET_LABELS = {"open": "OPEN", "no_heavies": "NO HEAVIES", "snipers": "SNIPERS
 _R_LOCKED = "Set by the host — this slot is locked for this game"
 _R_HUD_OFF = "Loadout picks are host-side for this game"
 _R_OFF = "No secondary this game"
+_R_NO_PERKS = "No perks this game"
 _R_FIXED = "{what} is fixed to {name} for this game — change it in BUILD"
 _R_NOT_ALLOWED = "{name} isn't allowed in this game"
 _R_HEAVY = "Heavies are off for this game"
 _R_KIND = "{kind} can't go in the {slot} slot this game"
+_R_PERK_SLOT = "Perks have their own slot this game"
+_R_ONLY_PERKS = "Only a perk goes in the perk slot"
 _R_SIDEARM_ONLY = "Only sidearms go in the {slot} slot this game"
 _R_UNKNOWN = "Unknown {kind}"
+_R_ALT_BOTH = "{perk} takes the ALT button, so it can't ride with a second weapon"
+# `loadout_ack.reason` when a pick applied but knocked the other thing out (A14 §4.2)
+_R_DROPPED_WEAPON = "{perk} takes the ALT button — {weapon} dropped"
+_R_DROPPED_PERK = "{weapon} needs the ALT button to switch — {perk} dropped"
 
 
-def _rule(choice="player", kinds=("weapon", "perk"), exclude_tags=(), exclude_ids=(), only_ids=(), fixed_id=None) -> dict:
+def takes_alt(row: dict | None) -> bool:
+    """Does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can be switched to."""
+    return bool(((row or {}).get("effects") or {}).get("alt_reload"))
+
+
+def _rule(choice="player", kinds=("weapon",), exclude_tags=(), exclude_ids=(), only_ids=(), fixed_id=None) -> dict:
     return {"choice": choice, "kinds": list(kinds), "exclude_tags": list(exclude_tags),
             "exclude_ids": list(exclude_ids), "only_ids": list(only_ids), "fixed_id": fixed_id}
 
@@ -37,14 +59,17 @@ def preset_rules(name: str) -> dict:
     if name == "no_heavies":
         return {"preset": name, "hud_select": True,
                 "primary": _rule("player", ("weapon",), exclude_tags=("heavy",)),
-                "secondary": _rule("player", ("weapon", "perk"), exclude_tags=("heavy",))}
+                "secondary": _rule("player", ("weapon",), exclude_tags=("heavy",)),
+                "perk": _rule("player", PERK_KINDS)}
     if name == "snipers":
         return {"preset": name, "hud_select": False,
                 "primary": _rule("fixed", ("weapon",), fixed_id="sniper_rifle"),
-                "secondary": _rule("off", ("weapon", "perk"))}
+                "secondary": _rule("off", ("weapon",)),
+                "perk": _rule("off", PERK_KINDS)}
     return {"preset": "open" if name != "custom" else "custom", "hud_select": True,
             "primary": _rule("player", ("weapon",)),
-            "secondary": _rule("player", ("weapon", "perk"))}
+            "secondary": _rule("player", ("weapon",)),
+            "perk": _rule("player", PERK_KINDS)}
 
 
 MODE_DEFAULT_PRESET = {"ffa": "no_heavies"}
@@ -56,21 +81,21 @@ def default_policy(mode: str) -> dict:
 
 def _matches_preset(pol: dict, name: str) -> bool:
     ref = preset_rules(name)
-    return all(pol.get(k) == ref[k] for k in ("hud_select", "primary", "secondary"))
+    return all(pol.get(k) == ref[k] for k in ("hud_select", "primary", "secondary", "perk"))
 
 
 def _check_rule(slot: str, r) -> dict:
     if not isinstance(r, dict):
         raise ValueError(f"loadout_policy.{slot} must be an object")
     out = _rule()
-    out["kinds"] = ["weapon"] if slot == "primary" else ["weapon", "perk"]
+    out["kinds"] = ["perk"] if slot == "perk" else ["weapon"]
     if "choice" in r:
         if r["choice"] not in CHOICES or (slot == "primary" and r["choice"] == "off"):
             raise ValueError(f"loadout_policy.{slot}.choice must be one of {CHOICES}")
         out["choice"] = r["choice"]
-    if "kinds" in r:
+    if "kinds" in r and slot != "perk":            # the perk slot's kinds are always ["perk"]
         ks = r["kinds"]
-        allowed = KINDS if slot == "secondary" else PRIMARY_KINDS
+        allowed = SEC_KINDS if slot == "secondary" else PRIMARY_KINDS
         if not isinstance(ks, list) or not ks or any(k not in allowed for k in ks):
             raise ValueError(f"loadout_policy.{slot}.kinds must be a non-empty list of {'|'.join(allowed)}")
         out["kinds"] = list(dict.fromkeys(ks))
@@ -96,16 +121,22 @@ def merge(current: dict | None, patch: dict) -> dict:
     if not isinstance(patch, dict):
         raise ValueError("loadout_policy must be an object")
     base = copy.deepcopy(current) if current else preset_rules("open")
+    for slot in SLOTS:
+        base.setdefault(slot, preset_rules("open")[slot])
     pname = patch.get("preset")
     if pname is not None:
         if pname not in PRESET_NAMES:
             raise ValueError(f"loadout_policy.preset must be one of {PRESET_NAMES}")
         if pname != "custom":
             base = preset_rules(pname)
-    for slot in ("primary", "secondary"):
+    for slot in SLOTS:
         if slot in patch:
-            merged = {**base[slot], **{k: v for k, v in patch[slot].items() if k in base[slot]}} if isinstance(patch[slot], dict) else patch[slot]
-            base[slot] = _check_rule(slot, merged)
+            if isinstance(patch[slot], dict):
+                base[slot] = {**base[slot], **{k: v for k, v in patch[slot].items() if k in base[slot]}}
+            else:
+                base[slot] = patch[slot]
+    for slot in SLOTS:
+        base[slot] = _check_rule(slot, base[slot])
     if "hud_select" in patch:
         base["hud_select"] = bool(patch["hud_select"])
     if pname == "custom":
@@ -116,7 +147,7 @@ def merge(current: dict | None, patch: dict) -> dict:
 
 
 def normalize(pol: dict | None, mode: str = "tdm") -> dict:
-    """A stored config may predate policies (session.json) — fill the mode default."""
+    """A stored config may predate policies (session.json) or carry a shape this engine no longer reads — the mode default then."""
     if not pol:
         return default_policy(mode)
     try:
@@ -159,26 +190,44 @@ def admits_weapons(rule: dict) -> bool:
 def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
     """Allowed ids per slot (catalog order) — `State.loadout_pool` (§3.2). `weapons`/`perks` are the
     VISIBLE catalog rows (each with `tags`)."""
-    prim, sec = policy["primary"], policy["secondary"]
+    prim, sec, pr = policy["primary"], policy["secondary"], policy["perk"]
     if prim["choice"] == "fixed":
         primary = [prim["fixed_id"]] if any(w["weapon_id"] == prim["fixed_id"] for w in weapons) else []
     else:
         primary = _filter(prim, weapon_kind_rows(prim, weapons), "weapon_id")
     if sec["choice"] == "off":
-        sw, sp = [], []
+        sw = []
     elif sec["choice"] == "fixed":
-        fid = sec["fixed_id"]
-        sw = [fid] if any(w["weapon_id"] == fid for w in weapons) else []
-        sp = [fid] if not sw and any(p["perk_id"] == fid for p in perks) else []
+        sw = [sec["fixed_id"]] if any(w["weapon_id"] == sec["fixed_id"] for w in weapons) else []
     else:
         sw = _filter(sec, weapon_kind_rows(sec, weapons), "weapon_id")
-        sp = _filter(sec, perks, "perk_id") if "perk" in sec["kinds"] else []
-    return {"primary": primary, "secondary_weapons": sw, "secondary_perks": sp}
+    if pr["choice"] == "off":
+        sp = []
+    elif pr["choice"] == "fixed":
+        sp = [pr["fixed_id"]] if any(p["perk_id"] == pr["fixed_id"] for p in perks) else []
+    else:
+        sp = _filter(pr, perks, "perk_id")
+    return {"primary": primary, "secondary_weapons": sw, "perks": sp}
 
 
 # ---- validation / auto-apply ------------------------------------------------------
 def _name(rows: list[dict], key: str, rid: str) -> str:
     return next((r["name"] for r in rows if r[key] == rid), rid)
+
+
+def _perk_row(perks: list[dict], pid: str | None) -> dict | None:
+    return next((p for p in perks if p.get("perk_id") == pid), None) if pid else None
+
+
+def conflict(loadout: dict, perks: list[dict]) -> dict | None:
+    """A14: the perk takes the ALT button AND a second weapon is loaded → `{perk, weapon}` (ids); else None."""
+    lo = loadout or {}
+    ws = lo.get("weapons") or []
+    sec_w = ws[1]["weapon_id"] if len(ws) > 1 else None
+    perk = lo.get("perk") or None
+    if sec_w and perk and takes_alt(_perk_row(perks, perk)):
+        return {"perk": perk, "weapon": sec_w}
+    return None
 
 
 def _why_not(rule: dict, rows: list[dict], key: str, rid: str, slot: str = "secondary") -> str:
@@ -199,59 +248,59 @@ def validate_loadout(policy: dict, lp: dict, loadout: dict, weapons: list[dict],
     prim = ws[0]["weapon_id"] if ws else None
     sec_w = ws[1]["weapon_id"] if len(ws) > 1 else None
     perk = loadout.get("perk") or None
-    pr, sr = policy["primary"], policy["secondary"]
+    pr, sr, kr = policy["primary"], policy["secondary"], policy["perk"]
     if prim is None:
         return False, "A primary weapon is required"
     if prim not in lp["primary"]:
         if pr["choice"] == "fixed":
             return False, _R_FIXED.format(what="Primary", name=_name(weapons, "weapon_id", pr["fixed_id"]))
         return False, _why_not(pr, weapons, "weapon_id", prim, "primary")
-    if sr["choice"] == "off" and (sec_w or perk):
+    if sr["choice"] == "off" and sec_w:
         return False, _R_OFF
-    if sr["choice"] == "fixed":
-        fid = sr["fixed_id"]
-        if (sec_w or perk) != fid:
-            return False, _R_FIXED.format(what="Secondary", name=_name(weapons + perks, "weapon_id" if any(w["weapon_id"] == fid for w in weapons) else "perk_id", fid))
-        return True, None
+    if sr["choice"] == "fixed" and sec_w != sr["fixed_id"]:
+        return False, _R_FIXED.format(what="Secondary", name=_name(weapons, "weapon_id", sr["fixed_id"]))
     if sec_w and sec_w not in lp["secondary_weapons"]:
         if not admits_weapons(sr):
             return False, _R_KIND.format(kind="A weapon", slot="secondary")
         return False, _why_not(sr, weapons, "weapon_id", sec_w)
-    if perk and perk not in lp["secondary_perks"]:
-        if "perk" not in sr["kinds"]:
-            return False, _R_KIND.format(kind="A perk", slot="secondary")
-        return False, _why_not(sr, perks, "perk_id", perk)
+    if kr["choice"] == "off" and perk:
+        return False, _R_NO_PERKS
+    if kr["choice"] == "fixed" and perk != kr["fixed_id"]:
+        return False, _R_FIXED.format(what="Perk", name=_name(perks, "perk_id", kr["fixed_id"]))
+    if perk and perk not in lp["perks"]:
+        return False, _why_not(kr, perks, "perk_id", perk, "perk")
+    c = conflict(loadout, perks)
+    if c:
+        return False, _R_ALT_BOTH.format(perk=_name(perks, "perk_id", c["perk"]))
     return True, None
 
 
 def apply(policy: dict, lp: dict, loadout: dict, weapons: list[dict], perks: list[dict]) -> dict:
     """Auto-fix a loadout to the policy (§3.3): fixed → set; off → cleared; out-of-pool → primary falls to
-    the first allowed weapon (assault_rifle when allowed), secondary/perk cleared. Returns a NEW dict."""
+    the first allowed weapon (assault_rifle when allowed), secondary / perk cleared. An ALT-button perk
+    beside a second weapon keeps the perk (the host's rule put it there) and drops the weapon. Returns a NEW dict."""
     out = copy.deepcopy(loadout or {})
     ws = list(out.get("weapons") or [])
     prim = ws[0]["weapon_id"] if ws else None
     sec_w = ws[1]["weapon_id"] if len(ws) > 1 else None
     perk = out.get("perk") or None
-    pr, sr = policy["primary"], policy["secondary"]
+    sr, kr = policy["secondary"], policy["perk"]
     if prim not in lp["primary"]:
         prim = ("assault_rifle" if "assault_rifle" in lp["primary"] else (lp["primary"][0] if lp["primary"] else prim or "assault_rifle"))
     if sr["choice"] == "off":
-        sec_w, perk = None, None
+        sec_w = None
     elif sr["choice"] == "fixed":
-        fid = sr["fixed_id"]
-        if fid in lp["secondary_weapons"]:
-            sec_w, perk = fid, None
-        elif fid in lp["secondary_perks"]:
-            sec_w, perk = None, fid
-        else:
-            sec_w, perk = None, None
-    else:
-        if sec_w and sec_w not in lp["secondary_weapons"]:
-            sec_w = None
-        if perk and perk not in lp["secondary_perks"]:
-            perk = None
-    if sec_w and perk:          # never both (§2)
+        sec_w = sr["fixed_id"] if sr["fixed_id"] in lp["secondary_weapons"] else None
+    elif sec_w and sec_w not in lp["secondary_weapons"]:
+        sec_w = None
+    if kr["choice"] == "off":
         perk = None
+    elif kr["choice"] == "fixed":
+        perk = kr["fixed_id"] if kr["fixed_id"] in lp["perks"] else None
+    elif perk and perk not in lp["perks"]:
+        perk = None
+    if sec_w and perk and takes_alt(_perk_row(perks, perk)):
+        sec_w = None
     out["weapons"] = [{"weapon_id": prim}] + ([{"weapon_id": sec_w}] if sec_w else [])
     if perk:
         out["perk"] = perk
@@ -263,11 +312,11 @@ def apply(policy: dict, lp: dict, loadout: dict, weapons: list[dict], perks: lis
 def check_request(policy: dict, lp: dict, slot: str, kind: str, rid: str | None,
                   weapons: list[dict], perks: list[dict]) -> tuple[bool, str | None]:
     """Phone-side check for a `loadout_request` (§4.2)."""
-    if slot not in ("primary", "secondary"):
+    if slot not in SLOTS:
         return False, "Unknown slot"
     rule = policy[slot]
     if rule["choice"] == "off":
-        return False, _R_OFF                     # the most specific reason first: "no secondary" beats "host-side"
+        return False, _R_NO_PERKS if slot == "perk" else _R_OFF   # the most specific reason first: "no secondary" beats "host-side"
     if not policy.get("hud_select"):
         return False, _R_HUD_OFF
     if rule["choice"] in ("host", "fixed"):
@@ -278,27 +327,29 @@ def check_request(policy: dict, lp: dict, slot: str, kind: str, rid: str | None,
         return True, None
     if kind not in ("weapon", "perk") or not rid:       # a pistol is requested as kind "weapon" (contracts §2: WeaponSel)
         return False, "Unknown pick"
+    if slot == "perk":
+        if kind != "perk":
+            return False, _R_ONLY_PERKS
+        if rid not in lp["perks"]:
+            return False, _why_not(rule, perks, "perk_id", rid, "perk")
+        return True, None
+    if kind != "weapon":
+        return False, _R_KIND.format(kind="A perk", slot="primary") if slot == "primary" else _R_PERK_SLOT
     if slot == "primary":
-        if kind != "weapon":
-            return False, _R_KIND.format(kind="A perk", slot="primary")
         if rid not in lp["primary"]:
             return False, _why_not(rule, weapons, "weapon_id", rid, "primary")
         return True, None
-    if kind == "weapon":
-        if not admits_weapons(rule):
-            return False, _R_KIND.format(kind="A weapon", slot="secondary")
-        if rid not in lp["secondary_weapons"]:
-            return False, _why_not(rule, weapons, "weapon_id", rid)
-        return True, None
-    if "perk" not in rule["kinds"]:
-        return False, _R_KIND.format(kind="A perk", slot="secondary")
-    if rid not in lp["secondary_perks"]:
-        return False, _why_not(rule, perks, "perk_id", rid)
+    if not admits_weapons(rule):
+        return False, _R_KIND.format(kind="A weapon", slot="secondary")
+    if rid not in lp["secondary_weapons"]:
+        return False, _why_not(rule, weapons, "weapon_id", rid)
     return True, None
 
 
-def set_slot(loadout: dict, slot: str, kind: str, rid: str | None) -> dict:
-    """Write one slot of a loadout (already validated). Returns a NEW dict."""
+def set_slot(loadout: dict, slot: str, kind: str, rid: str | None, perks: list[dict] = ()) -> dict:
+    """Write one slot of a loadout (already validated). The thing just picked wins an ALT-button conflict:
+    Easy Reload over a second weapon drops the weapon; a second weapon over Easy Reload drops the perk
+    (Tony 2026-09-04: "when you pick that it will invalidate your secondary gun selection"). Returns a NEW dict."""
     out = copy.deepcopy(loadout or {"weapons": []})
     ws = list(out.get("weapons") or [])
     prim = ws[0]["weapon_id"] if ws else "assault_rifle"
@@ -306,12 +357,14 @@ def set_slot(loadout: dict, slot: str, kind: str, rid: str | None) -> dict:
     perk = out.get("perk") or None
     if slot == "primary":
         prim = rid
-    elif kind == "weapon":
-        sec_w, perk = rid, None
-    elif kind == "perk":
-        sec_w, perk = None, rid
+    elif slot == "secondary":
+        sec_w = rid if kind == "weapon" else None
+        if sec_w and perk and takes_alt(_perk_row(perks, perk)):
+            perk = None
     else:
-        sec_w, perk = None, None
+        perk = rid if kind == "perk" else None
+        if perk and sec_w and takes_alt(_perk_row(perks, perk)):
+            sec_w = None
     out["weapons"] = [{"weapon_id": prim}] + ([{"weapon_id": sec_w}] if sec_w else [])
     if perk:
         out["perk"] = perk
@@ -320,10 +373,25 @@ def set_slot(loadout: dict, slot: str, kind: str, rid: str | None) -> dict:
     return out
 
 
+def dropped_by(before: dict, after: dict, weapons: list[dict], perks: list[dict]) -> tuple[dict | None, str | None]:
+    """What a `set_slot` knocked out of the OTHER slot, as `loadout_ack.dropped {slot, id, name}` + the reason line."""
+    b_ws, a_ws = (before or {}).get("weapons") or [], (after or {}).get("weapons") or []
+    b_sec = b_ws[1]["weapon_id"] if len(b_ws) > 1 else None
+    a_sec = a_ws[1]["weapon_id"] if len(a_ws) > 1 else None
+    b_perk, a_perk = (before or {}).get("perk") or None, (after or {}).get("perk") or None
+    if b_sec and not a_sec and a_perk and a_perk != b_perk:
+        wname = _name(weapons, "weapon_id", b_sec)
+        return {"slot": "secondary", "id": b_sec, "name": wname}, _R_DROPPED_WEAPON.format(perk=_name(perks, "perk_id", a_perk), weapon=wname)
+    if b_perk and not a_perk and a_sec and a_sec != b_sec:
+        pname = _name(perks, "perk_id", b_perk)
+        return {"slot": "perk", "id": b_perk, "name": pname}, _R_DROPPED_PERK.format(weapon=_name(weapons, "weapon_id", a_sec), perk=pname)
+    return None, None
+
+
 def node_view(policy: dict, lp: dict) -> dict:
     """The per-player `assign.policy` the phone renders from (§4.1)."""
     return {"hud_select": bool(policy.get("hud_select")),
             "primary": {"choice": policy["primary"]["choice"], "allowed_ids": list(lp["primary"])},
             "secondary": {"choice": policy["secondary"]["choice"], "kinds": list(policy["secondary"]["kinds"]),
-                          "allowed_weapon_ids": list(lp["secondary_weapons"]),
-                          "allowed_perk_ids": list(lp["secondary_perks"])}}
+                          "allowed_weapon_ids": list(lp["secondary_weapons"])},
+            "perk": {"choice": policy["perk"]["choice"], "allowed_perk_ids": list(lp["perks"])}}

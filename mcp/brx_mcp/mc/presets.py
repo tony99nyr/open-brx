@@ -37,7 +37,8 @@ def _builtin_configs(default_config, merge_policy) -> list[dict]:
     cfg["loadout_policy"] = merge_policy(cfg["loadout_policy"], {
         "hud_select": False,
         "primary": {"choice": "fixed", "fixed_id": "sniper_rifle"},
-        "secondary": {"choice": "fixed", "fixed_id": "extended_mags"},
+        "secondary": {"choice": "off"},
+        "perk": {"choice": "fixed", "fixed_id": "extended_mags"},      # A14: the perk is its own slot
     })
     cfg.pop("config_id", None)
     return [{

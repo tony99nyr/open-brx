@@ -417,7 +417,7 @@ def test_phone_loadout_request_roundtrip_real_stack():
             na.send_loadout_request("secondary", "weapon", "rail_gun")
             assert await until(lambda: len(na.loadout_acks) >= 2)
             assert na.loadout_acks[-1]["ok"] is False and na.loadout_acks[-1]["reason"] == "Heavies are off for this game"
-            na.send_loadout_request("secondary", "perk", "body_armor")
+            na.send_loadout_request("perk", "perk", "body_armor")          # A14: the perk has its own slot
             assert await until(lambda: len(na.loadout_acks) >= 3 and na.loadout_acks[-1]["ok"])
             assert s.session.players[a["player_id"]]["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}
             na.send_ready(True)

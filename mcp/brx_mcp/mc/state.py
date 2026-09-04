@@ -352,11 +352,19 @@ class Session:
         elif sec["choice"] == "fixed":
             parts.append(f"everyone gets {wname(sec.get('fixed_id'))} in slot 2")
         else:
-            kinds = [k for k in ("weapon", "sidearm", "perk") if k in sec.get("kinds", [])]
+            kinds = [k for k in ("weapon", "sidearm") if k in sec.get("kinds", [])]
             if "weapon" in kinds:
                 kinds = [k for k in kinds if k != "sidearm"]        # A12: "weapon" already includes the pistols
-            what = " or ".join({"weapon": "a second weapon", "sidearm": "a sidearm", "perk": "a perk"}[k] for k in kinds) or "nothing"
+            what = " or ".join({"weapon": "a second weapon", "sidearm": "a sidearm"}[k] for k in kinds) or "nothing"
             parts.append(("slot 2: " + what) if pol.get("hud_select") and sec["choice"] == "player" else f"the host sets slot 2 ({what})")
+        kr = pol.get("perk") or {"choice": "off"}                  # A14: the perk is its own slot
+        if kr["choice"] == "off":
+            parts.append("no perks")
+        elif kr["choice"] == "fixed":
+            parts.append(f"everyone gets {wname(kr.get('fixed_id'))}")
+        else:
+            n = len(lp["perks"])
+            parts.append((f"a perk of your choice ({n})" if pol.get("hud_select") and kr["choice"] == "player" else "the host sets your perk"))
         preset_lbl = _policy.PRESET_LABELS.get(pol.get("preset"), "")
         saved = None
         try:
@@ -568,7 +576,8 @@ class Session:
 
     def _check_loadout(self, lo) -> dict:
         """Loadout must be {weapons: [{weapon_id}] | [{primary}, {secondary}], perk?: perk_id, overrides?: {max_hp?, max_armor?}};
-        ids from the catalog when known; a perk and a secondary weapon never both fill slot 2 (loadout.md §2)."""
+        ids from the catalog when known. A14: `perk` is its own slot beside the weapons (loadout.md §2); the one
+        pairing the hardware forbids (an ALT-button perk + a second weapon) is a POLICY reject, not a shape error."""
         if not isinstance(lo, dict) or not isinstance(lo.get("weapons"), list) or not lo["weapons"]:
             raise ValueError("loadout must be {weapons: [{weapon_id}, ...]}")
         if len(lo["weapons"]) > 2:
@@ -595,9 +604,7 @@ class Session:
             _, perks = self._catalog_rows()
             if perks and perk not in {r.get("perk_id") for r in perks}:
                 raise ValueError(f"unknown perk_id {perk!r}")
-            if len(weapons) > 1:
-                raise ValueError("slot 2 is one thing: a secondary weapon OR a perk, not both")
-            out["perk"] = perk
+            out["perk"] = perk                        # A14: a perk is its own slot — it rides beside a secondary weapon
         ov = lo.get("overrides")
         if ov is not None:
             if not isinstance(ov, dict):
@@ -1129,7 +1136,9 @@ class Session:
 
     # ---------- kit-out ----------
     def _on_loadout_request(self, nid: str, pid: str, body: dict) -> None:
-        """A10 §4.2: validate against the policy → apply → re-assign → optional try-out → ALWAYS `loadout_ack`."""
+        """A10 §4.2: validate against the policy → apply → re-assign → optional try-out → ALWAYS `loadout_ack`.
+        A14: `slot` may be "perk"; a pick that knocks the other thing out (ALT-button perk vs second weapon)
+        still applies, and the ack carries `dropped {slot, id, name}` + the reason line."""
         p = self.players[pid]
         slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
         rid = body.get("id") if isinstance(body.get("id"), str) else None
@@ -1139,12 +1148,18 @@ class Session:
             # before KIT the phones are on "setting up" (§4.6); after the push the existing path below still applies
             # the pick (re-push) and only reports the try-out as closed
             ok, reason = False, "Mission Control is still setting up the game"
+        dropped = None
         if ok:
-            new = _policy.set_slot(p.get("loadout") or {"weapons": []}, slot, kind, rid)
+            before = p.get("loadout") or {"weapons": []}
+            new = _policy.set_slot(before, slot, kind, rid, perks)
             try:
                 new = self._check_loadout(new)
             except ValueError as e:
                 ok, reason = False, str(e)
+            else:
+                dropped, why = _policy.dropped_by(before, new, weapons, perks)   # A14: Easy Reload vs a second weapon
+                if dropped:
+                    reason = why
         if ok:
             p["loadout"] = new
             self.browsing.pop(pid, None)
@@ -1160,7 +1175,7 @@ class Session:
                     self._changed()
                     return
         self.net.push(nid, "loadout_ack", {"slot": slot, "ok": bool(ok), **({"reason": reason} if reason else {}),
-                                           "loadout": p["loadout"]})
+                                           **({"dropped": dropped} if dropped else {}), "loadout": p["loadout"]})
         self._changed()
 
     def tryout(self, pid: str, weapon_id: str | None) -> None:

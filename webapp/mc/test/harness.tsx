@@ -119,7 +119,7 @@ export function starved(base: State): State {
     nodes: [], players: [], teams: [],
     readiness: { ...base.readiness, board: [], unclaimed: [], go: false },
     kit: { kitted: 0, total: 0, trying: {}, browsing: {} },
-    loadout_pool: { primary: [], secondary_weapons: [], secondary_perks: [] },
+    loadout_pool: { primary: [], secondary_weapons: [], perks: [] },
     lobby: { ready: 0, total: 0, pushed: false, acks: {} },
     start: undefined, live: undefined, recap: undefined,
     config_errors: [], config_warnings: [],

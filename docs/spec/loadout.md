@@ -1,10 +1,11 @@
 # M-LOADOUT — two slots, perks, loadout policy, phone self-serve kitting
 
-- **Status:** A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8 saved games server side BUILT 2026-08-27 (`presets.py`, `/api/presets*`, `Session.sanitize_config`). Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
+- **Status:** **A14 perk slot (2026-09-04): a perk is its OWN slot beside PRIMARY / SECONDARY** — server (`policy.py`,
+  `tests/test_mc_perk_slot.py`), MC KIT/DESIGNER and the phone HUD built the same day; no backwards path (FOLLOWUPS S6). A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8 saved games server side BUILT 2026-08-27 (`presets.py`, `/api/presets*`, `Session.sanitize_config`). Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
   Binding for `mcp/brx_mcp/mc` (server), `webapp/mc` (MC UI) and `app/` (phone node). Field names are identical
   in Python TypedDicts, `API.md`, `types.ts` and the phone engine.
-- **Owns:** the shape of a player's kit (primary + secondary-or-perk), the **loadout policy** a host sets per game
-  (who may pick what, per slot), the **perk catalog**, and the phone's **self-serve pick / try** flow.
+- **Owns:** the shape of a player's kit (primary + optional secondary + optional perk), the **loadout policy** a host
+  sets per game (who may pick what, per slot), the **perk catalog**, and the phone's **self-serve pick / try** flow.
 - **Decided with Tony 2026-08-27:** v1 perks are **passive** (compile from existing head-frame knobs); slot-frame
   perks (Med Kit heal-gun, Concussion/EMP) stay catalogued but `hidden` until the emit-side bench (their effect
   lives in the *victim's* `$SIR` table — game-wide, not per-player). Players may pick **both** slots from the phone
@@ -58,16 +59,25 @@ PerkView {
 v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unverified, listed), `easy_reload`
 (verified — existing `alt_reload`), `med_kit` + `concussion` (`hidden: true`, `mechanism: "slot_frame"`).
 
-## 2. Loadout (contracts §2, A10) — `weapons[]` stays canonical on the wire
+## 2. Loadout (contracts §2, A10 + A14) — `weapons[]` stays canonical on the wire
 ```jsonc
 Loadout {
   weapons: WeaponSel[],            // [primary] or [primary, secondary]; index == gun slot. NEVER empty (primary required).
-  perk?: string | null,            // perk_id; mutually exclusive with a secondary WEAPON (slot 2 = weapon | perk | empty)
+  perk?: string | null,            // A14: the PERK slot — rides BESIDE a secondary weapon (AR + pistol + Quick Switch is a legal kit)
   overrides?: { max_hp?, max_armor? }
 }
 ```
+**A14 (Tony, 2026-09-04): "non-activated perks should be an extra thing outside of the secondary slot."** The v1 perks
+are passive head-frame knobs, so nothing about them competes with slot 1 — the old "slot 2 = weapon OR perk" rule was a
+UI convention, not a hardware fact. **The one hardware exception:** a perk that takes the **ALT button**
+(`effects.alt_reload` — Easy Reload maps ALT to RELOAD via `$BMAP,1,97`) leaves no button to switch weapons with, so it
+**cannot ride with a second weapon**. The host API refuses the pair; a phone pick applies and knocks the other slot out
+(§4.2 `dropped`); both UIs warn with a two-tap confirm before sending ("EASY RELOAD TAKES THE ALT BUTTON — DROPS YOUR SMG ·
+TAP AGAIN"). A new perk that claims a button in future joins the rule by setting `alt_reload` (or a sibling key the
+compiler names) — the UIs test the effect, not the perk id.
+
 Validation (`state._check_loadout`): 1–2 weapons, ids from the catalog (visible only), `perk` from the visible perk
-catalog, **`perk` set ⇒ `len(weapons) == 1`**. Then **policy enforcement** (§3.3) — a violating loadout is
+catalog. Then **policy enforcement** (§3.3) — a violating loadout (out of pool, or the ALT-button pair) is
 `400 {error}` from the host API and a `loadout_ack {ok:false}` from the phone path; the server never stores it.
 
 Compiler (`compile.py`): slot 1 `$WEAP`/`$AMMO,1` emitted **only when a secondary exists** (no more silent shotgun);
@@ -82,32 +92,35 @@ LoadoutPolicy {
   preset: "open" | "no_heavies" | "snipers" | "custom",
   hud_select: boolean,                       // may players pick from the phone at all (false ⇒ every slot is host-side)
   primary:   SlotRule,                       // choice never "off"
-  secondary: SlotRule                        // choice may be "off" (slot 2 disabled for everyone)
+  secondary: SlotRule,                       // choice may be "off" (slot 2 disabled for everyone); kinds weapons-only
+  perk:      SlotRule                        // A14: the perk slot; kinds always ["perk"]; choice may be "off" (no perks this game)
 }
 SlotRule {
   choice: "player" | "host" | "fixed" | "off",
-  kinds: ("weapon" | "perk" | "sidearm")[],  // primary: ["weapon"] (default) or ["sidearm"] (pistol round); secondary default ["weapon","perk"]
-                                             // A12: "sidearm" admits ONLY the `sidearm`-tagged weapons (the pistols) — "perks only" has a
-                                             // "sidearms only" twin: kinds ["sidearm","perk"]. "weapon" already includes the pistols, so
-                                             // ["weapon","sidearm"] ≡ ["weapon"]. A POLICY kind, never a request kind (a pistol is a "weapon").
+  kinds: ("weapon" | "sidearm" | "perk")[],  // primary/secondary: ["weapon"] (default) or ["sidearm"] (pistol round / pistols-only slot 2);
+                                             // perk: ["perk"]. A12: "sidearm" admits ONLY the `sidearm`-tagged weapons. "weapon" already
+                                             // includes the pistols, so ["weapon","sidearm"] ≡ ["weapon"]. A POLICY kind, never a request
+                                             // kind (a pistol is a "weapon"). A14: "perk" inside a WEAPON slot's kinds is a 400 — no legacy read.
   exclude_tags: string[], exclude_ids: string[], only_ids: string[],   // pool = catalog ∩ only_ids(if any) − exclude_*
-  fixed_id?: string | null                   // when choice == "fixed": the weapon_id (primary) / weapon_id|perk_id (secondary)
+  fixed_id?: string | null                   // when choice == "fixed": the weapon_id (primary / secondary) or perk_id (perk)
 }
 ```
 ### 3.1 Presets (server `policy.py`; the UI only names them)
-| preset | primary | secondary | hud_select |
-|---|---|---|---|
-| `open` | player, all | player, weapon+perk, all | true |
-| `no_heavies` | player, `exclude_tags:["heavy"]` | player, weapon+perk, `exclude_tags:["heavy"]` | true |
-| `snipers` | `fixed` → `sniper_rifle` | `off` | false |
-| `custom` | whatever the host set (editing any rule of another preset flips `preset` to `custom`) | | |
+| preset | primary | secondary | perk | hud_select |
+|---|---|---|---|---|
+| `open` | player, all | player, all weapons | player, all | true |
+| `no_heavies` | player, `exclude_tags:["heavy"]` | player, `exclude_tags:["heavy"]` | player, all | true |
+| `snipers` | `fixed` → `sniper_rifle` | `off` | `off` | false |
+| `custom` | whatever the host set (editing any rule of another preset flips `preset` to `custom`) | | | |
+
+The builtin saved game **Silenced Sniper** (§8) is `primary fixed sniper_rifle`, `secondary off`, `perk fixed extended_mags`.
 
 Mode defaults (`modes.default_config`): `ffa` → `no_heavies`; every other mode → `open`. Selecting a mode card in
 BUILD applies its default preset (same rule as the other defaults — review #15: apply on *change* only).
 
 ### 3.2 Derived pool — computed ONCE, server-side, published in `State`
 ```jsonc
-State += { loadout_pool: { primary: string[], secondary_weapons: string[], secondary_perks: string[] } }   // allowed ids, catalog order
+State += { loadout_pool: { primary: string[], secondary_weapons: string[], perks: string[] } }   // allowed ids, catalog order (A14: `perks`, not `secondary_perks`)
 ```
 Both UIs render from these lists + the catalog; **no rule logic in TypeScript/JS** (the `?mock` backend ships a
 small mirror of `policy.py` for the demo only).
@@ -117,8 +130,9 @@ small mirror of `policy.py` for the demo only).
 **cancelled** (`tutorial {end}` teardown), and the host is told: `config_warnings` carries a transient
 `"N LOADOUTS RESET BY NO HEAVIES"` (preset label) until the next config PUT.
 Runs on every `PUT /api/config` that touches `loadout_policy` or `mode`, on `POST /api/players`, and on session
-reset. For every player: `fixed` → slot set to `fixed_id`; `off` → secondary cleared; an item not in the pool →
-primary falls to the first allowed weapon (`assault_rifle` if allowed), secondary/perk cleared. Changes re-send
+reset. For every player: `fixed` → slot set to `fixed_id`; `off` → that slot cleared; an item not in the pool →
+primary falls to the first allowed weapon (`assault_rifle` if allowed), secondary / perk cleared. A14: a fixed ALT-button
+perk (Easy Reload) beside a second weapon keeps the perk (the host's rule put it there) and drops the weapon. Changes re-send
 `assign` (and re-compile/re-push `config` if already pushed) exactly like `PATCH /api/players`.
 Writers: `choice:"player"` → phone AND host may write (host is the override; last write wins and both see it in the
 next `assign`/snapshot); `"host"` → host only (phone browser shows a lock); `"fixed"`/`"off"` → nobody (BUILD only).
@@ -129,7 +143,8 @@ next `assign`/snapshot); `"host"` → host only (phone browser shows a lock); `"
 ```jsonc
 assign { player, team, roster,
          catalog: { weapons: WeaponView[], perks: PerkView[] },     // visible rows only; sent on every assign (≈8 KB)
-         policy:  { hud_select, primary: { choice, allowed_ids }, secondary: { choice, kinds, allowed_weapon_ids, allowed_perk_ids } } }
+         policy:  { hud_select, primary: { choice, allowed_ids }, secondary: { choice, kinds, allowed_weapon_ids },
+                    perk: { choice, allowed_perk_ids } } }                        // A14: the perk rights are their own rule
 ```
 `policy` also carries **`kit_open: boolean`** — true only while the host is on **KIT** and the lobby is not pushed
 (Tony, 2026-08-27: phones show "Mission Control is setting up the game" until the game is chosen; then the kit
@@ -138,16 +153,20 @@ editor unlocks). MC re-sends `assign` to every bound node whenever the flag flip
 
 ### 4.2 `loadout_request` (node → MC) — NEW `NODE_KINDS` entry
 ```jsonc
-loadout_request { node_id, player_id, slot: "primary"|"secondary", kind: "weapon"|"perk"|"none", id?: string, try?: boolean }
+loadout_request { node_id, player_id, slot: "primary"|"secondary"|"perk", kind: "weapon"|"perk"|"none", id?: string, try?: boolean }
 ```
-- MC validates against the policy (slot `choice == "player"`, `hud_select`, id in pool, `kind:"none"` only on secondary)
+- MC validates against the policy (slot `choice == "player"`, `hud_select`, id in pool, `kind:"none"` on secondary / perk only;
+  A14: a perk sent to `secondary` → "Perks have their own slot this game", a weapon sent to `perk` → "Only a perk goes in the perk slot")
   **and `kit_open`** — before KIT the reason is "Mission Control is still setting up the game"; after the push,
   "Try-outs are closed — the game has been pushed to the guns".
 - OK → applies to `Player.loadout`, re-sends `assign`, and if `try` (weapons only) starts the **existing** try-out
   (`tutorial` push, `kit.trying[pid] = id`). A try on a player already trying replaces it.
-- Reply always: **`loadout_ack`** (MC → node, NEW `MC_KINDS` entry) `{ slot, ok: boolean, reason?: string, loadout }` —
+- Reply always: **`loadout_ack`** (MC → node, NEW `MC_KINDS` entry) `{ slot, ok: boolean, reason?: string, dropped?: {slot, id, name}, loadout }` —
   `reason` is human copy the HUD shows verbatim (`"Host locked this slot"`, `"Heavies are off for this game"`,
   `"Try-outs are closed — the game is being armed"`, A12: `"Only sidearms go in the secondary slot this game"`).
+  **A14 `dropped`:** the pick applied AND knocked the other slot out — Easy Reload over a loaded SMG → `{slot:"secondary",
+  id:"smg", name:"SMG"}` + `reason "Easy Reload takes the ALT button — SMG dropped"`; a second weapon over Easy Reload →
+  `{slot:"perk", …}` + `"Shotgun needs the ALT button to switch — Easy Reload dropped"`. The pick that arrives last wins.
 ### 4.3 `loadout_browse` (node → MC) — NEW, presence only
 ```jsonc
 loadout_browse { node_id, player_id, open: boolean }        // HUD opened/closed the loadout browser
@@ -161,14 +180,18 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
 - `tryout()` refuses only when **the lobby has been pushed** (`lobby_pushed`) — no longer "any node in LOBBY". Its
   error text is the `loadout_ack.reason` / the MC toast.
 ### 4.5 Phone screens (B0 KITTED grows one screen)
-- KITTED plate strip becomes **two tappable slot plates** `PRIMARY` / `SECONDARY` (+ perk shown as a plate with a
-  glyph). Locked slot → padlock + "Set by the host". `hud_select:false` → plates not tappable.
-- **LOADOUT browser** (landscape 844×390): tab bar `PRIMARY | SECONDARY`; list **left** (rows ≥44 px: thumb, name,
-  class chip, MAG; secondary tab has `WEAPONS · PERKS · NONE` filter chips), detail **right** (art, DMG/ROF/RNG bars,
-  MAG/RESERVE, one-line desc); bottom action bar ≥44 px: `TRY IT` (weapons, sends `try:true`), `DONE`.
+- KITTED plate strip is **three tappable slot plates** `PRIMARY` / `SECONDARY` / `PERK` (A14; 250 px each on the 844 px
+  frame — HP · ARMOR moved up into the header line). Locked slot → padlock + "Set by the host". `hud_select:false` →
+  plates not tappable. An empty PERK plate reads "NONE · NO PERK"; an empty SECONDARY "NONE · NO ALT-FIRE".
+- **LOADOUT browser** (landscape 844×390): tab bar `PRIMARY | SECONDARY | PERK`; list **left** (rows ≥44 px: thumb, name,
+  class chip, MAG; the secondary tab has `WEAPONS · NONE` chips, the perk tab `PERKS · NONE`), detail **right** (art,
+  DMG/ROF/RNG bars, MAG/RESERVE, one-line desc); bottom action bar ≥44 px: `TRY IT` (weapons, sends `try:true`), `CLOSE`.
   A12: when `policy.secondary.kinds` holds `"sidearm"` and not `"weapon"` the weapons chip reads `SIDEARMS · n`
-  (the pool already holds only pistols) and the hint reads "Pick a sidearm or a perk"; role label `SIDEARM`.
+  (the pool already holds only pistols) and the hint reads "Pick a sidearm"; role label `SIDEARM`.
   **Tap a row = equip** (sends `loadout_request`, row shows ✓ on `loadout_ack`); perks equip on tap, no try.
+  **A14 ALT-button warning:** tapping Easy Reload while a second weapon is loaded (or a weapon while Easy Reload is on)
+  does NOT send — the row turns amber and the action bar says "EASY RELOAD TAKES THE ALT BUTTON — DROPS YOUR SMG · TAP
+  AGAIN"; the second tap sends, and the ack chip then reads "EQUIPPED ✓ · SMG DROPPED". Tapping anything else cancels.
 - Try-out panel (existing) gains `DONE` → back to the browser. READY UP works from KITTED as before.
 
 ### 4.6 Phone: setting-up → BRIEFING → kit editor (Tony, 2026-08-27)
@@ -213,11 +236,15 @@ assign.game { name, desc,                       // saved-game name/desc when the
 - *(superseded)* **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,
   `PLAYERS PICK ON PHONE` toggle, per-slot rows (choice Seg + pool summary "15 OF 18 · NO HEAVIES" + fixed picker),
   CUSTOM exposes tag chips + per-weapon include/exclude.
-- **KIT** — roster rows: live state (`PICKING…` / `TRYING SMG` / `READY ✓`) + two loadout chips. Detail: identity
-  strip → **loadout rail** (PRIMARY / SECONDARY cards; secondary card cycles weapon | perk | empty) → arsenal for the
-  selected slot (header carries the pool summary; out-of-pool tiles dimmed, no per-tile labels) → hero for the
-  selected slot's item (perks: effects block instead of DMG/ROF/RNG). Fixed/off slots show a padlock and
-  "SET IN BUILD". Tablet ≤ 900 px: roster becomes a chip strip, cards stack.
+- **KIT** — roster rows: live state (`PICKING…` / `TRYING SMG` / `READY ✓`) + the loadout line `PRIMARY + SECONDARY ◆ PERK`.
+  Detail: identity strip → **loadout rail** (PRIMARY / SECONDARY / PERK cards — A14; secondary is weapon | empty, perk is
+  perk | empty) → arsenal for the selected slot (header carries the pool summary; out-of-pool tiles dimmed, no per-tile
+  labels; the PERK slot shows the perk grid) → hero for the selected slot's item (perks: effects block instead of
+  DMG/ROF/RNG). Fixed/off slots show a padlock and "SET IN BUILD". A14: picking Easy Reload over a loaded secondary (or
+  the reverse) is a two-tap confirm on the tile ("DROPS THEIR SMG — TAP AGAIN"). Tablet ≤ 900 px: roster becomes a chip
+  strip, cards stack.
+- **GAME DESIGNER** LOADOUT section (A14): three columns PRIMARY / SECONDARY / PERK. The PERK column has WHO PICKS
+  (player / host / fixed / off) and the perk grid; the SECONDARY column's kind chips are `WEAPONS · SIDEARMS` only.
 
 ## 6. Tests / e2e (screen truth)
 Server: policy presets + pool, `_check_loadout` matrix, compile (no slot 1 when empty; each perk effect on the

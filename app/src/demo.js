@@ -32,19 +32,20 @@ export function startDemo({ engine, log }) {
   // --- A10: the catalog + this player's slot rights ride along in `assign` (docs/spec/loadout.md §4.1) ---
   const notHeavy = DEMO_WEAPONS.filter(w => !(w.tags || []).includes('heavy')).map(w => w.weapon_id);   // the FFA default: NO HEAVIES
   const catalog = { weapons: DEMO_WEAPONS, perks: DEMO_PERKS };
+  // A14: three rules — the perk is its own slot
   const policy = locked
-    ? { hud_select: true, primary: { choice: 'fixed', allowed_ids: ['sniper_rifle'] }, secondary: { choice: 'off', kinds: [], allowed_weapon_ids: [], allowed_perk_ids: [] } }
-    : { hud_select: true, primary: { choice: 'player', allowed_ids: notHeavy }, secondary: { choice: 'player', kinds: ['weapon', 'perk'], allowed_weapon_ids: notHeavy, allowed_perk_ids: DEMO_PERKS.map(p => p.perk_id) } };
-  if (locked) player.loadout = { weapons: [{ weapon_id: 'sniper_rifle' }] };
+    ? { hud_select: true, primary: { choice: 'fixed', allowed_ids: ['sniper_rifle'] }, secondary: { choice: 'off', kinds: ['weapon'], allowed_weapon_ids: [] }, perk: { choice: 'fixed', allowed_perk_ids: ['extended_mags'] } }
+    : { hud_select: true, primary: { choice: 'player', allowed_ids: notHeavy }, secondary: { choice: 'player', kinds: ['weapon'], allowed_weapon_ids: notHeavy }, perk: { choice: 'player', allowed_perk_ids: DEMO_PERKS.map(p => p.perk_id) } };
+  if (locked) player.loadout = { weapons: [{ weapon_id: 'sniper_rifle' }], perk: 'extended_mags' };
   policy.kit_open = !setup;   // §4.1
   // §4.6: what the BRIEFING shows (the server's assign.game; here built from the demo config)
   const game = locked
     ? { name: 'Silenced Sniper', desc: 'Free-for-all, sniper rifles only, no armor — one shot drops you. Everyone carries Extended Mags.', mode: 'ffa', mode_name: 'FREE-FOR-ALL', abbr: 'FFA',
         teams_text: 'NONE · ALL VS ALL', win_text: 'FRAG LIMIT / TIME', respawn_text: 'ON · TIMED', time_limit_s: 600, respawn: { type: 'auto', delay_s: 15 }, health: { max_hp: 45, max_armor: 0 },
-        environment: 'outdoor', night: q.has('night'), loadout_line: 'Everyone carries the Sniper Rifle, everyone gets Extended Mags in slot 2.', ruleset: 'CUSTOM RULES', hud_select: false }
+        environment: 'outdoor', night: q.has('night'), loadout_line: 'Everyone carries the Sniper Rifle, no secondary, everyone gets Extended Mags.', ruleset: 'CUSTOM RULES', hud_select: false }
     : { name: 'Team Deathmatch', desc: 'Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.',
         mode: 'tdm', mode_name: 'TEAM DEATHMATCH', abbr: 'TDM', teams_text: '2–4 TEAMS', win_text: 'SCORE CAP / TIME', respawn_text: 'ON · TIMED', time_limit_s: 600, respawn: { type: 'auto', delay_s: 8 },
-        health: { max_hp: 45, max_armor: 70 }, environment: 'outdoor', night: q.has('night'), loadout_line: `You pick your primary (${notHeavy.length} to choose from), slot 2: a second weapon or a perk.`, ruleset: 'NO HEAVIES', hud_select: true };
+        health: { max_hp: 45, max_armor: 70 }, environment: 'outdoor', night: q.has('night'), loadout_line: `You pick your primary (${notHeavy.length} to choose from), slot 2: a second weapon, a perk of your choice (${DEMO_PERKS.length}).`, ruleset: 'NO HEAVIES', hud_select: true };
   // the fake Mission Control answering loadout_request / loadout_browse
   const prevReport = engine.report;
   const tutorialFor = w => ({ weapon: { ...w, stats: { mag: w.clip, reserve: w.reserve, dmg: w.dmg, rof: w.rpm, rng: w.rng } },
@@ -61,15 +62,26 @@ export function startDemo({ engine, log }) {
       const w = DEMO_WEAPONS.find(x => x.weapon_id === body.id), pk = DEMO_PERKS.find(x => x.perk_id === body.id);
       if (ok && body.kind === 'weapon' && !w) { ok = false; reason = 'Unknown weapon'; }
       if (ok && body.kind === 'perk' && !pk) { ok = false; reason = 'Unknown perk'; }
+      if (ok && body.slot === 'secondary' && body.kind === 'perk') { ok = false; reason = 'Perks have their own slot this game'; }
+      if (ok && body.slot === 'perk' && body.kind === 'weapon') { ok = false; reason = 'Only a perk goes in the perk slot'; }
+      // A14: the perk is its own slot; the pick that arrives last wins the ALT-button conflict (policy.set_slot + dropped_by)
+      let dropped = null;
+      const alt = id => { const k = DEMO_PERKS.find(x => x.perk_id === id); return !!(k && k.effects && k.effects.alt_reload); };
+      const wname = id => { const x = DEMO_WEAPONS.find(y => y.weapon_id === id); return x ? x.name : id; };
+      const pname = id => { const x = DEMO_PERKS.find(y => y.perk_id === id); return x ? x.name : id; };
       if (ok) {
         if (body.slot === 'primary') lo.weapons[0] = { weapon_id: body.id };
-        else if (body.kind === 'weapon') { lo.weapons = [lo.weapons[0], { weapon_id: body.id }]; lo.perk = null; }
-        else if (body.kind === 'perk') { lo.weapons = [lo.weapons[0]]; lo.perk = body.id; }
-        else { lo.weapons = [lo.weapons[0]]; lo.perk = null; }
+        else if (body.slot === 'secondary') {
+          lo.weapons = body.kind === 'weapon' ? [lo.weapons[0], { weapon_id: body.id }] : [lo.weapons[0]];
+          if (body.kind === 'weapon' && lo.perk && alt(lo.perk)) { dropped = { slot: 'perk', id: lo.perk, name: pname(lo.perk) }; reason = `${w.name} needs the ALT button to switch — ${pname(lo.perk)} dropped`; lo.perk = null; }
+        } else {
+          lo.perk = body.kind === 'perk' ? body.id : null;
+          if (lo.perk && alt(lo.perk) && lo.weapons[1]) { const sec = lo.weapons[1].weapon_id; dropped = { slot: 'secondary', id: sec, name: wname(sec) }; reason = `${pk.name} takes the ALT button — ${wname(sec)} dropped`; lo.weapons = [lo.weapons[0]]; }
+        }
         player.loadout = lo;
       }
       setTimeout(() => {
-        engine.onMcMessage({ kind: 'loadout_ack', body: { slot: body.slot, ok, reason, loadout: player.loadout } });
+        engine.onMcMessage({ kind: 'loadout_ack', body: { slot: body.slot, ok, reason, ...(dropped ? { dropped } : {}), loadout: player.loadout } });
         if (ok) engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } });
         if (ok && body.try && w) setTimeout(() => engine.onMcMessage({ kind: 'tutorial', body: tutorialFor(w) }), 250);
       }, 300);
@@ -116,6 +128,7 @@ export function startDemo({ engine, log }) {
       openLoadout: slot => { const h = hud(); if (h) { h.lo.tab = slot || 'primary'; h.lo.focus = null; h.lo.filter = 'weapons'; } engine.browse(true); },
       closeLoadout: () => engine.browse(false),
       pick: (slot, kind, id) => engine.requestLoadout(slot, kind, id, false),
+      tap: sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; },   // a real tap through the app's data-act delegation (A14 two-tap confirm)
       tryout: id => engine.requestLoadout('primary', 'weapon', id || 'smg', true),
       tryDone: () => engine.dismissTryout(),
       // match control (what Mission Control would send)
@@ -129,8 +142,9 @@ export function startDemo({ engine, log }) {
         board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
       twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
-      perk: id => { player.loadout = { weapons: player.loadout.weapons.slice(0, 1), perk: id }; ev.assign(); },   // a perk in slot 2 (drops a second weapon)
-      quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; bundle.swap_ms = 425; ev.assign(); },   // demo-only: two weapons AND the perk; MC would compile tok15 = 425 into the bundle (bench 2026-09-04)
+      perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
+      fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'glock' }], perk: 'quick_switch' }; ev.assign(); },   // A14: AR + pistol + Quick Switch
+      quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
       alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
@@ -178,8 +192,11 @@ export function startDemo({ engine, log }) {
       'loadout-primary':   [...kitted, [400, () => ev.openLoadout('primary')]],
       'loadout-secondary': [...kitted, [400, () => ev.openLoadout('secondary')]],
       'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'smg')]],
-      'loadout-sidearms':  [[0, () => { policy.secondary.kinds = ['sidearm', 'perk']; policy.secondary.allowed_weapon_ids = DEMO_WEAPONS.filter(w => w.role === 'sidearm').map(w => w.weapon_id); }], ...kitted, [400, () => ev.openLoadout('secondary')]],
-      'kitted-perk':       [...kitted, [400, () => ev.pick('secondary', 'perk', 'quick_hands')]],
+      'loadout-sidearms':  [[0, () => { policy.secondary.kinds = ['sidearm']; policy.secondary.allowed_weapon_ids = DEMO_WEAPONS.filter(w => w.role === 'sidearm').map(w => w.weapon_id); }], ...kitted, [400, () => ev.openLoadout('secondary')]],
+      'kitted-perk':       [...kitted, [400, () => ev.pick('perk', 'perk', 'quick_hands')]],
+      'kitted-full':       [[0, 'fullKit'], ...kitted],                                                       // A14: all three plates filled
+      'loadout-perk':      [[0, 'fullKit'], ...kitted, [400, () => ev.openLoadout('perk')]],
+      'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')], [700, () => ev.tap('.lrow[data-arg="perk:easy_reload"]')]],   // first tap = the warning
       'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
       'lobby':             lobby,
       'armed':             [...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],

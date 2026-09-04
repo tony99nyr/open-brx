@@ -65,7 +65,7 @@ class WeaponSel(TypedDict):
 
 class Loadout(TypedDict):
     weapons: list[WeaponSel]              # [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10)
-    perk: NotRequired[str | None]         # perk_id in slot 2 — mutually exclusive with a secondary weapon (loadout.md §2)
+    perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2); an ALT-button perk (easy_reload) is the one that can't
     overrides: NotRequired[dict]
 
 
@@ -113,7 +113,7 @@ class Health(TypedDict):
 
 class SlotRule(TypedDict):
     choice: Literal["player", "host", "fixed", "off"]
-    kinds: list[str]                      # "weapon" | "perk"; primary is always ["weapon"]
+    kinds: list[str]                      # primary/secondary: "weapon" | "sidearm" (A12); the perk rule is always ["perk"] (A14)
     exclude_tags: list[str]
     exclude_ids: list[str]
     only_ids: list[str]
@@ -125,12 +125,13 @@ class LoadoutPolicy(TypedDict):
     hud_select: bool
     primary: SlotRule
     secondary: SlotRule
+    perk: SlotRule                        # A14: perks are their own slot (choice may be "off")
 
 
 class LoadoutPool(TypedDict):
     primary: list[str]
     secondary_weapons: list[str]
-    secondary_perks: list[str]
+    perks: list[str]                      # A14: the perk slot's pool
 
 
 class PerkView(TypedDict):
