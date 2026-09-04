@@ -23,7 +23,7 @@ ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "scan": (True, ("duration_s",)), "connect": (True, ("address",)), "disconnect": (True, ()),
     "set_profile": (False, ("mode", "preset", "gun", "headset", "night", "tid", "environment")),
     "patch_presentation": (False, ("patch",)), "pull_mc": (True, ("url", "token")),
-    "arm": (True, ()), "spawn": (True, ()), "revive": (True, ()), "end": (True, ()), "panic": (True, ()),
+    "arm": (True, ()), "spawn": (True, ()), "revive": (True, ()), "end": (True, ()), "panic": (True, ()), "game_end": (True, ("outcome",)),
     "event": (False, ("kind",)), "kill": (False, ("medals",)), "headset": (False, ("name", "tid")),
     "ir": (True, ("kind", "team", "damage", "repeat")), "auto_react": (False, ("on",)),
     "set_emitter": (False, ("port",)), "walk_start": (False, ()), "walk_play": (True, ()), "walk_verdict": (False, ("ok", "note")), "walk_stop": (False, ()),

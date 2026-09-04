@@ -131,8 +131,8 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   presentation?: { preset, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence,
                    custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier },
                    gun: { in_play } },   // A11/A11.5/A11.6/A11.7 summary
-  gun?: { in_play: "team"|"dark"|"health", blank: string, rest: string,   // A11.7: the gun BODY when the game owns it. Absent
-          bands?: [fraction_above: number, frame: string][] },             // for "native" (firmware breathing, the default).
+  gun?: { in_play: "team"|"dark"|"health", blank: string, rest: string,   // A11.7: the gun BODY when the game owns it (default
+          bands?: [fraction_above: number, frame: string][] },             // team). Absent for "native" (firmware breathing, opt-in).
                                                                            // spawn/revive carry blank + rest after $SPAWN;
                                                                            // health: the node paints the first band whose
                                                                            // fraction hp/max exceeds, on band change + after bursts.
@@ -655,8 +655,9 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     LED out of the breathing loop**: the body goes dark and stays dark, and any colour painted after it HOLDS
     (colour changes snap; firing, reloads and registered hits do not disturb it; 10 is already maximum
     brightness; the three body LEDs are independent). `$SPAWN` re-enables the breathing. So
-    `presentation.gun = { in_play: native|team|dark|health }`: **`native` (default) sends nothing and every
-    existing bundle is byte-identical**; the other three put `blank` + `rest` right after `$SPAWN,,*` in BOTH
+    `presentation.gun = { in_play: native|team|dark|health }`: **default `team`** since the 2026-09-04 walkthrough
+    (with the breathing left running every burst alternated with it -- Tony: "you aren't clearing the gleds");
+    `native` sends nothing (the firmware breathing, opt-in); team / dark / health put `blank` + `rest` right after `$SPAWN,,*` in BOTH
     `spawn` and `revive`, ship `bundle.gun`, and end every event burst on `rest` instead of the team frame.
     `health`: `rest` is the full-health hue and `bands` = `poolgauge.HEALTH_BANDS` as `[fraction_above, frame]`;
     the node repaints when the band changes (never per hit) and right after each burst. Open (S4): the

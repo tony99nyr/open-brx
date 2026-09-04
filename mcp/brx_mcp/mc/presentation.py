@@ -187,13 +187,14 @@ HEADSET_BLANK = "$HLED,,6,,,,,*"
 # reloads and registered hits; armour 70 -> 0 without losing the paint). `$SPAWN` re-enables the breathing,
 # so the blank + paint go right after every $SPAWN (spawn AND revive). The three body LEDs are independent
 # after a blank, and 10 is already maximum brightness.
-#   in_play: "native"  = today's look, the firmware breathing; nothing is sent (DEFAULT until Tony has seen
-#                        the alternatives on a field -- every existing game keeps its exact bundle)
-#            "team"    = blank, then the team colour held solid
+#   in_play: "native"  = the firmware breathing; nothing is sent. NOT the default since the 2026-09-04 walkthrough:
+#                        with the breathing running, EVERY event burst alternated with it ("all of the leds in every
+#                        sequence were wrong, you aren't clearing the gleds" -- Tony, R0BQT, 45-step walkthrough).
+#            "team"    = blank, then the team colour held solid (DEFAULT: bursts read, the body looks like today)
 #            "dark"    = blank only: the gun body is off in play (events still flash)
 #            "health"  = blank, then the health hue (green / yellow / red, poolgauge.HEALTH_BANDS); the node
 #                        repaints on each band change and after every event burst
-GUN_DEFAULT = {"in_play": "native"}
+GUN_DEFAULT = {"in_play": "team"}
 GUN_IN_PLAY = ("native", "team", "dark", "health")
 GUN_BLANK = "$GLED,,,,5,,,*"
 

@@ -71,6 +71,7 @@ def test_spawn_shape():
     b = C.compile(_cfg(), _player(), _TEAMS)
     sp = b["spawn"]
     assert sp[0] == "$PLAYX,0,*" and sp[1] == "$SPAWN,,*"
+    assert sp[2] == "$GLED,,,,5,,,*" and sp[3] == "$GLED,1,1,1,0,10,,*"   # A11.7 default: blank the breathing, hold the team colour
     # $BMAP,0,0 closes the T-0 tail. A11.6: the headset is DARK in play by default, so no $HLED follows;
     # with headset.in_play == "team" one does -- see test_headset_team.py.
     assert sp[-1] == "$BMAP,0,0,,,,,*"
@@ -81,7 +82,8 @@ def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
     b = C.compile(_cfg(), _player(), _TEAMS)
     rv = b["revive"]
     assert rv[0] == "$SPAWN,,*"
-    assert all(f.startswith("$AMMO,") for f in rv[1:])          # A11.6: dark headset in play -> no $HLED tail
+    assert rv[1:3] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]  # A11.7 default gun body
+    assert all(f.startswith("$AMMO,") for f in rv[3:])          # A11.6: dark headset in play -> no $HLED tail
     assert not any(f.startswith("$BMAP") for f in rv), "revive must not re-map buttons"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 
@@ -818,10 +820,9 @@ def test_the_voice_pack_is_per_player_not_hardcoded():
 
 def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn():
     """A11.7 / S4: native (default) leaves spawn/revive untouched; an opt-in inserts blank + rest after $SPAWN."""
-    base = C.compile(_cfg(), _player(), _TEAMS)
+    base = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "native"}}}, _player(), _TEAMS)
     assert "gun" not in base and not any(f.startswith("$GLED,,,,5") for f in base["spawn"] + base["revive"])
-    cfg = {**_cfg(), "presentation": {"gun": {"in_play": "team"}}}
-    b = C.compile(cfg, _player(), _TEAMS)
+    b = C.compile(_cfg(), _player(), _TEAMS)            # the default is team: blank + held colour
     assert b["spawn"][1:4] == ["$SPAWN,,*", "$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
     assert b["revive"][0:3] == ["$SPAWN,,*", "$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
     assert b["gun"] == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*"}

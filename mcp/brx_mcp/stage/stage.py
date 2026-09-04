@@ -86,7 +86,7 @@ class GunStage:
         self.address: str | None = None
         self.connected = False
         self.scan_results: list[dict] = []
-        self.profile: dict[str, Any] = {"mode": "tdm", "preset": None, "gun": "native", "headset": "dark",
+        self.profile: dict[str, Any] = {"mode": "tdm", "preset": None, "gun": "team", "headset": "dark",
                                         "night": False, "tid": 1, "environment": "outdoor"}
         self.auto_react = True
         self.log: deque = deque(maxlen=400)
@@ -296,6 +296,13 @@ class GunStage:
         self._hurt_fired = False
         g = self.bundle.get("gun")
         self._gun_band = g["rest"] if g else None
+
+    async def game_end(self, outcome: str = "game_over") -> dict:
+        """What the phone does at the whistle: the game_over / victory cue (+ its burst), then the end frames.
+        Walkthrough 2026-09-04: the END step wrote only the teardown and was failed for having no sound."""
+        self.event(outcome if outcome in ("game_over", "victory", "survivors_win") else "game_over")
+        await self.sleep(1.2)
+        return await self.end()
 
     async def end(self) -> dict:
         await self.write(self.bundle["end"], "end")
@@ -573,7 +580,9 @@ class GunStage:
                 continue
             look = ("sound: " + ev if cues.get(ev) else "no sound") + (" · gun: 3-flash burst" if leds.get(ev) else "") + (" + headset colour" if any(str(s[0]).startswith("$HLED") for s in leds.get(ev, [])) else "")
             add(f"event_{ev}", f"EVENT {ev.upper()} ({spec.get('source', 'mc').upper()}-driven)", look + " · " + (spec.get("desc") or ""), "event", {"kind": ev})
-        add("end", "GAME END", "sounds: game_over / victory · LEDs: end sequence · headset dark", "end")
+        add("end", "GAME END (everyone)", ("sound: game over line" if cues.get("game_over") else "no game_over sound") + (" · gun: burst" if leds.get("game_over") else "") + " · then the teardown: LEDs off, headset dark", "game_end", {"outcome": "game_over"})
+        if cues.get("victory"):
+            add("end_victory", "GAME END (winners)", "sound: Victory! + sting, then the teardown", "game_end", {"outcome": "victory"})
         return steps
 
     def walk_start(self) -> dict:

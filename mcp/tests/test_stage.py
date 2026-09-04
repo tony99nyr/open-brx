@@ -36,7 +36,7 @@ async def settle(st):
 
 def test_profile_drives_the_bundle_and_the_event_buttons():
     st, _ = mk()
-    assert st.profile["gun"] == "native" and "gun" not in st.bundle
+    assert st.profile["gun"] == "team" and st.bundle["gun"]["in_play"] == "team"
     names = {e["event"] for e in st.event_catalog()}
     assert names == set(P.EVENTS)
     st.set_profile(gun="health", headset="team", preset="silenced", night=False)
@@ -45,7 +45,7 @@ def test_profile_drives_the_bundle_and_the_event_buttons():
     assert st.bundle["presentation"]["announcer"] is False       # silenced preset carried into the summary
     st.set_profile(mode="infection")
     assert st.config["mode"] == "infection" and st.bundle["presentation"]["preset"] == "custom"   # gun/headset edits still applied over the mode preset
-    st.set_profile(gun="native", headset="dark")
+    st.set_profile(gun="team", headset="dark")
     assert st.bundle["presentation"]["preset"] == "infection"                                     # back on the mode's own preset
     for bad in ({"gun": "breathe"}, {"mode": "cs2"}, {"preset": "loud"}, {"nope": 1}):
         try:
@@ -185,7 +185,8 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
         st.set_profile(headset="team", gun="health")
         plan = st.walk_plan()
         ids = [s["id"] for s in plan]
-        assert ids[:2] == ["arm", "spawn"] and "hit" in ids and "death" in ids and "revive" in ids and ids[-1] == "end"
+        assert ids[:2] == ["arm", "spawn"] and "hit" in ids and "death" in ids and "revive" in ids and ids[-2:] == ["end", "end_victory"]
+        assert plan[-2]["action"] == "game_end"
         assert "carrier_1" in ids and "carrier_2" in ids and "carrier_off" in ids
         assert "medal_first_blood" in ids and "event_lead_taken" in ids and "event_time_60" in ids
         assert all(s["available"] for s in plan)                     # the fake gun can be shot
@@ -216,7 +217,7 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
 
 def test_poll_never_replays_frames_it_already_handled():
     async def run():
-        st, mgr = mk()
+        st, mgr = mk(gun="native")
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll()
         await st.ir("shot"); st.poll(); await settle(st)
