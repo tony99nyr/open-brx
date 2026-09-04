@@ -522,16 +522,18 @@ test('a fresh assign after match end leaves the MATCH COMPLETE screen (new-match
 
 // ---------- A10 self-serve kitting (docs/spec/loadout.md §4) ----------
 const CAT = { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', role: 'assault', tags: ['assault'], clip: 32, reserve: 384 }, { weapon_id: 'smg', name: 'SMG', role: 'cqb', tags: ['cqb'], clip: 72, reserve: 288 }, { weapon_id: 'rocket_launcher', name: 'Rocket Launcher', role: 'power', tags: ['heavy'], clip: 1, reserve: 4 }],
-  perks: [{ perk_id: 'body_armor', name: 'Body Armor', mechanism: 'passive', effects: { max_armor_add: 50 }, verified: true, hidden: false }] };
-const POL = { hud_select: true, primary: { choice: 'player', allowed_ids: ['assault_rifle', 'smg'] }, secondary: { choice: 'player', kinds: ['weapon', 'perk'], allowed_weapon_ids: ['smg'], allowed_perk_ids: ['body_armor'] } };
+  perks: [{ perk_id: 'body_armor', name: 'Body Armor', mechanism: 'passive', effects: { max_armor_add: 50 }, verified: true, hidden: false },
+          { perk_id: 'easy_reload', name: 'Easy Reload', mechanism: 'passive', effects: { alt_reload: true }, verified: true, hidden: false }] };
+// A14: three rules — the perk is its own slot
+const POL = { hud_select: true, primary: { choice: 'player', allowed_ids: ['assault_rifle', 'smg'] }, secondary: { choice: 'player', kinds: ['weapon'], allowed_weapon_ids: ['smg'] }, perk: { choice: 'player', allowed_perk_ids: ['body_armor', 'easy_reload'] } };
 function kitA10(policy = POL) { const h = harness(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy } }); return h; }
 
 test('A10: assign carries catalog + policy → state; loadout view resolves names from the catalog', () => {
   const h = kitA10();
   const st = h.eng.state();
   assert.equal(st.catalog.weapons.length, 3); assert.equal(st.policy.primary.choice, 'player');
-  assert.equal(st.loadout.primary.name, 'Assault Rifle'); assert.equal(st.loadout.secondary, null);
-  assert.equal(st.weapon, 'ASSAULT RIFLE'); assert.ok(st.canPickPrimary && st.canPickSecondary);
+  assert.equal(st.loadout.primary.name, 'Assault Rifle'); assert.equal(st.loadout.secondary, null); assert.equal(st.loadout.perk, null);
+  assert.equal(st.weapon, 'ASSAULT RIFLE'); assert.ok(st.canPickPrimary && st.canPickSecondary && st.canPickPerk);
 });
 
 test('A10: requestLoadout reports loadout_request (id + try only when set) and holds an optimistic pendingPick', () => {
@@ -544,26 +546,32 @@ test('A10: requestLoadout reports loadout_request (id + try only when set) and h
   const r2 = h.reports.filter(x => x.k === 'loadout_request')[1];
   assert.deepEqual(r2.b, { player_id: 'p1', slot: 'secondary', kind: 'none' }, 'kind none carries no id and no try');
   assert.equal(h.eng.requestLoadout('primary', 'perk', 'body_armor'), false, 'primary is weapons only');
+  assert.equal(h.eng.requestLoadout('secondary', 'perk', 'body_armor'), false, 'A14: perks have their own slot');
+  assert.equal(h.eng.requestLoadout('perk', 'weapon', 'smg'), false, 'A14: only a perk goes in the perk slot');
   assert.equal(h.eng.requestLoadout('primary', 'none'), false, 'primary can never be empty');
+  assert.equal(h.eng.requestLoadout('perk', 'none'), true, 'the perk slot can be emptied');
+  assert.deepEqual(h.reports.filter(x => x.k === 'loadout_request').at(-1).b, { player_id: 'p1', slot: 'perk', kind: 'none' });
 });
 
 test('A10: policy is the lock — host/fixed/off slots and hud_select=false refuse locally, nothing reported', () => {
-  const h = kitA10({ ...POL, primary: { choice: 'fixed', allowed_ids: ['assault_rifle'] }, secondary: { ...POL.secondary, choice: 'off' } });
+  const h = kitA10({ ...POL, primary: { choice: 'fixed', allowed_ids: ['assault_rifle'] }, secondary: { ...POL.secondary, choice: 'off' }, perk: { ...POL.perk, choice: 'host' } });
   assert.equal(h.eng.requestLoadout('primary', 'weapon', 'smg'), false);
   assert.equal(h.eng.requestLoadout('secondary', 'weapon', 'smg'), false);
+  assert.equal(h.eng.requestLoadout('perk', 'perk', 'body_armor'), false); assert.equal(h.eng.state().canPickPerk, false);
   assert.equal(h.reports.filter(x => x.k === 'loadout_request').length, 0);
   assert.equal(h.eng.state().canPickPrimary, false);
   const h2 = kitA10({ ...POL, hud_select: false });
   assert.equal(h2.eng.canPick('primary'), false);
 });
 
-test('A10: loadout_ack ok applies the echoed loadout (perk in slot 2); reject keeps MC\'s loadout + surfaces the reason; tick() clears it after 4 s', () => {
+test('A10/A14: loadout_ack ok applies the echoed loadout (perk beside the weapons); reject keeps MC\'s loadout + surfaces the reason; tick() clears it after 4 s', () => {
   const h = kitA10();
-  h.eng.requestLoadout('secondary', 'perk', 'body_armor');
-  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'body_armor' } } });
+  h.eng.requestLoadout('perk', 'perk', 'body_armor');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'body_armor' } } });
   let st = h.eng.state();
   assert.equal(st.pendingPick, null); assert.equal(st.loadoutAck.ok, true);
-  assert.equal(st.loadout.secondary.kind, 'perk'); assert.equal(st.loadout.secondary.name, 'Body Armor'); assert.equal(st.loadout.secondary.effects.max_armor_add, 50);
+  assert.equal(st.loadout.perk.kind, 'perk'); assert.equal(st.loadout.perk.name, 'Body Armor'); assert.equal(st.loadout.perk.effects.max_armor_add, 50);
+  assert.equal(st.loadout.secondary.weapon_id, 'smg', 'A14: the perk did not displace the second weapon');
   h.eng.requestLoadout('primary', 'weapon', 'smg');
   h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: false, reason: 'Host locked this slot', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'body_armor' } } });
   st = h.eng.state();
@@ -571,6 +579,20 @@ test('A10: loadout_ack ok applies the echoed loadout (perk in slot 2); reject ke
   assert.equal(st.loadout.primary.weapon_id, 'assault_rifle', 'a reject reverts the optimistic pick to MC\'s echo');
   h.adv(4100); h.eng.tick();
   assert.equal(h.eng.state().loadoutAck, null, 'ack chip expires');
+});
+
+test('A14: conflictFor names what an ALT-button pick would drop; the ack\'s `dropped` is kept on the verdict', () => {
+  const h = kitA10();
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } } });
+  assert.deepEqual(h.eng.conflictFor('perk', 'perk', 'easy_reload'), { slot: 'secondary', id: 'smg', name: 'SMG' }, 'Easy Reload over a loaded SMG drops the SMG');
+  assert.equal(h.eng.conflictFor('perk', 'perk', 'body_armor'), null, 'a perk that leaves ALT alone drops nothing');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, dropped: { slot: 'secondary', id: 'smg', name: 'SMG' }, reason: 'Easy Reload takes the ALT button — SMG dropped', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' } } });
+  let st = h.eng.state();
+  assert.equal(st.loadout.secondary, null); assert.equal(st.loadout.perk.perk_id, 'easy_reload');
+  assert.deepEqual(st.loadoutAck.dropped, { slot: 'secondary', id: 'smg', name: 'SMG' }); assert.equal(st.loadoutAck.ok, true);
+  assert.deepEqual(h.eng.conflictFor('secondary', 'weapon', 'smg'), { slot: 'perk', id: 'easy_reload', name: 'Easy Reload' }, 'a second weapon over Easy Reload drops the perk');
+  assert.equal(h.eng.conflictFor('primary', 'weapon', 'smg'), null);
+  assert.equal(h.eng.conflictFor('perk', 'none', null), null);
 });
 
 test('A10: a secondary WEAPON shows in slot 2; weaponName never breaks with one weapon; unanswered pick expires', () => {
@@ -751,7 +773,9 @@ test('a hit forwards WHICH sensor caught it', () => {
 // ── headset team colour survives hits (bench 2026-09-03: a registered hit WIPES the headset) ─────
 test('A11.6 headset: white flash at the whistle then dark; hit flash then dark; respawn flash; carrier blink on the flag alert', () => {
   const h = goLive(harness());
-  const hs = golden.headset;
+  // default hit is NATIVE (hit: []) since the 2026-09-04 ladder; this test opts into a red flash to exercise the path
+  h.eng.frames.headset = { ...golden.headset, hit: [['$HLED,0,2,100,100,10,2,*', 0.5], [golden.headset.rest, 0.0]] };
+  const hs = h.eng.frames.headset;
   assert.equal(hs.in_play, 'dark');
   // the spawn wrote the start flash and then the rest (dark) frame — harness delays run inline
   const startFrames = hs.start.map(x => x[0]);
@@ -788,7 +812,7 @@ test('A11.6 headset in_play=team: the rest frame is the team colour and a hit re
   const h = harness();
   const teamRest = '$HLED,1,0,,,10,,*';
   const bundle = { ...h.bundle, headset: { ...golden.headset, in_play: 'team', rest: teamRest,
-    start: [[golden.headset.start[0][0], 0.6], [teamRest, 0]], hit: [[golden.headset.hit[0][0], 0.5], [teamRest, 0]], respawn: [[golden.headset.respawn[0][0], 0.6], [teamRest, 0]] } };
+    start: [[golden.headset.start[0][0], 0.6], [teamRest, 0]], hit: [['$HLED,0,2,100,100,10,2,*', 0.5], [teamRest, 0]], respawn: [[golden.headset.respawn[0][0], 0.6], [teamRest, 0]] } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: bundle, roster: h.roster } });
   h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
@@ -1380,4 +1404,13 @@ test('A11.7 gun take: 2.5 s after spawn the node blanks and paints; a death befo
   t.frame('$HIR,4,0,19,2,60,0,0,*'); t.frame('$HP,0,0,0,*');
   t.writes.length = 0; pending.forEach(fn => fn());
   assert.ok(!t.writes.includes('$GLED,,,,5,,,*'), 'dead: the take is skipped');
+});
+
+
+test('A11.6 default: a hit paints NOTHING on the headset (the native flash is far brighter than any BLE frame)', () => {
+  const h = goLive(harness());
+  assert.deepEqual(golden.headset.hit, []);
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
+  assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0, 'native hit flash left alone');
 });
