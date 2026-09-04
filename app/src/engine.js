@@ -511,6 +511,11 @@ export class Engine {
     const f = this.frames; if (!f) return;
     const cue = f.cues && f.cues[kind];
     if (cue) this._write([cue], `event cue ${kind}`);
+    this._eventLeds(kind);
+  }
+  /** The lights of an event without its sound (feedback plays the medal lines itself). */
+  _eventLeds(kind) {
+    const f = this.frames; if (!f) return;
     const seq = f.leds && f.leds[kind];
     if (!seq || !seq.length) return;
     const now = this.now();
@@ -717,6 +722,7 @@ export class Engine {
       medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => this._write([x.f], `medal ${x.m}`)));
       this.medals = body.medals.slice();
     } else if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}`));   // hardware-proven gap (seed): flash, then the line
+    this._eventLeds(medalCues.length ? medalCues[0].m : body.kind);   // A11.8: the headset's small LED flash (+ any burst) for the top medal
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };

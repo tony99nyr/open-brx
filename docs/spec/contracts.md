@@ -666,6 +666,11 @@ inaudible). BLE writes chunk at 20 bytes (§app).
   - **A13.4 Node state** — `state().station` (the respawn station this player would use, with its smoothed RSSI and
   - **A13.5 `station_config` (M-NET, MC → utility node)** — `{kind, team, id, threshold?, game?, valid_ids?}`, pushed at muster (and re-arm). The utility phone applies it to its advert, marks itself MC-ARMED, and locks its on-device config (the 7-tap gate remains a WiFi-less fallback). Setup needs WiFi; play does not (a station is a passive beacon once armed). `game` absent = 0 (any); the authoritative allow-list players enforce stays `config.stations` in the bundle. Placement happens BEFORE start, not inside the countdown (utility.md §5b).
     threshold), `respawnGate`, `respawnHint` (`timer | find_station | approach | pull_trigger | reviving | out`).
+  - **A11.8 The headset's small flash LED (2026-09-04, gun-stage ladder).** The native hit "camera flash" is a
+    separate bi-colour LED, driven by **`$LED,0,<0 red|1 green>,1,1,*`** (protocol doc). `events[ev].flash =
+    green|red|null` puts that frame FIRST in the event's `leds[ev]` sequence; defaults: green on the kill family
+    (`kill`, medals), red on `died`, null elsewhere. The node plays it like any LED step (not skipped while down,
+    unlike a static `$HLED`), and kill feedback plays the top medal's lights alongside its line.
   - **A11.7 The gun body (2026-09-04, S4; bench by brx-grenade, R0BQT, Tony watching).** A spawned gun BREATHES
     its team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) takes the
     LED out of the breathing loop**: the body goes dark and stays dark, and any colour painted after it HOLDS

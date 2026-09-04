@@ -98,7 +98,7 @@ def test_standard_bundle_carries_led_bursts_and_verified_cues():
     # the tuned burst: three flashes back to the team colour, per player event
     for ev in ("hit_taken", "died", "respawned", "healed", "armour_up", "shield_up"):
         seq = b["leds"][ev]
-        flashes = [f for f, _ in seq if f != pg.team_frame(1)]
+        flashes = [f for f, _ in seq if f != pg.team_frame(1) and not f.startswith("$LED")]   # A11.8: the small-LED flash step rides first
         assert len(flashes) == pg.BURST_FLASHES and all(f.startswith("$GLED,") for f in flashes), ev
         assert seq[-1][0] == pg.team_frame(1), "a burst ends on the team colour"
     assert b["cues"]["multi"] == "$PLAY,,4,6,VA7E,,,,*"          # "Double Kill", transcript-verified
@@ -286,3 +286,20 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
     for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}, {"gun": {"pregame": "blue"}}):
         with raises(ValueError):
             P.merge(None, bad)
+
+
+def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated():
+    """A11.8 (ladder 2026-09-04): `$LED,0,<0 red|1 green>,1,1,*` fires the headset's small native-bright flash LED."""
+    prof = P.resolve({"mode": "tdm"})
+    assert prof["events"]["kill"]["flash"] == "green" and prof["events"]["died"]["flash"] == "red" and prof["events"]["lead_taken"]["flash"] is None
+    leds = P.led_table(prof, 1, False, True)
+    assert leds["kill"][0] == ["$LED,0,1,1,1,*", 0.0]                     # kill: flash only (no gun burst configured)
+    assert leds["died"][0] == ["$LED,0,0,1,1,*", 0.0] and leds["died"][1][0].startswith("$GLED,0,0,0")   # died: red flash, then the burst
+    assert leds["first_blood"][0] == ["$LED,0,1,1,1,*", 0.0]
+    q = P.merge(None, {"events": {"lead_taken": {"flash": "green"}, "kill": {"flash": None}}})
+    r = P.led_table(P.resolve({"presentation": q}), 1, False, True)
+    assert r["lead_taken"][0][0] == "$LED,0,1,1,1,*" and "kill" not in r
+    with raises(ValueError):
+        P.merge(None, {"events": {"kill": {"flash": "blue"}}})
+    rows = {x["event"]: x for x in P.table({"mode": "tdm"})}
+    assert rows["kill"]["flash"] == "green" and rows["died"]["flash"] == "red" and rows["lead_taken"]["flash"] is None

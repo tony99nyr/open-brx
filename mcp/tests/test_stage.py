@@ -310,3 +310,15 @@ def test_ir_registers_reflects_the_games_sir_table():
     assert r["shot"]["registers"] and r["kill"]["registers"]              # proto 0 rows are in every head
     assert r["emp"]["registers"], r                                          # $SIR,8,0,,38: an EMP word lands as PLAIN damage today (F15 = make it a stun)
     assert not r["medic"]["registers"] and not r["beacon"]["registers"], r  # no proto 1 / 15 rows: ignored until F15 / B23
+
+
+def test_kill_button_plays_the_top_medals_lights_too():
+    async def run():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        n = len(tx(mgr))
+        st.kill(["first_blood"]); await settle(st)
+        new = tx(mgr)[n:]
+        assert "$LED,0,1,1,1,*" in new and st.bundle["cues"]["first_blood"] in new
+    asyncio.run(run())

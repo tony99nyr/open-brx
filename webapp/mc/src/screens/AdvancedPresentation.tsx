@@ -154,7 +154,7 @@ export function AdvancedPresentation() {
                           {r.sound ? <><span style={{ color: r.enabled ? T.ink : T.faint, textDecoration: r.enabled ? 'none' : 'line-through' }}>{r.sound}</span>{r.words ? <span style={{ color: T.dim, textDecoration: r.enabled ? 'none' : 'line-through' }}> · {r.words}</span> : null}</> : <span style={{ color: T.faint }}>—</span>}
                         </td>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}><Colour idx={r.gun_led} /></td>
-                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}><Colour idx={r.headset} /></td>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}><Colour idx={r.headset} />{r.flash ? <span style={{ marginLeft: 8, color: r.flash === 'green' ? T.ok : T.warn }} title="the headset's small flash LED, native-bright">⚡ {r.flash.toUpperCase()} FLASH</span> : null}</td>
                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: T.dim }}>{r.text || '—'}</td>
                       </tr>
                     ))}

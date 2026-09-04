@@ -6310,3 +6310,25 @@ pulse form) -- still dimmer than native. `$CHASE` shapes: nothing seen. **Verdic
 firmware's own hit-flash brightness.** Shipped: `headset.hit` default = native (nothing painted on a hit; a
 colour is an opt-in on top), `$BLINK` and `$LED` added to the known-safe list with their shapes in
 brx-protocol.md. Still ours while out: the green slow blink (the native out-blink does not run in a hosted game).
+
+### 2026-09-04 (late night, gun stage) — 🏆 THE NATIVE "CAMERA FLASH" IS A SEPARATE SMALL LED, AND `$LED` DRIVES IT OVER BLE
+
+Tony, looking at the headset while the ladder ran: "there is a led which you just lit up to blue. but right next
+to it there is another little led thing. that other smaller led is what does the native flash. its like a
+camera flash its very very bright." So the big RGB LED is what `$HLED` / `$BLINK` paint, and the flash is a
+different, far brighter part -- which is why no `$HLED` effect or level ever came close. The APK's LED request
+{LedColorType White/Pink/Orange, isUsedGreenLed, ledEffectType, rateOfPulses} pointed at the token order.
+Probes (blank first, one frame, Tony calling the SMALL LED):
+- `$HLED,3,0,,,10,,1,*` (a 7th token) → big LED green, small LED nothing.
+- **`$LED,0,1,1,5,*` → the small LED fires** ("THAT WAS IT").
+- `$LED,0,0,1,5,*` → the small LED flashes **RED**: token 2 is the small LED's colour (0 red · 1 green), a bi-colour part.
+- **`$LED,0,1,1,1,*` → ONE green flash, "super bright like native."**
+Token 4 (pulses) and token 3 (effect) characterised next, three repeats 3 s apart per probe at Tony's request.
+
+**Token ladder (three repeats per probe, Tony calling):** `$LED,0,1,1,3` → one flash per frame (token 4 is not a
+count); `$LED,0,1,3,1` → one flash (token 3 no visible change); `$LED,0,1,1,50` → one flash, maybe brighter (unsure);
+`$LED,2,1,1,1` → small GREEN flash + big LED WHITE; `$LED,1,1,1,1` → small green + big BLUE. So token 1 paints the
+big LED (0 = leave alone), token 2 is the small LED's colour. **Shipped as A11.8**: `events[ev].flash` green|red →
+`$LED,0,<c>,1,1,*` first in the event's lights; defaults green on the kill family, red on died; `$LED` and `$BLINK`
+on the known-safe list; protocol doc rows. Not measured: whether the small LED can be held on, or flash more than
+once per frame; what tokens 3/4 do at other values.

@@ -395,6 +395,10 @@ class GunStage:
         elif cues.get("kill"):
             frames.append([cues["kill"], 0])
         self._spawn_task(self._seq(frames, "kill" + (" + " + "+".join(medals) if medals else "")))
+        top = medals[0] if medals else "kill"
+        seq = (self.bundle.get("leds") or {}).get(top) or []
+        if seq:
+            self._spawn_task(self._seq(list(seq), f"lights {top}"))   # A11.8: the small-LED flash (+ burst) for the top medal
         return self.state()
 
     def headset(self, name: str, tid: int | None = None) -> dict:

@@ -922,7 +922,7 @@ test('a hit plays the bundle\'s hit_taken burst once per second, a death its die
   h.adv(1500); h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');              // death
   const died = golden.leds.died;
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), died.map(s => s[0]), 'the died burst, not hit_taken');
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), died.map(s => s[0]).filter(f => f.startsWith('$GLED')), 'the died burst, not hit_taken');   // A11.8: died also carries a $LED flash first
   h.adv(9000); h.eng.tick(); h.adv(1000); h.eng.tick();                    // auto respawn (delay 8 s)
   const resp = golden.leds.respawned;
   assert.ok(h.writes.filter(f => f === resp[0][0]).length >= 1, 'respawned burst after the revive frames');
@@ -1413,4 +1413,17 @@ test('A11.6 default: a hit paints NOTHING on the headset (the native flash is fa
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
   assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0, 'native hit flash left alone');
+});
+
+
+test('A11.8 small-LED flash: kill feedback fires the top medal\'s lights (flash) without re-playing the line; death fires the red flash while down', () => {
+  const h = goLive(harness());
+  h.eng.frames.leds = { ...h.eng.frames.leds, kill: [['$LED,0,1,1,1,*', 0]], first_blood: [['$LED,0,1,1,1,*', 0]], died: [['$LED,0,0,1,1,*', 0], ...golden.leds.died] };
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', medals: ['first_blood'], t: h.eng.now() }, t: h.eng.now() });
+  assert.equal(h.writes.filter(f => f === '$LED,0,1,1,1,*').length, 1, 'one green flash for the kill');
+  assert.equal(h.writes.filter(f => f === golden.cues.first_blood).length, 1, 'the medal line plays once');
+  h.adv(1500); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.ok(h.writes.includes('$LED,0,0,1,1,*'), 'red flash on death (a $LED step is not skipped while down, unlike $HLED)');
 });

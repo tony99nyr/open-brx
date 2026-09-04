@@ -51,20 +51,20 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 #   group "objective" is MC-pushed for the mode; the SOUND is gated by `announcer`, the LEDs are not
 EVENTS: dict[str, dict] = {
     "hit_taken":     dict(source="hud", group="player",    desc="you were hit",                      sound=None,   gun_led=pg.RED,    headset=None),
-    "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=pg.RED,    headset=None),
+    "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=pg.RED,    headset=None, flash="red"),
     "respawned":     dict(source="hud", group="player",    desc="back in",                           sound=None,   gun_led=pg.WHITE,  headset=None),
     "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=pg.GREEN,  headset=None),
     "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=pg.PURPLE, headset=None),
     "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=pg.TEAL,   headset=None),
     "low_health":    dict(source="hud", group="player",    desc="armour gone, HP dropping (once per life)", sound="VA8B", gun_led=None, headset=pg.PINK),
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
-    "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None),
-    "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None),
-    "double_kill":   dict(source="mc", group="announcer", desc="2 kills inside the multi window",   sound="VA7E", gun_led=None,      headset=None),
-    "triple_kill":   dict(source="mc", group="announcer", desc="3 kills inside the window",         sound="VA7Q", gun_led=None,      headset=None),
-    "killtacular":   dict(source="mc", group="announcer", desc="4+ kills inside the window",        sound="V124", gun_led=None,      headset=None),
-    "killing_spree": dict(source="mc", group="announcer", desc="5 kills without dying",             sound="VA7K", gun_led=None,      headset=None),
-    "unstoppable":   dict(source="mc", group="announcer", desc="10 kills without dying (no bank line; flash only)", sound=None, gun_led=None, headset=None),
+    "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
+    "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),
+    "double_kill":   dict(source="mc", group="announcer", desc="2 kills inside the multi window",   sound="VA7E", gun_led=None,      headset=None, flash="green"),
+    "triple_kill":   dict(source="mc", group="announcer", desc="3 kills inside the window",         sound="VA7Q", gun_led=None,      headset=None, flash="green"),
+    "killtacular":   dict(source="mc", group="announcer", desc="4+ kills inside the window",        sound="V124", gun_led=None,      headset=None, flash="green"),
+    "killing_spree": dict(source="mc", group="announcer", desc="5 kills without dying",             sound="VA7K", gun_led=None,      headset=None, flash="green"),
+    "unstoppable":   dict(source="mc", group="announcer", desc="10 kills without dying (no bank line; flash only)", sound=None, gun_led=None, headset=None, flash="green"),
     "multi":         dict(source="mc", group="announcer", desc="legacy: any multi-kill (older MCs)", sound="VA7E", gun_led=None,      headset=None),
     "medal":         dict(source="mc", group="announcer", desc="legacy: any streak medal",           sound="VA7K", gun_led=None,      headset=None),
     # -- match state, pushed to EVERY node it concerns --
@@ -181,6 +181,17 @@ HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "h
 # kept at 200 because token 6's upper range is unverified on hardware.
 DEATH_BLINK_COUNT = 200
 HEADSET_BLANK = "$HLED,,6,,,,,*"
+
+# ---- the headset's SMALL flash LED (2026-09-04 ladder, R0BQT) -------------------------------------------------
+# The native "camera flash" on a hit is a separate bi-colour LED next to the big RGB one, and `$LED` drives it:
+# `$LED,<big>,<small>,<effect>,<pulses>,*` -- token 2 = small LED colour (0 red, 1 green), token 1 = 0 leaves the
+# big LED alone (1 blue, 2 white, 3 green paint it too), tokens 3/4 made no visible difference at 0-50. One
+# frame = one native-bright flash. `events[ev].flash = green|red|null` fires it at the start of the event.
+FLASH_COLOURS = {"green": 1, "red": 0}
+
+
+def flash_frame(colour: str) -> str:
+    return f"$LED,0,{FLASH_COLOURS[colour]},1,1,*"
 
 # ---- the GUN BODY LED (A11.7, S4) ------------------------------------------------------------------
 # Bench 2026-09-04 (brx-grenade, R0BQT, Tony watching; experiment-log "IN-GAME GUN LED CONTROL" + the
@@ -380,6 +391,10 @@ def merge(current: dict | None, patch: dict) -> dict:
                     cur["sound"] = _sound(fv)
                 elif fk in ("gun_led", "headset"):
                     cur[fk] = _colour(fv)
+                elif fk == "flash":
+                    if fv is not None and fv not in FLASH_COLOURS:
+                        raise ValueError(f"presentation.events.{ev}.flash must be green|red|null")
+                    cur[fk] = fv
                 else:
                     raise ValueError(f"presentation.events.{ev}.{fk}: unknown field")
             prof["events"][ev] = cur
@@ -407,8 +422,8 @@ def resolve(config: dict) -> dict:
     events = {}
     for ev, d in EVENTS.items():
         spec = {"sound": d["sound"], "gun_led": d["gun_led"], "headset": d["headset"], "group": d["group"],
-                "source": d.get("source", "mc"), "desc": d["desc"]}
-        spec.update({k: v for k, v in (prof.get("events") or {}).get(ev, {}).items() if k in ("sound", "gun_led", "headset")})
+                "source": d.get("source", "mc"), "desc": d["desc"], "flash": d.get("flash")}
+        spec.update({k: v for k, v in (prof.get("events") or {}).get(ev, {}).items() if k in ("sound", "gun_led", "headset", "flash")})
         events[ev] = spec
     prof["events"] = events
     return prof
@@ -463,6 +478,8 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool) -> di
         if not profile.get("gun_flash", True):
             continue                        # "no extra led flashes": neither the gun burst nor a headset paint
         seq: list[list] = []
+        if spec.get("flash") in FLASH_COLOURS:
+            seq.append([flash_frame(spec["flash"]), 0.0])      # the small LED: one native-bright flash, no hold needed
         c = spec.get("gun_led")
         if c is not None:
             flash = f"$GLED,{c},{c},{c},0,{pg.BRIGHT_DIM if night else pg.BRIGHT_FULL},,*"
@@ -558,7 +575,7 @@ def summary(profile: dict) -> dict:
             "headset": {**HEADSET_DEFAULT, **(profile.get("headset") or {})},
             "gun": {**GUN_DEFAULT, **(profile.get("gun") or {})},
             "custom_events": sorted(ev for ev, spec in (profile.get("events") or {}).items()
-                                    if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None)}
+                                    if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None or spec.get("flash"))}
 
 
 def table(config: dict) -> list[dict]:
@@ -576,7 +593,7 @@ def table(config: dict) -> list[dict]:
         elif s == "VSF+JAY":
             words = "Victory! + sting"
         rows.append({"event": ev, "source": spec.get("source", "mc"), "desc": spec.get("desc", ""),
-                     "sound": s, "words": words, "gun_led": spec.get("gun_led"), "headset": spec.get("headset"),
+                     "sound": s, "words": words, "gun_led": spec.get("gun_led"), "headset": spec.get("headset"), "flash": spec.get("flash"),
                      "text": TEXT.get(ev, ""),
                      "enabled": not ((spec.get("source") == "hud" and not prof.get("hud_events", True))
                                      or (spec.get("source") == "mc" and not prof.get("mc_events", True))
