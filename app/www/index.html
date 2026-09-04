@@ -31,7 +31,7 @@
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
 html,body{margin:0;height:100%;background:#030407;color:var(--num);font-family:var(--fl);overflow:hidden;overscroll-behavior:none}
-#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030407}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030407;padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);box-sizing:border-box}   /* a status bar / notch never covers the frame's corners (device report 2026-09-04) */
 #frame{position:relative;flex:0 0 844px;width:844px;height:390px;transform-origin:center center;overflow:hidden;background:var(--bg);color:var(--num)}   /* flex:0 0 — #stage is a flex row and a phone narrower than 844 CSS px shrank the frame BEFORE scaling it, reflowing every screen (review 2026-09-03 #6/#7/#13/#18/#22) */
 #frame *{scrollbar-width:none}#frame *::-webkit-scrollbar{display:none}#diag,#diag *{scrollbar-width:auto}#diag::-webkit-scrollbar,#diag *::-webkit-scrollbar{display:block}   /* the desktop diagnostics panel keeps its scrollbars */   /* touch UI: desktop scrollbars ate 15px inside every scroller and wrapped rows (#2/#10) */   /* color resolved INSIDE the frame so night's --num applies to inherited text */
 html.cam-on,html.cam-on body{background:transparent!important}
@@ -380,7 +380,14 @@ button:active{filter:brightness(1.15)}
 .chipbar{position:absolute;top:100px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;white-space:nowrap}
 #frame[data-takeover="reload"] #chips{opacity:0}   /* the takeover owns the screen */
 .plate.slot .s .nw{white-space:nowrap;letter-spacing:.06em}
-.down .n.nn{font-size:96px;line-height:1;font-style:normal;animation:none;color:var(--mut)}   /* the ▣ glyph painted 49px below its line box and through the label */
+.down .n.nn{font-size:96px;line-height:1;font-style:normal;animation:none;color:var(--mut)}
+.down .dn{display:flex;flex-direction:column;align-items:center;gap:6px}
+.down .n.nn.on,.down .lab.on{color:var(--ok)}.down .n.nn.dim{opacity:.35}.down .lab b{color:var(--num);font-family:var(--fd);font-size:15px;letter-spacing:.02em}
+.down .near{width:260px;height:10px;margin-top:6px;background:rgba(255,255,255,.1);border:1px solid var(--edge);transform:skewX(-14deg);overflow:hidden}
+.down .near i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--warn) 0 18px,color-mix(in srgb,var(--warn) 55%,transparent) 18px 22px);transition:width .3s}
+.down .near.on i{background:var(--ok);width:100%}
+[data-env="night"] .down .near i,[data-env="night"] .down .near.on i{background:var(--num)}[data-env="night"] .down .n.nn.on,[data-env="night"] .down .lab.on{color:var(--num)}
+.bigbtn.ghost.util{height:40px;width:200px;font-size:12px;letter-spacing:.2em}   /* the ▣ glyph painted 49px below its line box and through the label */
 #frame[data-screen="lobby"] .chipbar{top:98px;flex-direction:row;gap:8px}   /* the band between the callsign block and the plates */
 #frame[data-screen="lo"] .chipbar{top:auto;bottom:70px;flex-direction:row;gap:8px}   /* loadout browser: over the faded list end, clear of tabs, filters and the action bar */
 #frame[data-screen="panel"] .chipbar{top:2px;flex-direction:row;gap:8px}   /* briefing / result: the strip above the content */

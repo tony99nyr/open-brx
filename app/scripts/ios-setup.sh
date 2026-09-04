@@ -27,8 +27,17 @@ fi
 set_str() {  # key, value — add or overwrite, idempotent
   $PB -c "Set :$1 $2" "$PLIST" 2>/dev/null || $PB -c "Add :$1 string $2" "$PLIST"
 }
+set_bool() {  # key, true|false — add or overwrite, idempotent
+  $PB -c "Set :$1 $2" "$PLIST" 2>/dev/null || $PB -c "Add :$1 bool $2" "$PLIST"
+}
 
 echo "==> patching $PLIST"
+
+# --- Fullscreen HUD: no status bar ---------------------------------------------
+# The clock / battery / signal strip sat on top of the HUD's top-right corner (the ⓘ button) on device
+# (Tony, 2026-09-04). A rail-mounted game HUD is fullscreen; the web layer also insets by the safe area.
+set_bool UIStatusBarHidden true
+set_bool UIViewControllerBasedStatusBarAppearance false
 
 # --- Bluetooth usage strings -------------------------------------------------
 # iOS TERMINATES an app that touches CoreBluetooth without these. The BLE plugin

@@ -107,6 +107,25 @@ open(p, "w", encoding="utf-8").write(s)
 print("   ok")
 PY
 
+# --- fullscreen HUD: no status bar over the top-right corner ---------------------------------
+# On device the clock / battery / signal strip covered the HUD's ⓘ button (Tony, 2026-09-04). A
+# rail-mounted game HUD is fullscreen. Capacitor's generated theme is regenerated with the platform,
+# so the flag lives here, not in the project. The web layer also insets by the safe area.
+STYLES="android/app/src/main/res/values/styles.xml"
+if [ -f "$STYLES" ] && ! grep -q 'android:windowFullscreen' "$STYLES"; then
+  echo "==> styles.xml: AppTheme.NoActionBar gets android:windowFullscreen"
+  python3 - "$STYLES" <<'FULLSCREEN'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding="utf-8").read()
+m = re.search(r'(<style name="AppTheme\.NoActionBar"[^>]*>)', s)
+if m:
+    s = s[:m.end()] + '\n        <item name="android:windowFullscreen">true</item>' + s[m.end():]
+    open(p, "w", encoding="utf-8").write(s); print("   ok")
+else:
+    print("   AppTheme.NoActionBar not found - add android:windowFullscreen by hand")
+FULLSCREEN
+fi
+
 # --- app version: keep the APK in step with app/package.json ---------------------------------
 # `npx cap add android` writes versionName "1.0" / versionCode 1. That is Capacitor's placeholder,
 # not our version, and it is what a downloader sees in Settings > Apps. Stamp the real one, and

@@ -129,7 +129,7 @@ export function startDemo({ engine, log }) {
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
       twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
       perk: id => { player.loadout = { weapons: player.loadout.weapons.slice(0, 1), perk: id }; ev.assign(); },   // a perk in slot 2 (drops a second weapon)
-      quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; ev.assign(); },   // demo-only: two weapons AND the perk, to show the shorter window
+      quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; bundle.swap_ms = 425; ev.assign(); },   // demo-only: two weapons AND the perk; MC would compile tok15 = 425 into the bundle (bench 2026-09-04)
       alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
@@ -154,6 +154,12 @@ export function startDemo({ engine, log }) {
       lowHp: () => { armor = 0; hp = 8; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); },
       emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,0,${reserve},0,*`); },
+      station: (rssi = -78, present = false, threshold = -74) => { if (typeof engine.setStations !== 'function') { log('demo: this engine has no stations', 'le'); return; }
+        const list = rssi == null ? [] : [{ role: 'station', kind: 'respawn', id: 3, team: 255, state: 1, value: 0, rssi, raw: rssi, threshold, present: !!present, seenAt: Date.now() }];
+        const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
+        if (pr) pr.stations = () => list;   // the app feeds engine.setStations(presence.stations()) every 250 ms — so the fake lives in presence
+        engine.setStations(list); },
+      scanner: (delay_s = 1) => { config.respawn = { type: 'scanner', delay_s }; },   // stage-time: a scanner game with a short delay so the hint shows quickly
       state: () => engine.state(),
     };
     // each STAGE is a list of [delayMs, step] — the delays give the app's boot + render loop room between steps
@@ -187,6 +193,10 @@ export function startDemo({ engine, log }) {
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
+      'down-wait':         [[0, () => ev.scanner(8)], ...live, [2300, 'die']],
+      'down-find':         [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(null)]],
+      'down-approach':     [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(-78, false)]],
+      'down-at':           [[0, () => ev.scanner(1)], ...live, [2300, 'die'], [2400, () => ev.station(-58, true)]],
       'live-alert':        [...live, [2300, () => ev.alert('bomb_planted')]],
       'live-medals':       [...live, [2300, () => ev.killMedals(['double_kill', 'killing_spree'])]],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],

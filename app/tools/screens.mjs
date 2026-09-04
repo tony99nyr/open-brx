@@ -17,7 +17,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
+const LONG = new Set(['down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -168,8 +168,9 @@ for (const view of VIEWS) {
     must(!r.up && r.chips === '1' && r.pill.some(t => /GUN LINK LOST/.test(t)), JSON.stringify(r));
   });
   await step(`${view.name} pass2-4 DOWN at a scanner: the glyph stays above its label`, async () => {
-    const pg = await open(view, 'down', '&respawn=scanner'); const r = await pg.evaluate(() => { const g = document.querySelector('.down .n.nn').getBoundingClientRect(), l = document.querySelector('.down .lab').getBoundingClientRect(); return { gb: g.bottom, lt: l.top, lab: document.querySelector('.down .lab').textContent }; }); await pg.close();
-    must(/RESPAWN SCANNER/.test(r.lab) && r.gb <= r.lt + 2, JSON.stringify(r));
+    // scanner mode counts the delay down first (utility.md §4.3), so wait past a 1 s delay for the station hint + glyph
+    const pg = await open(view, 'down', '&respawn=scanner&delay=1', 4200); const r = await pg.evaluate(() => { const g = document.querySelector('.down .n.nn'); if (!g) return { lab: (document.querySelector('.down .lab') || {}).textContent }; const gr = g.getBoundingClientRect(), l = document.querySelector('.down .lab').getBoundingClientRect(); return { gb: gr.bottom, lt: l.top, lab: document.querySelector('.down .lab').textContent }; }); await pg.close();
+    must(/RESPAWN (SCANNER|STATION)/.test(r.lab || '') && r.gb != null && r.gb <= r.lt + 2, JSON.stringify(r));
   });
   await step(`${view.name} audit-1 two pills share the band above the plates`, async () => {
     const pg = await open(view, 'kitted'); await pg.evaluate(() => { window.brxDemo.mcLost(); window.brxDemo.dropGun(); }); await pg.waitForTimeout(600);
@@ -223,6 +224,25 @@ for (const view of VIEWS) {
     const pg = await open(view, 'loadout-sidearms'); const r = await pg.evaluate(() => ({ chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: Array.from(document.querySelectorAll('.lrow .nm')).map(e => e.textContent.trim()), roles: Array.from(new Set(Array.from(document.querySelectorAll('.lrow .role')).map(e => e.textContent.trim()))), detail: (document.querySelector('.lodetail .rolechip') || {}).textContent }));
     await pg.click('.fch[data-arg="perks"]'); await pg.waitForTimeout(300); const perks = await pg.evaluate(() => document.querySelectorAll('.lrow').length); await pg.close();
     must(r.chips[0] === 'SIDEARMS · 3' && r.chips[1] === 'PERKS · 5', 'chips ' + r.chips); must(r.rows.length === 3 && r.rows.includes('GLOCK-18'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail); must(perks === 5, 'perks tab');
+  });
+  await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {
+    const pg = await open(view, 'down-find', '', 4200); /* death at ~2.6 s + the 1 s scanner delay */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');
+    if (!has) { await pg.close(); console.log('       (engine without stations — step skipped)'); return; }
+    const read = () => pg.evaluate(() => { const l = document.querySelector('.down .lab'); const b = document.querySelector('.down .near i'); return { hint: window.brx.engine.state().respawnHint, lab: l ? l.textContent.trim() : null, bar: b ? parseFloat(b.style.width) : null, on: !!document.querySelector('.down .lab.on') }; });
+    let r = await read(); must(r.hint === 'find_station' && r.lab === 'FIND A RESPAWN STATION' && r.bar === null, JSON.stringify(r));
+    await pg.evaluate(() => window.brxDemo.station(-89, false)); await pg.waitForTimeout(500); r = await read();
+    must(r.hint === 'approach' && /^GO TO STATION · -89 \/ -74 dBm$/.test(r.lab) && r.bar === 50 && !r.on, JSON.stringify(r));   // 15 dB below the -74 threshold = half a bar
+    await pg.evaluate(() => window.brxDemo.station(-70, true)); await pg.waitForTimeout(500); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-at.png` }); await pg.close();
+    must(r.hint === 'pull_trigger' && r.lab === 'AT STATION · PULL TRIGGER' && r.bar === 100 && r.on, JSON.stringify(r));
+  });
+  await step(`${view.name} #45b scanner mode's pre-revive delay is a numberless DOWN, never "00"`, async () => {
+    const pg = await open(view, 'down-wait', '', 3300); const r = await pg.evaluate(() => ({ hint: window.brx.engine.state().respawnHint, lab: (document.querySelector('.down .lab') || {}).textContent, rd: !!document.querySelector('#rd'), txt: document.querySelector('.down .c').innerText })); await pg.close();
+    if (r.hint === 'timer') { console.log('       (engine without the wait hint — step skipped)'); return; }
+    must(r.hint === 'wait' && r.lab === 'STAND BY' && !r.rd && !/\b00\b/.test(r.txt), JSON.stringify(r));
+  });
+  await step(`${view.name} #46 idle: a UTILITY MODE control exists (44px tap row)`, async () => {
+    const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const b = document.querySelector('[data-act="onUtility"]'); if (!b) return null; const rc = b.getBoundingClientRect(); const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1); return { txt: b.textContent.trim(), h: rc.height / sc }; }); await pg.close();
+    must(r && /UTILITY MODE/.test(r.txt) && r.h >= 38, JSON.stringify(r));
   });
   await step(`${view.name} #17 resync prompt: label over instruction, each on one line`, async () => { const pg = await open(view, 'resync'); const r = [...await oneLine(pg, '.prompt .pl'), ...await oneLine(pg, '.prompt .pi')]; const stack = await pg.evaluate(() => document.querySelector('.prompt .pl').getBoundingClientRect().bottom <= document.querySelector('.prompt .pi').getBoundingClientRect().top + 1); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(r[0][1] === 'GUN RELINKED' && r[1][1] === 'PULL THE TRIGGER', 'copy'); must(stack, 'label is not above the instruction'); });
   await step(`${view.name} #15 RELOADING takeover with progress and the weapon`, async () => {

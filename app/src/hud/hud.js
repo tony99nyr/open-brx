@@ -86,8 +86,11 @@ export class Hud {
     window.addEventListener('resize', () => this.fit()); this.fit();
   }
   fit() {
-    const w = window.innerWidth, h = window.innerHeight;
-    const s = Math.min(w / 844, h / 390);
+    // the stage's CONTENT box: the viewport minus the safe-area padding (status bar / notch), so the frame never sits under them
+    const st = this.frame.parentElement; const w = (st && st.clientWidth) || window.innerWidth, h = (st && st.clientHeight) || window.innerHeight;
+    const cs = st && typeof getComputedStyle === 'function' ? getComputedStyle(st) : null;
+    const pw = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0, ph = cs ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) : 0;
+    const s = Math.min((w - pw) / 844, (h - ph) / 390);
     this.frame.style.transform = `scale(${s})`;
   }
   _click(e) {
@@ -161,7 +164,8 @@ export class Hud {
       <div class="l"><span class="wm">BRX<b>/</b></span><span class="sub">COMBAT HUD</span>
         ${st.rejoin ? '<span class="note" style="color:var(--warn)">MATCH IN PROGRESS — SET YOUR GUN TO REJOIN</span>' : ''}
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
-        <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button></div>
+        <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
+        <button class="bigbtn ghost util" data-act="onUtility"><span class="unskew">▣ UTILITY MODE</span></button></div>
       <div class="r"><div class="sc"><i></i>SCANNING FOR TAGGERS</div><div class="list">${rows || '<div class="small">no taggers yet…</div>'}</div>
         <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div></div></div>`;
   }
@@ -366,6 +370,24 @@ export class Hud {
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
   }
+  /** The DOWN screen's middle block: the countdown, or in scanner mode the station hint (utility.md §4.3):
+   *  FIND A RESPAWN STATION → GO TO STATION + a closeness bar (RSSI vs the station's threshold) → AT STATION · PULL
+   *  TRIGGER (or REVIVING with the presence gate). Older engines without `respawnHint` get the old copy. */
+  _downHintKey(st) { const s = st.station || {}; return [st.respawnHint, st.respawnType, st.respawnIn, s.id, s.present, s.rssi != null ? Math.round(s.rssi) : null].join('|'); }
+  _downHint(st) {
+    this._downHintSig = this._downHintKey(st);
+    const hint = st.respawnHint || (st.respawnType === 'auto' ? 'timer' : st.respawnType === 'none' ? 'out' : (st.respawnIn ? 'wait' : 'find_station'));
+    if (hint === 'timer') return `<span class="n tab" id="rd">${pad2(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
+    if (hint === 'out') return `<span class="n nn">✕</span><span class="lab">NO RESPAWNS THIS MODE</span>`;
+    if (hint === 'wait') return `<span class="n nn dim">▣</span><span class="lab">STAND BY</span>`;   // scanner mode's brief pre-revive delay: never a "00" countdown (device 2026-09-04)
+    const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (arm's length at high TX)
+    const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
+    const bar = `<div class="near ${hint === 'pull_trigger' || hint === 'reviving' ? 'on' : ''}"><i style="width:${hint === 'approach' ? pct : 100}%"></i></div>`;
+    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="lab">FIND A RESPAWN STATION</span>`;
+    if (hint === 'approach') return `<span class="n nn">▣</span><span class="lab">GO TO STATION${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>${bar}`;
+    if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="lab on">AT STATION · PULL TRIGGER</span>${bar}`;
+    return `<span class="n nn on">▣</span><span class="lab on">AT STATION · REVIVING…</span>${bar}`;
+  }
   /** The DOWN-screen recap: three labelled tiles — time left · the team race (cap under it) · your own line. */
   _downRecap(st) {
     const tile = (lab, val) => `<span class="rc"><span class="rv">${val}</span><span class="rl">${lab}</span></span>`;
@@ -485,10 +507,14 @@ export class Hud {
         this._moment = 'down';
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="l2"><span class="t">DOWN</span><span class="kb">KILLED BY <b style="background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
-          <div style="display:flex;flex-direction:column;align-items:center">${st.respawnType === 'auto' ? `<span class="n tab" id="rd">${pad2(st.respawnIn)}</span>` : `<span class="n nn">${st.respawnType === 'scanner' ? '▣' : '✕'}</span>`}<span class="lab">${st.respawnType === 'scanner' ? 'GO TO A RESPAWN SCANNER' : st.respawnType === 'none' ? 'NO RESPAWNS THIS MODE' : st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span></div></div>
+          <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
         this._flash();
-      } else { const el = this.overlay.querySelector('#rd'); if (el) el.textContent = pad2(st.respawnIn); const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; } }
+      } else {
+        const el = this.overlay.querySelector('#rd'); if (el) el.textContent = pad2(st.respawnIn);
+        const hk = this._downHintKey(st); if (hk !== this._downHintSig) { const h = this.overlay.querySelector('#dnhint'); if (h) h.innerHTML = this._downHint(st); }
+        const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; }
+      }
       return;
     }
     if (this._moment === 'down' && (st.alive || st.phase !== 'live')) { this._moment = null; this.overlay.innerHTML = ''; }
