@@ -180,6 +180,11 @@ doc, ONE token changed per run; victim armed from the golden head (full `$SIR`, 
 4. **t41 × t2 × `$GSET` t2** — 25 min — closes U2/Q15 and the indoor/outdoor question.
 5. **t19** — 8 min — confirm shells on the AR and the t19 = 10 bottomless mode.
 6. **t7–t11 + t30** — 12 min — proc weapons or a clean dormant.
+7. **F16 · reload timing per weapon** (5 min, same arming): pull the handle on each weapon, time `$BUT,2,1` → the
+   `$ALCD` refill, and correct `weapons.json` `reload_ms` where the gun disagrees — the RELOADING takeover runs
+   for the catalog value.
+8. **F15 · accuracy attribution** (two guns, ten shots): confirm `$HIR` tok3 → `player_num` so the ACCURACY tile
+   can be trusted.
 
 Every result goes into `docs/experiment-log.md`, then the token table in
 `protocol/callsign-extract/protocol-classes.md` and `docs/manual/06-developer.md`.
