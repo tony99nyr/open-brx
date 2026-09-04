@@ -1295,6 +1295,19 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
+## 🟠 S5 — MC ARMS THE UTILITY STATIONS AT MUSTER (A13.5, 2026-09-04 night; server side NOT built)
+
+Tony's design, spec'd by brx-grenade in contracts A13.5 + `docs/spec/utility.md` §5b/§5c (a1380f8). Server
+side is this session's (api.py / state.py / net + `webapp/mc`); the phone-side apply is brx-hud's. To build:
+1. **`hello role: "utility"`** accepted by the node server and listed separately from player nodes.
+2. **ITEMS panel** in KIT/muster: assign kind / team / station id / threshold per utility phone; MC pushes
+   **`station_config {kind, team, id, threshold?, game?, valid_ids?}`** at muster and on re-arm; the phone
+   marks itself MC-ARMED and locks.
+3. **`config.stations`** (A13.1 id allow-list in the bundle) populated from the assigned station ids.
+4. Rules from the spec: setup needs WiFi, play does not; placement BEFORE start (not inside the countdown);
+   stations keep their role between games unless changed; v1 adverts at game 0, scoped by the allow-list.
+Build with the ui-build-verify discipline (fresh + stale server, old session, every control visibly responds).
+
 ## 🟢 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04) — BUILT the same night as an OPT-IN (A11.7); default still native
 
 `experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (R0BQT, Tony watching): a spawned gun breathes its

@@ -43,6 +43,9 @@
 >   (`$SPAWN` resets it). Built as an OPT-IN: `presentation.gun.in_play = native | team | dark | health`,
 >   default `native` (no change to any bundle). Try `health` on a field before choosing a default. Open:
 >   hold time with no traffic, blink forms after a blank.
+> - **Next server build (S5, A13.5)**: MC arms utility stations at muster -- `hello role:"utility"`, the ITEMS
+>   panel, the `station_config` push, `config.stations` from the assigned ids. Spec frozen by brx-grenade
+>   (a1380f8); phone apply is brx-hud's. Not started.
 > - **Open**: count-limited `$HLED` blink end state; white start flash and carrier blink legibility at
 >   6 ft; the CLI `GameDriver` still paints the A11 team colour in play (S2 item 7); preset picker +
 >   switches as a WRITE UI; S3 HUD-side extraction engine; F15 stun in the engine; the remaining sound
