@@ -6344,3 +6344,11 @@ bright green"; ours "yellowish" -- because `$LED,0,1,1,1` ALSO paints the big LE
 "leave alone") and red + green reads yellow. `$LED,,1,1,1` (empty token 1) fires nothing; **`$LED,9,1,1,1,*`
 (9 = dark) flashes the small LED alone**, big LED dark. Shipped: `flash_frame` uses 9. Compared at 750 ms cadence
 next; "both were pretty dang bright."
+**Conclusion of the small-LED ladder (Tony, side by side with a native headset in its respawn blink):** our
+`$LED,9,1,1,1` flash at 750 ms is bright, but **"native is orders of magnitude brighter"**; the earlier "super
+bright like native" was read in isolation, without the native headset beside it. Token 1 = 0 vs 9 makes no
+difference to the small LED ("i cant tell"); a final 8-frame sweep of tokens 3/4 (0, 2, 4, 255) and the flag at
+2 / 255 produced nothing brighter. **No BLE frame found reaches the firmware's own hit / respawn flash level, on
+either LED.** What we have: `$LED,9,1,1,1,*` = one clearly visible green flash on the small LED with the big LED
+untouched -- used for kill feedback (A11.8); the native hit flash stays native; while out we still paint our
+green slow blink on the big LED because the native out-blink does not run in a hosted game.
