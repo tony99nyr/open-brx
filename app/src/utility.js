@@ -42,7 +42,8 @@ let seq = 0, advertising = false, support = { advertising: false, txPowerControl
 const link = new BrxLink({ log });
 const presence = new Presence({ defaultThreshold: settings.threshold, dwellMs: settings.dwell, alpha: 0.35 });
 const wasAlive = new Map();          // player id → alive bit, to count revives that happened here
-let revives = 0, scanning = false;
+let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false;
+const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
 
 function stationUuid() {
   return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: settings.team, state: 1, value: 0, seq, game: settings.game, threshold: settings.threshold });
@@ -100,12 +101,31 @@ async function restartIfLive() { if (advertising) await startAdvert(); else rend
 async function startScan() {
   if (scanning || !isNative()) return;
   scanning = true;
-  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, Date.now()); }, { scanMode: 1 }); log('watching for players'); }
+  // scanMode 2 (low latency), not 1 (balanced): Android throttles a balanced scan so hard that presence
+  // froze on the player side (app.js, hardware 2026-09-04), and the station reads player adverts through
+  // the same starved radio (S6). A station is usually stationary/plugged, so the battery cost is fine.
+  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, Date.now()); }, { scanMode: 2 }); _lastScanRestart = Date.now(); log('watching for players'); }
   catch (e) { scanning = false; log('scan: ' + (e && e.message || e), 'le'); }
+}
+// S6: stop+start to recover a scan whose callbacks Android silently paused (advertise+scan on one radio
+// starves it; the station then reads ZERO player adverts though everyone is advertising, hardware 2026-09-04).
+async function refreshScan() {
+  if (!isNative() || _scanBusy) return;   // one restart at a time: the stop→start gap must not race a concurrent tick
+  _scanBusy = true;
+  try { if (scanning) { await link.stopScan(); scanning = false; } await startScan(); }
+  catch (_) { /* ignore */ }
+  finally { _scanBusy = false; }
 }
 
 function tick() {
   const now = Date.now();
+  // S6: keep the player-watch scan alive. Recover one stuck OFF (a startScan() throw left scanning=false),
+  // and restart a possibly-stalled one on a period so the station keeps hearing planting/defusing/reviving
+  // players. Mirrors the player-side beacon-scan refresh in app.js.
+  if (isNative() && !_scanBusy) {
+    if (!scanning) { startScan().catch(() => {}); }
+    else if (now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
+  }
   presence.defaultThreshold = settings.threshold;
   presence.tick(now);
   const seen = new Set();

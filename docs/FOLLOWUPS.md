@@ -1419,9 +1419,15 @@ alive. Builds on the recovery `deadAt` stamp (ee47053).
 On the two-Pixel bench the respawn station (advertising at high TX) sometimes read **zero** player adverts
 though players were advertising and its own scan was open; it recovered on its own. Suspect: scanning WHILE
 advertising on one radio starves the scan (Android). **Does not affect respawn** (player-side), but **gates
-bomb / extraction**, where the station must read who is planting/defusing/extracting. Investigate: a periodic
-scan-restart on the station (like the player down-scan refresh in app.js); advertise+scan concurrency; a
-lower station TX. `app/src/utility.js`.
+bomb / extraction**, where the station must read who is planting/defusing/extracting.
+
+**✅ FIXED (2026-09-04, code — needs the two-Pixel bench to confirm):** the station opened ONE balanced-mode
+(`scanMode:1`) scan at startup and never restarted it — both the exact conditions that froze the player-side
+watch. `app/src/utility.js` now (a) scans **low-latency (`scanMode:2`)** like the player watch, and (b)
+**restarts the scan on an 8 s cadence** and recovers one stuck OFF, from `tick()` — the same stop+start cure
+as `app.js`'s `refreshBeaconScan`, with a `_scanBusy` re-entrancy guard so the stop→start gap can't race a
+concurrent tick. **Still open / to try on HW if it recurs:** a lower station TX to ease advertise+scan
+concurrency (the roadmap's B "RSSI-vs-distance per TX level" bench will settle the TX choice).
 
 ## 🟠 S3 — EXTRACTION ON THE PHONE PATH, HUD-DRIVEN (2026-09-04)
 
