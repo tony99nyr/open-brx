@@ -1,8 +1,8 @@
 {
   "name": "brx-companion-app",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
-  "description": "BRX native BLE app (Capacitor) \u2014 Android + iOS from one codebase",
+  "description": "BRX native BLE app (Capacitor) — Android + iOS from one codebase",
   "scripts": {
     "build": "esbuild src/app.js --bundle --format=iife --outfile=www/app.js && esbuild src/utility.js --bundle --format=iife --outfile=www/utility.js",
     "test": "node --test \"test/*.test.mjs\"",
