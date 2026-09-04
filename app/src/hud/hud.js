@@ -354,7 +354,6 @@ export class Hud {
         <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${pad2(st.ammo)}</span><span class="res tab" id="res">/${st.reserve != null ? st.reserve : '—'}</span></div>
         <div class="pips" id="pips">${this._pips(st)}</div>
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
-      ${st.switching ? `<div class="swapping"><div class="big">ALT</div><div class="sub">SWITCHING — CONFIRMS ON YOUR NEXT SHOT</div><div class="track"><i id="swapbar"></i></div></div>` : ''}
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
   }
   /** The DOWN-screen recap: three labelled tiles — time left · the team race (cap under it) · your own line. */
@@ -417,9 +416,6 @@ export class Hud {
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
-      // swap progress: fills against the assumed ceiling, so the player can SEE the wait elapsing
-      const sw = q('swapbar');
-      if (sw && st.switchingMs != null && st.switchWindowMs) sw.style.width = `${Math.min(100, Math.round(100 * st.switchingMs / st.switchWindowMs))}%`;
     }
   }
 
@@ -447,7 +443,9 @@ export class Hud {
     // The reload takeover owns the chip bar. Tracked here, before ANY branch returns: dying mid-reload once left the
     // flag set for the whole DOWN screen and hid GUN LINK LOST exactly when it mattered (pass-2 review 2026-09-03).
     const reloadUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.reloading);
-    if ((this.frame.dataset.takeover || '') !== (reloadUp ? 'reload' : '')) { if (reloadUp) this.frame.dataset.takeover = 'reload'; else delete this.frame.dataset.takeover; }
+    const switchUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.switching && !reloadUp);
+    const tk = reloadUp ? 'reload' : switchUp ? 'switch' : '';
+    if ((this.frame.dataset.takeover || '') !== tk) { if (tk) this.frame.dataset.takeover = tk; else delete this.frame.dataset.takeover; }
     // T-MINUS while armed
     if (st.phase === 'armed' && st.tMinusMs != null) {
       const secs = Math.ceil(st.tMinusMs / 1000);
@@ -497,12 +495,26 @@ export class Hud {
       // no early return: hits, gains and kills append ABOVE the takeover — reloading is exactly when you get shot (suite audit 2026-09-03)
     } else if (this._moment === 'reload') { this._moment = null; this.overlay.innerHTML = ''; }   // (reloadUp is the single source of truth for the flag AND the overlay)
 
+    // SWITCHING WEAPON (persistent for the assumed swap window; the gun will not fire mid-swap). Ends with a 'switched' moment.
+    if (switchUp) {
+      const pct = Math.min(100, Math.round(100 * st.switchingMs / st.switchWindowMs));
+      if (this._moment !== 'switch') {
+        this._moment = 'switch';
+        const lo = st.loadout || {}; const items = [lo.primary, lo.secondary];
+        this.overlay.innerHTML = `<div class="mo switching"><div class="c"><span class="t">SWITCHING</span>
+          <div class="pair">${this._wtile(items[st.switchFrom], 'STOWING', 'from')}<span class="arr">▸▸▸</span>${this._wtile(items[st.switchTo], 'DRAWING', 'to')}</div>
+          <div class="track"><i id="swbar" style="width:${pct}%"></i></div></div></div>`;
+        this.h.onHaptic && this.h.onHaptic('tap');
+      } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = pct + '%'; }
+    } else if (this._moment === 'switch') { this._moment = null; this.overlay.innerHTML = ''; }
+
     // transient moments
     const m = st.moment;
     if (m && m.at !== this._momentAt) {
       this._momentAt = m.at;
       if (m.kind === 'kill') this._kill(st, m);
       else if (m.kind === 'redeploy') this._redeploy(st);
+      else if (m.kind === 'switched') this._switched(st, m);
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);
       else if (m.kind === 'go') this._flash();
@@ -589,6 +601,20 @@ export class Hud {
       <div class="gc"><span class="amt tab">+${esc(d.amount)}</span><span class="lab">${label}</span></div>`;
     this._swap('gain', el, 500, 1000);
     this.h.onHaptic && this.h.onHaptic('gain');   // a pickup you are not looking at should be FELT
+  }
+
+  /** One weapon tile for the SWITCHING takeover and the ACTIVE confirm. */
+  _wtile(it, label, cls) {
+    if (!it) return `<span class="wt ${cls}"><span class="th none">—</span><span class="wl">${label}</span><span class="wn">NONE</span></span>`;
+    const th = it.kind === 'perk' ? `<span class="th perk">${perkGlyph(it.perk_id)}</span>` : `<span class="th" style="background-image:url('assets/weapons/${esc(it.weapon_id)}.jpg')"></span>`;
+    return `<span class="wt ${cls}">${th}<span class="wl">${label}</span><span class="wn">${esc(it.name).toUpperCase()}</span></span>`;
+  }
+  /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE. */
+  _switched(st, m) {
+    const lo = st.loadout || {}; const it = [lo.primary, lo.secondary][m.data && m.data.slot] || null;
+    const el = document.createElement('div'); el.className = 'mo switched';
+    el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN'}</span></div></div>`;
+    this._swap('switched', el, 900, 1200);
   }
 
   _redeploy(st) {

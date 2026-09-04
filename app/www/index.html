@@ -239,6 +239,32 @@ button:active{filter:brightness(1.15)}
 .reloading .n{font-family:var(--fd);font-weight:700;font-size:28px;color:var(--num);letter-spacing:.04em}
 .reloading.out{animation:hitout .2s ease-in forwards}
 [data-env="night"] .reloading{background:#000}[data-env="night"] .reloading .t{color:var(--num);text-shadow:none}[data-env="night"] .reloading .track i{background:var(--num)}
+/* SWITCHING WEAPON takeover + the ACTIVE confirm (review 2026-09-04 #40). Same family as RELOADING. */
+.switching{background:rgba(3,5,10,.82);animation:hitin .12s ease-out;pointer-events:none}
+.switching .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:14px}
+.switching .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:56px;letter-spacing:.1em;color:var(--warn);text-shadow:0 0 40px rgba(255,176,32,.5);line-height:.9;white-space:nowrap}
+.switching .pair{display:flex;align-items:center;gap:22px}
+.switching .arr{font-size:22px;color:var(--warn);letter-spacing:.1em;animation:blink 1s infinite}
+.wt{display:flex;flex-direction:column;align-items:center;gap:4px;width:220px;padding:8px 10px 10px;border:1px solid var(--edge);background:var(--plate);transform:skewX(-8deg)}
+.wt > *{transform:skewX(8deg)}
+.wt .th{width:190px;height:72px;background-size:cover;background-position:center;border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;color:var(--glow)}
+.wt .th.none{color:var(--mut);font-size:28px}.wt .th.perk svg{width:40px;height:40px}
+.wt .wl{font-size:10px;letter-spacing:.3em;color:var(--mut);font-weight:700;margin-top:4px}
+.wt .wn{font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.wt.from{opacity:.45;filter:grayscale(.6)}
+.wt.to{border-color:var(--warn);box-shadow:0 0 28px -8px var(--warn)}.wt.to .wl{color:var(--warn)}
+.wt.on{border-color:var(--ok);box-shadow:0 0 34px -6px var(--ok)}.wt.on .wl{color:var(--ok)}
+.switching .track{width:360px;height:10px;background:rgba(255,255,255,.1);border:1px solid var(--edge);transform:skewX(-14deg);overflow:hidden}
+.switching .track i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--warn) 0 18px,color-mix(in srgb,var(--warn) 55%,transparent) 18px 22px);width:0;transition:width .12s linear}
+.switched{background:rgba(3,5,10,.7);animation:hitin .1s ease-out;pointer-events:none}
+.switched .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+.switched .in{display:flex;flex-direction:column;align-items:center;gap:10px;animation:slam .3s cubic-bezier(.2,1.4,.4,1)}   /* the slam lives on an inner box so it cannot override the centring transform */
+.switched .s{font-size:11px;letter-spacing:.3em;color:var(--ok);font-weight:700}
+.switched.out{animation:hitout .25s ease-in forwards}
+#frame[data-takeover="switch"] #chips{opacity:0}
+[data-env="night"] .switching,[data-env="night"] .switched{background:#000}[data-env="night"] .switching .t{color:var(--num);text-shadow:none}
+[data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
+[data-env="night"] .switching .track i{background:var(--num)}
 /* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
    phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
    the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */

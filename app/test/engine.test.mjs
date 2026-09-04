@@ -815,3 +815,20 @@ test('no reload opens during the resync protocol; a match end clears one in flig
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
   assert.equal(h.eng.reloading, null, 'end clears the reload');
 });
+test('ALT with two weapons: switching exposes from/to; the next shot on the new slot confirms with a switched moment', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
+  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
+  let s = h.eng.state(); assert.equal(s.switching, true); assert.equal(s.switchFrom, 0); assert.equal(s.switchTo, 1); assert.equal(s.reloading, false);
+  h.adv(400); h.frame('$ALCD,71,100,1,288,0,*');
+  s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 1);
+});
+test('a swap the gun never confirms is assumed done at the window; a link drop cancels one', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
+  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
+  h.adv(1201); h.eng.tick();
+  let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
+  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
+  h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
+});

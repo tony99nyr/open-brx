@@ -38,6 +38,7 @@
   <label><input type="checkbox" id="reject"> MC rejects every pick</label>
   <h2>Gun events</h2>
   <div class="row"><button class="ev" onclick="ev('fire',1)">fire ×1</button><button class="ev" onclick="ev('fire',5)">fire ×5</button><button class="ev" onclick="ev('reloadCycle')" title="pull the handle; the gun refills after the weapon's reload time">reload</button></div>
+  <div class="row"><button class="ev" onclick="ev('altCycle')" title="ALT: swap weapons; the next shot confirms the slot (equips a second weapon if needed)">switch weapon</button><button class="ev" onclick="ev('twoWeapons')">equip 2nd weapon</button></div>
   <div class="row"><button class="ev" onclick="ev('hit')">take hit</button><button class="ev" onclick="ev('hit');ev('hit');ev('hit')">hit ×3</button><button class="ev" onclick="ev('lowHp')">low HP</button></div>
   <div class="row"><button class="ev bad" onclick="ev('die')">☠ death</button><button class="ev" onclick="ev('respawn')">respawn now</button></div>
   <div class="row"><button class="ev" onclick="ev('heal',15)">heal +15</button><button class="ev" onclick="ev('armorUp',30)">armor +30</button></div>
@@ -59,7 +60,7 @@
     ['Before the game', [['idle', 'no gun — scanning'], ['connected', 'gun linked, no MC'], ['mc-rejected', 'MC refused the join'], ['setup', 'MC still setting up the game']]],
     ['Kit-out', [['briefing', 'the game briefing'], ['kitted', 'loadout plates'], ['kitted-ready', 'READY tapped'], ['kitted-perk', 'a perk in slot 2'], ['loadout-primary', 'browser · primary'], ['loadout-secondary', 'browser · slot 2'], ['loadout-picked', 'browser · picked SMG'], ['tryout', 'try-out panel']]],
     ['Arming', [['lobby', 'game pushed, waiting to arm'], ['armed', 'T-minus countdown'], ['aborted', 'countdown aborted → lobby']]],
-    ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['redeploy', 'just respawned']]],
+    ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-switch', 'weapon switch (ALT)'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['redeploy', 'just respawned']]],
     ['Trouble', [['live-nogun', 'gun link lost mid-match'], ['resync', 'gun relinked → resync prompt'], ['live-mclost', 'MC connection lost'], ['panic', 'host PANIC']]],
     ['End', [['result', 'match result'], ['over', 'MATCH COMPLETE']]],
   ];

@@ -127,6 +127,12 @@ export function startDemo({ engine, log }) {
       score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
         board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
+      twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] }; ev.assign(); },
+      alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
+      altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
+        if (engine._slotCount() < 2) ev.twoWeapons();
+        setTimeout(() => { ev.alt(); setTimeout(() => { const to = engine.activeSlot === 0 ? 1 : 0; engine.feedFrame(`$ALCD,${to === 1 ? 71 : mag},100,${to},${to === 1 ? 288 : reserve},0,*`); }, 700); }, 50);
+      },
       reloadCycle: () => {                                  // what a real reload looks like: handle pull, then the refill after the weapon's reload_s
         if (mag >= 32) { log('demo: mag is full — fire first, then reload', 'li'); return; }
         engine.feedFrame('$BUT,2,1,*'); engine.feedFrame('$BUT,2,0,*');
@@ -174,6 +180,7 @@ export function startDemo({ engine, log }) {
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
+      'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
       'live-nogun':        [...live, [2300, 'dropGun']],
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],

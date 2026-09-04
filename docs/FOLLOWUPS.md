@@ -1960,7 +1960,7 @@ that moves no pool — so it deals **zero damage** in every game we ship (`weapo
   `00-home.md:95`). That marker is not earned — we have never seen the lit state. Settle F10 first,
   then correct the manual in one pass rather than retracting twice. A manual edit needs a site
   rebuild before the next push (`CLAUDE.md` → Layout).
-- **F4 · A weapon swap has never been timed.** `SWITCH_MAX_MS = 2500` in `engine.js` is a guess.
+- **F4 · A weapon swap has never been timed.** `SWITCH_MAX_MS = 1200` in `engine.js` is a guess — and since 2026-09-04 it is also the length of the HUD's SWITCHING takeover, after which the swap is ASSUMED done (activeSlot flips; the next `$ALCD` corrects it). Time it: ALT, then the first `$ALCD` on the new slot, minus reaction — or find the draw time in the `$WEAP` tokens.
   `engine.lastSwitchMs` now records the true figure whenever an `$ALCD` confirms a swap — pull it off
   the diagnostics log after the next match and tighten the constant.
 - **F5 · The AR ships at 140 ms, not the captured 100 ms.** Deliberate (see the log entry): native

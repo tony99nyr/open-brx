@@ -195,7 +195,7 @@ export class Engine {
     if (this.start && (this.phase === 'lobby' || this.phase === 'armed')) this.resumeSchedule();
     this._changed();
   }
-  onBleDropped() { this.bleUp = false; this.reloading = null; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03)
+  onBleDropped() { this.bleUp = false; this.reloading = null; this.switching = null; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03)
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
@@ -455,6 +455,13 @@ export class Engine {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
       }
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
+      // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
+      // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
+      if (this.switching && now - this.switching.at > SWITCH_MAX_MS) {
+        const to = this.switching.from === 0 ? 1 : 0; this.switching = null; this.activeSlot = to;
+        this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
+        this.log(`swap to slot ${to} assumed after ${SWITCH_MAX_MS}ms (no shot yet)`, 'li');
+      }
       this._changed();
     }
     if (this.resync) this._resyncTick();
@@ -660,6 +667,7 @@ export class Engine {
       this.lastSwitchMs = this.now() - this.switching.at;
       this.log(`slot ${this.switching.from}->${slot} confirmed ${this.lastSwitchMs}ms after ALT (incl. reaction)`, 'li');
       this.switching = null;
+      this.moment = { kind: 'switched', at: this.now(), data: { slot } };   // the HUD flips SWITCHING → ACTIVE
     }
     this._prevAmmo[slot] = mag; this.activeSlot = slot;
     this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
@@ -746,7 +754,7 @@ export class Engine {
   }
 
   _death(desync) {
-    this.reloading = null;                          // the gun stops the reload when you drop; so does the HUD
+    this.reloading = null; this.switching = null;   // the gun stops the reload/swap when you drop; so does the HUD
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = fresh ? this.latch.shooter_num : 0;
     const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
@@ -878,6 +886,7 @@ export class Engine {
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
       switchWindowMs: SWITCH_MAX_MS, lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
+      switchFrom: this.switching ? this.switching.from : null, switchTo: this.switching ? (this.switching.from === 0 ? 1 : 0) : null,
       ...(ms => ({ reloading: ms != null, reloadMs: ms, reloadTotalMs: this.reloading ? this.reloading.ms : null }))(this.reloadingMs()),
       hits: this.score ? this.score.hits : null, board: this.score ? this.score.board : null,
       fragLimit: this.config && this.config.scoring ? this.config.scoring.frag_limit : null,
