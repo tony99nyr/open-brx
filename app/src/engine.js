@@ -28,6 +28,7 @@ const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
 // showing the slot the GUN last reported. It deliberately does NOT guess a new slot: $BUT,1 is
 // "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
+const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long while we reconcile state (anti-cheat: a restart is slow + gains nothing; a real crash costs 3 s, which is rare and fine — Tony 2026-09-04)
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 const EVENT_MIN_GAP_MS = 1000;
@@ -94,6 +95,7 @@ export class Engine {
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at}
     this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
+    this.reconciling = null;        // {since} — a rejoin's disarmed reconcile window (S7.1); no death is inferred here
     this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
     this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
@@ -204,7 +206,8 @@ export class Engine {
     // never over a match-over screen (`ended`) and never right after a panic we just delivered.
     if (!justPanicked && !this.ended && this.frames && this.frames.head && (this.phase === 'kitted' || (this.phase === 'lobby' && !this.headEcho))) {
       this.configPending = false; this._applyConfig({ config: this.config, frames: this.frames, roster: this.roster }, 'relink');
-    } else if (this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live') this._beginResync('ble-reconnect');
+    } else if (this.phase === 'live') this._beginReconcile();   // S7.1: a rejoin RECONCILES (disarm, keep real pools) — never the infer-death resync that healed on restart
+    else if (this.phase === 'lobby' || this.phase === 'armed') this._beginResync('ble-reconnect');
     if (first) this.log(`gun ${this.gun ? this.gun.name : '?'} linked`, 'lk');
     // A restored/held schedule is reconciled against the clock now (E5: grace / hot-join / already over).
     // MC-first late joiner: the running `start` arrived while idle and the relink landed in LOBBY — reconcile from there too.
@@ -405,6 +408,7 @@ export class Engine {
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
+    if (this.reconciling) { this.log('new match — clearing the in-flight rejoin reconcile', 'li'); this.reconciling = null; }
     // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
@@ -550,14 +554,15 @@ export class Engine {
       // persisted, and resync observes a dead gun without stamping one. Without a deadAt the respawn logic
       // (timer, scanner hint, revive gate) all bail, so a recovered player is stuck with no way back
       // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
-      if (!this.alive && !this.deadAt && !this.resync) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
+      if (this.reconciling && now - this.reconciling.since >= RECONCILE_MS) this._endReconcile();
+      if (!this.alive && !this.deadAt && !this.resync && !this.reconciling) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
       if (this.endT) {   // A11.4 clock callouts from the node's own synced end time: edge-triggered, once each
         const left = this.endT - now, prev = this._prevLeft != null ? this._prevLeft : left; this._prevLeft = left;
         for (const [ms, k] of [[60000, 'time_60'], [30000, 'time_30'], [10000, 'time_10']]) {
           if (prev > ms && left <= ms && !this.cuesFired.has(k)) { this.cuesFired.add(k); this._event(k); this.moment = { kind: 'alert', at: now, data: { kind: k, text: k === 'time_60' ? 'ONE MINUTE LEFT' : k === 'time_30' ? '30 SECONDS' : '10 SECONDS' } }; }
         }
       }
-      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync) {
+      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.reconciling) {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
       }
       // utility.md §4: a scanner respawn with the presence gate revives the moment the player has dwelt at
@@ -604,7 +609,7 @@ export class Engine {
       accuracy: this.score ? this.score.accuracy : null, shots: this.shots, mode: this.config ? this.config.mode : null }); } catch (_) { /* history is best-effort */ }
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
-    this.spawned = false; this.alive = false; this.resync = null; this.start = null; this._resyncRevive = false; this.reloading = null;
+    this.spawned = false; this.alive = false; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null;
     this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
     this._set('kitted');
@@ -662,7 +667,7 @@ export class Engine {
         this._resyncRevive = false;   // a panic does NOT retire the match_id — a NEWER start (higher seq) is still accepted later
         // …but a WS welcome re-delivering the SAME schedule must not re-arm a gun the operator just cleared.
         this._panicked = this.start ? { match_id: this.start.match_id, seq: this.start.seq } : null;
-        this.spawned = false; this.alive = false; this.start = null; this.resync = null;
+        this.spawned = false; this.alive = false; this.start = null; this.resync = null; this.reconciling = null;
         if (this.phase !== 'idle' && this.phase !== 'connected') this._set('kitted');
         this.ready = false;
         return;
@@ -784,7 +789,7 @@ export class Engine {
   }
   /** The station a scanner revive may use RIGHT NOW, or null: dead, past the delay, link up, not resyncing, present. */
   _stationRevivable(now) {
-    if (this.alive || !this.deadAt || this.respawnType !== 'scanner' || !this.bleUp || this.resync || this.phase !== 'live') return null;
+    if (this.alive || !this.deadAt || this.respawnType !== 'scanner' || !this.bleUp || this.resync || this.reconciling || this.phase !== 'live') return null;
     if (now - this.deadAt < this.respawnDelayMs) return null;
     const st = this._respawnStation();
     return st && st.present ? st : null;
@@ -835,7 +840,7 @@ export class Engine {
 
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
   _reloadPulled() {
-    if (this.phase !== 'live' || !this.alive || this.tutorial || this.resync) return;   // in resync the gun's state is unverified and the prompt must stay visible
+    if (this.phase !== 'live' || !this.alive || this.tutorial || this.resync || this.reconciling) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
     const cap = this._ammoBySlot()[this.activeSlot] ?? this.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     if (cap && this.ammo >= cap && (this.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
     if (!(this.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
@@ -993,9 +998,9 @@ export class Engine {
     }
     this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
     if (hp > 0) this._gunHealthPaint('hp');   // A11.7 (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
-    const wasResync = !!this.resync;
+    const wasResync = !!this.resync || !!this.reconciling;
     if (this.resync) this._resyncEvidence('hp');
-    if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync is a desync death
+    if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync/reconcile is a desync death
   }
 
   _death(desync) {
@@ -1027,6 +1032,33 @@ export class Engine {
   }
 
   // ---------- §3.10 resync: trigger first, then reload, then trigger ----------
+  // ---------- S7.1 reconnect reconcile: disarm, keep the real pools, re-arm — never infer death ----------
+  /** A rejoin into a LIVE match. The gun keeps its config + pools across a BLE drop, and `_load` restored
+   *  the real alive/hp — so we DON'T guess. Hold a disarmed window (anti-cheat: a restart is slow and
+   *  gains nothing), then re-arm to the restored pools with NO $SPAWN/$PSET (so HP is never reset to full).
+   *  This replaces the old trigger-first resync, which mis-concluded "dead" on reconnect and let the
+   *  auto-respawn HEAL the player — a free respawn on restart (bench 2026-09-04, Tony). */
+  _beginReconcile() {
+    if (this.reconciling) return;
+    this.reconciling = { since: this.now() };
+    this.resync = null;                                   // never run the infer-death machine on a rejoin
+    this._write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 'reconcile: disarm');   // no shots count while we reconcile
+    this.log('reconnect — reconciling (gun held ' + RECONCILE_MS + ' ms)', 'li');
+    this._changed();
+  }
+  /** End the reconcile: re-arm to the RESTORED pools. Alive → restore the loadout mags so the gun fires
+   *  again at its real HP. Down → leave it disarmed (it is out, awaiting a real respawn). Never writes
+   *  $SPAWN or $PSET, so a rejoin can never heal. */
+  _endReconcile() {
+    this.reconciling = null;
+    if (this.alive) {
+      const ammo = ((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,'));
+      if (ammo.length) this._write(ammo, 'reconcile: re-arm');
+    }
+    this.log(`reconcile done — ${this.alive ? 'live' : 'down'} at hp ${this.hp}`, 'lk');
+    this._changed();
+  }
+
   _beginResync(why) {
     if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) return;
     if (this.phase === 'lobby') { this.log(`resync (${why}): LOBBY → re-write head`, 'li'); this._applyConfig({ config: this.config, frames: this.frames, roster: this.roster }, 'hydrate'); return; }
@@ -1141,6 +1173,7 @@ export class Engine {
       // follows the LIVE slot, not always the primary (field 2026-08-30)
       weaponId: (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
+      reconciling: !!this.reconciling,
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
       switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,

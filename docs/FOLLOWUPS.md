@@ -1381,14 +1381,23 @@ alive/hp/armor/shield/deadAt/killedBy** — a rejoin restores the REAL pools (li
 no false down, no heal). Verified on R0BQT: force-close at 25 → reopen → waits past the respawn delay →
 still 25, deadAt 0, no respawn. Engine test added.
 
-**NEXT (Tony's design, S7.1): an explicit RECONCILING phase on rejoin where the gun is DISARMED until
-state is confirmed.** "It will feel slow and not helpful, but if an app actually crashes it's no big
-deal" — the deliberate slow reconcile is itself an anti-cheat measure (restarting to escape or heal is
-made unattractive; a genuine crash costs a few seconds, which is rare and fine). Design: on a BLE
-reconnect into a live match, hold a `reconciling` state that disarms the gun (`$AMMO,0,0` stun-style)
-and shows "RECONNECTING — CONFIRM YOUR GUN", clears only when the resync resolves (trigger-first, or a
-state line), then re-arms to the reconciled pools. Replaces the current implicit trigger-first resync's
-confusing alive/0hp window. Needs hardware iteration.
+**✅ BUILT (S7.1, Tony's design, 2026-09-04): an explicit RECONCILING phase on rejoin where the gun is
+DISARMED until state is confirmed.** "It will feel slow and not helpful, but if an app actually crashes
+it's no big deal" — the deliberate slow reconcile is itself an anti-cheat measure (restarting to escape
+or heal is made unattractive; a genuine crash costs a few seconds, which is rare and fine).
+**Implemented in `engine.js`:** a BLE reconnect into a `live` match now calls `_beginReconcile()` instead
+of the old trigger-first `_beginResync` — it disarms the gun (`$AMMO,0,0,0,1` on both slots) and holds a
+`reconciling` window for `RECONCILE_MS` (3 s). `_endReconcile()` then re-arms to the RESTORED pools
+(the `frames.spawn` `$AMMO` frames) **only if alive** — it never writes `$SPAWN`/`$PSET`, so a rejoin can
+never heal. No death is inferred during reconcile (the old "reload silent → dead → auto-respawn heal"
+path is gone); a REAL `$HP,0` arriving mid-reconcile is still honoured as a (desync) death, so a genuine
+death during the BLE gap keeps its real respawn timer. A new match, a match end, and a panic all clear an
+in-flight reconcile. Auto-respawn, the recovery deadAt stamp, and scanner-revive are all gated off while
+`reconciling`. Reload takeover does not open while disarmed. `state().reconciling` is exposed for the HUD.
+8 old §3.10 live-reconnect resync tests were rewritten to the reconcile contract; suite green (99 engine
+/ 124 app). **HUD copy + hardware validation NEXT:** the phone still needs a "RECONNECTING — CONFIRM YOUR
+GUN" screen while `reconciling` (brx-hud owns HUD copy), and the force-close-at-low-HP exploit must be
+re-run on R0BQT after the next APK build to confirm the disarm holds and the gun re-arms at the real HP.
 
 Live-bench weaknesses in the §3.10 resync + hydrate path, surfaced repeatedly on 2026-09-04 (they predate
 the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:

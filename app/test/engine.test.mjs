@@ -167,29 +167,33 @@ test('control end/recall/panic land in KITTED', () => {
   }
 });
 
-test('§3.10 resync: trigger with a shot → alive (no write)', () => {
+test('S7.1 rejoin reconcile: a live gun disarms then re-arms, never a heal', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*');
+  assert.equal(h.eng.alive, true);
   h.eng.onBleDropped(); h.eng.onBleConnected();
-  assert.ok(h.eng.resync, 'resync started');
+  assert.ok(h.eng.state().reconciling, 'reconcile started — no infer-death resync on a rejoin');
+  assert.equal(h.eng.resync, null);
+  assert.ok(h.writes.some(f => f === '$AMMO,0,0,0,1,*'), 'gun disarmed while reconciling');
   const before = h.writes.length;
-  h.frame('$BUT,0,1,*'); h.frame('$ALCD,31,100,0,384,0,*');  // a shot went out
-  assert.equal(h.eng.resync, null, 'classified alive');
-  assert.equal(h.writes.length, before, 'nothing written');
+  h.adv(3000); h.eng.tick();                                 // past RECONCILE_MS
+  assert.equal(h.eng.state().reconciling, false, 'reconcile ended');
+  assert.equal(h.eng.alive, true, 'still alive — no death inferred, no heal');
+  assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'never spawns on a rejoin');
 });
 
-test('§3.10 resync: dead gun (reload refills, trigger no-fire) → desync death', () => {
+test('S7.1 rejoin reconcile never infers death — the force-close-at-low-HP exploit stays closed', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
-  h.frame('$ALCD,10,100,0,384,0,*');            // reserve known > 0, mag not empty
-  h.eng.onBleDropped(); h.eng.onBleConnected();
-  h.frame('$BUT,0,1,*');                        // step 1 trigger, no $ALCD
-  assert.equal(h.eng.resync.step, 2);
-  h.frame('$BUT,2,1,*'); h.frame('$ALCD,32,100,0,362,0,*');  // reload refills → configured, mag was low
-  assert.equal(h.eng.resync.step, 3);
-  h.frame('$BUT,0,1,*'); h.adv(1600); h.eng.tick();          // trigger after reload, no $ALCD → dead
-  assert.equal(h.eng.resync, null);
-  assert.equal(h.eng.alive, false);
-  assert.ok(h.facts.some(f => f.type === 'death' && f.desync === true));
+  h.frame('$LCD,25,70,0,0,10,384,*');           // alive at 25 hp — the cheat's starting point
+  assert.equal(h.eng.alive, true); assert.equal(h.eng.hp, 25);
+  h.eng.onBleDropped(); h.eng.onBleConnected();  // force-close → reopen → reconnect
+  assert.ok(h.eng.state().reconciling);
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,2,1,*'); h.adv(1600); h.eng.tick();  // a silent reload: the OLD code inferred DEATH here
+  h.adv(3000); h.eng.tick();                     // the reconcile window elapses
+  assert.equal(h.eng.alive, true, 'still alive at 25 — no inferred death');
+  assert.equal(h.eng.hp, 25, 'no free heal to full');
+  assert.ok(!h.facts.some(f => f.type === 'respawn'), 'no respawn granted');
+  assert.ok(!h.facts.some(f => f.type === 'death' && f.desync === true), 'no inferred death');
 });
 
 test('§3.10 resync in LMS never writes head/spawn', () => {
@@ -296,13 +300,13 @@ test('timed end with the gun unlinked: teardown is owed and written on relink', 
   assert.equal(h.eng.pendingTeardown, null);
 });
 
-test('$HP,0 learned during resync is a desync death', () => {
+test('a real $HP,0 during a rejoin reconcile is honored as a (desync) death', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.eng.onBleDropped(); h.eng.onBleConnected();
-  assert.ok(h.eng.resync);
-  h.frame('$HP,0,0,0,*');
+  assert.ok(h.eng.state().reconciling);
+  h.frame('$HP,0,0,0,*');                              // real evidence — the gun died during the gap
   const d = h.facts.find(f => f.type === 'death');
-  assert.ok(d && d.desync === true);
+  assert.ok(d && d.desync === true, 'a real $HP,0 is honored even mid-reconcile');
 });
 
 test('infection flip resolves the new team from config.teams by tid', () => {
@@ -331,20 +335,17 @@ test('ARMED + BLE reconnect re-writes the head and still spawns at T-0', () => {
 // ---------- polish iteration 2 regressions ----------
 function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); return h; }
 
-test('resync head re-write: the $LCD,0,… echo adds 0 shots', () => {
+test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   const h = goLive(harness());
   h.frame('$ALCD,34,100,0,216,0,*');
   assert.equal(h.eng.shots, 2);
-  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
-  assert.ok(h.eng.resync, 'resync protocol started');
-  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');           // trigger, no $ALCD → step 2
-  h.frame('$BUT,2,1,*'); h.adv(1600); h.eng.tick();        // reload silent, reserve > 0 → not a live gun → head re-write
+  h.config_();                                             // MC re-pushes config on a LIVE gun → head re-write
   const headWrites = h.writes.filter(f => f === '$CLEAR,*').length;
-  assert.ok(headWrites >= 2, 'head re-written on resync');
+  assert.ok(headWrites >= 2, 'head re-written');
   h.frame('$LCD,0,0,0,0,0,0,*');                            // the head echo
   assert.equal(h.eng.shots, 2, 'echo counted as a reset, not a magazine dump');
   h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
-  assert.equal(h.eng.shots, 2, 'revive refill is an increase, not shots');
+  assert.equal(h.eng.shots, 2, 'the refill is an increase, not shots');
   h.frame('$ALCD,35,100,0,216,0,*');
   assert.equal(h.eng.shots, 3, 'real shots still count');
 });
@@ -404,13 +405,12 @@ test('MC-first late joiner: welcome carries a running start, gun links from LOBB
   assert.ok(h.writes.some(f => f.startsWith('$AMMO,')), 'spawn tail written');
 });
 
-test('resync head with slot 1 active: echo + refill book 0 shots (activeSlot reset to 0)', () => {
+test('head re-write with slot 1 active: echo + refill book 0 shots (activeSlot reset to 0)', () => {
   const h = goLive(harness());
   h.player.loadout.weapons.push({ weapon_id: 'shotgun' });
   h.frame('$ALCD,6,100,1,24,0,*'); h.frame('$ALCD,5,100,1,24,0,*');   // shotgun fired once
   assert.equal(h.eng.activeSlot, 1); assert.equal(h.eng.shots, 1);
-  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
-  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*'); h.frame('$BUT,2,1,*'); h.adv(1600); h.eng.tick();   // → head re-write
+  h.config_();                                             // MC re-pushes config on a LIVE gun → head re-write
   assert.equal(h.eng.activeSlot, 0, '$CLEAR puts the gun on slot 0');
   h.frame('$LCD,0,0,0,0,0,0,*');
   h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
@@ -851,15 +851,15 @@ test('with one weapon loaded, ALT falls back to reload and opens the same takeov
   assert.equal(h.eng.state().reloading, true, 'ALT with an empty slot 1 is a reload');
   assert.equal(h.eng.state().switching, false, 'and not a weapon swap');
 });
-test('no reload opens during the resync protocol; a match end clears one in flight', () => {
+test('no reload opens during a rejoin reconcile; a match end clears one in flight', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.frame('$ALCD,10,100,0,384,0,*');
   h.eng.onBleDropped(); h.eng.onBleConnected();
-  assert.ok(h.eng.state().resync, 'resync running');
+  assert.ok(h.eng.state().reconciling, 'reconcile running');
   h.frame('$BUT,2,1,*');
-  assert.equal(h.eng.state().reloading, false, 'resync: the gun is unverified, no takeover');
-  h.frame('$LCD,45,70,0,0,10,384,*');                       // state line ends the resync
-  assert.equal(h.eng.state().resync, null);
+  assert.equal(h.eng.state().reloading, false, 'reconcile: the gun is disarmed, no takeover');
+  h.adv(3000); h.eng.tick();                                // the reconcile window ends
+  assert.equal(h.eng.state().reconciling, false);
   h.frame('$BUT,2,1,*'); assert.equal(h.eng.state().reloading, true);
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
   assert.equal(h.eng.reloading, null, 'end clears the reload');
@@ -1160,14 +1160,16 @@ test('a revive stops the out-blink re-assert (no longer down)', () => {
 
 // --- polish 2026-09-04 (review findings) ---
 
-test('polish: a state line during resync on a HEALTHY gun marks it alive — no bogus auto-revive after an app reload', () => {
+test('polish: a rejoin reconcile on a HEALTHY gun stays alive — no bogus auto-revive after an app reload', () => {
   const h = goLive(harness());
-  h.eng.alive = false; h.eng.deadAt = 0;             // what a reload leaves: alive is not persisted, deadAt neither
+  assert.equal(h.eng.alive, true);                    // persistence restores alive at the real hp on reopen
   h.eng.onBleDropped(); h.eng.onBleConnected();
-  assert.ok(h.eng.resync, 'resync started');
+  assert.ok(h.eng.state().reconciling, 'reconcile started');
   h.frame('$LCD,45,70,0,0,36,216,*');                 // hp 45: the gun is up
-  assert.equal(h.eng.resync, null); assert.equal(h.eng.alive, true, 'a healthy state line is alive evidence');
-  h.adv(20000); h.writes.length = 0; h.eng.tick(); h.adv(9000); h.eng.tick();   // a stamp tick, then one past the respawn delay
+  h.adv(3000); h.eng.tick();                           // reconcile ends → re-arm (never $SPAWN)
+  h.writes.length = 0;
+  h.adv(9000); h.eng.tick();                           // well past any respawn delay
+  assert.equal(h.eng.alive, true, 'still alive');
   assert.ok(!h.writes.some(f => f.startsWith('$SPAWN')), 'no revive written to a live gun');
   assert.ok(!h.facts.some(f => f.type === 'respawn'), 'no respawn fact');
 });
@@ -1255,16 +1257,16 @@ test('A11.7 gun health: an event burst ends on the CURRENT band, and a revive re
   assert.equal(h.eng._gunBand, G);
 });
 
-test('S5: a NEW match started while a reconnect resync is in flight clears it and spawns clean', () => {
-  // live in match m1, then a BLE drop+reconnect starts the trigger-first resync
+test('S5: a NEW match started while a rejoin reconcile is in flight clears it and spawns clean', () => {
+  // live in match m1, then a BLE drop+reconnect opens the disarmed reconcile window
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*');
   h.eng.onBleDropped(); h.eng.onBleConnected();
-  assert.ok(h.eng.resync, 'resync in flight after the reconnect');
-  // MC starts a NEW match (m2) while the resync is unresolved — the old behaviour left resync set,
-  // the T-0 spawn (guarded on !resync) never ran, and the gun sat alive:false/hp:0.
+  assert.ok(h.eng.state().reconciling, 'reconcile in flight after the reconnect');
+  // MC starts a NEW match (m2) while the reconcile is unresolved — leaving it set would keep the gun
+  // disarmed and block the T-0 spawn, so startAt must clear it.
   h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
-  assert.equal(h.eng.resync, null, 'the new match cleared the stale resync');
+  assert.equal(h.eng.state().reconciling, false, 'the new match cleared the stale reconcile');
   h.adv(10); h.eng.tick();
   assert.equal(h.eng.alive, true, 'the new match spawns the gun alive');
   assert.equal(h.eng.hp, 45, 'at full health, not 0');
@@ -1321,4 +1323,41 @@ test('ANTI-CHEAT: force-close alive at low HP → reopen restores that HP, no fa
   assert.equal(b.alive, true, 'still alive — no false down');
   assert.equal(b.hp, 10, 'still 10 hp — NOT healed to 45 by a bogus respawn');
   assert.equal(b.deadAt, 0, 'no death was stamped on the rejoin');
+});
+
+test('S7.1 reconcile: a rejoin disarms then re-arms to the real pools — never infers death or heals', () => {
+  const store = mkStorage();
+  let clock = 3_000_000;
+  const cfg = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+    respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
+    teams: [{ team_id: 'blue', tid: 1, name: 'BLUE', color: 'blue' }, { team_id: 'yellow', tid: 2, name: 'YELLOW', color: 'yellow' }] };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+  const bundle = { ...golden, player_id: 'p1' };
+  const writes = [];
+  const mk = () => new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn() });
+  // process 1: live at 25 hp
+  const a = mk();
+  a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  a.onMcMessage({ kind: 'assign', body: { player, team: cfg.teams[0], roster: [player] } });
+  a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
+  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
+  clock += 10; a.tick();
+  a.feedFrame('$HIR,4,0,19,2,60,0,0,*'); a.feedFrame('$HP,25,0,0,*');
+  assert.equal(a.alive, true); assert.equal(a.hp, 25);
+  // process 2: reopen + relink → RECONCILING (disarmed), not down, not healed
+  writes.length = 0;
+  const b = mk();
+  b.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(b.state().reconciling, true, 'a rejoin enters the reconcile window');
+  assert.ok(writes.includes('$AMMO,0,0,0,1,*'), 'the gun is disarmed during reconcile');
+  assert.equal(b.deadAt, 0, 'no death inferred'); assert.equal(b.alive, true); assert.equal(b.hp, 25);
+  // wait out the reconcile window → re-armed to the real pools, still 25, no $SPAWN
+  clock += 3100; b.tick();
+  assert.equal(b.state().reconciling, false, 'reconcile ends');
+  assert.equal(b.alive, true, 'still alive'); assert.equal(b.hp, 25, 'still 25 — not healed');
+  assert.ok(!writes.includes('$SPAWN,,*'), 'reconcile NEVER writes $SPAWN — no heal');
+  // and no auto-respawn ever fires on the live player
+  clock += 20000; b.tick();
+  assert.equal(b.hp, 25, 'no bogus respawn heal after the delay');
 });
