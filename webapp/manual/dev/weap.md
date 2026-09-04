@@ -31,7 +31,7 @@ _[diagram DEV-05: Token ruler t0–t42 colour-coded by block: identity · damage
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
 | 13 | extraHeadsetRangeOutdoor | n/a | n/a | 80 on the same three weapons. | ✅ (correlation) |
 | 14 | **fire interval / charge time (ms)** | 100 | 1250 | **Proven by one-field flip**: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (🔍): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time. | ✅ (flip) 🔍 (cadence list) |
-| 15 | n/a | 850 | 850 | (unknown) | n/a |
+| 15 | weaponSwapDelay | 850 | 850 | Weapon-swap delay in ms: how long after an ALT (weapon-cycle) press the gun refuses to fire while it draws the other weapon. Bench 2026-09-04: 1700 doubled the swap, 425 halved it, 100 ran at 100; linear with no floor. The gun uses the larger of the two loaded slots' values in both directions, so a fast pistol paired with a rifle draws at the rifle's speed. Melee ships 100. | ✅ |
 | 16 | maxClip | 32 | 100 | Magazine size. | ✅ |
 | 17 | maxAmmo | 32768 | 32768 | Always `2 × t40` in captured frames (or 32768 as an unlimited flag). Not an independent knob. | ✅ (correlation) |
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. | 🔍 |
@@ -95,6 +95,6 @@ Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock `
 Source: protocol/brx-protocol.md §7j, overheat section; docs/experiment-log.md (overheat mechanism solved)
 
 - **Can I build a semi-auto rifle?** Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto "may not exist" predates the t20 proof.)
-- **What bounds a custom weapon?** The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2166 sound ids. Any *combination* with arbitrary numbers is buildable; a brand-new damage *behaviour* is not.
+- **What bounds a custom weapon?** The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2,477 on-gun sound ids. Any *combination* with arbitrary numbers is buildable; a brand-new damage *behaviour* is not.
 - **Does a `$WEAP` re-push mid-game keep the ammo count?** No. It resets mag/reserve to the frame's values. Re-send `$AMMO`.
 Source: protocol/brx-protocol.md t20 section · protocol/callsign-extract/protocol-classes.md ("What's moddable") · docs/gotchas.md

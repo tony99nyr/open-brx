@@ -40,7 +40,7 @@ Source: docs/architecture-topology.md §7, docs/verification-checklist.md, docs/
 ## Roadmap: the project ladder
 - **M1 · Identify**: scan, identify and listen to real taggers. ✅ done
 - **M2 · Control**: remote game start, weapons, respawn, timed matches. ✅ done
-- **M3 · Protocol depth**: the `$WEAP` map, the 2,166-id sound bank, the game-mode model, **per-player id over BLE**, and the IR word. ✅ done (2026-08-25 / 26)
+- **M3 · Protocol depth**: the `$WEAP` map, the sound bank, the game-mode model, **per-player id over BLE**, and the IR word. ✅ done (2026-08-25 / 26)
 - **M4 · Pilot game**: per-player node + Mission Control + live scoreboard. 🧪 built and tested in software. The MC↔phone field path is the next hardware muster (`docs/field-runbook-mc.md`)
 - **M5 · Arena**: objectives, items, stations (Domination / KotH / CTF / Extraction points / bomb sites). 🧪 engines · ✅ IR emit · 📐 the box
 - **M6 · Companion + scale**: ESP32 Companions on the same contracts, a mesh for instant field-wide feedback, 20+ guns. 📐

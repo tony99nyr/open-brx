@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-09-03T16:36:13.017Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-09-04T14:55:07.086Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -18,11 +18,11 @@ This is the full manual for the Battle Company BRX tagger and headset. It is als
 _[image HOME-01: full-bleed hero (night field, dim red HUD glow; see images.md)]_
 
 ## Two doors
-- **The Ultimate BRX Manual**: everything about the tagger and headset in one place. You get anatomy, pairing, every weapon, the 2166-sound bank, repairs, and the full BLE protocol. We built it from the official docs, the community, and our own bench. ✅📖👥 → `/manual`
+- **The Ultimate BRX Manual**: everything about the tagger and headset in one place. You get anatomy, pairing, every weapon, the 2,477-sound bank, repairs, and the full BLE protocol. We built it from the official docs, the community, and our own bench. ✅📖👥 → `/manual`
 - **The Open BRX platform**: run Team Deathmatch and more on stock guns from a laptop today with `brx-mcp`. That part is proven on real hardware. The rest is under construction: a mission-control console, a phone HUD per gun, and an ESP32 rider. ✅🚧 → `/platform`
 Source: docs/README.md, docs/architecture-topology.md
 
-- **2,166** sound ids decoded 🔍 (protocol/callsign-extract/sound-bank.md)
+- **2,477** sounds on the gun, every one catalogued with a category and, for voices, its words ✅ (docs/reference/sound-catalog.md)
 - **19** weapons, every stat on the wire 🔍✅ (docs/reference/weapons.md: 20 captured frames; the 20th is the default secondary, which is the Shotgun)
 - **63** player slots per game, 4 native teams ✅ (the gun accepts `$PSET` ids 0–63; Open BRX reserves 0, so ids 1–63 are playable; `$TID` 2-bit) (docs/spec/contracts.md A5.1, docs/architecture-topology.md §2)
 - **0** firmware changes, ever ✅ (CLAUDE.md hard rule)
@@ -1180,9 +1180,9 @@ Source: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO nativ
 When a phone or host gives health to a live gun, the amount is *added* to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way. A host watches your pool and tops it up.
 Source: docs/experiment-log.md #33 "SEMANTICS + REGEN nailed", docs/game-modes.md §Health/regen variants
 
-## A dead gun is deaf.
-At 0 health the tagger takes no IR at all. A respawn station cannot revive you with a beam; it arms the living. Pull the trigger while dead and all you get is the dead or out-of-ammo noise.
-Source: docs/reference/grenade.md §Can we add new modes, protocol/brx-protocol.md §7r (Resync)
+## A dead gun is deaf, unless a station armed it.
+At 0 health a tagger that was never armed to a respawn station takes no IR at all, and a tagger in a host-driven game takes none either. A tagger armed by a station in a native game is the exception: it stays dead, refuses the trigger, says "revive at respawn point", and comes back the moment the station beacon reaches it.
+Source: docs/experiment-log.md 2026-09-04 (respawn station), docs/reference/grenade.md §Respawn Station mode, protocol/brx-protocol.md §7r (Resync)
 
 ## Respawn & lives: the knobs every mode shares
 | Setting | Gun-menu values (V7 manual / Extended Guide) | Callsign app values |
@@ -2353,7 +2353,7 @@ Source: protocol/callsign-extract/protocol-classes.md (confidence note), protoco
 | `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. | ✅ |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. | ✅ |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. | ✅ |
-| `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (see the 2166-id bank). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel**. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2–3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app · `3,6` iOS · `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. | ✅ |
+| `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (2,477 on the gun; see docs/reference/sound-catalog.md for what each one is). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel**. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2–3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app · `3,6` iOS · `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. | ✅ |
 | `$VOL,<0–100>,<n2>,*` | >> | volume, 0 | Master volume. Android app sends `$VOL,100,0,*`; iOS `$VOL,69,0,*`. 30 is inaudible for game audio. Open BRX plays at 80 indoors / 90 outdoors; try-outs at 69. | ✅ |
 | `$NAME,<name>,*` | >> | name | Sets the gun's **persistent** name (the USB `Gun Name` field; survives power-cycle). Opening the official app rewrites it to `Tactix2`. | ✅ |
 | `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. | ✅ |
@@ -2541,7 +2541,7 @@ _[diagram DEV-05: Token ruler t0–t42 colour-coded by block: identity · damage
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
 | 13 | extraHeadsetRangeOutdoor | n/a | n/a | 80 on the same three weapons. | ✅ (correlation) |
 | 14 | **fire interval / charge time (ms)** | 100 | 1250 | **Proven by one-field flip**: a sniper with t14=1250 slowed to one shot every 1.25 s (timed by ear as roughly one per second). Stock cadences read from the captured frames (🔍): burst 75 · SMG 90 · AR 100 · sniper 300 · AMR 360 · launcher 360 · shotgun 900 · melee 1000 · rail gun 1200 · charge rifle 1250. For charge weapons this is the hold time. | ✅ (flip) 🔍 (cadence list) |
-| 15 | n/a | 850 | 850 | (unknown) | n/a |
+| 15 | weaponSwapDelay | 850 | 850 | Weapon-swap delay in ms: how long after an ALT (weapon-cycle) press the gun refuses to fire while it draws the other weapon. Bench 2026-09-04: 1700 doubled the swap, 425 halved it, 100 ran at 100; linear with no floor. The gun uses the larger of the two loaded slots' values in both directions, so a fast pistol paired with a rifle draws at the rifle's speed. Melee ships 100. | ✅ |
 | 16 | maxClip | 32 | 100 | Magazine size. | ✅ |
 | 17 | maxAmmo | 32768 | 32768 | Always `2 × t40` in captured frames (or 32768 as an unlimited flag). Not an independent knob. | ✅ (correlation) |
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. | 🔍 |
@@ -2605,7 +2605,7 @@ Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock `
 Source: protocol/brx-protocol.md §7j, overheat section; docs/experiment-log.md (overheat mechanism solved)
 
 - **Can I build a semi-auto rifle?** Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto "may not exist" predates the t20 proof.)
-- **What bounds a custom weapon?** The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2166 sound ids. Any *combination* with arbitrary numbers is buildable; a brand-new damage *behaviour* is not.
+- **What bounds a custom weapon?** The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2,477 on-gun sound ids. Any *combination* with arbitrary numbers is buildable; a brand-new damage *behaviour* is not.
 - **Does a `$WEAP` re-push mid-game keep the ammo count?** No. It resets mag/reserve to the frame's values. Re-send `$AMMO`.
 Source: protocol/brx-protocol.md t20 section · protocol/callsign-extract/protocol-classes.md ("What's moddable") · docs/gotchas.md
 
@@ -3515,7 +3515,7 @@ Source: docs/architecture-topology.md §7, docs/verification-checklist.md, docs/
 ## Roadmap: the project ladder
 - **M1 · Identify**: scan, identify and listen to real taggers. ✅ done
 - **M2 · Control**: remote game start, weapons, respawn, timed matches. ✅ done
-- **M3 · Protocol depth**: the `$WEAP` map, the 2,166-id sound bank, the game-mode model, **per-player id over BLE**, and the IR word. ✅ done (2026-08-25 / 26)
+- **M3 · Protocol depth**: the `$WEAP` map, the sound bank, the game-mode model, **per-player id over BLE**, and the IR word. ✅ done (2026-08-25 / 26)
 - **M4 · Pilot game**: per-player node + Mission Control + live scoreboard. 🧪 built and tested in software. The MC↔phone field path is the next hardware muster (`docs/field-runbook-mc.md`)
 - **M5 · Arena**: objectives, items, stations (Domination / KotH / CTF / Extraction points / bomb sites). 🧪 engines · ✅ IR emit · 📐 the box
 - **M6 · Companion + scale**: ESP32 Companions on the same contracts, a mesh for instant field-wide feedback, 20+ guns. 📐
@@ -3601,7 +3601,7 @@ Source: README.md §Prime directives, CLAUDE.md §Hard rules, docs/adr/0001-comp
 - **Change the code**: `docs/spec/README.md` → `docs/spec/contracts.md` (the node↔MC wire is the single point of coordination; interface changes go through documented amendments, not silent edits). 🧪
 - **Bench**: the hardware verification checklist and `docs/bench-tomorrow.md` list everything still blocked on a human with a tagger. Append to `docs/experiment-log.md` after every session. ✅ process
 - **Print**: no public BRX print library exists. `hardware/print-files.md` lists the asks (reload-handle push-button mod, D-pad buttons, Companion mount, station enclosures). Clean-room, version-tagged, MIT. 📐
-- **Sound**: the 2,166-id sound bank is decoded, and custom on-tagger packs swap over USB. ✅
+- **Sound**: the 2,477 on-gun sounds are catalogued by category and transcript, and custom on-tagger packs swap over USB. ✅
 Source: docs/README.md, docs/FOLLOWUPS.md §Hardware / 3D printing, hardware/print-files.md
 
 ## GitHub:

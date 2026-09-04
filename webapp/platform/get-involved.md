@@ -12,7 +12,7 @@ Source: README.md §Prime directives, CLAUDE.md §Hard rules, docs/adr/0001-comp
 - **Change the code**: `docs/spec/README.md` → `docs/spec/contracts.md` (the node↔MC wire is the single point of coordination; interface changes go through documented amendments, not silent edits). 🧪
 - **Bench**: the hardware verification checklist and `docs/bench-tomorrow.md` list everything still blocked on a human with a tagger. Append to `docs/experiment-log.md` after every session. ✅ process
 - **Print**: no public BRX print library exists. `hardware/print-files.md` lists the asks (reload-handle push-button mod, D-pad buttons, Companion mount, station enclosures). Clean-room, version-tagged, MIT. 📐
-- **Sound**: the 2,166-id sound bank is decoded, and custom on-tagger packs swap over USB. ✅
+- **Sound**: the 2,477 on-gun sounds are catalogued by category and transcript, and custom on-tagger packs swap over USB. ✅
 Source: docs/README.md, docs/FOLLOWUPS.md §Hardware / 3D printing, hardware/print-files.md
 
 ## GitHub:
