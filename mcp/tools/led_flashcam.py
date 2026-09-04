@@ -94,7 +94,10 @@ def change_series(video: str, secs: float):
         if len(buf) < w * h:
             break
         frames.append(np.frombuffer(buf, dtype=np.uint8).reshape(h, w).astype(np.int16))
-    F = np.stack(frames); n = len(F); fps = n / secs      # screenrecord's rate tag is bogus; frames / wall seconds
+    F = np.stack(frames); n = len(F)
+    dprobe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video], capture_output=True, text=True)
+    dur = float((dprobe.stdout or "0").strip() or 0) or secs
+    fps = n / dur                                           # screenrecord's rate tag is bogus; frames / real duration
     pos = np.clip(F - np.median(F, axis=0), 0, None).reshape(n, -1)
     core = (pos > 200).sum(axis=1); mid = (pos > 100).sum(axis=1)
     return [(i / fps, int(core[i]), int(mid[i])) for i in range(n)], fps

@@ -6352,3 +6352,25 @@ difference to the small LED ("i cant tell"); a final 8-frame sweep of tokens 3/4
 either LED.** What we have: `$LED,9,1,1,1,*` = one clearly visible green flash on the small LED with the big LED
 untouched -- used for kill feedback (A11.8); the native hit flash stays native; while out we still paint our
 green slow blink on the big LED because the native out-blink does not run in a hosted game.
+
+### 2026-09-04 (late night) — 📷 MEASURED: our small-LED flash is AS BRIGHT AS the native hit flash on camera (the eye said otherwise)
+
+Tony: "can you use my phone camera to watch the led as you brute force it?" -- the ledcam rule, applied.
+`mcp/tools/led_flashcam.py`: the Pixel 10 Pro on wireless adb (paired from WSL), camera app aimed at R0BQT's
+headset (exposure at minimum, room lights + a TV still on), `screenrecord` for the whole run, frames sent through
+the gun stage at known offsets, the emitter firing a real hit as the native reference, then per-video-frame
+CHANGE vs the run's median frame (ambient, the TV and the camera UI cancel out). Traps met and handled: a
+"brightest pixel" metric saturates at 255 for everything; screenrecord's frame-rate tag is bogus (frames /
+real duration); the camera re-meters on a bright static paint (frame-wide counts contaminated -- use the
+saturated core); grey luma under-weights BLUE by ~5x (the native flash is blue) -- use the strongest RGB channel
+per pixel; the first two "native" shots never registered (gun unspawned after stage restarts, then the emitter
+was on the gun, not the headset -- `$HIR` sensor 3 = a side sensor on the headset, per Tony).
+
+Result, colour-fair, same recording, 60 fps: **ours `$LED,9,1,1,1,*`: core 25,236 px · mid 71,098 · energy 14.2M,
+GREEN, 4 frames; native hit flash: core 24,520 · mid 38,903 · energy 9.9M, BLUE (the team colour), 2-4 frames.**
+Both flood the whole room for two frames (the extracted stills show it). **By the instrument our flash is at least
+as bright as the native one**; "native is orders of magnitude brighter" (by eye, minutes earlier) does not survive
+the measurement -- colour (blue vs green), duration and viewing angle are the likely reasons, and the earlier
+`$LED,0,…` frame had also painted the big LED red. Also measured: `$HLED,3,4` fade-out blink core 101-198 (≈ 1/100th
+of the flash), static `$HLED` green 23-42; the native headset's own respawn blink in frame ~90 core px per blink.
+Design unchanged: hits stay native (the firmware flashes the team colour); our green flash marks kills (A11.8).
