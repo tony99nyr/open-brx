@@ -91,7 +91,8 @@ it is in range and a capturable station is just one that rewrites its own advert
 
 ### 4.1 Rule
 A dead player revives when **all** of: phase LIVE · `now - deadAt ≥ delay_s` · BLE link up · not resyncing ·
-their team's **respawn** station (neutral or same `$TID` team, state ≠ 0, on the allow-list) is **present** ·
+not reconciling (a rejoin's disarmed window, §3.10) · their team's **respawn** station (neutral or same `$TID`
+team, state ≠ 0, on the allow-list) is **present** ·
 and the gate:
 - **`trigger`** (default): the player **pulls the trigger**. A dead gun still reports `$BUT,0,1` over BLE
   (bench 2026-09-04). Presence is the gate, the pull is the act — fifty feet away the gate is closed, and
@@ -115,8 +116,14 @@ STATION** with the sub-label THEN PULL THE TRIGGER THERE (trigger gate) or AND S
 in range) → **GET CLOSER** with a closeness bar and STATION IN RANGE · the live RSSI / threshold (approach) → **HOLD…** · AT THE
 STATION · ALMOST THERE (present, the respawn delay still running) → **PULL THE TRIGGER TO RESPAWN** (trigger
 gate) or **RESPAWNING…** (presence gate) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.
+The trigger-vs-presence copy is selected by the engine's `respawnGate` getter, so the HUD never re-derives the
+gate from config (commit c97e5ce).
 
 ## 5. Other kinds (designed, not built)
+
+**Build order and ownership: `docs/utility-roadmap.md`** (cross-cutting first — MC arming, radio hardening,
+match scoping — then kinds by value: K1 control point, K2 extraction, K3 powerup, K4 bomb, K5 flag). This
+spec stays the spec of record; if a roadmap row disagrees, the spec wins.
 
 Same primitive; the difference is the station's state machine and the player node's action from its bundle.
 For kinds where the station must know **who** is there, it reads **player** adverts (id, team, alive, intent
@@ -196,19 +203,22 @@ recap (MC is not live mid-match).
 
 Verified on two Pixels 2026-09-04 (respawn end to end). Followups, roughly in priority:
 
-- **LEDs during respawn (gameplay feel, Tony 2026-09-04).** In native mode a downed/out player's HEADSET
-  blinks GREEN so others can see they're out and come revive them; our host-driven scanner respawn leaves the
-  gun + headset DARK. The node should paint the headset green out-blink (`$HLED`) on death and clear it on
-  revive (`frames.revive` already re-paints team colour). `$HLED` holds on a spawned gun (bench, `hled_spawned.py`),
-  so this is engine frame-writing, not HUD. Decide the `$GLED` (gun body) look while down too.
-- **Reconnect / new-match reconciliation.** A rejoin can land alive-with-0-hp; the §3.10 trigger-first resync
-  needs a trigger pull to reconcile; a new match started on a just-reconnected node doesn't spawn clean. The
-  resync/hydrate path is unit-tested only — harden it on hardware.
-- **Station doesn't see player adverts at high TX (intermittent).** Fine for respawn (all player-side) but
-  gates bomb/extraction, where the station must read players. Suspect scanning-while-advertising on one radio.
-- **Per-match scoping.** MC assigns station ids + a game byte at muster so two nearby games don't cross
-  (today: disjoint ids, §3 security). `config.stations` from the compiler.
-- Station kinds 2–5 state machines (powerup/extraction/bomb/control) + MC muster assignment.
+Resolved since the first draft (see FOLLOWUPS + experiment-log):
+- **Headset out-blink while down — BUILT** (A11.6/A11.7). The node paints the headset green out-blink (`$HLED`)
+  on death and clears it on revive; the gun-body look while down is `presentation.gun` (health/dark modes).
+- **Reconnect / new-match reconciliation — BUILT + VALIDATED ON HARDWARE** (S7.1; contracts A6.8; node.md §3.10).
+  A live rejoin runs a 3 s disarmed reconcile that keeps the real pools and **never heals or infers death**; a
+  new match clears an in-flight reconcile and spawns clean. Closed the force-close-at-low-HP cheat on R0BQT.
+- **Station doesn't see player adverts at high TX — FIXED in code** (S6, commit 53e62bd): the station scans
+  low-latency and restarts the scan every 8 s to recover an Android-stalled scan. Still needs the two-Pixel
+  bench to confirm; a lower station TX is the fallback.
+
+Still open:
+- **Per-match scoping (half done).** The station carries a game byte in its advert and `station_config` pushes it
+  (A13.5); the player-side `Presence.game` filter honours it. Pending: the compiler emitting `config.stations`
+  (the authoritative allow-list players enforce). Today's fallback is disjoint ids (§3).
+- **Station kinds 2–5** state machines (powerup/extraction/bomb/control) — build order in
+  `docs/utility-roadmap.md` (K1 control point first). **MC muster / arming assignment is FOLLOWUPS S5** (brx).
 - iOS build + test of `BrxBeaconPlugin.swift` on the MacBook (the superseded-start + power-toggle re-assert
   paths are written but unbuilt).
 - Bench-tuned defaults are -74 dBm / 0.8 s / high TX (§3); revisit per station-kind (an extraction zone wants
