@@ -1554,6 +1554,8 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
    feedback). The native hit flash is >= 2x ours by wall reflection and the wall clipped on native -- bound the ratio
    from above with an ND filter / manual shutter; try `$LED` tokens 3/4 at other values for a longer or repeated
    pulse; check whether `$LED` needs the gun spawned. `headset.hit` is native now; `death` default is `flash` = the small LED pulsed at 750 ms while out (Tony's call, same night); a colour still gives the big-LED slow blink.
+   **Plan: `docs/bench-flash-control-2026-09-05.md`** (12 rungs, wall camera, ~75 min; the APK-metadata analysis feeds its frame list).
+
 7. **CLI `GameDriver` headset**: the direct-BLE driver still holds the team colour in play and repaints it
    after every spawn/hit (the A11 behaviour); the phone now follows the A11.6 headset block (dark in play,
    flashes). Align the driver with `presentation.headset_frames()` when the CLI grows a profile.
