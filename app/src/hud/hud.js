@@ -337,9 +337,12 @@ export class Hud {
   /** End-of-match result: banner + this player's line, OK -> the 'over' screen (bench request 2026-08-25). */
   _result(st) {
     const v = (x, suf = '') => x == null ? '—' : x + suf;
-    const hist = this.history || [];
+    // The tally is THIS MC SESSION's games (entries carry the session id they were played under); with no
+    // session known (never joined MC) it is everything the phone remembers. All-time stays in the ⓘ diagnostics.
+    const all = this.history || []; const sid = this.sessionId || null;
+    const hist = sid ? all.filter(g => g.session === sid) : all;
     const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
-    const sess = tot.g > 1 ? `<div class="sess">OVERALL · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
+    const sess = tot.g > 1 ? `<div class="sess">${sid ? 'THIS SESSION' : 'OVERALL'} · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
     return `<div class="lobby result"><div class="scan"></div><div class="edgeglow"></div>
       <div class="banner"><span class="unskew">GAME OVER</span></div>
       <div class="rstats">
@@ -722,6 +725,7 @@ export class Hud {
       <h3>ENGINE</h3><div class="kv">${kv(d.engine || {})}</div>
       <h3>TIMINGS</h3><div class="kv">${kv(d.timings || {})}</div>
       <h3>LAST FRAMES</h3><pre>${esc((d.frames || []).map(f => `${f.dir === 'tx' ? '>>' : '<<'} ${f.f}`).join('\n'))}</pre>
+      <h3>HISTORY</h3><div class="kv">${kv((() => { const all = this.history || []; const t = all.reduce((a, g) => ({ games: a.games + 1, kills: a.kills + (g.kills || 0), deaths: a.deaths + (g.deaths || 0) }), { games: 0, kills: 0, deaths: 0 }); return { 'all-time on this phone': `${t.games} games · ${t.kills} K · ${t.deaths} D`, 'this MC session': this.sessionId || '(not joined)' }; })())}</div>
       <h3>LOG</h3><pre>${esc((d.log || []).join('\n'))}</pre>
       <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE ✕</button><button data-act="onReconnectGun">RECONNECT GUN</button><button data-act="onReconnectMc">RECONNECT MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
   }

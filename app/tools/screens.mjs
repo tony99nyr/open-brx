@@ -283,6 +283,17 @@ for (const view of VIEWS) {
     if (r.rec == null) { console.log('       (engine without reconciling — step skipped)'); return; }
     must(r.up && r.rec && r.t === 'SYNCING WITH YOUR GUN' && r.k === 'GUN RELINKED' && !r.prompt && r.chips === '0', 'during: ' + JSON.stringify(r)); must(!r2.up && !r2.rec && r2.alive && !r2.prompt, 'after: ' + JSON.stringify(r2));
   });
+  await step(`${view.name} #51 result: the tally is this MC session's games, not the phone's lifetime`, async () => {
+    const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto('http://127.0.0.1:4192/?demo&stage=idle'); await pg.waitForTimeout(500);
+    await pg.evaluate(() => localStorage.setItem('brx.history', JSON.stringify([{ session: 'A', kills: 3, deaths: 1 }, { session: 'A', kills: 2, deaths: 2 }, { session: 'B', kills: 9, deaths: 0 }, { kills: 5, deaths: 5 }])));
+    await pg.goto('http://127.0.0.1:4192/?demo&stage=result'); await pg.waitForTimeout(1200); await pg.evaluate(() => { window.brx.hud.sessionId = 'A'; }); await pg.waitForTimeout(3200);
+    const r = await pg.evaluate(() => ({ line: (document.querySelector('.result .sess') || {}).textContent || '', n: window.brx.hud.history.length }));
+    await pg.evaluate(() => { window.brx.hud.sessionId = null; window.brx.engine.ackEnd(); }); await pg.waitForTimeout(300);
+    const r2 = await pg.evaluate(() => { window.brx.hud.sessionId = null; return window.brx.hud.history.filter(g => g.session === 'A').length; });
+    await pg.evaluate(() => localStorage.removeItem('brx.history')); await pg.close();
+    must(perr.length === 0, perr.join('|')); must(r.line === 'THIS SESSION · 2 GAMES · 5 KILLS · 3 DEATHS', 'tally: ' + JSON.stringify(r)); must(r2 === 2, 'entries kept');
+  });
   await step(`${view.name} #17 resync prompt: label over instruction, each on one line`, async () => { const pg = await open(view, 'resync-prompt'); const r = [...await oneLine(pg, '.prompt .pl'), ...await oneLine(pg, '.prompt .pi')]; const stack = await pg.evaluate(() => document.querySelector('.prompt .pl').getBoundingClientRect().bottom <= document.querySelector('.prompt .pi').getBoundingClientRect().top + 1); await pg.close(); must(r.length === 2 && r.every(x => x[2]), JSON.stringify(r)); must(r[0][1] === 'GUN RELINKED' && r[1][1] === 'PULL THE TRIGGER', 'copy'); must(stack, 'label is not above the instruction'); });
   await step(`${view.name} #15 RELOADING takeover with progress and the weapon`, async () => {
     const pg = await open(view, 'live-reload', '', 3300); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.reloading'); if (!m) return null; return { t: m.querySelector('.t').textContent, s: m.querySelector('.s').textContent, w: parseFloat(m.querySelector('#rlbar').style.width), n: m.querySelector('#rlleft').textContent, big: parseFloat(getComputedStyle(m.querySelector('.t')).fontSize) }; });

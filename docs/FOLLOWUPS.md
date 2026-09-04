@@ -2383,3 +2383,8 @@ so several of these are settled from data rather than recollection.
   same victim, same life, crit 0. That would explain the fn 36/37 ×1.0-vs-×2 dispute (the ×1.0 matrix was measured at
   the gun body) and it breaks every hits-to-kill number we print. Bench first thing:
   `docs/bench-weap-tokens-discovery-2026-09-04.md` item 1.
+- **F24 · MC-owned session totals on the result screen.** The phone's tally is now scoped to the MC session it
+  was welcomed with (hud-review #51), but it is still the phone's own count. MC archives every match of a session
+  (the RECAP history picker), so it can sum kills / deaths / assists per player across the session and carry them
+  in the `score` push (`session_totals`); the HUD then shows MC's figure when linked and its own when not, and the
+  two numbers agree with the laptop's recap. Server row for the brx session; HUD reads it when present.

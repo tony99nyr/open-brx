@@ -96,7 +96,7 @@ engine.night = settings.night;
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
 try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }
-engine.onEnd = (g) => { try { const h = hud.history || []; h.push(g); while (h.length > 50) h.shift(); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };
+engine.onEnd = (g) => { try { const h = hud.history || []; h.push({ ...g, session: transport ? transport.sessionId : null }); while (h.length > 50) h.shift(); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
 
 // ---------- utility items: watch for stations while connected, and advertise ourselves as a player ----------
 // The beacon scan is the same BLE scan the gun picker uses, kept open for the whole match at the balanced
@@ -374,7 +374,7 @@ function renderNow() {
 }
 setInterval(() => { presenceTick(); engine.tick(); syncPlayerAdvert().catch(() => {}); scheduleRender(); }, 250);
 setInterval(refreshPreflight, 5000);
-setInterval(() => { try { hud.sync = { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; } catch (_) { /* ignore */ } }, 1000);
+setInterval(() => { try { hud.sync = { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; if (transport) hud.sessionId = transport.sessionId || null; } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 
 // ---------- app lifecycle (§3.11) ----------
 function onForeground(fg) {
