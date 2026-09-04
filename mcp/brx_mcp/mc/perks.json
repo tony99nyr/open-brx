@@ -1,5 +1,5 @@
 {
- "_note": "M-LOADOUT PerkCatalog (docs/spec/loadout.md §1.2). A perk fills a player's SECOND slot instead of a weapon. v1 perks are PASSIVE: pure head-frame tweaks the compiler already knows how to write ($PSET armor, $AMMO + $WEAP ammo/reload tokens, $BMAP alt-reload). `mechanism: slot_frame` rows would be a $WEAP in slot 1 whose effect lives in the VICTIM's $SIR table (game-wide, not per-player) — they stay `hidden` until the emit-side bench proves them. `verified` = effect proven on hardware. Copy is player-facing: no protocol jargon.",
+ "_note": "M-LOADOUT PerkCatalog (docs/spec/loadout.md §1.2). A perk is the third slot of a player's kit (A14, 2026-09-04: beside the weapons; an `alt_reload` perk is the one that can't ride with a second weapon). v1 perks are PASSIVE: pure head-frame tweaks the compiler already knows how to write ($PSET armor, $AMMO + $WEAP ammo/reload tokens, $BMAP alt-reload). `mechanism: slot_frame` rows would be a $WEAP in slot 1 whose effect lives in the VICTIM's $SIR table (game-wide, not per-player) — they stay `hidden` until the emit-side bench proves them. `verified` = effect proven on hardware. Copy is player-facing: no protocol jargon.",
  "perks": [
   {
    "perk_id": "body_armor",

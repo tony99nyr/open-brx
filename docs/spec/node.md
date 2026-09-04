@@ -493,7 +493,7 @@ holds (the chip bar hides under them); **moments** are transient and stack above
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown; scanner mode: the **lesson** — RUN TO YOUR TEAM'S RESPAWN STATION (then pull the trigger there / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the title alternates DOWN ⇄ RESPAWN AT STATION; a recap row: TIME LEFT · the race to the cap (team chips + FIRST TO n, **only while MC is linked**, from `score.board`) · YOU (deaths, shots; kills only when linked) | revive |
 | KILL CONFIRMED | moment (takeover-styled) | MC `feedback{kill}` | dims the HUD, KILL / CONFIRMED, the victim chip; **medal badges** land 2 s apart with the announcer lines (A11.4) | 1.8 s + 2 s per extra medal |
-| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary / perk), a light sweep, headline fitted to its column | 1.7 s |
+| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep, headline fitted to its column | 1.7 s |
 | HIT / GAIN | moment | `$HP` down / up | the damage number + the shooter's team chip / +n POOL; one fade in, one fade out, never a repeating flash | 0.7 s / 1 s |
 | ALERT | moment | MC `alert` or a node clock callout (A11.4) | a full-width band: OBJECTIVE (team colour) · CLOCK (amber) · ALERT (red) · MATCH (glow) + the text MC chose | 2.2 s |
 

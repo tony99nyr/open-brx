@@ -356,7 +356,7 @@ _What is proven on hardware, what is only software, what is only a spec. With da
 | **Dispersed timed start on a real field** | 🧪 never run | n/a |
 | **Store-and-forward recovery after real coverage loss** | 🧪 never run | n/a |
 | 20-minute two-node soak (screen-lock, backgrounding, out of Wi-Fi range) | 🧪 open | verification-checklist §NEXT 4 |
-| Loadout v2 (two slots, perks, policy presets, phone picks) | 🧪 | 2026-08-27, not bench-verified |
+| Loadout v2 (three slots: primary, secondary, perk; policy presets, phone picks) | 🧪 | 2026-08-27 and 2026-09-04, not bench-verified |
 | BRX Companion (ESP32-S3 rider) | 📐 | ADR-0001 accepted 2026-08-25; bench kit arrived 2026-08-26 |
 | Utility Box / objective station | 📐 design, ✅ emit | build is "a packaging exercise" |
 | Effect nodes (relay, WLED, DMX) | 📐 | `firmware/` empty |
@@ -512,7 +512,7 @@ From `docs/architecture-topology.md` §7 and `docs/verification-checklist.md`:
 - **Objective modes (Domination / KotH / CTF / CS / Extraction) live**: the engines wait on a station or grenade to emit the IR events. Grenade CTF team-assign (G9) and thrown-blast `$GREN` (G10) are open.
 - **Health variants live** (Syphon, regen): `$LIFE` writes are confirmed, but the modes on top are not run live. The shield pool is IR-only (fn-11), and the node/app currently drop the shield token (Q12). A hit fully absorbed by a shield would go unreported.
 - **Config knobs on-gun**: outdoor mode, kid mode, volume levels, HP/armor start values; none flipped on the bench yet. (Night-mode LEDs-off is **done**: we ship Callsign's own frame `$GLED,,,,5,,,*`, verified 2026-08-30. It blanks all three body LEDs because its colour tokens are empty and token 4 = 5 applies them, which was measured 2026-09-02.)
-- **Loadout v2** (two slots, perks, policy presets, phone picks): built 2026-08-27, not bench-verified.
+- **Loadout v2** (three slots: primary, secondary and a perk of its own; policy presets, phone picks): built 2026-08-27 and 2026-09-04, not bench-verified.
 - **Melee in a compiled game**: it did not work on the bench, even though our frames match Callsign's byte for byte (K4). A runtime or state question.
 - **ADR-0001 confirmation still owed**: that a host-armed game does *not* self-fire feedback once disconnected.
 - **Companion**: not built. Open items are the pairing/binding handshake, the mount (needs caliper measurements), the OTA flow, Wi-Fi + BLE coexistence, and the ESP-NOW mesh end to end.

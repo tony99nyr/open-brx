@@ -1,4 +1,4 @@
-# M-LOADOUT — two slots, perks, loadout policy, phone self-serve kitting
+# M-LOADOUT — three slots (primary, secondary, perk), loadout policy, phone self-serve kitting
 
 - **Status:** **A14 perk slot (2026-09-04): a perk is its OWN slot beside PRIMARY / SECONDARY** — server (`policy.py`,
   `tests/test_mc_perk_slot.py`), MC KIT/DESIGNER and the phone HUD built the same day; no backwards path (FOLLOWUPS S6). A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8 saved games server side BUILT 2026-08-27 (`presets.py`, `/api/presets*`, `Session.sanitize_config`). Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
@@ -199,7 +199,7 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
 assign.game { name, desc,                       // saved-game name/desc when the live config matches one, else the stock mode
               mode, mode_name, abbr, teams_text, win_text, respawn_text,
               time_limit_s, respawn, health, environment, night,
-              loadout_line,                     // one human sentence: "You pick your primary (13 to choose from), slot 2: a second weapon or a perk."
+              loadout_line,                     // one human sentence: "You pick your primary (16 to choose from), slot 2: a second weapon, a perk of your choice (5)."
               ruleset, hud_select }             // preset label (OPEN / NO HEAVIES / …) + whether phones may pick
 ```
 - **`kit_open:false`** (ARMORY / GAMES): the KITTED screen shows **"MISSION CONTROL IS SETTING UP THE GAME"** —
@@ -229,8 +229,8 @@ assign.game { name, desc,                       // saved-game name/desc when the
   touches the live config until PLAY. The pool is computed ON THE CLIENT from the rules being edited (instant,
   server-independent — the same engine as `policy.py`); `POST /api/loadout/pool` only re-confirms the preset name.
   Class chips are ON / ◐ partial (n/N) / OFF; a tile dimmed by a chip is still tappable (allows just that weapon).
-  A12: the secondary column's `WEAPONS · PERKS` kind chips gain `SIDEARMS` (pistols only; mutually exclusive with
-  WEAPONS since "weapon" already admits pistols), the class chips gain `SIDEARM`, and the summary reads
+  A12: the secondary column's kind chips are `WEAPONS · SIDEARMS` (pistols only; mutually exclusive since "weapon"
+  already admits pistols — the PERKS chip left with A14), the class chips gain `SIDEARM`, and the summary reads
   `SIDEARMS ONLY · 3 PISTOLS`. KIT's arsenal header Seg reads `SIDEARMS · n` for the same rule. OPEN / NO HEAVIES / SNIPERS are starting templates
   inside the designer, not match-night choices.
 - *(superseded)* **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,

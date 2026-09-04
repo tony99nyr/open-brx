@@ -1,6 +1,6 @@
 """M-LOADOUT perk catalog (docs/spec/loadout.md §1.2).
 
-A perk is the thing a player may put in their SECOND slot instead of a weapon. v1 perks are passive
+A perk is the third slot of a player's kit (A14: it rides beside the weapons). v1 perks are passive
 head-frame tweaks; `slot_frame` rows are catalogued but hidden until benched. Static data lives in
 `perks.json` next to `weapons.json` — same discipline: the compiler only acts on effect keys it names.
 """

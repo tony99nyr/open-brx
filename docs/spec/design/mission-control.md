@@ -59,10 +59,12 @@ A **per-player card**, filled while the player gears up and sizes their strap. T
   `docs/reference/callsign-ui.md`): weapon art, class, and a clean **stat block** (damage, magazine, reserve,
   fire-rate, reload, range). Picking a weapon feels deliberate and game-like.
 - Shows the player's **live node/gun link** so the host knows the kit-out reached them.
-- **Two slots (2026-08-27, loadout.md §5).** A **loadout rail** of two cards — PRIMARY and SECONDARY — sits
-  beside the hero; the focused card drives the arsenal below. Slot 2 is a **weapon OR a perk OR empty**
-  ("alt-fire does nothing" — a valid kit). Perks are a second tab of the same arsenal (purple), with an
-  effects block instead of DMG/ROF/RNG. Rule-locked slots show a padlock + "SET IN BUILD"; out-of-pool
+- **Three slots (2026-08-27 → A14 2026-09-04, loadout.md §5).** A **loadout rail** of three cards — PRIMARY,
+  SECONDARY and PERK — sits beside the hero; the focused card drives the arsenal below. Slot 2 is a **weapon OR
+  empty** ("alt-fire does nothing" — a valid kit); the PERK card is a **perk OR empty** and rides beside the weapons
+  (AR + pistol + Quick Switch). The perk arsenal is the PERK card's own grid (purple), with an effects block instead
+  of DMG/ROF/RNG. Easy Reload takes the ALT button, so picking it beside a loaded secondary (or the reverse) is a
+  two-tap confirm on the tile. Rule-locked slots show a padlock + "SET IN BUILD"; out-of-pool
   tiles stay visible but dimmed, and the arsenal header carries the pool summary once ("13 OF 18 · NO
   HEAVIES"), never per tile. Roster rows show each player's live state — `PICKING…` (phone browser open),
   `TRYING <weapon>`, `READY ✓` — and a two-item loadout line. A RULES chip in the header links to BUILD.

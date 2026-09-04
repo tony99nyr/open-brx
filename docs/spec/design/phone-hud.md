@@ -67,8 +67,9 @@ is fine; it's for fixing problems, not for play.
 
 ### B6 · Loadout browser (self-serve kitting; loadout.md §4.5) — *added 2026-08-27*
 The one exception to "no self-select on the phone": when the host's rules allow, a player picks their own
-weapons/perk. Tab bar `PRIMARY | SECONDARY`; the **list on the left** (rows ≥44 px: thumb, name, class, MAG;
-the secondary tab adds `WEAPONS · PERKS · NONE` chips), **art + stats on the right**, a persistent bottom bar
+weapons/perk. Tab bar `PRIMARY | SECONDARY | PERK` (A14, 2026-09-04: the perk is its own slot); the **list on the
+left** (rows ≥44 px: thumb, name, class, MAG; the secondary tab carries `WEAPONS · NONE` chips, the perk tab `PERKS ·
+NONE`; Easy Reload over a loaded secondary is a two-tap confirm), **art + stats on the right**, a persistent bottom bar
 `TRY IT` (weapons only — MC arms the gun for a few rounds) + `DONE`. **Tap a row = equipped** (MC confirms;
 a rejected pick shows the host's reason in plain words). Only what the rules allow is listed — a player never
 sees a greyed-out weapon they can't have. Must read at 844×390 and a short viewport, in sun and blackout.

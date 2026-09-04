@@ -243,7 +243,7 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   descriptor from `docs/reference/sound-catalog.md`, **not yet audited by ear**), so a custom `.LTP` copied over
   the data port replaces only that pistol's sound. Draw time `wire.swap_ms = 500` (tok15; the primaries keep the
   captured 850) — bench 2026-09-04 proved tok15 is the swap delay AND that the gun applies the larger of the two
-  slots, so a pistol only draws in 500 ms beside another quick weapon or a perk. The cycle numbers are the gun's floor: a semi-automatic
+  slots, so a pistol only draws in 500 ms beside another quick weapon (a perk is its own slot since A14 and never occupies slot 1). The cycle numbers are the gun's floor: a semi-automatic
   fires no faster than the player pulls, so in hand every pistol kills slower than its wire TTK.
 - **Power tier** — Rocket, Rail, Laser, Energy Launcher, Ion Sniper. All 115 damage, all one-shot,
   all **2 + 2 rounds = 4 kills**, differentiated by charge behaviour and a deliberate cycle/reload

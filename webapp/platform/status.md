@@ -30,7 +30,7 @@ Source: docs/architecture-topology.md §7, docs/FOLLOWUPS.md B15
 | **Dispersed timed start on a real field** | 🧪 never run | n/a |
 | **Store-and-forward recovery after real coverage loss** | 🧪 never run | n/a |
 | 20-minute two-node soak (screen-lock, backgrounding, out of Wi-Fi range) | 🧪 open | verification-checklist §NEXT 4 |
-| Loadout v2 (two slots, perks, policy presets, phone picks) | 🧪 | 2026-08-27, not bench-verified |
+| Loadout v2 (three slots: primary, secondary, perk; policy presets, phone picks) | 🧪 | 2026-08-27 and 2026-09-04, not bench-verified |
 | BRX Companion (ESP32-S3 rider) | 📐 | ADR-0001 accepted 2026-08-25; bench kit arrived 2026-08-26 |
 | Utility Box / objective station | 📐 design, ✅ emit | build is "a packaging exercise" |
 | Effect nodes (relay, WLED, DMX) | 📐 | `firmware/` empty |

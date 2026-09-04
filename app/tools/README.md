@@ -11,7 +11,7 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
 - **`shots.mjs`** — HUD-only screenshot sweep over `?demo` (no MC server needed): every screen state at a
   phone-landscape viewport. `node tools/shots.mjs`.
 - **`stage.mjs`** — `npm run ui:stage` → http://localhost:4190/ : the STAGE harness for visual review. The real HUD in
-  a phone-sized frame with a sidebar that jumps it to any screen state (`?demo&stage=<state>`, 28 states from idle to
+  a phone-sized frame with a sidebar that jumps it to any screen state (`?demo&stage=<state>`, 44 states from idle to
   MATCH COMPLETE — no timeline, the state holds) and an event panel that forces in-game events by hand: fire, hit,
   death, respawn, kill confirm, low ammo/HP, gun drop/relink, MC lost/back, push/start/abort/end/PANIC. Variants:
   screen size, team colour, respawn type/delay, night, host-locked loadout, MC rejecting picks. `/hud/?demo&stage=live`
