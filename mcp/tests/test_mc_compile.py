@@ -247,7 +247,8 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
         (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp/mc/weapons.json").read_text())["weapons"]}
     T = WeaponCatalog._T
     balance = {1, T["dmg"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
-               T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1}
+               T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1,
+               T["swap"] + 1}                                   # tok15 = draw time: `wire.swap_ms` on the sidearms (bench 2026-09-04)
     cat = WeaponCatalog()
     for wid, row in rows.items():
         allowed = balance | {int(k.lstrip("tT")) + 1 for k in (row.get("overrides") or {})}

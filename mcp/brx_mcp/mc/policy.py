@@ -9,7 +9,9 @@ from __future__ import annotations
 import copy
 
 CHOICES = ("player", "host", "fixed", "off")
-KINDS = ("weapon", "perk")
+KINDS = ("weapon", "perk", "sidearm")          # "sidearm" (2026-09-04): only weapons tagged `sidearm` — the pistols
+PRIMARY_KINDS = ("weapon", "sidearm")          # a perk never goes in slot 1; "sidearm" alone = a pistol round
+SIDEARM_TAG = "sidearm"
 PRESET_NAMES = ("open", "no_heavies", "snipers", "custom")
 PRESET_LABELS = {"open": "OPEN", "no_heavies": "NO HEAVIES", "snipers": "SNIPERS ONLY", "custom": "CUSTOM RULES"}
 
@@ -21,6 +23,7 @@ _R_FIXED = "{what} is fixed to {name} for this game — change it in BUILD"
 _R_NOT_ALLOWED = "{name} isn't allowed in this game"
 _R_HEAVY = "Heavies are off for this game"
 _R_KIND = "{kind} can't go in the {slot} slot this game"
+_R_SIDEARM_ONLY = "Only sidearms go in the {slot} slot this game"
 _R_UNKNOWN = "Unknown {kind}"
 
 
@@ -65,10 +68,11 @@ def _check_rule(slot: str, r) -> dict:
         if r["choice"] not in CHOICES or (slot == "primary" and r["choice"] == "off"):
             raise ValueError(f"loadout_policy.{slot}.choice must be one of {CHOICES}")
         out["choice"] = r["choice"]
-    if "kinds" in r and slot == "secondary":
+    if "kinds" in r:
         ks = r["kinds"]
-        if not isinstance(ks, list) or not ks or any(k not in KINDS for k in ks):
-            raise ValueError("loadout_policy.secondary.kinds must be a non-empty list of weapon|perk")
+        allowed = KINDS if slot == "secondary" else PRIMARY_KINDS
+        if not isinstance(ks, list) or not ks or any(k not in allowed for k in ks):
+            raise ValueError(f"loadout_policy.{slot}.kinds must be a non-empty list of {'|'.join(allowed)}")
         out["kinds"] = list(dict.fromkeys(ks))
     for key in ("exclude_tags", "exclude_ids", "only_ids"):
         if key in r:
@@ -137,6 +141,21 @@ def _filter(rule: dict, rows: list[dict], id_key: str) -> list[str]:
     return out
 
 
+def weapon_kind_rows(rule: dict, weapons: list[dict]) -> list[dict]:
+    """The weapon rows a slot's `kinds` admits BEFORE the tag/id filters: "weapon" = every visible
+    weapon (a pistol is a weapon too); "sidearm" alone = only the `sidearm`-tagged rows; neither = none."""
+    kinds = rule.get("kinds") or ()
+    if "weapon" in kinds:
+        return list(weapons)
+    if SIDEARM_TAG in kinds:
+        return [w for w in weapons if SIDEARM_TAG in set(w.get("tags") or ())]
+    return []
+
+
+def admits_weapons(rule: dict) -> bool:
+    return bool({"weapon", SIDEARM_TAG} & set(rule.get("kinds") or ()))
+
+
 def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
     """Allowed ids per slot (catalog order) — `State.loadout_pool` (§3.2). `weapons`/`perks` are the
     VISIBLE catalog rows (each with `tags`)."""
@@ -144,7 +163,7 @@ def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
     if prim["choice"] == "fixed":
         primary = [prim["fixed_id"]] if any(w["weapon_id"] == prim["fixed_id"] for w in weapons) else []
     else:
-        primary = _filter(prim, weapons, "weapon_id")
+        primary = _filter(prim, weapon_kind_rows(prim, weapons), "weapon_id")
     if sec["choice"] == "off":
         sw, sp = [], []
     elif sec["choice"] == "fixed":
@@ -152,7 +171,7 @@ def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
         sw = [fid] if any(w["weapon_id"] == fid for w in weapons) else []
         sp = [fid] if not sw and any(p["perk_id"] == fid for p in perks) else []
     else:
-        sw = _filter(sec, weapons, "weapon_id") if "weapon" in sec["kinds"] else []
+        sw = _filter(sec, weapon_kind_rows(sec, weapons), "weapon_id")
         sp = _filter(sec, perks, "perk_id") if "perk" in sec["kinds"] else []
     return {"primary": primary, "secondary_weapons": sw, "secondary_perks": sp}
 
@@ -162,10 +181,13 @@ def _name(rows: list[dict], key: str, rid: str) -> str:
     return next((r["name"] for r in rows if r[key] == rid), rid)
 
 
-def _why_not(rule: dict, rows: list[dict], key: str, rid: str) -> str:
+def _why_not(rule: dict, rows: list[dict], key: str, rid: str, slot: str = "secondary") -> str:
     r = next((x for x in rows if x[key] == rid), None)
     if r is None:
         return _R_UNKNOWN.format(kind="weapon" if key == "weapon_id" else "perk")
+    kinds = set(rule.get("kinds") or ())
+    if key == "weapon_id" and SIDEARM_TAG in kinds and "weapon" not in kinds and SIDEARM_TAG not in set(r.get("tags") or ()):
+        return _R_SIDEARM_ONLY.format(slot=slot)
     if "heavy" in set(rule.get("exclude_tags") or ()) and "heavy" in set(r.get("tags") or ()):
         return _R_HEAVY
     return _R_NOT_ALLOWED.format(name=r["name"])
@@ -183,7 +205,7 @@ def validate_loadout(policy: dict, lp: dict, loadout: dict, weapons: list[dict],
     if prim not in lp["primary"]:
         if pr["choice"] == "fixed":
             return False, _R_FIXED.format(what="Primary", name=_name(weapons, "weapon_id", pr["fixed_id"]))
-        return False, _why_not(pr, weapons, "weapon_id", prim)
+        return False, _why_not(pr, weapons, "weapon_id", prim, "primary")
     if sr["choice"] == "off" and (sec_w or perk):
         return False, _R_OFF
     if sr["choice"] == "fixed":
@@ -192,7 +214,7 @@ def validate_loadout(policy: dict, lp: dict, loadout: dict, weapons: list[dict],
             return False, _R_FIXED.format(what="Secondary", name=_name(weapons + perks, "weapon_id" if any(w["weapon_id"] == fid for w in weapons) else "perk_id", fid))
         return True, None
     if sec_w and sec_w not in lp["secondary_weapons"]:
-        if "weapon" not in sr["kinds"]:
+        if not admits_weapons(sr):
             return False, _R_KIND.format(kind="A weapon", slot="secondary")
         return False, _why_not(sr, weapons, "weapon_id", sec_w)
     if perk and perk not in lp["secondary_perks"]:
@@ -254,16 +276,16 @@ def check_request(policy: dict, lp: dict, slot: str, kind: str, rid: str | None,
         if slot == "primary":
             return False, "A primary weapon is required"
         return True, None
-    if kind not in KINDS or not rid:
+    if kind not in ("weapon", "perk") or not rid:       # a pistol is requested as kind "weapon" (contracts §2: WeaponSel)
         return False, "Unknown pick"
     if slot == "primary":
         if kind != "weapon":
             return False, _R_KIND.format(kind="A perk", slot="primary")
         if rid not in lp["primary"]:
-            return False, _why_not(rule, weapons, "weapon_id", rid)
+            return False, _why_not(rule, weapons, "weapon_id", rid, "primary")
         return True, None
     if kind == "weapon":
-        if "weapon" not in rule["kinds"]:
+        if not admits_weapons(rule):
             return False, _R_KIND.format(kind="A weapon", slot="secondary")
         if rid not in lp["secondary_weapons"]:
             return False, _why_not(rule, weapons, "weapon_id", rid)

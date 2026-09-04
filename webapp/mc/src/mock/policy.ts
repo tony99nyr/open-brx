@@ -44,7 +44,7 @@ export function reject(p: LoadoutPolicy, pl: LoadoutPool, slot: 'primary' | 'sec
   if (kind === 'none') return slot === 'secondary' ? null : 'A primary weapon is required';
   if (!id) return 'Pick something';
   if (slot === 'primary') return pl.primary.includes(id) ? null : 'Not allowed by the ruleset';
-  if (kind === 'weapon') return pl.secondary_weapons.includes(id) ? null : (r.kinds.includes('weapon') ? 'Not allowed by the ruleset' : 'Weapons are off in the secondary slot');
+  if (kind === 'weapon') return pl.secondary_weapons.includes(id) ? null : (r.kinds.includes('weapon') ? 'Not allowed by the ruleset' : r.kinds.includes('sidearm') ? 'Only sidearms go in the secondary slot this game' : 'Weapons are off in the secondary slot');
   return pl.secondary_perks.includes(id) ? null : (r.kinds.includes('perk') ? 'Not allowed by the ruleset' : 'Perks are off for this game');
 }
 

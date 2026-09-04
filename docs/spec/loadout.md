@@ -1,6 +1,6 @@
 # M-LOADOUT — two slots, perks, loadout policy, phone self-serve kitting
 
-- **Status:** §8 saved games server side BUILT 2026-08-27 (`presets.py`, `/api/presets*`, `Session.sanitize_config`). Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
+- **Status:** A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8 saved games server side BUILT 2026-08-27 (`presets.py`, `/api/presets*`, `Session.sanitize_config`). Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
   Binding for `mcp/brx_mcp/mc` (server), `webapp/mc` (MC UI) and `app/` (phone node). Field names are identical
   in Python TypedDicts, `API.md`, `types.ts` and the phone engine.
 - **Owns:** the shape of a player's kit (primary + secondary-or-perk), the **loadout policy** a host sets per game
@@ -19,8 +19,16 @@
 
 ### 1.1 Weapons — `mcp/brx_mcp/mc/weapons.json` gains `tags`
 ```jsonc
-Weapon += { tags: string[] }      // "heavy" (role power), "sniper" (sniper_rifle, plasma_sniper, ion_sniper, amr), "cqb", "assault", "support"
+Weapon += { tags: string[] }      // "heavy" (role power), "sniper" (sniper_rifle, plasma_sniper, ion_sniper, amr), "cqb", "assault", "support",
+                                  // "sidearm" + "pistol" (A12, 2026-09-04: glock / usp / deagle, role "sidearm", cls 10)
 ```
+**Sidearms (A12, 2026-09-04).** Three Counter-Strike-style pistols — `glock` (Glock-18), `usp` (USP-S), `deagle`
+(Desert Eagle) — are ordinary catalog weapons: `WeaponSel` on the wire, `kind:"weapon"` in a `loadout_request`,
+try-out as any weapon. They have no capture of their own: a row with **`based_on: {weapon_id, why}`** copies that
+weapon's `capture` block verbatim (`captured: false`) and moves only named `wire`/`overrides` tokens — the Bolt
+Rifle frame, the one captured semi-automatic (`t20 = 7`). Balance, sound ids (`P09` / `Q04` / `P16`, reload
+`D08 D07 D06`, all unused elsewhere so a data-port `.LTP` swap changes one pistol) and the "dominated by
+primaries by design" rule: `docs/weapon-design.md` §2.2. Art: `assets/weapons/<id>.jpg` in both UIs.
 `WeaponView` (API.md `GET /api/weapons`, and `assign.catalog`) gains `tags: string[]`, `role: string`, **`htk: number`**
 (hits to drop **the host's pool** — `config.health.max_hp + max_armor` plus any per-player override and
 the `body_armor` perk, 115 at the defaults; it moves with the health config, so a UI showing it must show
@@ -78,7 +86,10 @@ LoadoutPolicy {
 }
 SlotRule {
   choice: "player" | "host" | "fixed" | "off",
-  kinds: ("weapon" | "perk")[],              // primary: always ["weapon"]; secondary default ["weapon","perk"]
+  kinds: ("weapon" | "perk" | "sidearm")[],  // primary: ["weapon"] (default) or ["sidearm"] (pistol round); secondary default ["weapon","perk"]
+                                             // A12: "sidearm" admits ONLY the `sidearm`-tagged weapons (the pistols) — "perks only" has a
+                                             // "sidearms only" twin: kinds ["sidearm","perk"]. "weapon" already includes the pistols, so
+                                             // ["weapon","sidearm"] ≡ ["weapon"]. A POLICY kind, never a request kind (a pistol is a "weapon").
   exclude_tags: string[], exclude_ids: string[], only_ids: string[],   // pool = catalog ∩ only_ids(if any) − exclude_*
   fixed_id?: string | null                   // when choice == "fixed": the weapon_id (primary) / weapon_id|perk_id (secondary)
 }
@@ -136,7 +147,7 @@ loadout_request { node_id, player_id, slot: "primary"|"secondary", kind: "weapon
   (`tutorial` push, `kit.trying[pid] = id`). A try on a player already trying replaces it.
 - Reply always: **`loadout_ack`** (MC → node, NEW `MC_KINDS` entry) `{ slot, ok: boolean, reason?: string, loadout }` —
   `reason` is human copy the HUD shows verbatim (`"Host locked this slot"`, `"Heavies are off for this game"`,
-  `"Try-outs are closed — the game is being armed"`).
+  `"Try-outs are closed — the game is being armed"`, A12: `"Only sidearms go in the secondary slot this game"`).
 ### 4.3 `loadout_browse` (node → MC) — NEW, presence only
 ```jsonc
 loadout_browse { node_id, player_id, open: boolean }        // HUD opened/closed the loadout browser
@@ -155,6 +166,8 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
 - **LOADOUT browser** (landscape 844×390): tab bar `PRIMARY | SECONDARY`; list **left** (rows ≥44 px: thumb, name,
   class chip, MAG; secondary tab has `WEAPONS · PERKS · NONE` filter chips), detail **right** (art, DMG/ROF/RNG bars,
   MAG/RESERVE, one-line desc); bottom action bar ≥44 px: `TRY IT` (weapons, sends `try:true`), `DONE`.
+  A12: when `policy.secondary.kinds` holds `"sidearm"` and not `"weapon"` the weapons chip reads `SIDEARMS · n`
+  (the pool already holds only pistols) and the hint reads "Pick a sidearm or a perk"; role label `SIDEARM`.
   **Tap a row = equip** (sends `loadout_request`, row shows ✓ on `loadout_ack`); perks equip on tap, no try.
 - Try-out panel (existing) gains `DONE` → back to the browser. READY UP works from KITTED as before.
 
@@ -192,7 +205,10 @@ assign.game { name, desc,                       // saved-game name/desc when the
   NOW ▸` (saves and jumps to KIT; an unnamed draft plays without being saved, and says so). Edits a DRAFT: nothing
   touches the live config until PLAY. The pool is computed ON THE CLIENT from the rules being edited (instant,
   server-independent — the same engine as `policy.py`); `POST /api/loadout/pool` only re-confirms the preset name.
-  Class chips are ON / ◐ partial (n/N) / OFF; a tile dimmed by a chip is still tappable (allows just that weapon). OPEN / NO HEAVIES / SNIPERS are starting templates
+  Class chips are ON / ◐ partial (n/N) / OFF; a tile dimmed by a chip is still tappable (allows just that weapon).
+  A12: the secondary column's `WEAPONS · PERKS` kind chips gain `SIDEARMS` (pistols only; mutually exclusive with
+  WEAPONS since "weapon" already admits pistols), the class chips gain `SIDEARM`, and the summary reads
+  `SIDEARMS ONLY · 3 PISTOLS`. KIT's arsenal header Seg reads `SIDEARMS · n` for the same rule. OPEN / NO HEAVIES / SNIPERS are starting templates
   inside the designer, not match-night choices.
 - *(superseded)* **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,
   `PLAYERS PICK ON PHONE` toggle, per-slot rows (choice Seg + pool summary "15 OF 18 · NO HEAVIES" + fixed picker),

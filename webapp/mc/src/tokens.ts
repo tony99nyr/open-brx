@@ -23,6 +23,7 @@ export const CLS_COLOR: Record<string, string> = {
 export const ROLE: Record<string, { label: string; color: string }> = {
   assault: { label: 'ASSAULT', color: '#39b4ff' }, cqb: { label: 'CLOSE RANGE', color: '#ff8c42' }, marksman: { label: 'SNIPER', color: '#ffd23f' },
   support: { label: 'SUPPORT', color: '#2ecc71' }, power: { label: 'HEAVY', color: '#ff5252' }, melee: { label: 'MELEE', color: '#8aa0b4' },
+  sidearm: { label: 'SIDEARM', color: '#ffb5d2' },   // the pistols (2026-09-04) — a slot-2 backup class
 };
 /** older MC (no `role`): no label at all rather than a raw class id (review round 3: no protocol ids on screen) */
 export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { label: CLS_COLOR[cls ?? ''] ? (cls ?? '').toUpperCase() : '', color: CLS_COLOR[cls ?? ''] ?? '#8aa0b4' };

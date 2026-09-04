@@ -191,6 +191,9 @@ sounds — and moves the numbers.
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 2 / 4 | — | cycle 1000→1400, res 12→2 |
 | Rail Gun | power | 115 | 1200 | 1 | **1.20** | 95.8 | 47.9 | 2 | 2 | 2400 | 2 / 4 | — | mag 1→2, res 6→2 |
 | Laser Cannon | power | 115 | 1500 | 1 | **1.50** | 76.7 | 50.0 | 2 | 2 | 1600 | 2 / 4 | — | mag 4→2, res 8→2, reload 2000→1600 |
+| Desert Eagle | sidearm | 24 | 375 | 5 | **1.50** | 64.0 | 34.8 | 7 | 36 | 2200 | 1 / 8 | — | **new 2026-09-04** (Bolt Rifle frame) |
+| USP-S | sidearm | 13 | 200 | 9 | **1.60** | 65.0 | 33.9 | 12 | 72 | 2200 | 1 / 9 | — | **new 2026-09-04** (Bolt Rifle frame, suppressed) |
+| Glock-18 | sidearm | 9 | 150 | 13 | **1.80** | 60.0 | 34.6 | 20 | 120 | 2200 | 1 / 10 | — | **new 2026-09-04** (Bolt Rifle frame) |
 
 Three weapons ship **exactly as Battle Company sent them** (`verified: true`): the Burst Rifle, the
 Bolt Rifle and Melee — their stock numbers already sat in the band.
@@ -227,6 +230,21 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
 - **Energy Rifle** — 23 kills on one magazine, 69 across the kit. The ammo weapon.
 - **Charge Rifle** — hold-and-release charge with a heat budget. Its 100/200 ammo (100 kills) was the
   single most dominant thing in the arsenal; cut to 12/12.
+- **Sidearms (2026-09-04)** — Glock-18, USP-S, Desert Eagle: slot-2 backups modelled on the Counter-Strike
+  pistols, built on the Bolt Rifle's captured frame (the one captured semi-automatic: `t20 = 7`, one shot per
+  trigger pull, magazine reload). They keep the CS ordering — the Glock is the weakest per shot and the
+  deepest, the USP-S is suppressed and flashless (`t25 = 2`, `t26 = 50`, the Suppressor's pair), the Deagle
+  hits hardest on the slowest cycle — but the numbers are ours: all three sit inside the 1.5–3.5 s band and
+  **are deliberately dominated by the primaries** (a sidearm has a third of a primary's sustained output and
+  8–10 kills a kit). `test_ttk_band_and_no_strictly_dominant_weapon` exempts a sidearm from *being*
+  dominated by a primary, never from dominating one, and still forbids one sidearm dominating another.
+  In a pistol round (`loadout_policy.primary.kinds = ["sidearm"]`) they only meet each other. Fire sounds
+  `P09` / `Q04` / `P16` and the `D08 D07 D06` reload run are on-gun ids no other weapon uses (chosen by
+  descriptor from `docs/reference/sound-catalog.md`, **not yet audited by ear**), so a custom `.LTP` copied over
+  the data port replaces only that pistol's sound. Draw time `wire.swap_ms = 500` (tok15; the primaries keep the
+  captured 850) — bench 2026-09-04 proved tok15 is the swap delay AND that the gun applies the larger of the two
+  slots, so a pistol only draws in 500 ms beside another quick weapon or a perk. The cycle numbers are the gun's floor: a semi-automatic
+  fires no faster than the player pulls, so in hand every pistol kills slower than its wire TTK.
 - **Power tier** — Rocket, Rail, Laser, Energy Launcher, Ion Sniper. All 115 damage, all one-shot,
   all **2 + 2 rounds = 4 kills**, differentiated by charge behaviour and a deliberate cycle/reload
   ladder (see §2.4).
@@ -277,6 +295,9 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Force Rifle | 10 | **12** | 15 | 20 |
 | Assault Rifle / Burst Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
 | SMG / Suppressor | 13 | **15** | 19 | 25 |
+| Desert Eagle | 5 | **5** | 7 | 9 |
+| USP-S | 8 | **9** | 12 | 16 |
+| Glock-18 | 12 | **13** | 17 | 23 |
 
 Two consequences carried over from the first pass and still true:
 

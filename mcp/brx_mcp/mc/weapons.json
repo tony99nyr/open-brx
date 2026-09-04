@@ -1,5 +1,5 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero.",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P09/Q04/P16 are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
@@ -365,6 +365,170 @@
    "captured": true,
    "tags": [
     "support"
+   ]
+  },
+  {
+   "weapon_id": "glock",
+   "name": "Glock-18",
+   "desc": "The starting pistol. 9 a hit as fast as you can pull, 20 in the mag and 120 behind it: 13 hits to drop, 10 kills across the kit. Weak per shot, deep for a sidearm, and always ready.",
+   "cls": 10,
+   "role": "sidearm",
+   "mag": 20,
+   "reserve": 120,
+   "reload_ms": 2200,
+   "dmg": 8,
+   "rof": 50,
+   "rng": 75,
+   "htk": 13,
+   "ttk_ms": 1800,
+   "capture": {
+    "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
+    "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
+   },
+   "based_on": {
+    "weapon_id": "bolt_rifle",
+    "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
+   },
+   "wire": {
+    "dmg": 9,
+    "fire_ms": 150,
+    "swap_ms": 500
+   },
+   "overrides": {
+    "t27": {
+     "value": "P09",
+     "why": "Glock-18 fire sound: sound-catalog id P09, chosen from the on-gun gunshot families by descriptor (docs/reference/sound-catalog.md); P09 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
+    },
+    "t31": {
+     "value": "D08",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t32": {
+     "value": "D07",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t33": {
+     "value": "D06",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    }
+   },
+   "verified": false,
+   "captured": false,
+   "tags": [
+    "sidearm",
+    "pistol"
+   ]
+  },
+  {
+   "weapon_id": "usp",
+   "name": "USP-S",
+   "desc": "The quiet one. Suppressed and flashless: 13 a hit at a measured cadence, 9 hits to drop, 12 in the mag with 72 behind it. Nobody hears where it came from.",
+   "cls": 10,
+   "role": "sidearm",
+   "mag": 12,
+   "reserve": 72,
+   "reload_ms": 2200,
+   "dmg": 11,
+   "rof": 38,
+   "rng": 75,
+   "htk": 9,
+   "ttk_ms": 1600,
+   "capture": {
+    "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
+    "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
+   },
+   "based_on": {
+    "weapon_id": "bolt_rifle",
+    "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
+   },
+   "wire": {
+    "dmg": 13,
+    "fire_ms": 200,
+    "swap_ms": 500
+   },
+   "overrides": {
+    "t27": {
+     "value": "Q04",
+     "why": "USP-S fire sound: sound-catalog id Q04, chosen from the on-gun gunshot families by descriptor (docs/reference/sound-catalog.md); Q04 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
+    },
+    "t31": {
+     "value": "D08",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t32": {
+     "value": "D07",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t33": {
+     "value": "D06",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t25": {
+     "value": "2",
+     "why": "USP-S is suppressed: the Suppressor is the one captured weapon with t25=2 (no muzzle flash) + t26=50 (loudness scale) \u2014 same pair, same meaning (protocol-classes.md t25/t26)"
+    },
+    "t26": {
+     "value": "50",
+     "why": "USP-S is suppressed: half loudness, as on the captured Suppressor frame (t26=50)"
+    }
+   },
+   "verified": false,
+   "captured": false,
+   "tags": [
+    "sidearm",
+    "pistol"
+   ]
+  },
+  {
+   "weapon_id": "deagle",
+   "name": "Desert Eagle",
+   "desc": "The hand cannon. 24 a hit, five hits to drop, and the fastest kill a sidearm gets \u2014 if you land them. Seven in the mag, 36 behind it, and a slow cycle that punishes a miss.",
+   "cls": 10,
+   "role": "sidearm",
+   "mag": 7,
+   "reserve": 36,
+   "reload_ms": 2200,
+   "dmg": 21,
+   "rof": 20,
+   "rng": 75,
+   "htk": 5,
+   "ttk_ms": 1500,
+   "capture": {
+    "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
+    "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
+   },
+   "based_on": {
+    "weapon_id": "bolt_rifle",
+    "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
+   },
+   "wire": {
+    "dmg": 24,
+    "fire_ms": 375,
+    "swap_ms": 500
+   },
+   "overrides": {
+    "t27": {
+     "value": "P16",
+     "why": "Desert Eagle fire sound: sound-catalog id P16, chosen from the on-gun gunshot families by descriptor (docs/reference/sound-catalog.md); P16 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
+    },
+    "t31": {
+     "value": "D08",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t32": {
+     "value": "D07",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    },
+    "t33": {
+     "value": "D06",
+     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+    }
+   },
+   "verified": false,
+   "captured": false,
+   "tags": [
+    "sidearm",
+    "pistol"
    ]
   },
   {

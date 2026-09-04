@@ -248,6 +248,63 @@ const RAW = [
    "support"
   ]
  },
+{
+ "weapon_id": "glock",
+ "name": "Glock-18",
+ "desc": "The starting pistol. 9 a hit as fast as you can pull, 20 in the mag and 120 behind it: 13 hits to drop, 10 kills across the kit. Weak per shot, deep for a sidearm, and always ready.",
+ "role": "sidearm",
+ "mag": 20,
+ "reserve": 120,
+ "reload_ms": 2200,
+ "dmg": 8,
+ "rof": 50,
+ "rng": 75,
+ "htk": 13,
+ "verified": false,
+ "cls": "10",
+ "tags": [
+  "sidearm",
+  "pistol"
+ ]
+},
+{
+ "weapon_id": "usp",
+ "name": "USP-S",
+ "desc": "The quiet one. Suppressed and flashless: 13 a hit at a measured cadence, 9 hits to drop, 12 in the mag with 72 behind it. Nobody hears where it came from.",
+ "role": "sidearm",
+ "mag": 12,
+ "reserve": 72,
+ "reload_ms": 2200,
+ "dmg": 11,
+ "rof": 38,
+ "rng": 75,
+ "htk": 9,
+ "verified": false,
+ "cls": "10",
+ "tags": [
+  "sidearm",
+  "pistol"
+ ]
+},
+{
+ "weapon_id": "deagle",
+ "name": "Desert Eagle",
+ "desc": "The hand cannon. 24 a hit, five hits to drop, and the fastest kill a sidearm gets \u2014 if you land them. Seven in the mag, 36 behind it, and a slow cycle that punishes a miss.",
+ "role": "sidearm",
+ "mag": 7,
+ "reserve": 36,
+ "reload_ms": 2200,
+ "dmg": 21,
+ "rof": 20,
+ "rng": 75,
+ "htk": 5,
+ "verified": false,
+ "cls": "10",
+ "tags": [
+  "sidearm",
+  "pistol"
+ ]
+},
  {
   "weapon_id": "rocket_launcher",
   "name": "Rocket Launcher",

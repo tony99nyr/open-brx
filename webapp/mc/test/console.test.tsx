@@ -382,15 +382,15 @@ describe('the designer seeds a late snapshot without stomping edits', () => {
     );
     const m = await mount(render(null));
     await m.update(render({ ...d.state }));           // the first snapshot arrives
-    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain('OF 18');
+    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain('OF 21');
 
     // Now make a REAL edit and prove it survives five more snapshots. Asserting that the text is
     // merely UNCHANGED would pass against a broken guard: re-seeding restores the same defaults, so
     // it looks identical unless something has actually been changed away from them.
     await m.click('NO HEAVIES');
-    expect(m.text()).toContain('13 OF 18');
+    expect(m.text()).toContain('16 OF 21');
     for (let i = 0; i < 5; i++) await m.update(render({ ...d.state, t: Date.now() + i }));
-    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain('13 OF 18');
+    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain('16 OF 21');
     m.unmount();
   });
 });

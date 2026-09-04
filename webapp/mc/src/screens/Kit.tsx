@@ -413,6 +413,7 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, secKind, setSecKind,
   const presetTxt = preset && preset !== 'open' ? ` · ${PRESET_LABEL[preset] ?? preset.toUpperCase()}` : '';
   const summary = choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME'
     : slot === 'secondary' && secKind === 'perk' ? `${pool.secondary_perks.length} PERKS${presetTxt}`
+    : rule?.kinds && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm') ? `${nAllowed} SIDEARMS${presetTxt}`   // A12: pistols only
     : `${nAllowed} OF ${weapons.length} WEAPONS${presetTxt}`;
   const hint = choice === 'fixed' || choice === 'off'
     ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 32 }}>CHANGE IN GAMES ▸</button>
@@ -423,11 +424,13 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, secKind, setSecKind,
       {slot === 'secondary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           <Seg value={secKind} onChange={setSecKind} pad="6px 14px" options={[
-            ...(rule?.kinds?.includes('weapon') !== false ? [{ value: 'weapon' as const, label: `WEAPONS · ${pool.secondary_weapons.length}` }] : []),
+            // 'sidearm' (A12): pistols only — the pool already holds just the pistols, the chip says so
+            ...(!rule?.kinds || rule.kinds.includes('weapon') ? [{ value: 'weapon' as const, label: `WEAPONS · ${pool.secondary_weapons.length}` }]
+              : rule.kinds.includes('sidearm') ? [{ value: 'weapon' as const, label: `SIDEARMS · ${pool.secondary_weapons.length}` }] : []),
             ...(rule?.kinds?.includes('perk') !== false ? [{ value: 'perk' as const, label: `PERKS · ${pool.secondary_perks.length}` }] : []),
           ]} />
           {onClear && <GhostButton size={10} pad="6px 12px" onClick={onClear} title="Leave slot 2 empty — alt-fire does nothing">NONE · LEAVE EMPTY</GhostButton>}
-          <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>SLOT 2 IS A WEAPON <b style={{ color: T.dim }}>OR</b> A PERK</span>
+          <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>SLOT 2 IS A {rule?.kinds && !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm') ? 'SIDEARM' : 'WEAPON'} <b style={{ color: T.dim }}>OR</b> A PERK</span>
         </div>
       )}
     </div>
