@@ -464,7 +464,9 @@ above, and not verified by us on the wire**. Leads for probing, not confirmed pr
 | Command | Guess at purpose | Why it's interesting |
 |---|---|---|
 | `$KOTH` | King-of-the-hill game mode | A named game mode implies host-driven mode selection — directly relevant to the unsolved remote game start |
-| `$HLED` | Headset//hit LED control | Pairs with the documented `$GLED` (gun LED) |
+| `$HLED` | Headset//hit LED control | Pairs with the documented `$GLED` (gun LED). Effect token (t2), bench 2026-09-04: 0 static · 1 breathe loop · 2 blink · 3 no-op · 4 fade-out blink (4 steps, Callsign's low-health form) · 5 no-op · 6 blank · 7/8 dark. Level token (t5) is NOT brightness (10 = 255). |
+| `$BLINK,<colour>,<loop>,<on_ms>,<off_ms>,<level>,*` | Headset LED (APK: BLINK {Color, RateBlinkOn, RateBlinkOff, BlinkLevel, Loop ∈ Once/ThreeTimes/Infinite}) | Bench 2026-09-04 R0BQT: `$BLINK,3,0,300,300,10,*` = solid green, stays on; level 1 dimmer, 10 = 255; `$BLINK,3,1,*` / `$BLINK,3,2,*` alone do nothing; no echo. Not brighter than `$HLED`. |
+| `$LED,<colour>,<effect>,<pulses>,*` | Headset LED (APK: LED {ledEffectType (Heartbeat…), rateOfPulses}) | Bench 2026-09-04: `$LED,3,1,5,*` = one quick green flash. Not brighter than `$HLED`. **No BLE frame reaches the firmware's own hit-flash brightness.** |
 | `$HLOOP` | Looping sound/haptic on headset? | `H`-prefixed like `$HLED`/`$HS`/`$HKC` — likely the headset family |
 | `$RR` | Reload/respawn related | Adjacent to documented `$RP`/`$RV` |
 | `$BRXSERVER` | Server/host mode | — |

@@ -54,7 +54,8 @@ Team { team_id: string, name: string, color: "blue"|"yellow"|"red"|"green"|strin
 Loadout {
   weapons: WeaponSel[],      // ordered; index maps to the gun's weapon slots: [primary] or [primary, secondary]. NEVER empty —
                              // a primary is required; an EMPTY slot 1 is legal (no $WEAP,1 / $AMMO,1; ALT falls back to reload) (A10)
-  perk?: string | null,      // A10: perk_id in slot 2 INSTEAD of a secondary weapon — mutually exclusive with weapons[1] (loadout.md §2)
+  perk?: string | null,      // A14: the PERK slot — a perk_id beside the weapons (AR + pistol + Quick Switch is a legal kit). The one pairing
+                             // the gun cannot do: a perk that takes the ALT button (`effects.alt_reload`, Easy Reload) + a second weapon (loadout.md §2)
   // per-player tunables the mode allows (health/armor caps come from the mode, not here, unless overridden)
   overrides?: { max_hp?: number, max_armor?: number }
 }
@@ -295,15 +296,15 @@ for idempotent replay. `status` carries no `seq`.
 | `log_offer` | `{ node_id, bytes, lines }` | node has a diagnostic log MC can pull |
 | `log_data` | `{ node_id, seq, chunk, last:boolean }` | the log itself, chunked (≤ 48 KB/chunk), in reply to `pull_log` |
 | `ready` | `{ node_id, player_id, ready:boolean }` | ready-up toggle in **KITTED** (phase 4); **all-ready gates the `config` push** |
-| `loadout_request` | `{ node_id, player_id, slot:"primary"\|"secondary", kind:"weapon"\|"perk"\|"none", id?, try?:boolean }` | A10: phone self-serve pick (loadout.md §4.2). MC validates vs `loadout_policy`, applies, re-sends `assign`, optionally starts the try-out, and ALWAYS answers `loadout_ack` |
+| `loadout_request` | `{ node_id, player_id, slot:"primary"\|"secondary"\|"perk", kind:"weapon"\|"perk"\|"none", id?, try?:boolean }` | A10: phone self-serve pick (loadout.md §4.2). MC validates vs `loadout_policy`, applies, re-sends `assign`, optionally starts the try-out, and ALWAYS answers `loadout_ack` |
 | `loadout_browse` | `{ node_id, player_id, open:boolean }` | A10: HUD opened/closed its loadout browser → MC roster shows "PICKING…" (60 s server expiry) |
 
 **MC → Node** (`kind`):
 | kind | body | when |
 |---|---|---|
 | `welcome` | `{ session_id, server_t, seq_hi, node_key, node?: { player, team, roster, config, frames, start?, match_id?, score? } }` | reply to hello. **Full re-hydration (A4.5, A5.5): MC resolves the context by `hello.gun` (sticker/tail → the player bound to that gun) first, then by `node_id`** — so a hot-swapped phone with a brand-new `node_id` is hydrated on its first `hello`, before `bind`. `score?` = that player's current `ScoreRow` (so a swapped phone's D/K/A start right). `seq_hi` = highest event seq MC has from this `node_id`; node sets `next_seq = max(own, seq_hi+1)`. |
-| `assign` | `{ player: Player, team: Team, roster: RosterEntry[], catalog: { weapons: WeaponView[], perks: PerkView[] }, policy: { hud_select, primary: { choice, allowed_ids }, secondary: { choice, kinds, allowed_weapon_ids, allowed_perk_ids } } }` | kit-out: set player+team → **KITTED**. Carries **no config**. **Re-sent on any change to the player** (loadout, name, team, player_num); the node's latest `player` is authoritative. **A10:** `catalog` + this player's slot rights ride along (also in `welcome.node`) so the phone can browse/pick with no rule logic of its own (loadout.md §4.1). |
-| `loadout_ack` | `{ slot, ok:boolean, reason?: string, loadout: Loadout }` | A10: reply to every `loadout_request`; `reason` is human copy the HUD shows verbatim. `ok:true` + `reason` = the pick applied but the try-out could not arm (lobby already pushed). |
+| `assign` | `{ player: Player, team: Team, roster: RosterEntry[], catalog: { weapons: WeaponView[], perks: PerkView[] }, policy: { hud_select, primary: { choice, allowed_ids }, secondary: { choice, kinds, allowed_weapon_ids }, perk: { choice, allowed_perk_ids } } }` | kit-out: set player+team → **KITTED**. Carries **no config**. **Re-sent on any change to the player** (loadout, name, team, player_num); the node's latest `player` is authoritative. **A10:** `catalog` + this player's slot rights ride along (also in `welcome.node`) so the phone can browse/pick with no rule logic of its own (loadout.md §4.1). |
+| `loadout_ack` | `{ slot, ok:boolean, reason?: string, dropped?: { slot, id, name }, loadout: Loadout }` | A10: reply to every `loadout_request`; `reason` is human copy the HUD shows verbatim. `ok:true` + `reason` = the pick applied but the try-out could not arm (lobby already pushed). A14: `ok:true` + `dropped` = the pick applied and knocked the other slot out (Easy Reload over a second weapon, or a second weapon over Easy Reload); `reason` says so. |
 | `tutorial` | `{ weapon: Weapon, frames: string[] }` | silent try-out arming (phase 3a; requires KITTED). Frames compiled by MC. |
 | `config` | `{ config: GameConfig, frames: FrameBundle, roster: RosterEntry[] }` | pushed on **all-ready** (phase 4) → node writes `frames.head` (no `$SPAWN`), replies `ack_config` → **LOBBY**. Re-pushed (new `frames`) if a player's loadout/num changes after the push. |
 | `start` | `{ match_id, go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (§M-START). MC mints `match_id` and stamps a **monotonic `seq` per session**. **Rules (A5.6):** re-push of the *same* schedule (straggler, grace re-arm) = **same `seq` + same `match_id`** (no-op on a node that holds it); a **reschedule** = **new `seq` + new `match_id`** (supersedes). A late-joining player mid-match: `assign` → `config` → the same `start` re-pushed → hot-join (M-START E5). |
@@ -632,7 +633,9 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     enabled) plus the live confidence, for the MC's read-only ADVANCED view.
   - **A11.6 The headset (2026-09-04, Tony).** `presentation.headset = { pregame: team|off, start_flash, in_play:
     dark|team, hit: colour|null, death: native|colour, respawn_flash, carrier }`, defaults team / on / **dark** /
-    red / **green** / on / on. (`death: native` writes nothing -- and in a hosted game the firmware's own
+    **native** / **green** / on / on. (`hit: null` = native since the 2026-09-04 headset ladder: the firmware's own hit
+    flash is far brighter than any BLE frame -- `$HLED` at every effect and level, `$BLINK`, `$LED` -- so the node
+    paints nothing on a hit; a colour is an opt-in flash on top. `death: native` writes nothing -- and in a hosted game the firmware's own
     out-blink does NOT fire once the node has taken the headset, so the player stays dark; Tony, phones,
     2026-09-04. The default is therefore OUR green slow blink, re-asserted by the node while a scanner-respawn
     player stays down.) The compiler emits **`bundle.headset`** = `{ in_play, rest, blank, pregame: string[],
@@ -690,3 +693,19 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     includes the pistols (`["weapon","sidearm"]` ≡ `["weapon"]`). A policy kind only — never a request kind. Rejection
     copy: `"Only sidearms go in the secondary slot this game"`. `assign.policy.secondary.kinds` carries it unchanged;
     the HUD relabels its weapons chip `SIDEARMS · n` when the rule holds `sidearm` and not `weapon`.
+- **A14 (2026-09-04, PERK SLOT — `docs/spec/loadout.md` §2–§5; no `v` bump; NO backwards path, per FOLLOWUPS S6):**
+  - **A14.1 A perk is its own slot.** `Loadout.perk` rides BESIDE `weapons[1]`: AR + pistol + Quick Switch is a legal kit
+    (Tony: "non-activated perks should be an extra thing outside of the secondary slot"). The compiler already applied
+    perk effects independently of slot 1; the "perk ⇒ one weapon" validation and the compile-time refusal are gone.
+  - **A14.2 The ALT-button exception.** A perk with `effects.alt_reload` (Easy Reload) claims the ALT button, so no second
+    weapon can be switched to: the host API refuses the pair (`400 "Easy Reload takes the ALT button, so it can't ride with
+    a second weapon"`); a phone pick applies and knocks the other slot out — `loadout_ack {ok:true, dropped:{slot,id,name},
+    reason}`; `apply_policy` keeps a fixed ALT perk and drops the weapon. Both UIs warn (two-tap) before sending.
+  - **A14.3 `LoadoutPolicy.perk: SlotRule`** (`kinds` always `["perk"]`, `choice` player|host|fixed|off, the usual filters).
+    `secondary.kinds` is weapons-only (`"weapon"` | `"sidearm"`); `"perk"` there is a 400. Presets: open / no_heavies → perk
+    `player`; snipers → perk `off`. The builtin Silenced Sniper is `secondary: off` + `perk: fixed extended_mags`.
+  - **A14.4 `State.loadout_pool.perks`** replaces `secondary_perks` (not aliased). `assign.policy.perk {choice, allowed_perk_ids}`;
+    `secondary.allowed_perk_ids` is gone. `loadout_request.slot` gains `"perk"` (`kind` `"perk"` | `"none"`); a perk sent to
+    `secondary` is refused ("Perks have their own slot this game"), a weapon sent to `perk` too ("Only a perk goes in the perk slot").
+  - **A14.5 Screens.** HUD KITTED: three plates PRIMARY / SECONDARY / PERK (HP · ARMOR folds into the header); LOADOUT browser
+    tab bar PRIMARY | SECONDARY | PERK, slot 2 loses its PERKS chip. MC KIT: a PERK card + perk arsenal; DESIGNER: a PERK column.

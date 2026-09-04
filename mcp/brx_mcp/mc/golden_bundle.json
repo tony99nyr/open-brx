@@ -613,16 +613,7 @@
         0.0
       ]
     ],
-    "hit": [
-      [
-        "$HLED,0,2,100,100,10,2,*",
-        0.5
-      ],
-      [
-        "$HLED,,6,,,,,*",
-        0.0
-      ]
-    ],
+    "hit": [],
     "death": [
       [
         "$HLED,3,2,400,400,10,200,*",
@@ -677,7 +668,7 @@
       "pregame": "team",
       "start_flash": true,
       "in_play": "dark",
-      "hit": 0,
+      "hit": null,
       "death": 3,
       "respawn_flash": true,
       "carrier": true

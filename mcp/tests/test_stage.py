@@ -117,6 +117,7 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
 def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the_death():
     async def run():
         st, mgr = mk(gun="health")
+        st.patch_presentation({"headset": {"hit": "red"}})       # opt-in hit colour so the headset flash is testable
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         st.poll()                                                  # the fake's $LCD after $SPAWN
@@ -298,8 +299,8 @@ def test_raw_writes_only_known_safe_frames():
             assert "known-safe" in str(e)
         else:
             raise AssertionError("an unknown command went to the gun")
-        await st.raw(["$BLINK,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN
-        assert tx(mgr)[-1] == "$BLINK,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
+        await st.raw(["$CHASE,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN ($BLINK/$LED are safe-listed since 2026-09-04)
+        assert tx(mgr)[-1] == "$CHASE,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
     asyncio.run(run())
 
 

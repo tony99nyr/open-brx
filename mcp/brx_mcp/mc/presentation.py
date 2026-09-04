@@ -171,7 +171,10 @@ ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid
 #                dark, and in scanner-respawn a downed player walking to a station is invisible as "out".
 #   respawn_flash: bool              back in: a white double-flash, then the in-play state
 #   carrier:     bool                holding the flag / objective: blink the FLAG colour until scored/lost/dead
-HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": pg.RED,
+# hit: None (native) since the 2026-09-04 headset ladder -- the firmware's own hit flash is "like a camera flash"
+# and NO BLE frame ($HLED any effect/level, $BLINK, $LED) comes close; painting over it only dims it. A colour here
+# adds our flash-then-rest ON TOP of the native flash (an opt-in for games that want a colour-coded hit).
+HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": None,
                    "death": pg.GREEN, "respawn_flash": True, "carrier": True}
 # The out-blink is ~0.8 s per cycle; 200 cycles is ~160 s. A scanner-respawn player can be down longer, so
 # the node re-asserts frames.headset.death while it stays down (brx-grenade, engine side); the count itself is

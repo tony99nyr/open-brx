@@ -30,6 +30,7 @@ KNOWN_SAFE_COMMANDS = {
     # Verified in the official iOS Callsign captures (protocol §7e/§7f):
     # every one of these was sent by the app during a normal game.
     "AMMO", "STOP", "PLAYX", "VOL", "HLED", "NAME", "VERSION", "HLOOP",
+    "BLINK", "LED",   # headset LED requests, shapes found in the APK metadata + proven harmless on R0BQT 2026-09-04 (see brx-protocol.md)
     "SFLASH",
 }
 

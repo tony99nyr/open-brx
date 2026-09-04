@@ -6281,3 +6281,32 @@ tonight by eye: pre-game HLED + GLED team colour on ARM ("nice", now an every-mo
 headset paint arrives ~4 s after ARM because it sits at the end of the ~27-frame head. Earlier walkthrough
 fails explained: IR steps (emitter auto-detected as COM3, the wrong device -- now PINGed), GAME END (the step
 played no sound -- fixed), every LED burst (native breathing under it -- default is now team + take).
+
+### 2026-09-04 (late night, gun stage) — 🎧 HEADSET LED LADDER: the `$HLED` effect map, and `$BLINK` is real (shape found in the APK metadata)
+
+Goal (Tony): the native hit flash and death flash on the headset are "like a camera flash", ~10× brighter than
+anything we paint; on a hit we would rather leave the native flash. Ladder on R0BQT via the stage's `raw`
+action (each frame with a 3 s lead so the operator is looking), colour 3 green throughout, Tony calling each:
+- `$HLED` **effect token (t2)**: 0 static (holds) · **1 = slow BREATHE loop dim→bright** (runs until blanked) ·
+  2 = blink, dim, even · 3 = nothing · **4 = FADE-OUT blink: bright, dim, very dim, off (four steps regardless of
+  the count token)** -- Callsign's low-health form · 5 = nothing · 6 = blank · 7 = dark · 8 = dark.
+- **Level token (t5) is NOT a brightness lever**: 10 and 255 identical (as on the gun). On-time is not either:
+  400 ms cycles on effect 4 show the same fade.
+- **None of it reaches the native flash.** The effect-4 first step is our brightest and still well under.
+- APK `global-metadata.dat` (identifier names, no format strings -- frames are built from field order): the
+  headset request family is BLINK / CHASE / HLOOP / LED / HLED. BLINK = {Color, RateBlinkOn, RateBlinkOff,
+  BlinkLevel, Loop ∈ Once/ThreeTimes/Infinite}; CHASE = {rate, number}; LED = {ledEffectType (has Heartbeat),
+  rateOfPulses}; also LedColorType = White/Pink/Orange + isUsedGreenLed (probably the headset's physical LEDs).
+- **`$BLINK` accepted by the gun** (unknown command sent on Tony's explicit confirm, no echo): `$BLINK,3,0,300,300,10,*`
+  → **solid green, stays on**; `$BLINK,3,1,*` and `$BLINK,3,2,*` alone → nothing; `$BLINK,3,*` → nothing. Its
+  green is not brighter than `$HLED`'s. A second sweep ($BLINK level 255 / loops / white, $LED, $CHASE) follows.
+Open: whether ANY BLE frame reaches the native flash level, or the firmware drives the LEDs harder only on its own
+IR-hit path. Design consequence either way: `headset.hit` default should become native (Tony), and the death
+blink stays ours only because the native out-blink does not run in a hosted game.
+
+**Second sweep + A/B, conclusion (16:49-16:55):** `$BLINK` level 1 reads dimmer than 10, but **255 = 10** (an A/B,
+blank between); `$BLINK,6,…` = white, holds; **`$LED,3,1,5,*` = one quick green flash** (the LED request's
+pulse form) -- still dimmer than native. `$CHASE` shapes: nothing seen. **Verdict: no BLE frame reaches the
+firmware's own hit-flash brightness.** Shipped: `headset.hit` default = native (nothing painted on a hit; a
+colour is an opt-in on top), `$BLINK` and `$LED` added to the known-safe list with their shapes in
+brx-protocol.md. Still ours while out: the green slow blink (the native out-blink does not run in a hosted game).
