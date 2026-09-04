@@ -176,7 +176,9 @@ $0 shortcut and only for a *single* point, with its own quirks.
 | Tier | Status | Limit / why |
 |---|---|---|
 | **T0** (host phone) | ⚠️ authority-only | A phone can respawn guns it's connected to (`$LIFE`/`$SPAWN`) — but 🧱 7-connection cap + 🧱 no IR "melee/proximity respawn." Fine for a small base; doesn't scale. |
-| **grenade** | ✅ $0 physical | The grenade natively does Respawn Station (shoot to claim team, button/melee IR to respawn) — but ⚠️ the "must signal each gun post-start" gotcha (`reference/grenade.md`). |
+| **grenade** | ✅ $0 physical, **native games only** | The grenade natively does Respawn Station (shoot to claim team, button/melee IR to respawn) — but ⚠️ the "must signal each gun post-start" gotcha (`reference/grenade.md`). **Measured 2026-09-04: a host-driven (MC) game ignores the station words entirely** — no arm, no revive. |
+| **+T3 emitter, native games** | ✅ **PROVEN 2026-09-04** | Our ESP32 emitter arms (mag-56 word pre-game, crit-1 word mid-game) and revives (owner-team beacon, 4/4) a native-game gun with no grenade present. One word every ~3 s. |
+| **+T3 station, MC games** | 🔴 design (B23) | The firmware's dead state is deaf in hosted games; MC must keep the "downed" gun alive-but-stunned so it can hear the beacon via the passthrough row, and the node does the revive. |
 | **+T3** (station) | ✅ + data mule | Purpose-built respawn point that doubles as a store-and-forward sync node on a field. |
 
 ### Phone-as-objective (screen objectives: bomb, hack terminal, hostage, utility box)

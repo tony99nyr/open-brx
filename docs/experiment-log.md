@@ -6002,3 +6002,69 @@ the try-out frames have no `$PSET`, so a gun armed from them spawns at 0 HP and 
 (trigger events, no `$ALCD` — it looked like a corrupt CLEAR); and `$VOL,30` is inaudible. Full table
 + the exact frames: `docs/bench-weap-tokens-2026-09-04.md`. Suites: mcp 714 green after the golden
 bundle regen, engine 76/76, screens 144/144.
+
+
+### 2026-09-04 — 🎯 THE RESPAWN STATION IS ONE IR WORD: captured on the receiver, replayed from our emitter, arms AND revives a native-game gun; hosted games ignore it
+
+**Rig:** receiver (COM7) ~1 ft from the grenade, emitter (COM8) at the `R0BP1` headset within 3 ft, grenade
+in **RESPAWN (yellow)**, gun in a **native TDM** (blue = team 1) for the replay runs, then a **hosted game
+over BLE** for the last three. Tool for the passive part: `native_capture.py` (F12 stitching); replays
+were `ir-emit` one-liners; the BLE part used the MCP tools. Sheet + tool: `docs/bench-grenade.md`,
+`mcp/tools/grenade_bench.py` (the scripted `respawn`/`hill` steps were NOT run — the one-liners got there first).
+
+**Receiver only, no gun (4 captures, `~/.brx-mcp/ir-captures/20260904-10*`):**
+- **Neutral beacon** = `1111000000100000011000001` → proto **15**, pid 0, **team 2**, **mag 6**, sub 0, parity
+  ok, **every ~2.5 s**, 50–52 edges = a plain 25-bit shot word. Nothing longer than 25 bits from the grenade
+  in any capture. (Tony sees the LED flash "every 3 s".)
+- **Claim** (shot by a blue gun; chime, LED blue): the team field flips **2 → 1**, nothing else changes.
+- **Button press** = the same word with **crit = 1** (`1111000000010000011010010`, parity trailer differs,
+  so not a stitch artefact). Once per press in one run; in another it alternated with the beacon at ~1 s
+  for 15 s+ (press length / repeats not controlled).
+- **Boot**: one word `1111000000000011100000001` → proto 15, **team 0, mag 56** before the first beacon; a
+  tagger in setup/ready state says **"respawn station"** on exactly that one (the exp-log #35 "mag 54–58"
+  programming words). Later beacons are silent on that gun.
+- Grenade boxed / out of the room → the gun hears nothing. The VS1838B is a demodulated 38 kHz IR sensor
+  and cannot see radio, so everything above is **IR**. (The BLE-scan step was not run; no FCC label — the
+  shell is padded.)
+
+**Emitter replays at the native-TDM gun, grenade out of the building** (time stamps = the send):
+| what | result |
+|---|---|
+| dead gun that the real grenade had armed earlier; **team-1 beacon ×5** | **REVIVED** (10:28 and 10:30:10) |
+| same, **team-2 beacon ×5** (wrong owner) | stayed dead (10:29:53) — team-gated |
+| same, nothing sent, 20 s | stayed dead (10:29:31) |
+| fresh gun, never armed, killed (10:31:27) | did NOT auto-revive; **revived on a trigger pull** = native self-respawn |
+| fresh gun in a RUNNING TDM, **plain beacon ×5** (10:31:58) | said "respawn point enabled" — but the trigger still revived it after the next kill → the plain beacon is **not** the mid-game arm |
+| **pre-game arm**: mag-56 word ×3 at the ready screen (10:42:37), then start TDM | "respawn enabled" on game start → kill (10:42:57) → **dead, trigger refused** ("electric short" sound), after ~5 pulls the gun says **"revive at respawn point"**, still dead at 60 s → **team-1 beacon → REVIVED** (10:43:56) |
+| **mid-game arm**: crit-1 word ×3 into a running TDM (10:45:48) | **"respawn point enabled"** → kill (10:45:57) → dead, trigger refused, "revive at respawn" → **beacon → REVIVED** (10:46:27) |
+| plain beacon / crit-1 word at a gun in SETUP or at the menu (10:37–10:40, 21 sends) | nothing announced |
+
+**Confounds, recorded not smoothed:** one kill at ~10:28 revived with nothing sent, and one at 10:33:40
+auto-revived inside a 40 s trigger test. The native TDM **respawn timer was never set to off**; those two
+are the timer, not the station. Every "stayed dead" above was either > the timer or armed. Revive count
+with the team-1 beacon on an ARMED dead gun: **4/4**; wrong team 0/1; nothing sent 0/2.
+
+**Hosted game over BLE (bench config, team 1, `R0BP1`):**
+- With the **passthrough rows** `$SIR,15,<0..3>,,24,0,0,1,,*` and FF on: the crit-1 word surfaced as
+  `$HIR,0,15,0,1,6,1,0` with **no pool change**, 3/3 → **the exp-log #38 passthrough row works**; a hosted gun
+  can report grenade traffic to MC. No announcement. Kill → `$HP,0,0,0`. **Team-1 beacon ×5 at the dead gun →
+  NOTHING** (no `$HIR`, no `$HP`). The dead trigger is silent (no sound, no voice line).
+- No proto-15 row, FF off: crit-1 word → no announcement. Mag-56 word before `$SPAWN` → no announcement.
+- ⇒ **The station logic lives in the native game modes. A host-driven game neither arms nor revives by
+  IR**, whichever word and whether or not it has a row. The 2026-08-26 brute force (448 words, hosted) was
+  right for hosted games and simply could not see the native path.
+
+**Two unexplained emissions (receiver, for next time):** (1) right after a kill in native TDM the receiver
+saw `1111101010100000001000001` = proto 15, pid 42, team 2 (the KILLER's ids), mag 2 — a headset emission
+on death? (2) ~5 s after the crit-1 words in the hosted game, **three `$HIR,0,0,0,1,6,0,0`** (proto 0,
+team 1, mag 6, 0.5–0.8 s apart) took 18 armour with FF on and nothing sent from the rig — best guess the
+headset answers the station word and hits itself off a reflection, invisible in native games (FF off).
+Also three short bursts (14–30 edges) on dead-trigger pulls = the headset's respawn request, too short to
+decode here. Receiver on the **headset** next time, not the grenade.
+
+**What it means:** the Utility Box respawn station is **one word repeated every ~3 s** (arm with mag 56
+before the game or crit 1 during it; revive with mag 6, owner team) — for **native** games. For **our**
+games the firmware's dead state is deaf, so the station has to talk to the node, not the gun → **B23**:
+MC defines "downed" as a live-but-stunned gun (host-driven stun, F15), the passthrough row lets the
+downed gun hear the station beacon over BLE, and the node does the revive. Docs: `reference/grenade.md`
+§Respawn Station, FOLLOWUPS B12/G6/star item, `manual/03-gameplay` dead-gun callout corrected.

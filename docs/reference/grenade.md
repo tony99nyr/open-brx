@@ -108,6 +108,22 @@ use a `minfire` config = weapon loaded, `$SIR` stripped).
 
 ## Respawn Station mode
 
+> **✅ 2026-09-04 — the station is ONE IR WORD, and our emitter IS a respawn station (native games).**
+> Captured on the VS1838B receiver and replayed from the ESP32 emitter with the grenade out of the building
+> (experiment-log 2026-09-04). All three are plain 25-bit shot words on **protocol 15, player 0**:
+>
+> | word | fields | what it does |
+> |---|---|---|
+> | `1111000000000011100000001` | team 0, **mag 56** | **boot / announce**: sent once on power-up; a ready-screen tagger says "respawn station"; sent **before the game starts** it arms the gun (announced "respawn enabled" at start) |
+> | `1111000000010000011000001` | **team = owner** (1 shown), **mag 6**, crit 0 | the **beacon**, every ~2.5 s; **revives a dead, armed gun of that team** (4/4; wrong team 0/1). In a running game it is heard ("respawn point enabled") but does **not** arm |
+> | `1111000000010000011010010` | owner, mag 6, **crit 1** | the **button**: the same word with the crit bit; sent **into a running game it arms** (mid-game path) |
+>
+> An **armed** gun killed in a native TDM stays dead, refuses the trigger ("electric short" sound), says
+> "revive at respawn point", and comes back the instant the beacon reaches it. An **unarmed** gun revives on
+> a trigger pull (native self-respawn). ⚠️ **Host-driven (MC) games ignore all three words**, with or
+> without a `$SIR` row for protocol 15 — the station logic is native-mode firmware; see FOLLOWUPS **B23**.
+> The Assault/CTF/Frag/Hill words were not captured this session.
+
 *(All below **hardware-confirmed** by Tony, exp-log #37, matching the videos.)*
 *(Operational setup — arming each tagger to a station before kickoff — is the **Station Arming** sub-step
 of the per-game **Muster** process: `../field-process.md`.)*
@@ -139,9 +155,11 @@ of the per-game **Muster** process: `../field-process.md`.)*
     the exp-log #37 "signal each gun after the game starts" behaviour, now explained.
   - **Bottom line:** pre-game passive arming **or** a post-start grenade-button press per gun both arm a
     tagger; the button press is the dependable per-gun re-arm at any time. A tagger that is never armed by
-    either path just **self-respawns normally**. **Still to confirm on hardware** (verification-checklist):
-    (a) a gun armed by the post-start button stays station-respawn for the rest of the match, and (b)
-    whether the **passive beacon alone (no button)** also arms. Credit Jay (Extreme Laser Tag And More!).
+    either path just **self-respawns normally**. **Confirmed on hardware 2026-09-04** from our own emitter:
+    (a) the pre-game arm is the **mag-56 boot word** and the mid-game arm is the **crit-1 button word**;
+    (b) the **passive beacon alone does NOT arm** a running game (it is announced, but the trigger still
+    self-respawns) — it is the *revive*. Still open: whether an arm persists for a whole match, and the
+    headset-front + trigger request word (seen as short bursts, not decoded). Credit Jay (Extreme Laser Tag And More!).
 - Respawn stations **can be overtaken** by another team (shoot/grenade it) — "not always consistent"
   (a real reliability quirk the community also reports).
 
@@ -269,4 +287,6 @@ NOT set objective modes — button-locked); **G7** (USB-C is power/charge only �
 shooter's team colour; likely needs a team/flag assignment first — pull Jay's CTF videos). **G10** —
 `$GREN` for a *paired thrown* grenade's blast type (untested — needs the install-accessory pairing).
 The **KotH charge/progress level** is not in the beacon (it's a per-gun local timer); decoding a charge
-value needs a `$SIR`-passthrough rig that lets the gun fire *and* surface grenade IR (exp-log #38).
+value needs a `$SIR`-passthrough rig that lets the gun fire *and* surface grenade IR (exp-log #38) —
+**that rig now exists**: `$SIR,15,<sub>,,24,0,0,1,,*` (FF on) surfaces protocol-15 words as `$HIR` with no
+pool change (proven 2026-09-04). **Respawn mode is fully decoded and replayable** (banner above).

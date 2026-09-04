@@ -157,7 +157,7 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 
 [callout:info] **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is *added* to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way. A host watches your pool and tops it up. ✅ `src: docs/experiment-log.md #33 "SEMANTICS + REGEN nailed", docs/game-modes.md §Health/regen variants`
 
-[callout:warn] **A dead gun is deaf.** At 0 health the tagger takes no IR at all. A respawn station cannot revive you with a beam; it arms the living. Pull the trigger while dead and all you get is the dead or out-of-ammo noise. ✅ `src: docs/reference/grenade.md §Can we add new modes, protocol/brx-protocol.md §7r (Resync)`
+[callout:warn] **A dead gun is deaf, unless a station armed it.** At 0 health a tagger that was never armed to a respawn station takes no IR at all, and a tagger in a host-driven game takes none either. A tagger armed by a station in a native game is the exception: it stays dead, refuses the trigger, says "revive at respawn point", and comes back the moment the station beacon reaches it. ✅ `src: docs/experiment-log.md 2026-09-04 (respawn station), docs/reference/grenade.md §Respawn Station mode, protocol/brx-protocol.md §7r (Resync)`
 
 [table] **Respawn & lives: the knobs every mode shares**
 

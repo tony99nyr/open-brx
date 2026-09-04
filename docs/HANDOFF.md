@@ -1,6 +1,22 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-09-03 (afternoon).
+**Updated:** 2026-09-04 (morning).
+
+> ## 🎯 2026-09-04 (morning) — THE RESPAWN STATION IS ONE IR WORD (native games) · HOSTED GAMES IGNORE IT · PASSTHROUGH ROW WORKS
+>
+> - **Grenade Respawn mode fully decoded on the receiver** (`native_capture.py`, no gun needed): beacon
+>   `1111000000100000011000001` (proto 15, owner team, mag 6, every ~2.5 s; team flips on a claim), button =
+>   same word with **crit 1**, boot = **team 0 mag 56** (the "respawn station" announcement). All plain 25-bit
+>   words; the grenade is IR-only as far as a demod receiver + a box test can say.
+> - **Our emitter is a respawn station for native games**: mag-56 before the game or crit-1 during it ARMS
+>   (gun says "respawn enabled", then stays dead with the trigger refused, "revive at respawn point"); the
+>   team-owner beacon REVIVES (4/4, wrong team 0/1). Grenade was out of the building.
+> - **Hosted (MC) games: none of it works** — no arm, no revive, dead gun hears nothing, with or without a
+>   `$SIR,15` row. → **B23**: MC "downed" = a live stunned gun + the passthrough row hears the beacon → node revives.
+> - **Passthrough row proven**: `$SIR,15,<0..3>,,24,0,0,1,,*` + FF on → `$HIR,0,15,0,<team>,<mode>,<crit>,0`, no pool change.
+> - Unexplained, for the receiver-on-headset session: a proto-15 word with the killer's ids on death; three
+>   self-hits (proto 0, team 1, mag 6) after the button word with FF on; short bursts on dead-trigger pulls.
+> - Not run: BLE scan with the grenade on; Hill/Assault/CTF/Frag captures (`docs/bench-grenade.md`).
 
 > ## 🎧 2026-09-03 (evening/night) — THE WHOLE SOUND BANK IS OFF THE GUN AND CLASSIFIED · EMP = ONE IR WORD · HOST-DRIVEN STUN WORKS
 >
