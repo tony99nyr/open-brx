@@ -7,7 +7,8 @@ import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
-import { TEMPLATE_RULES, computePool, gameSig, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { AdvancedPresentation } from './AdvancedPresentation';
+import { TEMPLATE_RULES, admitsWeapons, computePool, gameSig, presetOf, rulesLine, withPolicy } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -18,6 +19,7 @@ const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
 const TAGS: { tag: string; label: string; color: string }[] = [
   { tag: 'heavy', label: 'HEAVY', color: ROLE.power.color }, { tag: 'sniper', label: 'SNIPER', color: ROLE.marksman.color },
   { tag: 'assault', label: 'ASSAULT', color: ROLE.assault.color }, { tag: 'cqb', label: 'CLOSE RANGE', color: ROLE.cqb.color }, { tag: 'support', label: 'SUPPORT', color: ROLE.support.color },
+  { tag: 'sidearm', label: 'SIDEARM', color: ROLE.sidearm.color },   // A12: the pistols
 ];
 const clone = <X,>(x: X): X => JSON.parse(JSON.stringify(x));
 const toggle = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
@@ -169,6 +171,8 @@ export function Designer() {
                 style={{ font: F.chk(500, 13), lineHeight: 1.5, borderBottomColor: T.line2, resize: 'vertical' }} />
             </div>
           </section>
+
+          <AdvancedPresentation />
         </div>
 
         {/* summary rail */}
@@ -184,7 +188,7 @@ export function Designer() {
               {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', cfg.scoring.frag_limit ? `${cfg.scoring.frag_limit} SCORE / TIME` : 'TIME'],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
                 ['PRIMARY', pool ? (pol.primary.choice === 'fixed' ? 'FIXED' : `${pool.primary.length} OF ${weapons.length}`) : '…'],
-                ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} WEAPONS · ${pool.secondary_perks.length} PERKS` : '…']].map(([l, v]) => (
+                ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} ${!pol.secondary.kinds.includes('weapon') && pol.secondary.kinds.includes('sidearm') ? 'SIDEARMS' : 'WEAPONS'} · ${pool.secondary_perks.length} PERKS` : '…']].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 10.5), letterSpacing: '.14em' }}>
                   <span style={{ color: T.micro }}>{l}</span><span style={{ color: T.body, ...TAB, textAlign: 'right' }}>{v}</span>
                 </div>
@@ -222,10 +226,13 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   const allowedW = pool ? (sec ? pool.secondary_weapons : pool.primary) : [];
   const allowedK = pool ? pool.secondary_perks : [];
   const off = rule.choice === 'off', fixed = rule.choice === 'fixed';
-  const showWeapons = !off && (!sec || rule.kinds.includes('weapon'));
+  const sidearmsOnly = !rule.kinds.includes('weapon') && rule.kinds.includes('sidearm');   // A12: pistols only (loadout.md §3)
+  const showWeapons = !off && (!sec || admitsWeapons(rule));
   const showPerks = sec && !off && rule.kinds.includes('perk');
+  const pistols = weapons.filter(w => (w.tags ?? []).includes('sidearm')).length;
   const summary = off ? 'OFF — ALT-FIRE DOES NOTHING' : fixed ? `EVERYONE GETS ${(weapons.find(w => w.weapon_id === rule.fixed_id)?.name ?? perks.find(k => k.perk_id === rule.fixed_id)?.name ?? '—').toUpperCase()}`
-    : sec && !rule.kinds.includes('weapon') ? `PERKS ONLY · ${allowedK.length} PERKS`
+    : sec && !admitsWeapons(rule) ? `PERKS ONLY · ${allowedK.length} PERKS`
+    : sidearmsOnly ? `SIDEARMS ONLY · ${allowedW.length} OF ${pistols} PISTOLS${sec && rule.kinds.includes('perk') ? ` · ${allowedK.length} PERKS` : ''}`
     : sec && !rule.kinds.includes('perk') ? `WEAPONS ONLY · ${allowedW.length} OF ${weapons.length}`
     : `${allowedW.length} OF ${weapons.length} WEAPONS${sec ? ` · ${allowedK.length} PERKS` : ''}`;   // review #22
   const WHO: Record<string, string> = { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
@@ -260,7 +267,9 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
         <span style={{ font: F.chk(500, 11), color: T.dim }}>{WHO[rule.choice]}</span>
         {sec && !off && !fixed && (
           <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto', flex: '0 0 auto' }}>
-            <Chip on={rule.kinds.includes('weapon')} color={T.acc} onClick={() => { const k = toggle(rule.kinds, 'weapon') as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>WEAPONS</Chip>
+            {/* A12: WEAPONS and SIDEARMS are exclusive — 'weapon' already admits the pistols, 'sidearm' is the narrower kind */}
+            <Chip on={rule.kinds.includes('weapon')} color={T.acc} onClick={() => { const k = (rule.kinds.includes('weapon') ? rule.kinds.filter(x => x !== 'weapon') : [...rule.kinds.filter(x => x !== 'sidearm'), 'weapon']) as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>WEAPONS</Chip>
+            <Chip on={rule.kinds.includes('sidearm')} color={ROLE.sidearm.color} onClick={() => { const k = (rule.kinds.includes('sidearm') ? rule.kinds.filter(x => x !== 'sidearm') : [...rule.kinds.filter(x => x !== 'weapon'), 'sidearm']) as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>SIDEARMS</Chip>
             <Chip on={rule.kinds.includes('perk')} color={PERK_COLOR} onClick={() => { const k = toggle(rule.kinds, 'perk') as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>PERKS</Chip>
           </span>
         )}
@@ -268,7 +277,8 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
       {showWeapons && !fixed && (
         <>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-            {TAGS.map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
+            {/* A12: under SIDEARMS the other classes are off by KIND, not by id — a row of ◐ 0/5 chips would say the wrong thing */}
+            {TAGS.filter(t => !sidearmsOnly || t.tag === 'sidearm').map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
           </div>
           <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, lineHeight: 1.5, maxWidth: '68ch' }}>A chip switches a whole class. Tap a weapon to switch just that one. A partial chip (1/5) means some of its weapons are off, and a weapon in two classes is off when either chip is off.</div>
         </>

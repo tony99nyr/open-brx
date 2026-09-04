@@ -92,6 +92,7 @@ export function createHttpApi(): Api {
     applyPreset: id => post(`/api/presets/${encodeURIComponent(id)}/apply`),
     updatePreset: (id, p) => j(`/api/presets/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(p) }),
     previewPool: (loadout_policy, mode) => post('/api/loadout/pool', { loadout_policy, mode }),
+    getPresentation: () => j('/api/presentation'),
     putConfig: (partial: Partial<GameConfig>) => j('/api/config', { method: 'PUT', body: JSON.stringify(partial) }),
     addPlayer: p => post('/api/players', p),
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

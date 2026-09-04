@@ -145,7 +145,7 @@ const tapAudit = async (pg, screen, hard = false) => {
   if (hard && small.length) throw new Error(`${screen}: ${small.length} control(s) under 36 px tall — ${small.slice(0, 8).join(', ')}`);
 };
 /** ONLY= runs skip the boot steps: make sure the MC page is loaded before a standalone step drives it. */
-const ensureMc = async () => { if (mc.url() === 'about:blank') { await mc.goto(MC + '/', { waitUntil: 'networkidle' }); await until(async () => (await mc.locator('nav button').count()) >= 6, 10000, 'MC shell'); } };
+const ensureMc = async () => { if (mc.url() === 'about:blank') { await mc.goto(MC + '/', { waitUntil: 'networkidle' }); await until(async () => (await mc.locator('nav button').count()) >= 5, 25000, 'MC shell'); } };   // the header has FIVE phase tabs since the ☰ menu (F2-21); waiting for six made every standalone step time out before it began (2026-09-04)
 /** Tap a GAMES card. While the draft is TUNED — NOT SAVED the card asks "TAP AGAIN" (review #16): confirm it. */
 const playCard = async (label) => {
   const card = mc.locator(`div[role="button"][aria-label="play ${label}"]`).first();
@@ -355,14 +355,14 @@ await step('A10 §4.1: host back on GAMES (phase build) → phones show SETTING 
   await hudB.click('[data-act="onBriefDone"]');
   await until(async () => (await hudB.locator('.plate.slot').count()) === 2, 5000, 'hudB plates back');
 });
-await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "13 OF 18", Rocket tile disabled', async () => {
+await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "16 OF 21", Rocket tile disabled', async () => {
   cfgBeforeRules = (await st()).config;
   await nav(1);
   await playCard('FREE-FOR-ALL');            // the run config is TUNED (fast respawn) → the card asks TAP AGAIN
   await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'preset no_heavies');
   await nav(2);
   await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
-  await until(async () => (await mc.locator('text=13 OF 18').count()) > 0, 6000, 'arsenal header 13 OF 18');
+  await until(async () => (await mc.locator('text=16 OF 21').count()) > 0, 6000, 'arsenal header 16 OF 21');
   const dis = await mc.locator('div[role="button"][aria-label*="Rocket"]').first().getAttribute('aria-disabled');
   expect(dis === 'true', 'Rocket Launcher tile is not aria-disabled under NO HEAVIES');
   await shot(mc, 'kit-no-heavies');
@@ -398,7 +398,7 @@ await step('(d) hudA SECONDARY → PERKS → Body Armor → MC card + roster sho
 });
 await step('(e) no heavy is listed on the phone under NO HEAVIES', async () => {
   await hudA.click('.lotab[data-arg="primary"]');
-  await until(async () => (await hudA.locator('.lrow').count()) === 13, 5000, '13 rows');
+  await until(async () => (await hudA.locator('.lrow').count()) === 16, 5000, '16 rows (13 + the three sidearms)');
   expect((await hudA.locator('.lrow[data-arg="weapon:rocket_launcher"]').count()) === 0, 'rocket launcher listed under NO HEAVIES');
 });
 await step('(f) READY UP while a try-out is armed ends it; first ready does NOT advance to lobby', async () => {
@@ -518,6 +518,25 @@ await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster 
   if ((await mc.locator('text=END TRY-OUT').count()) > 0) { await mc.click('text=END TRY-OUT'); }
   await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
   await shot(mc, 'kit-secondary-host');
+});
+await step('(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "SIDEARMS · 3", only pistol tiles, hint says SIDEARM; a pistol equips; rules restored', async () => {
+  await api('PUT', '/api/config', { loadout_policy: { secondary: { kinds: ['sidearm', 'perk'] } } });
+  await until(async () => JSON.stringify((await st()).loadout_pool.secondary_weapons) === JSON.stringify(['glock', 'usp', 'deagle']), 6000, 'server pool = the three pistols');
+  await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
+  await mc.locator('div[role="button"]:has-text("SECONDARY")').first().click();
+  await until(async () => (await mc.locator('button:has-text("SIDEARMS · 3")').count()) > 0, 6000, 'arsenal Seg reads SIDEARMS · 3');
+  expect((await mc.locator('button:has-text("WEAPONS ·")').count()) === 0, 'a WEAPONS chip should not show under a sidearm-only rule');
+  await mc.locator('button:has-text("SIDEARMS · 3")').first().click();
+  await until(async () => (await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').count()) > 0, 6000, 'pistol tiles for slot 2');
+  expect((await mc.locator('text=SLOT 2 IS A SIDEARM').count()) > 0, 'the hint should read SLOT 2 IS A SIDEARM');
+  await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').first().click();
+  await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.weapons[1]?.weapon_id === 'deagle'; }, 6000, 'server slot 2 = deagle');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('DESERT EAGLE'), 6000, 'SECONDARY card shows DESERT EAGLE');
+  await shot(mc, 'kit-sidearms-only');
+  if ((await mc.locator('text=END TRY-OUT').count()) > 0) { await mc.click('text=END TRY-OUT'); }
+  await api('PUT', '/api/config', { loadout_policy: { preset: 'no_heavies' } });
+  await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'rules restored to NO HEAVIES');
+  await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
 });
 await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED FROM THEIR PHONE", no try-out of the refused weapon', async () => {
   await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
@@ -790,11 +809,11 @@ const D = {
 };
 const dimmed = a => a === 'false';
 const lit = a => a === 'true';
-await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (13 OF 18), heavies dimmed, HEAVY chip unfilled', async () => {
+await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (16 OF 21), heavies dimmed, HEAVY chip unfilled', async () => {
   await ensureMc();
   await mc.locator('nav button').nth(1).click();
   await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  await until(async () => /13 OF 18/.test(await D.pSum()), 6000, 'FFA base starts at NO HEAVIES (13 of 18)');
+  await until(async () => /16 OF 21/.test(await D.pSum()), 6000, 'FFA base starts at NO HEAVIES (16 of 21)');
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')) && dimmed(await D.art('Laser Cannon')), 'heavy tiles are not dimmed under NO HEAVIES');
   expect(lit(await D.art('Assault Rifle')), 'assault rifle tile should be lit');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false', 'HEAVY chip should read off');
@@ -802,9 +821,9 @@ await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO
   await shot(mc, 'designer-open'); await textAudit(mc, 'designer');
 });
 await step('DESIGNER: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'designer', true); });
-await step('designer-controls 1: template OPEN → 18 OF 18, heavies lit, HEAVY chip filled', async () => {
+await step('designer-controls 1: template OPEN → 21 OF 21, heavies lit, HEAVY chip filled', async () => {
   await mc.click('button[title="Everything, players pick both slots"]');
-  await until(async () => /18 OF 18/.test(await D.pSum()), 4000, 'OPEN → 18 of 18');
+  await until(async () => /21 OF 21/.test(await D.pSum()), 4000, 'OPEN → 21 of 21');
   expect(lit(await D.art('Rocket Launcher')), 'rocket launcher still dimmed after OPEN');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'true', 'HEAVY chip not on after OPEN');
   expect((await mc.locator('button[title="Everything, players pick both slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
@@ -820,31 +839,31 @@ await step('designer-controls 2: template SNIPERS → PRIMARY "EVERYONE GETS SNI
   await until(async () => /SNIPER RIFLE FOR EVERYONE/.test(await D.rail()) && /NO SLOT 2/.test(await D.rail()), 4000, 'rail follows the template');
   await shot(mc, 'designer-snipers');
 });
-await step('designer-controls 3: HEAVY chip off (from OPEN) → 13 OF 18, all five heavy tiles dimmed, nothing else changes', async () => {
+await step('designer-controls 3: HEAVY chip off (from OPEN) → 16 OF 21, all five heavy tiles dimmed, nothing else changes', async () => {
   await mc.click('button[title="Everything, players pick both slots"]');
-  await until(async () => /18 OF 18/.test(await D.pSum()), 4000, 'OPEN again');
+  await until(async () => /21 OF 21/.test(await D.pSum()), 4000, 'OPEN again');
   await D.chip('HEAVY').click();
-  await until(async () => /13 OF 18/.test(await D.pSum()), 4000, 'HEAVY chip off → 13 of 18');
+  await until(async () => /16 OF 21/.test(await D.pSum()), 4000, 'HEAVY chip off → 16 of 21');
   for (const n of ['Rocket Launcher', 'Rail Gun', 'Laser Cannon', 'Energy Launcher', 'Ion Sniper']) expect(dimmed(await D.art(n)), n + ' not dimmed after HEAVY off');
   expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false' && (await D.chip('HEAVY').getAttribute('aria-pressed')) !== 'true', 'HEAVY chip still filled');
   await shot(mc, 'designer-heavy-off');
 });
-await step('designer-controls 4: tap the Assault Rifle tile → 12 OF 18, that tile dimmed and labelled off', async () => {
+await step('designer-controls 4: tap the Assault Rifle tile → 15 OF 21, that tile dimmed and labelled off', async () => {
   await D.prim().locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => /12 OF 18/.test(await D.pSum()), 4000, 'tile off → 12 of 18');
+  await until(async () => /15 OF 21/.test(await D.pSum()), 4000, 'tile off → 15 of 21');
   expect((await D.prim().locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not labelled off');
   expect(dimmed(await D.art('Assault Rifle')), 'assault rifle tile not dimmed');
   await shot(mc, 'designer-tile-off');
 });
-await step('designer-controls 5: tap a heavy dimmed by the chip → allowed through (13 OF 18, lit), tap again → off (12)', async () => {
+await step('designer-controls 5: tap a heavy dimmed by the chip → allowed through (16 OF 21, lit), tap again → off (12)', async () => {
   await D.prim().locator('button[aria-label="Rail Gun, off"]').click();
-  await until(async () => /13 OF 18/.test(await D.pSum()) && (await D.prim().locator('button[aria-label="Rail Gun, allowed"]').count()) === 1, 4000, 'rail gun allowed through the chip → 13 of 18');
+  await until(async () => /16 OF 21/.test(await D.pSum()) && (await D.prim().locator('button[aria-label="Rail Gun, allowed"]').count()) === 1, 4000, 'rail gun allowed through the chip → 16 of 21');
   expect(lit(await D.art('Rail Gun')), 'rail gun tile not lit after allowing it');
   expect(dimmed(await D.art('Rocket Launcher')), 'the other heavies should stay dimmed');
   await shot(mc, 'designer-allow-through-chip');
   await D.prim().locator('button[aria-label="Rail Gun, allowed"]').click();
-  await until(async () => /12 OF 18/.test(await D.pSum()), 4000, 'and off again → 12 of 18');
+  await until(async () => /15 OF 21/.test(await D.pSum()), 4000, 'and off again → 15 of 21');
   expect(dimmed(await D.art('Rail Gun')), 'rail gun tile not dimmed after switching it off');
 });
 await step('designer-controls 6: WHO PICKS → FIXED then tap SMG → "EVERYONE GETS SMG", only the SMG tile lit', async () => {
@@ -861,9 +880,27 @@ await step('designer-controls 7: slot 2 OFF → "OFF — ALT-FIRE DOES NOTHING",
   await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await D.rail()), 4000, 'summary rail follows');
   await shot(mc, 'designer-slot2-off');
 });
-await step('designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (18 OF 18, rail BASE TDM) and SAVE lands the card', async () => {
+await step('designer-controls 7b (A12): slot 2 PLAYER → SIDEARMS chip → "SIDEARMS ONLY · 3 OF 3 PISTOLS", only the three pistols allowed, WEAPONS chip off; SIDEARMS again → PERKS ONLY; WEAPONS → 21 OF 21', async () => {
+  await D.sec().locator('button:has-text("PLAYER")').click();
+  await until(async () => /21 OF 21 WEAPONS/.test(await D.sSum()), 4000, 'slot 2 back to PLAYER (21 of 21)');
+  const kind = (label) => D.sec().locator(`button:has-text("${label}")`).first();
+  await kind('SIDEARMS').click();
+  await until(async () => /SIDEARMS ONLY · 3 OF 3 PISTOLS/.test(await D.sSum()), 4000, 'SIDEARMS chip → sidearms only, got: ' + await D.sSum());
+  expect((await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true' && (await kind('WEAPONS').getAttribute('aria-pressed')) === 'false', 'SIDEARMS should be on and WEAPONS off (they are exclusive)');
+  const allowed = (await D.sec().locator('button[aria-label$=", allowed"]').evaluateAll(bs => bs.map(b => b.getAttribute('aria-label')))).filter(l => !/ perk, allowed$/.test(l));   // perk tiles are allowed too — the check is about WEAPONS
+  expect(allowed.length === 3 && /Glock/.test(allowed.join()) && /USP/.test(allowed.join()) && /Desert Eagle/.test(allowed.join()), 'only the three pistols should be allowed, got: ' + allowed.join(' | '));
+  expect((await D.sec().locator('button[aria-label="SMG, off"]').count()) === 1, 'the SMG should read off under SIDEARMS');
+  expect(/SLOT 2.*SIDEARM|SIDEARM/.test(await D.rail()), 'the rail should mention sidearms');
+  await shot(mc, 'designer-sidearms-only');
+  await kind('SIDEARMS').click();
+  await until(async () => /PERKS ONLY/.test(await D.sSum()), 4000, 'SIDEARMS off → perks only');
+  await kind('WEAPONS').click();
+  await until(async () => /21 OF 21 WEAPONS/.test(await D.sSum()), 4000, 'WEAPONS on → 21 of 21');
+  expect((await D.sec().locator('button[aria-label="Glock-18, allowed"]').count()) === 1, 'the pistols are ordinary weapons under WEAPONS');
+});
+await step('designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (21 OF 21, rail BASE TDM) and SAVE lands the card', async () => {
   await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');
-  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && /18 OF 18/.test(await D.pSum()), 4000, 'base → TDM, rules reset');
+  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && /21 OF 21/.test(await D.pSum()), 4000, 'base → TDM, rules reset');
   expect(lit(await D.art('Rocket Launcher')), 'rules did not reset (rocket still dimmed)');
   await mc.fill('input[aria-label="game name"]', 'controls test');
   await mc.click('button:has-text("SAVE GAME")');
@@ -879,6 +916,31 @@ await step('designer-controls 8: base switch to TEAM DEATHMATCH resets the rules
 // Tony hit "cannot read properties of undefined (reading 'preset')" with today's bundle on an MC process started
 // before the loadout code landed. Every other step runs UI + server from the same tree, so that mismatch had no
 // coverage. Here the same UI gets stale responses: loadout fields stripped, the A10 routes 404, no live socket.
+await step('designer-controls A11: ADVANCED opens a read-only sounds & lights table with sources, words and MC confidence', async () => {
+  await ensureMc();
+  await mc.locator('nav button').nth(1).click();
+  await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
+  await until(async () => (await mc.locator('input[aria-label="game name"]').count()) > 0, 6000, 'designer open');
+  const adv = mc.locator('[data-testid="advanced-presentation"] button[aria-expanded]');
+  expect((await adv.getAttribute('aria-expanded')) === 'false', 'ADVANCED should start collapsed');
+  expect((await mc.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 'table visible before ADVANCED was opened');
+  await adv.click();
+  await until(async () => (await mc.locator('[data-testid="pres-row-hit_taken"]').count()) === 1, 6000, 'hit_taken row after opening ADVANCED');
+  expect((await adv.getAttribute('aria-expanded')) === 'true', 'ADVANCED not marked expanded');
+  const src = async id => (await mc.locator(`[data-testid="pres-row-${id}"] td`).nth(1).textContent()).trim();   // the SOURCE cell
+  expect((await src('hit_taken')) === 'HUD', 'hit_taken must be a HUD-sourced row, got ' + await src('hit_taken'));
+  expect((await src('lead_taken')) === 'MC', 'lead_taken must be an MC-sourced row, got ' + await src('lead_taken'));
+  const lead = await mc.locator('[data-testid="pres-row-lead_taken"]').textContent();
+  expect(/VA6D/.test(lead) && /takes the lead/i.test(lead), 'lead_taken row lacks VA6D / the words: ' + lead);
+  const conf = await mc.getByTestId('mc-confidence').textContent();
+  expect(/MC (NOT )?CONFIDENT/.test(conf), 'confidence line missing: ' + conf);
+  expect(/standard|silenced|counter.strike|vip|infection|last.stand|extraction|custom/i.test(await mc.getByTestId('presentation-preset').textContent()), 'preset not shown');   // uppercase is CSS, textContent is not
+  expect((await mc.locator('[data-testid="advanced-presentation"] input, [data-testid="advanced-presentation"] select').count()) === 0, 'ADVANCED is read-only: no inputs');
+  await shot(mc, 'designer-advanced'); await textAudit(mc, 'designer-advanced');
+  await adv.click();
+  await until(async () => (await mc.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 4000, 'ADVANCED collapses again');
+});
+
 flow('F8b compat-older-server');
 await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a server with no loadout fields and no A10 routes', async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });   // own context: its 404s are EXPECTED, keep them out of the global audit
@@ -890,7 +952,7 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   const strip = o => { if (o && typeof o === 'object') { delete o.loadout_policy; delete o.loadout_pool; delete o.active_preset_id; if (o.kit) delete o.kit.browsing; if (o.loadout && typeof o.loadout === 'object') delete o.loadout.perk; for (const k of Object.keys(o)) strip(o[k]); } return o; };
   await pg.route('**/api/**', async r => {
     const u = r.request().url();
-    if (/\/api\/(presets|perks|loadout\/pool)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });   // pre-A10 server
+    if (/\/api\/(presets|perks|loadout\/pool|presentation)/.test(u)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' });   // pre-A10 / pre-A11 server
     const res = await r.fetch(); let body = await res.text();
     try { body = JSON.stringify(strip(JSON.parse(body))); } catch { /* not JSON */ }
     await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
@@ -916,19 +978,24 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   expect(/—/.test(loadRow), 'GAMES LOADOUT row should read — with no policy: ' + loadRow);
   await pg.click('button[aria-label="create a game"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (create)');
   await until(async () => (await pg.locator('text=RULES PREVIEW LOCALLY').count()) > 0, 6000, 'designer says the server cannot preview');
+  // A11 ADVANCED against a server with no /api/presentation: the section still renders, opens, and SAYS why it is empty
+  await pg.locator('[data-testid="advanced-presentation"] button[aria-expanded]').click();
+  await until(async () => (await pg.locator('[data-testid="advanced-presentation"] [role="alert"]:has-text("PREDATES THIS UI")').count()) > 0, 6000, 'ADVANCED shows the predates-this-UI line on a 404');
+  expect((await pg.locator('[data-testid="pres-row-hit_taken"]').count()) === 0, 'ADVANCED rendered rows from nowhere against a stale server');
+  await noCrash('DESIGNER (advanced, stale)');
   await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no picking"]');   // templates are client-side: must work here too
   await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'template applies against a stale server');
   await pg.click('button[title="Everything, players pick both slots"]');
-  await until(async () => /18 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'OPEN → 18 of 18 (pool computed locally)');
+  await until(async () => /21 OF 21/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'OPEN → 21 of 21 (pool computed locally)');
   // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
   const prim = pg.locator('[aria-label="primary slot rules"]');
   await prim.locator('button:has-text("HEAVY")').first().click();
-  await until(async () => /13 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'HEAVY chip off → 13 of 18 against a stale server');
+  await until(async () => /16 OF 21/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'HEAVY chip off → 16 of 21 against a stale server');
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile not shown as off');
   await prim.locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => /12 OF 18/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'tile tap → 12 of 18 against a stale server');
+  await until(async () => /15 OF 21/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'tile tap → 15 of 21 against a stale server');
   await prim.locator('button[aria-label="Rocket Launcher, off"]').click();   // a tag-excluded tile is still tappable: allow just this one
-  await until(async () => /13 OF 18/.test(await pg.getByTestId('primary-summary').textContent()) && (await prim.locator('button[aria-label="Rocket Launcher, allowed"]').count()) === 1, 4000, 'allowing one heavy through the chip');
+  await until(async () => /16 OF 21/.test(await pg.getByTestId('primary-summary').textContent()) && (await prim.locator('button[aria-label="Rocket Launcher, allowed"]').count()) === 1, 4000, 'allowing one heavy through the chip');
   expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
   await backToGames(pg); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
   await nav(2); await noCrash('KIT');

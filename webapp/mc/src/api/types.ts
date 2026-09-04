@@ -8,7 +8,7 @@ export interface WeaponSel { weapon_id: string }
 export interface Loadout { weapons: WeaponSel[]; perk?: string | null; overrides?: { max_hp?: number; max_armor?: number } }
 
 export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
-export type ItemKind = 'weapon' | 'perk';
+export type ItemKind = 'weapon' | 'perk' | 'sidearm';   // 'sidearm' (A12): a policy kind — only the pistols; never a request kind (a pistol is a 'weapon' on the wire)
 export interface SlotRule {
   choice: SlotChoice; kinds: ItemKind[];
   exclude_tags: string[]; exclude_ids: string[]; only_ids: string[];
@@ -49,6 +49,22 @@ export interface GameConfig {
   teams: Team[];
   led?: Record<string, unknown>;
   loadout_policy: LoadoutPolicy;
+  /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
+  presentation?: Record<string, unknown>;
+}
+
+/** A11/A11.5 — one row of the resolved presentation profile (GET /api/presentation). */
+export interface PresentationRow {
+  event: string; source: 'hud' | 'mc' | 'both'; desc: string;
+  sound: string | null; words: string; gun_led: number | null; headset: number | null;
+  text: string; enabled: boolean;
+}
+export interface PresentationView {
+  summary: { preset: string; announcer: boolean; gun_flash: boolean; headset_team: boolean; sight_flash: boolean;
+    hud_events: boolean; mc_events: boolean; mc_confidence: boolean; custom_events: string[] };
+  events: PresentationRow[];
+  mc_confidence: { confident: boolean; missing: string[]; stale: string[]; unflushed: string[] };
+  presets: string[];
 }
 
 export interface ScanRow {
@@ -216,6 +232,8 @@ export interface Api {
   updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame>;
   /** preview the pool a DRAFT policy would allow (designer) — same rule engine, nothing applied */
   previewPool(policy: Partial<LoadoutPolicy>, mode?: string): Promise<{ policy: LoadoutPolicy; pool: LoadoutPool }>;
+  /** A11: tonight's presentation profile, resolved, for the read-only ADVANCED view. Rejects with status 404 on an older server. */
+  getPresentation(): Promise<PresentationView>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;

@@ -270,6 +270,25 @@ export class MockBackend implements Api {
     sg.updated_t = now();
     return clone(sg);
   }
+  /** A11: the demo's presentation profile — a few representative rows so the ADVANCED view has something to show. */
+  async getPresentation() {
+    const rows = [
+      { event: 'hit_taken', source: 'hud', desc: 'you were hit', sound: null, words: '', gun_led: 0, headset: null, text: '', enabled: true },
+      { event: 'died', source: 'hud', desc: 'you are out', sound: null, words: '', gun_led: 0, headset: null, text: '', enabled: true },
+      { event: 'time_60', source: 'hud', desc: 'one minute left', sound: 'V113', words: 'One minute left.', gun_led: null, headset: null, text: 'ONE MINUTE LEFT', enabled: true },
+      { event: 'kill', source: 'mc', desc: 'you scored a kill', sound: 'voice:kill', words: "the player's own voice: kill line", gun_led: null, headset: null, text: '', enabled: true },
+      { event: 'first_blood', source: 'mc', desc: 'first kill of the match', sound: 'VA7H', words: 'First Blood', gun_led: null, headset: null, text: 'FIRST BLOOD', enabled: true },
+      { event: 'lead_taken', source: 'mc', desc: 'your team takes the lead', sound: 'VA6D', words: 'Your team takes the lead.', gun_led: null, headset: null, text: 'YOUR TEAM TAKES THE LEAD', enabled: true },
+      { event: 'infected', source: 'both', desc: 'a survivor turned (infection)', sound: 'VB1M', words: 'The infection is spread.', gun_led: null, headset: null, text: 'THE INFECTION SPREADS', enabled: true },
+    ] as const;
+    return {
+      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, custom_events: [] as string[] },
+      events: rows.map(r => ({ ...r })),
+      mc_confidence: { confident: false, missing: ['p-demo-2'], stale: [] as string[], unflushed: [] as string[] },
+      presets: ['counter_strike', 'extraction', 'infection', 'last_stand', 'silenced', 'standard', 'vip'],
+    };
+  }
+
   async previewPool(policy: Partial<LoadoutPolicy>, mode?: string) {
     const base = policy.preset && policy.preset !== 'custom' ? clone(PRESETS[policy.preset]) : clone(defaultPolicy(mode ?? this.config.mode));
     const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) } };
