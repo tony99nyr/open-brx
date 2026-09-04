@@ -1371,7 +1371,10 @@ green/red, `$GLED,3,3,9`=green/green/dark) → the 3-segment health bar (`pool_f
 open: (b) minutes-long hold; (e) blink-form after a blank; the separate **muzzle-flash LED**'s
 addressability. Refactor (1-4) is **brx's** — bench answers delivered, they hold until Tony says go.
 
-## 🟠 S7 — RECONNECT / NEW-MATCH RECONCILIATION on the phone node (2026-09-04, from the utility bench)
+## 🟢 S7 — RECONNECT / NEW-MATCH RECONCILIATION on the phone node (2026-09-04, from the utility bench)
+
+**Status:** the anti-cheat is CLOSED and hardware-validated (S7.1 below); two small HW follow-ups remain
+(gap-death re-arm, the dead-player rejoin path) plus one link-hygiene item (S7 #3).
 
 **🔴 ANTI-CHEAT (found + FIXED on hardware 2026-09-04, Tony):** force-close the app at low HP, reopen,
 and the app RESPAWNED the player to FULL — a free respawn on demand. Root cause: alive/hp weren't
@@ -1403,20 +1406,29 @@ The old build countdown-healed to full here. Exploit closed. See experiment-log 
 
 Live-bench weaknesses in the §3.10 resync + hydrate path, surfaced repeatedly on 2026-09-04 (they predate
 the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
-1. **Rejoin lands alive-with-0-hp.** After force-stop → relaunch → rejoin, the gun is armed and can shoot
-   but the HUD reads `alive:true hp:0` until the player pulls the trigger (the trigger-first resync observed
-   mid-handshake). A resync in progress should show a clear "confirm your gun" state, not live-but-empty.
+1. **✅ RESOLVED by the reconcile (S7.1).** The old trigger-first resync left the gun `alive:true hp:0` until
+   the player pulled the trigger. The reconcile restores the real pools and shows brx-hud's "SYNCING WITH YOUR
+   GUN · WEAPON DISARMED" takeover for 3 s — no trigger pull, no live-but-empty window.
 2. **✅ FIXED (S7.2, commit fec301d): a new match started on a just-reconnected node now spawns clean** —
-   `startAt` clears an in-flight resync (a new match supersedes the old one's reconnect resync); the T-0
-   spawn is no longer blocked on `!resync`, so it goes alive at full health. Engine test added. The
-   remaining two (1, 3) need hardware to validate a change safely.
-3. **A soft reload left the native BLE link half-open**, so the rejoin scan couldn't find the still-connected
-   gun. Node should release the BLE link on teardown/reload.
-Test-first: model cold-boot-while-down and new-match-over-reconnecting-node in the engine harness, then fix
-so a rejoin reconciles to the gun's real state with no manual trigger pull and a new match always spawns
-alive. Builds on the recovery `deadAt` stamp (ee47053).
+   `startAt` clears an in-flight resync/reconcile (a new match supersedes the old one's reconnect state); the
+   T-0 spawn is no longer blocked on `!resync`, so it goes alive at full health. Engine test added.
+3. **A soft reload left the native BLE link half-open** (still open), so the rejoin scan couldn't find the
+   still-connected gun. Node should release the BLE link on teardown/reload. (Not seen again since, but
+   unfixed.)
 
-## 🟠 S6 — the utility STATION intermittently doesn't see PLAYER adverts at high TX (2026-09-04)
+**New HW follow-ups from the 2026-09-04 validation (both need the gun, low risk):**
+- **Gap-death re-arm.** If the gun DIED while the app was closed and does not re-report `$HP,0` on reconnect,
+  the reconcile trusts the restored "alive" and re-arms it. The firmware gates firing on a truly-dead gun (so
+  no cheat — you can't fire a dead gun), but the HUD would read alive until the gun re-announces. Confirm the
+  exact failure mode on hardware; decide whether the reconcile should also re-probe once. (node.md §3.10)
+- **Dead-player rejoin path untested.** Only the alive-at-low-HP path was validated on R0BQT. Force-close
+  while actually DOWN → reopen → confirm you come back DOWN at the real `deadAt` (awaiting your real respawn),
+  not healed and not auto-revived early. Should already hold (reconcile gates auto-respawn while reconciling,
+  and re-arms only if alive), but verify on the gun.
+
+## 🟢 S6 — the utility STATION intermittently doesn't see PLAYER adverts at high TX (2026-09-04)
+
+**Status:** fixed in code (low-latency scan + 8 s restart, commit 53e62bd); two-Pixel bench confirmation pending.
 
 On the two-Pixel bench the respawn station (advertising at high TX) sometimes read **zero** player adverts
 though players were advertising and its own scan was open; it recovered on its own. Suspect: scanning WHILE
