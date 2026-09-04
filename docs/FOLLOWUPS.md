@@ -1295,6 +1295,22 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
+## 🟡 S6 — KILL THE LEGACY SHIMS (Tony, gun stage 2026-09-04: "we are building this thing. we dont need to support legacy at all")
+
+Nothing ships to anyone but us, so every "older MC / older node / pre-A11" fallback is dead weight that also shows
+up as noise on the operator's screens (the ADVANCED table and the stage listed two "legacy" events). Remove, with
+their tests:
+- `presentation.EVENTS` `multi` and `medal` (the pre-A11.4 single-medal path; the scorer sends `kind: "kill"` +
+  `medals[]` now) and `compile.cues()` `multi` / `medal`.
+- `cues.team_led` + the engine's "pre-A11.6 bundle" fallback (`frames.headset` is always present now); the
+  `headset_team` switch mirror in `merge()` ("so older readers agree").
+- engine: "older MC" fallbacks (`swap_ms` 850 default, the kit-open flag default, `feedback.cue` when `cues[kind]`
+  is missing), `restore_snapshot()` normalising a pre-A11 config.
+- scorer comment "kind stays kill (older nodes play their kill line)" -> the node ALWAYS plays the medal stack.
+- MC console: the "server predates this UI" banners can stay (they catch a stale process, which is a real failure
+  on the night) -- everything else that says "older" goes.
+Do it in one sweep with the golden bundle regenerated, then cut an APK: node and MC move together.
+
 ## 🟠 S5 — MC ARMS THE UTILITY STATIONS AT MUSTER (A13.5, 2026-09-04 night; server side NOT built)
 
 Tony's design, spec'd by brx-grenade in contracts A13.5 + `docs/spec/utility.md` §5b/§5c (a1380f8); the full
