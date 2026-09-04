@@ -6223,3 +6223,20 @@ Still open: (b) hold-time with zero traffic over minutes; (e) whether a `$GLED` 
 after a blank (only static frames tested); **the MUZZLE-flash LED** (a separate element from the 3 body
 LEDs — it lights on a hit, Tony 2026-09-04) — is it `$GLED`-addressable or firmware-only? Enough is
 answered for the refactor to start.
+
+
+### 2026-09-04 (late night) — 🟢 A11.7 BUILT: the gun body as an opt-in host-owned display (S4)
+
+brx-grenade's three "GUN LED bench (S4)" entries above answered the questions that gated the design: a held
+paint survives registered hits (armour 70 → 0), reloads and firing; only `$SPAWN` re-enables the breathing;
+the shipped 3-flash burst reads after a blank and its final frame HOLDS; the three body LEDs are independent
+(`$GLED,3,3,0` = green/green/red); 10 is maximum brightness; the blank is gun-only. Built the same night:
+`presentation.gun.in_play = native | team | dark | health` -- **default `native`, which sends nothing, so every
+existing bundle is byte-identical** (golden test unchanged apart from the summary field). Opt-ins put
+`$GLED,,,,5` + the rest frame right after `$SPAWN,,*` in spawn AND revive, ship `bundle.gun`, and end event
+bursts on the rest frame; `health` carries the HEALTH_BANDS frames and the node repaints on band change and
+after each burst, never per hit. Visible in the ADVANCED panel as GUN BODY. Tests: presentation (frames per
+mode, night, LEDs off, validation), compile (native untouched / team tail / health bands / LEDs off), engine
+(band repaint once per band, burst ends on the current band, revive re-blanks), console (default + opted-in
+text). Not yet chosen: which look is the default -- that is a field decision (Tony), not a bench one. Still
+open from the bench: hold time with no traffic, blink forms after a blank, the muzzle-flash LED.

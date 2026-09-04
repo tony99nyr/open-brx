@@ -179,8 +179,27 @@ HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "h
 DEATH_BLINK_COUNT = 200
 HEADSET_BLANK = "$HLED,,6,,,,,*"
 
+# ---- the GUN BODY LED (A11.7, S4) ------------------------------------------------------------------
+# Bench 2026-09-04 (brx-grenade, R0BQT, Tony watching; experiment-log "IN-GAME GUN LED CONTROL" + the
+# three "GUN LED bench (S4)" entries): a spawned gun BREATHES its team colour and a plain $GLED only
+# alternates with it -- but `$GLED,,,,5,,,*` (the blank) takes the LED out of the breathing loop: the gun
+# goes dark and stays dark, and any colour painted after it HOLDS (snaps between colours, survives firing,
+# reloads and registered hits; armour 70 -> 0 without losing the paint). `$SPAWN` re-enables the breathing,
+# so the blank + paint go right after every $SPAWN (spawn AND revive). The three body LEDs are independent
+# after a blank, and 10 is already maximum brightness.
+#   in_play: "native"  = today's look, the firmware breathing; nothing is sent (DEFAULT until Tony has seen
+#                        the alternatives on a field -- every existing game keeps its exact bundle)
+#            "team"    = blank, then the team colour held solid
+#            "dark"    = blank only: the gun body is off in play (events still flash)
+#            "health"  = blank, then the health hue (green / yellow / red, poolgauge.HEALTH_BANDS); the node
+#                        repaints on each band change and after every event burst
+GUN_DEFAULT = {"in_play": "native"}
+GUN_IN_PLAY = ("native", "team", "dark", "health")
+GUN_BLANK = "$GLED,,,,5,,,*"
+
 _BASE = {"announcer": True, "gun_flash": True, "headset_team": True, "sight_flash": True,
-         "hud_events": True, "mc_events": True, "mc_confidence": True, "headset": dict(HEADSET_DEFAULT)}
+         "hud_events": True, "mc_events": True, "mc_confidence": True, "headset": dict(HEADSET_DEFAULT),
+         "gun": dict(GUN_DEFAULT)}
 SWITCHES = ("announcer", "gun_flash", "headset_team", "sight_flash", "hud_events", "mc_events", "mc_confidence")
 
 PRESETS: dict[str, dict] = {
@@ -314,6 +333,21 @@ def merge(current: dict | None, patch: dict) -> dict:
         prof["headset"] = cur
         # the legacy switch mirrors the block so older readers agree with it
         prof["headset_team"] = cur["in_play"] == "team" or cur["pregame"] == "team"
+    if "gun" in patch:
+        g = patch["gun"]
+        if not isinstance(g, dict):
+            raise ValueError("presentation.gun must be an object")
+        cur = dict(prof.get("gun") or GUN_DEFAULT)
+        for gk, gv in g.items():
+            if gk == "in_play":
+                if gv not in GUN_IN_PLAY:
+                    raise ValueError(f"presentation.gun.in_play must be one of {'|'.join(GUN_IN_PLAY)}")
+                cur[gk] = gv
+            else:
+                raise ValueError(f"presentation.gun.{gk}: unknown field")
+        if cur != prof.get("gun"):
+            edited = True
+        prof["gun"] = cur
     if "events" in patch:
         if not isinstance(patch["events"], dict):
             raise ValueError("presentation.events must be an object")
@@ -354,6 +388,7 @@ def resolve(config: dict) -> dict:
     if raw.get("preset") == "custom":
         prof["preset"] = "custom"
     prof["headset"] = {**HEADSET_DEFAULT, **(base.get("headset") or {}), **(raw.get("headset") or {})}
+    prof["gun"] = {**GUN_DEFAULT, **(base.get("gun") or {}), **(raw.get("gun") or {})}
     prof["events"] = {**prof.get("events", {}), **(raw.get("events") or {})}
     events = {}
     for ev, d in EVENTS.items():
@@ -417,7 +452,11 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool) -> di
         c = spec.get("gun_led")
         if c is not None:
             flash = f"$GLED,{c},{c},{c},0,{pg.BRIGHT_DIM if night else pg.BRIGHT_FULL},,*"
-            back = pg.team_frame(team, night)
+            # A11.7: the burst ends on the gun's RESTING frame. Native / team: the team colour (the firmware
+            # breathing or the held paint). Dark: the dark frame. Health: the full-health hue here, and the
+            # node repaints the current band right after (it alone knows the hp).
+            gf = gun_frames(profile, team, night, True)
+            back = gf["rest"] if gf else pg.team_frame(team, night)
             for i in range(pg.BURST_FLASHES):
                 seq.append([flash, pg.BURST_FLASH_S])
                 seq.append([back, pg.BURST_GAP_S if i < pg.BURST_FLASHES - 1 else 0.0])
@@ -458,11 +497,42 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
     return out
 
 
+def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool) -> dict:
+    """The bundle's `gun` table (A11.7): what the NODE paints on the gun body in play.
+
+    {} when LEDs are off for the game or `in_play` is "native" (nothing is sent; the firmware breathes).
+    Otherwise: `in_play`, `blank` (the frame that suppresses the breathing; sent once after every $SPAWN),
+    `rest` (the frame that follows the blank: team colour, dark, or the full-health hue) and, for
+    "health", `bands`: [[fraction_above, frame], ...] highest first -- the node paints the first band whose
+    fraction the current hp/max exceeds, on every band change and at the end of every event burst."""
+    g = {**GUN_DEFAULT, **(profile.get("gun") or {})}
+    if not leds_on or g["in_play"] == "native":
+        return {}
+    b = pg.BRIGHT_DIM if night else pg.BRIGHT_FULL
+    dark = f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{b},,*"
+    out: dict = {"in_play": g["in_play"], "blank": GUN_BLANK}
+    if g["in_play"] == "team":
+        out["rest"] = pg.team_frame(tid, night)
+    elif g["in_play"] == "dark":
+        out["rest"] = dark
+    else:   # health
+        out["bands"] = [[thr, pg.pool_paint_frame("health", int(round(thr * 1000)) + 1, 1000, night)] for thr, _c in pg.HEALTH_BANDS]
+        out["rest"] = out["bands"][0][1]          # full health = the top band
+    return out
+
+
+def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:
+    """The frames the compiler puts right after `$SPAWN,,*` in spawn AND revive: blank, then rest. [] for native."""
+    gf = gun_frames(profile, tid, night, leds_on)
+    return [gf["blank"], gf["rest"]] if gf else []
+
+
 def summary(profile: dict) -> dict:
     """What the UI shows: preset + the four switches + which events carry a custom sound."""
     return {"preset": profile.get("preset", "standard"),
             **{k: bool(profile.get(k, True)) for k in SWITCHES},
             "headset": {**HEADSET_DEFAULT, **(profile.get("headset") or {})},
+            "gun": {**GUN_DEFAULT, **(profile.get("gun") or {})},
             "custom_events": sorted(ev for ev, spec in (profile.get("events") or {}).items()
                                     if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None)}
 

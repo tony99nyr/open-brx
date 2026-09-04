@@ -814,3 +814,19 @@ def test_the_voice_pack_is_per_player_not_hardcoded():
     # an unknown name falls back rather than emitting a bad family
     assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), _TEAMS)["head"] if f.startswith("$PSET,"))
 
+
+
+def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn():
+    """A11.7 / S4: native (default) leaves spawn/revive untouched; an opt-in inserts blank + rest after $SPAWN."""
+    base = C.compile(_cfg(), _player(), _TEAMS)
+    assert "gun" not in base and not any(f.startswith("$GLED,,,,5") for f in base["spawn"] + base["revive"])
+    cfg = {**_cfg(), "presentation": {"gun": {"in_play": "team"}}}
+    b = C.compile(cfg, _player(), _TEAMS)
+    assert b["spawn"][1:4] == ["$SPAWN,,*", "$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    assert b["revive"][0:3] == ["$SPAWN,,*", "$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    assert b["gun"] == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*"}
+    assert b["leds"]["hit_taken"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    h = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "health"}}}, _player(), _TEAMS)
+    assert h["spawn"][2:4] == ["$GLED,,,,5,,,*", "$GLED,3,3,3,0,10,,*"] and len(h["gun"]["bands"]) == 3
+    off = C.compile({**_cfg(led={"mode": "off"}), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
+    assert "gun" not in off and not any(f.startswith("$GLED") for f in off["spawn"])

@@ -38,6 +38,11 @@
 >   skipped on team kills, event `$HLED` over the out-blink, the confidence line reading as a fault pre-match,
 >   stale A11.1/A11.5 contract text, …). Every fix has a test that fails on the old code. Lows are listed in
 >   FOLLOWUPS S2 "Polish round 2026-09-04 (night)". Details: experiment-log, same heading.
+> - **S4 / A11.7, the gun body LED (late night)**: brx-grenade found on R0BQT that `$GLED,,,,5` (the blank)
+>   takes the body out of the firmware breathing, after which a paint HOLDS through hits, reloads and firing
+>   (`$SPAWN` resets it). Built as an OPT-IN: `presentation.gun.in_play = native | team | dark | health`,
+>   default `native` (no change to any bundle). Try `health` on a field before choosing a default. Open:
+>   hold time with no traffic, blink forms after a blank.
 > - **Open**: count-limited `$HLED` blink end state; white start flash and carrier blink legibility at
 >   6 ft; the CLI `GameDriver` still paints the A11 team colour in play (S2 item 7); preset picker +
 >   switches as a WRITE UI; S3 HUD-side extraction engine; F15 stun in the engine; the remaining sound

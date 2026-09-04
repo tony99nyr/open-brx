@@ -1295,7 +1295,7 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
-## 🟠 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04, from brx-grenade's bench find)
+## 🟢 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04) — BUILT the same night as an OPT-IN (A11.7); default still native
 
 `experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (R0BQT, Tony watching): a spawned gun breathes its
 team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) first takes
@@ -1310,7 +1310,15 @@ were tuned against the breathing (a single frame was "invisible" because the fir
 ~0.33 s -- 2026-09-03). After a blank the firmware no longer repaints, so the burst's "end on the team
 frame" step becomes a HOLD, and the single-frame-is-invisible finding no longer applies.
 
-**Design sketch (mine, not built):**
+**Built 2026-09-04 (night), after brx-grenade's bench answered (a), (d), (f) and the mixed-LED question:**
+`presentation.gun.in_play = native | team | dark | health` (A11.7). `native` = today's look, nothing sent, golden
+bundle byte-identical. The other three: `$GLED,,,,5` + the rest frame right after `$SPAWN` in spawn AND revive,
+`bundle.gun` for the node, event bursts end on the rest frame; `health` ships the HEALTH_BANDS frames and the
+node repaints on band change + after each burst (engine `_gunHealthPaint`). Shown in the ADVANCED panel as
+GUN BODY. **Next**: Tony picks the default on a field (`PUT /api/config {"presentation": {"gun": {"in_play":
+"health"}}}` to try it); the open bench items (b) hold time with no traffic and (e) blink forms after a blank.
+
+**Design sketch (as built):**
 1. `compile.py`: `$GLED,,,,5,,,*` right after `$SPAWN,,*` in `spawn` and `revive`; then the presentation's
    in-play gun frame (`gun.in_play: team|dark|health`, default team colour so the gun looks as it does today).
 2. `presentation.py`: a `gun` block beside `headset` -- in_play (team / dark / health), hit flash colour,

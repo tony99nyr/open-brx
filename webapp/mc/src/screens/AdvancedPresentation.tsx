@@ -96,10 +96,15 @@ export function AdvancedPresentation() {
                   ['WHILE OUT', hs.death === 'native' ? 'NATIVE GREEN OUT-BLINK' : col(hs.death) + ' BLINK'], ['ON RESPAWN', hs.respawn_flash ? 'WHITE FLASH' : 'NONE'],
                   ['CARRYING THE FLAG', hs.carrier ? 'BLINK THE FLAG COLOUR' : 'NOTHING'],
                 ];
+                const gunPlay = view.summary.gun?.in_play ?? 'native';
+                const gunText = gunPlay === 'team' ? 'HELD ON TEAM COLOUR (NO BREATHING)' : gunPlay === 'dark' ? 'DARK (EVENTS STILL FLASH)'
+                  : gunPlay === 'health' ? 'HEALTH HUE, GREEN → YELLOW → RED' : 'FIRMWARE BREATHING, TEAM COLOUR';
                 return (
                   <div data-testid="headset-block" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', font: F.mono(500, 10.5), letterSpacing: '.12em' }}>
                     <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim, width: '100%' }}>HEADSET</span>
                     {items.map(([k, v]) => <span key={k}><span style={{ color: T.micro }}>{k} </span><span style={{ color: T.body }}>{v}</span></span>)}
+                    <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim, width: '100%', marginTop: 4 }}>GUN BODY</span>
+                    <span data-testid="gun-block"><span style={{ color: T.micro }}>IN PLAY </span><span style={{ color: T.body }}>{gunText}</span></span>
                   </div>
                 );
               })()}

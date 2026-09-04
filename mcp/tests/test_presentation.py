@@ -251,3 +251,31 @@ def test_headset_death_null_is_rejected_at_merge_not_at_push():
     p = P.merge(None, {"headset": {"death": "native", "hit": None}})     # hit may be off; death must be a colour or native
     assert p["headset"]["death"] == "native" and p["headset"]["hit"] is None
     assert P.headset_frames(P.resolve({"mode": "tdm", "presentation": p}), 1, True)["death"] == []
+
+
+def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint():
+    """A11.7 / S4 (bench 2026-09-04): $GLED,,,,5 after $SPAWN suppresses the firmware breathing; a paint then holds."""
+    prof = P.resolve({"mode": "tdm"})
+    assert prof["gun"] == {"in_play": "native"} and P.summary(prof)["gun"] == {"in_play": "native"}
+    assert P.gun_frames(prof, 1, False, True) == {} and P.gun_spawn_tail(prof, 1, False, True) == []
+    team = P.resolve({"presentation": P.merge(None, {"gun": {"in_play": "team"}})})
+    assert team["preset"] == "custom"
+    gf = P.gun_frames(team, 1, False, True)
+    assert gf == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*"}
+    assert P.gun_spawn_tail(team, 1, False, True) == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    assert P.gun_frames(team, 1, True, True)["rest"] == "$GLED,1,1,1,0,1,,*"        # night dims
+    assert P.gun_frames(team, 1, False, False) == {}                                  # LEDs off for the game
+    dark = P.resolve({"presentation": {"gun": {"in_play": "dark"}}})
+    assert P.gun_frames(dark, 1, False, True)["rest"] == "$GLED,9,9,9,0,10,,*"
+    health = P.resolve({"presentation": {"gun": {"in_play": "health"}}})
+    hf = P.gun_frames(health, 1, False, True)
+    assert [b[0] for b in hf["bands"]] == [0.66, 0.33, 0.0]
+    assert [b[1] for b in hf["bands"]] == ["$GLED,3,3,3,0,10,,*", "$GLED,2,2,2,0,10,,*", "$GLED,0,0,0,0,10,,*"]
+    assert hf["rest"] == hf["bands"][0][1]
+    # event bursts end on the gun's resting frame, not the team colour, once the body is host-owned
+    assert P.led_table(team, 1, False, True)["hit_taken"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    assert P.led_table(dark, 1, False, True)["hit_taken"][-1][0] == "$GLED,9,9,9,0,10,,*"
+    assert P.led_table(prof, 1, False, True)["hit_taken"][-1][0] == pg.team_frame(1, False)
+    for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}):
+        with raises(ValueError):
+            P.merge(None, bad)

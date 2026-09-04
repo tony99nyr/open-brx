@@ -671,6 +671,9 @@
       "respawn_flash": true,
       "carrier": true
     },
+    "gun": {
+      "in_play": "native"
+    },
     "custom_events": []
   }
 }

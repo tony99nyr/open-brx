@@ -129,7 +129,13 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                        // Absent/empty = no lights for that event (night, blackout, or
                        // the profile's gun_flash=false).
   presentation?: { preset, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence,
-                   custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier } },   // A11/A11.5/A11.6 summary
+                   custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier },
+                   gun: { in_play } },   // A11/A11.5/A11.6/A11.7 summary
+  gun?: { in_play: "team"|"dark"|"health", blank: string, rest: string,   // A11.7: the gun BODY when the game owns it. Absent
+          bands?: [fraction_above: number, frame: string][] },             // for "native" (firmware breathing, the default).
+                                                                           // spawn/revive carry blank + rest after $SPAWN;
+                                                                           // health: the node paints the first band whose
+                                                                           // fraction hp/max exceeds, on band change + after bursts.
   headset?: { in_play: "dark"|"team", rest: string, blank: string,        // A11.6: the node's headset sequences, each a
               pregame: string[],                                          // list of [frame, hold_s] ending on an explicit
               start: [string, number][], hit: [string, number][],         // state frame. `rest` = the in-play frame the node
@@ -643,6 +649,18 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     gun never sees it.
   - **A13.4 Node state** — `state().station` (the respawn station this player would use, with its smoothed RSSI and
     threshold), `respawnGate`, `respawnHint` (`timer | find_station | approach | pull_trigger | reviving | out`).
+  - **A11.7 The gun body (2026-09-04, S4; bench by brx-grenade, R0BQT, Tony watching).** A spawned gun BREATHES
+    its team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) takes the
+    LED out of the breathing loop**: the body goes dark and stays dark, and any colour painted after it HOLDS
+    (colour changes snap; firing, reloads and registered hits do not disturb it; 10 is already maximum
+    brightness; the three body LEDs are independent). `$SPAWN` re-enables the breathing. So
+    `presentation.gun = { in_play: native|team|dark|health }`: **`native` (default) sends nothing and every
+    existing bundle is byte-identical**; the other three put `blank` + `rest` right after `$SPAWN,,*` in BOTH
+    `spawn` and `revive`, ship `bundle.gun`, and end every event burst on `rest` instead of the team frame.
+    `health`: `rest` is the full-health hue and `bands` = `poolgauge.HEALTH_BANDS` as `[fraction_above, frame]`;
+    the node repaints when the band changes (never per hit) and right after each burst. Open (S4): the
+    minutes-long hold with no traffic, blink forms after a blank, and which look Tony wants as the default.
+
 - **A12 (2026-09-04, SIDEARMS — `docs/spec/loadout.md` §1.1/§3; additive, no `v` bump):**
   - **A12.1 Three pistols in the catalog** — `glock`, `usp`, `deagle` (role `sidearm`, tags `sidearm`+`pistol`, cls 10).
     Ordinary weapons on the wire (`WeaponSel`; `loadout_request kind:"weapon"`; try-out as any weapon). A row with
