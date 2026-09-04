@@ -5,6 +5,7 @@
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';
+import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 
 const $ = id => document.getElementById(id);
 const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };
@@ -20,7 +21,7 @@ function log(msg, cls = 'li') {
 }
 
 // ---------- settings (persisted; the station survives an app restart the way it was) ----------
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0 };   // -74 threshold + 0.8s dwell = arm's length, brief pause, green (bench-tuned 2026-09-04)
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0, mcArmed: null, mc: '' };   // mcArmed: {game, at, valid_ids} once MC pushed station_config   // -74 threshold + 0.8s dwell = arm's length, brief pause, green (bench-tuned 2026-09-04)
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }; } catch (_) { return { ...DEFAULTS }; } })();
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
@@ -60,6 +61,36 @@ async function startAdvert() {
   } catch (e) { advertising = false; log('advertise failed: ' + (e && e.message || e), 'le'); }
   render();
 }
+// ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
+let transport = null, mcState = 'offline';
+const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, green: 3, any: TEAM_ANY, ffa: TEAM_ANY };
+function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
+/** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
+async function applyStationConfig(body) {
+  if (!body || typeof body !== 'object') return;
+  if (body.kind && KIND_LABEL[body.kind]) settings.kind = body.kind;
+  if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
+  if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
+  if (Number.isFinite(+body.threshold)) settings.threshold = Math.max(-100, Math.min(-30, Math.round(+body.threshold)));
+  settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
+  settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
+  save();
+  log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${settings.threshold} dBm · game ${settings.game}`, 'lk');
+  if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
+  await startAdvert();
+}
+function connectMc(url) {
+  if (!url) return;
+  settings.mc = url; save();
+  if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
+  transport = new Transport({ node: { node_type: 'utility', app_ver: 'utility' }, gun: null, keyPrefix: 'brxu' });   // its own node id: never the HUD's
+  transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
+  transport.setStatusProvider(() => ({ role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed }));
+  transport.onMessage(m => { if (m && m.kind === 'station_config') applyStationConfig(m.body); });
+  transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
+  transport.connect({ url }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+}
+
 async function stopAdvert() {
   try { if (plugins.beacon) await plugins.beacon.stop(); } catch (_) { /* ignore */ }
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
@@ -102,6 +133,11 @@ function render() {
   $('thr').textContent = `${settings.threshold} dBm`; $('thrRange').value = settings.threshold;
   $('dwell').textContent = `${(settings.dwell / 1000).toFixed(1)} s`;
   $('btnStart').textContent = advertising ? 'STOP' : 'START';
+  const armed = settings.mcArmed;
+  $('armed').textContent = armed ? `MC-ARMED · GAME ${armed.game || 0}` : 'NOT ARMED BY MISSION CONTROL';
+  $('armed').className = 'armed ' + (armed ? 'on' : '');
+  $('mcstate').textContent = mcState === 'bound' ? 'MISSION CONTROL ✓ LINKED' : mcState === 'offline' ? (settings.mc ? 'MISSION CONTROL · OFFLINE' : 'MISSION CONTROL · NO ADDRESS') : `MISSION CONTROL · ${mcState.toUpperCase()}…`;
+  if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   const rows = presence.players().map(p => {
     const alive = !!(p.state & PLAYER_STATE.alive);
     return `<div class="row ${p.present ? 'near' : ''}"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres">${p.present ? 'AT STATION' : ''}</span></div>`;
@@ -114,6 +150,7 @@ function render() {
 
 function wire() {
   $('btnStart').onclick = () => (advertising ? stopAdvert() : startAdvert());
+  $('btnMc').onclick = () => connectMc($('mcUrl').value.trim());
   $('btnHud').onclick = async () => { await stopAdvert(); try { localStorage.setItem('brx.role', 'hud'); } catch (_) { /* ignore */ } location.replace('index.html?hud'); };
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };
@@ -144,11 +181,12 @@ function wire() {
   log(`utility mode · ${support.platform} · advertise ${support.advertising ? 'yes' : 'NO'} · tx control ${support.txPowerControl ? 'yes' : 'no'}`);
   if (settings.live) await startAdvert();   // it was live when the phone last ran: come straight back up
   render();
+  const url = mcUrl(); if (url && !DEMO) connectMc(url);   // setup needs WiFi (A13.5); once armed, play does not
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, startAdvert, stopAdvert, render, log: logLines, stationUuid };
+  window.brxUtility = { settings, presence, startAdvert, stopAdvert, render, log: logLines, stationUuid, applyStationConfig, connectMc, get transport() { return transport; } };
   window.brxUtil = window.brxUtility;
 })();
 

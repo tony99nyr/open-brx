@@ -41,6 +41,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .hero .status{display:inline-block;margin-top:12px;padding:6px 16px;font:700 12px var(--fl);letter-spacing:.24em;border:1px solid var(--edge);color:var(--mut);transform:skewX(-10deg)}
 .hero .status.on{background:var(--ok);color:#03140a;border-color:var(--ok);box-shadow:0 0 30px -8px var(--ok)}
 .hero .revives{margin-top:12px;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.1em;color:var(--ok);min-height:1em}
+.hero .armed{margin-top:10px;font:700 11px var(--fl);letter-spacing:.24em;color:var(--mut)}.hero .armed.on{color:var(--glow)}
 
 /* ---- players in range: a read-only readout (the host glances; players learn nothing they can use) ---- */
 .panel{background:var(--plate);border:1px solid var(--edge);padding:12px 14px}
@@ -92,6 +93,7 @@ input[type=range]{width:100%;accent-color:var(--team);margin:6px 0}
     <div class="sid" id="sid"></div>
     <div><span class="status off" id="status"></span></div>
     <div class="revives" id="revives"></div>
+    <div class="armed" id="armed"></div>
   </section>
 
   <section class="panel players">
@@ -109,6 +111,13 @@ input[type=range]{width:100%;accent-color:var(--team);margin:6px 0}
       <button class="btn primary" id="btnStart"><span class="unskew">START</span></button>
       <button class="btn" id="btnHud"><span class="unskew">BACK TO HUD</span></button>
     </div>
+
+    <section class="panel">
+      <h3>MISSION CONTROL</h3>
+      <div class="hint" id="mcstate"></div>
+      <div class="hint">At muster the host arms this phone from Mission Control (kind, team, id, threshold) over Wi-Fi. Once armed it needs no Wi-Fi to play. The address is the one the HUD joined with; the HUD's SCAN QR fills it in.</div>
+      <div class="rowc" style="margin-top:8px"><input id="mcUrl" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMc"><span class="unskew">CONNECT</span></button></div>
+    </section>
 
     <section class="panel">
       <h3>WHAT THIS PHONE IS</h3>
