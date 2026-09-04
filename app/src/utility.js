@@ -74,11 +74,14 @@ function tick() {
   const now = Date.now();
   presence.defaultThreshold = settings.threshold;
   presence.tick(now);
+  const seen = new Set();
   for (const p of presence.players()) {
+    seen.add(p.id);
     const alive = !!(p.state & PLAYER_STATE.alive); const was = wasAlive.get(p.id);
     if (was === false && alive && p.present && settings.kind === 'respawn') { revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here`, 'lk'); }
     wasAlive.set(p.id, alive);
   }
+  for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);   // don't grow unbounded over a long session
   render();
 }
 

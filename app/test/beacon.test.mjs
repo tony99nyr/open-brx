@@ -27,6 +27,8 @@ test('decode accepts uppercase (iOS) and dashless forms; rejects foreign uuids a
   assert.equal(decodeUuid('6e400001-b5a3-f393-e0a9-e50e24dcca9e'), null, 'the Nordic UART uuid is not ours');
   assert.equal(decodeUuid(u.replace('4f425258-01', '4f425258-02')), null, 'a future version is not decoded by this codec');
   assert.equal(decodeUuid('garbage'), null);
+  assert.equal(decodeUuid(u.slice(0, -1) + 'g'), null, 'a non-hex nibble is rejected, not parsed as a smaller value');
+  assert.equal(decodeUuid(u + 'ff'), null, 'wrong length is rejected');
   assert.equal(decodeAdvert(['6e400001-b5a3-f393-e0a9-e50e24dcca9e', u]).kind, 'bomb', 'finds ours among several');
   assert.equal(decodeAdvert([]), null);
 });

@@ -44,9 +44,8 @@ export function encodeUuid({ role, id = 0, kind = 0, team = TEAM_ANY, state = 0,
 /** Parse a UUID string; null when it is not an Open BRX advert. Accepts either case, with or without dashes. */
 export function decodeUuid(s) {
   const h = String(s || '').replace(/-/g, '').toLowerCase();
-  if (h.length !== 32) return null;
+  if (!/^[0-9a-f]{32}$/.test(h)) return null;   // strict: parseInt('4g',16) would yield 4, not NaN
   const b = []; for (let i = 0; i < 32; i += 2) b.push(parseInt(h.slice(i, i + 2), 16));
-  if (b.some(Number.isNaN)) return null;
   if (b[0] !== MAGIC[0] || b[1] !== MAGIC[1] || b[2] !== MAGIC[2] || b[3] !== MAGIC[3]) return null;
   if (b[4] !== VERSION) return null;
   const role = b[5] === ROLE.station ? 'station' : b[5] === ROLE.player ? 'player' : null;

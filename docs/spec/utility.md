@@ -67,15 +67,20 @@ carries the TX-power field so a scanner can do path-loss later; 21–24 bytes, i
 NEAREST PLAYER**; the threshold becomes that phone's smoothed reading minus 3 dB and goes out in the advert.
 The HUD shows the live reading against the threshold on the DOWN screen (§4.3), so the edge is visible.
 
-**Presence** (`beacon.js Presence`, both roles): EMA of RSSI (α 0.35); **present** after `dwellMs` (2 s)
-continuously at/above the threshold; **gone** when the EMA drops `hysteresisDb` (6) below it, or after
+**Presence** (`beacon.js Presence`, both roles): EMA of RSSI (α 0.35); **present** after `dwellMs` continuously at/above the threshold; **gone** when the EMA drops `hysteresisDb` (6) below it, or after
 `expiryMs` (4 s) with no advert. Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
 the advertised threshold overriding the default, neutral admitting every team, other games ignored.
+
+**Bench-tuned defaults 2026-09-04:** threshold **-74 dBm** at **high** TX, dwell **0.8 s** — get in range, a brief pause, green; about a 10 ft radius. -74 + 0.8 s is the shipped default in `app/src/app.js` (player presence) and `utility.js` (station). Phone-to-phone RSSI falls off fast up close, so at 3 in it reads ~-53: the bubble is genuinely small, which is what a respawn point wants.
+
+**Scan reliability (Android):** a BLE scan left running goes silently deaf — `scanning` stays true but callbacks stop (hardware 2026-09-04: a down player at the station saw "find a respawn station" until a fresh scan was forced). `app.js` fights this: scan at low-latency, kick a fresh scan the instant the player goes DOWN, and restart every **7 s** while hunting a station (slower otherwise). 7 s keeps the death-kick + steady restarts under Android's ~5-starts-per-30 s throttle; a scan that dies mid-match is restarted on the next tick (the intent flag `beaconWanted`), so a single failed start can't freeze presence for the game.
 
 **What radio cannot give:** a shape. The bubble is a fuzzy sphere: it leaks through drywall, shrinks behind a
 body, and is not directional. That is why the respawn gate below requires an act, not just proximity. For
 area effects (blast, extraction zone) the fuzziness is acceptable. A hard edge needs line of sight, which is
 the QR-on-screen method — a last resort, not built.
+
+**Security posture (be honest):** adverts are **unauthenticated** — any BLE device can broadcast one, and the station *dictates* its own team and "at me" threshold to every player. So the only real gates on a revive are: the gun must be **physically dead**, the player must **pull the trigger**, and the station id must be on the game's `config.stations` **allow-list** (small integers — weak). A determined player can carry a second phone in utility role advertising a team-matched station with `threshold:-100` and revive themselves anywhere. This is an **accepted casual-threat tradeoff** (friends on a LAN), not a proximity *guarantee*. The `game` byte scopes presence to one match (a station on a different non-zero game byte is ignored) but is **best-effort**: manual stations default to game 0 ("any"), so today two nearby games must use **disjoint station ids**; real per-match scoping waits on MC assigning stations (§5). For a hard, un-spoofable edge, the QR-on-screen method is the only option.
 
 ## 4. The scanner respawn (v1, built and unit-tested)
 
@@ -141,8 +146,22 @@ carries the allow-list; stations are self-authoritative and report at recap (MC 
 
 ## 7. Open
 
-- Measure RSSI vs distance at each TX level, phone-to-phone, and pick the default threshold (-62 is a guess).
-- Restart the HUD's beacon scan on a 25-min timer (Android opportunistic-scan demotion).
-- Station kinds 2–5 state machines; MC muster assignment; `config.stations` from the compiler.
-- HUD DOWN-screen states (§4.3) and a styled utility screen — brx-hud.
-- iOS build + test of `BrxBeaconPlugin.swift` on the MacBook.
+Verified on two Pixels 2026-09-04 (respawn end to end). Followups, roughly in priority:
+
+- **LEDs during respawn (gameplay feel, Tony 2026-09-04).** In native mode a downed/out player's HEADSET
+  blinks GREEN so others can see they're out and come revive them; our host-driven scanner respawn leaves the
+  gun + headset DARK. The node should paint the headset green out-blink (`$HLED`) on death and clear it on
+  revive (`frames.revive` already re-paints team colour). `$HLED` holds on a spawned gun (bench, `hled_spawned.py`),
+  so this is engine frame-writing, not HUD. Decide the `$GLED` (gun body) look while down too.
+- **Reconnect / new-match reconciliation.** A rejoin can land alive-with-0-hp; the §3.10 trigger-first resync
+  needs a trigger pull to reconcile; a new match started on a just-reconnected node doesn't spawn clean. The
+  resync/hydrate path is unit-tested only — harden it on hardware.
+- **Station doesn't see player adverts at high TX (intermittent).** Fine for respawn (all player-side) but
+  gates bomb/extraction, where the station must read players. Suspect scanning-while-advertising on one radio.
+- **Per-match scoping.** MC assigns station ids + a game byte at muster so two nearby games don't cross
+  (today: disjoint ids, §3 security). `config.stations` from the compiler.
+- Station kinds 2–5 state machines (powerup/extraction/bomb/control) + MC muster assignment.
+- iOS build + test of `BrxBeaconPlugin.swift` on the MacBook (the superseded-start + power-toggle re-assert
+  paths are written but unbuilt).
+- Bench-tuned defaults are -74 dBm / 0.8 s / high TX (§3); revisit per station-kind (an extraction zone wants
+  a looser, bigger bubble than a respawn point).

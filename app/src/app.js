@@ -103,9 +103,15 @@ engine.onEnd = (g) => { try { const h = hud.history || []; h.push(g); while (h.l
 // duty cycle, feeding Presence; the engine gets a snapshot every tick (utility.md §3). Nothing here blocks
 // the match: with no plugin (desktop) or no stations in range the HUD behaves exactly as before.
 const presence = new Presence({ defaultThreshold: -74, dwellMs: 800 });   // 0.8s dwell + -74 threshold: get-in-range, brief pause, green (bench-tuned 2026-09-04)
-let beaconScanning = false;
+let beaconScanning = false, beaconWanted = false;
 const stationWas = new Map();
+// The match's game byte scopes presence to THIS game (beacon.js Presence `game` filter): a station that
+// advertises a different non-zero game byte is ignored. 0 = "any game" on both sides (manual stations
+// default to it), so this is best-effort until MC assigns stations — the `config.stations` allow-list is
+// the primary scope. Derived from config_id so both this player and (later) an MC-assigned station agree.
+function gameByte(id) { let h = 0; for (const c of String(id || '')) h = (h * 31 + c.charCodeAt(0)) & 0xff; return h; }
 async function startBeaconScan() {
+  beaconWanted = true;                       // remember the intent so the interval can recover a scan that dies
   if (beaconScanning || scanning || !isNative()) return;
   beaconScanning = true;
   try {
@@ -124,19 +130,26 @@ async function startBeaconScan() {
 // go below ~6 s). A fresh scan is also kicked the instant the player goes down, so the walk to the
 // station starts against a live scan.
 let _lastAlive = true, _lastRescan = 0;
-async function refreshBeaconScan() {
-  if (!beaconScanning || scanning) return;
-  try { await link.stopScan(); beaconScanning = false; await startBeaconScan(); _lastRescan = Date.now(); } catch (_) { /* ignore */ }
+async function refreshBeaconScan() {   // stop+start; recovers a stalled scan whose callbacks Android silently paused
+  if (scanning) return;
+  try { if (beaconScanning) { await link.stopScan(); beaconScanning = false; } await startBeaconScan(); _lastRescan = Date.now(); } catch (_) { /* ignore */ }
 }
 setInterval(() => {
   const st = engine.state();
+  presence.game = st.config ? gameByte(st.config.config_id) : 0;   // scope presence to this game (best-effort; §utility)
   const down = st.phase === 'live' && !st.alive && st.respawnType === 'scanner';
-  if (_lastAlive && !st.alive && down) { refreshBeaconScan().catch(() => {}); }   // just died → kick immediately
+  if (_lastAlive && !st.alive && down) { _lastRescan = Date.now(); refreshBeaconScan().catch(() => {}); }   // just died → kick immediately (stamp so the period branch below doesn't double-fire this tick)
   _lastAlive = st.alive;
-  const period = down ? 6000 : 90000;                                             // fast while hunting a station, slow otherwise
+  if (!beaconWanted || scanning) return;
+  // Recover a scan that got stuck OFF: startBeaconScan()'s catch leaves beaconScanning=false, and without
+  // this the old `!beaconScanning` guard meant a single throw froze presence for the rest of the match
+  // (correctness review 2026-09-04). Any tick with the intent set but no live scan restarts it.
+  if (!beaconScanning) { startBeaconScan().catch(() => {}); _lastRescan = Date.now(); return; }
+  const period = down ? 7000 : 90000;   // 7s (not 6s) keeps the death-kick + steady restarts under Android's ~5/30s cap
   if (Date.now() - _lastRescan >= period) refreshBeaconScan().catch(() => {});
 }, 1000);
 async function stopAnyScan() {
+  beaconWanted = false;   // the picker owns the radio now; onPick/rejoin re-arm the beacon watch after connecting
   if (scanning || beaconScanning) { await link.stopScan(); scanning = false; beaconScanning = false; }
 }
 function presenceTick() {
@@ -155,7 +168,7 @@ async function syncPlayerAdvert() {
   const st = engine.state();
   const num = st.playerNum, tid = engine.teamTid;
   const want = (num != null && tid != null && st.phase !== 'idle')
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: st.alive ? 1 : 0 }) : null;
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: st.alive ? 1 : 0, game: st.config ? gameByte(st.config.config_id) : 0 }) : null;
   if (want === playerAdvert) return;
   playerAdvert = want;
   try {
@@ -338,8 +351,9 @@ async function rejoinGun() {
     scheduleRender();
   });
   scanning = true;
-  // if it never appears, the SET GUN button (picker) is still there — leave the scan open so it can
-  setTimeout(() => { if (!done && !link.connected) log('remembered gun not seen yet — tap SET GUN to choose', 'li'); }, 12000);
+  // If the remembered gun never appears, don't leave this scan running forever (battery + it blocks the
+  // beacon watch): fall back to the normal picker, which restarts a fresh scan the operator can choose from.
+  setTimeout(() => { if (!done && !link.connected) { done = true; log('remembered gun not seen — opening the picker', 'li'); hud.h.onSetGun().catch(() => {}); } }, 12000);
 }
 
 function splitName(name, deviceId) { const m = /^(.*)-([0-9A-Fa-f]{4})$/.exec(name || ''); if (m) return { basename: m[1], tail: m[2].toUpperCase() }; return { basename: name, tail: String(deviceId || '').replace(/[^0-9a-f]/gi, '').slice(-4).toUpperCase() }; }
