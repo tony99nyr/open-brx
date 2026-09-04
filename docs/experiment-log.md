@@ -6400,3 +6400,19 @@ wall pixels above +100, i.e. the WALL is beginning to clip, so the true peak is 
 Tony, by eye: "its like 100x brighter". **Standing result: `$LED` fires the same small LED but at a fraction of
 the firmware's drive and for a fraction of the time; no BLE frame found tonight reaches the native flash.** Design:
 hits and native flashes stay the firmware's; our `$LED` green flash marks kills (A11.8) -- visible, not native-bright.
+
+### 2026-09-04 (late night) — 📷 WALL-REFLECTION MEASUREMENT: the native green flash beats ours by AT LEAST 2x, and the camera can only bound it from below
+
+Method (Tony's): the phone camera aimed at a dark WALL, LEDs out of frame, metric = mean brightening of the frame vs
+the run's median (`led_flashcam.py`, `wall` column) and its integral. Take A (gun armed by the stage over BLE):
+`$LED,9,1,1,1,*` x3 -> **wall peak 44.1 / 44.3 / 41.2, integral 135-156, 2-4 frames, zero clipped pixels.** Take B
+(BLE released, R0BQT power-cycled into a NATIVE quick game, the native headset taken OUT of respawn after a first
+take was contaminated by its blink, same camera position, three emitter hits on the headset dome, quiet baseline
+0.5): **wall peak 94.1 / 93.1 / 94.1 with ~91k of 162k wall pixels above +100 -- the WALL itself clips, so the true
+peak is well above 94 -- integral 345 / 348 / 331, 4 frames (~66 ms, same duration as ours).** So: native >= 2.1x
+peak and >= 2.4x total light by the camera, with the real ratio higher (bounded from below by clipping); Tony by eye:
+"its like 100x brighter". The earlier "200-300 ms native flash" was the other headset's respawn blink -- retracted.
+**Standing result: `$LED` fires the same small LED for the same ~66 ms but at a fraction of the firmware's drive; no
+BLE frame found tonight reaches the native flash.** Design: hits and native flashes stay the firmware's; our `$LED`
+green flash marks kills (A11.8) -- visible, not native-bright. To bound the ratio from above: an ND filter or a
+manual-shutter camera so the wall stops clipping.
