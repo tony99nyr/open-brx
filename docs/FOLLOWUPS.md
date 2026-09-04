@@ -2043,3 +2043,4 @@ so several of these are settled from data rather than recollection.
   `$WEAP` frame against the APK's switch-delay field, or time ALT→first `$ALCD` on the new slot with and without a
   candidate token changed) and wire it through `compile._mods` like `reload_mult`; until then the perk is
   `verified:false` and its desc says what it really does.
+  **Bench plan with the exact frames: `docs/bench-weap-tokens-2026-09-04.md`** (also lists every `$WEAP` token we send blind).

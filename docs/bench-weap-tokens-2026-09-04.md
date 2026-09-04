@@ -1,0 +1,94 @@
+# Bench plan: the weapon-swap delay token, and every `$WEAP` token we write blind
+
+Written 2026-09-04 for the next bench session. Two things in here: **experiment 1**, a one-frame test that
+may make the Quick Switch perk real (and close FOLLOWUPS F4 + F22 in one go), and the **list Tony asked
+for**: every `$WEAP` token we send with the same value on all 21 weapons without knowing what it does.
+
+Read `docs/experiment-log.md` and the measurement rules in `docs/HANDOFF.md` first. Check the control
+before the result. `$WEAP` is on the known-safe list; nothing here needs a confirm.
+
+## Experiment 1: is `t15` (the constant 850) the weapon-swap delay?
+
+**Why we think so.** Every captured Callsign frame carries `850` at token 15 (melee alone has `100`);
+the APK's field-order metadata reads `… rateOfFire, weaponSwapDelay …` and the frame-diff put the
+rate at t14 (bench-proven 2026-08-26), which leaves t15 as `weaponSwapDelay`. The token table in
+`protocol/callsign-extract/protocol-classes.md` still says "constant 850, function unknown — do not
+write" from before that reasoning; this experiment settles it. The compiler never writes t15.
+
+**What we measure.** ALT → first `$ALCD` on the new slot, with the trigger HELD from the moment ALT is
+pressed, so the first shot goes out the instant the gun allows it and the player's reaction time is
+out of the number. The phone logs it already: `slot 0->1 confirmed Nms after ALT (incl. reaction)`
+(engine.js `lastSwitchMs`, visible in the ⓘ diagnostics log), or read the `$BUT,1,1` → `$ALCD,…,1,…`
+gap straight off `python.exe -m brx_mcp listen`.
+
+**Frames.** Arm a two-weapon gun the way a try-out does (volume low, indoors):
+
+```
+$VOL,30,0,*
+$CLEAR,*
+$START,*
+$GSET,0,1,1,0,1,0,50,1,*
+$SIR,0,0,,1,0,0,1,,*
+$TID,1,*
+$BMAP,1,100,0,1,99,99,*          ← ALT = weapon-cycle (captured Callsign mapping)
+$WEAP,0,,100,0,0,9,0,,,,,,,,140,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*
+$WEAP,1,,100,0,0,8,0,,,,,,,,140,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*
+$SPAWN,,*
+$PLAYX,0,*
+$AMMO,0,32,192,1,*
+$AMMO,1,72,288,1,*
+```
+
+(the two `$WEAP` lines are exactly what MC sends today for the Assault Rifle and the SMG — copied from
+`WeaponCatalog.resolve()` on 2026-09-04; regenerate them if the catalog moves.)
+
+Runs, five ALT presses each, trigger held, note every gap:
+
+| run | slot 0 t15 | slot 1 t15 | expect if t15 is the swap delay |
+|---|---|---|---|
+| A control | 850 | 850 | ~850 ms + BLE latency, tight spread |
+| B doubled | 1700 | 1700 | ~1700 — the positive control; a doubled delay is unmistakable, do this BEFORE the halved run |
+| C halved | 425 | 425 | ~425 |
+| D incoming only | 850 | 425 | tells us whether the delay belongs to the weapon being drawn… |
+| E outgoing only | 425 | 850 | …or the one being stowed |
+| F melee value | 100 | 100 | the floor: does the gun clamp? |
+
+Swap both directions (0→1 and 1→0) in each run; the gap for 1→0 uses slot 1's value if D/E say
+"outgoing". Re-run A at the end so drift is visible.
+
+**Decision.** If B ≈ 1700 and C ≈ 425: t15 is the swap delay. Then (1) `compile._mods` scales t15 by
+`switch_mult` exactly as it scales t18 by `reload_mult`, and `perks.json` flips `quick_switch` to
+`verified: true`; (2) the node's `SWITCH_MAX_MS` guess goes away — MC carries the resolved swap delay
+per weapon into the bundle (or the HUD reads t15 off the frame) and the SWITCHING takeover runs for the
+real number; (3) F4 and F22 close. If B ≈ 850: t15 is not the delay, mark it "tested, inert for swap"
+in the token table, and Quick Switch falls back to the phone-driven swap idea (F22).
+
+## The list: tokens we send identical on every weapon, with no compile key and no verified meaning
+
+From `WeaponCatalog.resolve(id, 0)` across all 21 catalog weapons (2026-09-04). `∅` = empty field.
+
+| tok | we send | documented guess (APK field order) | cheapest probe |
+|---|---|---|---|
+| t2 | `100` | "scale/enable const" | send 50 on the AR: does damage, range or rate change? does the gun still fire? |
+| t6 | `0` | primaryCriticalChance | send 100: do hits land as crits (bigger `$HIR` dmg / different sound)? |
+| t7–t11 | `∅` | the secondary-fire block (fireChance, damageType, powerType, damage, critChance) | empty in every Callsign capture too; fill t7=100,t10=5 and see whether ALT-fire changes behaviour — low priority, ALT is our swap button |
+| **t15** | `850` | **weaponSwapDelay** | **experiment 1 above** |
+| t21 | `100` | maxAccuracy | send 0 or 50: do shots stop registering / register less? (needs a target gun + the IR rig) |
+| t22 | `100` | singleShotAccuracy | same probe as t21, one token at a time |
+| t30 | `∅` | secondary mix sound | inert until t7–t11 do something |
+
+Two more that are constant on the wire but are NOT blind: t41 `75` is gun range % (documented, we
+never vary it — a range perk would live here), and t19 reloadType is `0` on 20 weapons and `2` on
+one (the Plasma Sniper's shells) — UNVERIFIED that the gun honours it.
+
+Everything else we send either varies per weapon under a compile key (t3 t4 t5 t14 t16 t17 t18 t20
+t23 t24 t27–t29 t31–t34 t39 t40) or is a per-weapon flag we copy from the capture (t1 t12 t13 t25 t26
+t35–t38 t42). Frames are 42 tokens long; there is no t43/t44.
+
+## Order of work at the bench
+
+1. Experiment 1 runs A → B → C → D → E → F → A (B before C: the doubled value is the control that
+   proves the token is read at all).
+2. If time: t2 = 50, then t6 = 100, one token per run, control frame between runs.
+3. Log every run in `docs/experiment-log.md`; promote confirmed meanings into the token table in
+   `protocol/callsign-extract/protocol-classes.md` and `docs/manual/`.
