@@ -1297,7 +1297,9 @@ before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
 ## 🟠 S5 — MC ARMS THE UTILITY STATIONS AT MUSTER (A13.5, 2026-09-04 night; server side NOT built)
 
-Tony's design, spec'd by brx-grenade in contracts A13.5 + `docs/spec/utility.md` §5b/§5c (a1380f8). Server
+Tony's design, spec'd by brx-grenade in contracts A13.5 + `docs/spec/utility.md` §5b/§5c (a1380f8); the full
+plan (rows A1 station_config + hello · A2 ITEMS panel · A4 attention flags · A5 config.stations · A6 recap row ·
+C1 game byte) is `docs/utility-roadmap.md` (brx-hud, 9a7abbe). Server
 side is this session's (api.py / state.py / net + `webapp/mc`); the phone-side apply is brx-hud's. To build:
 1. **`hello role: "utility"`** accepted by the node server and listed separately from player nodes.
 2. **ITEMS panel** in KIT/muster: assign kind / team / station id / threshold per utility phone; MC pushes
