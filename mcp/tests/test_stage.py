@@ -259,3 +259,25 @@ def test_set_emitter_refuses_a_port_that_does_not_pong():
         assert st.bridge is None
     finally:
         IB.IRBridge = real
+
+
+def test_a_dropped_link_is_noticed_and_a_write_reconnects_once():
+    async def run():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        mgr.drop("stage")                                        # the gun went away under us
+        assert st.poll() == [] and st.connected is False
+        assert any("dropped the BLE link" in l["text"] for l in st.log)
+        st.connected = True                                      # the page still thinks it is linked; a write must self-heal
+        calls = {"n": 0}
+        real_send = mgr.send
+        async def flaky(alias, cmd, reply_window_ms=0):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("Not connected")
+            return await real_send(alias, cmd, reply_window_ms=reply_window_ms)
+        mgr.send = flaky
+        await st.arm()
+        assert st.connected and any("reconnected" in l["text"] for l in st.log)
+        assert tx(mgr)[:2] == st.bundle["head"][:2]
+    asyncio.run(run())

@@ -237,12 +237,36 @@ class GunStage:
             return
         for f in frames:
             self._log(f, "tx", why)
-        if self.connected:
-            if hasattr(self.mgr, "send_batch"):
-                await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms)
-            else:                                   # the fake manager: one send per frame
-                for f in frames:
-                    await self.mgr.send(self.alias, f, reply_window_ms=0)
+        if not self.connected:
+            return
+        try:
+            await self._send(frames, gap_ms)
+        except Exception as e:
+            # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
+            # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
+            self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
+            self.connected = False
+            await self._reconnect()
+            await self._send(frames, gap_ms)
+
+    async def _send(self, frames: list[str], gap_ms: int) -> None:
+        if hasattr(self.mgr, "send_batch"):
+            await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms)
+        else:                                       # the fake manager: one send per frame
+            for f in frames:
+                await self.mgr.send(self.alias, f, reply_window_ms=0)
+
+    async def _reconnect(self) -> None:
+        if not self.address:
+            raise RuntimeError("no gun address to reconnect to")
+        try:
+            await self.mgr.disconnect(self.alias)
+        except Exception:
+            pass
+        await self.mgr.connect(self.address, self.alias)
+        self.connected = True
+        self._last_seq = 0
+        self._log(f"reconnected {self.address}", "ok")
 
     async def _seq(self, steps: list, why: str, headset: bool = False) -> None:
         """[[frame, hold_s], …] with real holds, like engine.js `_event` / `_headset`."""
@@ -442,6 +466,11 @@ class GunStage:
     def poll(self) -> list[str]:
         """Drain new rx frames; with auto-react on, play the victim-side overlay the phone would."""
         if not self.connected:
+            return []
+        is_up = getattr(self.mgr, "is_connected", None)
+        if is_up is not None and not is_up(self.alias):
+            self.connected = False
+            self._log("the gun dropped the BLE link -- press CONNECT (or any write reconnects)", "warn")
             return []
         try:
             ev = self.mgr.get_events(self.alias, since_seq=self._last_seq)
