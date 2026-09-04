@@ -90,7 +90,16 @@ export class Hud {
     // edge-to-edge and reports env(safe-area-inset-top) as 0 — so the top-right ⓘ sat under it (Tony, device
     // 2026-09-04). Native builds get a fixed top margin across the whole frame; the frame scales into what is left.
     const st = this.frame.parentElement;
-    if (st && !this._nativeInset) { this._nativeInset = true; try { const C = window.Capacitor; if (C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) { st.style.paddingTop = 'max(env(safe-area-inset-top, 0px), 28px)'; st.style.paddingBottom = 'max(env(safe-area-inset-bottom, 0px), 14px)'; }   // + the gesture-nav pill along the bottom edge (Pixel screenshot 2026-09-04) } catch (_) { /* browser */ } }
+    if (st && !this._nativeInset) {
+      this._nativeInset = true;
+      try {
+        const C = window.Capacitor;
+        if (C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) {
+          st.style.paddingTop = 'max(env(safe-area-inset-top, 0px), 28px)';
+          st.style.paddingBottom = 'max(env(safe-area-inset-bottom, 0px), 14px)';   // + the gesture-nav pill along the bottom edge (Pixel screenshot 2026-09-04)
+        }
+      } catch (_) { /* browser */ }
+    }
     // the stage's CONTENT box: the viewport minus that padding, so the frame never sits under a bar or a notch
     const w = (st && st.clientWidth) || window.innerWidth, h = (st && st.clientHeight) || window.innerHeight;
     const cs = st && typeof getComputedStyle === 'function' ? getComputedStyle(st) : null;
