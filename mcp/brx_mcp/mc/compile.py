@@ -711,7 +711,7 @@ class Compiler:
         if mode in {"domination", "koth", "ctf", "cs", "bomb"} and not opts.get("station_source"):
             errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set opts.station_source")
 
-        # unknown weapon / perk ids; a perk never rides with a secondary weapon (loadout.md §2)
+        # unknown weapon / perk ids; a perk rides BESIDE a secondary weapon (A14) -- the ALT-button pairing is refused by policy.py before it gets here
         for p in roster:
             lo = p.get("loadout", {}) or {}
             for w in lo.get("weapons", []):
@@ -720,8 +720,6 @@ class Compiler:
             perk = lo.get("perk")
             if perk and not self.perks.has(perk):
                 errors.append(f"unknown perk_id {perk!r}")
-            if perk and len(lo.get("weapons", [])) > 1:
-                errors.append(f"{p.get('display', p.get('player_id'))}: a perk and a secondary weapon cannot both fill slot 2")
 
         # a weapon must be able to kill on one magazine: mag >= ceil(pool / dmg).
         # `docs/weapon-design.md` §2.1 — the rail gun and energy launcher shipped at mag 1 needing 2 hits,
