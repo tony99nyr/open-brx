@@ -38,9 +38,14 @@ screen. The MC screen also shows a QR of the same URL. The Python reference node
 ## Tests
 
 ```bash
-node --test test/engine.test.mjs        # engine (node.md §3, A6) — 15 tests
+node --test test/engine.test.mjs        # engine (node.md §3, A6)
 node --test test/transport.test.mjs     # the wire (needs ../.venv for the integration test)
+node --test test/beacon.test.mjs        # the utility-item advert codec + presence
+npm run ui:screens                      # screen truth: what a person sees, per state (tools/README.md)
 ```
+
+**Reviewing or changing a screen?** Start `npm run ui:stage`, jump to the state, and add a `screens.mjs` step
+that fails before the fix (see `docs/hud-review-2026-09-03.md` for how the last review was run).
 
 (Run the two files separately — each integration test spins up a server, so a single
 `node --test test/` can clash on resources.)
@@ -84,6 +89,11 @@ npm run ios:open        # open the project in Xcode  (needs full Xcode)
 npm run android:setup   # build, add the Android platform if missing, sync
 npm run android:apk     # build the APK the public site hands out (-> webapp/download/)
 npm run sync            # build + sync every platform already added
+
+npm run ui:stage        # the STAGE harness: the real HUD + the utility screen in a phone frame, every state,
+                        #   an event panel (fire / hit / death / respawn / reload / switch / kill / alerts…) → http://localhost:4190/
+npm run ui:screens      # the screen-truth suite (tools/screens.mjs): every reviewed screen state at two widths
+npm run ui:moments      # the transient-moment suite; npm run ui:e2e = the full browser suite against a real MC
 ```
 
 ### Publishing the Android build

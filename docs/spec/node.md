@@ -456,7 +456,8 @@ Blackout means **truly dark**, not "dark theme":
 | LIVE · DOWN | **red + respawn count** | health 0, ammo dim | stat row frozen | "☠ by <NAME> · <TEAM>"; countdown = `deadline_s` |
 | WS DISCONNECTED (any) | amber "RECONNECTING…" strip | last-known, dimmed | last-known | non-destructive; returns to prior state; expected for most of a park match |
 | BLE DROPPED (any) | red "GUN LINK LOST" strip | frozen | frozen | the seed's retry loop, unbounded while ARMED/LIVE |
-| BLE RELINKED (ARMED/LIVE) | amber "GUN RELINKED — pull the trigger" | frozen until classified | frozen | §3.10 observe window (`RESYNC_PROBE_S`); resolves to ALIVE / DOWN / re-arm |
+| BLE RELINKED (LOBBY/ARMED) | amber "GUN RELINKED — pull the trigger" | frozen until classified | frozen | §3.10 observe window (`RESYNC_PROBE_S`); resolves to ALIVE / DOWN / re-arm |
+| BLE RELINKED (LIVE) | **RECONCILING takeover** "GUN RELINKED · SYNCING WITH YOUR GUN · weapon disarmed for a moment" | real pools kept | frozen | S7.1 (2026-09-04): a live rejoin never infers a death and never heals; 3 s disarmed, then re-armed at the real HP; no trigger pull asked |
 | preflight fail (any) | small red chip, top strip | — | — | Wi-Fi/MC/battery/screen/gun/headset; tap → §5 |
 
 **Honesty rule (README §3, contracts §4):** **Kills, Assists, Accuracy render literally as "— MC"**
@@ -472,6 +473,30 @@ flushes its `event_batch` and MC pushes the row back. Until the next zone the ro
 last snapshot with a **"⟳ last synced Nm ago"** age so the player knows it is a snapshot, not live.
 Design the venue so every death is a sync point (respawn inside coverage) and the row catches up every
 life.
+
+### 4.5 Takeovers and moments (built 2026-09-03/04; the review log is `docs/hud-review-2026-09-03.md`)
+
+Two kinds of overlay sit on the LIVE screen. **Takeovers** are persistent and own the screen while a state
+holds (the chip bar hides under them); **moments** are transient and stack above whatever is up.
+
+| overlay | kind | trigger | copy / what it shows | ends |
+|---|---|---|---|---|
+| RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag comes back (`$ALCD` up), or `reload_s` + 600 ms; never while dead, in resync/reconcile, or with a dry reserve |
+| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | the next shot on the new slot → an ACTIVE ✓ confirm ("CONFIRMED BY YOUR GUN"), or the window expires → "READY" (assumed; the next `$ALCD` corrects `activeSlot`) |
+| RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
+| DOWN | takeover | death | auto mode: the countdown; scanner mode: the **lesson** — RUN TO YOUR TEAM'S RESPAWN STATION (then pull the trigger there / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the title alternates DOWN ⇄ RESPAWN AT STATION; a recap row: TIME LEFT · the race to the cap (team chips + FIRST TO n, **only while MC is linked**, from `score.board`) · YOU (deaths, shots; kills only when linked) | revive |
+| KILL CONFIRMED | moment (takeover-styled) | MC `feedback{kill}` | dims the HUD, KILL / CONFIRMED, the victim chip; **medal badges** land 2 s apart with the announcer lines (A11.4) | 1.8 s + 2 s per extra medal |
+| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary / perk), a light sweep, headline fitted to its column | 1.7 s |
+| HIT / GAIN | moment | `$HP` down / up | the damage number + the shooter's team chip / +n POOL; one fade in, one fade out, never a repeating flash | 0.7 s / 1 s |
+| ALERT | moment | MC `alert` or a node clock callout (A11.4) | a full-width band: OBJECTIVE (team colour) · CLOCK (amber) · ALERT (red) · MATCH (glow) + the text MC chose | 2.2 s |
+
+Rules that hold across all of them: one whiteout flash at most every 500 ms (WCAG 2.3.1) and none under
+`prefers-reduced-motion`; nothing in the top-right 48 px gutter (the ⓘ diagnostics button lives there; native builds
+also inset the whole frame 28 px under the status bar); the frame never shrinks below 844 CSS px (it is scaled, not
+reflowed); the header shows two dots, GUN and MC, and mid-match MC out of range is the amber dot only (a tap on the
+MC label shows the detail — playing out of range is the normal case); zero stats stay off the header; ACCURACY shows
+only once MC has counted ≥ 1 hit and ≥ 10 shots (hits come from the victims' phones); the result tally is **this MC
+session's** games (the phone's all-time count lives in the diagnostics; MC-owned totals are F24).
 
 ---
 

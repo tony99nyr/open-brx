@@ -23,6 +23,15 @@
 >   explicit rest frame, because a count-limited `$HLED` blink ending dark by itself is unverified.
 > - **MC console**: DESIGNER section 5, **ADVANCED — SOUNDS & LIGHTS** (read only): preset, switches,
 >   MC confidence, the headset block, the event table with SOURCE. An older server shows a restart banner.
+> - **HUD (brx-hud session, 2026-09-03/04):** the **STAGE harness** (`cd app && npm run ui:stage`) renders the real
+>   HUD and the utility screen in a phone frame at any state with an event panel — review and iterate WITHOUT an APK;
+>   the **screen-truth suite** (`npm run ui:screens`, ~160 steps at two widths, desktop scrollbars on) guards every
+>   item of the 51-row review in `docs/hud-review-2026-09-03.md`. Shipped: takeovers for RELOADING (catalog reload_s ×
+>   perk), SWITCHING (the gun's real tok15 swap delay from `FrameBundle.swap_ms`), KILL CONFIRMED (+ medal stacks),
+>   REDEPLOYED (with the kit), RECONCILING (a live rejoin's 3 s disarm), game-event ALERT banners; the DOWN screen
+>   teaches the scanner respawn (run → get closer → hold → pull the trigger, gate-aware) and recaps the race to the
+>   cap only while MC is linked; the result tally is per MC session (F24 queued for MC-owned totals); native
+>   builds inset the frame under the status bar. Open on the HUD side: F15–F21 in FOLLOWUPS.
 > - **APK 0.1.6 (debug)** = `a1380f8` (`dirty: false`; A11.7 gun-body opt-in, utility status screen, S5.2 clean
 >   spawn), site rebuilt and deployed. One later app commit is NOT in an APK yet: brx-hud's `e3490e3` (the
 >   utility phone's MC link + `station_config` apply), inert until the S5 server push exists -- cut 0.1.7 with S5. Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
