@@ -1308,6 +1308,19 @@ side is this session's (api.py / state.py / net + `webapp/mc`); the phone-side a
    stations keep their role between games unless changed; v1 adverts at game 0, scoped by the allow-list.
 Build with the ui-build-verify discipline (fresh + stale server, old session, every control visibly responds).
 
+**Phone-side wire facts (brx-hud, `app/src/utility.js`, 2026-09-04 night) the server must accept:**
+- `hello { node_id: "node-…" (its own, key prefix brxu, never the HUD's), node_type: "utility", app_ver: "utility",
+  seq_next }` -- NO gun, never binds a player. The node server must let a `node_type: "utility"` hello through
+  without a gun and without a "no gun" rejection.
+- Heartbeat: the transport's normal `status` envelope with body `{ role: "utility", kind, team (tid: 0 red · 1 blue ·
+  2 yellow · 3 green · 255 any), station_id, threshold, live, revives, armed }` -- what the ITEMS panel lists.
+- Apply: `{kind: "station_config", body: {kind, team, id, threshold?, game?, valid_ids?}}` as a normal MC→node
+  message; `team` may be a tid number or a team_id string (red|blue|yellow|green|any); absent `game` = 0. The phone
+  shows "MC-ARMED · GAME N", closes its drawer, starts advertising. A re-push re-arms; the only ack is the next
+  heartbeat's `armed: true`.
+- Harness: screen step #49 drives `applyStationConfig`; the real push can be tried against `python -m brx_mcp.mc
+  --demo` from `utility.html?mc=ws://…`.
+
 ## 🟢 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04) — BUILT the same night as an OPT-IN (A11.7); default still native
 
 `experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (R0BQT, Tony watching): a spawned gun breathes its
