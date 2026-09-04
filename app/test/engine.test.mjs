@@ -1270,3 +1270,19 @@ test('S5: a NEW match started while a reconnect resync is in flight clears it an
   assert.equal(h.eng.hp, 45, 'at full health, not 0');
   assert.equal(h.eng.matchId, 'm2');
 });
+
+test('S7: a new match started while the node is LIVE (rejoin) re-arms and spawns clean', () => {
+  // live in m1
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  assert.equal(h.eng.phase, 'live'); assert.equal(h.eng.alive, true);
+  // the rejoin limbo the hardware showed: still 'live' but the spawn state is stale (alive with no hp)
+  h.eng.hp = 0; h.eng.spawned = false; h.eng.alive = true;
+  // MC starts a NEW match m2 while the node is LIVE — the old code left phase 'live', resumeSchedule
+  // returned early, the T-0 spawn never ran, and hp stayed 0.
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  h.adv(10); h.eng.tick();
+  assert.equal(h.eng.matchId, 'm2');
+  assert.equal(h.eng.spawned, true, 'the new match actually ran the spawn');
+  assert.equal(h.eng.alive, true);
+  assert.equal(h.eng.hp, 45, 'at full health, not the stale 0');
+});

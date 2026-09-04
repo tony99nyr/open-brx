@@ -392,14 +392,20 @@ export class Engine {
     if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
     this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
-    if (body.match_id !== this.matchId) { this.score = null; this.scoreAt = null; }   // a new match: last match's K/A/board must not show on the first DOWN
+    const newMatch = body.match_id !== this.matchId;
+    if (newMatch) { this.score = null; this.scoreAt = null; }   // a new match: last match's K/A/board must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
-    // until the player pulls the trigger (bench 2026-09-04, S5). Clear it so the new match spawns clean.
+    // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
     if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
+    // A new match must SPAWN even if the node is already `live` from a rejoin of the OLD match. Without
+    // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
+    // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
+    // stale live/down state so the new match re-arms → spawns.
+    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; }
     this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
-    if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed') this._set('armed');
+    if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed' || (newMatch && this.phase === 'live')) this._set('armed');
     this._save();
     return this.resumeSchedule();
   }
