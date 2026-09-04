@@ -775,10 +775,11 @@ test('A11.6 headset: white flash at the whistle then dark; hit flash then dark; 
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_scored', text: 'FLAG CAPTURED', player_id: 'p1', carrier: 'p1', t: h.eng.now() }, t: h.eng.now() });
   assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), [hs.rest], 'scored -> back to rest');
-  // death: default leaves the firmware's green out-blink alone; respawn: white flash then rest
+  // death: paint the out-blink the bundle carries (default is now the green slow-blink — A11.6, presentation.py);
+  // respawn: white flash then rest
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
-  assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0, 'native out-blink: we write nothing');
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), hs.death.map(x => x[0]), 'death paints the headset out-blink');
   h.adv(9000); h.writes.length = 0; h.eng.tick();                      // the auto respawn (delay 8 s) fires in this tick
   for (const f of hs.respawn.map(x => x[0])) assert.ok(h.writes.includes(f), 'respawn frame missing: ' + f);
 });
@@ -1116,4 +1117,42 @@ test('scanner: at the station during the delay shows HOLD, then PULL TRIGGER onc
   assert.equal(h.eng.state().respawnHint, 'pull_trigger');
   h.frame('$BUT,0,1,*');
   assert.equal(h.eng.alive, true);
+});
+
+// ---------- A11.6: the headset out-blink re-asserts through a long DOWN (utility.md §7, respawn LEDs) ----------
+const OUTBLINK = '$HLED,3,2,400,400,10,200,*';   // green slow-blink, ~160 s; what presentation.py emits for death
+
+test('death paints the headset out-blink, and it re-asserts while the player stays down', () => {
+  const h = harness({ respawn: 'scanner' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.frames.headset = { ...(h.eng.frames.headset || {}), death: [[OUTBLINK, 0.0]] };
+  const count = () => h.writes.filter(f => f === OUTBLINK).length;
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(count(), 1, 'the out-blink is painted once on death');
+  h.adv(4000); h.eng.tick();
+  assert.equal(count(), 1, 'no re-assert inside the 5 s F13 settle window');
+  h.adv(2000); h.eng.tick();
+  assert.equal(count(), 1, 'still down 6 s in — the ~160 s blink has not run out, no re-assert yet');
+  h.adv(120000); h.eng.tick();
+  assert.equal(count(), 2, 'past the re-blink interval, the out-blink is re-painted so a long walk stays lit');
+  h.adv(120000); h.eng.tick();
+  assert.equal(count(), 3, 'and again');
+});
+
+test('the out-blink is a no-op when the game opted out (death: [] = "native")', () => {
+  const h = harness({ respawn: 'scanner' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.frames.headset = { ...(h.eng.frames.headset || {}), death: [] };
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.adv(200000); h.eng.tick();
+  assert.equal(h.writes.filter(f => f === OUTBLINK).length, 0, 'nothing painted, no re-assert — the firmware/native path');
+});
+
+test('a revive stops the out-blink re-assert (no longer down)', () => {
+  const h = harness({ respawn: 'scanner' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.eng.frames.headset = { ...(h.eng.frames.headset || {}), death: [[OUTBLINK, 0.0]] };
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.adv(9000); h.eng.setStations([stationEntry()]); h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.alive, true, 'revived at the station');
+  const after = h.writes.filter(f => f === OUTBLINK).length;
+  h.adv(200000); h.eng.tick();
+  assert.equal(h.writes.filter(f => f === OUTBLINK).length, after, 'alive again → no more out-blink writes');
 });

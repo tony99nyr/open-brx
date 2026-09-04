@@ -28,6 +28,7 @@ const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
 // showing the slot the GUN last reported. It deliberately does NOT guess a new slot: $BUT,1 is
 // "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
+const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 const EVENT_MIN_GAP_MS = 1000;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
@@ -76,6 +77,7 @@ export class Engine {
     this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
+    this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
@@ -523,6 +525,7 @@ export class Engine {
       if (this.respawnType === 'scanner' && this.respawnGate === 'presence') {
         const st = this._stationRevivable(now); if (st) { this._resyncRevive = false; this._revive(false, st.id); }
       }
+      this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
@@ -751,6 +754,20 @@ export class Engine {
     if (!st) { if (!this.alive && this.phase === 'live') this.log('trigger while down: not at a respawn station', 'li'); return; }
     this._resyncRevive = false; this._revive(false, st.id);
   }
+  /** The headset out-blink frame list from the bundle (A11.6), or [] when the game opted out ('native'). */
+  _headsetDeath() { const h = this.frames && this.frames.headset; return (h && h.death) || []; }
+  /** Re-assert the out-blink while a player stays DOWN, so a count-limited blink (~160 s) can't die before
+   *  they reach a station (scanner respawn can be a long walk). No-op when the game has no death frame, and
+   *  never within a few seconds of the death/revive writes (F13: the headset is a relay, back-to-back writes
+   *  to it stick). Called from tick(). */
+  _reassertDeathBlink(now) {
+    if (this.alive || !this.deadAt || !this._headsetDeath().length) return;
+    if (now - this.deadAt < 5000) return;                          // the _die write is still fresh
+    if (now - this._deathBlinkAt < HEADSET_REBLINK_MS) return;     // not due yet
+    this._headset(this._headsetDeath(), 'death (re-assert)');
+    this._deathBlinkAt = now;
+  }
+
   /** What the DOWN screen should tell a scanner-mode player (utility.md §4.3). */
   respawnHint(now) {
     if (this.alive || !this.deadAt || this.phase !== 'live') return null;
@@ -960,7 +977,7 @@ export class Engine {
     this.switching = null;          // a swap indicator must not outlive the player
     this.moment = { kind: 'down', at: this.now() };
     this._event('died');   // A11
-    if (this.frames && this.frames.headset && this.frames.headset.death && this.frames.headset.death.length) this._headset(this.frames.headset.death, 'death');   // A11.6 (else the firmware's green out-blink)
+    if (this._headsetDeath().length) { this._headset(this._headsetDeath(), 'death'); this._deathBlinkAt = this.now(); }   // A11.6 out-blink (empty = the 'native' opt-out; nothing to paint)
     this.carrying = null;
     this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
     this._changed();
