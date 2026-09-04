@@ -130,9 +130,12 @@ The engine emits **only node-observable facts**, handed to Transport. Two classe
 - **`hit_taken`** — on a `$HIR` (tok 2 ≠ 15) that drops `$HP`: `{shooter_num, shooter_team, dmg,
   ir_proto?}` (dmg = the hp+armor delta the hit caused).
 - **`death`** — on `$HP→0` (§3.4): `{shooter_num, shooter_team, desync?}` from the latch (§3.5) —
-  `shooter_num: 0` when the latch is older than `DEATH_LATCH_MS` (environmental / unknown) or when the
-  death was inferred by the §3.10 resync (`desync: true`).
-- **`respawn`** — on local respawn (§3.4); `resync: true` when forced by §3.10.
+  `shooter_num: 0` when the latch is older than `DEATH_LATCH_MS` (environmental / unknown), and
+  `desync: true` when the `$HP,0` was learned out of band — during a rejoin reconcile or a lobby/armed
+  resync (§3.10) rather than from a live hit sequence.
+- **`respawn`** — on local respawn (§3.4). `resync: true` is a **legacy flag**: the retired live-reconnect
+  resync set it; the reconcile that replaced it (§3.10) re-arms without emitting a respawn, so it is no
+  longer produced on a live rejoin.
 - **`team_change`** — `{tid}` when this gun moved to another team mid-match (infection, §3.4).
 `shooter_num` **0 is reserved** (contracts A5.1): never a player — a tutorial-armed gun, a stale latch, a
 desync. Players are 1–63.
@@ -285,54 +288,57 @@ the degraded `received-start + duration` count (§7). Frag-limit / survival ends
 and only reach nodes in coverage. `time_limit_s == null` (legal only for a fully-covered venue,
 contracts §3) means **no local expiry** — the match ends only by `end`/`recall`.
 
-### 3.10 BLE resync after a drop — positive evidence only (A6.6)
+### 3.10 BLE reconnect — reconcile from persisted state, never guess (S7.1, supersedes the A6.6 resync for LIVE)
 
-The node's whole loop keys off frames it *observes*. After a BLE drop it **cannot tell a radio blip from
-a gun power-cycle**, and it may have **missed `$HP,0,0,0`** (player is dead, HUD says ALIVE) or the gun
-may have **lost its config** (power-cycled: boots to idle). The lab hit this class once already
-(`resetup` respawning regardless of engine state — exp-log 2026-08-25 "live-path resilience").
+**The node persists and restores combat state.** `_save`/`_load` carry `alive/hp/armor/shield/deadAt/killedBy`
+across an app kill (2026-09-04). After a reopen the node already KNOWS its real pools, so it does not have to
+probe the gun to reconstruct them. This closes a real cheat: before persistence a rejoin defaulted
+`alive:false/hp:0`, the recovery `deadAt` stamp booked a death, and auto-respawn healed to full — a free
+respawn on demand (force-close at low HP -> reopen -> full HP). Found on hardware, Tony 2026-09-04.
 
-**Why the obvious fixes are wrong.** (1) Re-writing `head` + `spawn` on every reconnect: the head starts
-with `$CLEAR`, so its echo is `$LCD,0,0,0,0,0,0` on a healthy gun (bench 2026-08-25) — it **cannot** reveal a
-missed death — and the `$SPAWN` that follows is a **full heal + refill**: toggle Bluetooth to heal, and a
-death inside the gap is erased. (2) Reading `$BUT,0,1`-without-`$ALCD` as "dead": an **empty magazine**
-dry-fires the same way (protocol §7a), and so does an **unconfigured** gun (pre-game the trigger emits
-`$BUT` but does not fire). (3) Reading silence as "unconfigured": a quiet live gun would get a free heal.
-So the node **writes nothing first**, and **no branch below writes `spawn` without positive evidence**.
+**A LIVE reconnect RECONCILES (a disarmed window); it never re-arms blind and never infers death.** On a BLE
+reconnect while `live` the node opens a `reconciling` window of `RECONCILE_MS = 3000` (`_beginReconcile`):
 
-**The evidence protocol (`RESYNC_PROBE_S = 10` per step, contracts §9) — trigger first, then reload.**
-On BLE reconnect in **ARMED/LIVE** (and on app resume after a suspension, §3.11) the HUD shows
-**"GUN RELINKED — pull the trigger"** and the node classifies from what it *sees*. Trigger-first matters:
-a reload on an already-full magazine emits nothing, so reload-first could misread a live gun as
-unconfigured — and trigger-first is what players do anyway.
+- **Disarm** at once — `$AMMO,0,0,0,1` on both slots — so the gun cannot fire while state settles. The
+  deliberate 3 s hold is itself an anti-cheat: restarting to escape or heal is made slow and pointless, while
+  a genuine app crash costs 3 s, which is rare and fine (Tony's call, 2026-09-04).
+- **Keep the restored pools** — nothing that changes hp/armor is written.
+- When the window elapses, `_endReconcile` **re-arms to the real spawn `$AMMO` frames only if alive**, and
+  **never writes `$SPAWN` or `$PSET`** — so a rejoin can never heal. Down -> stay disarmed and down, awaiting a
+  real respawn on its true `deadAt` timer.
+- **No death is inferred.** A missed death is booked only from POSITIVE evidence: a real `$HP,0` / `$LCD` line
+  arriving mid-window is trusted verbatim -> DOWN + `death{desync:true}` (credited to a latched `$HIR` within
+  `DEATH_LATCH_MS`, else `shooter_num:0`) with the true respawn timer. A genuine death inside the BLE gap still
+  lands the moment the gun re-reports it; a silent reload or plain silence never kills.
 
-| step | observation | conclusion | action |
-|---|---|---|---|
-| any time | an `$HP` / `$LCD` line arrives (a hit, a periodic state line) | trust it verbatim | update hp/armor/ammo/alive. `$HP,0` while the engine thought alive → DOWN + `death{desync:true}` **credited to the latched `$HIR` if it is within `DEATH_LATCH_MS`, else `shooter_num:0`** |
-| 1 · trigger | `$ALCD` decrement (a shot went out) | **alive** and configured | nothing; HUD back to ALIVE |
-| 1 · trigger | `$BUT,0,1` with **no** `$ALCD` | ambiguous: dead / empty mag / unconfigured | HUD "now pull the RELOAD handle" → step 2 |
-| 2 · reload (`$BUT,2`) | `$ALCD` refill | configured, mag was empty | HUD "pull the trigger" → step 3 |
-| 2 · reload | no `$ALCD`, last-known reserve > 0 | **not a live configured gun**: unconfigured (power-cycled) *or* dead-and-reload-inert (unknown, bench) — both cost a life | non-LMS: emit `death{desync:true, shooter_num: latched-if-fresh else 0}`, re-write `frames.head`, normal respawn timer, `frames.revive`, emit `respawn{resync:true}`. **LMS: mark dead, write NOTHING** (a wrong write is elimination; the host can `recall`) |
-| 2 · reload | no `$ALCD`, last-known reserve == 0 | ambiguous: out of ammo *or* the above | wait one more `RESYNC_PROBE_S` for any `$HP`/`$LCD`; if still nothing, **escalate** to the row above (a wrongly-judged out-of-ammo player loses a life instead of standing inert forever). LMS: stay last-known |
-| 3 · trigger | `$ALCD` decrement | **alive** (was just out of ammo) | HUD ALIVE |
-| 3 · trigger | `$BUT,0,1` with **no** `$ALCD` (after a good reload) | **dead** (a dead gun can't fire — §7q) | HUD DOWN, `death{desync:true, shooter_num: latched-if-fresh else 0}`, respawn timer from now → `frames.revive` as normal (LMS: dead, no revive) |
-| 1–3 | nothing within `RESYNC_PROBE_S` | player didn't do it | keep the prompt up; **stay in last-known state**; never write |
+A new match, a match end, and a panic each clear an in-flight reconcile; auto-respawn, the recovery `deadAt`
+stamp, scanner-revive, and reload takeover are all gated off while `reconciling`. `state().reconciling` drives
+the HUD's RECONCILING takeover (node.md §4.4 — "SYNCING WITH YOUR GUN · WEAPON DISARMED FOR A MOMENT"), and no
+trigger pull is asked of the player. **Validated on hardware 2026-09-04 (R0BQT):** shot to HP 29, force-close,
+reopen -> held at 29, takeover shown, gun re-armed, no heal (experiment-log). Every reconcile action is logged.
 
-Rules that fall out: **no branch writes `spawn`/`head` on silence**, and in **LMS no branch writes at
-all** unless the gun is provably dead. A desync death is flagged (`desync:true`) so MC's recap can show
-"N deaths uncredited/desync" rather than silently undercounting the killer. The prompt costs the player a
-trigger pull (and sometimes a reload); that is the price of never guessing. Every resync action is logged
-(`resync_*`). **Known limitation:** a station revive (`respawn.type:"scanner"`) that happened *inside*
-the gap hides the death that preceded it.
+**LOBBY / ARMED reconnect (and resume) just re-write the head.** There is no live state to reconcile, so the
+node re-applies `frames.head` (`_beginResync` for those phases) and the scheduled T-0 spawn runs as normal.
+Config survives a BLE drop but is wiped by a power-cycle, so the head re-write is what restores a
+power-cycled gun. The old trigger-first evidence protocol survives ONLY here (a `demo`/`resume` probe), never
+on a live rejoin.
 
-**Bench result 2026-08-25 (protocol §7r) — there is NO side-effect-free probe; the table above stands.** On a
-fresh link a dead gun emits nothing unprompted and `$PHONE` reads nothing back (`$VERSION` still answers, so the
-link is fine). Dead trigger → `$BUT,0,1/0` only; dead reload handle → `$BUT,2,1/0` only (no refill). Config
-**survives a BLE drop** (a `$SPAWN` on the fresh link revived with `$LCD,45,70,…`) and is **wiped by a
-power-cycle**. Two positive tells the engine must use: (a) headset off/unlinked = the gun will not hold a link at
-all (`$DISCONNECT`, then drops within seconds) — that is a link problem, not a resync case; (b) **after any
-`head`/`spawn` write, a `$SPAWN` echo of `$LCD,0,0,0,0,0,0` means the config was wiped** — re-write
-`frames.head` then `frames.spawn` (the "unconfigured" branch gets a proof instead of an inference).
+**Why the retired trigger-first resync's cautions still hold.** The old §3.10 probed the gun (trigger, then
+reload) because the head echo cannot reveal a missed death and a blind `head`+`spawn` re-write is a full heal.
+Both facts are still true and are why the reconcile **never blind-writes `spawn`**: (1) the head's echo is
+`$LCD,0,0,0,0,0,0` on a healthy gun (bench 2026-08-25) — it cannot reveal a death; (2) `$SPAWN` is a full
+heal + refill. Persistence removed the NEED to probe (we restore the pools instead), so the evidence protocol
+was retired for the live path — it mis-concluded "dead" on reconnect and let auto-respawn heal, which is
+exactly the cheat above.
+
+**Known limitation — gap-death re-arm (HW follow-up, FOLLOWUPS S7).** If the gun DIED while the app was closed
+and does not re-report `$HP,0` on reconnect, the reconcile trusts the restored "alive" and re-arms it. The
+firmware itself gates firing on a truly-dead gun, so this favours no cheat (you cannot fire a dead gun), but
+the HUD would read alive until the gun re-announces. Confirm the exact failure mode on hardware.
+
+**Bench result 2026-08-25 (protocol §7r) still stands:** config **survives a BLE drop** and is **wiped by a
+power-cycle**; after any `head`/`spawn` write, a `$SPAWN` echo of `$LCD,0,0,0,0,0,0` means the config was wiped
+-> re-write `frames.head` then `frames.spawn` (the LOBBY/ARMED head-re-write path).
 
 ### 3.11 App lifecycle: foreground, screen-on, mount
 
@@ -351,8 +357,9 @@ webview's JS still freezes**. Therefore:
   bluetooth-central` so the BLE link survives a lock. Both applied by `app/scripts/*-setup.sh`, never
   hand-edited in the generated projects (§8).
 - **Resume → reconcile = M-START `resumeSchedule()`** (start-sequence §7). On `appStateChange(active)` /
-  `visibilitychange` / relaunch / hot-swap the engine **first runs the §3.10 observe step** — it never
-  spawns a gun that may already be live — then reconciles against `synced_now()`: if
+  `visibilitychange` / relaunch / hot-swap the engine **first settles the BLE link (§3.10)** — a live
+  relink opens the disarmed reconcile window, a lobby/armed relink re-writes the head; neither blind-spawns
+  a gun that may already be live — then reconciles against `synced_now()`: if
   `synced_now() ≥ go_live_t` and the gun is classified unspawned → the M-START E5 grace / hot-join path;
   if a respawn was due while suspended → `frames.revive` now; if the match expired → `frames.end` now
   (→ KITTED); then flush the outbox. Every reconcile action is logged (`resume_reconcile`).
