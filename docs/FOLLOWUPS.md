@@ -1342,9 +1342,10 @@ the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
 1. **Rejoin lands alive-with-0-hp.** After force-stop → relaunch → rejoin, the gun is armed and can shoot
    but the HUD reads `alive:true hp:0` until the player pulls the trigger (the trigger-first resync observed
    mid-handshake). A resync in progress should show a clear "confirm your gun" state, not live-but-empty.
-2. **A new match started on a just-reconnected node doesn't spawn clean** — `alive:true hp:0`, or the
-   restored old-match "down" state tangles with the new match. A clean force-stop fixed it every time,
-   which is not shippable.
+2. **✅ FIXED (engine ee-followup): a new match started on a just-reconnected node now spawns clean** —
+   `startAt` clears an in-flight resync (a new match supersedes the old one's reconnect resync); the T-0
+   spawn is no longer blocked on `!resync`, so it goes alive at full health. Engine test added. The
+   remaining two (1, 3) need hardware to validate a change safely.
 3. **A soft reload left the native BLE link half-open**, so the rejoin scan couldn't find the still-connected
    gun. Node should release the BLE link on teardown/reload.
 Test-first: model cold-boot-while-down and new-match-over-reconnecting-node in the engine harness, then fix

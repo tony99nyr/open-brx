@@ -394,6 +394,10 @@ export class Engine {
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     if (body.match_id !== this.matchId) { this.score = null; this.scoreAt = null; }   // a new match: last match's K/A/board must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
+    // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
+    // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
+    // until the player pulls the trigger (bench 2026-09-04, S5). Clear it so the new match spawns clean.
+    if (this.resync) { this.log('new match — clearing the old resync so it spawns clean', 'li'); this.resync = null; }
     this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed') this._set('armed');
     this._save();
@@ -431,6 +435,22 @@ export class Engine {
       t += hold;
     }
   }
+  /** A11.7: the gun body's resting frame when the game owns it (frames.gun; absent = firmware breathing).
+   *  team/dark: a fixed frame; health: the band for the current hp (bands highest-first, [fraction, frame]). */
+  _gunRest() {
+    const g = this.frames && this.frames.gun; if (!g || !g.rest) return null;
+    if (g.in_play !== 'health' || !Array.isArray(g.bands) || !g.bands.length) return g.rest;
+    const frac = this.maxHp > 0 ? this.hp / this.maxHp : 1;
+    const band = g.bands.find(b => frac > b[0]) || g.bands[g.bands.length - 1];
+    return band[1];
+  }
+  /** Repaint the health hue when the band changed (one write per band, never per hit). */
+  _gunHealthPaint(why) {
+    const g = this.frames && this.frames.gun; if (!g || g.in_play !== 'health') return;
+    if (this.phase !== 'live' || !this.alive || !this.spawned) return;
+    const f = this._gunRest(); if (!f || f === this._gunBand) return;
+    this._gunBand = f; this._write([f], `gun health ${why}`);
+  }
   /** The headset's resting frame between events (dark by default, or the team colour). */
   _headsetRest() { const h = this.frames && this.frames.headset; return h && h.rest ? [[h.rest, 0]] : null; }
   /** Carrier blink: on while this player holds the flag/objective of team `tid`; off returns to rest. */
@@ -463,6 +483,8 @@ export class Engine {
       } else if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => this._write([frame], `event led ${kind}`));
       t += hold;
     }
+    const g = f.gun;
+    if (g && g.in_play === 'health') this.delay(t, () => { const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }
   _cue(key) {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
@@ -480,6 +502,7 @@ export class Engine {
     // grant, never a starting pool (bench 2026-08-27).
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
+    this._gunBand = this.frames.gun ? this.frames.gun.rest : null;   // A11.7: spawn painted the rest frame
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
   }
@@ -552,6 +575,7 @@ export class Engine {
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
+    this._gunBand = this.frames.gun ? this.frames.gun.rest : null;   // A11.7: revive painted the rest frame
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
@@ -956,6 +980,7 @@ export class Engine {
       }
     }
     this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
+    if (hp > 0) this._gunHealthPaint('hp');   // A11.7 (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
     const wasResync = !!this.resync;
     if (this.resync) this._resyncEvidence('hp');
     if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync is a desync death

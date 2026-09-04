@@ -1209,3 +1209,64 @@ test('polish: _turned is reset by a new start, so last match\'s flip does not sc
   h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
   assert.equal(h.eng._turned, false);
 });
+
+
+// --- A11.7 / S4: the gun body LED as a host-owned display (bench 2026-09-04) ---
+// Bursts are switched off in these harnesses (frames.leds = {}) so a hit_taken burst's RED flash is not
+// mistaken for the red health band; the burst-tail test re-enables exactly one event.
+
+test('A11.7 gun health: no writes when the bundle has no gun table (native breathing); band repaints once per band change', () => {
+  const G = '$GLED,3,3,3,0,10,,*', Y = '$GLED,2,2,2,0,10,,*', R = '$GLED,0,0,0,0,10,,*';
+  const h = goLive(harness()); h.eng.frames.leds = {};
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'native: nothing painted');
+  const t = goLive(harness()); t.eng.frames.leds = {};
+  t.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]] };
+  t.eng._gunBand = G;                                          // what the spawn tail painted
+  t.writes.length = 0;
+  t.frame('$HIR,4,0,19,2,9,0,0,*'); t.frame('$HP,45,61,0,*');  // armour only: still the green band
+  assert.equal(t.writes.filter(f => f.startsWith('$GLED')).length, 0, 'same band -> no repaint');
+  t.frame('$HIR,4,0,19,2,9,0,0,*'); t.frame('$HP,25,0,0,*');   // 25/45 = 0.55 -> yellow
+  assert.deepEqual(t.writes.filter(f => f.startsWith('$GLED')), [Y]);
+  t.writes.length = 0;
+  t.frame('$HIR,4,0,19,2,9,0,0,*'); t.frame('$HP,20,0,0,*');   // 0.44 -> still yellow
+  assert.equal(t.writes.filter(f => f.startsWith('$GLED')).length, 0);
+  t.frame('$HIR,4,0,19,2,9,0,0,*'); t.frame('$HP,10,0,0,*');   // 0.22 -> red
+  assert.deepEqual(t.writes.filter(f => f.startsWith('$GLED')), [R]);
+});
+
+test('A11.7 gun health: an event burst ends on the CURRENT band, and a revive resets the band to the painted rest', () => {
+  const G = '$GLED,3,3,3,0,10,,*', Y = '$GLED,2,2,2,0,10,,*', R = '$GLED,0,0,0,0,10,,*';
+  const h = goLive(harness());
+  h.eng.frames.leds = { lead_taken: golden.leds.died };        // one burst only (red flashes ending on the team frame)
+  h.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]] };
+  h.eng.frames.revive = ['$SPAWN,,*', '$GLED,,,,5,,,*', G, '$AMMO,0,32,384,1,*'];
+  h.eng._gunBand = G;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,20,0,0,*');   // yellow band
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.ok(gleds.length > 1, 'the burst played');
+  assert.equal(gleds[gleds.length - 1], Y, 'the burst is followed by the real health hue');
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // down
+  h.adv(9000); h.writes.length = 0; h.eng.tick();               // auto respawn
+  assert.ok(h.writes.includes('$GLED,,,,5,,,*') && h.writes.includes(G), 'revive re-blanks and paints full health');
+  assert.equal(h.eng._gunBand, G);
+});
+
+test('S5: a NEW match started while a reconnect resync is in flight clears it and spawns clean', () => {
+  // live in match m1, then a BLE drop+reconnect starts the trigger-first resync
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.resync, 'resync in flight after the reconnect');
+  // MC starts a NEW match (m2) while the resync is unresolved — the old behaviour left resync set,
+  // the T-0 spawn (guarded on !resync) never ran, and the gun sat alive:false/hp:0.
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  assert.equal(h.eng.resync, null, 'the new match cleared the stale resync');
+  h.adv(10); h.eng.tick();
+  assert.equal(h.eng.alive, true, 'the new match spawns the gun alive');
+  assert.equal(h.eng.hp, 45, 'at full health, not 0');
+  assert.equal(h.eng.matchId, 'm2');
+});
