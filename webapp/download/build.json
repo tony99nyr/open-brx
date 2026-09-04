@@ -1,10 +1,10 @@
 {
- "file": "brx-companion-0.1.1-android-debug.apk",
- "version": "0.1.1",
+ "file": "brx-companion-0.1.2-android-debug.apk",
+ "version": "0.1.2",
  "variant": "debug",
- "built": "2026-09-01T17:58:59.646Z",
- "bytes": 5273162,
- "sha256": "2b4ccfccfca32e5909f5035fe9f0e947e0550f37e941328c8894bb2134537069",
- "git": "b0130af",
+ "built": "2026-09-04T14:57:44.987Z",
+ "bytes": 5349981,
+ "sha256": "d924fc583d4e234a995db78e1e1407d6e86d470a165002b56ad63d9fc304575e",
+ "git": "b6e056a",
  "dirty": false
 }
