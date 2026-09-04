@@ -21,4 +21,4 @@ build-backend = "setuptools.build_meta"
 packages = ["brx_mcp"]
 
 [tool.setuptools.package-data]
-brx_mcp = ["data/*.json", "mc/*.json"]
+brx_mcp = ["data/*.json", "mc/*.json", "stage/*.html"]

@@ -44,6 +44,12 @@
 >   (`$SPAWN` resets it). Built as an OPT-IN: `presentation.gun.in_play = native | team | dark | health`,
 >   default `native` (no change to any bundle). Try `health` on a field before choosing a default. Open:
 >   hold time with no traffic, blink forms after a blank.
+> - **The GUN STAGE is built** (`python -m brx_mcp stage --gun <addr> --ir auto`, `docs/gun-stage.md`): a
+>   click-to-try page for one real gun -- arm / spawn / respawn, every event, medal stacks, headset sequences,
+>   IR shots from the emitter with the phone's victim overlay played on top, all from the chosen GAME CONFIG
+>   (selectors, the MC's applied config, or a presentation patch). **WALKTHROUGH** steps through every state of
+>   that config for a PASS/FAIL verdict each (saved to `~/.brx-mcp/stage-verdicts.jsonl`). Verified in a real
+>   browser against the fake gun; **not yet run against a real gun** -- that is the next bench session.
 > - **Next server build (S5, A13.5)**: MC arms utility stations at muster -- `hello role:"utility"`, the ITEMS
 >   panel, the `station_config` push, `config.stations` from the assigned ids. Spec frozen by brx-grenade
 >   (a1380f8); phone apply is brx-hud's. Not started.

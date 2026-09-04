@@ -26,6 +26,7 @@
   python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
   python -m brx_mcp armory                              # QUERY the cabled tagger + print the accumulated gun<->headset inventory
   python -m brx_mcp sounds <words|category:...> [addr]  # search the on-gun sound catalog by words or category; with an address, PLAY each match
+  python -m brx_mcp stage [--gun ADDR] [--ir COM7] [--mc URL] [--fake]   # the GUN STAGE: click-to-try page for one gun (docs/gun-stage.md)
       e.g. sounds "kill confirmed" · sounds category:voice:medal · sounds ids:VA7H,VA7E · sounds flag DF:F5:...
       add --audit (with an address) to step through interactively: label, play, your verdict -> ~/.brx-mcp/sound-audit.jsonl
 """
@@ -1456,6 +1457,9 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _usb_query(args[1] if len(args) > 1 else None)
     elif cmd == "armory":
         _armory()
+    elif cmd == "stage":
+        from .stage.server import main as _stage_main
+        _stage_main(args[1:])
     elif cmd == "sounds" and len(args) > 1:
         addr = next((a for a in args[2:] if ":" in a and len(a) >= 17), None)
         _sounds(" ".join(a for a in args[1:] if a != addr and not a.startswith("--")), addr)

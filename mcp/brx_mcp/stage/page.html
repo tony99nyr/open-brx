@@ -1,0 +1,219 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GUN STAGE</title>
+<style>
+  :root { --bg:#0b0f14; --panel:#111821; --line:#233040; --ink:#e8eef5; --dim:#8aa0b4; --micro:#71879c; --acc:#3aa0ff; --ok:#3c5; --warn:#f7b13a; --bad:#e33; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
+  h1 { font-size:15px; letter-spacing:.2em; margin:0; }
+  .pill { font:600 11px/1 monospace; letter-spacing:.12em; padding:6px 9px; border:1px solid var(--line); border-radius:3px; color:var(--dim); }
+  .pill.ok { color:var(--ok); border-color:var(--ok); } .pill.warn { color:var(--warn); border-color:var(--warn); } .pill.bad { color:var(--bad); border-color:var(--bad); }
+  main { display:grid; grid-template-columns: 1fr 1fr; gap:14px; padding:14px 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:12px 14px; }
+  section h2 { font:700 11px/1 monospace; letter-spacing:.22em; color:var(--dim); margin:0 0 10px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  button { min-height:40px; padding:0 14px; font:700 12px/1 system-ui, sans-serif; letter-spacing:.08em; color:var(--ink); background:#182231; border:1px solid var(--line); border-radius:4px; cursor:pointer; }
+  button:hover { border-color:var(--acc); } button:active { transform:translateY(1px); } button:disabled { opacity:.45; cursor:not-allowed; }
+  button.big { min-height:48px; font-size:13px; padding:0 18px; } button.acc { background:var(--acc); color:#04111f; border-color:var(--acc); }
+  button.bad { border-color:var(--bad); color:var(--bad); } button.mc { border-color:var(--warn); } button.hud { border-color:var(--ok); }
+  button .sub { display:block; font:500 10px/1.2 monospace; letter-spacing:.04em; color:var(--micro); margin-top:4px; text-transform:none; }
+  select, input { min-height:36px; padding:0 8px; font:600 12px monospace; color:var(--ink); background:#0e141c; border:1px solid var(--line); border-radius:3px; }
+  label { font:600 10.5px monospace; letter-spacing:.14em; color:var(--micro); display:flex; flex-direction:column; gap:4px; }
+  .tele { display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:8px; }
+  .tele div { border:1px solid var(--line); padding:8px 10px; border-radius:3px; } .tele b { display:block; font:600 10px monospace; letter-spacing:.16em; color:var(--micro); } .tele span { font:700 18px monospace; }
+  .events { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:8px; }
+  .grp { grid-column: 1 / -1; font:700 10px monospace; letter-spacing:.2em; color:var(--micro); margin-top:6px; }
+  #log { font:12px/1.5 monospace; height:52vh; overflow:auto; background:#070a0e; border:1px solid var(--line); padding:8px 10px; white-space:pre-wrap; }
+  .tx { color:#9ad; } .rx { color:#dc9; } .ok { color:var(--ok); } .warn { color:var(--warn); } .ir { color:#e9c; } .info { color:var(--dim); }
+  textarea { width:100%; min-height:64px; font:12px monospace; color:var(--ink); background:#0e141c; border:1px solid var(--line); border-radius:3px; padding:6px; box-sizing:border-box; }
+  .hint { font:11.5px system-ui; color:var(--micro); }
+  #err { color:var(--bad); font:600 12px monospace; min-height:16px; }
+</style>
+<header>
+  <h1>GUN STAGE</h1>
+  <span id="link" class="pill">LINK …</span>
+  <span id="cfg" class="pill">CONFIG …</span>
+  <span id="alive" class="pill">—</span>
+  <span id="err" role="alert"></span>
+  <label style="margin-left:auto; flex-direction:row; align-items:center; gap:8px"><input type="checkbox" id="auto" checked style="min-height:0"> AUTO-REACT LIKE THE PHONE</label>
+</header>
+<main>
+  <section style="grid-column: 1 / -1; border-color: var(--acc)">
+    <h2>0 // WALKTHROUGH — pick the game above, then verify every headset · gun · sound · event state, one at a time</h2>
+    <div class="row">
+      <button class="big acc" data-act="walk_start">START WALKTHROUGH<span class="sub">builds the checklist from this config</span></button>
+      <button class="big" data-act="walk_play">▶ PLAY / REPLAY THIS STEP</button>
+      <button class="big" data-walk="pass" style="border-color:var(--ok);color:var(--ok)">✓ PASS</button>
+      <button class="big" data-walk="fail" style="border-color:var(--bad);color:var(--bad)">✗ FAIL</button>
+      <button class="big" data-walk="skip">SKIP</button>
+      <input id="walknote" placeholder="note (what you saw)" size="28">
+      <button data-act="walk_stop">STOP</button>
+    </div>
+    <div id="walk" class="hint">No walkthrough running. Verdicts are saved to ~/.brx-mcp/stage-verdicts.jsonl on the stage machine.</div>
+    <div id="walksteps" class="row"></div>
+  </section>
+  <section>
+    <h2>1 // LINK</h2>
+    <div class="row">
+      <button data-act="scan">SCAN</button>
+      <select id="scanlist"><option value="">(scan first)</option></select>
+      <input id="addr" placeholder="BLE address / UUID" size="24">
+      <button data-act="connect" class="acc">CONNECT</button>
+      <button data-act="disconnect">DISCONNECT</button>
+    </div>
+    <div class="hint" id="emitter"></div>
+  </section>
+  <section>
+    <h2>2 // GAME CONFIG (drives everything below)</h2>
+    <div class="row">
+      <label>MODE<select id="mode"></select></label>
+      <label>PRESET<select id="preset"></select></label>
+      <label>GUN BODY<select id="gun"></select></label>
+      <label>HEADSET IN PLAY<select id="headset"></select></label>
+      <label>MY TEAM<select id="tid"></select></label>
+      <label>NIGHT<select id="night"><option value="false">off</option><option value="true">on</option></select></label>
+    </div>
+    <div class="row">
+      <input id="mcurl" placeholder="http://<mc-ip>:8765" size="22"><input id="mctok" placeholder="operator token" size="12">
+      <button data-act="pull_mc">PULL THE MC'S APPLIED CONFIG</button>
+    </div>
+    <details><summary class="hint">Patch the presentation (same shape as PUT /api/config {"presentation": …})</summary>
+      <textarea id="patch">{"events": {"hit_taken": {"gun_led": "orange"}}}</textarea>
+      <div class="row"><button data-act="patch_presentation">APPLY PATCH + RECOMPILE</button></div>
+    </details>
+    <div class="hint" id="summary"></div>
+  </section>
+  <section>
+    <h2>3 // GAME</h2>
+    <div class="row">
+      <button class="big" data-act="arm">ARM<span class="sub">write the head (config, $SIR table, $TID)</span></button>
+      <button class="big acc" data-act="spawn">SPAWN<span class="sub">T-0 tail + start flash</span></button>
+      <button class="big" data-act="revive">RESPAWN<span class="sub">revive tail + respawn flash</span></button>
+      <button class="big" data-act="end">END</button>
+      <button class="big bad" data-act="panic">PANIC<span class="sub">$CLEAR + $SP,99 — re-ARM after</span></button>
+    </div>
+    <div class="tele">
+      <div><b>HP</b><span id="t-hp">—</span></div><div><b>ARMOR</b><span id="t-armor">—</span></div><div><b>SHIELD</b><span id="t-shield">—</span></div>
+      <div><b>MAG / RES</b><span id="t-ammo">—</span></div><div><b>MODEL</b><span id="t-model">—</span></div>
+    </div>
+    <div class="hint" id="lasthir"></div>
+  </section>
+  <section>
+    <h2>4 // IR AT THE GUN (the emitter shoots it — the firmware reacts for real)</h2>
+    <div class="row">
+      <label>SHOOTER TEAM<select id="irteam"></select></label>
+      <button class="big" data-ir="shot">SHOOT ME<span class="sub">plain hit, 25</span></button>
+      <button class="big bad" data-ir="kill">KILL ME<span class="sub">one 200 hit</span></button>
+      <button class="big" data-ir="emp">EMP<span class="sub">proto 8, Sentinel</span></button>
+      <button class="big" data-ir="medic">MEDIC HEAL<span class="sub">proto 1 pair</span></button>
+      <button class="big" data-ir="beacon">RESPAWN BEACON<span class="sub">proto 15, my team</span></button>
+      <button class="big" data-ir="button">STATION BUTTON<span class="sub">beacon + crit</span></button>
+    </div>
+  </section>
+  <section style="grid-column: 1 / -1">
+    <h2>5 // GAME EVENTS — from this config's presentation profile (HUD-driven green · MC-driven amber)</h2>
+    <div class="row">
+      <button class="big mc" data-kill="">KILL<span class="sub">$SFLASH + kill line</span></button>
+      <button class="big mc" data-kill="first_blood">FIRST BLOOD</button>
+      <button class="big mc" data-kill="double_kill">DOUBLE KILL</button>
+      <button class="big mc" data-kill="triple_kill,killing_spree">TRIPLE + SPREE<span class="sub">a medal stack</span></button>
+      <button class="big mc" data-kill="killtacular,unstoppable">KILLTACULAR + UNSTOPPABLE</button>
+    </div>
+    <div class="events" id="events"></div>
+  </section>
+  <section>
+    <h2>6 // HEADSET SEQUENCES (A11.6)</h2>
+    <div class="row" id="headsets"></div>
+  </section>
+  <section>
+    <h2>7 // LOG (tx = written to the gun · rx = what it said · ir = emitted)</h2>
+    <div id="log" aria-live="polite"></div>
+  </section>
+</main>
+<script>
+  const $ = s => document.querySelector(s);
+  let st = null, lastLogLen = 0;
+  const fill = (sel, items, val, label = x => x) => { const el = $(sel); el.innerHTML = items.map(v => `<option value="${v}">${label(v)}</option>`).join(''); el.value = String(val); };
+  async function api(action, args = {}) {
+    $('#err').textContent = '';
+    const r = await fetch('/api/do', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, ...args }) });
+    const j = await r.json();
+    if (!r.ok) { $('#err').textContent = j.error || ('HTTP ' + r.status); return null; }
+    render(j); return j;
+  }
+  async function refresh() { try { const r = await fetch('/api/state'); render(await r.json()); } catch (e) { $('#link').textContent = 'STAGE SERVER UNREACHABLE'; $('#link').className = 'pill bad'; } }
+  function render(s) {
+    const first = !st; st = s;
+    const L = s.link;
+    $('#link').textContent = L.connected ? `LINKED · ${L.fake ? 'FAKE GUN' : L.address}` : 'NO GUN LINKED';
+    $('#link').className = 'pill ' + (L.connected ? 'ok' : 'warn');
+    $('#emitter').textContent = L.emitter ? `emitter on ${L.emitter}` : (L.fake ? 'fake mode: SHOOT ME / KILL ME hit the emulated gun directly' : 'no emitter attached: start with --ir COM7 (or auto); IR buttons only log the word');
+    $('#cfg').textContent = `${s.profile.mode.toUpperCase()} · ${s.summary ? s.summary.preset.toUpperCase() : ''} · ${s.config_source === 'mc' ? 'FROM MC' : 'SELECTORS'} · ${s.config_id || ''}`;
+    $('#cfg').className = 'pill ' + (s.config_source === 'mc' ? 'ok' : '');
+    const m = s.model; $('#alive').textContent = !m.spawned ? 'UNSPAWNED' : m.alive ? 'ALIVE' : 'DOWN'; $('#alive').className = 'pill ' + (!m.spawned ? '' : m.alive ? 'ok' : 'bad');
+    $('#auto').checked = !!m.auto_react;
+    if (first || document.activeElement.tagName !== 'SELECT') {
+      fill('#mode', s.modes, s.profile.mode); fill('#preset', ['', ...s.presets], s.profile.preset || '', v => v || '(mode default)');
+      fill('#gun', s.gun_modes, s.profile.gun); fill('#headset', s.headset_modes, s.profile.headset);
+      fill('#tid', s.teams.map(t => t.tid), s.profile.tid, v => { const t = s.teams.find(x => x.tid == v); return t ? `${t.name} (tid ${t.tid})` : v; });
+      fill('#irteam', [0, 1, 2, 3], s.teams.find(t => t.tid != s.profile.tid)?.tid ?? 2, v => { const t = s.teams.find(x => x.tid == v); return t ? `${t.name} (tid ${v})` : `tid ${v}`; });
+      $('#night').value = String(!!s.profile.night);
+    }
+    const sm = s.summary || {};
+    $('#summary').textContent = sm.preset ? `announcer ${sm.announcer ? 'on' : 'OFF'} · gun flashes ${sm.gun_flash ? 'on' : 'OFF'} · hud events ${sm.hud_events ? 'on' : 'OFF'} · mc events ${sm.mc_events ? 'on' : 'OFF'} · headset ${sm.headset ? sm.headset.in_play : ''} / hit ${sm.headset ? sm.headset.hit : ''} / death ${sm.headset ? sm.headset.death : ''} · gun body ${sm.gun ? sm.gun.in_play : ''} · custom events: ${(sm.custom_events || []).join(', ') || 'none'}` : '';
+    const t = s.tele; $('#t-hp').textContent = t.hp ?? '—'; $('#t-armor').textContent = t.armor ?? '—'; $('#t-shield').textContent = t.shield ?? '—';
+    $('#t-ammo').textContent = t.mag != null ? `${t.mag} / ${t.reserve}` : '—'; $('#t-model').textContent = `${m.hp}/${m.max_hp} · ${m.armor}/${m.max_armor}${m.carrying != null ? ' · FLAG ' + m.carrying : ''}`;
+    $('#lasthir').textContent = t.last_hir ? 'last $HIR: ' + t.last_hir : '';
+    // events: grouped, coloured by source, greyed when the profile has nothing for them
+    const groups = {}; for (const e of s.events) (groups[e.group || 'other'] ||= []).push(e);
+    const PAL = ['red', 'blue', 'yellow', 'green', 'purple', 'teal', 'white', 'pink', 'orange'];
+    $('#events').innerHTML = Object.entries(groups).map(([g, evs]) => `<div class="grp">${g.toUpperCase()}</div>` + evs.map(e => {
+      const has = e.has_sound || e.gun_led != null || e.headset != null;
+      return `<button data-act="event" data-kind="${e.event}" class="${e.source === 'mc' ? 'mc' : e.source === 'hud' ? 'hud' : ''}" ${has ? '' : 'disabled title="nothing configured for this event in this profile"'}>${e.event}<span class="sub">${e.desc || ''}<br>${e.has_sound ? '♪ ' : 'mute '}· gun ${e.gun_led != null ? PAL[e.gun_led] : '—'} · head ${e.headset != null ? PAL[e.headset] : '—'}</span></button>`;
+    }).join('')).join('');
+    $('#headsets').innerHTML = (s.headset_seqs.length ? s.headset_seqs : []).map(k => k === 'carrier'
+      ? s.teams.map(tm => `<button data-act="headset" data-name="carrier" data-tid="${tm.tid}">CARRY FLAG ${tm.name}</button>`).join('') + `<button data-act="headset" data-name="carrier_off">FLAG SCORED / LOST</button>`
+      : `<button data-act="headset" data-name="${k}">${k.toUpperCase()}</button>`).join('') + (s.headset_seqs.length ? '' : '<span class="hint">LEDs are off in this profile (night / blackout): no headset sequences</span>');
+    // walkthrough
+    const w = s.walk;
+    if (!w) { $('#walk').innerHTML = 'No walkthrough running. Verdicts are saved to <code>~/.brx-mcp/stage-verdicts.jsonl</code> on the stage machine.'; $('#walksteps').innerHTML = ''; }
+    else if (w.done) { const f = w.steps.filter(x => x.verdict === false).length; $('#walk').innerHTML = `<b>DONE</b> · ${w.n - f} pass · ${f} fail${f ? ' · ' + w.steps.filter(x => x.verdict === false).map(x => x.title).join(', ') : ''}`; }
+    else { const c = w.current; $('#walk').innerHTML = `<b style="color:var(--ink);font-size:15px">STEP ${w.i + 1} / ${w.n} — ${escapeHtml(c.title)}</b>${c.available ? '' : ' <span style="color:var(--warn)">(needs the emitter — SKIP)</span>'}<br><span style="color:var(--ink)">LOOK / LISTEN FOR:</span> ${escapeHtml(c.look)}<br><span class="hint">action: ${c.action} ${JSON.stringify(c.args)}</span>`; }
+    $('#walksteps').innerHTML = w ? w.steps.map((x, i) => `<span class="pill ${x.verdict === true ? 'ok' : x.verdict === false ? 'bad' : x.verdict === null ? 'warn' : ''}" title="${escapeHtml(x.title)}" style="${i === w.i && !w.done ? 'border-color:var(--acc);color:var(--acc)' : ''}">${i + 1}</span>`).join('') : '';
+    // log
+    const logKey = s.log.length + '|' + (s.log.length ? s.log[s.log.length - 1].t + s.log[s.log.length - 1].text : '');
+    if (logKey !== lastLogLen || first) {     // key on the LAST entry too: once the ring is full the length never changes
+      lastLogLen = logKey; const el = $('#log'); const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+      el.innerHTML = s.log.map(l => `<div class="${l.kind}">${l.t.toFixed(2).padStart(9)}  ${l.kind.padEnd(4)} ${escapeHtml(l.text)}${l.why ? '   <span class="info">· ' + escapeHtml(l.why) + '</span>' : ''}</div>`).join('');
+      if (atEnd || first) el.scrollTop = el.scrollHeight;
+    }
+  }
+  const escapeHtml = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  document.addEventListener('click', async ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    const act = b.dataset.act;
+    if (b.dataset.ir) return api('ir', { kind: b.dataset.ir, team: Number($('#irteam').value) });
+    if (b.dataset.kill !== undefined) return api('kill', { medals: b.dataset.kill ? b.dataset.kill.split(',') : [] });
+    if (b.dataset.walk) { const v = b.dataset.walk === 'pass' ? true : b.dataset.walk === 'fail' ? false : null; const note = $('#walknote').value; $('#walknote').value = ''; const r = await api('walk_verdict', { ok: v, note }); if (r && r.walk && !r.walk.done) await api('walk_play'); return r; }
+    if (act === 'walk_start') { const r = await api('walk_start'); if (r) await api('walk_play'); return r; }
+    if (!act) return;
+    if (act === 'connect') return api('connect', { address: $('#addr').value || $('#scanlist').value });
+    if (act === 'scan') { const r = await api('scan', { duration_s: 6 }); await refresh(); return; }
+    if (act === 'event') return api('event', { kind: b.dataset.kind });
+    if (act === 'headset') return api('headset', { name: b.dataset.name, tid: b.dataset.tid != null ? Number(b.dataset.tid) : null });
+    if (act === 'pull_mc') return api('pull_mc', { url: $('#mcurl').value, token: $('#mctok').value || null });
+    if (act === 'patch_presentation') { let p; try { p = JSON.parse($('#patch').value); } catch (e) { $('#err').textContent = 'patch is not valid JSON'; return; } return api('patch_presentation', { patch: p }); }
+    return api(act);
+  });
+  for (const id of ['mode', 'preset', 'gun', 'headset', 'tid', 'night']) $('#' + id).addEventListener('change', e => {
+    const v = id === 'night' ? e.target.value === 'true' : id === 'tid' ? Number(e.target.value) : e.target.value; api('set_profile', { [id]: v });
+  });
+  $('#auto').addEventListener('change', e => api('auto_react', { on: e.target.checked }));
+  document.addEventListener('scan-done', () => {});
+  setInterval(async () => { if (document.activeElement.tagName === 'TEXTAREA') return; const r = await fetch('/api/state').then(r => r.json()).catch(() => null); if (r) { const sl = $('#scanlist'); if (st && st.link && r.scanResults) {} render(r); } }, 700);
+  refresh().then(() => { /* scan list fills from the scan action's result */ });
+  // the scan action returns the device list inside the state's log; also fill the dropdown from a dedicated fetch
+  const origApi = api;
+  api = async (action, args) => { const j = await origApi(action, args); if (action === 'scan' && j) { const r = await fetch('/api/scan').then(r => r.ok ? r.json() : []).catch(() => []); $('#scanlist').innerHTML = '<option value="">(pick a gun)</option>' + r.map(d => `<option value="${d.address}">${d.name || '?'} · ${d.address} · ${d.rssi} dBm</option>`).join(''); } return j; };
+</script>
