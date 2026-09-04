@@ -1395,9 +1395,11 @@ death during the BLE gap keeps its real respawn timer. A new match, a match end,
 in-flight reconcile. Auto-respawn, the recovery deadAt stamp, and scanner-revive are all gated off while
 `reconciling`. Reload takeover does not open while disarmed. `state().reconciling` is exposed for the HUD.
 8 old §3.10 live-reconnect resync tests were rewritten to the reconcile contract; suite green (99 engine
-/ 124 app). **HUD copy + hardware validation NEXT:** the phone still needs a "RECONNECTING — CONFIRM YOUR
-GUN" screen while `reconciling` (brx-hud owns HUD copy), and the force-close-at-low-HP exploit must be
-re-run on R0BQT after the next APK build to confirm the disarm holds and the gun re-arms at the real HP.
+/ 124 app). HUD takeover copy landed by brx-hud (f202f41: "GUN RELINKED / SYNCING WITH YOUR GUN / WEAPON
+DISARMED FOR A MOMENT · STAND BY", ~3 s, self-clearing). **✅ VALIDATED ON HARDWARE 2026-09-04
+(R0BQT-E20D):** shot down to HP 29 / armour 0, force-closed, reopened, reconnected → **HP held at 29 (not
+healed to 45), same match, alive, no respawn**; Tony saw the takeover and could shoot after it cleared.
+The old build countdown-healed to full here. Exploit closed. See experiment-log 2026-09-04 (late night).
 
 Live-bench weaknesses in the §3.10 resync + hydrate path, surfaced repeatedly on 2026-09-04 (they predate
 the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:

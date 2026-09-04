@@ -6240,3 +6240,28 @@ mode, night, LEDs off, validation), compile (native untouched / team tail / heal
 (band repaint once per band, burst ends on the current band, revive re-blanks), console (default + opted-in
 text). Not yet chosen: which look is the default -- that is a field decision (Tony), not a bench one. Still
 open from the bench: hold time with no traffic, blink forms after a blank, the muzzle-flash LED.
+
+### 2026-09-04 (late night) — 🟢 S7.1 ANTI-CHEAT VALIDATED ON HARDWARE: force-close at low HP no longer heals
+
+Re-ran the confirmed exploit on `R0BQT-E20D` with the reconcile-disarm build (commits a63aa10 engine,
+f202f41 HUD copy). Bench harness: phone driven over CDP (webview_devtools_remote forwarded from WSL adb;
+the Windows-only `webview_eval.py` was bypassed with a tiny direct-CDP eval), match started by injecting
+`onMcMessage({kind:'start'})` into `window.brx.engine`, damage delivered by our ESP32 emitter on COM8.
+
+- **First start was NOT clean** — the gun could not shoot or reload. Cause: injecting `start` straight into
+  a `kitted` engine spawned in the state model but the gun had no head/`$SIR` on it (a fresh app process
+  after reinstall). Fix: re-push config (`onMcMessage({kind:'config'})` → `_applyConfig` re-writes the head),
+  wait ~2.5 s for the paced 26-frame head write, then `start`. Gun armed clean. **Lesson for CDP-driven
+  bench starts: config (head) before start (spawn); a bare start does not re-arm a gun that lost its head.**
+- **`ir-emit` word `mag` field = per-hit DAMAGE.** `word(mag,proto,team,…)` (f11_ab.py): mag 1 → 1 dmg/hit
+  (70→64 armour over 6), mag 20 → 20 dmg/hit (64→24 over 2), mag 10 → 10. **Armour absorbs with NO spillover
+  to HP** at the armour/hit boundary observed (24 armour, mag-20 hit → 4 armour, HP untouched). Enemy shot =
+  a team ≠ the victim's `$TID` (victim was team 1; shot team 2). One reusable one-liner beats a per-shot
+  script.
+- **The test.** Shot down to **HP 29 / armour 0, alive** (baseline recorded). Force-closed the app, reopened,
+  reconnected to R0BQT. Result: **HP 29 held (not healed to 45), same match_id, alive, no respawn fact.** Tony
+  saw brx-hud's takeover ("GUN RELINKED / SYNCING WITH YOUR GUN / WEAPON DISARMED FOR A MOMENT · STAND BY",
+  ~3 s) and could shoot again after it cleared. The old build countdown-healed to full here. **Exploit closed;
+  the reconcile disarm→re-arm fires and never heals.** (Did not catch `reconciling:true` in the snapshot only
+  because re-forwarding the debugger to the fresh app pid took longer than the 3 s window — the HP result and
+  the on-screen takeover are the proof.)
