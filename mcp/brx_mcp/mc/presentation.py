@@ -51,7 +51,7 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 #   group "objective" is MC-pushed for the mode; the SOUND is gated by `announcer`, the LEDs are not
 EVENTS: dict[str, dict] = {
     "hit_taken":     dict(source="hud", group="player",    desc="you were hit",                      sound=None,   gun_led=pg.RED,    headset=None),
-    "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=pg.RED,    headset=None, flash="red"),
+    "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=pg.RED,    headset=None),
     "respawned":     dict(source="hud", group="player",    desc="back in",                           sound=None,   gun_led=pg.WHITE,  headset=None),
     "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=pg.GREEN,  headset=None),
     "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=pg.PURPLE, headset=None),
@@ -183,11 +183,12 @@ DEATH_BLINK_COUNT = 200
 HEADSET_BLANK = "$HLED,,6,,,,,*"
 
 # ---- the headset's SMALL flash LED (2026-09-04 ladder, R0BQT) -------------------------------------------------
-# The native "camera flash" on a hit is a separate bi-colour LED next to the big RGB one, and `$LED` drives it:
-# `$LED,<big>,<small>,<effect>,<pulses>,*` -- token 2 = small LED colour (0 red, 1 green), token 1 = 0 leaves the
-# big LED alone (1 blue, 2 white, 3 green paint it too), tokens 3/4 made no visible difference at 0-50. One
-# frame = one native-bright flash. `events[ev].flash = green|red|null` fires it at the start of the event.
-FLASH_COLOURS = {"green": 1, "red": 0}
+# The native "camera flash" on a hit is a separate GREEN-ONLY LED next to the big RGB one (the APK's
+# `isUsedGreenLed`), and `$LED` drives it: `$LED,<colour>,<useGreenLed>,<effect>,<pulses>,*` -- token 2 = 1 fires
+# the small green LED (one native-bright flash per frame; tokens 3/4 made no visible difference at 0-50); token 2 =
+# 0 paints the BIG LED in <colour> instead (0 red -- Tony first read that as a red small-LED flash, corrected on
+# the bench: "that is the hled not fled"). `events[ev].flash = green|null` fires the small LED at the event start.
+FLASH_COLOURS = {"green": 1}
 
 
 def flash_frame(colour: str) -> str:
@@ -393,7 +394,7 @@ def merge(current: dict | None, patch: dict) -> dict:
                     cur[fk] = _colour(fv)
                 elif fk == "flash":
                     if fv is not None and fv not in FLASH_COLOURS:
-                        raise ValueError(f"presentation.events.{ev}.flash must be green|red|null")
+                        raise ValueError(f"presentation.events.{ev}.flash must be green|null (the small LED is green-only)")
                     cur[fk] = fv
                 else:
                     raise ValueError(f"presentation.events.{ev}.{fk}: unknown field")

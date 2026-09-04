@@ -6332,3 +6332,9 @@ big LED (0 = leave alone), token 2 is the small LED's colour. **Shipped as A11.8
 `$LED,0,<c>,1,1,*` first in the event's lights; defaults green on the kill family, red on died; `$LED` and `$BLINK`
 on the known-safe list; protocol doc rows. Not measured: whether the small LED can be held on, or flash more than
 once per frame; what tokens 3/4 do at other values.
+
+**Correction (minutes later, Tony):** the "red" from `$LED,0,0,1,5` was the BIG LED, not the small one -- "that is
+the hled not fled." The small flash LED is **green-only** (the APK's `isUsedGreenLed`), token 2 = 1 fires it, and
+with token 2 = 0 the frame just paints the big LED in token 1's colour (0 = red). A11.8 corrected to
+`flash: green|null`; `died` keeps its red gun burst. Next: the small LED at 1 Hz beside a native headset in
+its respawn blink, to compare brightness and cadence.

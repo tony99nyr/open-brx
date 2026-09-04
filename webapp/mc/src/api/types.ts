@@ -59,7 +59,7 @@ export interface GameConfig {
 /** A11/A11.5 — one row of the resolved presentation profile (GET /api/presentation). */
 export interface PresentationRow {
   event: string; source: 'hud' | 'mc' | 'both'; desc: string;
-  sound: string | null; words: string; gun_led: number | null; headset: number | null; flash?: 'green' | 'red' | null;
+  sound: string | null; words: string; gun_led: number | null; headset: number | null; flash?: 'green' | null;
   text: string; enabled: boolean;
 }
 export interface PresentationView {
