@@ -102,7 +102,15 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 | **K6** | **Per-game WEAPON TUNING (damage / fire-sound / rate overrides inside a saved game)** | ⬜ deferred — own spec | Tony's "silenced sniper" wants a fire-sound override. `SavedGame.weapon_tuning` is RESERVED in `docs/spec/loadout.md` §8 (always absent today) so it slots in without a schema change; the builtin "Silenced Sniper" preset ships with the stock sound and says so in its desc. Needs: which `$WEAP` tokens per weapon are host-tunable (t5 dmg, t14 fire interval, t27–t29 sounds — `compile._NAMED`), a per-preset override shape, and the bench for sound ids. |
 
 
-## 🔴 R2 — the emitter NO LONGER REACHES 3 FT. Power control is now a BLOCKER, not a nicety (2026-09-02)
+## ✅ R2 (blocker) — FIXED 2026-09-03: reseated board B + LED anode moved to 5 V; ceiling ~8-9 ft
+
+> Range ladder, same rig, gun `R0BP1-9498`, magnitude-1 shots, re-armed per rung: **3 ft 6/6 · 6 ft
+> 10/10 · 8 ft 9/10 · 10 ft 0/10** (witness 10/10 at 10 ft, Tony saw no flashes). All hits `dome0`.
+> Sharp cliff between 8 and 10 ft, as a bare unlensed LED should give. Reseat and 5 V were done
+> together, so which one fixed it is unknown; leave the rig on 5 V. The software power control below
+> is back to being a nicety. Original blocker entry kept below.
+
+## ~~🔴 R2 — the emitter NO LONGER REACHES 3 FT. Power control is now a BLOCKER, not a nicety (2026-09-02)~~ (FIXED 2026-09-03, see above)
 
 > **Measured, same rig, nothing moved:** 5/6 registered at **3 inches**, **0/6 at 3 feet**, with the
 > witness hearing 6/6 at both. A **real BRX gun registers normally at 3 ft** against the same
@@ -1286,6 +1294,131 @@ supporting anecdote, and this file has an eight-hypothesis graveyard directly ab
 **Tools:** `mcp/tools/loopback.py` (rig check: PING/alive, decode rate, bit-exact compare — run it
 before ANY IR session), `f11_ab.witnessed()` (the edge-count witness).
 
+## 🟠 S3 — EXTRACTION ON THE PHONE PATH, HUD-DRIVEN (2026-09-04)
+
+Tony's reference points are **ARC Raiders** and **Fortnite's Sprite extraction** (`game-modes.md` §Extraction,
+event ladder + sources). The presentation events and the `extraction` preset exist (A11); what does not
+exist is the node-side rules engine that FIRES them. To build, all on the HUD so it works with MC out of range:
+1. **Zone presence** from the station / grenade IR beacon (`$HIR` tok2 = 15) landing on the player's own
+   gun; "left the zone" = beacon silence for N s.
+2. **Call → window → close** timers on the node (45-90 s inbound, ~60 s window, 10 s closing), with
+   `extraction_tick` repeating; leaving the zone restarts, dying fails (`extraction_failed`, `loot_dropped`).
+3. **Wallet** on the node (kills, loot beacons / QR pickups → `loot_picked`); `extraction_complete` banks
+   it (score + next-life `$LIFE`/`$WEAP` boosts) and parks the player as SAFE.
+4. **Hard end**: at time-expiry any un-extracted player takes `raid_ending` → `raid_over` and scores nothing.
+5. MC: reconcile wallets from the facts at recap; `extraction_alert` fan-out is best-effort.
+The CLI engine (`modes/extraction.py`) already models 2-4 host-side; port its rules, not its transport.
+⚠️ `last_survivor` was pulled from the `last_stand` preset: MC only knows deaths from CONNECTED HUDs, so it
+is the announcement most likely to be wrong when phones drop -- kept as an opt-in event.
+
+## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BACKEND BUILT 2026-09-04, UI + APK pending
+
+Tony: *"how the gleds and hleds behave, what sounds are used and when, these should be made into a
+config that MC can program … silenced snipers cuts out the announcer stuff and extra led flashes …
+counter-strike mode … bomb armed and bomb defused sounds … 'protect the VIP' mode … VIP hits."*
+
+**Done:** `mc/presentation.py` (events, presets standard / silenced / counter_strike / vip, merge +
+validation against the on-gun catalog, resolve, cue + LED expansion); `GameConfig.presentation` in the
+PUT whitelist; the compiler emits per-event `cues` + a `leds` burst table + a summary; the phone
+engine plays them on hit_taken / died / respawned / healed / armour_up / shield_up with a one-burst-
+per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
+> **A11.4 added the same day (Tony: "it should be like halo … probably want an event SYSTEM"):**
+> MC→node `alert{kind,text}` fan-out (`Session._alert`, scope all / team / player), Halo-style medal
+> stacks on `feedback.medals` (first_blood · double/triple/killtacular · killing_spree 5 · unstoppable 10,
+> several per kill, played back to back instead of the kill line), scorer alerts for lead_taken /
+> lead_lost / next_kill_wins / last_survivor / infected, node-side clock callouts time_60/30/10, and
+> per-mode presets: tdm/ffa → standard · infection → infection · lms → last_stand · extraction →
+> objective · cs (CLI) → counter_strike. **Rule (Tony): events are HUD-driven; MC pushes only cross-player
+> facts, best-effort, never waited on** (A11.4). HUD animations for the new `alert` moment and medal
+> stacks are with the **brx-hud** session. Suites: mcp 691, app 89.
+
+0. **A11.5 (same day)**: event `source` hud/mc/both, `hud_events` / `mc_events` / `mc_confidence` switches,
+   `Session.mc_confidence()` gating the global-state pushes, `GET /api/presentation`. Done, tested.
+1. ✅ **MC UI, read-only (2026-09-04)**: section 5 of the DESIGNER, an **ADVANCED** disclosure that loads
+   `/api/presentation` on click — preset, seven switches, MC confidence line, the event table (source
+   HUD/MC/both · when · sound id + catalog words · gun / headset colour · HUD text; muted rows struck
+   through). Older server → "THE MC SERVER PREDATES THIS UI" with the restart command; any other error
+   → its message. Verified: console unit tests (open/close, 404, error, mounted in the Designer), the
+   real-browser suite (fresh server: table rendered from the live MC; stale server: the banner), and an
+   old-session boot (fixed on the way: a restored pre-A11 config now gets the mode's presentation
+   default, or the console read a stock mode as TUNED). **Next**: the preset picker + switches (write).
+   Until then `PUT /api/config {"presentation":{"preset":"silenced"}}`.
+2. **APK rebuild** (the engine changes) + site rebuild, before the next match.
+3. **Objective / VIP emitters**: the cues + `alert` plumbing exist; the extraction/objective engines on
+   the phone path do not call `Session._alert("objective_scored", …)` yet, and `survivors_win` needs
+   the infection end decided. Wire when those modes move onto the phone path.
+4. **Per-event override editor** (custom sounds from the catalog picker) — after 1.
+5. `bomb_detonated` uses X12 on Tony's ear ("X13 might actually be a sniper"); confirm and align
+   `sounds.BOMB_DETONATED` + the proto-10 `$SIR` row.
+6. **HUD** (brx-hud session): `alert` moment banner + medal stack badges on the kill moment.
+
+## 🟢 S1 — THE SOUND CATALOG: classify all 2477 on-gun sounds so game modes can pick by meaning (2026-09-03)
+
+> **Steps 1, 3 and 5 DONE 2026-09-03 night** (experiment log "EVERY SOUND CLASSIFIED"): catalog JSON
+> + reference page shipped, `python -m brx_mcp sounds <words|category:|ids:> [addr]` searches and
+> auditions, `test_every_shipped_sound_id_is_on_the_gun` enforces on-gun ids, five mis-mapped cues
+> fixed. **Open: step 2 (Tony's by-ear audit of ~30 ids), step 4 (MC picker), and swapping VB17 for
+> the team-neutral VA6D/VA6E lead lines.**
+
+
+Tony's ask: *"quickly and easily create new game modes that use real sound effects. for that you need
+to understand everyone of them."* State: the bank is off the gun (`~/brx-audio-bank/`, and
+`C:\Users\Tony\.brx-mcp\audio-bank\`; raw PCM s16le 44.1 kHz mono; NOT in the repo) and
+`mcp/tools/soundbank_analyze.py` produces descriptors + spectrograms + Whisper transcripts per id.
+Remaining:
+
+1. **Classify.** From `analysis/catalog.jsonl`: a `category` per id from a fixed vocabulary that maps
+   onto game events (hit_hp / hit_armor / hit_shield / crit / death / respawn / kill_confirm /
+   heal / shield_on / emp / poison / cryo / incendiary / gas / explosion / weapon_fire:<class> /
+   reload / empty / beep_ui / countdown / music / voice:<character>:<intent>), a one-line
+   description, and a confidence. Voices get the transcript verbatim. Do it from the rows and the
+   spectrograms; do NOT guess from the prefix alone (the H family alone spans hit thuds to headset
+   cues).
+2. **Audit by ear.** 30-id sample across categories, played through a gun (`$PLAY,<id>,4,6,,,,,*`),
+   Tony judging. Fix the rules, re-run, repeat once.
+3. **Ship the derived data**: `mcp/brx_mcp/sounds/catalog.json` (id, family, duration, category,
+   description, transcript, on_gun, in_app) + `docs/reference/sound-catalog.md` (restated, our
+   words -- no raw audio, no raw Sounds.json copy). Retire `sound-bank.md`'s "complete/authoritative"
+   claim: 468 ids are gun-only, 157 app-only (see experiment log 2026-09-03 evening).
+4. **Picker.** `python -m brx_mcp sounds <query>` (search by category/word, play one) and a
+   category-driven picker in the MC game-mode editor, so a mode says "emp hit" and gets a real id.
+5. **Sanity**: refuse any `$PLAY` id that is not on the gun (the 157 app-only ids play a fallback).
+
+## 🟢 F15 — BUILD THE HOST-DRIVEN STUN (EMP) — mechanism PROVEN on hardware 2026-09-03
+
+`experiment-log.md` 2026-09-03 "HOST-DRIVEN STUN WORKS". Chain, all proven live: proto-8 IR word →
+victim's `$SIR,8,0,,24` row registers it with no pool change → `$HIR,<sensor>,8,…` over BLE → host
+sends `$AMMO,0,0,0,1` + `$AMMO,1,0,0,1` (trigger dead, reload dead) → after N s restores the counts
+the engine already tracks from `$ALCD`. Known-safe frames only. What to build:
+
+1. **Phone engine** (`app/src/engine.js`): on `$HIR` with ir_proto 8 (and the mode says EMP is on),
+   zero both slots, start a timer (mode-configurable, default 10 s -- Tony's recollection of the
+   native duration), restore mag/reserve from the tracked counts, emit a `stunned` fact + HUD moment.
+   Guard: a second EMP during a stun extends, never double-restores. Death during a stun: the revive
+   ammo wins, cancel the timer.
+2. **MC compile**: a `$SIR,8,0,<sound>,24,…` row in `_SIR_TABLE` when the mode enables EMP (sound:
+   the victim's EMP-hit cue is a bank id we have not pinned; the native one played on the hit).
+3. **An EMP source**: a weapon slot whose `$WEAP` t3 (damageType) = 8 and t4 (subtype) = 0, i.e.
+   the Sentinel's own word from a player's gun; and/or the Utility Box / MC emitter. Slot design is
+   in `weapon-design.md`; the earlier fn-23 "EMP" there is RETRACTED (audio suppression).
+4. **Tests**: engine unit test for the zero/restore/extend/death paths; compile test for the row.
+
+Not to do: rely on the firmware's own stun -- on a native Sentinel the same word stunned 2/5 singles,
+and when it did the lock lasted until death (unexplained; sensor or per-hit roll are the leads).
+
+## 🟡 F16 — `bench_common` arms a gun that CANNOT FIRE (no `$BMAP`, no spawn tail) — 2026-09-03
+
+> **Half done the same night:** `bench_common.BMAP` + `spawn_tail()` exist and `stun_hunt.py` uses
+> them. Still to do: the other operator-fires tools (`hittest`/`damage_bench` style trigger tests in
+> `bench-tomorrow.md` 1.x / 2b) and a test pinning `BMAP` to MC's `_bmap()`.
+
+
+Found live: `arming_frames()` + `AR` + `$SPAWN` gave Tony a gun whose trigger only produced `$BUT`
+events. MC's seven `$BMAP` rows + `$PLAYX,0` / `$AMMO` / `$BMAP,0,0` tail fixed it. Fix: add a
+`BMAP` list and a `spawn_tail()` to `bench_common`, send them in every tool that asks the operator
+to pull a trigger (`stun_hunt.py`, the 1.x/2b trigger-tests), and pin it with a test that the list
+matches MC's `_bmap()`. **Re-read any past operator-fires-the-gun negative with this in mind.**
+
 ## ⬜ F14 — HUD moment nits deferred from the 2026-09-02 polish loop (Low, not blocking)
 
 Two rounds of adversarial review; everything Critical/High/Medium is fixed and mutation-checked.
@@ -2044,3 +2177,20 @@ so several of these are settled from data rather than recollection.
   candidate token changed) and wire it through `compile._mods` like `reload_mult`; until then the perk is
   `verified:false` and its desc says what it really does.
   **Bench plan with the exact frames: `docs/bench-weap-tokens-2026-09-04.md`** (also lists every `$WEAP` token we send blind).
+
+## Sidearms 2026-09-04 (A12) — open items
+
+- **S-A12.1 Ear audit of the pistol sounds ⬜** — fire `P09` (Glock), `Q04` (USP-S), `P16` (Deagle) and the shared
+  reload run `D08 D07 D06` were picked from the on-gun bank by descriptor only (`docs/reference/sound-catalog.md`),
+  never heard through a gun. Bench: try out each pistol from a phone, listen; if a reload part chirps, override
+  back to the Bolt Rifle's `D04/D03/D02`. `$PLAY,<id>` auditions: `python.exe -m brx_mcp ... play P09` on a bench gun.
+- **S-A12.2 Semi-auto cadence on hardware ⬜** — the frames set `t20 = 7` (single shot) with t14 150/200/375 ms.
+  Confirm one pull = one shot and that t14 is the floor (not ignored) on a pistol; confirm the USP-S t25=2/t26=50
+  pair really means no flash + half loudness on a second weapon (protocol-classes.md flagged it as single-sample).
+- **S-A12.3 Real Counter-Strike sounds ⬜** — Valve's audio is copyrighted and is NOT in the repo. If Tony wants
+  the real thing on the guns: convert with `mcp/tools/ltp_convert.py <file> glock|usp|deagle` and copy the `.LTP`
+  over the data port (community-notes.md); each pistol's ids are unused elsewhere so only that pistol changes.
+- **S-A12.4 Pistol art ✅ 2026-09-04** — Tony's three renders converted to 640-wide JPEGs at
+  `webapp/mc/public/assets/weapons/{usp,glock,deagle}.jpg` + `app/www/assets/weapons/` (source: his Downloads, not in repo).
+- **S-A12.5 Pistol-round preset?** — a stock `pistols` template (primary `kinds:["sidearm"]`, secondary perk-only)
+  in the designer's START FROM row; the rule engine already supports it, only the preset name is missing.

@@ -118,6 +118,31 @@ alerts everyone**) → **survive the channel** → if you extract you **keep/ban
 persistent boosts); **if you die you drop it all** (others can grab it). Loss-on-death is the whole
 point — it's what gives every decision real stakes. (Sources below.)
 
+### The shape Tony is picturing (2026-09-04): ARC Raiders + Fortnite's Sprite extraction
+
+Two references sharpen the loop above into an **event ladder** (sources at the end of this section):
+
+| beat | ARC Raiders | Fortnite: Runners / Sprites | our event |
+|---|---|---|---|
+| call the extract | one player activates the console; 60-90 s timer (elevator / metro), airshaft ~60 s, keyed hatch 15 s | interact with the site: a ~45 s "rifting the crate in" sequence | `extraction_called` (LOUD: "Black Hawk inbound") · others: `extraction_alert` |
+| the window | leave the zone and the timer restarts; the whole squad in the zone extracts together | crate lands and stays ~70 s; drops to **10 s** once someone banks | `extraction_open` → `extraction_tick` → `extraction_closing` |
+| success | out of the raid, loot kept; downed squadmates revive on extraction | Sprite banked permanently, Sprite Dust earned | `extraction_complete` (banked score + next-life boosts) |
+| failure | die → lose everything except the safe pocket | die / leave → the Sprite is dropped for others | `extraction_failed`, `loot_dropped` |
+| the hard end | 30-min raid, then an orbital strike kills everyone still out | match end | `raid_ending` ("Incoming air raid, find cover") → `raid_over` (bombardment kills everyone not extracted) |
+
+**HUD-driven by design** (`docs/spec/contracts.md` A11.4): the extractor's own HUD owns its channel --
+"in the zone" is the station's / grenade's IR beacon landing on its own gun, the timers are local, the
+wallet is local -- so every beat above except `extraction_alert` works with MC out of range. The alert to
+everyone else is MC best-effort (or, at Tier 4, the field radio). The **hard end** is the node's own
+clock: at time-expiry any player not extracted is killed by the bombardment and scores nothing.
+
+*Refs:* [ARC Raiders extraction mechanics (brokenbuilds.gg)](https://brokenbuilds.gg/arc-raiders/guides/arc-raiders-extraction-mechanics-guide),
+[all extract types (arcmaps.com)](https://arcmaps.com/arc-raiders-extraction-points),
+[the 30-minute timer + meteor (PC Gamer)](https://www.pcgamer.com/games/third-person-shooter/arc-raiders-punishes-players-who-fail-to-extract-in-time-by-simply-dropping-a-meteor-on-their-heads-but-there-is-one-way-to-survive-the-blast/),
+[Fortnite Extraction Sites (wiki)](https://fortnite.fandom.com/wiki/Extraction_Sites),
+[Fortnite Runners: extract Sprites (Epic)](https://www.fortnite.com/news/extract-and-collect-sprites-on-a-new-map-in-fortnite-runners),
+[Hunt: Showdown extraction (wiki)](https://huntshowdown.fandom.com/wiki/Extraction).
+
 ### The BRX mechanic (what maps to what)
 
 | Genre element | BRX / Open BRX implementation |

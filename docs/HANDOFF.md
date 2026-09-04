@@ -1,6 +1,52 @@
 # Handoff — Open BRX
 
-**Updated:** 2026-09-03.
+**Updated:** 2026-09-03 (afternoon).
+
+> ## 🎧 2026-09-03 (evening/night) — THE WHOLE SOUND BANK IS OFF THE GUN AND CLASSIFIED · EMP = ONE IR WORD · HOST-DRIVEN STUN WORKS
+>
+> - **Sound bank**: 2477 `.LTP` files (raw PCM s16le mono 44.1 kHz) copied off a gun in USB disk mode
+>   to `~/brx-audio-bank/` + `C:\Users\Tony\.brx-mcp\audio-bank\` (NOT in the repo). Whisper +
+>   librosa per id → `mcp/brx_mcp/data/sound_catalog.json` + `docs/reference/sound-catalog.md`; every
+>   character voice has one 22-slot layout; the app's 2166-id list is wrong (468 gun-only, 157 app-only).
+>   **Five shipped cues played the wrong clip** (a death scream for "objective taken", 12 s rules
+>   explainers for "scored"/"defused") -- fixed in `sounds.py`, pinned by `test_sound_catalog.py`.
+>   `python -m brx_mcp sounds "kill confirmed" [addr]` searches / auditions. Open: Tony's by-ear audit,
+>   the MC picker, VB17 → VA6D/VA6E (FOLLOWUPS S1). Tools: `mcp/tools/soundbank_analyze.py`, `soundbank_classify.py`.
+> - **Native captures** (`native_capture.py`, F12 worked around by stitching): Sentinel **EMP = one
+>   proto-8 word, mag 15** from the muzzle (alt-fire); Medic heal = a **proto-1 pair** (mag 8 + 14,
+>   sub 2, crit set). Replaying the EMP at a native gun stunned it 2/5 singles (until death!) and
+>   3/3 sequences -- unexplained; sensor or per-hit roll are the leads. Same-team word is discarded.
+> - **Host-driven stun proven**: proto-8 hit → `$HIR,…,8,…` over BLE → `$AMMO,0,0,0,1` + `$AMMO,1,0,0,1`
+>   (trigger and reload dead) → `$AMMO` restore → fires. FOLLOWUPS **F15** to build it into the phone
+>   engine + MC. **F16**: `bench_common` arms a gun that cannot fire (no `$BMAP`) -- fix before any
+>   operator-fires-the-gun test.
+> - `$SIR` row sounds: fn 24/25/28 on proto 8 play NOTHING and the sound column did nothing either
+>   (VA2 = tear-gas coughing); the phone should `$PLAY` the stun cue itself (L-family electrical ids).
+>
+> ## ✅ 2026-09-03 (afternoon) — EMITTER FIXED (ceiling ~8-9 ft) · HEADSET TEAM COLOUR NOW PERSISTS
+>
+> **The emitter blocker is gone.** Tony reseated board B and moved the IR LED's anode to **5 V**
+> (both at once, so which one fixed it is unknown; leave it on 5 V). Range ladder, gun `R0BP1-9498`:
+> **3 ft 6/6 · 6 ft 10/10 · 8 ft 9/10 · 10 ft 0/10** -- a cliff, as a bare unlensed LED gives. Work
+> hits at ≤ 6 ft. `range_step.py` now reads pools after `$SPAWN` and refuses to score a dead gun.
+>
+> **`$HLED` on a spawned gun, measured** (`hled_spawned.py`, `hled_bright.py`): a static frame painted
+> AFTER spawn **holds solid**; **`$SPAWN` clears it**; **every hit clears it** (native flash, then dark,
+> ours never returns); the blink form works in game; a paint 1 s after spawn lights (the ≥ 3 s gap is
+> post-DEATH only); **token 5 is brightness with the gun's curve: 1 dim, 10 = 255 = max**. The dim team
+> blink at spawn is the firmware's -- we never sent a spawn-time `$HLED`. This is the mechanism behind
+> field G4/V3 ("team colour on death, not pre-game").
+>
+> **Shipped (mcp 670/670 · app 75/75):** the headset team colour is re-painted after every spawn/revive
+> and every `$HIR`, on the direct-BLE `GameDriver` AND in the MC bundle (`spawn`/`revive` end on it,
+> `cues.team_led` for the phone's per-hit repaint). ⚠️ **The phones need a NEW APK** (`cd app && npm
+> run android:apk`, then rebuild the site) before the next match sees it. V3 in `verify-together.md`
+> is rewritten accordingly. Tony's design input: *"pre-game during config, it does help to have the
+> led on headset show the team color. to organize teams."*
+>
+> Open from the session: one unclassified `$HLED` miss (first pass, no echo captured; n=1 vs n=2),
+> and whether the wire or the 5 V fixed the emitter. Neither blocks anything.
+
 
 > ## 🗓️ 2026-09-03 — the event flash is TUNED, and the emitter is the blocker
 >

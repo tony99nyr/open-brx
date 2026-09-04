@@ -5429,3 +5429,559 @@ control for the emitter) with **Q15/Q16** (IR power, beam divergence).
 ⚠️ This is why "the tagger is deaf" was chased for an hour at the end of the session: the witness
 board is a bare VS1838B aimed squarely at the emitter and is far more sensitive than a headset dome,
 so it kept hearing shots the tagger could not.
+
+### 2026-09-03 (afternoon) — ✅ THE EMITTER REACHES AGAIN, and its ceiling is now a NUMBER
+
+Pre-flight first: the only `brx_mcp` processes on the box were this session's own MCP server (both
+created 15:46:30, parented by `wsl.exe`), so nothing stale held a gun. The un-enrolled gun had been
+renamed earlier in the day and advertised as `R0BP1-9498`. `loopback.py COM8 COM7 6` before touching
+anything: PING OK on both boards, 6/6 decoded, 2/6 bit-exact -- the F12 fragmentation, unchanged.
+
+Tony reseated every jumper on board B and moved the IR LED's anode resistor from the 3V3 rail to the
+**5 V** rail. Nothing else -- his words: *"reseated everything, moved to 5v ... thats all i did. no
+other changes"*. Then `range_step.py`, `R0BP1-9498` as victim, re-armed and re-spawned per rung:
+
+| distance | registered | witness heard | operator |
+|---|---|---|---|
+| 3 ft | **6/6** | 6/6 | — |
+| 6 ft | **10/10** | 8/10 | — |
+| 8 ft | **9/10** | 9/10 | *"several hits ... might have been some gaps"* (uncounted) |
+| 10 ft | **0/10** | 10/10 | *"i didnt see any hits"* |
+
+Every registered hit was `dome0`. The 8 ft rung ran with the new alive check and read
+`$LCD,45,70,0,0,32,384` after spawn, so the 10 ft zero is a miss, not a corpse (that rung had the same
+fresh arm + spawn and magnitude-1 shots). Aim was confirmed by phone camera before the 8 ft bracket.
+
+**Findings.** (1) Yesterday's 0/6 at 3 ft is gone; the emitter now carries 3x that distance. (2) The
+range limit is a **cliff between 8 and 10 ft**, not a slope -- the signature of a bare 940 nm LED with
+no lens, against a real gun's 16.9 mW behind collimating optics. (3) Two variables changed together,
+so **which one fixed it is unknown**; the honest record is "reseat + 5 V", and the rig stays on 5 V.
+(4) The witness board misses shots the tagger registers (8/10 at 6 ft, 9/10 at 8 ft) -- it never
+moved, so those are its own F12-class misses; it proves light left the LED, nothing more.
+
+**Tooling.** `range_step.py` now reads the `$SPAWN` echo and aborts if the gun reads `$LCD,0,0`
+(pre-flight rule 3 was a rule for humans only until now). New `hled_spawned.py` for item 2.
+
+**Consequence.** Every hit experiment at 6 ft or less is unblocked. Range work stops here for today.
+
+### 2026-09-03 (afternoon, item 2) — `$HLED` ON A SPAWNED GUN: `$SPAWN` and every HIT CLEAR IT; a repaint after spawn holds
+
+Tool: `mcp/tools/hled_spawned.py`, gun `R0BP1-9498`, team 1, colour 4 (purple), headset 6 ft from
+the emitter. Every `$HLED` write was **echoed by the gun** and the hit registered
+(`$HIR,0,0,42,2,20` → `$HP,45,50,0`), so what follows is headset behaviour, not lost writes. Tony's
+answers, one per step:
+
+| step | sent | Tony saw |
+|---|---|---|
+| 1 control, armed NOT spawned | `$HLED,4,0,,,10,,*` | **purple, lit** |
+| 2 `$SPAWN` with purple up | `$SPAWN,,*` | **went dark** — the spawn clears it |
+| 3 repaint after spawn, 20 s | `$HLED,4,0,,,10,,*` | **purple, lit** for the hold |
+| 4 one hit, mag 20 | (IR) | native flash, then **dark — our colour does NOT come back** |
+| 5 blink form after spawn | `$HLED,4,2,300,300,10,200,*` | **blinked purple** |
+| 6 blank | `$HLED,,6,,,,,*` | dark |
+
+**Findings.**
+1. **`$SPAWN` clears the headset.** A team colour painted in the lobby is gone the moment the game
+   starts. That is the mechanism behind field finding G4 / V3 ("headsets showed team colour on death,
+   not pre-game"): whatever we paint before spawn does not survive into play.
+2. **A single `$HLED` frame painted AFTER spawn does hold** — solid purple for a 20 s hold, no
+   breathing, no fight with an animation. The headset really is uncontested between events.
+3. **Every registered hit wipes it.** The native hit flash runs, then the headset goes dark; our
+   colour does not return. So a persistent "what other players see" state (team, out) must be
+   **re-painted after every `$HIR`** and after every `$SPAWN`. `GameDriver` already sees both, so
+   this is a cheap rule, not a redesign.
+4. **The blink form works in game too** (t2=2, 300/300 ms), so event flashes on the headset are
+   available without hammering.
+
+⚠️ **One unresolved discrepancy.** The first pass of this tool (16:05, same gun, same frame, painted
+~11 s after spawn with no control and no echo capture) showed **no purple at all** — Tony: *"it
+blinked dim blue to start at spawn, then went dark. it flashed once for a hit, went dark right after.
+thats it"*. The second pass (16:08, painted ~8 s after spawn) lit. Either that first write never
+landed (unverifiable: it printed no echo) or a static paint is unreliable in some window after spawn.
+n=1 each way; a repeat is the next step, and until it runs "a repaint after spawn holds" is one
+observation, not a rule.
+
+**Design input from Tony, at the bench:** *"pre-game during config, it does help to have the led on
+headset show the team color. to organize teams."* So the lobby paint stays and the fix for V3 is to
+paint the team colour **again after `$SPAWN`** (and after each hit) if it is wanted during play.
+
+### 2026-09-03 (afternoon, item 2 cont.) — `$HLED` token 5 IS a two-level brightness; a paint 1 s after spawn lights; the FIX is shipped
+
+Tony, watching the same gun spawn: *"The respawn command that we send ... sends dim team colors to the
+headsets. can we go full bright?"* Checked the code first: **we send NO `$HLED` at spawn or revive** --
+`spawn` is `$PLAYX,0 → $SPAWN → $AMMO… → $BMAP,0,0`, `revive` is `$SPAWN → $AMMO…`, and the bench tool
+that showed the dim blink sends none either. The dim team-colour blink at spawn is the **firmware's
+own**, so there was no value of ours to raise. Two runs of `hled_bright.py` settled what the fix needs:
+
+**Timing** (blue, team 1, static form): a paint sent **1 s after `$SPAWN` lit bright** -- Tony: *"it
+went bright blue immediately after spawn"*. No post-spawn settling gap is needed; the ≥ 3 s rule (F13)
+is for after a DEATH. (He also saw the headset go bright just before spawn, during arming: that is the
+firmware's own team-assignment light on `$TID`, we send no `$HLED` there either.)
+
+**Brightness** -- the eight-step sweep was untrackable by eye (*"idk which token 5 did what"*), so it was
+re-run as four lit periods with 3 s dark between, order announced in advance:
+
+| order | token 5 | Tony |
+|---|---|---|
+| 1 | 10 | max bright |
+| 2 | 255 | max bright, **not brighter than 1** |
+| 3 | 10 | max bright |
+| 4 | **1** | **dim** |
+
+**`$HLED` token 5 is a brightness with the gun's exact curve: 1 dim, ≥ 2 full, saturated by 10.**
+Callsign's 10 is already maximum. The `compile.py` inference of 2026-09-02 ("if `$HLED` behaves the
+same, 10 is already max") is now measured, and the low-health alert cannot be made brighter by this
+token. All seven writes echoed.
+
+**Shipped (tests 670/670, app 75/75):** `poolgauge.headset_team_frame()`; `GameDriver` paints the
+headset team colour after the start spawn, after every `Respawn`, and on every `$HIR`; MC `compile`
+appends the same `$HLED,<tid>,0,,,10` to the END of `spawn` and `revive` (after the `$AMMO`s, so the
+relay gets a beat) and ships it as `cues.team_led`; the phone engine re-sends `team_led` on every
+damaging hit except the one that fires the low-health alert. `_HLED_SEEN_COLOURS` widened to tids 0-3
+now the palette is measured (3 = green collides with the death out-blink; noted). All of it skipped
+when LEDs are off. ⚠️ **The phone side needs a new APK before the next match**, and V3 in
+`verify-together.md` is now "team colour pre-game AND for the whole life".
+
+**Still open from item 2:** the first `hled_spawned.py` pass (16:05) showed no purple at all after a
+paint ~11 s post-spawn; the two later passes (16:08, 16:12) both lit. That first write printed no echo
+so it cannot be classified. n=1 against n=2; watch for it in the field rather than chase it.
+
+### 2026-09-03 (afternoon, native Supremacy captures) — ⭐ THE SENTINEL EMP IS ONE PROTOCOL-8 WORD · MEDIC HEAL = PROTOCOL 1, A PAIR · F12 IS FULLY RECOVERABLE
+
+New tool `mcp/tools/native_capture.py`: RAW on, every line logged with a host timestamp to
+`~/.brx-mcp/ir-captures/`, host-side decode, and **stitching of split frames**. Receiver ~3 ft from
+the muzzle, native Supremacy on the gun, one class per capture.
+
+## F12, understood: a split loses exactly ONE duration and no edges
+
+A whole 25-bit frame is 52 edges = 51 printed durations. Split frames printed 41+9 = 50, 21+22+6 = 49:
+**each split drops exactly one duration, the interval that spanned the split.** The firmware prints
+from a mark and alternates, so an odd-length fragment ended on a mark and the lost interval was a
+SPACE (bits unaffected); an even-length fragment ended on a space and the lost interval was a MARK
+whose bit is unknown. `stitch()` re-inserts a space or tries both mark values and lets length +
+parity choose. Every split frame in three captures decoded to a parity-valid word this way, most
+unambiguously. **The "hole" was never real signal loss** (a 30 ms hole would drop ~30 marks; the sums
+say ≤ 1). A burst group can also hold several frames (full-auto, or the Medic's pair), so the joined
+list is cut at every sync mark. F12 remains a firmware assembly bug; it no longer blocks captures.
+
+## Sentinel — the EMP (two captures, 16:31 and 16:43)
+
+Tony fires the EMP with **alt-fire**; his character is full-auto on the trigger. Timeline of the
+second capture: isolated single words at +0, +3, +12, +14, +17 s and multi-frame bursts elsewhere.
+Tony: *"i started with the alt-fire"* … *"those single presses each 3s were all the emp"*.
+
+**The Sentinel EMP is a single 25-bit word from the muzzle:**
+```
+1000001011010000111100001   proto=8  player=11  team=1  mag=15  crit=0  sub=0   (parity ok)
+```
+The full-auto trigger emits **protocol 0, magnitude 15** frames, several per burst. Nothing at
+protocol 7 in either capture (25 emissions). ⚠️ This corrects 2026-08-27: "the charge full-auto
+emits proto 0 AND proto 8 per shot" was mixing alt-fire presses into the trigger bursts. The
+protocol-8 word IS the alt-fire.
+
+Protocol 8 is **Shrapnel** in the APK enum as listed (0 Standard · 1 MedicHeal · 2 ActivateShield ·
+3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb ·
+10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma),
+and two other anchors fit that order (death nova = 10, heal = 1). So either the gun labels its EMP
+"shrapnel" on the wire or the order is off by one near 7/8. **The label does not matter: the effect
+is the victim's `$SIR` row for protocol 8**, and that is now testable by replaying this word at a
+gun in a NATIVE game and asking the holder whether the trigger died. That is the stun test we could
+not run for three sessions because we never had the word.
+
+## Medic (16:35)
+
+| input | word | count |
+|---|---|---|
+| trigger | `0000100000000001001100010` proto 0 · mag 19 · sub 0 | 6 |
+| heal pulse | `0001100000000000100011001` proto **1** · mag **8** · crit 1 · sub **2** | 4 |
+| heal pulse | `0001100000000000111011001` proto **1** · mag **14** · crit 1 · sub **2** | 4 |
+
+**The heal pulse is a PAIR of protocol-1 words ~50 ms apart, magnitudes 8 then 14, crit set, subtype
+2.** Protocol 1 = MedicHeal: the enum's third hardware anchor. What the two magnitudes address (two
+pools? HP then armour?) is a victim-side question. Player ids differ per game (32 here, 11/4 for the
+Sentinel) -- native offline ids are randomised, as Jay documented.
+
+Next: Guardian, Heavy, Marauder, Viper, Technician, Wraith, Soldier, then the stun replay.
+
+### ❌ RETRACTED 2026-09-03 (minutes later) — the "stun until death" below was almost certainly an EMPTY GUN
+
+Same word (proto 8, mag 15, team 2), same gun, same native game, after a respawn: **16:54:27 registered
+(hit heard), no stun · 16:57:13 and 16:57:21 both registered, no stun.** The team-1 copies at 16:55:22
+and 16:55:55 did not register at all -- Tony is blue/Nexus = team 1, so those were same-team and were
+discarded, as friendly fire always is. Tony: *"in a real supremacy game it doesn't last until death"* …
+*"about 10 seconds of disable"*.
+
+What fits every observation of the first run instead: **out of ammo.** He had just emptied a
+full-auto mag through the captures; no trigger for minutes, reload did nothing (no reserve), alt-fire
+did nothing, and a respawn -- which refills ammo -- fixed it. The "EMP hit" audio is the victim's own
+proto-8 hit sound, which still plays now with no stun. Empty is not stunned, the way dead is not deaf.
+
+**What stands:** the captured EMP word registers on a native gun as an enemy hit and plays the EMP
+hit sound; **it did not stun a Sentinel** (n=3). Either the real effect needs something the single
+word does not carry, or the Sentinel (a shielded Tank) is immune. Next: the same word at a different
+class. **The `$SIR` function hunt (`stun_hunt.py`) is still worth running** -- our own table's stun,
+if any, is a separate question from the native one.
+
+### ~~2026-09-03 (afternoon) — 🏆 THE EMP WORD, REPLAYED, STUNS A NATIVE GUN -- AND THE STUN LASTS UNTIL DEATH~~ (RETRACTED, see above)
+
+Tony holding `R0BP1-9498` in a native Supremacy game, headset ~3 ft from board B. Five emissions 8 s
+apart from our emitter: the captured EMP word twice as captured (team 1), twice re-teamed to team 2,
+then a plain proto-0 shot at the same magnitude as the control.
+
+| t | sent | Tony |
+|---|---|---|
+| 16:48:26 | `1000001011010000111100001` proto 8 mag 15 team 1 | *"it stunned me, i couldnt shoot after each. on at least one of them it played audio of emp hit"* |
+| 16:48:34 | same | (still stunned) |
+| 16:48:42 | proto 8 mag 15 **team 2** | (still stunned) |
+| 16:48:50 | same | (still stunned) |
+| 16:48:58 | control: proto 0 mag 15 team 2 | **void** -- landed on an already-stunned gun |
+
+*"it never came back between each hit"* … 16:50+: *"im actually still stunned, no trigger"*.
+**Reload: no. Alt-fire: no.** Six proto-0 mag-200 shots at 16:52:10-15 killed him; after the native
+respawn: *"died and respawned, trigger is back"*.
+
+**Findings.**
+1. **A single 25-bit IR word -- proto 8, mag 15, sub 0 -- stuns a stock gun in a native game.** The
+   stun is IR-delivered as an ordinary shot word; nothing exotic (no accessory format, no radio).
+   U11 / the three-session stun hunt is answered on the NATIVE side.
+2. **The native stun is not a timer. It persists until DEATH + respawn** (> 3 min here). Reload and
+   alt-fire do not clear it. ⚠️ Whether the first (team-1) emission was the one that stunned, or
+   only the re-teamed ones, cannot be told: he was already stunned by the second. Same-team
+   polarity of the stun is UNTESTED.
+3. The control shot is void (see above). That plain shots do not lock the trigger is established by
+   every native game ever played, so nothing is lost.
+4. Native "EMP hit" audio played on at least one emission -- the victim's own table plays a sound
+   for proto 8, so the sound is victim-side too.
+
+**What is NOT known:** which `$SIR` FUNCTION does this in OUR table. Native firmware maps proto 8 to
+something; our table maps it to fn 38 (bench_common) and MC's `_SIR_TABLE` maps it to whatever it
+maps. `mcp/tools/stun_hunt.py` replays the same word at our own game with proto 8 → each shortlist
+fn (38, 8, 24, 25, 26, 27, 28, 35) in turn; the holder reports whether the trigger dies. Next.
+
+### 2026-09-03 (afternoon, cont.) — THE EMP REPLAY, TRIAL BY TRIAL: the enemy-team word stuns SOMETIMES, and the stun lasts until death
+
+Correcting the two entries above in turn. Tony: *"i wasn't out of ammo"* -- his observation is
+primary, and the ammo reading is withdrawn. Every emission below is the captured Sentinel EMP word
+(`word(15, 8, team, pid=11)`) or the plain shot (`word(15, 0, 2, pid=11)`), sent from board B with the
+headset ~3 ft away, Tony holding `R0BP1-9498` in a native Supremacy game as blue/Nexus. A 30 s
+trigger-shot capture at 17:12 read the gun's own words as **team 1, player 11** -- the team did NOT
+change across respawns, so "team 1" below is his own team and "team 2" is an enemy.
+
+| t | sent | registered? | sound | trigger |
+|---|---|---|---|---|
+| 16:48:26-58 | T1, T1, T2, T2, plain (8 s apart) | (T1s silent) | ≥1 "EMP hit" | **dead from the first audible hit, until death** |
+| 16:54:27 | T2 alone | yes | hit | alive |
+| 16:55:22, 16:55:55 | T1 alone ×2 | **no** | -- | alive |
+| 16:57:13, :21 | T2, T2 | yes | hit | alive |
+| 16:59:10-42 | T1, T1, T2, T2, plain | (T1s silent) | 1st audible = "normal hit", 3rd = "EMP sound" | **dead from the first audible hit, until death** |
+| 17:02:18 | T1 alone | **no** | -- | alive |
+| ~17:04 | T1, then T2 15 s later (run cut) | 1st audible | normal hit | **dead** |
+| 17:07:12 | T1 alone | **no** | -- | alive |
+| 17:07:53 | T2 alone | yes | normal hit | **dead, until death** |
+| 17:09:17 | T2 alone, 22 s after respawn | yes | normal hit | **dead, until death** |
+
+**Established.**
+1. **The same-team EMP word is discarded**: 4/4 silent, no hit, no effect. Friendly fire is off for
+   it exactly as for shots. Every "first hit" in the sequences was therefore the team-2 word.
+2. **The enemy-team EMP word always registers** (6/6) and **stuns in 2 of 5 single trials and 3 of 3
+   sequences**. Same bits every time. Not deterministic in anything controlled so far: time since
+   respawn (22 s stunned; 2 min did not; 66 s stunned; 5 min did not), preceding words (a T1 41 s
+   before one stun, 80 s before one non-stun), ammo (Tony: not empty).
+3. **When it stuns, it lasts until death**: > 3 min, reload and alt-fire do not clear it, only a
+   kill + respawn does. Tony, from real games: *"about 10 seconds of disable"*. So either the real
+   Sentinel EMP sends something more than this word (a release, or a different word we have not
+   caught -- the 16:43 capture had five isolated proto-8 words and nothing else at the presses), or
+   the firmware's stun timer is not running in whatever state this gun is in.
+4. The stunning hit plays the **normal hit sound**; the "EMP sound" was heard on a hit that arrived
+   while already stunned. So the sound does not mark the stun.
+
+**Leading uncontrolled variable: WHICH SENSOR took the hit.** Tony is holding the gun in varying
+postures in front of the emitter; a dome hit and a gun-body hit are different code paths (`$HIR`
+tok1) and cannot be told apart in a native game over BLE. Test: aim the emitter at the headset only
+(gun out of the beam) for several trials, then at the gun body only. Second candidate: a per-hit
+probability (the `$WEAP` field family has `secondaryFireChance`; an ability may roll).
+
+**Method notes.** Two tools problems cost time here: single-shot inline scripts (replaced by the CLI
+`ir-emit` one-liner at Tony's request -- *"does it have to be a python script every time?"*), and
+captures whose window opened before Tony could see the "GO" (fixed by having him fire continuously
+from the moment he sends "go").
+
+### 2026-09-03 (afternoon) — ⭐ HOST-DRIVEN STUN WORKS: IR word in → `$HIR` proto 8 over BLE → `$AMMO` zero → trigger dead → `$AMMO` restore → fires
+
+Tony: *"can we send custom IR and then have the gun emit bt to the app? and the app cause the tagger
+to become disabled?"* … *"can we do stun on our own?"* Yes, and it was proven end to end in five
+minutes with MCP tools and `ir-emit`, on `R0BP1-9498`, no scripts:
+
+1. Armed in OUR game with `$SIR,0,0,,1` (plain damage) + **`$SIR,8,0,,24`** (registers, moves no
+   pool) and spawned: `$LCD,45,70,0,0,32,384`.
+2. `ir-emit` the captured EMP word re-teamed to 2 → the gun sent **`$HIR,4,8,11,2,15,0,0`** over
+   BLE (sensor 4 = gun body, **proto 8**, shooter 11, team 2, mag 15) and `$HP,45,70,0` unchanged.
+   That is the trigger the phone engine would act on, and it is exactly honest (2026-09-02 rule).
+3. **`$AMMO,0,0,0,1` + `$AMMO,1,0,0,1`** → `$ALCD,0,100,0,0,0`. Tony: *"cant fire, reload does
+   nothing"*.
+4. **`$AMMO,0,32,384,1`** → `$ALCD,32,100,0,384,0`. Tony: *"fires"*.
+
+Every frame is on the known-safe list; the engine already tracks live mag/reserve from `$ALCD`, so
+it can restore exactly what the player had. Duration is ours (10 s, or whatever the mode says), and
+the trigger can be anything -- an incoming proto-8 word, a station beacon, a perk, an MC button. The
+native firmware's stun, with its unexplained until-death behaviour, is not needed for our games.
+
+⚠️ **Bench arming gap found on the way:** `bench_common.arming_frames()` + `AR` + `$SPAWN` produces a
+gun that **cannot fire** (Tony: *"you didnt give me a gun. i cant shoot"*) -- the trigger presses
+arrived as `$BUT,0,1/0` with no `$ALCD`. Pushing MC's `$BMAP` rows (0,0 · 1,100,0,1,99,99 · 2,97 ·
+3,98 · 4,98 · 5,98 · 8,4) plus the spawn tail (`$PLAYX,0`, `$AMMO`, `$BMAP,0,0`) fixed it. Every
+bench tool that asks the OPERATOR to fire (the stun hunt, the trigger-tests in `bench-tomorrow.md`
+1.x / 2b) has been arming without a button map; any past "trigger did nothing" from such a tool is
+suspect. Tools that only need the gun to be HIT are unaffected. → `bench_common` needs a
+`BMAP` list and the spawn tail; tracked in FOLLOWUPS.
+
+### 2026-09-03 (evening) — 🎧 THE WHOLE SOUND BANK IS OFF THE GUN: 2477 raw-PCM files, and a pipeline that lets Claude "hear" them
+
+Tony: *"I want you to classify each sound in the bank. We need to be able to pick from these for our
+game types … I want to be able to quickly and easily create new game modes that use real sound
+effects. for that you need to understand everyone of them … how do we get you to 'hear' them"*.
+
+**Where the audio is.** Not in the Callsign APK: a UnityPy scan of all 1056 Unity asset files in
+`callsign-base.apk` found 11 AudioClips, all app UI (button, swipe, level_up, new_game, game_over,
+xp_growing, unlock_new_guns, change_weapon, team_assigned_and_gun_assigned) plus U48 and N66. The
+bank lives on the GUN: USB disk mode (off → hold SELECT → on, programming port) exposes a 30 GB
+FAT32 volume with `BCgunV4_32.bin` (190 KB) at the root and an **`AUDIO` folder of 2477 `.LTP`
+files, 469 MB**. Copied with robocopy in 35 min (~232 KB/s -- the gun's USB is slow) to
+`C:\Users\Tony\.brx-mcp\audio-bank\` (firmware backed up beside it), then to `~/brx-audio-bank/` on
+the WSL disk. **Both copies are outside the repo and stay there** (`RAW_ASSETS_NOTE.md`).
+
+**The `.LTP` format is headerless raw PCM, signed 16-bit little-endian, mono, 44 100 Hz.** Proof:
+A01.LTP is 217 278 bytes = 108 639 samples and the app's own duration table says 2.4635 s → 44 100
+samples/s exactly; A03 (41 138 B, 0.4664 s) and eight random shared ids agree to the millisecond.
+The first bytes are tiny signed values climbing from zero: a waveform, no header. ffmpeg decodes
+it with `-f s16le -ar 44100 -ac 1`; A01 comes out peaking at 0.989 with no clipping.
+
+**The gun and the app disagree about what exists.** 2477 on the gun vs 2166 in `Sounds.json`:
+**468 gun-only ids** (whole VX ×133 and VZ ×66 voice families, H102-H155 ×54, 52 extra VA lines, SH
+×34, ST ×32, J ×22, U ×19, A77-A86, HM, TK, VT, …) and **157 app-only ids** (mostly `E_`-prefixed
+variants -- E_VB ×64, E_VA ×23, E_J/E_K/E_N/E_X -- plus V00/V10/…/V90, VA0 and eleven Z ids) that the
+gun does not have and would play as the fallback. `sound-bank.md`'s "complete list" is therefore
+neither complete nor entirely valid; the on-gun listing is the authority for what `$PLAY` can play.
+
+**The pipeline (`mcp/tools/soundbank_analyze.py`)**, per file: decode → librosa descriptors
+(duration, peak, RMS, attack, spectral centroid + trend, flatness, ZCR, onset count/rate, pitch +
+stability, envelope shape impact/rising/decaying/sustained) → spectrogram PNG (which Claude can look
+at) → faster-whisper transcript for every V-family id and any speech-like clip → one JSON row per id,
+resumable. Verified on synthetic clips (a 120 Hz buzz, a 440 Hz beep, a noise burst) before the real
+run. The run over all 2477 started 18:35. The classification into game-event categories is the NEXT
+step, done from the rows, and then audited by ear through a gun on a sample.
+
+### 2026-09-03 (night) — 🎧 EVERY SOUND CLASSIFIED: the bank's structure, and five cues we were playing wrong
+
+Run: 2477 files, 0 decode errors, 35 min; 1930 clips through Whisper (small, CPU), 1710 with words.
+All 1274 voice transcripts read end to end. Outputs: `mcp/brx_mcp/data/sound_catalog.json` (2634
+ids: 2477 on-gun + 157 app-only), `docs/reference/sound-catalog.md`, `python -m brx_mcp sounds`.
+
+**Structure of the bank (new knowledge).**
+- **Every character voice uses ONE 22-slot layout**, read off V0 / V3 / V8 and holding across all
+  22 character families: 1 intro · 2 idle loop (6 s) · 3-5 death screams · 6 hurt loop (6 s) ·
+  7 healed line · 8-A kill-confirm lines · B defeat taunt · C-H pain grunts · I boast · J long death
+  (6 s) · K-L taunts · M the character's name. Medic has 34 slots (extra lines N-Y). Our Heavy
+  `$PSET` tail V33 V3I V3C V3G V3E V37 = death scream · boast · pain · pain · pain · healed.
+- **Announcer families by content**: VA01-VA0P numbers 1-25 · VA0Q-VA0X clock · VA1x-VA6x menu /
+  perk / killstreak / weapon / mode names and system messages (`Phone connected` VA99,
+  `Phone disconnected` VA9A, `Headset connected` VA3E, `Gun battery low` VA3D …) · VA7x medals
+  (First Blood VA7H, Double Kill VA7E, Triple Kill VA7Q, Flawless VA7I, Fatality VA7F) · VA8x/VA9x
+  status + system · VAA-VAR a male player voice · VB01-VB1W team/objective callouts for eight
+  team colours (flag captured/returned/taken, takes the lead, one player remaining, wins) · VB1-VBM
+  the Scout voice · VQ/VR/VS the three faction commanders (codes captured, 60 s, victory/defeat) ·
+  VT lives remaining · VX numbers 1-50 + menu + kids-mode + "EMP Pulse" (VX0V), "SHIELD PULSE"
+  (VX69), "Killstreak Ready!" (VX1H), "first blood" (VX0X) · VZ weapon and upgrade names (66) ·
+  V1xx game callouts: mode explainers (V108-V110, ~12 s each), clock (V112-V114, V120), medals
+  (V122-V125), CTF (V131-V144), "NEXT KILL WINS!" (V115), "Closing in on victory!" (V119).
+- **Whisper hallucinates on pure effects** ("You", "Thanks for watching") -- non-voice transcripts are
+  kept only as `speech_untrusted` and never used.
+
+**Five things we ship were playing the WRONG clip** (`sounds.py`, all corrected + pinned by
+`test_sound_catalog.py`): OBJECTIVE_TAKEN V100 was a **death scream** → VB0E "flag taken";
+OBJECTIVE_SCORED V108 was the **12 s King-of-the-Hill rules explainer** → VB0C "Flag captured";
+POINT_CAPTURED V109 was "Capture the flag!" (a mode name) → VA23 "Control Point Captured";
+BOMB_DEFUSED V110 was the **12 s Slayer Pro explainer** → VA1H "BOMB DEFUSED"; ADD_ARMOR VA16 was
+"armor suit" (menu) → VA1G "Body Armor". Also: VA46 is "Life's depleted" (not a multi-kill cue);
+VA8B is "Shields depleted" (the hurt cue we send at armour 0 -- BRX calls armour shields here);
+**VB17 "Red team takes the lead"** is what we send on ANY lead change -- VA6D "Your team takes the
+lead" / VA6E "Your team has lost the lead" are the team-neutral ones (not yet swapped in). The
+announcer's medal map is now filled: VA7H / VA7E / VA7Q / V124 / VA7K; no "unstoppable" exists.
+
+**Tests** 670 → 675 (mcp), incl. `test_every_shipped_sound_id_is_on_the_gun`. `sound-bank.md`'s
+"complete / authoritative" header is corrected; the manual's "2,166" figures now read 2,477.
+**Next:** Tony auditions ~30 ids through a gun (`python -m brx_mcp sounds ids:… <addr>`), then the
+MC game-mode editor gets a category-driven picker (FOLLOWUPS S1 step 4).
+
+### 2026-09-04 (early) — 👂 THE 30-ID AUDIT: 29/30 labels right by ear; the catalog carries the verdicts
+
+Tony ran `brx_mcp sounds ids:… <addr> --audit` in his own terminal (the label prints, the sound
+plays, he answers -- the first attempt, a blind sequence in MY terminal, was rightly rejected:
+*"this is inefficient. how am i suppose to verify these??"*). Verdicts in
+`C:\Users\Tony\.brx-mcp\sound-audit.jsonl`, merged into the catalog as `verified_by_ear` / `heard`.
+
+**29 of 30 confirmed**: every medal, objective, lead, status, greeting and taunt transcript, and the
+four effects' shape descriptions. The one flag, **N41**: *"this is used as a native respawn, it will
+beep 3-5 times like a halo respawn. desc wasnt wrong tho"* -- the shape ("one-shot impact, 0.7 s,
+tonal, steady pitch") was accurate but said nothing about its ROLE. So the catalog now carries a
+`known_use` field for ids whose role is established outside the transcript (captures, shipped
+tables, the firmware's own use, Tony's ear): N41 respawn ping, NA0 death beep, VA81 countdown, VA8B
+low-health alert, VA33 game over, VSF victory, VA2 tear-gas victim, V3A kill line, VB17 lead line,
+X13 explosion, H29 add-HP, U16 tick. Also fixed from the sample: "Two lives remaining" (VT02) was
+filed under `clock` because of "remaining"; lives lines are `status_health` now.
+
+Verdict on the method: transcripts are trustworthy for voices; shape words are honest for effects
+but an effect's meaning in the GAME needs a human or a capture, which is exactly what `known_use`
+is for. The picker should show category + words + known_use together.
+
+### 2026-09-04 — 👂 EFFECTS AUDIT, electrical + explosion families: 61/61 labels right, 52 carry Tony's context
+
+Audit mode now records free-text CONTEXT on a confirmed label (Tony: *"some of the effect sounds I
+think i should probably add context for"*). He did the L (7) and X (51) families plus the earlier
+30: **88 verdicts, 0 wrong**, and the notes are what turn a shape into a pickable sound. Merged into
+the catalog as `context`. Highlights worth remembering when designing modes:
+
+- **Grenade family is structured**: X01/X03/X05/X09 = clink/land → ticking (accelerating) →
+  explosion (X03/X09 electric-flavoured); X02/X04/X06/X31/X40 = the same arm/tick with **no**
+  explosion ("just the charge up"); X36/X38/X39 electric timer → explode; X33 EMP-ish hit → tick →
+  explode. X08 = smoke grenade hiss fading out. X17 = **flashbang + ears ringing for seconds**.
+- **Big shots live in X too**: X14/X15/X24/X28/X29 heavy or very loud rifle/sniper shots with echo,
+  X23/X34 energy sniper, X26/X30/X35 rocket launcher shots, X27 grenade launcher shot, X18 grenade
+  launcher explosion, X20 four artillery-like explosions, X21 air-dropped bomb, X22 large distant
+  bomb, X12 "pretty heavy explosion", X51 "explosion", X43 furniture/door blown to pieces, X32
+  far-away / partially-deaf explosion.
+- **Disable / EMP candidates**: **X42** "energy disabled sound of 3 beeps, almost unauthorized",
+  **X19** "electric gun overheat / energy source fizzling out", X37 "a beep… almost a disable sound",
+  X41 "explosion of energy hissing and buzzing", L02 "heavy electrical weapon or power source
+  humming", L07 "charge-up / shooting an electric weapon", L06 "electric arming of a weapon".
+- ⚠️ **X13**, the explosion in our shipped proto-10 `$SIR` row and `BOMB_DETONATED`: *"might
+  actually be a sniper not a grenade"*. X12 or X51 are the unambiguous explosions. Decision pending.
+- X44/X45 bolt pull with an energy tinge; X46 very high-pitch charging; X47/X48/X50 menu-select /
+  arming click; X49 metal hit.
+
+### 2026-09-04 — 🎛️ THE PRESENTATION PROFILE (A11): per-game sounds + lights, built while the effects audit ran
+
+Tony: *"how the gleds and hleds behave, what sounds are used and when, these should be made into a
+config that MC can program. That we can tweak per mode …"* Built as contracts **A11**
+(`mc/presentation.py`): a profile per game -- preset (`standard`, `silenced`, `counter_strike`,
+`vip`, `custom`), four switches (announcer, gun_flash, headset_team, sight_flash) and per-event
+sound / gun colour / headset colour for 25 named events. Sound ids are validated against the on-gun
+catalog (an app-only id is refused). The compiler expands it into per-player `cues` (V-family ids on
+the announcer slot, effects on the SFX slot, `""` = deliberately mute) and a new `leds` table
+carrying the hardware-tuned 3-flash burst per event; the phone plays them on its own events with a
+one-burst-per-second guard. Callsign's byte-identical low-health frame is kept unless the profile
+changes that sound. Suites: mcp 687, app 86. UI picker and the APK rebuild are the open half (S2).
+
+### 2026-09-04 — 👂 UI-BEEP AUDIT (partial): 60/110, all labels right, 58 with context. Audit total 148 ids
+
+Tony did U01-U49 and U100-U110 before calling it (*"ugh im exhausted doing these"*). 0 wrong. The
+U family sorts by his ear into: **computer select / confirm** (U05 U07 U23-U25 U27 U28 U31 U33-U35
+U38 U49, U110 robot confirm, U12 intense confirm, U48 weighty confirm), **menu open / navigate**
+(U03 U19 U32), **transmission sent / received** (U08 U09 U10 U18 U40 U39 acquire), **cancel /
+unauthorized / disabled** (U04 U22 U26, **U102** can't-select, **U15** "disabled trigger sound",
+**U16** "disabled option sound"), **arming** (U01 U02 U14 U36 U103 U106-U109; U109 ends on a
+satisfying chime), **ticks** (U13 U17 wooden, U29 tiny, U37 U41-U45 U100 U101 U104 U105), oddities
+(U06 whoosh, U11 "moving furniture", U20 alien opening, U21 **empty-mag** sound, U30 arming +
+distant explosion). U15/U16 are the two ids our `$PSET` tail and runway tick already use -- both
+read as "disabled" cues, which is worth knowing (the runway tick U16 is a disabled-option beep).
+
+Catalog now: **145 ids verified by ear, 110 with context**, merged. Remaining un-audited effects
+(~1050) keep their shape descriptions; the catalog is usable as is, and the audit resumes whenever
+there is appetite. `fx:hit` (122) is the most valuable batch left.
+
+### 2026-09-04 — 🏅 A11.4: THE EVENT SYSTEM — Halo-style medal stacks, MC→node alerts, node clock callouts
+
+Tony: *"do we have events for first blood, double kill, triple kill, killtacular, killing spree setup
+in game?"* Code answer: **no** -- the scorer tagged them in the operator FEED but the live push to the
+killer's phone knew only `kill` and `multi`, so every medal played "Double Kill" and first blood
+played nothing. *"it should be like halo … you could get a killtacular and killing spree"* → one kill
+now carries a **stack** (`feedback.medals`), each medal's own verified line plays back to back (2 s
+apart) INSTEAD of the plain kill line, and the kill moment carries the stack for the HUD.
+
+*"probably want an event SYSTEM so we can do alerts for captured the flag, armed the bomb etc per game
+mode. also in the game config"* → MC→node **`alert{kind, text}`**: MC sends only the event NAME; the
+node plays `cues[kind]` + `leds[kind]` from its own bundle (so the presentation profile decides per
+player what that event sounds and looks like) and shows `text` as a HUD alert. Scope all / team /
+player. The scorer now emits `lead_taken`/`lead_lost` (team totals; per player in FFA),
+`next_kill_wins` (once, at cap-1), `last_survivor` (once, lms/infection), `infected` (team_change).
+Clock callouts (`time_60/30/10`: V113 / V112 / V114) fire on the NODE from its synced end time, so
+they work out of MC range.
+
+⚠️ **Tony's correction, written into A11.4 as the rule:** *"MC shouldnt distribute them, remember
+this has to be an offline supported system. huds can disconnect during game. these events have to be
+hud driven."* The config (sound + lights per event) is in every bundle at config time; the NODE fires
+every event its own gun can witness (hits, death, respawn, pool gains, low health, clock, and its own
+`infected` on team flip -- fixed the same hour). MC pushes are ONLY for facts no single gun can know
+(your kill + its medals, lead, next-kill-wins, last survivor, someone ELSE turning), best-effort in
+coverage, dropped when stale, never waited on. A shooter's gun learns nothing when its beam lands, so
+kill/medal feedback stays MC-dependent until there is an IR or radio ack -- that is the remaining
+offline gap, and it predates this work (A4.3). New presets: `infection`, `last_stand`, `objective`; MC modes default to
+tdm/ffa standard · infection · lms last_stand · extraction objective. HUD visuals handed to the
+brx-hud session. Suites: mcp 691, app 89.
+
+### 2026-09-04 — 🔍 CRITICAL REVIEW OF THE PRESETS (Tony: "one survivor remains may not be as simple as it sounds. Also extraction is way off")
+
+Both right. **`last_survivor`**: MC learns deaths only from HUDs that are connected, and a HUD that
+dropped off mid-game is the normal case, so the alive count MC computes is exactly the fact most likely
+to be stale -- "one survivor remains" would fire wrong, or never. Pulled from the `last_stand` default;
+kept as an opt-in event with that caveat. In LMS the death itself IS the local truth ("you are out"), so
+the preset leans on `died` (red gun + red headset) instead. **`survivors_win`** flipped to HUD-local: a
+survivor whose clock runs out never turned, so it plays the line itself; a turned player plays game_over.
+
+**Extraction**: my `objective` preset ("flag taken" / "Control Point Captured") described a capture mode,
+and the MC brief ("attackers push to the extraction point and hold it") was equally wrong. Tony's
+reference points: **ARC Raiders** (one player activates the console, 60-90 s timer, leaving the zone
+restarts it, the squad in the zone extracts together, a 30-min raid ends in an orbital strike that kills
+everyone still out) and **Fortnite's Sprite extraction** (interact → ~45 s crate rift-in → ~70 s window
+that drops to 10 s once someone banks → Sprite kept permanently). The event ladder is now
+`extraction_called` (LOUD, "Black Hawk inbound") · `extraction_alert` (others: "enemy chopper detected")
+· `extraction_open` ("Incoming Chopper") · `extraction_tick` (K01 rotor) · `extraction_closing` ("10
+Seconds Remain") · `extraction_complete` ("Objective complete!") · `extraction_failed` ("Fail.") ·
+`loot_picked` ("Care Package") · `loot_dropped` · `raid_ending` ("Incoming air raid, find cover") ·
+`raid_over` (X20, four artillery explosions -- Tony's ear). All but the alert are the extractor's own
+HUD's to fire; the node-side rules engine is the build (FOLLOWUPS S3). `game-modes.md` carries the
+ladder + sources; the MC mode brief is rewritten; the CLI adapter's wrong sounds (a countdown for
+"channel started", "Flag captured" for "extracted") are corrected.
+
+### 2026-09-04 — A11.5: TWO EVENT CLASSES + THE CONFIDENCE GATE (Tony's design, same evening)
+
+Tony: *"we may need a system of, are all players connected to MC at this moment, if they are and we know
+game state confidently is this, then send event. i.e. 'takes the lead' '3 more to win' 'last man
+standing' … so we need hud driven events and mc driven events … both event types can be configured in
+the game config per mode … visible in the MC under an advanced button or dropdown. For now read only."*
+
+Built: every event carries a **source** (`hud` 21 · `mc` 25 · `both` 2); the profile gains
+`hud_events` / `mc_events` (mute a class) and `mc_confidence`. **`Session.mc_confidence()`** is true
+only when every rostered player's HUD has a live socket, was heard from within 6 s, and reports
+`pending == 0`; the global-state kinds (`lead_taken`, `lead_lost`, `next_kill_wins`, `last_survivor`)
+are sent only then, otherwise withheld and logged WITHHELD in the operator feed. `survivors_win` moved
+to the HUD (a survivor at time-expiry knows it never turned). `last_survivor` lost its default sound --
+opt-in per preset -- because it is the announcement most likely to be wrong with a HUD offline.
+`GET /api/presentation` returns the resolved profile as rows (event · source · sound + catalog words ·
+colours · enabled) + switches + live confidence for the read-only ADVANCED view; `snapshot()` carries
+`mc_confidence`. "3 more to win" has no bank line (numbers exist, "more to win" does not) -- only
+`next_kill_wins` (V115) ships. Extraction cues moved to the announcer slot in the CLI adapter (voices
+belong on token 4). Suites: mcp 696, app 92.
+
+### 2026-09-04 — MC console: the read-only ADVANCED — SOUNDS & LIGHTS view (ui-build-verify)
+
+Tony: *"This advanced game config should be visible in the MC under an advanced button or dropdown or
+something. For now read only."* Built as section 5 of the DESIGNER: an ADVANCED disclosure (collapsed
+by default, `aria-expanded`) that on click fetches `GET /api/presentation` and shows the preset, the
+seven switches, MC's live confidence line, and the event table. Contract first (`API.md`), then the
+client (`Api.getPresentation`, mock backend too), then the panel. Failure shapes are the point: a
+server without the route → a visible PREDATES-THIS-UI line with the restart command; another error →
+its message; never a blank panel.
+
+Verification, per the skill: console unit tests 73/73 (four new: open/close with the real mock, 404,
+error, mounted inside the Designer); lint clean on the new file (the fetch is the click, not an
+effect); type check + bundle; the full browser suite (76 steps) with two new steps — fresh server:
+the table rendered from the live MC with `hit_taken` = HUD, `lead_taken` = MC + VA6D + "takes the
+lead"; stale server: the route 404s and the banner shows, no rows. **The old-session boot step caught
+a real bug**: a `session.json` from before A11 has no `presentation`, so the console's stock-mode
+detection (config vs mode defaults, now carrying the block) read it as TUNED. Fixed in
+`restore_snapshot()` (mode default filled in, pinned by `test_mc_persist`; the browser step passes again). Two false starts of my
+own: a text regex that matched the whole row instead of the SOURCE cell, and asserting uppercase
+that only CSS produced. Concurrency note: three sessions share this working tree tonight; the e2e
+refused to run on a bundle another session had made stale, which is exactly what that gate is for.
+
