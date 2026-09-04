@@ -100,7 +100,10 @@ def change_series(video: str, secs: float):
     fps = n / dur                                           # screenrecord's rate tag is bogus; frames / real duration
     pos = np.clip(F - np.median(F, axis=0), 0, None).reshape(n, -1)
     core = (pos > 200).sum(axis=1); mid = (pos > 100).sum(axis=1)
-    return [(i / fps, int(core[i]), int(mid[i])) for i in range(n)], fps
+    # WALL metric (2026-09-04, Tony: "you should see it off the wall"): the camera aimed at a dark wall, not the LEDs,
+    # so nothing clips; mean brightening of the whole frame is proportional to the light the flash put into the room.
+    wall = pos.mean(axis=1)
+    return [(i / fps, int(core[i]), int(mid[i]), float(wall[i])) for i in range(n)], fps
 
 
 def analyze(video: str, schedule_path: str, gap: float = 3.0):
@@ -108,15 +111,16 @@ def analyze(video: str, schedule_path: str, gap: float = 3.0):
     sched = meta["schedule"]; secs = float(meta.get("secs") or (sched[-1]["t"] + gap + 3 if sched else 25))
     series, fps = change_series(video, secs)
     print(f"\n{len(series)} video frames @ {fps:.0f} fps · change vs the median frame")
-    print(f"{'offset':>7}  {'core>200':>8}  {'mid>100':>7}  {'frames':>6}  {'at':>6}  frame")
+    print(f"{'offset':>7}  {'core>200':>8}  {'mid>100':>7}  {'wall':>6}  {'w-sum':>6}  {'frames':>6}  {'at':>6}  frame")
     for ev in sched:
         win = [s for s in series if ev["t"] - 1.0 <= s[0] <= ev["t"] + gap - 0.6]     # non-overlapping windows; measured start lag was < 0.1 s
         if not win:
             print(f"{ev['t']:7.2f}  (no video frames in window)  {ev['frame']}"); continue
-        peak = max(win, key=lambda s: (s[1], s[2]))
-        dur = sum(1 for s in win if s[1] >= peak[1] * 0.5) if peak[1] else 0
-        print(f"{ev['t']:7.2f}  {peak[1]:8d}  {peak[2]:7d}  {dur:6d}  {peak[0]:6.2f}  {ev['frame']}")
-    print("\nRead: core = blown-out pixels (the LED + its bloom) at the peak; frames = how long it stayed above half the peak (60 fps).")
+        peak = max(win, key=lambda s: (s[3], s[1]))
+        dur = sum(1 for s in win if s[3] >= peak[3] * 0.5) if peak[3] else 0
+        wsum = sum(s[3] for s in win if s[3] >= peak[3] * 0.2)
+        print(f"{ev['t']:7.2f}  {peak[1]:8d}  {peak[2]:7d}  {peak[3]:6.1f}  {wsum:6.0f}  {dur:6d}  {peak[0]:6.2f}  {ev['frame']}")
+    print("\nRead: wall = mean brightening of the frame at the peak (0-255, the reflection; the number to compare when the camera is on a wall); w-sum = its integral over the flash; core/mid = clipped LED pixels (only meaningful with the LEDs in frame).")
 
 
 def main(argv=None):
