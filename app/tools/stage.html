@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>BRX HUD — stage</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1117; --panel:#161b24; --edge:#2a3340; --ink:#e6edf3; --mut:#8b98a8; --acc:#5fd6ff; --on:#39e07c; --warn:#ffb020; --bad:#ff5252; }
+  * { box-sizing: border-box; } body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.35 system-ui, sans-serif; display:grid; grid-template-columns: 230px 1fr 250px; grid-template-rows: 100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--edge); overflow:auto; padding:10px; } aside.right { border-right:0; border-left:1px solid var(--edge); }
+  h1 { font-size:13px; letter-spacing:.12em; margin:2px 0 10px; color:var(--acc); } h2 { font-size:11px; letter-spacing:.14em; color:var(--mut); margin:14px 0 6px; text-transform:uppercase; }
+  button { display:block; width:100%; text-align:left; background:#1f2733; color:var(--ink); border:1px solid var(--edge); border-radius:5px; padding:6px 8px; margin:3px 0; cursor:pointer; font:inherit; }
+  button:hover { border-color:var(--acc); } button.on { background:#0f3a4d; border-color:var(--acc); } button small { color:var(--mut); display:block; font-size:11px; }
+  button.ev { padding:5px 8px; } button.bad { border-color:#5a2222; } button.bad:hover { border-color:var(--bad); }
+  .row { display:flex; gap:4px; } .row button { margin:3px 0; }
+  main { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; overflow:auto; padding:16px; }
+  .frame { background:#000; border:6px solid #222; border-radius:22px; box-shadow:0 20px 60px #000a; overflow:hidden; position:relative; flex:none; }
+  .frame iframe { border:0; display:block; background:#000; }
+  .bar { width:100%; max-width:920px; display:flex; gap:14px; align-items:center; color:var(--mut); font-size:12px; flex-wrap:wrap; } .bar b { color:var(--ink); } .bar code { color:var(--acc); user-select:all; }
+  select, input[type=number] { background:#1f2733; color:var(--ink); border:1px solid var(--edge); border-radius:4px; padding:4px 6px; font:inherit; }
+  label { display:flex; align-items:center; gap:6px; margin:4px 0; color:var(--mut); } label input[type=checkbox] { accent-color:var(--acc); }
+  #st { font-family: ui-monospace, monospace; font-size:11px; color:var(--mut); white-space:pre-wrap; background:#0b0f15; border:1px solid var(--edge); border-radius:5px; padding:6px; min-height:70px; }
+  #log { font-family: ui-monospace, monospace; font-size:10.5px; color:var(--mut); white-space:pre-wrap; max-height:180px; overflow:auto; background:#0b0f15; border:1px solid var(--edge); border-radius:5px; padding:6px; }
+  .pill { display:inline-block; padding:1px 6px; border-radius:9px; font-size:10px; letter-spacing:.08em; background:#1f2733; border:1px solid var(--edge); }
+</style></head><body>
+<aside>
+  <h1>BRX HUD · STAGE</h1>
+  <div id="stages"></div>
+</aside>
+<main>
+  <div class="bar"><span>phase <b id="phase">—</b></span><span>state <span class="pill" id="stage">—</span></span><span>url <code id="url"></code></span><button style="width:auto;display:inline-block;margin:0;padding:3px 8px" onclick="load()">↻ reload state</button></div>
+  <div class="frame" id="frame"><iframe id="hud" width="891" height="411"></iframe></div>
+  <div id="st"></div>
+</main>
+<aside class="right">
+  <h2>Variants <small style="color:var(--mut)">(each change reloads the state)</small></h2>
+  <label>screen <select id="size"><option value="891x411">Pixel 7 · 891×411</option><option value="852x393">iPhone 15 · 852×393</option><option value="667x375">iPhone SE · 667×375</option><option value="844x330">short · 844×330</option><option value="1180x820">tablet · 1180×820</option></select></label>
+  <label>team <select id="team"><option>blue</option><option>yellow</option><option>red</option><option>green</option></select></label>
+  <label>respawn <select id="respawn"><option>auto</option><option>scanner</option><option>none</option></select> <input id="delay" type="number" value="8" min="1" max="120" style="width:52px" title="respawn delay (s)"> s</label>
+  <label><input type="checkbox" id="night"> night theme</label>
+  <label><input type="checkbox" id="locked"> host-locked loadout (sniper)</label>
+  <label><input type="checkbox" id="reject"> MC rejects every pick</label>
+  <h2>Gun events</h2>
+  <div class="row"><button class="ev" onclick="ev('fire',1)">fire ×1</button><button class="ev" onclick="ev('fire',5)">fire ×5</button><button class="ev" onclick="ev('reloadCycle')" title="pull the handle; the gun refills after the weapon's reload time">reload</button></div>
+  <div class="row"><button class="ev" onclick="ev('hit')">take hit</button><button class="ev" onclick="ev('hit');ev('hit');ev('hit')">hit ×3</button><button class="ev" onclick="ev('lowHp')">low HP</button></div>
+  <div class="row"><button class="ev bad" onclick="ev('die')">☠ death</button><button class="ev" onclick="ev('respawn')">respawn now</button></div>
+  <div class="row"><button class="ev" onclick="ev('heal',15)">heal +15</button><button class="ev" onclick="ev('armorUp',30)">armor +30</button></div>
+  <div class="row"><button class="ev" onclick="ev('lowAmmo')">low ammo</button><button class="ev" onclick="ev('emptyMag')">empty mag</button><button class="ev" onclick="ev('battery',12)">battery 12%</button></div>
+  <div class="row"><button class="ev bad" onclick="ev('dropGun')">gun link lost</button><button class="ev" onclick="ev('relinkGun')">gun relinked</button></div>
+  <h2>Mission Control events</h2>
+  <div class="row"><button class="ev" onclick="ev('killConfirm','VIPER')">kill confirm</button><button class="ev" onclick="ev('score',4,2,1)">score update</button></div>
+  <div class="row"><button class="ev" onclick="ev('config')">push game</button><button class="ev" onclick="ev('start',10)">start · T-10</button><button class="ev" onclick="ev('abort')">abort</button></div>
+  <div class="row"><button class="ev bad" onclick="ev('end')">end match</button><button class="ev bad" onclick="ev('panic')">PANIC</button><button class="ev" onclick="ev('endOk')">result OK</button></div>
+  <div class="row"><button class="ev" onclick="ev('mcLost')">MC lost</button><button class="ev" onclick="ev('mcBound')">MC back</button><button class="ev" onclick="ev('mcRejected')">MC rejects</button></div>
+  <div class="row"><button class="ev" onclick="ev('kitOpen',false)">kit closed</button><button class="ev" onclick="ev('kitOpen',true)">kit open</button><button class="ev" onclick="ev('ready')">toggle ready</button></div>
+  <div class="row"><button class="ev" onclick="ev('tryout','smg')">try-out SMG</button><button class="ev" onclick="ev('tryDone')">try-out done</button></div>
+  <h2>HUD log</h2>
+  <div id="log"></div>
+  <div id="hlog" hidden style="margin-top:6px;color:var(--warn);font-size:12px"></div>
+</aside>
+<script>
+  const STAGES = [
+    ['Before the game', [['idle', 'no gun — scanning'], ['connected', 'gun linked, no MC'], ['mc-rejected', 'MC refused the join'], ['setup', 'MC still setting up the game']]],
+    ['Kit-out', [['briefing', 'the game briefing'], ['kitted', 'loadout plates'], ['kitted-ready', 'READY tapped'], ['kitted-perk', 'a perk in slot 2'], ['loadout-primary', 'browser · primary'], ['loadout-secondary', 'browser · slot 2'], ['loadout-picked', 'browser · picked SMG'], ['tryout', 'try-out panel']]],
+    ['Arming', [['lobby', 'game pushed, waiting to arm'], ['armed', 'T-minus countdown'], ['aborted', 'countdown aborted → lobby']]],
+    ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['redeploy', 'just respawned']]],
+    ['Trouble', [['live-nogun', 'gun link lost mid-match'], ['resync', 'gun relinked → resync prompt'], ['live-mclost', 'MC connection lost'], ['panic', 'host PANIC']]],
+    ['End', [['result', 'match result'], ['over', 'MATCH COMPLETE']]],
+  ];
+  const $ = id => document.getElementById(id);
+  const list = $('stages');
+  for (const [grp, items] of STAGES) { const h = document.createElement('h2'); h.textContent = grp; list.appendChild(h);
+    for (const [id, desc] of items) { const b = document.createElement('button'); b.dataset.stage = id; b.innerHTML = `${id}<small>${desc}</small>`; b.onclick = () => { cur = id; try { localStorage.setItem('brx-stage', id); } catch {} load(); }; list.appendChild(b); } }
+  let cur = 'kitted'; try { cur = localStorage.getItem('brx-stage') || cur; } catch {}
+  const iframe = $('hud');
+  function url() { const p = new URLSearchParams(); p.set('demo', ''); p.set('stage', cur);
+    for (const k of ['night', 'locked', 'reject']) if ($(k).checked) p.set(k, '');
+    if ($('team').value !== 'blue') p.set('team', $('team').value);
+    if ($('respawn').value !== 'auto') p.set('respawn', $('respawn').value);
+    if ($('delay').value !== '8') p.set('delay', $('delay').value);
+    return '/hud/?' + p.toString().replace(/=(&|$)/g, '$1'); }
+  function load() { $('hlog').hidden = true; $('hlog').textContent = ''; const [w, h] = $('size').value.split('x'); iframe.width = w; iframe.height = h; const u = url(); $('url').textContent = location.origin + u; $('stage').textContent = cur;
+    for (const b of list.querySelectorAll('button')) b.classList.toggle('on', b.dataset.stage === cur); iframe.src = u + '&_=' + Date.now(); }
+  for (const id of ['size', 'team', 'respawn', 'delay', 'night', 'locked', 'reject']) $(id).addEventListener('change', load);
+  function ev(name, ...args) { const w = iframe.contentWindow; const d = w && w.brxDemo; const say = m => { $('hlog').textContent = m; $('hlog').hidden = false; }; if (!d || !d[name]) { say(`no brxDemo.${name} in the frame yet`); return; } try { d[name](...args); } catch (e) { say('event failed: ' + e.message); } }
+  setInterval(() => { try { const w = iframe.contentWindow, b = w && w.brx; if (!b) return; const s = b.engine.state();
+    $('phase').textContent = s.phase + (s.ended ? (s.endAck ? ' · over' : ' · result') : '') + (s.browsing ? ' · browsing' : '') + (s.tutorial ? ' · tryout' : '');
+    $('st').textContent = `hp ${s.hp}/${s.maxHp}  armor ${s.armor}/${s.maxArmor}  ammo ${s.ammo}/${s.reserve}  alive ${s.alive}  ws ${s.wsState}  ble ${s.bleUp}  ready ${s.ready}\n` +
+      `moment ${s.moment ? s.moment.kind : '—'}  resync ${s.resync ? s.resync.prompt : '—'}  tminus ${s.tMinusMs != null ? Math.ceil(s.tMinusMs / 1000) : '—'}  respawnIn ${s.respawnIn ?? '—'}  kills ${s.kills ?? '—'}  deaths ${s.deaths}  batt ${s.battery ?? '—'}`;
+    const lines = (b.log || []).slice(-14); const txt = lines.map(l => typeof l === 'string' ? l : (l.text || JSON.stringify(l))).join('\n'); if ($('log').textContent !== txt) { $('log').textContent = txt; $('log').scrollTop = 1e6; }
+  } catch {} }, 400);
+  load();
+</script>
+</body></html>

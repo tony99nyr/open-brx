@@ -417,13 +417,13 @@ await step('(f) READY UP while a try-out is armed ends it; first ready does NOT 
   await hudA.locator('[data-act="onReady"]').first().dispatchEvent('click');   // un-ready again so F4 readies both from a clean state
   await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).ready === false, 6000, 'ALPHA un-ready');
 });
-await step('(g) GAMES: play the saved "Silenced Sniper" → both phones padlocked "FIXED FOR THIS GAME"; MC shows the LOADOUTS RESET notice', async () => {
+await step('(g) GAMES: play the saved "Silenced Sniper" → both phones padlocked "FIXED BY THE HOST"; MC shows the LOADOUTS RESET notice', async () => {
   await nav(1);
   await playCard('Silenced Sniper');
   await until(async () => { const c = (await st()).config; return c.mode === 'ffa' && c.loadout_policy.primary.choice === 'fixed' && c.loadout_policy.primary.fixed_id === 'sniper_rifle'; }, 6000, 'silenced sniper applied');
   for (const [pg, nm] of [[hudA, 'hudA'], [hudB, 'hudB']]) {
     await until(async () => (await pg.locator('.plate.slot.locked').count()) === 2, 8000, nm + ' locked plates');
-    expect((await pg.locator('text=FIXED FOR THIS GAME').count()) > 0, nm + ' missing FIXED FOR THIS GAME');
+    expect((await pg.locator('text=FIXED BY THE HOST').count()) > 0, nm + ' missing FIXED BY THE HOST');
   }
   // The "N LOADOUTS RESET BY <game name>" notice must survive the venue re-assert PUT (server keeps _policy_notice
   // across venue-only PUTs; the label is the PLAYING game's name) — a hard assertion, not a finding (review #10)

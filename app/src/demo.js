@@ -11,14 +11,23 @@ import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the
 // ?demo&kit&night  night theme
 // ?demo&kit&setup  kit_open false — "MISSION CONTROL IS SETTING UP THE GAME" (flips open after 7 s so the reveal can be watched)
 // ?demo&kit&brief  lands on the BRIEFING (the default ?demo variants auto-dismiss it so the plates/browser are reachable)
+// ?demo&stage=<state>  the STAGE harness (`npm run ui:stage`, app/tools/stage.mjs): NO timeline — jump straight to one
+//                  screen state and stay there; window.brxDemo then exposes event triggers (fire/hit/die/respawn/…)
+//                  so a reviewer can force in-game events by hand. States: see STAGES below. Extra variants:
+//                  &team=blue|yellow|red|green  &respawn=auto|scanner|none  &delay=<respawn secs>  &tminus=<secs>
 export function startDemo({ engine, log }) {
+  // A demo run is a clean slate — app.js constructs the engine with `storage: null` under ?demo (the constructor
+  // restores storage, so it must be decided there; a kitted `?demo&stage=connected` once inherited a live match).
   const frames = [];
   engine.writer = fr => { frames.push(...fr); log(`demo gun ← ${fr.length} frame(s)`, 'lr'); };
   engine.now = () => Date.now(); engine.isSynced = () => true;
   const q = (typeof location !== 'undefined') ? new URLSearchParams(location.search) : new URLSearchParams('');
   const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
-  const player = { player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: 'blue', node_id: null, gun_id: 'GUN-A',
+  const TEAMS = { blue: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, yellow: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 },
+    red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, green: { team_id: 'green', name: 'GREEN', color: 'green', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY
+  const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue', foeKey = teamKey === 'yellow' ? 'blue' : 'yellow';
+  const player = { player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey, node_id: null, gun_id: 'GUN-A',
     loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male', ready: false };
   // --- A10: the catalog + this player's slot rights ride along in `assign` (docs/spec/loadout.md §4.1) ---
   const notHeavy = DEMO_WEAPONS.filter(w => !(w.tags || []).includes('heavy')).map(w => w.weapon_id);   // the FFA default: NO HEAVIES
@@ -68,21 +77,117 @@ export function startDemo({ engine, log }) {
     } else if (kind === 'loadout_browse') log(`demo MC ← loadout_browse open=${body.open}`, 'lr');
     return prevReport ? prevReport(kind, body) : undefined;
   };
-  const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
-  const roster = [{ player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p-2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
+  const team = TEAMS[teamKey], foe = TEAMS[foeKey];
+  const roster = [{ player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey }, { player_id: 'p-2', player_num: 19, display: 'VIPER', team_id: foeKey }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor',
     // `?night` is documented at the top of this file but was hardcoded false here, so the
     // config message overwrote the flag set from the URL above and the night theme could
     // never be previewed. Found by the HUD moment suite 2026-09-02.
     night: q.has('night'), time_limit_s: 600,
-    respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+    respawn: { type: ['auto', 'scanner', 'none'].includes(q.get('respawn')) ? q.get('respawn') : 'auto', delay_s: +q.get('delay') || 8 },
+    scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
   const bundle = { ...golden, player_id: 'p-demo' };
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
   const fire = n => { for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame('$BUT,0,1,*'); engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); engine.feedFrame('$BUT,0,0,*'); } };
   const reload = () => { const need = 32 - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); };
-  const hit = (dmg = 9) => { if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg); engine.feedFrame('$HIR,4,0,19,2,9,0,3,*'); engine.feedFrame(`$HP,${hp},${armor},0,*`); };
+  const hit = (dmg = 9) => { if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg); engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); };
+
+
+  // ---------- STAGE harness: ?demo&stage=<state> ----------
+  const stageName = q.get('stage');
+  if (stageName != null) {
+    const hud = () => (typeof window !== 'undefined' && window.brx) ? window.brx.hud : null;
+    const gunObj = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
+    const ev = {
+      // link + MC
+      linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
+      battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
+      mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
+      mcRejected: () => engine.setWsState('rejected', { reason: 'roster_full', code: 4003 }),
+      scan: () => { const h = hud(); if (h) { h.setScan([{ deviceId: 'a', basename: 'GUN-A', tail: '3D4F', rssi: -52 }, { deviceId: 'b', basename: 'GUN-B', tail: '7C21', rssi: -71, inUse: true }, { deviceId: 'c', basename: 'GUN-C', tail: 'B0E9', rssi: -83 }]); h.render(engine.state()); } },
+      // kit-out
+      assign: () => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }),
+      kitOpen: open => { policy.kit_open = open; ev.assign(); },
+      briefing: () => engine.openBriefing(), briefDone: () => engine.closeBriefing(),
+      ready: v => engine.setReady(v == null ? !engine.ready : !!v),
+      openLoadout: slot => { const h = hud(); if (h) { h.lo.tab = slot || 'primary'; h.lo.focus = null; h.lo.filter = 'weapons'; } engine.browse(true); },
+      closeLoadout: () => engine.browse(false),
+      pick: (slot, kind, id) => engine.requestLoadout(slot, kind, id, false),
+      tryout: id => engine.requestLoadout('primary', 'weapon', id || 'smg', true),
+      tryDone: () => engine.dismissTryout(),
+      // match control (what Mission Control would send)
+      config: () => { engine.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); setTimeout(lcd, 200); },
+      start: secs => engine.onMcMessage({ kind: 'start', body: { match_id: 'stage-' + Date.now(), go_live_t: Date.now() + (secs == null ? 30 : secs) * 1000, config_id: golden.config_id, seq: 1, countdown_s: secs == null ? 30 : secs } }),
+      abort: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'abort_start', seq: 1 } }),
+      end: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'end' } }),
+      panic: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'panic' } }),
+      endOk: () => engine.ackEnd(),
+      score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
+        board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
+      reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
+      reloadCycle: () => {                                  // what a real reload looks like: handle pull, then the refill after the weapon's reload_s
+        if (mag >= 32) { log('demo: mag is full — fire first, then reload', 'li'); return; }
+        engine.feedFrame('$BUT,2,1,*'); engine.feedFrame('$BUT,2,0,*');
+        const w = DEMO_WEAPONS.find(x => x.weapon_id === ((player.loadout.weapons[0] || {}).weapon_id));
+        setTimeout(reload, Math.round(((w && w.reload_s) || 1.5) * 1000));
+      },
+      killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim } }),
+      // the gun (what the tagger would report)
+      fire: n => fire(n == null ? 1 : n), reload, hit: d => hit(d == null ? 9 : d),
+      spawnEcho: () => { hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
+      die: () => { armor = 0; hp = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
+      respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
+      heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      lowHp: () => { armor = 0; hp = 8; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); },
+      emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,0,${reserve},0,*`); },
+      state: () => engine.state(),
+    };
+    // each STAGE is a list of [delayMs, step] — the delays give the app's boot + render loop room between steps
+    const kit = [[0, 'linkGun'], [50, () => ev.battery(82)], [150, 'assign'], [200, 'mcBound']];
+    const kitted = [...kit, [300, 'briefDone']];
+    const lobby = [...kitted, [500, 'config']];
+    const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
+    const STAGES = {
+      'idle':              [[0, 'scan']],
+      'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
+      'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
+      'briefing':          kit,
+      'kitted':            kitted,
+      'kitted-ready':      [...kitted, [400, () => ev.ready(true)]],
+      'loadout-primary':   [...kitted, [400, () => ev.openLoadout('primary')]],
+      'loadout-secondary': [...kitted, [400, () => ev.openLoadout('secondary')]],
+      'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'smg')]],
+      'kitted-perk':       [...kitted, [400, () => ev.pick('secondary', 'perk', 'quick_hands')]],
+      'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
+      'lobby':             lobby,
+      'armed':             [...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],
+      'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
+      'live':              live,
+      'live-fired':        [...live, [2300, () => ev.fire(7)]],
+      'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
+      'live-lowhp':        [...live, [2300, 'lowHp']],
+      'live-lowammo':      [...live, [2300, () => ev.fire(29)]],
+      'live-kill':         [...live, [2300, () => ev.killConfirm()]],
+      'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
+      'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
+      'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
+      'live-nogun':        [...live, [2300, 'dropGun']],
+      'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],
+      'live-mclost':       [...live, [2300, 'mcLost']],
+      'mc-rejected':       [...kitted, [400, 'mcRejected']],
+      'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
+      'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
+      'panic':             [...live, [2300, 'panic']],
+    };
+    const steps = STAGES[stageName];
+    if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');
+    else { for (const [ms, st] of steps) setTimeout(() => { try { (typeof st === 'string' ? ev[st] : st)(); } catch (e) { log(`stage step failed: ${e && e.message || e}`, 'le'); } }, 300 + ms); log(`stage "${stageName}" — ${steps.length} step(s)`, 'lk'); }
+    return { ...ev, stages: Object.keys(STAGES), stage: stageName, fire, hit, reload, lcd };
+  }
 
   const t0 = Date.now();
   // 0 s: gun linked; 1 s: kit-out; 2 s: config; 4 s: start with an 8 s runway

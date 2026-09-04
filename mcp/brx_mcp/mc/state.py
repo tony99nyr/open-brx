@@ -914,7 +914,7 @@ class Session:
         if self.scorer:
             row = next((r for r in self.scorer.rows() if r["player_id"] == p["player_id"]), None)
             if row:
-                node["score"] = row
+                node["score"] = dict(row, board=self._score_board())   # same shape as the live push: the swapped phone's DOWN recap has the race
         return node
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
@@ -984,10 +984,21 @@ class Session:
             if not p or not p.get("node_id"):
                 continue
             body = dict(row); body["shots_total"] = self.scorer.shots_total(pid)
+            body["board"] = self._score_board()     # the race to the cap, for the HUD's DOWN-screen recap (review 2026-09-03 #25/#26)
             if self._score_pushed.get(pid) == body:
                 continue
             self._score_pushed[pid] = body
             self.net.push(p["node_id"], "score", body)
+
+    def _score_board(self) -> dict:
+        """Team totals + the frag cap; in FFA the top three players stand in for teams."""
+        cap = (self.config.get("scoring") or {}).get("frag_limit")
+        if self.config.get("mode") == "ffa":
+            top = sorted(self.scorer.rows(), key=lambda r: -r["kills"])[:3]
+            return {"teams": [{"team_id": "ffa", "name": r["display"], "score": r["kills"]} for r in top], "cap": cap}
+        totals = self.scorer.team_scores()
+        names = {t["team_id"]: str(t.get("name") or t["team_id"]).replace(" TEAM", "") for t in self.teams}
+        return {"teams": [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()], "cap": cap}
 
     def _on_node_message(self, nid: str, kind: str, body: dict, t_recv: int):
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv

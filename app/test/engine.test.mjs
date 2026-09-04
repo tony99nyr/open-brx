@@ -747,3 +747,71 @@ test('a hit forwards WHICH sensor caught it', () => {
   assert.equal(hits.length, 2);
   assert.deepEqual(hits.map(f => f.sensor), [0, 4], 'headset dome then gun body');
 });
+
+// ---- HUD review 2026-09-03: the RELOADING takeover (#15) and the DOWN-screen recap inputs (#21/#25/#26) ----
+test('reload handle pull opens a reload for the weapon\'s reload_s; the mag coming back closes it', () => {
+  const h = harness().kit().config_().echo().start(0);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [] } } });
+  h.eng.tick();
+  assert.equal(h.eng.phase, 'live');
+  h.frame('$ALCD,20,100,0,384,0,*');                       // 12 rounds gone
+  h.frame('$BUT,2,1,*');
+  let s = h.eng.state();
+  assert.equal(s.reloading, true, 'reloading after the handle pull');
+  assert.equal(s.reloadTotalMs, 1400, 'the catalog reload_s drives the takeover length');
+  h.adv(700); s = h.eng.state(); assert.equal(s.reloadMs, 700);
+  h.frame('$ALCD,32,100,0,372,0,*');                       // the gun refilled the mag
+  assert.equal(h.eng.state().reloading, false, 'the mag coming back ends the reload');
+});
+test('a reload the gun never echoes still clears after reload_s plus grace; no reload while dead or with a full mag', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*'); h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloading, false, 'a full mag has nothing to reload');
+  h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloading, true);
+  assert.equal(h.eng.state().reloadTotalMs, 1500, 'unknown weapon → 1.5 s default');
+  h.adv(1500 + 600 + 1);
+  assert.equal(h.eng.state().reloading, false, 'expired without an echo');
+  h.frame('$HP,0,0,0,*');
+  h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloading, false, 'dead: no reload');
+});
+test('score push exposes hits and the board; lives derive from config.respawn.lives minus deaths', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.eng.onMcMessage({ kind: 'score', body: { kills: 4, deaths: 1, assists: 0, accuracy: 40, hits: 8, shots_total: 20, board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 18 }, { team_id: 'yellow', name: 'YELLOW', score: 21 }], cap: 25 } } });
+  const s = h.eng.state();
+  assert.equal(s.hits, 8); assert.equal(s.board.cap, 25); assert.equal(s.board.teams[1].score, 21);
+  assert.equal(s.fragLimit, 25); assert.equal(s.lives, null, 'no lives cap in this config');
+  h.eng.config.respawn.lives = 3; h.eng.deaths = 2;
+  assert.equal(h.eng.state().lives, 1);
+});
+test('a new match_id drops the previous match\'s score row; a dry reserve never opens a reload', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.eng.onMcMessage({ kind: 'score', body: { kills: 4, deaths: 1, assists: 0, board: { teams: [], cap: 25 } } });
+  assert.equal(h.eng.state().kills, 4);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.config_().echo();
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } }); h.eng.tick();
+  assert.equal(h.eng.state().kills, null, 'match 2 starts with no score row');
+  h.frame('$ALCD,0,100,0,0,0,*'); h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloading, false, 'nothing to reload from an empty reserve');
+});
+test('with one weapon loaded, ALT falls back to reload and opens the same takeover', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().reloading, true, 'ALT with an empty slot 1 is a reload');
+  assert.equal(h.eng.state().switching, false, 'and not a weapon swap');
+});
+test('no reload opens during the resync protocol; a match end clears one in flight', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.frame('$ALCD,10,100,0,384,0,*');
+  h.eng.onBleDropped(); h.eng.onBleConnected();
+  assert.ok(h.eng.state().resync, 'resync running');
+  h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloading, false, 'resync: the gun is unverified, no takeover');
+  h.frame('$LCD,45,70,0,0,10,384,*');                       // state line ends the resync
+  assert.equal(h.eng.state().resync, null);
+  h.frame('$BUT,2,1,*'); assert.equal(h.eng.state().reloading, true);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(h.eng.reloading, null, 'end clears the reload');
+});

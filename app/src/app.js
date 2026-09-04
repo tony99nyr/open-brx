@@ -81,7 +81,9 @@ const engine = new Engine({
   report: (kind, body) => transport && transport.report(kind, body),
   now: () => transport ? transport.syncedNow() : Date.now(),
   synced: () => !!(transport && transport.synced()),
-  storage: (() => { try { return localStorage; } catch (_) { return null; } })(),
+  // ?demo runs on a clean slate: no restore of a real session's match (the constructor loads storage, so this is the
+  // only place that can stop it — a later clearPersisted() is too late; correctness review 2026-09-03), and nothing saved.
+  storage: (() => { try { return new URLSearchParams(location.search).has('demo') ? null : localStorage; } catch (_) { return null; } })(),
   log, onChange: () => scheduleRender(),
 });
 engine.night = settings.night;
@@ -183,6 +185,7 @@ Object.assign(hud.h, {
   onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
   onSetUrl: () => { const el = $('mcurl'); if (el && el.value.trim()) connectMc(el.value.trim()); },
   onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },
+  onToggleMcPill: () => { hud.mcPill = !hud.mcPill; scheduleRender(); },   // live: show/hide the out-of-range detail (review #32)
   onToggleCam: async () => {
     if (!plugins.cam || !isNative()) { hud.setCam(false); log('CAM unavailable on this platform', 'li'); return; }
     try {

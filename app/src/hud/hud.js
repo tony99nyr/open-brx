@@ -8,12 +8,15 @@ const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/** Accuracy is hits/shots where hits come from the VICTIMS' phones — shown only once MC has counted at least one
+ *  hit for this player and ten shots have gone out; otherwise it reads 0% for every player without a phone in range. */
+const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
 const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE' };
 const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
 const perkEffect = p => { const e = (p && p.effects) || {}; const out = [];
-  if (e.max_armor_add) out.push(`+${e.max_armor_add} ARMOR`); if (e.ammo_mult) out.push(`×${e.ammo_mult} AMMO`); if (e.reload_mult) out.push(`RELOADS ${+(1 / e.reload_mult).toFixed(1)}× FASTER`); if (e.alt_reload) out.push('SIDE BUTTON RELOADS');
+  if (e.max_armor_add) out.push(`+${e.max_armor_add} ARMOR`); if (e.ammo_mult) out.push(`×${e.ammo_mult} AMMO`); if (e.reload_mult) out.push(`RELOADS ${+(1 / e.reload_mult).toFixed(1)}× FASTER`); if (e.alt_reload) out.push('ALT = RELOAD');
   return out.join(' · ') || 'PASSIVE'; };
 const PERK_GLYPH = {
   body_armor: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L34 9 V20 C34 29 28 34 20 37 C12 34 6 29 6 20 V9 Z"/><path d="M20 12 V29 M13 20 H27" opacity=".7"/></svg>',
@@ -62,7 +65,7 @@ export class Hud {
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.cam = false; this.mcUrl = '';
     this.lo = { tab: 'primary', filter: 'weapons', focus: null };   // LOADOUT browser UI state (which tab / filter / row is in the detail pane)
-    this._moment = null; this._momentTimer = null; this._lastTminus = null;
+    this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
@@ -93,7 +96,7 @@ export class Hud {
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
-      st.kills != null, st.assists != null, st.accuracy != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
+      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // A10 loadout browser + slot plates
       st.browsing, st.canPickPrimary, st.canPickSecondary, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus,
@@ -101,6 +104,9 @@ export class Hud {
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && (st.loadout.secondary.weapon_id || st.loadout.secondary.perk_id),
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length)].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
+    const panel = st.phase === 'kitted' && ((st.ended && !st.endAck) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
+    const screen = st.phase === 'live' ? 'live' : st.phase === 'armed' ? 'armed' : st.phase === 'idle' ? 'idle' : panel ? (st.browsing ? 'lo' : 'panel') : 'lobby';
+    if (this.frame.dataset.screen !== screen) this.frame.dataset.screen = screen;
     if (sig !== this.sig) {
       const urlEl = this.hudEl.querySelector('#mcurl');
       const typing = urlEl && typeof document !== 'undefined' && document.activeElement === urlEl;
@@ -170,8 +176,8 @@ export class Hud {
     // Ammo is unknown until the game is pushed/armed — say so in words instead of showing "MAG — · RESERVE —".
     const _mag = st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : null);
     const _res = st.loadReserve != null ? st.loadReserve : (st.reserve != null ? st.reserve : null);
-    const ammoLine = (_mag == null && _res == null) ? 'GOES TO YOUR GUN AT ARM TIME'
-      : `MAG ${_mag != null ? _mag : '—'} · RESERVE ${_res != null ? _res : '—'}`;
+    const ammoLine = (_mag == null && _res == null) ? 'SET AT ARM TIME'
+      : `<span class="nw">MAG ${_mag != null ? _mag : '—'} · RESERVE ${_res != null ? _res : '—'}</span>`;   // one line, never a dangling separator (breaker 2026-09-03)
     const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}
         <div class="plate"><div class="in"><div class="h tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span></div><div class="s">${esc(st.mode || 'TDM')} LOADOUT${st.playerNum ? ' · #' + st.playerNum : ''}</div></div></div>
@@ -180,17 +186,17 @@ export class Hud {
     if (mode === 'connected') {
       foot = st.wsState === 'bound'
         ? `<div class="mclinked"><span class="unskew">MC LINKED ✓ — WAITING FOR KIT-OUT</span></div><div class="note">Mission Control has this gun. Your callsign and loadout arrive with the kit.</div>`
-        : `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note">Get on the SAME WI-FI as Mission Control — the app finds it by itself. No luck? Scan the QR on the MC screen or type its address above.</div>`;
+        : `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Same Wi-Fi as Mission Control? It connects by itself. Otherwise scan the QR on the MC screen, or type its address.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
-      foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">MISSION CONTROL IS SETTING UP THE GAME</div><div class="s">Your kit opens as soon as the host picks the game. Nothing to do yet.</div></div></div>`;
+      foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">HOST IS SETTING UP THE GAME</div><div class="s">Your kit opens as soon as the host picks the game. Nothing to do yet.</div></div></div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
       foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
-      foot = `<button class="ready wait ${st.ready ? 'on' : ''}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓ — HOST SEES YOU' : 'MATCH COMPLETE — READY FOR NEXT'}</span></button><div class="note">${st.ready ? 'Standing by — the next match kits you automatically.' : "Scores reconcile at Mission Control. Tap when you're set for the next match."}</div>`;
+      foot = `<button class="ready wait ${st.ready ? 'on' : ''}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'MATCH COMPLETE'}</span></button><div class="note">${st.ready ? 'Standing by — the next match kits you automatically.' : "Scores reconcile at Mission Control. Tap when you're set for the next match."}</div>`;
       status = `<div class="status">D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>`;
     } else {
       foot = `<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">Loadout is on the gun. Waiting for the host to start the countdown.</div>`;
@@ -237,12 +243,12 @@ export class Hud {
     const locked = mode === 'kitted' && st.policy && !can && rule && rule.choice !== 'player';
     const k = slot.toUpperCase();
     let art = '', h = '', sub = '';
-    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = 'PERK · ' + esc(perkEffect(item)); }
-    else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `MAG ${item.clip != null ? item.clip : '—'} · RESERVE ${item.reserve != null ? item.reserve : '—'}`; }
-    else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = rule && rule.choice === 'off' ? 'NO SECONDARY THIS GAME' : 'ALT-FIRE DOES NOTHING'; }
-    if (locked) sub = (rule.choice === 'fixed' ? 'FIXED FOR THIS GAME' : rule.choice === 'off' ? 'NO SECONDARY THIS GAME' : 'SET BY THE HOST');
+    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item)); }   // the slot label carries "PERK"; the line is 134px wide
+    else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RESERVE ${item.reserve != null ? item.reserve : '—'}</span>`; }
+    else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = rule && rule.choice === 'off' ? 'NO SECONDARY' : 'NO ALT-FIRE'; }
+    if (locked) sub = (rule.choice === 'fixed' ? 'FIXED BY THE HOST' : rule.choice === 'off' ? 'NO SECONDARY' : 'SET BY THE HOST');
     const lock = locked ? `<span class="lock" aria-label="locked">${LOCK_SVG}</span>` : (can ? '<span class="cue">▸</span>' : '');
-    return `<div class="plate wart slot ${can ? 'tap' : ''} ${locked ? 'locked' : ''}" ${can ? `data-act="onOpenLoadout" data-arg="${slot}"` : ''}>${art}<div class="in"><div class="k">${k}${lock}</div><div class="h">${h.toUpperCase()}</div><div class="s">${sub}</div></div></div>`;
+    return `<div class="plate wart slot ${can ? 'tap' : ''} ${locked ? 'locked' : ''}" ${can ? `data-act="onOpenLoadout" data-arg="${slot}"` : ''}>${art}<div class="in"><div class="k">${item && item.kind === 'perk' ? 'PERK' : k}${lock}</div><div class="h">${h.toUpperCase()}</div><div class="s">${sub}</div></div></div>`;
   }
 
   /** Rows for a tab: [{key, kind, id, row, allowed}] in catalog order, filtered to the player's pool. */
@@ -309,10 +315,10 @@ export class Hud {
     return `<div class="lobby result"><div class="scan"></div><div class="edgeglow"></div>
       <div class="banner"><span class="unskew">GAME OVER</span></div>
       <div class="rstats">
-        <div class="cell"><b>${v(st.kills)}</b><span>KILLS${st.kills != null ? ' ✓MC' : ''}</span></div>
+        <div class="cell"><b>${v(st.kills)}</b><span>KILLS</span></div>
         <div class="cell"><b>${v(st.deaths)}</b><span>DEATHS</span></div>
         <div class="cell"><b>${v(st.assists)}</b><span>ASSISTS</span></div>
-        <div class="cell"><b>${v(st.accuracy == null ? null : Math.round(st.accuracy), '%')}</b><span>ACCURACY</span></div>
+        <div class="cell"><b>${v(accShown(st), '%')}</b><span>ACCURACY</span></div>
         <div class="cell"><b>${st.shots != null ? st.shots : '—'}</b><span>SHOTS</span></div>
       </div>${sess}
       <div class="foot">${this.sync && this.sync.bound && this.sync.pending === 0
@@ -328,18 +334,18 @@ export class Hud {
     // only nag when genuinely low: live+alive, mag known, not a fresh mag (it blinked constantly on the bench)
     const lowMag = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
     const [nm] = splitGun(st.gun);
-    const stat = (k, v, mc) => `<span>${k} <b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b>${mc && v != null ? '<b class="mc"> ✓MC</b>' : ''}</span>`;
+    const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
     return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       <div class="scrim-t"></div><div class="scrim-b"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       <div class="clockplate"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
-      <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? (st.wsState === 'bound' ? '' : 'ws') : 'off'}"></span>${st.bleUp ? 'LINK' : 'NO GUN'}</span>
+      <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span>
         <button class="camchip ${this.cam ? 'on' : ''}" data-act="onToggleCam"><span class="unskew10">◉ CAM${this.cam ? ' ON' : ''}</span></button></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
-      <div class="stats tab">${stat('K', st.kills, true)}${stat('D', st.deaths)}${stat('A', st.assists, true)}${stat('ACC', st.accuracy == null ? null : Math.round(st.accuracy) + '%', true)}</div>
+      <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
       ${st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
@@ -350,6 +356,25 @@ export class Hud {
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       ${st.switching ? `<div class="swapping"><div class="big">ALT</div><div class="sub">SWITCHING — CONFIRMS ON YOUR NEXT SHOT</div><div class="track"><i id="swapbar"></i></div></div>` : ''}
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
+  }
+  /** The DOWN-screen recap: three labelled tiles — time left · the team race (cap under it) · your own line. */
+  _downRecap(st) {
+    const tile = (lab, val) => `<span class="rc"><span class="rv">${val}</span><span class="rl">${lab}</span></span>`;
+    const out = [tile('TIME LEFT', `<b class="tab">${mmss(st.clockMs)}</b>`)];
+    // Team totals and your kills come from Mission Control — shown only while the link is up (a stale board would lie);
+    // off-link the recap sticks to what the phone knows for itself: the clock, the cap, your deaths and shots.
+    const linked = st.wsState === 'bound';
+    const bd = linked ? st.board : null;
+    if (bd && bd.teams && bd.teams.length) {
+      const chips = bd.teams.map(t => { const k = String(t.team_id || '').toLowerCase(); const mine = st.teamKey && k === st.teamKey;
+        return `<span class="tm ${mine ? 'mine' : ''}" style="background:${TEAM_COLOR[k] || 'var(--plate)'};color:${TEAM_INK[k] || 'var(--num)'}"><span class="unskew">${esc(String(t.name || k).toUpperCase())} <b>${t.score != null ? t.score : '—'}</b></span></span>`; }).join('');
+      out.push(tile(bd.cap ? `FIRST TO ${bd.cap}` : 'SCORE', `<span class="tms">${chips}</span>`));
+    } else if (st.fragLimit) out.push(tile('SCORE CAP', `<b>${st.fragLimit}</b>`));
+    const me = linked && st.kills != null ? [`<b>${st.kills}</b> KILL${st.kills === 1 ? '' : 'S'}`, `<b>${st.deaths}</b> DEATH${st.deaths === 1 ? '' : 'S'}`]
+      : [`<b>${st.deaths}</b> DEATH${st.deaths === 1 ? '' : 'S'}`, `<b>${st.shots}</b> SHOT${st.shots === 1 ? '' : 'S'}`];
+    if (st.lives != null) me.push(`<b>${st.lives}</b> ${st.lives === 1 ? 'LIFE' : 'LIVES'} LEFT`);   // "no respawns" is already the big label above
+    out.push(tile('YOU', me.join(' · ')));
+    return out.join('');
   }
   _pips(st) {
     const n = 12, mag = st.mag || Math.max(st.ammo, 1);
@@ -388,8 +413,10 @@ export class Hud {
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
-      set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths);
-      const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? (st.wsState === 'bound' ? '' : 'ws') : 'off'); if (dot.className !== cls) dot.className = cls; }
+      set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
+      const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
+      set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
+      const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
       // swap progress: fills against the assumed ceiling, so the player can SEE the wait elapsing
       const sw = q('swapbar');
       if (sw && st.switchingMs != null && st.switchWindowMs) sw.style.width = `${Math.min(100, Math.round(100 * st.switchingMs / st.switchWindowMs))}%`;
@@ -399,20 +426,28 @@ export class Hud {
   // ---------- chips (WS / BLE / resync / tutorial) ----------
   _chips(st) {
     const pills = [];
+    if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
     if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${st.wsReason ? ' (' + esc(String(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') pills.push(`<span class="pill warn"><span class="unskew">RECONNECTING TO MISSION CONTROL…</span></span>`);
+    // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC
+    // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
+    // (night hides the header dots, so there the dim pill is the only off-range signal)
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn"><span class="unskew">${st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
     if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
-    const prompt = st.resync ? `<div class="prompt"><span class="unskew">GUN RELINKED — ${esc(st.resync.prompt).toUpperCase()}</span></div>` : '';
+    const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
   }
 
   // ---------- moments (overlay) ----------
   _moments(st) {
+    // The reload takeover owns the chip bar. Tracked here, before ANY branch returns: dying mid-reload once left the
+    // flag set for the whole DOWN screen and hid GUN LINK LOST exactly when it mattered (pass-2 review 2026-09-03).
+    const reloadUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.reloading);
+    if ((this.frame.dataset.takeover || '') !== (reloadUp ? 'reload' : '')) { if (reloadUp) this.frame.dataset.takeover = 'reload'; else delete this.frame.dataset.takeover; }
     // T-MINUS while armed
     if (st.phase === 'armed' && st.tMinusMs != null) {
       const secs = Math.ceil(st.tMinusMs / 1000);
@@ -441,14 +476,26 @@ export class Hud {
       if (this._moment !== 'down') {
         this._moment = 'down';
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
-          <div class="ghost"><div class="l tab">00</div><div class="r tab">${pad2(st.ammo)}<span style="font-size:26px">/${st.reserve != null ? st.reserve : '—'}</span></div></div>
           <div class="c"><div class="l2"><span class="t">DOWN</span><span class="kb">KILLED BY <b style="background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
-          <div style="display:flex;flex-direction:column;align-items:center"><span class="n tab" id="rd">${pad2(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : st.respawnType === 'scanner' ? 'GO TO A RESPAWN SCANNER' : st.respawnType === 'none' ? 'NO RESPAWNS THIS MODE' : 'AWAITING REDEPLOY'}</span></div></div></div>`;
+          <div style="display:flex;flex-direction:column;align-items:center">${st.respawnType === 'auto' ? `<span class="n tab" id="rd">${pad2(st.respawnIn)}</span>` : `<span class="n nn">${st.respawnType === 'scanner' ? '▣' : '✕'}</span>`}<span class="lab">${st.respawnType === 'scanner' ? 'GO TO A RESPAWN SCANNER' : st.respawnType === 'none' ? 'NO RESPAWNS THIS MODE' : st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span></div></div>
+          <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
         this._flash();
-      } else { const el = this.overlay.querySelector('#rd'); if (el) el.textContent = pad2(st.respawnIn); }
+      } else { const el = this.overlay.querySelector('#rd'); if (el) el.textContent = pad2(st.respawnIn); const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; } }
       return;
     }
     if (this._moment === 'down' && (st.alive || st.phase !== 'live')) { this._moment = null; this.overlay.innerHTML = ''; }
+
+    // RELOADING (persistent for the weapon's reload time; the gun will not fire until the mag is back)
+    if (reloadUp) {
+      const pct = Math.min(100, Math.round(100 * st.reloadMs / st.reloadTotalMs)), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);
+      if (this._moment !== 'reload') {
+        this._moment = 'reload';
+        this.overlay.innerHTML = `<div class="mo reloading"><div class="c"><span class="t">RELOADING</span><span class="s">${esc(st.weapon)} · HOLD FIRE</span>
+          <div class="track"><i id="rlbar" style="width:${pct}%"></i></div><span class="n tab" id="rlleft">${left.toFixed(1)}S</span></div></div>`;
+        this.h.onHaptic && this.h.onHaptic('tap');
+      } else { const b = this.overlay.querySelector('#rlbar'); if (b) b.style.width = pct + '%'; const n = this.overlay.querySelector('#rlleft'); if (n) n.textContent = left.toFixed(1) + 'S'; }
+      // no early return: hits, gains and kills append ABOVE the takeover — reloading is exactly when you get shot (suite audit 2026-09-03)
+    } else if (this._moment === 'reload') { this._moment = null; this.overlay.innerHTML = ''; }   // (reloadUp is the single source of truth for the flag AND the overlay)
 
     // transient moments
     const m = st.moment;
@@ -469,8 +516,8 @@ export class Hud {
    * at identical coordinates into an unreadable mash. One node per kind, re-triggered.
    */
   _swap(kind, el, outAt, gone) {
-    this._live = this._live || {};
-    const prev = this._live[kind];
+    this._overlays = this._overlays || {};   // (was `this._live`, which collided with the _live(st) render method)
+    const prev = this._overlays[kind];
     let node = el;
     if (prev && prev.el.isConnected) {
       // REUSE the live node rather than replacing it. Replacing re-ran the entrance animation on
@@ -487,11 +534,15 @@ export class Hud {
       this.overlay.appendChild(el);
     }
     const rec = { el: node, t1: setTimeout(() => node.classList.add('out'), outAt),
-                  t2: setTimeout(() => { node.remove(); if (this._live[kind] === rec) delete this._live[kind]; }, gone) };
-    this._live[kind] = rec;
+                  t2: setTimeout(() => { node.remove(); if (this._overlays[kind] === rec) delete this._overlays[kind]; }, gone) };
+    this._overlays[kind] = rec;
+    return node;   // the node actually on screen (a reused one is NOT `el`)
   }
 
-  _flash() { if (this.frame.dataset.env === 'night') return; const w = document.createElement('div'); w.className = 'whiteout'; this.overlay.appendChild(w); setTimeout(() => w.remove(), 120); }
+  _flash() {
+    if (this.frame.dataset.env === 'night') return;
+    const now = Date.now(); if (this._flashAt && now - this._flashAt < 500) return; this._flashAt = now;   // ≤2 flashes/s whatever the event burst (WCAG 2.3.1)
+    const w = document.createElement('div'); w.className = 'whiteout'; this.overlay.appendChild(w); setTimeout(() => w.remove(), 120); }
   _kill(st, m) {
     if (this.frame.dataset.env === 'night') return;
     const vt = (m.data && m.data.victim_team) || 'yellow'; const vk = String(vt).toLowerCase();
@@ -543,10 +594,17 @@ export class Hud {
   _redeploy(st) {
     if (this.frame.dataset.env === 'night') return;
     const el = document.createElement('div'); el.className = 'mo redeploy';
-    el.innerHTML = `<div class="wipe"></div><div class="slash"></div>
-      <div class="r"><span class="t">REDEPLOYED</span><span class="h">WEAPONS HOT ▸▸▸</span><span class="s">${st.maxHp} · ${st.maxArmor} · MAG FULL</span></div>
+    const lo = st.loadout || {};
+    const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th" style="background-image:url('assets/weapons/${esc(it.weapon_id)}.jpg')"></span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
+    el.innerHTML = `<div class="wipe"></div><div class="slash"></div><div class="beam"></div>
+      <div class="r"><span class="t">REDEPLOYED</span><span class="h">WEAPONS HOT ▸▸▸</span><span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
+        <div class="kit">${ki('PRIMARY', lo.primary)}${ki(lo.secondary && lo.secondary.kind === 'perk' ? 'PERK' : 'SECONDARY', lo.secondary)}</div></div>
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
-    this._swap('redeploy', el, 1100, 1500);
+    this._flash();
+    const live = this._swap('redeploy', el, 1700, 2100);
+    // fit the headline to its column: font metrics differ per platform and a fixed size ran off the right edge (review #31)
+    const t = live.querySelector('.t'); let fs = 56;
+    while (t && t.scrollWidth > t.clientWidth + 1 && fs > 28) { fs -= 2; t.style.fontSize = fs + 'px'; }
   }
 
   // ---------- diagnostics ----------

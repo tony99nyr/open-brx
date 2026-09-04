@@ -10,6 +10,16 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
   then `MC=http://<ip>:8765 node tools/rig.mjs`.
 - **`shots.mjs`** — HUD-only screenshot sweep over `?demo` (no MC server needed): every screen state at a
   phone-landscape viewport. `node tools/shots.mjs`.
+- **`stage.mjs`** — `npm run ui:stage` → http://localhost:4190/ : the STAGE harness for visual review. The real HUD in
+  a phone-sized frame with a sidebar that jumps it to any screen state (`?demo&stage=<state>`, 28 states from idle to
+  MATCH COMPLETE — no timeline, the state holds) and an event panel that forces in-game events by hand: fire, hit,
+  death, respawn, kill confirm, low ammo/HP, gun drop/relink, MC lost/back, push/start/abort/end/PANIC. Variants:
+  screen size, team colour, respawn type/delay, night, host-locked loadout, MC rejecting picks. `/hud/?demo&stage=live`
+  opens a state alone. The states live in `src/demo.js` (STAGES); every load starts from a clean engine.
+- **`screens.mjs`** — `npm run ui:screens`: the screen-truth suite from the 2026-09-03 HUD review (docs/hud-review-2026-09-03.md).
+  Every reported item is an assertion about what a person sees (rects, wraps, overlaps, visible text), run over the stage
+  states at the design width AND a 667px phone, with desktop scrollbars ON — both reproduced the report and headless
+  defaults hide them. Shots in `app/shots/screens/`. `ONLY=<substring>` runs matching steps.
 - The `?mc=&gun=` page works in ANY browser too — open it on the desktop next to the MC UI for manual poking.
 
 Regression canary: if `?demo` never leaves phase `idle`, the boot hung (see the Capacitor thenable-proxy

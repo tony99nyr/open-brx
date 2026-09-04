@@ -15,7 +15,9 @@
     "ui:e2e": "node tools/e2e.mjs",
     "ui:rig": "node tools/rig.mjs",
     "ui:scenarios": "node tools/scenarios.mjs",
-    "ui:moments": "npm run build && node tools/moments.mjs"
+    "ui:moments": "npm run build && node tools/moments.mjs",
+    "ui:stage": "npm run build && node tools/stage.mjs",
+    "ui:screens": "npm run build && node tools/screens.mjs"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",

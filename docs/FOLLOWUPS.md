@@ -2016,3 +2016,25 @@ so several of these are settled from data rather than recollection.
   `wsState: "bound"`, `synced: true`, `mc_reachable: true`, `pending: 0`, and **it delivered its log
   over the wire**. What was down was `bleUp:false` — the *gun*, which was off. The HUD presented that
   as a sync problem, which is the real defect: **UI truth, not transport.**
+
+## From the HUD screen review of 2026-09-03 (docs/hud-review-2026-09-03.md)
+
+- **F15 · Accuracy attribution is unverified.** `ACCURACY` = hits counted at MC from the VICTIMS' `hit_taken` facts
+  (attributed by `shooter_num` in `$HIR`) over the shooter's own mag decrements. The HUD now hides it until MC has
+  ≥1 hit and ≥10 shots for the player, but nobody has bench-checked that `$HIR`'s shooter field maps to
+  `player_num` the way scoring.py assumes. Two guns, two phones, ten shots, compare.
+- **F16 · Reload takeover timing.** The HUD's RELOADING overlay runs for the catalog `reload_s`; the gun enforces
+  its own reload from the `$WEAP` reload token. Bench: pull the handle on each weapon, time `$BUT,2` → `$ALCD` up,
+  and correct weapons.json where they disagree (the overlay clears early on the `$ALCD` anyway, but a too-short
+  `reload_s` would clear it while the gun is still refusing fire).
+- **F17 · Lives cap.** The DOWN recap shows LIVES LEFT only if `config.respawn.lives` exists — no mode sets it yet.
+  If a lives-limited mode lands, MC must put the cap in the config it pushes.
+- **F18 · FFA board.** `score.board` in FFA is the top three players standing in for teams; the HUD colours them
+  with the plate colour. A proper FFA ladder (you vs the leader) is a small HUD follow-up.
+- **F19 · After a PANIC the HUD shows the plain kitted screen** (READY UP, nothing says what happened). A one-line
+  "HOST STOPPED THE MATCH" pill until the next config push would do (browser-breaker, 2026-09-03).
+- **F20 · Kill confirm during a reload is deferred** until the RELOADING takeover ends (~2 s) — by construction of the
+  overlay ordering; decide whether the kill should interrupt the reload takeover instead.
+- **F21 · ⓘ in the display corner.** The diagnostics button now sits at the frame's top-right corner (2px inset) with
+  `viewport-fit=cover`; on a notched phone in landscape the corner radius may clip it. Check on the first field phone;
+  a 6px inset costs nothing (suite audit, 2026-09-03).

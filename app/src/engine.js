@@ -28,6 +28,7 @@ const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
 // "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
 const SWITCH_MAX_MS = 1200;
+const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
 
 export function toks(f) {
@@ -95,6 +96,7 @@ export class Engine {
     this.lastVoltsAt = 0;
     this.hurtFired = false;         // low-health alert already sent this life
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
+    this.reloading = null;          // {at, ms, slot} from the reload-handle pull ($BUT,2) until the mag comes back ($ALCD up) — HUD takeover (review 2026-09-03 #15)
     this.lastSwitchMs = null;       // measured duration of the last completed swap
     this._prevAmmo = {};            // per weapon slot ($ALCD token 3): last mag seen
     this.activeSlot = 0;
@@ -193,7 +195,7 @@ export class Engine {
     if (this.start && (this.phase === 'lobby' || this.phase === 'armed')) this.resumeSchedule();
     this._changed();
   }
-  onBleDropped() { this.bleUp = false; this.log('gun link lost', 'le'); this._changed(); }
+  onBleDropped() { this.bleUp = false; this.reloading = null; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03)
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
@@ -243,7 +245,7 @@ export class Engine {
         if (body.preview && ['connected', 'kitted', 'lobby'].includes(this.phase) && fr.length && fr.every(f => f.startsWith('$PLAY') || f.startsWith('$SFLASH'))) return this._write(fr, 'apply preview');
         return undefined;
       }
-      case 'score': if (body && typeof body === 'object') { this.score = body; this.scoreAt = this.now(); this._changed(); } return;
+      case 'score': if (body && typeof body === 'object') { this.score = body; this.scoreAt = this.now(); this._changed(); } return;   // may carry `board` {teams:[{team_id,name,score}], cap} for the DOWN recap
       default: return;
     }
   }
@@ -379,6 +381,7 @@ export class Engine {
     if (this.config && body.config_id && body.config_id !== this.config.config_id) { this.log('start for a config I do not hold', 'le'); return { ok: false, reason: 'stale_config' }; }
     this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
+    if (body.match_id !== this.matchId) { this.score = null; this.scoreAt = null; }   // a new match: last match's K/A/board must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed') this._set('armed');
     this._save();
@@ -415,7 +418,7 @@ export class Engine {
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
-    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0;
+    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
@@ -458,6 +461,7 @@ export class Engine {
   }
 
   _revive(resync) {
+    this.reloading = null;                          // a reload that started in the last life does not follow you into this one
     if (!this.frames) return;
     this._write(this.frames.revive, 'revive');
     this.hurtFired = false;
@@ -478,7 +482,7 @@ export class Engine {
       accuracy: this.score ? this.score.accuracy : null, shots: this.shots, mode: this.config ? this.config.mode : null }); } catch (_) { /* history is best-effort */ }
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
-    this.spawned = false; this.alive = false; this.resync = null; this.start = null; this._resyncRevive = false;
+    this.spawned = false; this.alive = false; this.resync = null; this.start = null; this._resyncRevive = false; this.reloading = null;
     this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
     this._set('kitted');
@@ -594,6 +598,7 @@ export class Engine {
         // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
         // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
         if (+t[1] === 1 && +t[2] === 1) this._altPressed();
+        if (+t[1] === 2 && +t[2] === 1) this._reloadPulled();
         break;
       }
       default: break;
@@ -604,9 +609,27 @@ export class Engine {
   /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
   _altPressed() {
     if (this.phase !== 'live' || !this.alive || this.tutorial) return;
-    if (this._slotCount() < 2) return;            // empty slot 1: ALT falls back to reload (loadout.md §2)
+    if (this._slotCount() < 2) { this._reloadPulled(); return; }   // empty slot 1: ALT falls back to reload (loadout.md §2) — same takeover as the handle
     this.switching = { at: this.now(), from: this.activeSlot };
     this._changed();
+  }
+
+  /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
+  _reloadPulled() {
+    if (this.phase !== 'live' || !this.alive || this.tutorial || this.resync) return;   // in resync the gun's state is unverified and the prompt must stay visible
+    const cap = this._ammoBySlot()[this.activeSlot] ?? this.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
+    if (cap && this.ammo >= cap && (this.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
+    if (!(this.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
+    const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]);
+    const row = w && this.weaponRow(w.weapon_id); const secs = row && row.reload_s != null ? +row.reload_s : 1.5;
+    this.reloading = { at: this.now(), ms: Math.max(300, Math.round(secs * 1000)), slot: this.activeSlot };
+    this._changed();
+  }
+  /** Milliseconds into the current reload, or null when none is running (PURE, read by state()). */
+  reloadingMs() {
+    if (!this.reloading) return null;
+    const ms = this.now() - this.reloading.at;
+    return ms > this.reloading.ms + RELOAD_GRACE_MS ? null : ms;
   }
 
   _slotCount() {
@@ -629,6 +652,7 @@ export class Engine {
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
+    if (this.reloading && prev != null && mag > prev && slot === this.reloading.slot) { this.reloading = null; }   // the mag is back: the gun fires again
     if (this.switching && slot !== this.switching.from && slot < 2) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
       // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
@@ -722,6 +746,7 @@ export class Engine {
   }
 
   _death(desync) {
+    this.reloading = null;                          // the gun stops the reload when you drop; so does the HUD
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = fresh ? this.latch.shooter_num : 0;
     const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
@@ -843,7 +868,7 @@ export class Engine {
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
-      respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
+      respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,
@@ -853,6 +878,10 @@ export class Engine {
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
       switchWindowMs: SWITCH_MAX_MS, lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
+      ...(ms => ({ reloading: ms != null, reloadMs: ms, reloadTotalMs: this.reloading ? this.reloading.ms : null }))(this.reloadingMs()),
+      hits: this.score ? this.score.hits : null, board: this.score ? this.score.board : null,
+      fragLimit: this.config && this.config.scoring ? this.config.scoring.frag_limit : null,
+      lives: (this.config && this.config.respawn && this.config.respawn.lives != null) ? Math.max(0, this.config.respawn.lives - this.deaths) : null,
       moment: this.moment, ended: this.ended, endAck: this.endAck, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
       // A10 self-serve kitting

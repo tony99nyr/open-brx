@@ -27,11 +27,13 @@
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}
 [data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}
 [data-env="night"][data-team]{--team:#5a2222;--team-ink:#000}
+[data-env="night"] .plate{background:#0a0303;border-color:#3a1414}[data-env="night"] .plate.slot .thumb{border-color:#3a1414}   /* the kit stays readable at night (#24) */
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
 html,body{margin:0;height:100%;background:#030407;color:var(--num);font-family:var(--fl);overflow:hidden;overscroll-behavior:none}
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030407}
-#frame{position:relative;width:844px;height:390px;transform-origin:center center;overflow:hidden;background:var(--bg);color:var(--num)}   /* color resolved INSIDE the frame so night's --num applies to inherited text */
+#frame{position:relative;flex:0 0 844px;width:844px;height:390px;transform-origin:center center;overflow:hidden;background:var(--bg);color:var(--num)}   /* flex:0 0 — #stage is a flex row and a phone narrower than 844 CSS px shrank the frame BEFORE scaling it, reflowing every screen (review 2026-09-03 #6/#7/#13/#18/#22) */
+#frame *{scrollbar-width:none}#frame *::-webkit-scrollbar{display:none}#diag,#diag *{scrollbar-width:auto}#diag::-webkit-scrollbar,#diag *::-webkit-scrollbar{display:block}   /* the desktop diagnostics panel keeps its scrollbars */   /* touch UI: desktop scrollbars ate 15px inside every scroller and wrapped rows (#2/#10) */   /* color resolved INSIDE the frame so night's --num applies to inherited text */
 html.cam-on,html.cam-on body{background:transparent!important}
 #frame.cam{background:transparent}
 #hud,#overlay,#chips,#cam{position:absolute;inset:0}
@@ -65,8 +67,10 @@ button:active{filter:brightness(1.15)}
 .ident .arrow{width:0;height:0;border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:14px solid var(--team)}
 .ident .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.1em}
 .ident .sq{font-size:10px;letter-spacing:.2em;color:var(--team);font-weight:700}
-.topright{position:absolute;top:28px;right:44px;display:flex;align-items:center;gap:18px;font-size:13px;color:var(--mut);font-weight:600}
+.topright{position:absolute;top:26px;right:48px;display:flex;align-items:center;gap:16px;font-size:13px;color:var(--mut);font-weight:600;white-space:nowrap}
 .topright .link{display:flex;align-items:center;gap:5px}
+.topright button.mclink{font:inherit;color:inherit;letter-spacing:inherit;pointer-events:auto;position:relative;padding:0}
+.topright button.mclink::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}   /* the tap target; the visual stays a dot + label */
 .topright .dot{width:9px;height:9px;background:var(--ok);border-radius:50%;box-shadow:0 0 8px var(--ok)}
 .topright .dot.off{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:blink .7s infinite}
 .topright .dot.ws{background:var(--warn);box-shadow:0 0 8px var(--warn)}
@@ -77,8 +81,8 @@ button:active{filter:brightness(1.15)}
 /* ≥44px glove-tap hit area without growing the 32px visual (in-element pseudo extends the click box) */
 .camchip::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px;min-width:44px}
 .camchip.on{background:var(--glow);color:#04121e;border-color:var(--glow)}
-.stats{position:absolute;top:66px;right:36px;display:flex;gap:12px;font-size:12px;color:var(--mut);font-weight:600}
-.stats b{color:var(--num);font-family:var(--fd);font-size:15px;font-weight:700}
+.stats{position:absolute;top:64px;right:48px;display:flex;gap:18px;font-size:13px;letter-spacing:.08em;color:var(--mut);font-weight:700;align-items:baseline;white-space:nowrap}   /* legible at arm's length (#14): 13/22 instead of 12/15 */
+.stats b{color:var(--num);font-family:var(--fd);font-size:22px;font-weight:700;margin-left:4px}
 .stats b.mut{color:var(--mut)}
 .stats .mc{color:var(--ok);font-size:11px;vertical-align:top;font-weight:700}
 .reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;border:1px solid var(--mut);border-radius:50%;opacity:.55}
@@ -119,7 +123,7 @@ button:active{filter:brightness(1.15)}
 .takingfire{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px}
 .takingfire .r{width:6px;height:6px;border:1px solid var(--bad);border-radius:50%}
 .takingfire .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.3em;color:var(--bad);text-indent:.3em;animation:blink .5s infinite}
-.battwarn{position:absolute;top:92px;right:36px;font-size:10px;letter-spacing:.16em;color:var(--warn);font-weight:700}
+.battwarn{position:absolute;top:96px;right:48px;font-size:10px;letter-spacing:.16em;color:var(--warn);font-weight:700}
 /* cam look-through */
 #frame.cam .clockplate{background:rgba(4,8,14,.6)}
 #frame.cam .scrim-t{position:absolute;top:0;left:0;right:0;height:80px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent)}
@@ -161,52 +165,80 @@ button:active{filter:brightness(1.15)}
 .tminus .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);display:flex;align-items:center;gap:44px}
 .tminus .lab{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .tminus .lab .h{font-family:var(--fd);font-style:italic;font-weight:700;font-size:26px;letter-spacing:.3em;color:var(--warn);white-space:nowrap}
-.tminus .lab .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600}
+.tminus .lab .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;white-space:nowrap}
 .tminus .n{font-family:var(--fd);font-style:italic;font-weight:700;font-size:230px;line-height:.8;text-shadow:0 0 60px color-mix(in srgb,var(--glow) 60%,transparent)}
 .tminus .n.punch{animation:punch .45s ease-out}
 .tminus .n.mm{font-size:150px}
-.tminus .r{display:flex;flex-direction:column;gap:6px}
+.tminus .r{display:flex;flex-direction:column;gap:6px;align-items:center;white-space:nowrap}
 .chip{background:var(--team);color:var(--team-ink);font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;padding:4px 16px;transform:skewX(-12deg)}
 .chip .unskew{display:inline-block;transform:skewX(12deg)}
-.tminus .r .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:center}
+.tminus .r .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:center;white-space:nowrap}
 .whiteout{position:absolute;inset:0;background:#fff;animation:whiteout .08s linear forwards}
-.kill{background:radial-gradient(circle at 50% 20%,rgba(22,38,74,.6) 0%,rgba(8,13,26,.25) 45%,transparent 70%);animation:killin .3s ease-out;pointer-events:none}
-.kill .rays{position:absolute;left:50%;top:20%;width:700px;height:700px;transform:translate(-50%,-50%);background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--glow) 13%,transparent) 0deg 6deg,transparent 6deg 16deg);-webkit-mask-image:radial-gradient(circle,#000 0%,transparent 60%);mask-image:radial-gradient(circle,#000 0%,transparent 60%);animation:raysspin 30s linear infinite,burst .5s ease-out}
-.kill .ring1{position:absolute;left:50%;top:20%;width:220px;height:220px;transform:translate(-50%,-50%);border:2px solid color-mix(in srgb,var(--glow) 60%,transparent);border-radius:50%;animation:ringpulse 2.4s ease-in-out infinite,ringgrow .6s ease-out}
-.kill .ring2{position:absolute;left:50%;top:20%;width:340px;height:340px;transform:translate(-50%,-50%);border:1px solid color-mix(in srgb,var(--glow) 25%,transparent);border-radius:50%}
-.kill .c{position:absolute;top:20%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
+.kill{background:radial-gradient(circle at 50% 42%,rgba(22,38,74,.9) 0%,rgba(6,10,20,.94) 55%,rgba(3,4,8,.97) 100%);animation:killin .18s ease-out;pointer-events:none}
+.kill .rays{position:absolute;left:50%;top:44%;width:700px;height:700px;transform:translate(-50%,-50%);background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--glow) 13%,transparent) 0deg 6deg,transparent 6deg 16deg);-webkit-mask-image:radial-gradient(circle,#000 0%,transparent 60%);mask-image:radial-gradient(circle,#000 0%,transparent 60%);animation:raysspin 30s linear infinite,burst .5s ease-out}
+.kill .ring1{position:absolute;left:50%;top:44%;width:220px;height:220px;transform:translate(-50%,-50%);border:2px solid color-mix(in srgb,var(--glow) 60%,transparent);border-radius:50%;animation:ringpulse 2.4s ease-in-out infinite,ringgrow .6s ease-out}
+.kill .ring2{position:absolute;left:50%;top:44%;width:340px;height:340px;transform:translate(-50%,-50%);border:1px solid color-mix(in srgb,var(--glow) 25%,transparent);border-radius:50%}
+.kill .c{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
 .kill .elim{background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.26em;padding:3px 20px;transform:skewX(-12deg)}
-.kill .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;line-height:.82;letter-spacing:.04em;text-shadow:0 0 70px var(--glow),0 0 18px color-mix(in srgb,var(--glow) 70%,transparent);animation:slam .35s cubic-bezier(.2,1.4,.4,1),shimmer 1.2s .4s ease-in-out}
-.kill .cf{font-family:var(--fd);font-weight:700;font-size:34px;letter-spacing:.52em;text-indent:.52em;color:var(--glow);text-shadow:0 0 30px var(--glow)}
+.kill .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:96px;line-height:.82;letter-spacing:.04em;text-shadow:0 0 70px var(--glow),0 0 18px color-mix(in srgb,var(--glow) 70%,transparent);animation:slam .35s cubic-bezier(.2,1.4,.4,1),shimmer 1.2s .4s ease-in-out}
+.kill .cf{font-family:var(--fd);font-weight:700;font-size:38px;letter-spacing:.52em;text-indent:.52em;color:var(--glow);text-shadow:0 0 30px var(--glow)}
 .kill .bars{display:flex;gap:8px;margin-top:8px}
 .kill .bars i{height:5px;transform:skewX(-24deg);display:block}
-.kill .foot{position:absolute;bottom:34px;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:16px}
+.kill .foot{position:absolute;bottom:40px;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:16px}
 .kill .vt{color:#1a1400;font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.14em;padding:3px 14px;transform:skewX(-12deg)}
 .kill .by{font-size:10px;letter-spacing:.26em;color:var(--mut);font-weight:600}
-.kill.out{animation:collapse .35s ease-in forwards;transform-origin:calc(100% - 60px) 70px}
+.kill.out{animation:hitout .3s ease-in forwards}
 .down{background:radial-gradient(ellipse 120% 90% at 50% 45%,#160709 0%,#0b0305 60%,#040102 100%);animation:redflood .3s ease-out}
 .down .wash{position:absolute;inset:0;box-shadow:inset 0 0 180px -30px rgba(255,40,40,.5)}
-.down .ghost{position:absolute;inset:0;opacity:.15;filter:grayscale(1)}
+.down .ghost{display:none}
+.down .recap{position:absolute;left:36px;right:36px;bottom:22px;display:flex;justify-content:center;align-items:flex-end;gap:56px;white-space:nowrap}
+.down .recap .rc{display:flex;flex-direction:column;align-items:center;gap:4px}
+.down .recap .rl{font-size:12px;letter-spacing:.26em;color:var(--mut);font-weight:700}
+.down .recap .rv{font-size:12px;letter-spacing:.14em;color:var(--mut);font-weight:700;display:flex;align-items:baseline;gap:6px}
+.down .recap .rv b{color:var(--num);font-family:var(--fd);font-size:22px;letter-spacing:.02em;font-weight:700}
+.down .recap .tms{display:flex;gap:4px}
+.down .recap .tm{display:inline-block;padding:3px 12px;transform:skewX(-12deg);font-size:12px;letter-spacing:.14em}.down .recap .tm .unskew{display:inline-block;transform:skewX(12deg)}
+.down .recap .tm b{font-family:var(--fd);font-size:18px;color:inherit;margin-left:2px}
+.down .recap .tm.mine{outline:2px solid var(--num);outline-offset:1px}
 .down .ghost .l{position:absolute;left:36px;bottom:32px;font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8}
 .down .ghost .r{position:absolute;right:36px;bottom:32px;font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8}
-.down .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);display:flex;align-items:center;gap:48px}
+.down .c{position:absolute;top:46%;left:50%;transform:translate(-50%,-52%);display:flex;align-items:center;gap:48px}
 .down .l2{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .down .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;letter-spacing:.14em;color:var(--bad);text-shadow:0 0 40px rgba(255,60,60,.6)}
 .down .kb{display:flex;align-items:center;gap:8px;font-size:13px;letter-spacing:.14em;color:var(--mut);font-weight:600}
 .down .kb b{font-family:var(--fd);font-weight:700;padding:2px 12px;transform:skewX(-12deg);display:inline-block}
 .down .n{font-family:var(--fd);font-style:italic;font-weight:700;font-size:190px;line-height:.8;animation:heartbeat 1s infinite}
-.down .lab{font-size:12px;letter-spacing:.34em;color:var(--mut);font-weight:600;text-align:center}
+.down .lab{font-size:12px;letter-spacing:.34em;color:var(--mut);font-weight:600;text-align:center;white-space:nowrap}
 .redeploy{background:#04070c}
 .redeploy .wipe{position:absolute;top:0;bottom:0;left:-8%;width:56%;background:linear-gradient(90deg,var(--team),color-mix(in srgb,var(--team) 40%,transparent));transform:skewX(-14deg);animation:wipein .28s ease-out}
 .redeploy .slash{position:absolute;top:0;bottom:0;left:46%;width:3%;background:var(--num);opacity:.9;transform:skewX(-14deg)}
-.redeploy .r{position:absolute;top:50%;left:56%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;animation:trackin .35s .15s both ease-out}
-.redeploy .r .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:64px;letter-spacing:.08em;line-height:.9;text-shadow:0 0 40px color-mix(in srgb,var(--glow) 50%,transparent)}
+.redeploy .r{position:absolute;top:50%;left:55%;right:20px;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;animation:trackin .35s .15s both ease-out;min-width:0}
+.redeploy .r .t{display:block;overflow:hidden;font-family:var(--fd);font-style:italic;font-weight:700;font-size:56px;letter-spacing:.06em;line-height:.9;text-shadow:0 0 40px color-mix(in srgb,var(--glow) 50%,transparent);white-space:nowrap;animation:slam .4s .1s both cubic-bezier(.2,1.4,.4,1)}
+.redeploy .kit{display:flex;gap:10px;margin-top:6px;animation:kitin .35s .4s both ease-out}
+@keyframes kitin{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.redeploy .kit .ki{display:flex;align-items:center;gap:8px;border:1px solid var(--edge);background:var(--plate);padding:4px 10px 4px 4px;min-width:0}
+.redeploy .kit .ki .th{width:54px;height:34px;background-size:cover;background-position:center;border:1px solid var(--edge);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--glow)}
+.redeploy .kit .ki .th svg{width:24px;height:24px}
+.redeploy .kit .ki .kk{font-size:10px;letter-spacing:.24em;color:var(--mut);font-weight:700}
+.redeploy .kit .ki .kn{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.redeploy .beam{position:absolute;top:0;bottom:0;width:120px;left:-20%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-14deg);animation:beam .55s .1s ease-out both;pointer-events:none}
+@keyframes beam{from{left:-20%;opacity:1}to{left:110%;opacity:0}}
 .redeploy .r .h{font-family:var(--fd);font-weight:600;font-size:18px;letter-spacing:.3em;color:var(--ok)}
 .redeploy .r .s{font-size:12px;letter-spacing:.16em;color:var(--mut);font-weight:600}
 .redeploy .l{position:absolute;top:50%;left:10%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;color:var(--team-ink)}
 .redeploy .l .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:34px;letter-spacing:.1em}
 .redeploy .l .sq{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.26em}
-.redeploy.out{animation:wipeout .3s ease-in forwards}
+.redeploy.out{animation:hitout .3s ease-in forwards}
+/* RELOADING takeover (#15): the gun refuses fire until the mag is back; the HUD says so, big, for the weapon's reload time. */
+.reloading{background:rgba(3,5,10,.82);animation:hitin .12s ease-out;pointer-events:none}
+.reloading .c{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:12px}
+.reloading .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:72px;letter-spacing:.1em;color:var(--warn);text-shadow:0 0 40px rgba(255,176,32,.5);line-height:.9;white-space:nowrap}
+.reloading .s{font-size:12px;letter-spacing:.3em;color:var(--mut);font-weight:700;white-space:nowrap}
+.reloading .track{width:360px;height:10px;background:rgba(255,255,255,.1);border:1px solid var(--edge);transform:skewX(-14deg);overflow:hidden}
+.reloading .track i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--warn) 0 18px,color-mix(in srgb,var(--warn) 55%,transparent) 18px 22px);width:0;transition:width .12s linear}
+.reloading .n{font-family:var(--fd);font-weight:700;font-size:28px;color:var(--num);letter-spacing:.04em}
+.reloading.out{animation:hitout .2s ease-in forwards}
+[data-env="night"] .reloading{background:#000}[data-env="night"] .reloading .t{color:var(--num);text-shadow:none}[data-env="night"] .reloading .track i{background:var(--num)}
 /* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
    phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
    the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */
@@ -237,10 +269,10 @@ button:active{filter:brightness(1.15)}
 /* Reduced motion: show the same information, without the transitions. */
 /* `#frame`, not `.frame`: the element carries an ID and no such class exists, so the first
    version of this rule matched nothing at all and .takingfire kept blinking. */
-@media (prefers-reduced-motion:reduce){#frame *,.mo,.mo *{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){#frame *,.mo,.mo *{animation:none!important;transition:none!important}.whiteout{display:none}}   /* without its fade the whiteout is a harder pop, not a gentler one (UX review 2026-09-03) */
 /* Night: the shooter-team chip is set INLINE (a team colour), and inline styles win over CSS.
    Class-driven at night instead, so it stops being the brightest object on a black HUD. */
-[data-env="night"] .hit .src{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none}
+[data-env="night"] .hit .src,[data-env="night"] .down .recap .tm,[data-env="night"] .down .kb b{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none}   /* inline day colours would be the brightest thing on a night screen */
 [data-env="night"] .gain.armor .amt{color:#7a5aa8}
 [data-env="night"] .gain.shield .amt{color:#3a8f96}
 [data-env="night"] .mo{animation:none!important}
@@ -270,37 +302,49 @@ button:active{filter:brightness(1.15)}
 .tagrow .sig b{color:var(--mut);font-size:11px;margin-left:6px;font-weight:700}
 .tagrow .inuse{display:inline-block;transform:skewX(6deg);color:var(--warn);font-size:11px;font-weight:700;letter-spacing:.1em}
 .idle .help{font-size:12px;color:var(--mut);line-height:1.5;margin-top:auto}
-.idle .list{display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:230px}
+.idle .list{display:flex;flex-direction:column;gap:10px;overflow:hidden auto;max-height:230px;padding:0 4px}
 .lobby .top{position:absolute;top:30px;left:36px;display:flex;flex-direction:column;gap:4px}
 .lobby .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:44px;letter-spacing:.08em;line-height:.9}
 .lobby .row{display:flex;align-items:center;gap:8px}
 .lobby .chip{font-size:12px;padding:2px 12px}
 .lobby .gid{font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
-.lobby .plates{position:absolute;top:118px;left:36px;right:36px;display:flex;flex-wrap:wrap;gap:10px}
+.lobby .plates{position:absolute;top:126px;left:36px;right:36px;display:flex;flex-wrap:wrap;gap:10px}
 .plate{background:var(--plate);border:1px solid var(--edge);padding:10px 18px;transform:skewX(-8deg)}
 .plate .in{transform:skewX(8deg)}
 .plate .h{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.04em}
 .plate .s{font-size:11px;color:var(--mut);letter-spacing:.14em;font-weight:600}
-.lobby .foot{position:absolute;left:36px;right:36px;bottom:36px;display:flex;align-items:center;gap:20px}
-.ready{flex:1;height:96px;background:var(--ok);color:#04120a;font-family:var(--fd);font-style:italic;font-weight:700;font-size:36px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -8px var(--ok)}
+.lobby .foot{position:absolute;left:36px;right:36px;bottom:34px;display:flex;align-items:center;gap:20px}
+.ready{flex:1;height:60px;background:var(--ok);color:#04120a;font-family:var(--fd);font-style:italic;font-weight:700;font-size:26px;white-space:nowrap;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -8px var(--ok)}
 .ready .unskew{display:inline-block;transform:skewX(10deg)}
 .ready.off{background:var(--plate);color:var(--num);border:1px solid var(--edge);box-shadow:none}
-.ready.wait{background:var(--plate);color:var(--mut);border:1px solid var(--edge);box-shadow:none;font-size:26px}
+.ready.wait{background:var(--plate);color:var(--mut);border:1px solid var(--edge);box-shadow:none;font-size:20px}
 .ready.wait.on{background:var(--ok);color:#04120a;border:none;box-shadow:0 0 40px -8px var(--ok)}
 .lobby .note{font-size:13px;color:var(--mut);font-weight:600;max-width:200px;line-height:1.5}
-.lobby .tr{position:absolute;top:30px;right:36px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.lobby .status{font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:right}
+.lobby .foot .note.join{max-width:230px;font-size:12px;line-height:1.4}
+.lobby .tr{position:absolute;top:30px;right:48px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.lobby .status{font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:right;white-space:nowrap}
 .lobby .status b{color:var(--ok)}
 .lobby .status .bad{color:var(--bad)}
 .mcin{display:flex;gap:6px;align-items:center;pointer-events:auto}
-.mcin input{width:250px;height:34px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px ui-monospace,monospace;padding:0 10px}
-.qrbtn{white-space:nowrap;width:auto;align-self:flex-start;margin-top:8px;padding:12px;background:#131b26;color:#ffc947;border:1px solid #3a4a61;font:700 11px ui-monospace,monospace;letter-spacing:.22em}
-.mcin button{height:34px;padding:0 12px;background:var(--glow);color:#04121e;font-size:13px;letter-spacing:.14em;font-weight:700}
+.mcin input{width:236px;height:34px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px ui-monospace,monospace;padding:0 10px}
+.qrbtn{white-space:nowrap;width:auto;align-self:center;margin-top:0;height:34px;padding:0 14px;background:#131b26;color:#ffc947;border:1px solid #3a4a61;font:700 11px ui-monospace,monospace;letter-spacing:.22em}
+.mcin button{height:34px;padding:0 12px;background:var(--glow);color:#04121e;font-size:13px;letter-spacing:.14em;font-weight:700;position:relative}
+.mcin button::after,.qrbtn::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px}   /* 44px tap rows on a 34px visual */
+.qrbtn{position:relative}
 .overbtn{position:absolute;pointer-events:auto}
 .small{font-size:11px;letter-spacing:.16em;color:var(--mut);font-weight:600}
 
 /* ============ chips / prompts ============ */
-.chipbar{position:absolute;top:100px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px}
+.chipbar{position:absolute;top:100px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;white-space:nowrap}
+#frame[data-takeover="reload"] #chips{opacity:0}   /* WEAPONS HOT beside HOLD FIRE is a contradiction; the takeover owns the screen */
+.plate.slot .s .nw{white-space:nowrap;letter-spacing:.06em}
+.down .n.nn{font-size:96px;line-height:1;font-style:normal;animation:none;color:var(--mut)}   /* the ▣ glyph painted 49px below its line box and through the label */
+#frame[data-screen="lobby"] .chipbar{top:98px;flex-direction:row;gap:8px}   /* the band between the callsign block and the plates */
+#frame[data-screen="lo"] .chipbar{top:auto;bottom:70px;flex-direction:row;gap:8px}   /* loadout browser: over the faded list end, clear of tabs, filters and the action bar */
+#frame[data-screen="panel"] .chipbar{top:2px;flex-direction:row;gap:8px}   /* briefing / result: the strip above the content */
+#frame[data-screen="lo"] .pill,#frame[data-screen="panel"] .pill{font-size:10px;letter-spacing:.14em;padding:5px 12px}
+#frame[data-screen="lobby"] .pill{font-size:10px;letter-spacing:.14em;padding:5px 12px}
+#frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px}
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
 .pill .unskew{display:inline-block;transform:skewX(10deg)}
 /* a pill that is also a control: same look, real tap target (min 44px per the tap audit) */
@@ -308,9 +352,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .pill.warn{border-color:var(--warn);color:var(--warn)}
 .pill.bad{border-color:var(--bad);color:var(--bad);animation:blink 1.4s infinite}
 .pill.ok{border-color:var(--ok);color:var(--ok)}
-.prompt{position:absolute;left:50%;top:150px;transform:translateX(-50%) skewX(-10deg);background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.18em;padding:8px 26px}
-.prompt .unskew{display:inline-block;transform:skewX(10deg)}
-.infobtn{position:absolute;top:24px;right:6px;width:26px;height:26px;border:1px solid var(--edge);color:var(--mut);font:600 13px var(--fl);display:flex;align-items:center;justify-content:center;pointer-events:auto;z-index:5}
+.prompt{position:absolute;left:50%;top:140px;transform:translateX(-50%) skewX(-10deg);background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;padding:8px 28px;white-space:nowrap}
+.prompt .unskew{display:flex;flex-direction:column;align-items:center;transform:skewX(10deg);line-height:1.1}
+.prompt .pl{font-family:var(--fl);font-size:11px;letter-spacing:.3em;font-weight:700;opacity:.8}
+.prompt .pi{font-size:26px;letter-spacing:.14em}
+.infobtn{position:absolute;top:2px;right:2px;width:36px;height:36px;border:1px solid var(--edge);color:var(--mut);font:600 13px var(--fl);display:flex;align-items:center;justify-content:center;pointer-events:auto;z-index:5}
 /* ≥44px tap area; the ⓘ visual stays 26px */
 .infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
 [data-env="night"] .infobtn{color:var(--mut);border-color:var(--edge)}
@@ -365,12 +411,14 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .mclinked .unskew{display:inline-block;transform:skewX(10deg)}
 
 /* kit-out try-out panel + loadout weapon thumb (2026-08-26) */
-.tryout{position:absolute;top:100px;left:36px;right:36px;display:flex;gap:16px;border:1px solid var(--edge);background:var(--plate);padding:8px}
-.tryout .art{flex:0 0 240px;height:118px;background-size:cover;background-position:center;border:1px solid var(--edge)}
-.tryout .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;justify-content:center}
+.tryout{position:absolute;top:118px;left:36px;right:36px;display:flex;gap:16px;border:1px solid var(--edge);background:var(--plate);padding:8px 18px;transform:skewX(-8deg)}   /* slanted like the plates and the buttons beside it (review #28) */
+.tryout > *{transform:skewX(8deg)}
+.tryout .art{flex:0 0 220px;height:104px;background-size:cover;background-position:center;border:1px solid var(--edge)}
+.tryout .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
+.tryout .facts{margin-top:2px;line-height:1.4}
 .tryout .lbl{font-size:11px;letter-spacing:.24em;color:var(--warn);font-weight:700}
 .tryout .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.06em;color:var(--num)}
-.tryout .ln{font-size:12px;letter-spacing:.18em;color:var(--mut);font-weight:600}
+.tryout .ln{font-size:12px;letter-spacing:.14em;color:var(--mut);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tryout .tb{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.2em;color:var(--mut);font-weight:600}
 .tryout .tb span{width:104px;flex:0 0 104px}   /* fits RATE OF FIRE / AMMO CARRIED / KILL SPEED without wrapping */
 .tryout .tb span{width:34px}
@@ -380,18 +428,18 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .plate.wart .thumb{flex:0 0 96px;background-size:cover;background-position:center}
 /* ============ A9 loadout: slot plates (KITTED) + the LOADOUT browser (docs/spec/loadout.md §4.5) ============ */
 .plate.slot{display:flex;gap:12px;align-items:center;flex:0 0 288px;min-height:78px;padding:8px 14px;position:relative;pointer-events:auto}
-.lobby .plates > .plate:not(.slot){flex:1 1 150px;min-width:0}
+.lobby .plates > .plate:not(.slot){flex:1 1 120px;min-width:0}
 .lobby .plates > .plate:not(.slot) .h,.lobby .plates > .plate:not(.slot) .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plate.slot .thumb{flex:0 0 84px;height:56px;border:1px solid var(--edge);background-size:cover;background-position:center;transform:skewX(8deg)}
 .plate.slot .thumb.perk,.plate.slot .thumb.none{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .plate.slot .thumb.perk svg{width:40px;height:40px}
 .plate.slot .thumb.none span{font-size:24px;color:var(--mut)}
 .plate.slot .in{min-width:0;flex:1}
-.plate.slot .k{font-size:11px;letter-spacing:.26em;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:8px}
+.plate.slot .k{font-size:11px;letter-spacing:.26em;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .plate.slot .k .lock{display:inline-flex}.lockg{width:14px;height:14px;vertical-align:-2px}.lolock .big .lockg{width:20px;height:20px;vertical-align:-3px}
 .plate.slot .k .cue{margin-left:auto;color:var(--glow);font-size:16px;line-height:1}
 .plate.slot .h{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.plate.slot .s{font-size:10.5px;letter-spacing:.12em;line-height:1.3}
+.plate.slot .s{font-size:10.5px;letter-spacing:.1em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plate.slot.tap{border-color:var(--glow);box-shadow:0 0 22px -12px var(--glow)}
 .plate.slot.locked{opacity:.75}
 .lobby .platehint{flex:0 0 100%;padding-left:8px;margin-top:-2px;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:700}
@@ -408,16 +456,16 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lotab .v{font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.06em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
 .lotab.on{background:var(--team);border-color:var(--team);color:var(--team-ink)}
 .lotab.on .v{color:var(--team-ink)}
-.lo .who{margin-left:auto;display:flex;align-items:baseline;gap:10px;padding-bottom:6px}
+.lo .who{margin-left:auto;display:flex;align-items:baseline;gap:10px;padding:0 16px 6px 0}
 .lo .who .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.08em;line-height:1}
 .lo .who .num{font-family:var(--fd);font-weight:700;font-size:16px;color:var(--glow)}
 .lo .lobody{position:absolute;top:70px;left:36px;right:36px;bottom:74px;display:flex;gap:16px}
-.lo .lolist{flex:0 0 400px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:6px;pointer-events:auto}
+.lo .lolist{flex:0 0 404px;overflow:hidden auto;display:flex;flex-direction:column;gap:6px;padding:0 6px 0 4px;pointer-events:auto}
 /* WEAPONS | PERKS | NONE. Field 2026-09-01: "the perks menu is really small and hard to see, it
    was hard to figure out how to open the perks menu". These are the only way to reach perks, so
    they are sized as the primary control they are, not as a filter chip. */
 .lofilt{display:flex;gap:8px;margin-bottom:8px;flex:0 0 auto}
-.fch{height:46px;min-width:132px;padding:0 20px;background:var(--plate2);border:1px solid var(--edge);color:var(--ink);font-size:14px;letter-spacing:.18em;font-weight:700;transform:skewX(-10deg);position:relative;pointer-events:auto}
+.fch{height:46px;min-width:0;flex:0 0 auto;padding:0 16px;background:var(--plate2);border:1px solid var(--edge);color:var(--ink);font-size:13px;letter-spacing:.14em;font-weight:700;transform:skewX(-10deg);position:relative;pointer-events:auto;white-space:nowrap}
 .fch .unskew{display:inline-block;transform:skewX(10deg)}
 .fch.on{background:var(--num);color:#04121e;border-color:var(--num)}
 .fch.none{margin-left:auto}
@@ -444,9 +492,10 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .locount{font-size:10px;letter-spacing:.22em;color:var(--mut);font-weight:700;padding:2px 4px;flex:0 0 auto}
 .lo .lolist{-webkit-mask-image:linear-gradient(#000 86%,transparent);mask-image:linear-gradient(#000 86%,transparent);padding-bottom:28px}
 .eqtag{font-family:var(--fl);font-style:normal;font-size:10px;letter-spacing:.2em;color:var(--ok);border:1px solid var(--ok);padding:2px 7px;margin-left:8px;vertical-align:middle;font-weight:700}
-.lo .lodetail{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden}
+.lo .lodetail{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden auto;padding-bottom:34px;-webkit-mask-image:linear-gradient(#000 90%,transparent);mask-image:linear-gradient(#000 90%,transparent)}
+.lo .lodetail > *{flex:0 0 auto}
 .lodetail .caution{color:var(--bad);font-family:var(--fm,monospace);font-size:11px;letter-spacing:.08em;margin-top:4px}
-.lo .lodetail .art{height:96px;border:1px solid var(--edge);background-size:cover;background-position:center;flex:0 0 auto}
+.lo .lodetail .art{height:84px;border:1px solid var(--edge);background-size:cover;background-position:center;flex:0 0 auto}
 .lo .lodetail .art.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .lo .lodetail .art.perk svg{width:64px;height:64px}
 .lo .lodetail .rolechip{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.18em;color:var(--mut);vertical-align:middle;margin-left:6px}
@@ -461,7 +510,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lo .lodetail .tb span{width:34px}
 .lo .lodetail .tb i{flex:1;height:6px;background:var(--inset,#0a1626);border:1px solid var(--edge);display:block}
 .lo .lodetail .tb b{display:block;height:100%;background:var(--glow)}
-.lo .lodetail .desc{font-size:12px;line-height:1.4;color:var(--mut);font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:normal;word-break:keep-all;hyphens:none}
+.lo .lodetail .desc{font-size:12px;line-height:1.4;color:var(--mut);font-weight:600;overflow-wrap:normal;hyphens:none}   /* the whole text; the pane scrolls (#9) */
 
 .lo .lobar{position:absolute;left:36px;right:36px;bottom:14px;height:52px;display:flex;align-items:center;gap:12px}
 .lo .ackslot{flex:1;min-width:0;display:flex}
@@ -489,12 +538,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 [data-env="night"] .lo .lolist{-webkit-mask-image:none;mask-image:none}
 [data-env="night"] .lobtn,[data-env="night"] .lobtn.try{background:var(--plate2);color:var(--num);border:1px solid var(--edge)}
 [data-env="night"] .plate.slot.tap{box-shadow:none;border-color:var(--edge)}
-.plate.wart .in{padding:10px 14px}
+.plate.wart .in{padding:10px 10px 10px 12px}   /* the subtitle line needs the width (MAG 300 · RESERVE 600) */
 
 /* ---------- A10 §4.1 / §4.6: setting-up state + BRIEFING ---------- */
-.lobby .setup{flex:1;display:flex;align-items:center;gap:18px;min-height:96px;border:1px solid var(--edge);background:var(--plate);padding:14px 22px;transform:skewX(-8deg)}
+.lobby .setup{flex:1;display:flex;align-items:center;gap:18px;min-height:76px;border:1px solid var(--edge);background:var(--plate);padding:14px 22px;transform:skewX(-8deg)}
 .lobby .setup .in{transform:skewX(8deg);display:flex;flex-direction:column;gap:6px}
-.lobby .setup .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--num)}
+.lobby .setup .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--num);white-space:nowrap}
 .lobby .setup .s{font-size:13px;color:var(--mut);font-weight:600;line-height:1.4}
 .lobby .setup .pulse{display:flex;gap:6px;transform:skewX(8deg)}
 .lobby .setup .pulse i{width:10px;height:10px;background:var(--glow);opacity:.25;animation:setupdot 1.8s infinite}
@@ -537,7 +586,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 [data-env="night"] .bf .r,[data-env="night"] .bf .bfart{animation:none}
 [data-env="night"] .lobby .setup .pulse i{background:var(--num)}
 [data-env="night"] .briefbtn{border-color:var(--mut);color:var(--num)}
-#info{min-width:36px;min-height:36px}
+#info{min-width:36px;min-height:36px;font-size:15px}   /* the 44px ::after is the tap target; the visual sits in the corner gutter */
 </style>
 </head>
 <body>
