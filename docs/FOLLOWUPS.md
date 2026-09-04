@@ -1371,6 +1371,23 @@ addressability. Refactor (1-4) is **brx's** — bench answers delivered, they ho
 
 ## 🟠 S7 — RECONNECT / NEW-MATCH RECONCILIATION on the phone node (2026-09-04, from the utility bench)
 
+**🔴 ANTI-CHEAT (found + FIXED on hardware 2026-09-04, Tony):** force-close the app at low HP, reopen,
+and the app RESPAWNED the player to FULL — a free respawn on demand. Root cause: alive/hp weren't
+persisted, so a rejoin defaulted alive:false/hp:0, the recovery deadAt guard stamped a death, and
+auto-respawn healed to max. **Fixed (commit 3b6d1c7): `_save`/`_load` now persist
+alive/hp/armor/shield/deadAt/killedBy** — a rejoin restores the REAL pools (live at 25 → back at 25,
+no false down, no heal). Verified on R0BQT: force-close at 25 → reopen → waits past the respawn delay →
+still 25, deadAt 0, no respawn. Engine test added.
+
+**NEXT (Tony's design, S7.1): an explicit RECONCILING phase on rejoin where the gun is DISARMED until
+state is confirmed.** "It will feel slow and not helpful, but if an app actually crashes it's no big
+deal" — the deliberate slow reconcile is itself an anti-cheat measure (restarting to escape or heal is
+made unattractive; a genuine crash costs a few seconds, which is rare and fine). Design: on a BLE
+reconnect into a live match, hold a `reconciling` state that disarms the gun (`$AMMO,0,0` stun-style)
+and shows "RECONNECTING — CONFIRM YOUR GUN", clears only when the resync resolves (trigger-first, or a
+state line), then re-arms to the reconciled pools. Replaces the current implicit trigger-first resync's
+confusing alive/0hp window. Needs hardware iteration.
+
 Live-bench weaknesses in the §3.10 resync + hydrate path, surfaced repeatedly on 2026-09-04 (they predate
 the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
 1. **Rejoin lands alive-with-0-hp.** After force-stop → relaunch → rejoin, the gun is armed and can shoot
