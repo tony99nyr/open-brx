@@ -224,6 +224,28 @@ def team_frame(team: int | None, night: bool = False) -> str:
     return f"$GLED,{c},{c},{c},0,{b},,*"
 
 
+def headset_team_frame(team: int | None) -> str:
+    """The HEADSET in the team colour, static, full brightness -- what OTHER players see.
+
+    Bench 2026-09-03 (`hled_spawned.py`, `hled_bright.py`, gun R0BP1-9498, operator watching):
+      * a static `$HLED` painted AFTER `$SPAWN` holds SOLID (20 s, no breathing, no fight) -- the
+        headset really is uncontested between events;
+      * `$SPAWN` CLEARS it, and so does every registered HIT (native flash, then dark, ours never
+        returns) -- so it has to be re-sent after each spawn and each `$HIR`, which is what
+        `GameDriver` does;
+      * a paint 1 s after spawn lit, so no post-spawn settling gap is needed (the >= 3 s rule is for
+        AFTER A DEATH, F13);
+      * token 5 is a two-level brightness exactly like the gun's: 1 dim, 2/10/255 identical and
+        maximum. 10 (Callsign's value) is already full. The dim team blink seen at spawn is the
+        firmware's own and cannot be turned up -- we paint over it instead.
+    Colour indices 0-7 are shared with the gun palette (camera rig, 2026-09-02). Never dimmed for
+    night mode: callers skip the headset entirely when LEDs are off, because lighting a player's
+    head in a blackout game is the one thing that setting exists to prevent.
+    """
+    c = TEAM_COLOURS.get(team, DEFAULT_TEAM_COLOUR)
+    return f"$HLED,{c},0,,,{BRIGHT_FULL},,*"
+
+
 def changed_pool(before: tuple[int, int, int] | None,
                  after: tuple[int, int, int]) -> str | None:
     """Which of (hp, armor, shield) moved? Returns 'health' | 'armor' | 'shield' | None.

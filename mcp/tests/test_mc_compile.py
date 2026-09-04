@@ -71,7 +71,9 @@ def test_spawn_shape():
     b = C.compile(_cfg(), _player(), _TEAMS)
     sp = b["spawn"]
     assert sp[0] == "$PLAYX,0,*" and sp[1] == "$SPAWN,,*"
-    assert sp[-1] == "$BMAP,0,0,,,,,*"
+    # $BMAP,0,0 closes the T-0 tail; the headset team colour follows it because $SPAWN clears the
+    # headset (bench 2026-09-03) -- see test_headset_team.py.
+    assert sp[-2] == "$BMAP,0,0,,,,,*" and sp[-1].startswith("$HLED,")
     assert any(f.startswith("$AMMO,0,") for f in sp) and any(f.startswith("$AMMO,1,") for f in sp)
 
 
@@ -79,7 +81,7 @@ def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
     b = C.compile(_cfg(), _player(), _TEAMS)
     rv = b["revive"]
     assert rv[0] == "$SPAWN,,*"
-    assert all(f.startswith("$AMMO,") for f in rv[1:])
+    assert all(f.startswith("$AMMO,") for f in rv[1:-1]) and rv[-1].startswith("$HLED,")
     assert not any(f.startswith("$BMAP") for f in rv), "revive must not re-map buttons"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 
@@ -208,7 +210,7 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     cat = WeaponCatalog()
     ids = [w["weapon_id"] for w in cat.all()]
     assert "melee" not in ids, "hidden melee is not in the visible picker"
-    assert len(ids) == 18, f"the §3 roster is 18 weapons, got {len(ids)}"
+    assert len(ids) == 21, f"the §3 roster is 18 weapons + 3 sidearms, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
     # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (140ms, not the
     # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
@@ -226,12 +228,16 @@ def test_every_weapon_is_based_on_its_own_captured_frame():
     import json, pathlib
     rows = json.loads((pathlib.Path(__file__).resolve().parents[1]
                        / "brx_mcp/mc/weapons.json").read_text())["weapons"]
-    assert len(rows) == 19
+    assert len(rows) == 22
     for w in rows:
         cap = w.get("capture") or {}
+        if w.get("based_on"):        # a sidearm rides another weapon's captured frame (weapons.json `_note`, based_on)
+            assert w.get("captured") is False and w["based_on"]["weapon_id"] in {r["weapon_id"] for r in rows}, w["weapon_id"]
+            base = next(r for r in rows if r["weapon_id"] == w["based_on"]["weapon_id"])
+            assert cap == base["capture"], f"{w['weapon_id']}: capture block must be a verbatim copy of {base['weapon_id']}'s"
         assert cap.get("frame", "").startswith("$WEAP,"), f"{w['weapon_id']} has no captured frame"
         assert cap.get("src", "").endswith(".btsnoop"), f"{w['weapon_id']} has no capture source"
-        assert w.get("captured") is True
+        assert w.get("captured") is (not w.get("based_on"))   # own frame ⇒ captured; a based_on row is honest about not being
 
 
 def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
@@ -560,9 +566,15 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
         if r["htk"] > 1:
             assert 1500 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.5-3.5s band"
     pick = [r for r in rows if r["htk"] > 1]
+    sidearm = {w["weapon_id"] for w in cat.all() if w.get("role") == "sidearm"}
     for a in pick:
         for b in pick:
             if a is b:
+                continue
+            # A sidearm is a slot-2 backup and is dominated by the primaries BY DESIGN (weapon-design.md
+            # §2.2, sidearms 2026-09-04). It may never dominate anything, and no sidearm may dominate
+            # another — only "a primary beats a sidearm" is exempt.
+            if b["id"] in sidearm and a["id"] not in sidearm:
                 continue
             dominates = (a["ttk"] <= b["ttk"] and a["sust"] >= b["sust"] and a["tk"] >= b["tk"]
                          and (a["ttk"] < b["ttk"] or a["sust"] > b["sust"] or a["tk"] > b["tk"]))

@@ -170,3 +170,25 @@ def test_restore_never_drops_a_player_while_numbers_are_free():
     assert restored == len(snap["players"]), "nobody may be dropped while low numbers are free"
     nums = sorted(p["player_num"] for p in s2.players.values())
     assert len(nums) == len(set(nums)) and all(1 <= n <= MAX_PLAYERS for n in nums), nums
+
+
+def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_default():
+    """A11: a session.json written before `presentation` existed must come back reading as the stock
+    mode it was -- the console compares the applied config to the mode defaults, which now carry a
+    presentation block (caught by the e2e old-session compat step, 2026-09-04)."""
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    snap["config"].pop("presentation", None)                 # what an older MC wrote
+    tmp.write_text(json.dumps(snap))
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    assert s2.restore_snapshot() >= 2
+    assert s2.config["presentation"]["preset"] == "standard"
+    from brx_mcp.mc.state import default_config
+    fresh = default_config(s2.config["mode"])
+    for k in ("presentation", "loadout_policy"):
+        assert s2.config[k] == fresh[k], k                    # identical to the stock mode's defaults

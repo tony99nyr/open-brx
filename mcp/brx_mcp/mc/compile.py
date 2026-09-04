@@ -18,6 +18,8 @@ from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team, Weapon
+from . import presentation as _pres
+from .. import poolgauge as pg
 
 # Field-corrected 2026-08-30 (first live 2-player match on the Mac): $VOL,69 — the value iOS
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
@@ -61,7 +63,11 @@ DEFAULT_POOL = 115
 # APK's `LedColorType` has only a handful of members — so a 4-team game's tid 2/3, and certainly any
 # larger tid, would be a token we cannot name. Emit it only for the values Callsign has been seen to
 # send, and stay silent otherwise rather than guess.
-_HLED_SEEN_COLOURS = (0, 1)
+# 2026-09-02/03: the headset palette was read off hardware -- indices 0-7 render the same hues as the
+# gun (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink), so a 4-team
+# game's tid 2/3 now has a known colour and is emitted too. ⚠ 3 is GREEN, the headset's own death
+# out-blink colour; a green team's headset is ambiguous while a player is down. Larger tids stay silent.
+_HLED_SEEN_COLOURS = (0, 1, 2, 3)
 
 
 def _headset_colour(tid: int, leds: bool) -> list[str]:
@@ -193,9 +199,11 @@ class WeaponCatalog:
 
     # doc token positions (protocol-classes.md, cross-checked against 19 captured frames by
     # `python -m brx_mcp.weapmap`). doc tokN == frame.split(",")[N+1] — `put()` adds the +1.
-    # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26; the constant 850 at tok15 is
-    # an unidentified field and is never written.
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "mag": 16, "reserve": 17, "reload": 18,
+    # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
+    # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
+    # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
+    # perk must scale every slot (docs/bench-weap-tokens-2026-09-04.md).
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
           "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
           "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
           "range": 41}
@@ -210,6 +218,21 @@ class WeaponCatalog:
     # Legacy 4-sample tails, kept only for rows with no `capture` block (synthetic catalogs in tests).
     SAMPLES = {"ar": WEAPON_TAILS.get("ar", WEAPON_TAILS["primary"]),
                "charge": WEAPON_TAILS.get("charge", WEAPON_TAILS["primary"])}
+
+    def swap_ms(self, weapon_id: str, mods: dict | None = None) -> int:
+        """tok15 as it will be written: the weapon's captured swap delay (850 on every stock gun, 100 on
+        melee) scaled by a `switch_mult` perk. Bench 2026-09-04: the gun honours it linearly with no floor."""
+        w = self._by_id[weapon_id]
+        frame = (w.get("capture") or {}).get("frame")
+        base = 850
+        if (w.get("wire") or {}).get("swap_ms") is not None:          # a per-weapon draw time (sidearms); NB the gun enforces
+            base = int(w["wire"]["swap_ms"])                          # the LARGER of slots 0/1, so it only bites when both are quick
+        elif frame:
+            tok = frame.split(",")
+            if len(tok) > 16 and tok[16].strip().isdigit():
+                base = int(tok[16])
+        sm = float((mods or {}).get("switch_mult") or 1)
+        return max(0, int(round(base * sm)))
 
     @staticmethod
     def _mods(mods: dict | None, mag: int, reserve: int, reload_ms: int) -> tuple[int, int, int]:
@@ -282,6 +305,7 @@ class WeaponCatalog:
         put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
+        put("swap", self.swap_ms(weapon_id, mods))
         for key, ov in (w.get("overrides") or {}).items():
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])
@@ -471,16 +495,17 @@ class Compiler:
             raise ValueError(f"player_num {pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
         tid = self._tid(player, teams)
         w0, w1 = self._weapon_ids(player)
-        fx = self._perk_effects(player)                    # passive perk knobs act on the PRIMARY only
-        mods = {k: fx[k] for k in ("ammo_mult", "reload_mult") if fx.get(k)}
+        fx = self._perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
+        mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
+        swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
 
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
                 gc._gset(), gc._pset(pnum, player.get("voice")),   # the voice pack is per-PLAYER (§PSET)
                 self.catalog.resolve(w0, 0, mods)]
         if w1:
-            head.append(self.catalog.resolve(w1, 1))        # slot 1 only when a secondary exists (A10)
-        head.append(self.catalog.resolve("melee", 4))
+            head.append(self.catalog.resolve(w1, 1, swap_mods))   # slot 1 only when a secondary exists (A10)
+        head.append(self.catalog.resolve("melee", 4, swap_mods))
         bmap = list(gc._bmap())
         if not w1 and not gc.alt_reload:
             # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
@@ -505,7 +530,8 @@ class Compiler:
         # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
         # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
         # eyeball test, and do not cite this frame as confirmed until that is done.
-        head += list(_SIR_TABLE) + bmap + gc._led_frames() + _headset_colour(tid, gc.leds) + [f"$TID,{tid},*"]
+        hled = _headset_colour(tid, gc.leds)
+        head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + [f"$TID,{tid},*"]
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
@@ -514,9 +540,15 @@ class Compiler:
             ammo.append(f"$AMMO,1,{smag},{sres},1,*")
 
         # spawn = $PLAYX,0 -> $SPAWN -> $AMMOs -> $BMAP,0,0 (the T-0 tail; M-START wraps VA81 + $SFLASH)
-        spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"]
+        # ... + the headset team colour LAST. Bench 2026-09-03 (hled_spawned.py): `$SPAWN` CLEARS
+        # the headset, which is exactly why the lobby frame above showed up "on death, not pre-game"
+        # in the field (G4/V3) -- it was gone the moment the game started. A static $HLED painted
+        # after spawn holds solid, and one sent 1 s after spawn lit; it goes at the end of the tail
+        # so the $AMMO writes give the headset relay a beat first. Token 5 = 10 is already maximum
+        # brightness (1 dim, 2/10/255 identical), measured the same day.
+        spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"] + hled
         # revive = $SPAWN + loadout $AMMOs (NO $HLOOP, NO $BMAP — §1.1 replaces RESPAWN_SEQUENCE)
-        revive = ["$SPAWN,,*"] + ammo
+        revive = ["$SPAWN,,*"] + ammo + hled
 
         bundle: FrameBundle = {
             "config_id": config["config_id"],
@@ -527,7 +559,33 @@ class Compiler:
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
             "cues": self.cues(player.get("voice", "male")),
+            # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
+            # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
+            "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
         }
+        # Every registered hit wipes the headset (native flash, then dark; bench 2026-09-03). The
+        # node re-sends this after each hit so the team colour is back for the rest of the life.
+        # Empty when LEDs are off or the tid has no known headset colour -- the node writes nothing.
+        bundle["cues"]["team_led"] = hled[0] if hled else ""
+
+        # A11: the PRESENTATION profile -- per-event sounds + lights, preset or custom (presentation.py).
+        # Cues it names override the fixed table above; `announcer: false` mutes the voice groups but
+        # keeps the $SFLASH; `gun_flash: false` empties the LED table; `headset_team: false` drops the
+        # team-colour repaint frames added above.
+        prof = _pres.resolve(config)
+        frames = _pres.cue_frames(prof, kill_line(player.get("voice", "male")))
+        low = frames.pop("low_health", None)
+        bundle["cues"].update(frames)
+        # low_health is the node's existing `hurt` cue. Callsign's byte-identical frame
+        # ($PLAY,VA8B,3,6) stays unless the profile chose a DIFFERENT sound or muted it.
+        if low is not None and prof["events"]["low_health"].get("sound") != "VA8B":
+            bundle["cues"]["hurt"] = low
+        bundle["leds"] = _pres.led_table(prof, tid, gc.is_night_mode(), gc.leds)
+        if not prof.get("headset_team", True):
+            bundle["cues"]["team_led"] = ""
+            bundle["spawn"] = [f for f in bundle["spawn"] if not f.startswith("$HLED,")]
+            bundle["revive"] = [f for f in bundle["revive"] if not f.startswith("$HLED,")]
+        bundle["presentation"] = _pres.summary(config.get("presentation") or _pres.default_for(config.get("mode")))
         if config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)
             flip: dict[str, list[str]] = {}
@@ -665,7 +723,7 @@ class Compiler:
             # pass a weapon that cannot actually kill on one magazine (review 2026-09-01).
             fx = self._perk_effects(p)
             pool = int(hp) + min(255, int(armor) + int(fx.get("max_armor_add") or 0))
-            mods = {k: fx[k] for k in ("ammo_mult", "reload_mult") if fx.get(k)}
+            mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
             for w in (p.get("loadout", {}) or {}).get("weapons", []):
                 wid = w.get("weapon_id")
                 if wid not in self.catalog._by_id:

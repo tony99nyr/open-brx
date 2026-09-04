@@ -153,6 +153,15 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def state(_):
         return JSONResponse(s.snapshot())
 
+    async def presentation(_):
+        """A11.5: the resolved presentation profile for the read-only ADVANCED view -- every event with its
+        source (hud / mc / both), sound + the catalog's words, colours, whether it is enabled -- plus the
+        switches and MC's live confidence (which gates the MC-driven global-state events)."""
+        from . import presentation as _pres
+        return JSONResponse({"summary": _pres.summary(s.config.get("presentation") or _pres.default_for(s.config.get("mode"))),
+                             "events": _pres.table(s.config), "mc_confidence": s.mc_confidence(),
+                             "presets": sorted(_pres.PRESETS)})
+
     async def armory_scan(req):
         b = await body(req)
         try:
@@ -524,6 +533,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     routes = [
         Route("/api/state", state),
+        Route("/api/presentation", presentation),
         Route("/openbrx.apk", apk),
         Route("/api/range/verdicts", range_verdicts),
         Route("/api/range/verdict", range_verdict, methods=["POST"]),

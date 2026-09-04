@@ -90,7 +90,8 @@ def test_multi_kill_and_streak_tags():
     sc, fb, feed = mk()
     death(sc, "n1", "p1", 1, T0 + 1000)
     death(sc, "n3", "p3", 1, T0 + 2500)   # within MULTI_KILL_MS → double
-    assert sc.kills[-1]["multi"] == 2 and feed[-1]["tag"] == "DOUBLE KILL" and fb[-1][1]["kind"] == "multi"
+    assert sc.kills[-1]["multi"] == 2 and feed[-1]["tag"] == "DOUBLE KILL"
+    assert fb[-1][1]["kind"] == "kill" and fb[-1][1]["medals"] == ["double_kill"]   # A11.4: kind stays "kill", medals stack
     death(sc, "n1", "p1", 1, T0 + 30000)
     assert feed[-1]["tag"] == "STREAK ×3"
 
@@ -155,3 +156,54 @@ def test_csv_and_missing():
     sc, _, _ = mk()
     death(sc, "n1", "p1", 1, T0 + 1000)
     assert "REAPER" in sc.csv() and "p1" not in sc.missing() and "p2" in sc.missing()
+
+
+# ---- A11.4: Halo-style medal stacks + match-state alerts ----------------------------------------
+def mk_alerts(mode="tdm", cap=None, tl=600):
+    fb, feed, alerts = [], [], []
+    ps = _players(mode)
+    sc = Scorer("m1", T0, tl, mode, ps, _teams(mode), {f"n{i}": f"p{i}" for i in range(4)},
+                {f"n{i}": True for i in range(4)}, on_feedback=lambda pid, b: fb.append((pid, b)),
+                on_feed=feed.append, now_ms=(lambda: T0 + 2000), win_by=("survival" if mode in ("lms", "infection") else "kills"),
+                on_alert=lambda kind, scope, extra: alerts.append((kind, scope, extra)), frag_limit=cap)
+    return sc, fb, feed, alerts
+
+
+def test_first_blood_is_a_medal_and_a_kill_can_stack_a_multi_and_a_spree():
+    sc, fb, feed, alerts = mk_alerts()
+    # fixture: player_num = index + 1, so shooter_num 1 is p0 (blue); p1/p3 are yellow
+    death(sc, "n1", "p1", 1, T0 + 1000)
+    assert fb[-1][1]["medals"] == ["first_blood"] and feed[-1]["tag"] == "FIRST BLOOD"
+    # four more kills inside the multi window: kills 2,3,4,5 -> double, triple, killtacular, killtacular+killing_spree
+    death(sc, "n3", "p3", 1, T0 + 1500); assert fb[-1][1]["medals"] == ["double_kill"]
+    death(sc, "n1", "p1", 1, T0 + 1800); assert fb[-1][1]["medals"] == ["triple_kill"]
+    death(sc, "n3", "p3", 1, T0 + 1900); assert fb[-1][1]["medals"] == ["killtacular"]
+    death(sc, "n1", "p1", 1, T0 + 1950)
+    assert fb[-1][1]["medals"] == ["killtacular", "killing_spree"], fb[-1][1]
+    assert fb[-1][1]["kind"] == "kill"
+    assert feed[-1]["tag"] == "KILLTACULAR + KILLING SPREE"
+
+
+def test_lead_alerts_go_to_the_teams_they_concern_and_next_kill_wins_fires_once():
+    sc, fb, feed, alerts = mk_alerts(cap=3)
+    death(sc, "n1", "p1", 1, T0 + 1000)                  # blue (p0, num 1) leads 1-0
+    assert ("lead_taken", "blue", {}) in alerts and not any(a[0] == "lead_lost" for a in alerts)
+    death(sc, "n0", "p0", 2, T0 + 1200)                  # yellow (p1, num 2) ties 1-1: nothing new
+    assert alerts[-1][0] == "lead_taken"
+    death(sc, "n2", "p2", 2, T0 + 1400)                  # yellow leads 2-1 = cap-1 -> lead change + next kill wins
+    assert ("lead_lost", "blue", {}) in alerts and ("lead_taken", "yellow", {}) in alerts
+    assert alerts.count(("next_kill_wins", "all", {})) == 1
+    death(sc, "n0", "p0", 2, T0 + 1600)                  # 3-1: no second next_kill_wins
+    assert alerts.count(("next_kill_wins", "all", {})) == 1
+
+
+def test_last_survivor_and_infected_alerts():
+    sc, fb, feed, alerts = mk_alerts(mode="lms")
+    death(sc, "n1", "p1", 1, T0 + 1000)
+    death(sc, "n2", "p2", 1, T0 + 1001)
+    assert not any(a[0] == "last_survivor" for a in alerts)   # two still alive (p0, p3)
+    death(sc, "n3", "p3", 1, T0 + 1100)
+    assert alerts[-1] == ("last_survivor", "all", {"player_id": "p0"}), alerts
+    sc2, fb2, feed2, alerts2 = mk_alerts(mode="infection")
+    r = sc2.ingest("n2", {"type": "team_change", "t": T0 + 1000, "match_id": "m1", "node_id": "n2", "player_id": "p2", "tid": 2}, T0 + 1000)
+    assert alerts2 and alerts2[-1] == ("infected", "all", {"player_id": "p2"}), (r, alerts2)

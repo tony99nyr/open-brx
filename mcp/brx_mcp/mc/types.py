@@ -157,6 +157,7 @@ class GameConfig(TypedDict):
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
     loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
+    presentation: NotRequired[dict]              # A11 (mc/presentation.py): sounds + lights per event, preset or custom
 
 
 class FrameBundle(TypedDict):
@@ -171,6 +172,10 @@ class FrameBundle(TypedDict):
     cues: dict[str, str]  # A6.3: key -> PRE-COMPOSED frame the node writes verbatim. countdown, kill,
     # game_over?, victory?, tick?, klaxon?, multi?, medal?, runway_*?, and the once-per-life
     # low-health pair hurt?/hurt_led? (hurt_led is an $HLED, not a $PLAY — see compile.cues)
+    # A11: plus one key per presentation EVENT that carries a sound (hit_taken … vip_down); "" = deliberately mute.
+    leds: NotRequired[dict[str, list]]   # A11: event -> [[frame, hold_s], ...] -- the tuned $GLED burst (+ optional $HLED)
+    presentation: NotRequired[dict]      # A11: presentation.summary() -- preset + switches, for the UI/HUD
+    swap_ms: NotRequired[int]            # 2026-09-04: the weapon-swap delay the gun enforces (max tok15 of slots 0/1, after perks)
 
 
 class Weapon(TypedDict):

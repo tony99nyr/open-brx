@@ -22,7 +22,8 @@ A scenario that reproduces a REAL engine bug lives in a `scenario_*` function
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.sim import SimGame
 
-CAP_SOUND = "V109"   # snd.POINT_CAPTURED — the point-captured $PLAY cue
+from brx_mcp import sounds as _snd
+CAP_SOUND = _snd.POINT_CAPTURED   # "Control Point Captured" (VA23; transcript-verified 2026-09-03)
 
 
 def _cap_sound_count(g) -> int:

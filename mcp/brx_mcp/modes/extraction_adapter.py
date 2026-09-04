@@ -34,12 +34,13 @@ def _to_base(a: ex.Action) -> list[Action]:
         return [base.Score(a.player_id, a.value, a.total)]
     if isinstance(a, ex.ChannelStarted):
         # the signature loud "extraction inbound" moment — field-wide alarm
-        return [base.PlaySound(snd.COUNTDOWN, scope="all")]
+        return [base.PlaySound(snd.EXTRACTION_CALLED, scope=a.player_id, slot="voice"),
+                base.PlaySound(snd.EXTRACTION_ALERT, scope="all", slot="voice")]
     if isinstance(a, ex.ChannelReset):
         return [base.Callout(f"channel reset for {a.player_id} at {a.zone} ({a.reason})",
                              scope=a.player_id)]
     if isinstance(a, ex.Extracted):
-        return [base.PlaySound(snd.OBJECTIVE_SCORED, scope="all")]
+        return [base.PlaySound(snd.EXTRACTED, scope="all", slot="voice")]
     if isinstance(a, ex.LootDropped):
         return [base.Callout(f"loot dropped from {a.from_player} "
                              f"({a.value}, → {a.by})", scope="all")]

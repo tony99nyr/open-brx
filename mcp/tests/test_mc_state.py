@@ -200,3 +200,39 @@ def test_durations_are_readable_at_every_scale():
     assert Session._human_age(65_000) == "1m"
     assert Session._human_age(65_612_000) == "18h13m"
     assert Session._human_age(94_000_000) == "1d02h"
+
+
+# ---- A11.5: MC confidence gates the MC-driven global-state events ---------------------------------
+def test_mc_confidence_needs_every_hud_live_fresh_and_flushed():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0)
+    assert s.mc_confidence()["confident"] is False            # OP1 has no node yet
+    online(s, net, clock, ps[1], 1)
+    c = s.mc_confidence()
+    assert c["confident"] is True, c
+    clock["t"] += 7_000                                       # nobody heard from for 7 s -> stale
+    c = s.mc_confidence()
+    assert c["confident"] is False and len(c["stale"]) == 2
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.nodes["node1"]["pending"] = 3                           # a queue still draining
+    c = s.mc_confidence()
+    assert c["confident"] is False and c["unflushed"] == [ps[1]["player_id"]]
+
+
+def test_global_state_alerts_are_withheld_when_not_confident_and_sent_when_confident():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    assert s.mc_confidence()["confident"]
+    n = s._alert("lead_taken", "blue")
+    assert n >= 1 and any(k == "alert" and b["kind"] == "lead_taken" for _, k, b in net.pushed)
+    net.pushed.clear()
+    clock["t"] += 7_000                                       # HUDs go quiet
+    assert s._alert("next_kill_wins", "all") == 0
+    assert not any(k == "alert" for _, k, b in net.pushed)
+    assert any(e.get("tag") == "WITHHELD" for e in s.feed)
+    # a non-global event (someone else turned) is not gated by confidence, only by the class switch
+    assert s._alert("infected", "all", {"player_id": ps[0]["player_id"]}) >= 1
+    s.set_config({"mode": "tdm", "time_limit_s": 60, "presentation": {"mc_events": False}})
+    net.pushed.clear()
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    assert s._alert("lead_taken", "blue") == 0 and not net.pushed

@@ -258,11 +258,14 @@ def test_extract_removes_player_false_keeps_playing_and_can_extract_again():
 # The loud channel cue (genre signature: "everyone knows where you are")       #
 # --------------------------------------------------------------------------- #
 def test_entering_zone_emits_fieldwide_extraction_alarm():
-    # ChannelStarted → a field-wide $PLAY countdown alarm to EVERY gun.
+    # ChannelStarted -> the CALLER hears "Black Hawk inbound" and EVERY gun hears the chopper alert
+    # (A11 extraction ladder; the old field-wide countdown was a placeholder).
+    from brx_mcp import sounds as snd
+    called = f"$PLAY,,4,6,{snd.EXTRACTION_CALLED},,,,*"
+    alert = f"$PLAY,,4,6,{snd.EXTRACTION_ALERT},,,,*"
     g = _game(guns=("G1", "G2"), channel_s=10, win_target=100)
-    before = {p: g.frames_to(p).count(COUNTDOWN_PLAY) for p in ("G1", "G2")}
+    before = {p: (g.frames_to(p).count(called), g.frames_to(p).count(alert)) for p in ("G1", "G2")}
     g.station("G1", "$ZONE,Alpha,*", now=1.0)
-    after = {p: g.frames_to(p).count(COUNTDOWN_PLAY) for p in ("G1", "G2")}
-    # each gun got exactly one MORE countdown alarm (field-wide scope)
-    assert after["G1"] == before["G1"] + 1
-    assert after["G2"] == before["G2"] + 1
+    after = {p: (g.frames_to(p).count(called), g.frames_to(p).count(alert)) for p in ("G1", "G2")}
+    assert after["G1"] == (before["G1"][0] + 1, before["G1"][1] + 1)     # the extractor: call + alert
+    assert after["G2"] == (before["G2"][0], before["G2"][1] + 1)         # everyone else: the alert only

@@ -74,7 +74,8 @@ class Scorer:
                  players: dict[str, Player], teams: list[Team],
                  node_player: dict[str, str], synced_at_lobby: dict[str, bool],
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
-                 now_ms: Callable[[], int] | None = None, win_by: str | None = None):
+                 now_ms: Callable[[], int] | None = None, win_by: str | None = None,
+                 on_alert: Callable[[str, str, dict], None] | None = None, frag_limit: int | None = None):
         self.match_id = match_id
         self.go_live_t = go_live_t
         self.time_limit_s = time_limit_s
@@ -86,6 +87,11 @@ class Scorer:
         self.synced_at_lobby = synced_at_lobby    # node_id -> bool
         self.win_by = win_by
         self.on_feedback = on_feedback or (lambda pid, body: None)
+        # A11.4 match-state alerts: (kind, scope, extra) where scope is "all" | a team_id | a player_id
+        self.on_alert = on_alert or (lambda kind, scope, extra: None)
+        self.frag_limit = frag_limit
+        self._leader: str | None = None            # team_id (or player_id in FFA) currently in the lead
+        self._announced: set[str] = set()          # once-per-match alerts already sent (next_kill_wins, last_survivor)
         self.on_feed = on_feed or (lambda e: None)
         self.now_ms = now_ms or (lambda: 0)
         self.stats: dict[str, _P] = {pid: _P(p.get("team_id")) for pid, p in players.items()}
@@ -228,6 +234,8 @@ class Scorer:
             for team in self.teams.values():
                 if team["tid"] == tid:
                     st.team_id = team["team_id"]
+            if self.mode == "infection" and not suppress_awards and self.now_ms() - t <= FEEDBACK_MAX_AGE_MS:
+                self.on_alert("infected", "all", {"player_id": pid})     # A11.4: "The infection is spread."
             return "scored"
         return "ignored"
 
@@ -263,13 +271,25 @@ class Scorer:
                     else:
                         ks.multis.append(1)
                     ks.multi_best = max(ks.multi_best, kill["multi"])
+                    # Halo-style: a kill can earn SEVERAL medals at once (a killtacular AND a killing
+                    # spree), and each plays. First blood, the multi tier, then the streak threshold.
+                    medals: list[str] = []
                     if self.first_blood is None:
                         self.first_blood = killer
-                        tag = "FIRST BLOOD"
-                    elif kill["multi"] == 2:
-                        tag = "DOUBLE KILL"
-                    elif kill["multi"] >= 3:
-                        tag = "TRIPLE KILL"
+                        medals.append("first_blood")
+                    if kill["multi"] == 2:
+                        medals.append("double_kill")
+                    elif kill["multi"] == 3:
+                        medals.append("triple_kill")
+                    elif kill["multi"] >= 4:
+                        medals.append("killtacular")
+                    if ks.streak == 5:
+                        medals.append("killing_spree")
+                    elif ks.streak == 10:
+                        medals.append("unstoppable")
+                    kill["medals"] = medals
+                    if medals:
+                        tag = " + ".join(m.replace("_", " ").upper() for m in medals)
                     elif ks.streak >= 3:
                         tag = f"STREAK ×{ks.streak}"
                 ks.last_kill_t = t
@@ -285,9 +305,13 @@ class Scorer:
                     kill["assists"] = assisters
                 # feedback to the killer only if fresh
                 if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress:
-                    body = {"player_id": killer, "kind": "multi" if kill["multi"] >= 2 else "kill", "t": t,
+                    # kind stays "kill" (older nodes play their kill line); `medals` is the A11.4 stack,
+                    # which a current node plays INSTEAD of the plain line, one after another.
+                    body = {"player_id": killer, "kind": "kill", "t": t, "medals": list(kill.get("medals") or []),
                             "victim": victim, "victim_team": self.stats[victim].team_id}
                     self.on_feedback(killer, body)
+                if not suppress:
+                    self._match_state_alerts(t)
         self.kills.append(kill)
         if killer:
             verb = "team-killed" if friendly else "eliminated"
@@ -298,6 +322,38 @@ class Scorer:
             text = f"{self._name(killer)} drew FIRST BLOOD on {self._name(victim)}"
         self._push_feed(t, text, tag, "kill")
         return "scored"
+
+    def _match_state_alerts(self, t: int) -> None:
+        """A11.4: lead changes, next-kill-wins and the last survivor, to the nodes they concern.
+
+        Lead: team modes compare team totals; FFA compares players. `lead_taken` goes to the new leader
+        (team or player), `lead_lost` to the one displaced; ties change nothing. `next_kill_wins`
+        fires ONCE when anyone reaches cap-1. `last_survivor` fires once when exactly one player is
+        alive in a survival mode (lms / infection)."""
+        if self.now_ms() - t > FEEDBACK_MAX_AGE_MS:
+            return
+        if self.win_by in (None, "", "kills"):
+            if self.mode == "ffa":
+                scores = {pid: st.kills for pid, st in self.stats.items()}
+            else:
+                scores = self.team_scores()
+            if scores:
+                best = max(scores.values())
+                tops = [k for k, v in scores.items() if v == best]
+                leader = tops[0] if len(tops) == 1 and best > 0 else None
+                if leader is not None and leader != self._leader:
+                    if self._leader is not None:
+                        self.on_alert("lead_lost", self._leader, {})
+                    self.on_alert("lead_taken", leader, {})
+                    self._leader = leader
+                if self.frag_limit and best == self.frag_limit - 1 and "next_kill_wins" not in self._announced:
+                    self._announced.add("next_kill_wins")
+                    self.on_alert("next_kill_wins", "all", {})
+        if self.mode in ("lms", "infection") and "last_survivor" not in self._announced:
+            alive = [pid for pid, st in self.stats.items() if st.alive]
+            if len(alive) == 1 and len(self.stats) > 1:
+                self._announced.add("last_survivor")
+                self.on_alert("last_survivor", "all", {"player_id": alive[0]})
 
     def sync_point(self, t: int, reconciled: int, total: int) -> None:
         self._push_feed(t, f"SYNC POINT — {reconciled}/{total} NODES RECONCILED", "SYNC POINT", "sync")

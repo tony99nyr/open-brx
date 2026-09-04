@@ -188,6 +188,7 @@ class GameDriver:
             elif isinstance(a, Respawn):
                 for f in RESPAWN_SEQUENCE:
                     await self._send(a.player_id, f)
+                await self._paint_headset(a.player_id)      # $SPAWN clears the headset (bench 09-03)
                 await self._paint_event(a.player_id, "respawned")
                 self.announce(f"↻ respawn {a.player_id}")
             elif isinstance(a, Heal):
@@ -235,7 +236,21 @@ class GameDriver:
         for f in spawn_frames:
             for pid in self.players:
                 await self._send(pid, f)
+        for pid in self.players:
+            await self._paint_headset(pid)
         self.announce(f"game live: {self.config.summary()}")
+
+    async def _paint_headset(self, pid: str) -> None:
+        """Put the headset back on the team colour. Send after every `$SPAWN` and every hit.
+
+        Bench 2026-09-03: `$SPAWN` clears the headset and so does each registered hit (native flash,
+        then dark); a static `$HLED` sent afterwards holds solid, and one sent 1 s after spawn lit,
+        so no settling gap is needed here. Skipped when LEDs are off -- a lit head in a blackout game
+        marks the player. See `poolgauge.headset_team_frame`.
+        """
+        if not self.config.leds:
+            return
+        await self._send(pid, pg.headset_team_frame(self.players.get(pid)), reply_window_ms=0)
 
     async def _paint_event(self, pid: str, event: str) -> None:
         """Play the tuned event burst on the gun WITHOUT blocking the game loop.
@@ -374,6 +389,11 @@ class GameDriver:
         gauge = self._gauge_action(player_id, ev, now)
         if gauge is not None:
             actions = list(actions) + [gauge]
+        if str(cmd).upper().lstrip("$").startswith("HIR") and self.config.leds:
+            # A registered hit wipes the headset (native flash, then dark -- bench 2026-09-03), so
+            # repaint the team colour. One write per hit; the frame is static and never hammered.
+            actions = list(actions) + [SendFrame(player_id,
+                                                 pg.headset_team_frame(self.players.get(player_id)))]
         return actions
 
     def _gauge_action(self, pid: str, ev: dict, now: float) -> Optional[Action]:

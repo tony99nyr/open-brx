@@ -12,6 +12,7 @@ import time
 import uuid
 from typing import Any, Callable
 
+from . import presentation as _pres
 from . import policy as _policy
 from .scoring import Scorer
 from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OFFLINE_AFTER_MS, STALE_AFTER_MS, SYNC_FRESH_MS, GameConfig, Player,
@@ -45,9 +46,9 @@ MODES = [
      "brief": "Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.",
      "teams_text": "SOLO OR SQUADS", "win_text": "LAST ALIVE", "respawn_text": "OFF · LIVES",
      "teams": ["ffa"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "none", "delay_s": 0}},
-    {"mode": "extraction", "name": "EXTRACTION", "abbr": "EXT", "desc": "Reach the objective and hold it",
-     "brief": "Attackers push to the extraction point and hold it through the capture timer. Defenders deny until time expires. Sides swap between rounds.",
-     "teams_text": "2 TEAMS", "win_text": "HOLD TO CAPTURE", "respawn_text": "ON · TIMED",
+    {"mode": "extraction", "name": "EXTRACTION", "abbr": "EXT", "desc": "Loot, reach the extract, survive the channel",
+     "brief": "Gather loot, then reach an extraction point and channel the extract. It is loud: everyone hears the chopper coming and converges on you. Survive the timer and your loot is banked. Die and you drop it all for someone else to take.",
+     "teams_text": "SOLO OR SQUADS", "win_text": "BANKED LOOT", "respawn_text": "ON · TIMED",
      "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15}},
 ]
 
@@ -66,7 +67,8 @@ def default_config(mode: str = "tdm") -> GameConfig:
             "scoring": {"frag_limit": m["frag_limit"], "win_by": m["win_by"]},
             "health": {"max_hp": 45, "max_armor": 70},
             "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]],
-            "loadout_policy": _policy.default_policy(mode)}      # A10: ffa → no_heavies, else open
+            "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
+            "presentation": _pres.default_for(mode)}             # A11: cs → counter_strike, else standard
 
 
 class Session:
@@ -164,6 +166,10 @@ class Session:
             self.active_preset_id = snap.get("active_preset_id")
             self._repair_player_nums()
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
+            # A11: a snapshot persisted before the presentation profile existed gets the mode default, so the
+            # console still reads it as the stock mode it was (the UI compares configs to the mode defaults).
+            if not isinstance(self.config.get("presentation"), dict):
+                self.config["presentation"] = _pres.default_for(self.config["mode"])
             for pl in self.players.values():                      # a pre-A10 snapshot has no `perk` key; fine
                 pl["loadout"] = _policy.apply(self.config["loadout_policy"], self.loadout_pool(), pl.get("loadout") or {"weapons": []},
                                               *self._catalog_rows())
@@ -346,8 +352,10 @@ class Session:
         elif sec["choice"] == "fixed":
             parts.append(f"everyone gets {wname(sec.get('fixed_id'))} in slot 2")
         else:
-            kinds = [k for k in ("weapon", "perk") if k in sec.get("kinds", [])]
-            what = " or ".join({"weapon": "a second weapon", "perk": "a perk"}[k] for k in kinds) or "nothing"
+            kinds = [k for k in ("weapon", "sidearm", "perk") if k in sec.get("kinds", [])]
+            if "weapon" in kinds:
+                kinds = [k for k in kinds if k != "sidearm"]        # A12: "weapon" already includes the pistols
+            what = " or ".join({"weapon": "a second weapon", "sidearm": "a sidearm", "perk": "a perk"}[k] for k in kinds) or "nothing"
             parts.append(("slot 2: " + what) if pol.get("hud_select") and sec["choice"] == "player" else f"the host sets slot 2 ({what})")
         preset_lbl = _policy.PRESET_LABELS.get(pol.get("preset"), "")
         saved = None
@@ -648,7 +656,7 @@ class Session:
         return [{**m, "defaults": default_config(m["mode"])} for m in MODES]
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
-                    "health", "teams", "led", "player_num_base", "loadout_policy"}
+                    "health", "teams", "led", "player_num_base", "loadout_policy", "presentation"}
 
     def apply_preset(self, preset_id: str, config: dict) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
@@ -766,6 +774,9 @@ class Session:
             elif k == "loadout_policy":
                 # A10 §3: a preset name rewrites the rules; a rule edit that matches no preset → custom
                 cfg[k] = _policy.merge(cfg.get("loadout_policy") or _policy.default_policy(mode), v)
+            elif k == "presentation":
+                # A11: a preset name replaces the profile; a field edit marks it custom; bad ids/colours raise
+                cfg[k] = _pres.merge(cfg.get("presentation") or _pres.default_for(mode), v)
             elif k == "config_id":
                 continue                                     # never client-set; minted by set_config
             else:
@@ -1247,6 +1258,7 @@ class Session:
         self.scorer = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
                              self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
                              on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
+                             on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
                              win_by=(self.config.get("scoring") or {}).get("win_by"))
         self.feed = []
         self.last_recap = None
@@ -1285,6 +1297,69 @@ class Session:
         self.phase = "lobby"
         self._changed()
         return {"ok": True, "reached": reached, "unreachable": unreachable}
+
+    def mc_confidence(self) -> dict:
+        """A11.5: is MC's picture of the match complete RIGHT NOW? True only when every rostered player's
+        HUD has a live socket, was heard from in the last few seconds, and reports nothing left to flush.
+        MC-driven global-state events (lead, next-kill-wins, last survivor) are sent only then -- with a
+        HUD offline, MC's alive/score picture is exactly what is most likely stale (Tony, 2026-09-04)."""
+        now = self.now_ms()
+        missing, stale, unflushed = [], [], []
+        for p in self.players.values():
+            nid = p.get("node_id")
+            nv = self.nodes.get(nid or "", {})
+            # liveness: the real NetServer keeps a socket per node; a net without that table (fakes,
+            # tests) is judged on recency alone.
+            table = getattr(self.net, "nodes", None)
+            if nid and isinstance(table, dict):
+                rec = table.get(nid)
+                live = bool(rec is not None and getattr(rec, "ws", None) is not None)
+            else:
+                live = bool(nid) and bool(nv)
+            if not nid or not live:
+                missing.append(p["player_id"])
+            elif now - nv.get("last_seen_ms", 0) > 6_000:
+                stale.append(p["player_id"])
+            elif nv.get("pending") not in (0, None):
+                unflushed.append(p["player_id"])
+        ok = not (missing or stale or unflushed) and bool(self.players)
+        return {"confident": ok, "missing": missing, "stale": stale, "unflushed": unflushed}
+
+    def _alert(self, kind: str, scope: str, extra: dict | None = None) -> int:
+        """A11.4: push a named game event to every node it concerns. `scope` = "all" | team_id | player_id.
+        The node plays `cues[kind]` + `leds[kind]` from its OWN bundle (its presentation profile) and shows
+        the text as a HUD alert; MC sends only the name. Returns how many nodes were reached.
+
+        A11.5 gates: the profile's `mc_events` switch, and for GLOBAL-STATE kinds the confidence check --
+        a "takes the lead" said on a stale picture is worse than silence."""
+        prof = _pres.resolve(self.config)
+        if not prof.get("mc_events", True):
+            return 0
+        if kind in _pres.GLOBAL_STATE_EVENTS and prof.get("mc_confidence", True):
+            conf = self.mc_confidence()
+            if not conf["confident"]:
+                self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
+                               "text": f"{_pres.TEXT.get(kind, kind)} withheld: MC not confident "
+                                       f"(offline {len(conf['missing'])}, stale {len(conf['stale'])}, unflushed {len(conf['unflushed'])})",
+                               "tag": "WITHHELD", "kind": "alert"})
+                return 0
+        if scope == "all":
+            targets = list(self.players.values())
+        elif scope in {p.get("team_id") for p in self.players.values()}:
+            targets = [p for p in self.players.values() if p.get("team_id") == scope]
+        else:
+            targets = [p for p in self.players.values() if p["player_id"] == scope]
+        n = 0
+        base = _pres.alert_body(kind, extra)
+        for p in targets:
+            if not p.get("node_id"):
+                continue
+            body = {**base, "player_id": p["player_id"], "t": self.now_ms()}
+            if self.net.push(p["node_id"], "alert", body) is not False:   # fakes return None; the real net False = no socket
+                n += 1
+        self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
+                       "text": base["text"].title() + (f" ({scope})" if scope != "all" else ""), "tag": "ALERT", "kind": "alert"})
+        return n
 
     def _feedback(self, pid: str, body: dict):
         p = self.players.get(pid)
@@ -1489,6 +1564,7 @@ class Session:
                             "synced": nv.get("synced", False), "last_seen_ms": now - nv.get("last_seen_ms", 0)}
             start = {**self._start_body(), "per_node": per}
         return {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
+                "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": [{**nv, "last_seen_ms": now - nv.get("last_seen_ms", 0)} for nv in self.nodes.values()],
                 "readiness": self.readiness(), "config": self.config, "config_errors": self.config_errors,
                 "config_warnings": self.config_warnings,
