@@ -34,16 +34,12 @@
   "spawn": [
     "$PLAYX,0,*",
     "$SPAWN,,*",
-    "$GLED,,,,5,,,*",
-    "$GLED,1,1,1,0,10,,*",
     "$AMMO,0,32,192,1,*",
     "$AMMO,1,6,24,1,*",
     "$BMAP,0,0,,,,,*"
   ],
   "revive": [
     "$SPAWN,,*",
-    "$GLED,,,,5,,,*",
-    "$GLED,1,1,1,0,10,,*",
     "$AMMO,0,32,192,1,*",
     "$AMMO,1,6,24,1,*"
   ],
@@ -661,7 +657,12 @@
   "gun": {
     "in_play": "team",
     "blank": "$GLED,,,,5,,,*",
-    "rest": "$GLED,1,1,1,0,10,,*"
+    "after_spawn_s": 2.5,
+    "rest": "$GLED,1,1,1,0,10,,*",
+    "take": [
+      "$GLED,,,,5,,,*",
+      "$GLED,1,1,1,0,10,,*"
+    ]
   },
   "presentation": {
     "preset": "standard",

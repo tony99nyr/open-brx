@@ -132,7 +132,8 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                    custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier },
                    gun: { in_play } },   // A11/A11.5/A11.6/A11.7 summary
   gun?: { in_play: "team"|"dark"|"health", blank: string, rest: string,   // A11.7: the gun BODY when the game owns it (default
-          bands?: [fraction_above: number, frame: string][] },             // team). Absent for "native" (firmware breathing, opt-in).
+          after_spawn_s: number, take: string[],                           // team). The node writes `take` (blank, rest) after_spawn_s
+          bands?: [fraction_above: number, frame: string][] },             // after every $SPAWN. Absent for "native" (opt-in).
                                                                            // spawn/revive carry blank + rest after $SPAWN;
                                                                            // health: the node paints the first band whose
                                                                            // fraction hp/max exceeds, on band change + after bursts.
@@ -670,8 +671,11 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     `presentation.gun = { in_play: native|team|dark|health, pregame: team|off }`: `pregame` (default `team`) paints the
     armed, unspawned body in the team colour at the end of `head` (a paint holds before `$SPAWN`); `in_play` **default `team`** since the 2026-09-04 walkthrough
     (with the breathing left running every burst alternated with it -- Tony: "you aren't clearing the gleds");
-    `native` sends nothing (the firmware breathing, opt-in); team / dark / health put `blank` + `rest` right after `$SPAWN,,*` in BOTH
-    `spawn` and `revive`, ship `bundle.gun`, and end every event burst on `rest` instead of the team frame.
+    `native` sends nothing (the firmware breathing, opt-in); team / dark / health ship `bundle.gun` with `take` =
+    `[blank, rest]` and `after_spawn_s` (2.5): **the NODE writes `take` that long after every `$SPAWN`** (spawn and
+    revive) -- a blank inside the spawn burst does not take, the spawn animation re-enables the breathing (stage
+    ladder 2026-09-04: +1.0 s and +1.5 s breathing, +2.0 s solid) -- cancelled by a death or a new spawn before it
+    fires; event bursts end on `rest` instead of the team frame.
     `health`: `rest` is the full-health hue and `bands` = `poolgauge.HEALTH_BANDS` as `[fraction_above, frame]`;
     the node repaints when the band changes (never per hit) and right after each burst. Open (S4): the
     minutes-long hold with no traffic, blink forms after a blank, and which look Tony wants as the default.

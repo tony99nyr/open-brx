@@ -318,8 +318,20 @@ class GunStage:
         self.spawned = True; self.alive = True
         self.hp = self.max_hp; self.armor = self.max_armor
         self._hurt_fired = False
+        self._gun_band = None; self._gun_taken = False
+        self._life = getattr(self, "_life", 0) + 1
         g = self.bundle.get("gun")
-        self._gun_band = g["rest"] if g else None
+        if g and g.get("take"):
+            self._spawn_task(self._gun_take(self._life, g))
+
+    async def _gun_take(self, life: int, g: dict) -> None:
+        """A11.7: blank + paint `after_spawn_s` after $SPAWN -- inside the burst it does not take (ladder 2026-09-04)."""
+        await self.sleep(float(g.get("after_spawn_s", 2.5)))
+        if life != getattr(self, "_life", 0) or not self.alive:
+            return                                   # died or respawned again before the timer
+        await self.write(list(g["take"]), f"gun take (+{g.get('after_spawn_s', 2.5)} s after spawn)", gap_ms=60)
+        self._gun_taken = True
+        self._gun_band = g["rest"]
 
     async def game_end(self, outcome: str = "game_over") -> dict:
         """What the phone does at the whistle: the game_over / victory cue (+ its burst), then the end frames.
@@ -366,7 +378,7 @@ class GunStage:
     async def _event_leds(self, steps: list, kind: str) -> None:
         await self._seq(steps, f"event led {kind}")
         g = self.bundle.get("gun")
-        if g and g.get("in_play") == "health" and self.alive:
+        if g and g.get("in_play") == "health" and self.alive and getattr(self, "_gun_taken", False):
             r = self._gun_rest()
             if r:
                 self._gun_band = r
@@ -553,7 +565,7 @@ class GunStage:
                 elif hs.get("hit"):
                     self._headset(hs["hit"], "headset hit")
             g = self.bundle.get("gun")
-            if g and g.get("in_play") == "health":
+            if g and g.get("in_play") == "health" and getattr(self, "_gun_taken", False):
                 r = self._gun_rest()
                 if r and r != self._gun_band:
                     self._gun_band = r

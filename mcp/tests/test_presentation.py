@@ -264,14 +264,16 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
     assert P.gun_frames(native, 1, False, True) == {} and P.gun_spawn_tail(native, 1, False, True) == []
     team = prof
     gf = P.gun_frames(team, 1, False, True)
-    assert gf == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*"}
-    assert P.gun_spawn_tail(team, 1, False, True) == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    assert gf == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*", "after_spawn_s": 2.5,
+                  "take": ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]}
+    assert P.gun_spawn_tail(team, 1, False, True) == []          # retired: the node takes the body on a timer
     assert P.gun_frames(team, 1, True, True)["rest"] == "$GLED,1,1,1,0,1,,*"        # night dims
     assert P.gun_frames(team, 1, False, False) == {}                                  # LEDs off for the game
     dark = P.resolve({"presentation": {"gun": {"in_play": "dark"}}})
     assert P.gun_frames(dark, 1, False, True)["rest"] == "$GLED,9,9,9,0,10,,*"
     health = P.resolve({"presentation": {"gun": {"in_play": "health"}}})
     hf = P.gun_frames(health, 1, False, True)
+    assert hf["take"] == ["$GLED,,,,5,,,*", hf["bands"][0][1]]
     assert [b[0] for b in hf["bands"]] == [0.66, 0.33, 0.0]
     assert [b[1] for b in hf["bands"]] == ["$GLED,3,3,3,0,10,,*", "$GLED,2,2,2,0,10,,*", "$GLED,0,0,0,0,10,,*"]
     assert hf["rest"] == hf["bands"][0][1]

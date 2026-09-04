@@ -451,6 +451,20 @@ export class Engine {
       t += hold;
     }
   }
+  /** A11.7: take the gun body `after_spawn_s` after a spawn/revive: blank (stops the firmware breathing), then the
+   *  rest frame. Inside the spawn burst the blank does not take -- the spawn animation re-enables the breathing
+   *  (bench ladder 2026-09-04: +1.0 s and +1.5 s breathing, +2.0 s solid; 2.5 s shipped). Cancelled by a death or
+   *  another spawn before it fires. */
+  _gunTake() {
+    const g = this.frames && this.frames.gun;
+    this._gunTaken = false; this._gunBand = null;
+    if (!g || !Array.isArray(g.take) || !g.take.length) return;
+    const life = (this._gunLife = (this._gunLife || 0) + 1);
+    this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
+      if (life !== this._gunLife || !this.alive) return;
+      this._write(g.take, 'gun take'); this._gunTaken = true; this._gunBand = g.rest;
+    });
+  }
   /** A11.7: the gun body's resting frame when the game owns it (frames.gun; absent = firmware breathing).
    *  team/dark: a fixed frame; health: the band for the current hp (bands highest-first, [fraction, frame]). */
   _gunRest() {
@@ -462,7 +476,7 @@ export class Engine {
   }
   /** Repaint the health hue when the band changed (one write per band, never per hit). */
   _gunHealthPaint(why) {
-    const g = this.frames && this.frames.gun; if (!g || g.in_play !== 'health') return;
+    const g = this.frames && this.frames.gun; if (!g || g.in_play !== 'health' || !this._gunTaken) return;
     if (this.phase !== 'live' || !this.alive || !this.spawned) return;
     const f = this._gunRest(); if (!f || f === this._gunBand) return;
     this._gunBand = f; this._write([f], `gun health ${why}`);
@@ -500,7 +514,7 @@ export class Engine {
       t += hold;
     }
     const g = f.gun;
-    if (g && g.in_play === 'health') this.delay(t, () => { const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
+    if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }
   _cue(key) {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
@@ -518,7 +532,7 @@ export class Engine {
     // grant, never a starting pool (bench 2026-08-27).
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
-    this._gunBand = this.frames.gun ? this.frames.gun.rest : null;   // A11.7: spawn painted the rest frame
+    this._gunTake();   // A11.7
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
   }
@@ -592,7 +606,7 @@ export class Engine {
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
-    this._gunBand = this.frames.gun ? this.frames.gun.rest : null;   // A11.7: revive painted the rest frame
+    this._gunTake();   // A11.7
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');

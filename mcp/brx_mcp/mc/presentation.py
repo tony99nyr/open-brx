@@ -197,6 +197,10 @@ HEADSET_BLANK = "$HLED,,6,,,,,*"
 #   pregame: "team" | "off"  the armed, unspawned gun body: team colour (like the headset) or dark. Walkthrough
 #                            2026-09-04, Tony: "the gun led does not get set on arm, its dark" -> default team.
 GUN_DEFAULT = {"in_play": "team", "pregame": "team"}
+# Bench 2026-09-04 (R0BQT, Tony watching, stage `raw` ladder): a blank INSIDE the spawn burst does not take -- the
+# firmware's spawn animation re-enables the breathing. Bare $SPAWN then blank + paint at +1.0 s: breathing;
+# +1.5 s: breathing; +2.0 s: SOLID. So the node takes the body 2.5 s after every $SPAWN (margin over 2.0).
+GUN_AFTER_SPAWN_S = 2.5
 GUN_IN_PLAY = ("native", "team", "dark", "health")
 GUN_BLANK = "$GLED,,,,5,,,*"
 
@@ -517,7 +521,7 @@ def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool) -> di
         return {}
     b = pg.BRIGHT_DIM if night else pg.BRIGHT_FULL
     dark = f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{b},,*"
-    out: dict = {"in_play": g["in_play"], "blank": GUN_BLANK}
+    out: dict = {"in_play": g["in_play"], "blank": GUN_BLANK, "after_spawn_s": GUN_AFTER_SPAWN_S}
     if g["in_play"] == "team":
         out["rest"] = pg.team_frame(tid, night)
     elif g["in_play"] == "dark":
@@ -525,6 +529,7 @@ def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool) -> di
     else:   # health
         out["bands"] = [[thr, pg.pool_paint_frame("health", int(round(thr * 1000)) + 1, 1000, night)] for thr, _c in pg.HEALTH_BANDS]
         out["rest"] = out["bands"][0][1]          # full health = the top band
+    out["take"] = [GUN_BLANK, out["rest"]]        # what the node writes after_spawn_s after every $SPAWN
     return out
 
 
@@ -538,9 +543,9 @@ def gun_pregame(profile: dict, tid: int | None, night: bool, leds_on: bool) -> l
 
 
 def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:
-    """The frames the compiler puts right after `$SPAWN,,*` in spawn AND revive: blank, then rest. [] for native."""
-    gf = gun_frames(profile, tid, night, leds_on)
-    return [gf["blank"], gf["rest"]] if gf else []
+    """RETIRED 2026-09-04 (kept for callers): a blank inside the spawn burst does not take; the node writes
+    `gun.take` after `gun.after_spawn_s` instead. Always []."""
+    return []
 
 
 def summary(profile: dict) -> dict:

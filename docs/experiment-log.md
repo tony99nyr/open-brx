@@ -6265,3 +6265,19 @@ the Windows-only `webview_eval.py` was bypassed with a tiny direct-CDP eval), ma
   the reconcile disarm→re-arm fires and never heals.** (Did not catch `reconciling:true` in the snapshot only
   because re-forwarding the debugger to the fresh app pid took longer than the 3 s window — the HP result and
   the on-screen takeover are the proof.)
+
+
+### 2026-09-04 (late night, gun stage) — 🔬 THE BLANK MUST FOLLOW `$SPAWN` BY ≥ 2 s; inside the spawn burst it does not take
+
+First real-gun run of the GUN STAGE (R0BQT over BLE from the stage, emitter on COM8, Tony at the bench). The
+compiled spawn wrote `$SPAWN` → blank → team paint → ammo → bmap inside 0.3 s, and the body **breathed**. Ladder
+with the stage's `raw` action, one variable per rung, Tony calling each: blank alone on a spawned gun → **dark,
+stays dark**; team paint alone → **solid blue, holds** (brx-grenade's mechanism confirmed on this gun). Bare
+`$SPAWN`, then blank + paint at **+1.0 s → breathing**, **+1.5 s → breathing**, **+2.0 s → solid**. The firmware's
+spawn animation re-enables the breathing for ~1.5-2 s, so a blank inside the burst is undone. Shipped: `bundle.gun.take`
+= [blank, rest] and `after_spawn_s` = 2.5; the node (and the stage) write it on a timer after every spawn and
+revive, cancelled by a death or a new spawn. Spawn/revive frame lists carry no `$GLED` again. Also confirmed
+tonight by eye: pre-game HLED + GLED team colour on ARM ("nice", now an every-mode invariant with a test); the
+headset paint arrives ~4 s after ARM because it sits at the end of the ~27-frame head. Earlier walkthrough
+fails explained: IR steps (emitter auto-detected as COM3, the wrong device -- now PINGed), GAME END (the step
+played no sound -- fixed), every LED burst (native breathing under it -- default is now team + take).

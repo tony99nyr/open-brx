@@ -1224,8 +1224,8 @@ test('A11.7 gun health: no writes when the bundle has no gun table (native breat
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'native: nothing painted');
   const t = goLive(harness()); t.eng.frames.leds = {};
-  t.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]] };
-  t.eng._gunBand = G;                                          // what the spawn tail painted
+  t.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]], after_spawn_s: 2.5, take: ['$GLED,,,,5,,,*', G] };
+  t.eng._gunTake(); t.eng._gunBand = G;                        // the take fired (harness delays run inline)
   t.writes.length = 0;
   t.frame('$HIR,4,0,19,2,9,0,0,*'); t.frame('$HP,45,61,0,*');  // armour only: still the green band
   assert.equal(t.writes.filter(f => f.startsWith('$GLED')).length, 0, 'same band -> no repaint');
@@ -1242,9 +1242,8 @@ test('A11.7 gun health: an event burst ends on the CURRENT band, and a revive re
   const G = '$GLED,3,3,3,0,10,,*', Y = '$GLED,2,2,2,0,10,,*', R = '$GLED,0,0,0,0,10,,*';
   const h = goLive(harness());
   h.eng.frames.leds = { lead_taken: golden.leds.died };        // one burst only (red flashes ending on the team frame)
-  h.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]] };
-  h.eng.frames.revive = ['$SPAWN,,*', '$GLED,,,,5,,,*', G, '$AMMO,0,32,384,1,*'];
-  h.eng._gunBand = G;
+  h.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]], after_spawn_s: 2.5, take: ['$GLED,,,,5,,,*', G] };
+  h.eng._gunTake();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,20,0,0,*');   // yellow band
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
@@ -1253,7 +1252,8 @@ test('A11.7 gun health: an event burst ends on the CURRENT band, and a revive re
   assert.equal(gleds[gleds.length - 1], Y, 'the burst is followed by the real health hue');
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // down
   h.adv(9000); h.writes.length = 0; h.eng.tick();               // auto respawn
-  assert.ok(h.writes.includes('$GLED,,,,5,,,*') && h.writes.includes(G), 'revive re-blanks and paints full health');
+  assert.ok(h.writes.includes('$GLED,,,,5,,,*') && h.writes.includes(G), 'the take (blank + full health) follows the revive');
+  assert.ok(h.delays.includes(2500), 'scheduled 2.5 s after the revive, not inside the burst');
   assert.equal(h.eng._gunBand, G);
 });
 
@@ -1360,4 +1360,24 @@ test('S7.1 reconcile: a rejoin disarms then re-arms to the real pools — never 
   // and no auto-respawn ever fires on the live player
   clock += 20000; b.tick();
   assert.equal(b.hp, 25, 'no bogus respawn heal after the delay');
+});
+
+
+test('A11.7 gun take: 2.5 s after spawn the node blanks and paints; a death before the timer cancels it', () => {
+  const h = harness().kit().config_().echo();
+  h.eng.frames.gun = { in_play: 'team', blank: '$GLED,,,,5,,,*', rest: '$GLED,1,1,1,0,10,,*', after_spawn_s: 2.5, take: ['$GLED,,,,5,,,*', '$GLED,1,1,1,0,10,,*'] };
+  h.start(0); h.adv(10); h.eng.tick();
+  const i = h.writes.indexOf('$SPAWN,,*');
+  assert.ok(i >= 0 && !h.writes.slice(i, i + 6).includes('$GLED,,,,5,,,*'), 'no blank inside the spawn burst');
+  assert.ok(h.writes.includes('$GLED,,,,5,,,*') && h.writes.includes('$GLED,1,1,1,0,10,,*'), 'the take was written (delay runs inline in the harness)');
+  assert.ok(h.delays.includes(2500));
+  // a timer that fires after a death writes nothing
+  const t = harness().kit().config_().echo();
+  const pending = [];
+  t.eng.delay = (ms, fn) => pending.push(fn);
+  t.eng.frames.gun = h.eng.frames.gun;
+  t.start(0); t.adv(10); t.eng.tick();
+  t.frame('$HIR,4,0,19,2,60,0,0,*'); t.frame('$HP,0,0,0,*');
+  t.writes.length = 0; pending.forEach(fn => fn());
+  assert.ok(!t.writes.includes('$GLED,,,,5,,,*'), 'dead: the take is skipped');
 });

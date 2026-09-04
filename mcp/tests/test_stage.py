@@ -40,7 +40,7 @@ def test_profile_drives_the_bundle_and_the_event_buttons():
     names = {e["event"] for e in st.event_catalog()}
     assert names == set(P.EVENTS)
     st.set_profile(gun="health", headset="team", preset="silenced", night=False)
-    assert st.bundle["gun"]["in_play"] == "health" and st.bundle["spawn"][2] == "$GLED,,,,5,,,*"
+    assert st.bundle["gun"]["in_play"] == "health" and st.bundle["gun"]["take"][0] == "$GLED,,,,5,,,*"
     assert st.bundle["headset"]["in_play"] == "team"
     assert st.bundle["presentation"]["announcer"] is False       # silenced preset carried into the summary
     st.set_profile(mode="infection")
@@ -63,7 +63,7 @@ def test_a_full_mc_config_and_a_presentation_patch_reshape_the_stage():
     st.load_config(cfg, source="test")
     s = st.state()
     assert s["config_source"] == "mc" and s["config_id"] == "from-mc" and st.profile["gun"] == "team"
-    assert st.bundle["spawn"][2:4] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    assert st.bundle["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"] and not any(f.startswith("$GLED") for f in st.bundle["spawn"])
     st.patch_presentation({"events": {"hit_taken": {"gun_led": "orange"}}})
     assert st.bundle["leds"]["hit_taken"][0][0].startswith("$GLED,8,8,8")
     try:
@@ -120,6 +120,8 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
         st.poll()                                                  # the fake's $LCD after $SPAWN
+        after_spawn = tx(mgr)[tx(mgr).index("$SPAWN,,*"):]
+        assert all(f in after_spawn for f in st.bundle["gun"]["take"]), "the take (blank + full-health paint) followed the spawn"
         n = len(tx(mgr))
         await st.ir("shot"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
@@ -143,7 +145,8 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         n = len(tx(mgr))
         await st.revive(); await settle(st)
         new = tx(mgr)[n:]
-        assert new[:len(st.bundle["revive"])] == st.bundle["revive"] and st.alive and st._gun_band == st.bundle["gun"]["rest"]
+        assert new[:len(st.bundle["revive"])] == st.bundle["revive"] and st.alive
+        assert new[-2:] == st.bundle["gun"]["take"] and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
     asyncio.run(run())
 
 

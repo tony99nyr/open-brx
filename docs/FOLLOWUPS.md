@@ -1338,6 +1338,11 @@ were tuned against the breathing (a single frame was "invisible" because the fir
 ~0.33 s -- 2026-09-03). After a blank the firmware no longer repaints, so the burst's "end on the team
 frame" step becomes a HOLD, and the single-frame-is-invisible finding no longer applies.
 
+**Bench-corrected the same night on R0BQT (stage ladder):** the blank must come **≥ 2 s after `$SPAWN`** (+1.0 / +1.5 s
+breathing, +2.0 s solid); inside the spawn burst it is undone by the spawn animation. Shipped as `gun.take` on a
+2.5 s node timer. Default is now `in_play: team` + `pregame: team` (Tony's verdicts). Open: an event burst that
+lands before the take (first 2.5 s of a life) still fights the breathing; the exact threshold (1.5-2.0 s).
+
 **Built 2026-09-04 (night), after brx-grenade's bench answered (a), (d), (f) and the mixed-LED question:**
 `presentation.gun.in_play = native | team | dark | health` (A11.7). `native` = today's look, nothing sent, golden
 bundle byte-identical. The other three: `$GLED,,,,5` + the rest frame right after `$SPAWN` in spawn AND revive,

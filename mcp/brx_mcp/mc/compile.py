@@ -553,13 +553,12 @@ class Compiler:
         # after spawn holds solid, and one sent 1 s after spawn lit; it goes at the end of the tail
         # so the $AMMO writes give the headset relay a beat first. Token 5 = 10 is already maximum
         # brightness (1 dim, 2/10/255 identical), measured the same day.
-        # A11.7 (S4, bench 2026-09-04): `$SPAWN` re-enables the firmware's team-colour breathing on the gun
-        # body; `$GLED,,,,5` right after it takes the LED out of that loop and the next paint HOLDS for the
-        # life. [] for the default `gun.in_play: "native"`, so every existing bundle is byte-identical.
-        gun_tail = _pres.gun_spawn_tail(prof, tid, gc.is_night_mode(), gc.leds)
-        spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + gun_tail + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
+        # A11.7 (S4): the gun body is taken by the NODE `gun.after_spawn_s` after every $SPAWN (blank, then the
+        # rest frame) -- a blank inside this burst does not take, the spawn animation re-enables the breathing
+        # (stage ladder 2026-09-04: +1.0 s / +1.5 s breathing, +2.0 s solid). So spawn/revive carry no $GLED.
+        spawn = ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
         # revive = $SPAWN + loadout $AMMOs (NO $HLOOP, NO $BMAP — §1.1 replaces RESPAWN_SEQUENCE)
-        revive = ["$SPAWN,,*"] + gun_tail + ammo + play_hled
+        revive = ["$SPAWN,,*"] + ammo + play_hled
 
         bundle: FrameBundle = {
             "config_id": config["config_id"],
