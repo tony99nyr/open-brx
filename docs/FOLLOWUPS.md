@@ -9,6 +9,32 @@ Single source of truth for open work. Supersedes the scattered A–G lists in
 `experiment-log.md` (kept there for history). Updated 2026-09-01. Status: ✅ done · 🔴 blocking /
 high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 
+## 🟡 Mode extensibility — "open it up" so outsiders can build their own modes (E1–E4, 2026-09-04)
+
+Full review + rationale: [`mode-extensibility.md`](mode-extensibility.md). Today JSON re-parameterizes and
+re-skins *shipped* modes well, but a genuinely new ruleset needs Python across ~4 core files and the JSON
+wire schema can't even carry a new mode's parameters. Four changes turn "edit 4 core files + 2 config
+classes" into "drop one plugin file + one JSON block". Do them in order.
+
+- **E1 — add `mode_params: dict` to the wire `GameConfig`** (`mcp/brx_mcp/mc/types.py`), validated by the
+  engine. Highest leverage: today the wire schema is mode-agnostic (`mode, health, respawn, scoring, teams,
+  loadout_policy, presentation` — no `detonation_s`/`control_points`/`channel_s`/`drop_policy`/`rounds_to_win`
+  etc.), so objective modes can't be configured over MC at all. An opaque per-mode bag unblocks CS/extraction
+  immediately and every future mode. 🔴 highest value.
+- **E2 — one `register_mode(name, engine_cls, meta, preset, scorer)` registry** replacing the four hardcoded
+  points a mode must touch today: `build_engine` (`modes/driver.py:90`), the `MODES` catalog
+  (`mc/state.py:32`, else `ValueError`), `MODE_PRESET` (`mc/presentation.py:282`), and `mc/scoring.py`. Miss
+  one and the mode half-works — this is why CS runs in the CLI but is invisible to MC (mode-readiness.md §2).
+- **E3 — unify the two config schemas + publish a JSON Schema.** `gameconfig.py` (CLI dataclass, rich) vs
+  `mc/types.py:GameConfig` (wire TypedDict, lean) have already drifted; make one the source of truth and give
+  contributors a machine-readable schema to validate against.
+- **E4 — a "How to add a game mode" contributor doc** with a minimal worked example (~40-line `GameEngine`
+  subclass emitting `Action`s + one `register_mode` call + one JSON block). The on-ramp.
+
+What's already good and should be kept: the `GameEngine(ABC)` seam (`modes/base.py:181`, four methods) and
+the semantic `Action` vocabulary (`base.py:30-121`) — a mode author never writes a raw BRX frame. The plugin
+is small; the friction is all in the wire schema (E1) and the scattered registration (E2).
+
 ## Build (hardware/software the platform needs)
 
 | # | Item | Status | Notes |
