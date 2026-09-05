@@ -2,7 +2,8 @@
 
 A critical review of the game-config + mode-registration path, from the angle of **opening the project up**:
 when a contributor wants to implement their own mode idea, how far do they get with JSON, and what does a
-genuinely new ruleset cost? Companion to [`mode-readiness.md`](mode-readiness.md) and
+genuinely new ruleset cost? A parallel section at the end covers the same question for **custom sound packs /
+announcers** (Halo, UT, …). Companion to [`mode-readiness.md`](mode-readiness.md) and
 [`m0-game-engine.md`](m0-game-engine.md). Names code as `file:line` so it can be re-checked.
 
 ## Verdict
@@ -89,3 +90,31 @@ Tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) as **E1-E4**.
 
 No edits to core dispatch, catalog, presentation, or scoring — the registry and the `mode_params` bag absorb
 all of it.
+
+## Sound packs (custom announcers — e.g. Halo / UT): a parallel extensibility axis
+
+Same shape as the mode story: the **reference** layer is decent, the **delivery** and **pack** layers are
+missing. Two hard facts set the boundary:
+
+- **The gun plays only its on-gun bank, by id** (`$PLAY,<id>`; `sound-architecture.md`). There is **no
+  audio-over-BLE** in the protocol — nothing streams raw audio to the gun. To play a custom sound *on the gun
+  speaker*, the clip must be USB-loaded into the `AUDIO` folder as `<ID>.LTP` (raw PCM s16le/44.1k), and
+  because the bank is a fixed set of ~2477 ids you **overwrite** an existing id — there is no "add a new id"
+  (archive the originals; followup B11, `reference/brx-extended-user-guide.md`: *"up to an hour per 250 MB"*).
+- **The phone has its own speaker**, and the app is ours — so it could play arbitrary bundled/hosted audio on
+  an event, independent of the gun. But today the companion app plays **no game audio** (only the camera
+  preview), and there is no config field for it.
+
+**Does the config allow it?** Partly. The A11 presentation profile maps `event → sound id` in JSON
+(`presentation.EVENTS`), so once clips sit at known ids you can point events at them per mode — the reference
+layer works. What's missing: a **pack** abstraction (a named, selectable set of mappings; the closest is the
+unbuilt **B14** voice-pack selection, which only swaps the gun's built-in characters and needs the per-
+character id map, P3), the **phone-speaker path**, and any **import/convert tooling**.
+
+**Legal:** Halo/UT announcer audio is copyrighted — fine on your own guns, but the project can only ship the
+*slot* for user-supplied packs, never the packs themselves.
+
+The workstream is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) as **E5-E7**: a phone-side audio channel (E5, the
+clean path — no gun storage, no per-gun load), a sound-pack config abstraction (E6, supersets B14), and a
+`.LTP` import/gun-load tool (E7, lowest priority since the manual USB path exists). Bottom line: **on the gun
+speaker, sounds must live on gun storage; the phone speaker is the unbuilt-but-clean path for custom packs.**

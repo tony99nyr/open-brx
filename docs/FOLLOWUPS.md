@@ -9,7 +9,7 @@ Single source of truth for open work. Supersedes the scattered A–G lists in
 `experiment-log.md` (kept there for history). Updated 2026-09-01. Status: ✅ done · 🔴 blocking /
 high value · 🟡 useful · ⬜ open · ❎ closed as answered.
 
-## 🟡 Mode extensibility — "open it up" so outsiders can build their own modes (E1–E4, 2026-09-04)
+## 🟡 Extensibility — "open it up" so outsiders can customize (modes E1–E4 · sound packs E5–E7, 2026-09-04)
 
 Full review + rationale: [`mode-extensibility.md`](mode-extensibility.md). Today JSON re-parameterizes and
 re-skins *shipped* modes well, but a genuinely new ruleset needs Python across ~4 core files and the JSON
@@ -34,6 +34,28 @@ classes" into "drop one plugin file + one JSON block". Do them in order.
 What's already good and should be kept: the `GameEngine(ABC)` seam (`modes/base.py:181`, four methods) and
 the semantic `Action` vocabulary (`base.py:30-121`) — a mode author never writes a raw BRX frame. The plugin
 is small; the friction is all in the wire schema (E1) and the scattered registration (E2).
+
+### Sound packs (custom announcers — e.g. Halo / UT) — same shape: the reference layer is decent, delivery + pack are missing (E5–E7)
+
+Full context in [`mode-extensibility.md`](mode-extensibility.md) §Sound packs. The gun plays **only** its
+on-gun bank by id (`$PLAY,<id>`); there is **no audio-over-BLE**, so a custom sound on the *gun* speaker must
+be USB-loaded as `<ID>.LTP` (raw PCM, overwrite an existing id — the bank is fixed, no "add id"; B11). The
+A11 presentation profile already maps `event → id` in JSON, so the *reference* layer works; what's missing is
+delivery, a pack abstraction, and the phone-speaker path. Legal: ship the *slot*, not copyrighted audio —
+Halo/UT clips are user-supplied.
+
+- **E5 — phone-side audio channel** (the clean path, highest value). The companion/HUD app plays a
+  bundled/hosted clip through the **phone's own speaker** on a presentation event — independent of the gun,
+  no per-gun USB load, no fixed-id limit. Today the app plays **no** game audio (only the camera preview),
+  and there's no config field for it. Adds a per-event "phone sound" alongside the gun `$PLAY` id. This is
+  the right home for a custom announcer. 🔴 highest value.
+- **E6 — a first-class "sound pack" config abstraction.** A named set of `event → sound` mappings (gun bank
+  ids and/or phone clips) you *select*, instead of hand-mapping every event. Supersets **B14** (voice-pack
+  selection = swap among the gun's built-in characters) and pairs with the A11 `presentation.EVENTS` map.
+- **E7 — a `.LTP` import/convert + gun-load tool** for the gun-speaker path: a folder of clips → `<ID>.LTP`
+  (s16le/44.1k), mapped to bank ids with the originals archived, plus a documented per-gun USB load. Lowest
+  priority — the manual path exists (B11, `brx-extended-user-guide.md`); the tool just makes it not painful.
+  Relates to S1 (the sound catalog) for choosing which ids a pack overwrites.
 
 ## Build (hardware/software the platform needs)
 
