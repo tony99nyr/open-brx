@@ -1340,7 +1340,7 @@ Do it in one sweep with the golden bundle regenerated, then cut an APK: node and
   `assign.policy.secondary.allowed_perk_ids` is gone, and a pre-A14 policy shape ("perk" inside `secondary.kinds`) is a
   400 / falls to the mode default rather than being migrated.
 
-## 🟠 S7 — EVENT SOUND PASS ON THE GUN STAGE (Tony, 2026-09-04 night: "we still have many sounds in game which are off and need adjustment")
+## 🟠 S9 — EVENT SOUND PASS ON THE GUN STAGE (Tony, 2026-09-04 night: "we still have many sounds in game which are off and need adjustment") — was S7, renumbered 2026-09-05 to de-collide with the reconnect S7 (which is anchored as S7.1/S7.2 in contracts A6.8 / node.md)
 
 The 45-step walkthrough on R0BQT failed several sounds and the fixes were only trialled, not settled. Do a
 dedicated sound pass on the stage: pick the mode, open the ADVANCED table + the stage's patch box, play each event,

@@ -6429,7 +6429,7 @@ The gun stage ran its first real-gun session (R0BQT, emitter COM8, the Pixel cam
 gun-take timing ladder, the pre-game invariant, the headset effect map, `$BLINK` / `$LED` found in the APK metadata
 and proven, the small flash LED reached but not at native brightness (wall method), several sounds flagged wrong.
 Everything is committed and pushed; the stage process is stopped and the emitter's COM8 released; R0BQT was last
-left power-cycled into a native quick game (BLE free). Open work is filed: S7 sound pass, S2 6b headset flash,
+left power-cycled into a native quick game (BLE free). Open work is filed: S9 sound pass, S2 6b headset flash,
 S4 open items (hold time, blink forms), S5 station_config server build, S6 legacy shims; tomorrow's flash-control
 plan is `docs/bench-flash-control-2026-09-05.md`. Lesson of the night, twice: the operator's eyes are primary, and a
 saturated camera core is a floor, not a measurement.
