@@ -66,6 +66,8 @@ Readout mapping (depletion order shield → armour → HP, the order native Supr
 | HP | 3 (> 66 %) / 2 (33–66 %) / 1 (≤ 33 %) | green / yellow / red |
 | down | 0 | dark |
 
+Dark frames: the rest and every revert are the **blank** `$GLED,,,,5,,,*`, not a `9,9,9` paint, until the blank's idempotency and a dark paint's hold are measured (L12–L14).
+
 Rules: the **innermost pool that moved is the news** (`poolgauge.changed_pool`); one write per change, none when
 the frame is unchanged, a change inside 300 ms of the last write only restarts the hold; bursts end on dark, or on
 the live readout frame if its hold is running, never on the top band. Segment count is the primary channel
@@ -112,14 +114,14 @@ A `headset.role` state the node re-asserts after every registered hit (the way t
 
 | surface / moment | day | night |
 |---|---|---|
-| gun pregame | team, full | team, dim (`$GLED` tok5 = 1) |
+| gun pregame | team, full | team, dim (**apply-gate 5**: `$GLED,c,c,c,5,10,,*` is the ~1/3 paint; token 5 does not compose with it and its own dim curve is unreliable, log 2026-09-02) |
 | gun rest | dark | dark |
 | gun readout | full, 4 s hold, reload glance 2 s | dim, 2 s hold, glance 1 s |
 | gun bursts | died, objective, extraction ladder | same set, dim; no decorative bursts |
 | headset pregame / role states / low health | full (`$HLED` tok5 = 10) | dim (tok5 = 1) |
 | headset start / respawn | white ×2 | white ×1, dim |
 | headset hit | native only | native only |
-| down signal | small LED + big-LED breathe | small LED only, 750 ms, **full** (no dim exists; the downed player has nothing to lose from being lit and is the one most likely to be shot again or walked into in the dark) |
+| down signal | small LED + big-LED breathe, 750 ms | small LED only, **1000 ms**, **full** (no dim exists, so a slightly sparser cadence is the only softening; the downed player has nothing to lose from being lit and is the one most likely to be shot again or walked into in the dark) |
 | MC-pushed bursts (objectives) | dim, ≥ 2 s apart | same |
 | blackout (explicit `lights.blackout`) | nothing anywhere except the down signal | same |
 
@@ -165,11 +167,11 @@ presentation.lights: {
   down:    { flash: true, period_ms: 750, companion: "breathe"|"blink"|null,        // NOT subject to blackout
              quiet_after_death_s: 1.0, quiet_before_spawn_s: 1.0, eliminated_slow_after_s: 30 },
   night:   {                             // overlay, applied when config.night is true; every key optional
-    brightness: "dim",                   // tok5 = 1 on every compiled $GLED / $HLED frame
+    brightness: "dim",                   // gun: apply-gate 5 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
     events: [/* the events that keep their lights at night; others sound only */],
     gun:     { readout: { hold_s: 2, reload_glance_s: 1 } },
     headset: { start_flash: "single", respawn_flash: "single" },
-    down:    { companion: null }
+    down:    { companion: null, period_ms: 1000 }
   },
   events: { <event>: { sound, gun_led, headset, flash } }   // unchanged (A11.2)
 }
@@ -191,7 +193,8 @@ constant shared by compile and presentation); `respawn.delay_s ≥ 3`.
 ## 5. Bundle tables and node rules (A4.2: MC compiles every frame, the node selects and owns the timers)
 
 ```jsonc
-gun: { rest: "$GLED,9,9,9,0,10,,*", blank: "$GLED,,,,5,,,*", after_spawn_s: 2.5, take: [blank, rest],
+gun: { rest: "$GLED,,,,5,,,*",       // the BLANK is the rest frame: the one frame proven to leave the strip dark AND out of the breathing loop (a `9,9,9` dark paint after a blank is unmeasured over time, L13/L14)
+       blank: "$GLED,,,,5,,,*", after_spawn_s: 2.5, take: [blank],
        readout?: { hold_s, reload_glance_s,
                    pools: [ { pool: "shield", max: 70, bands: [[0.66, f3], [0.33, f2], [0.0, f1]] },   // outermost first
                             { pool: "armor",  max: 70, bands: […] },
