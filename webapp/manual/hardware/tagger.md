@@ -1,6 +1,6 @@
 # The tagger, part by part
 _Every button, port, emitter and light on the rifle, and what each one is really for._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 _[diagram HW-02: Labelled tagger anatomy. The labels sit on top in HTML as hotspots (see Images table).]_
 
@@ -24,7 +24,7 @@ Ports
 | micro-USB "Programing Port" | body | It does two jobs. On a normal boot it is a **USB serial console**. The tagger's Teensy microcontroller then shows up as a COM port ("PuTTY into the tagger"). Hold **SELECT at power-on** and it becomes a **USB disk** that shows the firmware `.BIN` and the `AUDIO` folder | ✅ 📖 |
 | Headset jack | n/a | **There is none.** The headset links wirelessly | ✅ |
 | Accessory port | n/a | **There is none** on the Gen2/3 units we have opened up and checked at the connector. Micro-USB is the only port | ✅ |
-Source: protocol/brx-protocol.md §7c, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
+Source: protocol/session-findings-2026-08.md §7c, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
 ## What's inside (for the curious, you do not need to open it)
 - **Microcontroller:** a PJRC **Teensy** (ARM). Plug in USB and it shows up as "Teensyduino USB Serial". ✅
@@ -32,6 +32,6 @@ Source: protocol/brx-protocol.md §7c, docs/reference/brx-extended-user-guide.md
 - **Sound storage:** an SD card on the mainboard. You never take it out to change sounds, because sound updates go over USB. 👥 📖
 - **Speaker:** a "pop" from the speaker when the gun boots means the speaker has power. 👥
 - **Warning:** always unplug the battery before *any* work inside. A live pack during a mod is the classic way to kill a mainboard. 👥
-Source: protocol/brx-protocol.md §7c, docs/experiment-log.md (QUERY dump), docs/reference/community-notes.md
+Source: protocol/session-findings-2026-08.md §7c, docs/experiment-log.md (QUERY dump), docs/reference/community-notes.md
 
 _[image HW-05: (ports close-up, see Images table)]_

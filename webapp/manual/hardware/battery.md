@@ -1,6 +1,6 @@
 # Battery and power
 _A 7.4 V two-cell pack with one nasty surprise: the connector polarity is backwards._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## Tagger battery 📖 👥
 - Chemistry / pack: **7.4 V Li-ion, ~2,200 mAh**, two cells
@@ -31,4 +31,4 @@ Headset power
 | Cell | one 18650 lithium cell (v2) | 👥 |
 | Charging | any USB 5 V supply | 📖 |
 | Voltage readout | shown in the tagger's USB console (e.g. "Head: 3.84 V") | ✅ |
-Source: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
+Source: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7c

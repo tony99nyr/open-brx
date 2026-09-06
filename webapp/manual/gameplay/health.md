@@ -3,7 +3,7 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 Last verified: 2026-08-27
 
 Every player is a pool of points: **45 health and 70 armor by default, which is 115 in total**. A hit comes off your armor first. Whatever armor cannot soak up spills straight into your health. When your health hits zero you are out. Nothing in the stock firmware fills you back up until you respawn.
-Source: docs/weapon-design.md §0, protocol/brx-protocol.md §7r addendum
+Source: docs/weapon-design.md §0, protocol/session-findings-2026-08.md §7r addendum
 
 _[diagram GAME-09: The three pools (shield → armor → health) draining under fire, with an 80-point standard hit splitting 70 into armor and 10 into health.]_
 
@@ -13,7 +13,7 @@ _[diagram GAME-09: The three pools (shield → armor → health) draining under 
 3. **Armor soaks damage 1 for 1, with no cap per hit.** An 80-point standard hit takes all 70 armor and 10 health at once.
 4. Health takes the rest. Your headset and gun play the hit tone. The gun reports your new pool to any connected phone.
 5. At 0 health the gun plays the death alarm, stops firing, and ignores every incoming shot until it respawns.
-Source: protocol/brx-protocol.md §7r + §7r addendum, docs/weapon-design.md §6.1, docs/reference/grenade.md §Can we add new modes (dead gun accepts no IR)
+Source: protocol/session-findings-2026-08.md §7r, §7r addendum, docs/weapon-design.md §6.1, docs/reference/grenade.md §Can we add new modes (dead gun accepts no IR)
 
 ## Health facts, in player terms
 | Question | Answer | Confidence |
@@ -26,7 +26,7 @@ Source: protocol/brx-protocol.md §7r + §7r addendum, docs/weapon-design.md §6
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. | ✅ |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: ×1.5 at the shipped t7=50, and t7=0 turns crits off. | ✅ |
 | Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. | ✅ 📖 |
-Source: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)
+Source: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/session-findings-2026-08.md §7r (sensor map)
 
 ## Heals and boosts "add", they never "set".
 When a phone or host gives health to a live gun, the amount is *added* to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way. A host watches your pool and tops it up.
@@ -34,7 +34,7 @@ Source: docs/experiment-log.md #33 "SEMANTICS + REGEN nailed", docs/game-modes.m
 
 ## A dead gun is deaf, unless a station armed it.
 At 0 health a tagger that was never armed to a respawn station takes no IR at all, and a tagger in a host-driven game takes none either. A tagger armed by a station in a native game is the exception: it stays dead, refuses the trigger, says "revive at respawn point", and comes back the moment the station beacon reaches it.
-Source: docs/experiment-log.md 2026-09-04 (respawn station), docs/reference/grenade.md §Respawn Station mode, protocol/brx-protocol.md §7r (Resync)
+Source: docs/experiment-log.md 2026-09-04 (respawn station), docs/reference/grenade.md §Respawn Station mode, protocol/session-findings-2026-08.md §7r (Resync)
 
 ## Respawn & lives: the knobs every mode shares
 | Setting | Gun-menu values (V7 manual / Extended Guide) | Callsign app values |

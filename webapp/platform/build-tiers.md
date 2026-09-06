@@ -1,9 +1,9 @@
 # What you can build at each budget
 _Start at $0 with the gear you own. Every step after that is optional._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 Starting inventory assumed: **4 BRX taggers (+ headsets), 2 Smart Grenades, a laptop or phone you already own.** No mods, no builds, no purchases. These are *spend* tiers.
-Source: docs/build-tiers.md
+Source: this page's pricing tiers below
 
 **Tier 0: $0 · exactly what you own** ✅ (the pilot)
 - A laptop in BLE range drives the guns directly, so a room, a yard or a small field works
@@ -20,7 +20,7 @@ Source: docs/build-tiers.md
 - The biggest jump in what you can do for the least money, because the link rides the player
 - Full-field roaming for every Tier-0 mode; a **per-player HUD** ("your score / ammo / lives", the #1 thing players ask for); offline play with results syncing at the base
 - Native app on Android + iOS (ADR-0003), one phone per gun
-- **Status:** one phone → MC → gun proven at the bench. Multi-phone field play not yet run
+- **Status:** two phones, two whole matches on real hardware outdoors (2026-08-30, 2026-09-01); more than two phones not yet run
 
 **Tier 2: ESP32 Companion per tagger · ~$12–25 each** 📐
 - A purpose-built, rugged, phone-free node that rebuilds the native kill flash and audio
@@ -34,7 +34,7 @@ Source: docs/build-tiers.md
 
 **Tier 4: field radio · LoRa ~$10/node (or the gun's own nRF, unprobed, maybe free)** 📐
 - Live coordination on a large park with no Wi-Fi: "flag taken!" broadcast, live HQ scoreboard, station status screens, Battle Royale
-Source: docs/build-tiers.md, docs/mode-limits.md §3
+Source: docs/game-modes.md §Hard ceilings
 
 ## The Tier-0 objective toolkit (no bought hardware)
 | Mechanism | Interaction | Good for | Limit |
@@ -44,7 +44,7 @@ Source: docs/build-tiers.md, docs/mode-limits.md §3
 | **Printed QR + phone camera** 📐 | scan it | checkpoints, plant sites, pickups | needs an active scan |
 | **Phone touch-terminal** 📐 | touch the screen | bomb plant/defuse, hack, hostage | needs a screen at the site |
 | **Spare gun as a point** 📐 | shoot it (IR) | an extra capture point | uses up a gun |
-Source: docs/build-tiers.md §Tier 0
+Source: this page's Tier 0 above
 
 ## Environmental effects: a listener layer, gated by devices not by tier
 | Effect | Trigger | Controller | ~Cost | Status |
@@ -55,8 +55,8 @@ Source: docs/build-tiers.md §Tier 0
 | Last 10 s → red pulse lighting | clock | WLED strip or smart plug | ~$8–25 | 📐 |
 | Smoke every 10 min / proximity smoke | timer or PIR / station | ESP32 + relay on the machine's remote jack | ~$8 + machine | 📐 |
 | Team-colour / chase lighting, blacklights | MQTT events | WLED ESP32 + addressable strip | ~$15–25/zone | 📐 |
-Source: docs/build-tiers.md §Environmental effects
+Source: this page's Environmental effects above
 
 ## Cheapest high-value path:
 run the Tier-0 software on your laptop today. Later, put the phone app on the Android or iOS phones you already own. That alone gets you hosted, custom, multi-mode games for 4 taggers + 2 grenades with **no hardware spend**. Everything after that is optional. ✅/🧪
-Source: docs/build-tiers.md §Cheapest high-value path
+Source: this page's Tier ladder above

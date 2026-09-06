@@ -1,6 +1,6 @@
 # Command reference
 _Every command we know of, with args, meaning and confidence: host → tagger, tagger → host, and headset. This page lists every frame you can send the gun. Copy them exactly as written._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## How to read the tables.
 "Direction" is host→gun (`>>`) or gun→host (`<<`). Provenance is per row: ✅ we sent/received it on hardware and know what it did; 🔍 the command class and its field names come from the Callsign app's IL2CPP metadata (names certain, wire position = declaration order); 👥 seen in LaserTagMods sources or community captures, not reproduced by us. Commands the app knows but we have never sent sit in their own table at the end of this page. Where a command's field map has its own page (`$WEAP`, `$GSET`/`$PSET`, `$SIR`) the row links there.
@@ -30,7 +30,7 @@ Source: protocol/callsign-extract/protocol-classes.md (confidence note), protoco
 | `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. | ✅ |
 | `$SP,<n>,*` | >> | n | End-of-game / stop. `$SP,99,*` is the second half of the panic sequence. Do not probe it mid-game hoping for a score. The gun keeps none. | 👥 |
 | `$QUERY,*` | >> | n/a | Over BLE returns a `$`-framed status array (`$QUERY,0,0,0,0,0,,1,0,,0,…`) plus a `$LCD`. **Not** the USB device record (that is USB-only; see the Serial console page). | ✅ |
-Source: protocol/brx-protocol.md §3, §7a, §7e, §7f, §7l, §7o, §7r; docs/gotchas.md; docs/experiment-log.md (2026-08-24 $QUERY)
+Source: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7a, §7e, §7f, §7l, §7o, §7r; docs/gotchas.md; docs/experiment-log.md (2026-08-24 $QUERY)
 
 ## Host → tagger: in-game effects, feedback & pools
 | Command | Dir | Args | Meaning | Conf |
@@ -47,14 +47,14 @@ Source: protocol/brx-protocol.md §3, §7a, §7e, §7f, §7l, §7o, §7r; docs/g
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. | 🔍 (fields) ✅ (bench result) |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA · `$PBWEAP,0` = M4 AUTO · `$PBPERK,2` = Body Armor · `$PBLIVES,2` = 5 lives · `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. | 👥 |
 | `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host↔host | n/a | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. | 👥 |
-Source: protocol/brx-protocol.md §3, §7d, §7i, §7j(community $PB*), §7o; protocol/callsign-extract/protocol-classes.md; docs/experiment-log.md (2026-08-26 headset emission, $BHIT, $GREN emission)
+Source: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7d, §7i, §7j(community $PB*), §7o; protocol/callsign-extract/protocol-classes.md; docs/experiment-log.md (2026-08-26 headset emission, $BHIT, $GREN emission)
 
 ## Headset commands (host → gun → headset)
 | Command | Args (APK) | Meaning | Conf |
 |---|---|---|---|
 | `$HLED,<colour>,<effect>,,,,,*` | LedColorType (White, Pink, Orange; + green via `isUsedGreenLed`), BlinkLoopType (Once, ThreeTimes, Infinite), LedEffectType (incl. Heartbeat) | Headset LED. `$HLED,,6,,,,,*` is sent in the app's end-of-game tail and in the lobby. Token 1 is a colour index sharing the gun's palette for 0 to 7 (0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink); the two devices diverge at 8, which reads red on the headset and orange on the gun. 9 and 10 are dark. Measured 2026-09-02 with the camera rig, all visible headset modules agreeing. | ✅(captured) ✅(palette) 🔍(fields) |
 | `$HLOOP,0,0,*` | a, b | Sent by the app ~1.7 s after every death. | ✅(captured) 🔍(fields) |
-Source: protocol/brx-protocol.md §3, §7e, §7f; protocol/callsign-extract/protocol-classes.md (Enums)
+Source: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7e, §7f; protocol/callsign-extract/protocol-classes.md (Enums)
 
 ## Tagger → host: events and echoes
 | Message | Fields | Meaning | Conf |
@@ -70,7 +70,7 @@ Source: protocol/brx-protocol.md §3, §7e, §7f; protocol/callsign-extract/prot
 | `$BUT,<id>,<state>,*` | id 0–5, state 1 press / 0 release | Physical button event (ids match `$BMAP`). Streams only in app mode. `$BUT,4,0` is also returned by `$MELEE`. | ✅ |
 | `$QUERY,…` | ~11 `value,,` pairs | Status array in reply to BLE `$QUERY,*`. | ✅ |
 | `$WEAP` / `$PERK` / `$HS` | n/a | Selection echoes from the on-gun menus (LaserTagMods). | 👥 |
-Source: protocol/brx-protocol.md §4, §7e, §7f, §7j, §7r; mcp/brx_mcp/protocol.py (parsers); docs/experiment-log.md 2026-08-27
+Source: protocol/brx-protocol.md §4, protocol/session-findings-2026-08.md §7e, §7f, §7j, §7r; mcp/brx_mcp/protocol.py (parsers); docs/experiment-log.md 2026-08-27
 
 ## Seen in the app's vocabulary, not exercised by us
 facts about the Callsign app's request namespace only. On-tagger behaviour has not been observed. 🔍

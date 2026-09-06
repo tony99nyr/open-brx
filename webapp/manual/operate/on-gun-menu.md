@@ -21,7 +21,7 @@ Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-gui
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md (respawn delay ramps)
 
 The gun remembers these variables **per game mode**, and they live on the gun. They are not the numbers the Callsign app uses. The app keeps its own clock and respawn timer on the phone, and it never writes these to the gun.
-Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7n
+Source: docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7n
 
 ## Button holds worth memorising
 - **ALT, hold 3 s**: toggle indoor / outdoor (it sticks). 📖

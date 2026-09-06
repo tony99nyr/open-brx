@@ -1,6 +1,6 @@
 # The IR emitter, the sight, and the sensors
 _The invisible beam that carries every tag. Here are the published specs and what we measured._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## IR emitter (Class 1 laser, IEC 60825-1)
 from Battle Company's Extended User Guide 📖
@@ -10,7 +10,7 @@ from Battle Company's Extended User Guide 📖
 - Pulse repetition (carrier): **38,000 Hz**
 - Beam: **< 18 mm at the aperture**
 - Factory record on one of our units reports the laser at **16.9 mW** ✅
-Source: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
+Source: docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7c
 
 What a shot looks like on the air (bench-measured)
 | col 1 | col 2 | col 3 |
@@ -39,6 +39,6 @@ Source: protocol/brx-protocol.md §"$HIR token 1 - sensor id map", docs/referenc
 ## The sight
 - The tagger's sight has a **green kill-confirm flash**. Score a kill and the sight glows green for a few seconds. ✅
 - **Sighting a scope** happens in **Target Mode** (hold LEFT while powering on). Shots do zero damage, ammo is unlimited, and a direct hit flashes the target's headset green. Owners sight snipers long (300–400 ft) and shotguns or SMGs close (50–100 ft). 📖 👥
-Source: protocol/brx-protocol.md §7o, docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
+Source: protocol/session-findings-2026-08.md §7o, docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
 
 _[image HW-09: (IR waveform illustration, see Images table)]_

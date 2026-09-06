@@ -11,7 +11,7 @@ Last verified: 2026-08-27
 6. **Mag-dumping?** → The simulated-recoil model pulls your accuracy off under rapid fire. A miss makes the enemy hear a zip and lights their headset with **0 damage**. Fire in bursts. 📖
 7. **Hits register from the front but not the back, or the other way round?** → The headset has separate front and back sensor domes, plus a gun-body sensor. A dead dome is a replaceable part, and sensor boards for front, left and right are sold. 📖👥✅
 8. **Never lands at any range, target mode included?** → IR emitters do die. The laser emitter is a separately replaceable part. 👥📖
-Source: protocol/brx-protocol.md §7r (FF firmware-enforced; dead/unspawned guns ignore IR; sensor map) · docs/reference/brx-extended-user-guide.md (indoor/outdoor, target mode, accuracy) · docs/reference/brx-manual-notes.md · docs/reference/community-notes.md
+Source: protocol/session-findings-2026-08.md §7r (FF firmware-enforced; dead/unspawned guns ignore IR; sensor map) · docs/reference/brx-extended-user-guide.md (indoor/outdoor, target mode, accuracy) · docs/reference/brx-manual-notes.md · docs/reference/community-notes.md
 
 **Outdoors, prefer the stock headset.** SwapTX-modded headsets have dimmer LEDs than the BRX headset. In direct sun that makes it hard to tell whether you are landing tags at range. 👥
 Source: docs/reference/community-notes.md ("Scoping / sighting & outdoor play")

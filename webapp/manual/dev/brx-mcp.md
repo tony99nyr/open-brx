@@ -1,6 +1,6 @@
 # Getting started with `brx-mcp`
 _From `pip install` to a live game in six commands, plus the MCP tools for driving a gun from an AI agent. Start here to get a working setup fast._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 `brx-mcp` is the project's lab instrument: a pure-Python (`bleak` + `mcp`) CLI and MCP server that runs on **whichever machine owns the Bluetooth radio**: Windows, macOS or Linux. It enforces the known-safe list, refuses malformed frames, records every session, and has a `panic` tool.
 Source: README.md (quickstart, Safety)
@@ -44,13 +44,20 @@ Source: README.md (Platform notes)
 | Command | What it does |
 |---|---|
 | `scan` · `identify <addr>` · `listen <addr>` · `probe <addr>` | Discover, check, watch, probe a single gun |
-| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Earlier single-purpose game drivers (the §7e sequence) |
+| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Earlier single-purpose game drivers (the arm sequence) |
 | `play <mode> <addr…> [volume=69]` | Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction |
 | `game-sim <mode>` · `extraction-sim` | Hardware-free narrated simulations |
 | `diag <addr>` · `diagnose <addr>` · `diag-game <addr>` · `fleet` | Diagnostics, fleet battery/reachability sweep |
 | `usb-query [port]` · `enroll` · `armory` · `rename` · `reset` | USB device record, armory enrolment, persistent `$NAME`, reset |
 | `ir-capture` · `ir-emit` · `ir-range` | Drive the ESP32 IR transceiver rig |
 Source: mcp/brx_mcp/__main__.py (dispatch table)
+
+## `diag-game`: the repeatable diagnostic game
+- **What:** a structured pass/fail scorecard of every BLE capability on one tagger: connectivity (ping, firmware, battery), config + spawn echoes, trigger and button events, audio (a sound by id, volume audible at 75), team LEDs, and with a second gun as shooter, damage (armor absorbs, `$LIFE` heals) and `$HIR` shooter attribution, plus the grenade Hill/Respawn beacon (`$HIR` token 2 = 15).
+- **Run it:** `python -m brx_mcp diag-game <addr>` · `… 2guns` adds the shooter · `… 2guns ir` adds the ESP32 IR bridge. Cases a rig cannot serve **skip**, they do not fail; a run is **CLEAN** when nothing failed or errored.
+- **How it judges:** declarative cases (`diag/cases.py`) with pure predicates over the parsed receive stream (`diag/model.py`, unit-tested with no BLE); a human answers y/N where the wire cannot judge ("did you hear it?", "are the LEDs blue?"). Reports save as JSON under `~/.brx-mcp/diag-reports/`.
+- **Why:** a regression baseline. A firmware update or a new tagger? Re-run and diff the scorecard instead of re-deriving "does health-write work?" each session.
+Source: mcp/brx_mcp/diag/ (cases.py, model.py, runner.py), mcp/tests/test_diag.py
 
 ## MCP tools (what an agent can call)
 | Tool | Purpose |

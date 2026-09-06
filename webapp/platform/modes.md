@@ -1,6 +1,6 @@
 # Game modes
 _Every mode we know the BRX can run, sorted by the gear it needs._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## Two tier axes, kept separate.
 *Infrastructure* tiers say what gear a mode needs (laptop-only → + props → + broadcast). *Spend* tiers (next page) say what each budget adds. A mode's infrastructure tier maps to whichever spend tier buys that gear.
@@ -15,7 +15,7 @@ Source: docs/game-modes.md §Three infrastructure tiers
 - **Generals / Commander / The Swarm**: one player *is* the team's mobile respawn point. 📐
 - **Supremacy**: three factions, class loadouts as `$WEAP`/`$PSET`. 📐
 - **Health variants**: Syphon (health-on-kill to the exact killer), Halo-style regen (host-driven; armor does not regen on its own), medic, armor overshield. 🧪 (`$LIFE`/`$BUMP` writes ✅)
-Source: docs/game-modes.md §Catalog + §Health/regen, docs/verification-checklist.md, mcp/brx_mcp/modes/
+Source: docs/game-modes.md §Catalog + §Health/regen, docs/archive/verification-checklist.md, mcp/brx_mcp/modes/
 
 ## + Props: a contested place needs a local authority
 (engines built 🧪; need a station or a grenade to emit the IR events)
@@ -26,12 +26,12 @@ Source: docs/game-modes.md §Catalog + §Health/regen, docs/verification-checkli
 - **Counter-Strike (plant / defuse)**: the grenade, a station, or *a phone's touchscreen* is the bomb. 🧪 engine
 - **Team Arena**: TDM plus QR weapon pickups and capturable flags (paper QR = ~$0 props). 📐
 - **VIP escort / Hostage rescue**: a special player role plus one extraction station. 📐
-Source: docs/game-modes.md §Catalog + §Custom modes, docs/mode-limits.md §2
+Source: docs/game-modes.md §Catalog + §Custom modes + §Hard ceilings
 
 ## + Broadcast / location
 - **Battle Royale**: shrinking zone, GPS supply drops, last one alive. It needs per-node location and a live field-wide downlink (Tier 4 radio). 📐
 - **Any prop mode with live callouts**: "flag taken!" everywhere, plus a live HQ scoreboard, on a large park with no Wi-Fi. 📐
-Source: docs/game-modes.md §Catalog, docs/build-tiers.md Tier 4
+Source: docs/game-modes.md §Catalog
 
 ## Extraction: the flagship mode Edge doesn't have
 ([image PLAT-04])

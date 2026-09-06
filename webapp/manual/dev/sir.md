@@ -1,6 +1,6 @@
 # `$SIR`: the incoming-IR effects matrix
 _What an IR hit does to this gun is decided by the victim's table, not by the shooter's weapon. This page shows how to write that table._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## The key idea.
 An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the `$SIR` row with that `<protocol, subtype>` key; the row's **function** decides what the word's 8-bit magnitude is applied to: damage, heal, armor, shield, or a status. **No matching row → the hit is silently ignored.** The same is true of a **wrongly-teamed** shot: damage applies only from an enemy team and support only from your own, and a rejected frame emits **no `$HIR` at all**. It never reaches BLE. 16 × 4 = 64 addressable cells, all writable per game over BLE.
@@ -59,7 +59,7 @@ _[diagram DEV-07: Damage pipeline: IR word (B,U,D,C) → victim `$SIR[B,U]` → 
 - **Heals clamp** at the pool max. Magnitude 200 is a fill, not a stack. ✅
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks. ✅
 - **Dead guns accept no IR at all.** ✅
-Source: protocol/brx-protocol.md §7r addendum; docs/experiment-log.md (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)
+Source: protocol/session-findings-2026-08.md §7r addendum; docs/experiment-log.md (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)
 
 - **Is there a stun?** None found. `$STUN` over BLE is a no-op, and fn 23 (the only function that visibly changes anything without touching a pool) leaves the gun firing.
 - **Can I read a native game's `$SIR` table?** No. The gun never reports it. Capturing an ability's IR word tells you its protocol, not what a native victim binds to it.

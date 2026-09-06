@@ -6,7 +6,7 @@ A tagger and a headset side by side, powered, headset dome lit. Short line: "Cha
 Source: docs/reference/brx-manual-notes.md
 
 What you are holding. The BRX is a rifle-style infrared tagger (Class 1, 980 nm IR "laser"). The wireless headset carries the hit sensors, and the gun has a sensor too. Out of the box it is a **non-scoring** system. The gun keeps no score and no clock, so scoring comes from the on-gun game or the phone app.
-Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/brx-protocol.md §7n
+Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7n
 
 ## First power-on checklist
 1. **Charge the gun first.** Plug the two-cell 8.4 V smart charger into the round *charging* port. Do not use the micro-USB "Programing Port" next to it. The charger LED is red, then green when full. A full charge gives you roughly 8 h of play. The headset takes any USB 5 V supply. 📖

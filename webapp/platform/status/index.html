@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Status & roadmap","description":"What is proven on hardware, what is only software, what is only a spec. With dates.","url":"https://open-brx.iamrossi.workers.dev/platform/status/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Status & roadmap","item":"https://open-brx.iamrossi.workers.dev/platform/status/"}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Status & roadmap","description":"What is proven on hardware, what is only software, what is only a spec. With dates.","url":"https://open-brx.iamrossi.workers.dev/platform/status/","dateModified":"2026-09-06","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Platform","item":"https://open-brx.iamrossi.workers.dev/platform/"},{"@type":"ListItem","position":3,"name":"Status & roadmap","item":"https://open-brx.iamrossi.workers.dev/platform/status/"}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -34,7 +34,7 @@
 <header class="page-head">
 <h1>Status &amp; roadmap</h1>
 <p class="subtitle">What is proven on hardware, what is only software, what is only a spec. With dates.</p>
-<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><span>software</span></span><span class="badge b-spec" title="Specified only"><span>spec</span></span><span class="badge b-wip" title="Under construction"><span>under construction</span></span></span><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/platform/status.md">Markdown</a></p>
+<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-software" title="Built + software-tested"><span>software</span></span><span class="badge b-spec" title="Specified only"><span>spec</span></span><span class="badge b-wip" title="Under construction"><span>under construction</span></span></span><span class="lv">Last verified <time datetime="2026-09-06">2026-09-06</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/platform/status.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="how-to-read-this-page"><strong class="co-title">How to read this page.</strong><p><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> means a human ran it on a real tagger and wrote it in the experiment log. <span class="badge b-software" title="Built + software-tested"><span>software</span></span> means it is built, has tests, and has <em>not</em> been run on hardware. <span class="badge b-spec" title="Specified only"><span>spec</span></span> means there is a spec and nothing else. The project&#39;s own rule: <em>a green test ≠ works on real guns. That is earned on the bench.</em></p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B15</p></aside></section>
 <section class="blk blk-table" data-type="table"><h2 id="status-board">Status board</h2><div class="table-wrap"><table>
@@ -63,7 +63,7 @@
 <tr>
 <td>Exact per-player attribution over BLE (<code>$PSET</code> id → <code>$HIR</code> shooter)</td>
 <td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></td>
-<td>2026-08-25, protocol §7p/§7q</td>
+<td>2026-08-25, <code>protocol/session-findings-2026-08.md</code> §7p/§7q</td>
 </tr>
 <tr>
 <td>Native kill feedback from our stack: green-sight flash (<code>$SFLASH</code>) + announcer (<code>$PLAY</code> slot 4)</td>
@@ -131,12 +131,12 @@
 <td>156 sim scenarios; objective modes wait on a station</td>
 </tr>
 <tr>
-<td><strong>MC ↔ multiple phones over a real field Wi-Fi</strong></td>
-<td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> never run</td>
-<td>n/a</td>
+<td><strong>MC ↔ two phones over a real field Wi-Fi, a whole match</strong></td>
+<td><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> 2 phones</td>
+<td>2026-08-30 FFA (300 s, 12 kills) and 2026-09-01 outdoor TDM; more than two phones untested</td>
 </tr>
 <tr>
-<td><strong>Dispersed timed start on a real field</strong></td>
+<td><strong>Dispersed timed start on a real field</strong> (players out of range before T-0)</td>
 <td><span class="badge b-software" title="Built + software-tested"><span>software</span></span> never run</td>
 <td>n/a</td>
 </tr>
@@ -176,7 +176,7 @@
 <td>nRF unprobed (D1)</td>
 </tr>
 </tbody></table></div>
-<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/verification-checklist.md" rel="noopener">docs/verification-checklist.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/HANDOFF.md" rel="noopener">docs/HANDOFF.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a></p></section>
+<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/archive/verification-checklist.md" rel="noopener">docs/archive/verification-checklist.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/HANDOFF.md" rel="noopener">docs/HANDOFF.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a></p></section>
 <section class="blk blk-timeline" data-type="timeline"><h2 id="roadmap-the-project-ladder">Roadmap: the project ladder</h2><ul>
 <li><strong>M1 · Identify</strong>: scan, identify and listen to real taggers. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> done</li>
 <li><strong>M2 · Control</strong>: remote game start, weapons, respawn, timed matches. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> done</li>
@@ -187,7 +187,7 @@
 </ul>
 <p class="src"><span>Source:</span> README.md §Roadmap</p></section>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="mission-control-and-the-phone-hud-under-construction-details"><strong class="co-title">Mission Control and the phone HUD: <span class="badge b-wip" title="Under construction"><span>under construction</span></span> under construction. Details when they have run on a real field.</strong><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §8</p></aside></section>
-<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="what-we-will-not-claim-yet"><strong class="co-title">What we will not claim yet.</strong><p>Nobody has run a multi-phone match on a real field. Nobody has run a dispersed start where players walk out of range before T-0. Nobody has run a store-and-forward recovery after real coverage loss. Three guns on one laptop radio is the most we have held at once, and the maximum is untested. FFA / Infection / LMS have not been played on real guns, and their logic is only sim-proven. The Companion and the Utility Box are not built. See <em>Honest gaps</em> below for the full list.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B10, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/verification-checklist.md" rel="noopener">docs/verification-checklist.md</a></p></aside></section>
+<section class="blk blk-callout co-warn" data-type="callout"><aside class="callout warn" role="note" id="what-we-will-not-claim-yet"><strong class="co-title">What we will not claim yet.</strong><p>Two phones is the most that have played a whole match together; nobody has run more. Nobody has run a dispersed start where players walk out of range before T-0. Nobody has run a store-and-forward recovery after real coverage loss, a 20-minute soak, a phone auto-rejoin to the field SSID, or a locked iPhone&#39;s BLE through a match. Three guns on one laptop radio is the most we have held at once, and the maximum is untested. FFA has been played on real guns (2026-08-30); Infection / LMS have not, and their logic is only sim-proven. The Companion and the Utility Box are not built. See <em>Honest gaps</em> below for the full list.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B10, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/archive/verification-checklist.md" rel="noopener">docs/archive/verification-checklist.md</a></p></aside></section>
 
 </article>
   </main>
@@ -198,6 +198,6 @@
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.99eb517084.js" defer></script>
+<script src="/assets/site.b967e5eb88.js" defer></script>
 </body>
 </html>

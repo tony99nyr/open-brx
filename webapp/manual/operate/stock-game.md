@@ -9,7 +9,7 @@ Last verified: 2026-08-27
 4. Step through lives, time, respawn and volume with SELECT. Agree the values across all guns, because each gun runs its own clock. 📖✅
 5. Count down together and **pull the reload handle** to start. 📖
 6. Keep score by voice, by a ref, or by team flags. The guns do not tally kills. 👥✅
-Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/brx-protocol.md §7n
+Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7n
 
 ## Option B: a game hosted from Callsign
 1. Get every player set: headset paired, phone mounted on the gun, app icon green. ✅
@@ -17,7 +17,7 @@ Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-gui
 3. Let the host launch. Guns spawn together and HUDs light up. You do **not** need the reload handle to start. ✅
 4. Die, and the app respawns you after the set respawn time, or at a QR scanner. ✅
 5. Hit the time or score limit, and the app ends the game with a voice line and stops the guns. Scores live on the phones. ✅
-Source: protocol/brx-protocol.md §7e, §7f, §7n, docs/reference/callsign-ui.md
+Source: protocol/session-findings-2026-08.md §7e, §7f, §7n, docs/reference/callsign-ui.md
 
 ## During play: what you see and hear
 | Signal | Meaning |
@@ -32,7 +32,7 @@ Source: protocol/brx-protocol.md §7e, §7f, §7n, docs/reference/callsign-ui.md
 Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/experiment-log.md (2026-08-27), docs/reference/grenade.md
 
 Where hits land. The headset carries sensor domes front, left, right and back, and the gun has a sensor of its own. At field distances the dome that catches the shot is the one you were facing with. Point-blank, IR floods every receiver and any dome can report it. The damage is the same either way, because a dome hit is a hit.
-Source: protocol/brx-protocol.md §7r, docs/gotchas.md
+Source: protocol/session-findings-2026-08.md §7r, docs/gotchas.md
 
 Dead means dead. A tagger that is dead (out of health) ignores **all** incoming IR. It cannot take a hit, be healed, or be armed by a station until it respawns.
 Source: docs/gotchas.md, docs/reference/grenade.md

@@ -63,7 +63,7 @@ Source: docs/gotchas.md ("The gun is called Tactix2 again") · docs/experiment-l
 | Headset pairing (PIN) | Yes | Yes, but the gun needs the headset *re-linked* before Bluetooth will hold |
 | Smart grenade's locked objective mode | n/a | **Yes**. It flashes its mode colour for ~1 s at boot |
 | Firmware and sound files | Yes | Yes |
-Source: protocol/brx-protocol.md §7r ("config survives a BLE drop (E1)", "Power-cycle WIPES the config") · docs/reference/brx-extended-user-guide.md (indoor/outdoor persists; SELECT menu) · docs/reference/grenade.md
+Source: protocol/session-findings-2026-08.md §7r ("config survives a BLE drop (E1)", "Power-cycle WIPES the config") · docs/reference/brx-extended-user-guide.md (indoor/outdoor persists; SELECT menu) · docs/reference/grenade.md
 
 **Two resets worth knowing.** In-game soft reset: hold LEFT+RIGHT for 5 s → the gun reboots to its menu. Fresh from a power cycle, a tagger ignores a bare version query until it has been greeted (the phone's handshake). So "it's not answering" right after boot is expected. 📖✅
-Source: docs/reference/brx-extended-user-guide.md (RESET) · protocol/brx-protocol.md §7r ("Fresh power-up needs the handshake")
+Source: docs/reference/brx-extended-user-guide.md (RESET) · protocol/session-findings-2026-08.md §7r ("Fresh power-up needs the handshake")

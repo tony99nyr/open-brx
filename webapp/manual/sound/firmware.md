@@ -1,6 +1,6 @@
 # Firmware updates & factory restore
 _The same USB disk carries the firmware. Here is the official procedure, and the traps_
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## One port, one `.BIN`.
 Firmware for the tagger, headset, hatchet, shield and sidearm all update the same way: enter USB disk mode, then replace the file at the root. Battle Company's updater package is also your factory restore, for both firmware and sounds.

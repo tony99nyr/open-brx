@@ -1,6 +1,6 @@
 # Voice packs & announcers
 _Male, Female, Heavy, Medic, Valkyrie. Every character is a set of sound-bank slots_
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## A voice pack is seventeen slots.
 The BRX does not ship "a male voice" and "a female voice" as one big pack. A player profile lists one sound id per game event: death alarm, pain, respawn cry, kill line. The characters you pick in the app are just pre-filled sets of those ids.
@@ -61,7 +61,7 @@ Source: protocol/callsign-extract/Sounds.json, protocol/callsign-extract/sound-b
 - **About four gasps** (Heavy `V3E`/`V3F`/`V3G`/`V3H`) and **three death screams** (Heavy `V33`/`V34`/`V35`; Male `VA3`/`VA4`/`VA5`; Medic `V85`/`V83`/`V84`).
 - **A kill line**: Heavy `V3A`, Male `VAA`, Scout `VBA`, Medic `V8S`, Valkyrie `VHR`, Clean male `VEA`. `V3A` is the exact clip the official app plays on every scored kill. ✅
 - **A flavour line**: Medic `V8W` "One shot, one kill".
-Source: protocol/callsign-extract/sound-bank.md (DK map), protocol/brx-protocol.md §7o
+Source: protocol/callsign-extract/sound-bank.md (DK map), protocol/session-findings-2026-08.md §7o
 
 ## Weapon callouts (announcer says the weapon name)
 👥
@@ -77,6 +77,6 @@ Source: protocol/callsign-extract/sound-bank.md (DK map), docs/reference/brx-ext
 
 ## Killstreak audio is not free under a phone or host.
 "Double kill" and its friends are announced natively only in a game started from the gun's own menu. As soon as a host drives the gun over Bluetooth, the host must play them itself (`$PLAY` on the announcer slot). Open BRX's Mission Control does this. A bare Bluetooth script gets silence.
-Source: docs/sound-architecture.md, docs/experiment-log.md 2026-08-25
+Source: protocol/session-findings-2026-08.md §7o, docs/experiment-log.md 2026-08-24/25
 
 _[image SND-02: Voice-pack "slot rack" illustration: seventeen labelled sockets, some filled. GENERATE.]_

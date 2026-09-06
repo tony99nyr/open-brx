@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Getting started with brx-mcp","description":"From `pip install` to a live game in six commands, plus the MCP tools for driving a gun from an AI agent. Start here to get a working setup fast.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/brx-mcp/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Getting started with brx-mcp","item":"https://open-brx.iamrossi.workers.dev/manual/dev/brx-mcp/"}]},{"@type":"HowTo","name":"Recommended first session (safe order)","step":[{"@type":"HowToStep","position":1,"text":"scan → note the address. identify → confirm $PONG and read the $VERSION reply."},{"@type":"HowToStep","position":2,"text":"listen read-only: pull the trigger, get tagged by another gun, watch $BUT/$HIR/$HP. Send no config yet."},{"@type":"HowToStep","position":3,"text":"play tdm … volume=69 on two guns; confirm each echoes $LCD,45,70,0,0,36,216 on spawn."},{"@type":"HowToStep","position":4,"text":"If anything looks wrong: panic, then power-cycle. That always restores the tagger."}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Getting started with brx-mcp","description":"From `pip install` to a live game in six commands, plus the MCP tools for driving a gun from an AI agent. Start here to get a working setup fast.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/brx-mcp/","dateModified":"2026-09-06","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Getting started with brx-mcp","item":"https://open-brx.iamrossi.workers.dev/manual/dev/brx-mcp/"}]},{"@type":"HowTo","name":"Recommended first session (safe order)","step":[{"@type":"HowToStep","position":1,"text":"scan → note the address. identify → confirm $PONG and read the $VERSION reply."},{"@type":"HowToStep","position":2,"text":"listen read-only: pull the trigger, get tagged by another gun, watch $BUT/$HIR/$HP. Send no config yet."},{"@type":"HowToStep","position":3,"text":"play tdm … volume=69 on two guns; confirm each echoes $LCD,45,70,0,0,36,216 on spawn."},{"@type":"HowToStep","position":4,"text":"If anything looks wrong: panic, then power-cycle. That always restores the tagger."}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -34,7 +34,7 @@
 <header class="page-head">
 <h1>Getting started with <code>brx-mcp</code></h1>
 <p class="subtitle">From <code>pip install</code> to a live game in six commands, plus the MCP tools for driving a gun from an AI agent. Start here to get a working setup fast.</p>
-<p class="meta"><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/brx-mcp.md">Markdown</a></p>
+<p class="meta"><span class="lv">Last verified <time datetime="2026-09-06">2026-09-06</time></span><a class="md-link" href="/manual/dev/brx-mcp.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note"><p><code>brx-mcp</code> is the project&#39;s lab instrument: a pure-Python (<code>bleak</code> + <code>mcp</code>) CLI and MCP server that runs on <strong>whichever machine owns the Bluetooth radio</strong>: Windows, macOS or Linux. It enforces the known-safe list, refuses malformed frames, records every session, and has a <code>panic</code> tool.</p><p class="src"><span>Source:</span> README.md (quickstart, Safety)</p></aside></section>
 <section class="blk blk-code" data-type="code"><pre><code class="language-bash"># on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
@@ -79,7 +79,7 @@ claude mcp add brx -- python.exe -m brx_mcp
 </tr>
 <tr>
 <td><code>startgame &lt;addr&gt;</code> · <code>deathmatch &lt;addr&gt;</code> · <code>arena &lt;addr1&gt; &lt;addr2&gt;</code> · <code>fieldstart …</code></td>
-<td>Earlier single-purpose game drivers (the §7e sequence)</td>
+<td>Earlier single-purpose game drivers (the arm sequence)</td>
 </tr>
 <tr>
 <td><code>play &lt;mode&gt; &lt;addr…&gt; [volume=69]</code></td>
@@ -103,6 +103,11 @@ claude mcp add brx -- python.exe -m brx_mcp
 </tr>
 </tbody></table></div>
 <p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/brx_mcp/__main__.py" rel="noopener">mcp/brx_mcp/__main__.py</a> (dispatch table)</p></section>
+<section class="blk blk-spec-sheet" data-type="spec-sheet"><h2 id="diag-game-the-repeatable-diagnostic-game"><code>diag-game</code>: the repeatable diagnostic game</h2><dl><dt>What:</dt><dd><p>a structured pass/fail scorecard of every BLE capability on one tagger: connectivity (ping, firmware, battery), config + spawn echoes, trigger and button events, audio (a sound by id, volume audible at 75), team LEDs, and with a second gun as shooter, damage (armor absorbs, <code>$LIFE</code> heals) and <code>$HIR</code> shooter attribution, plus the grenade Hill/Respawn beacon (<code>$HIR</code> token 2 = 15).</p>
+</dd><dt>Run it:</dt><dd><p><code>python -m brx_mcp diag-game &lt;addr&gt;</code> · <code>… 2guns</code> adds the shooter · <code>… 2guns ir</code> adds the ESP32 IR bridge. Cases a rig cannot serve <strong>skip</strong>, they do not fail; a run is <strong>CLEAN</strong> when nothing failed or errored.</p>
+</dd><dt>How it judges:</dt><dd><p>declarative cases (<code>diag/cases.py</code>) with pure predicates over the parsed receive stream (<code>diag/model.py</code>, unit-tested with no BLE); a human answers y/N where the wire cannot judge (&quot;did you hear it?&quot;, &quot;are the LEDs blue?&quot;). Reports save as JSON under <code>~/.brx-mcp/diag-reports/</code>.</p>
+</dd><dt>Why:</dt><dd><p>a regression baseline. A firmware update or a new tagger? Re-run and diff the scorecard instead of re-deriving &quot;does health-write work?&quot; each session.</p>
+</dd></dl><p class="src"><span>Source:</span> mcp/brx_mcp/diag/ (cases.py, model.py, runner.py), <a href="https://github.com/tony99nyr/open-brx/blob/main/mcp/tests/test_diag.py" rel="noopener">mcp/tests/test_diag.py</a></p></section>
 <section class="blk blk-table" data-type="table"><h2 id="mcp-tools-what-an-agent-can-call">MCP tools (what an agent can call)</h2><div class="table-wrap"><table>
 <thead>
 <tr>
@@ -155,13 +160,13 @@ claude mcp add brx -- python.exe -m brx_mcp
 
 </article>
   </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#cli-commands">CLI commands</a></li><li><a href="#mcp-tools-what-an-agent-can-call">MCP tools (what an agent can call)</a></li><li><a href="#recommended-first-session-safe-order">Recommended first session (safe order)</a></li></ol></div></aside>
+  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#cli-commands">CLI commands</a></li><li><a href="#diag-game-the-repeatable-diagnostic-game">diag-game: the repeatable diagnostic game</a></li><li><a href="#mcp-tools-what-an-agent-can-call">MCP tools (what an agent can call)</a></li><li><a href="#recommended-first-session-safe-order">Recommended first session (safe order)</a></li></ol></div></aside>
 </div>
 <footer class="foot">
   <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.99eb517084.js" defer></script>
+<script src="/assets/site.b967e5eb88.js" defer></script>
 </body>
 </html>

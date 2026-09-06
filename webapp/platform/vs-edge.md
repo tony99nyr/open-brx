@@ -1,6 +1,6 @@
 # Open BRX vs Edge
 _What we match, what we beat, and what we can't do. Honestly._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 Battle Company's **EDGE** (v7.0, Jan 2026) is a mature commercial Windows engine with years of polish, ~6M players and daily arena use. Open BRX is specs plus working software plus a bench-proven Tier 0. The facts below are paraphrased from Battle Company's public pages, and nothing is copied. Open BRX is not affiliated with Battle Company.
 Source: docs/reference/edge-brp.md, docs/VISION.md §Can we supersede Edge
@@ -19,7 +19,7 @@ Source: docs/reference/edge-brp.md, docs/VISION.md §Can we supersede Edge
 | **Per-player HUD** | CallSign phone app (iOS + Android) | BRX Combat HUD: native, blackout night mode ✅ single-gun |
 | **Props / objectives** | Utility Box: one unit, 20+ roles; "Order Activation" chaining | Utility Box design: one box, every objective, MC-programmable 📐; IR emit proven ✅ |
 | **Environmental effects** | Animatronics: lights, smoke, DMX, moving props (closed) | same event model; **native open DMX + scripting** 📐 |
-| **Custom sounds** | 2000+ on-gun SFX, SD card on BRP | 2,166-id bank decoded ✅; USB sound-pack swap on the BRX ✅; unlimited via Companion audio 📐 |
+| **Custom sounds** | 2000+ on-gun SFX, SD card on BRP | 2,477-file bank catalogued ✅; USB sound-pack swap on the BRX ✅; unlimited via Companion audio 📐 |
 | **Marketing / monetisation** | Battle Coin, EDGE Store, Message Center, Themes | none ❌ |
 | **"Enemies" module** | headsets that fight unpaired from a gun | not built ❌ (a differentiating target) |
 | **Hardware niceties (BRP)** | on-gun LCD scoring, hot-swap batteries, flip mag, recoil, sunlight-visible sensors | can't retrofit, the BRX is what it is ❌; the phone or Companion adds the HUD |

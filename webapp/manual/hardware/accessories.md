@@ -1,6 +1,6 @@
 # Grenade and accessories
 _What each add-on physically is. How to use them lives in the Accessories & Stations section._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 _[image HW-07: (see Images table)]_
 

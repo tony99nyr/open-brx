@@ -1,6 +1,6 @@
 # Custom sounds over USB
 _Yes, you can put your own audio on a BRX. No firmware hacking, and fully reversible_
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## The AUDIO folder.
 Hold SELECT while you power on with a USB cable attached, and the tagger becomes a disk drive. You get a firmware file at the root and an `AUDIO` folder of per-sound files: replace a file, replace a sound. This is Battle Company's own update path, confirmed in their Extended User Guide, and the community has used it for Star Wars packs for years.
@@ -30,7 +30,7 @@ Source: docs/reference/community-notes.md · docs/reference/community-notes.md �
 - **Full overlay packs**: a complete Star Wars sound set exists in the owner community (credit David Knox). It replaces weapon, hit and voice files wholesale. 👥
 - **Re-skinning the "reflex" sounds**: the "phone connected" line, the disabled chirp, low-battery. You can't stop them, but you can make them yours (Open BRX plans an "Open BRX connected" line this way). ✅
 - **Grenade audio**: the explosion, flashbang, gas and CTF music you hear from a grenade are gun-bank files (`X`/`H`/`JA` families). Swap those and every grenade "sounds different", with zero grenade modification. ✅👥
-Source: docs/reference/community-notes.md, docs/sound-architecture.md, docs/FOLLOWUPS.md B11, docs/reference/grenade.md
+Source: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, docs/FOLLOWUPS.md B11, docs/reference/grenade.md
 
 ## Policy note.
 Swapping files in `AUDIO` changes stored *content*, not firmware. It is the same mechanism Battle Company's updater uses, and it is reversible. Open BRX's own hard rule is "never modify stock firmware", and sound swaps sit comfortably inside it.

@@ -5,7 +5,7 @@ Last verified: 2026-08-27
 ## Open BRX.
 This is the full manual for the Battle Company BRX tagger and headset. It is also an open-source platform. It turns stock BRX guns into one connected laser tag system. You get real game modes, live scoring, and objectives from a laptop today. A phone HUD and a laptop Mission Control are still being built. No subscription. No firmware mods. No venue Wi-Fi needed.
 
-_[image HOME-01: full-bleed hero (night field, dim red HUD glow; see images.md)]_
+_[image HOME-01: full-bleed hero (night field, dim red HUD glow; see the Images table below)]_
 
 ## Two doors
 - **The Ultimate BRX Manual**: everything about the tagger and headset in one place. You get anatomy, pairing, every weapon, the 2,477-sound bank, repairs, and the full BLE protocol. We built it from the official docs, the community, and our own bench. ✅📖👥 → `/manual`

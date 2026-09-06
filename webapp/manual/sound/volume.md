@@ -1,6 +1,6 @@
 # Volume
 _On-gun 1–5, protocol 0–100, and why "30" is silence_
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## 30 is silence.
 The gun menu offers volume 1–5. Over Bluetooth the same control is a 0–100 scale. On that scale, the gap between "quiet" and "you hear nothing" is smaller than you would think.
@@ -28,6 +28,6 @@ Source: protocol/brx-protocol.md, docs/experiment-log.md #6, CLAUDE.md
 
 ## Safety.
 The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.
-Source: docs/sound-architecture.md, docs/experiment-log.md
+Source: docs/experiment-log.md 2026-08-30 (volume), docs/reference/brx-manual-notes.md
 
 _[diagram SND-06: Horizontal loudness scale 0–100 with the two app defaults (69, 100) marked and a shaded "inaudible for weapon audio" zone below ~45. GENERATE.]_

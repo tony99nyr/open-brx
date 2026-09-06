@@ -1,6 +1,6 @@
 # The headset
 _A wireless sensor band that decides whether your tagger is allowed to shoot._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 The headset is not an accessory. It is half of the system. It catches most tags and shows the shooter that they hit you. The tagger also **refuses to fire when its headset drops mid-game**.
 Source: docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
@@ -27,7 +27,7 @@ Headset facts
 | Extra functions | Short-range scoring without an app, and sensing players who are close by | 📖 |
 | Spares Battle Company sells | Speakers, sensor circuit boards (front/left/right, "HS 2.0"), a 19" 2-pin wire bundle | 👥 |
 | Water | A soaked tagger usually survives after days of drying. **A soaked headset usually does not** | 👥 |
-Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7m §7r, docs/reference/community-notes.md
+Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7m, §7r, docs/reference/community-notes.md
 
 ## Before every game, look for rainbow.
 A headset cycling slowly through rainbow colours is unpaired. Its tagger will quietly refuse to join a hosted game. Five seconds of looking saves the whole round.

@@ -1,7 +1,7 @@
 {
- "built": "2026-09-04T21:53:13.255Z",
+ "built": "2026-09-06T18:20:13.436Z",
  "ok": true,
- "sourceStamp": 1788558781884.0771,
+ "sourceStamp": 1788718795694.8489,
  "sources": [
   "site/build.mjs",
   "site/lib/data.mjs",
@@ -21,14 +21,14 @@
   "docs/manual/README.md",
   "mcp/brx_mcp/mc/weapons.json",
   "docs/reference/weapons.md",
-  "protocol/callsign-extract/Sounds.json"
+  "mcp/brx_mcp/data/sound_catalog.json"
  ],
  "pages": 74,
  "htmlFiles": 74,
  "files": [
   "404.html",
   "404.md",
-  "assets/site.99eb517084.js",
+  "assets/site.b967e5eb88.js",
   "assets/site.de097c8a13.css",
   "changelog.md",
   "changelog/index.html",

@@ -1,6 +1,6 @@
 # Spec sheet and what's in the box
 _One page to print. It lists the exact parts, numbers and kit contents for the tagger, the headset and the grenade._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 _[image HW-11: (what's-in-the-box flat lay, see Images table)]_
 
@@ -17,7 +17,7 @@ _[image HW-11: (what's-in-the-box flat lay, see Images table)]_
 - MCU: PJRC Teensy ✅
 - Battery: 7.4 V ~2,200 mAh Li-ion (2-cell, reversed polarity) or 6×AA; ~8 h play 📖 👥
 - Manufacturer: Laser Tag Pro / Battle Company, Oak Creek, WI 📖
-Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1 §7c + docs/experiment-log.md 2026-08-23 (USB console, Teensy MCU), protocol/brx-protocol.md §7o (sight flash)
+Source: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c + docs/experiment-log.md 2026-08-23 (USB console, Teensy MCU), protocol/session-findings-2026-08.md §7o (sight flash)
 
 ## BRX headset
 - Sensors: IR receiver domes around the band (front/back distinguished on the wire) ✅
@@ -39,7 +39,7 @@ What's in the box (typical retail kit)
 | 8.4 V two-cell smart charger | red → green LED | 📖 |
 | Quick manual (V7) | link: Battle Company's BRX Manual V7 PDF | 📖 |
 | Optional | 6×AA battery holder use, scope, phone bracket, smart grenade | 📖 👥 |
-Source: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md §7c
+Source: docs/reference/brx-manual-notes.md, protocol/session-findings-2026-08.md §7c
 
 ## Official documents
 (linked, not rehosted): Battle Company *BRX Manual V7* (battlecompany.com, 2021) and the *BRX Extended User Guide* (Laser Tag Pro, 2018). The PDFs are the manufacturer's own word. Where we mark ✅, we measured it ourselves.

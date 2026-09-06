@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Captures: recording and decoding the official app","description":"How every fact on these pages was obtained, and how to take the next one. Read this page if you want to record the app yourself.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/captures/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Captures: recording and decoding the official app","item":"https://open-brx.iamrossi.workers.dev/manual/dev/captures/"}]},{"@type":"HowTo","name":"iOS (the one that works; Callsign is effectively iOS-only)","step":[{"@type":"HowToStep","position":1,"text":"Plug the iPhone into a Mac. Open PacketLogger (Xcode additional tools) → File → New iOS Trace. Confirm lines are scrolling before you do anything."},{"@type":"HowToStep","position":2,"text":"Make sure the tagger's headset is on and paired. The app silently drops a headset-less gun and you capture nothing. Get the app's connection icon green first."},{"@type":"HowToStep","position":3,"text":"Drive the app: connect, create/join, arm, play, end. For a differential capture change exactly one setting per trace."},{"@type":"HowToStep","position":4,"text":"File → Export → btsnoop. Two traps: export acts on the frontmost window (easy to re-export an old trace), and a trace that wasn't recording writes a silently useless file."},{"@type":"HowToStep","position":5,"text":"python -m brx_mcp.btsnoop <file> → transcript. python -m brx_mcp.gsetdiff <capA> <capB> [capC] diffs the config frames across raw captures."}]}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Captures: recording and decoding the official app","description":"How every fact on these pages was obtained, and how to take the next one. Read this page if you want to record the app yourself.","url":"https://open-brx.iamrossi.workers.dev/manual/dev/captures/","dateModified":"2026-09-06","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Developer reference","item":"https://open-brx.iamrossi.workers.dev/manual/dev/"},{"@type":"ListItem","position":4,"name":"Captures: recording and decoding the official app","item":"https://open-brx.iamrossi.workers.dev/manual/dev/captures/"}]},{"@type":"HowTo","name":"iOS (the one that works; Callsign is effectively iOS-only)","step":[{"@type":"HowToStep","position":1,"text":"Plug the iPhone into a Mac. Open PacketLogger (Xcode additional tools) → File → New iOS Trace. Confirm lines are scrolling before you do anything."},{"@type":"HowToStep","position":2,"text":"Make sure the tagger's headset is on and paired. The app silently drops a headset-less gun and you capture nothing. Get the app's connection icon green first."},{"@type":"HowToStep","position":3,"text":"Drive the app: connect, create/join, arm, play, end. For a differential capture change exactly one setting per trace."},{"@type":"HowToStep","position":4,"text":"File → Export → btsnoop. Two traps: export acts on the frontmost window (easy to re-export an old trace), and a trace that wasn't recording writes a silently useless file."},{"@type":"HowToStep","position":5,"text":"python -m brx_mcp.btsnoop <file> → transcript. python -m brx_mcp.gsetdiff <capA> <capB> [capC] diffs the config frames across raw captures."}]}]}</script>
 </head>
 <body class="">
 <a class="skip" href="#main">Skip to content</a>
@@ -34,7 +34,7 @@
 <header class="page-head">
 <h1>Captures: recording and decoding the official app</h1>
 <p class="subtitle">How every fact on these pages was obtained, and how to take the next one. Read this page if you want to record the app yourself.</p>
-<p class="meta"><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/dev/captures.md">Markdown</a></p>
+<p class="meta"><span class="lv">Last verified <time datetime="2026-09-06">2026-09-06</time></span><a class="md-link" href="/manual/dev/captures.md">Markdown</a></p>
 </header>
 <section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="method"><strong class="co-title">Method.</strong><p>Almost everything here came from three instruments: BLE HCI captures of the official Callsign app (Android HCI snoop; iOS via macOS PacketLogger), a VS1838B/ESP32 IR receiver+emitter, and a live tagger driven one token at a time. Captures are decoded with <code>python -m brx_mcp.btsnoop &lt;file&gt;</code> into <code>&gt;&gt;</code> (host→tagger) / <code>&lt;&lt;</code> (tagger→host) transcripts.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/captures/README.md" rel="noopener">protocol/captures/README.md</a>; <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/capture-runbook.md" rel="noopener">docs/capture-runbook.md</a></p></aside></section>
 <section class="blk blk-steps" data-type="steps"><h2 id="ios-the-one-that-works-callsign-is-effectively-ios-only">iOS (the one that works; Callsign is effectively iOS-only)</h2><div class="steps"><ol>
@@ -44,7 +44,7 @@
 <li><strong>File → Export → btsnoop</strong>. Two traps: export acts on the <em>frontmost</em> window (easy to re-export an old trace), and a trace that wasn&#39;t recording writes a silently useless file.</li>
 <li><code>python -m brx_mcp.btsnoop &lt;file&gt;</code> → transcript. <code>python -m brx_mcp.gsetdiff &lt;capA&gt; &lt;capB&gt; [capC]</code> diffs the config frames across raw captures.</li>
 </ol>
-</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/capture-runbook.md" rel="noopener">docs/capture-runbook.md</a> (Job 2); <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/brx-protocol.md" rel="noopener">protocol/brx-protocol.md</a> §7m; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/captures/README.md" rel="noopener">protocol/captures/README.md</a></p></section>
+</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/capture-runbook.md" rel="noopener">docs/capture-runbook.md</a> (Job 2); <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/session-findings-2026-08.md" rel="noopener">protocol/session-findings-2026-08.md</a> §7m; <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/captures/README.md" rel="noopener">protocol/captures/README.md</a></p></section>
 <section class="blk blk-steps" data-type="steps"><h2 id="android-partial-the-app-rarely-holds-a-connection-here">Android (partial; the app rarely holds a connection here)</h2><div class="steps"><ol>
 <li>Enable <strong>Developer options → Bluetooth HCI snoop log</strong>.</li>
 <li>Run the app; then <code>adb bugreport</code> (5–10 min; keep the phone still). The btsnoop log rides inside.</li>
@@ -66,22 +66,22 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 </thead>
 <tbody><tr>
 <td><code>2026-08-23-ios-callsign-game-start.txt</code></td>
-<td>The full working arm sequence (§7e)</td>
+<td>The full working arm sequence (findings §7e)</td>
 </tr>
 <tr>
 <td><code>2026-08-23-ios-callsign-two-tagger-combat.txt</code></td>
-<td><code>$HIR</code>/<code>$HP</code> damage, death, host-driven respawn (§7f)</td>
+<td><code>$HIR</code>/<code>$HP</code> damage, death, host-driven respawn (findings §7f)</td>
 </tr>
 <tr>
 <td><code>2026-08-23-gset-respawn15.txt</code> / <code>-respawn30.txt</code> / <code>-respawn05.txt</code></td>
-<td>Byte-identical <code>$GSET</code> at three respawn values; <code>respawn15</code> also contains a complete game ending (§7n)</td>
+<td>Byte-identical <code>$GSET</code> at three respawn values; <code>respawn15</code> also contains a complete game ending (findings §7n)</td>
 </tr>
 <tr>
 <td><code>2026-08-23-no-headset-disconnects.txt</code></td>
-<td>App ritual completes, zero frames back, hangs up ~1.2 s later (§7m)</td>
+<td>App ritual completes, zero frames back, hangs up ~1.2 s later (findings §7m)</td>
 </tr>
 </tbody></table></div>
-<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/captures/README.md" rel="noopener">protocol/captures/README.md</a></p></section>
+<p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/captures/README.md" rel="noopener">protocol/captures/README.md</a>; "findings" = <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/session-findings-2026-08.md" rel="noopener">protocol/session-findings-2026-08.md</a></p></section>
 <section class="blk blk-steps" data-type="steps"><h2 id="ir-capture-rig-esp32-s3-vs1838b">IR capture rig (ESP32-S3 + VS1838B)</h2><div class="steps"><ol>
 <li>A phone camera <strong>cannot</strong> see the ~5 mA IR LED. Judge with the receiver, never a camera.</li>
 <li>Turn the sketch&#39;s per-frame RAW dump <strong>off</strong> (<code>r</code>) for any capture that matters; it takes ~15–20 ms at 115200 and truncates the next frame into a prefix.</li>
@@ -101,6 +101,6 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
   <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
 </footer>
 <div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.99eb517084.js" defer></script>
+<script src="/assets/site.b967e5eb88.js" defer></script>
 </body>
 </html>

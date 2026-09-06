@@ -9,7 +9,7 @@ Last verified: 2026-08-27
 4. Driving a gun from your own code? It is `$GSET` **token 2**, `outdoorMode`. A second field,
    token 3 `gunLaserRegion`, carries the IR power limit. Both are in the
    [developer reference](/manual/dev/gset-pset). 🔍
-Source: docs/reference/brx-extended-user-guide.md, docs/reference/callsign-ui.md, protocol/brx-protocol.md §7g
+Source: docs/reference/brx-extended-user-guide.md, docs/reference/callsign-ui.md, protocol/session-findings-2026-08.md §7g
 
 ## What changes
 | | Indoor | Outdoor |

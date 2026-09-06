@@ -1,6 +1,6 @@
 # `$WEAP`: the weapon definition
 _Forty-odd comma-separated tokens that make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This page maps every token, so you can build a weapon of your own._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## A weapon is data, not firmware.
 The gun has no weapons baked in; the host sends a full `$WEAP` frame into one of **six slots (0–5)**. The field *names* come from the Callsign app's metadata (declaration order = wire order); the *positions and meanings* below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.
@@ -25,7 +25,7 @@ _[diagram DEV-05: Token ruler t0–t42 colour-coded by block: identity · damage
 | 2 | n/a | 100 | 100 | (unknown) | n/a |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard · 1 MedicHeal · 2 ActivateShield · 3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb · 10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. | ✅ (position) 🔍 (enum names) |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. | 🔍 |
-| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (§7r addendum). | ✅ |
+| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (protocol/brx-protocol.md §6). | ✅ |
 | 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (applies `$GSET` t7, ×1.5 at the shipped t7=50). | 🔍 |
 | 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | n/a | n/a | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. | 🔍 |
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
@@ -59,7 +59,7 @@ _[diagram DEV-05: Token ruler t0–t42 colour-coded by block: identity · damage
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. | 🔍 |
 | 41 | gunRangeIndoor | 75 | 75 | **The gun's INDOOR IR range**, as a percent. The APK field order places `gunRangeIndoor` here, between `ammoReserv` (t40) and `extraHeadsetRangeIndoor` (t42), and it reads 75 on all eighteen guns and **20 on melee**, which is the direction physics demands. `$GSET` token 2 selects whether the indoor or outdoor profile is live. **Lowering this is the most promising route to a weaker indoor beam** for tight spaces where bounced IR registers hits. Untested on the bench. | 🔍 |
 | 42 | extraHeadsetRangeIndoor | n/a | n/a | The **headset's** indoor range, separate from the gun's (t41). 30/30/40 on the three t1=2 weapons, blank elsewhere. There are four range fields in all: gun and headset, each with an indoor and an outdoor value. | ✅ (correlation) |
-Source: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 $WEAP token probes; charge modes; overheat solved)
+Source: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6 (bench-proven tokens), protocol/session-findings-2026-08.md §6.1, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 $WEAP token probes; charge modes; overheat solved)
 
 ## Two positions that bit us.
 (1) The metadata's field order has `rateOfFire` before `weaponSwapDelay`; the wire has the *rate* at **t14** and the constant 850 at t15. A compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons.
@@ -92,7 +92,7 @@ Source: protocol/callsign-extract/protocol-classes.md (weapon signatures, cap14�
 
 ## Overheat is a balance lever on any weapon.
 Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock `20,150`), and the live heat gauge streams in `$ALCD` token 5, climbing ~8/shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol.
-Source: protocol/brx-protocol.md §7j, overheat section; docs/experiment-log.md (overheat mechanism solved)
+Source: protocol/session-findings-2026-08.md §7j, overheat section; docs/experiment-log.md (overheat mechanism solved)
 
 - **Can I build a semi-auto rifle?** Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto "may not exist" predates the t20 proof.)
 - **What bounds a custom weapon?** The firmware's behaviour vocabulary: the DamageType and PowerType enums, ReloadType, six slots, and the 2,477 on-gun sound ids. Any *combination* with arbitrary numbers is buildable; a brand-new damage *behaviour* is not.

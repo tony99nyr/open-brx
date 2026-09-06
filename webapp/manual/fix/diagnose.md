@@ -6,7 +6,7 @@ Last verified: 2026-08-27
 Source: docs/gotchas.md · docs/reference/community-notes.md · docs/reference/brx-manual-notes.md
 
 **Three things to know before any ladder.** (1) The tagger keeps no game state. If it is not in a started game, it will not shoot anyone. ✅ (2) The gun locks when its headset disconnects *mid-game*. That is anti-cheat. 📖 (3) A dead player's trigger only clicks. That is a game rule, not a fault. ✅
-Source: protocol/brx-protocol.md §7n §7r · docs/reference/brx-manual-notes.md (Headset §) · docs/experiment-log.md (2026-08-25 "dead gun can't fire")
+Source: protocol/session-findings-2026-08.md §7n, §7r · docs/reference/brx-manual-notes.md (Headset §) · docs/experiment-log.md (2026-08-25 "dead gun can't fire")
 
 ## "Won't fire": the ladder
 1. **Is the headset slow-blinking a rainbow?** → yes → It is disconnected. The gun will not join a game or fire until the headset links. Power the headset on and wait for it to settle to team colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles, re-pair (→ *Headset, pairing & Bluetooth*). ✅📖

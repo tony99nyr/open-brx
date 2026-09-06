@@ -1,6 +1,6 @@
 # The IR word: what a shot carries through the air
 _A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods' base-station source and verified on our own receiver and emitter. Read this page if you are building your own IR sender or receiver._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## Credit.
 The layout was decoded from **LaserTagMods' NRFL-Bases** `node1.ino` (a referee-free domination base that receives BRX shots), then bench-verified: timings, bit count, field offsets and the parity rule were all confirmed by pushing known `$WEAP` frames over BLE and watching only the expected bits move. A stock tagger then **accepted a fully synthetic word** from our emitter (invented player 42 / team 2 / damage 33 landed as a real `$HIR` and killed the player).
@@ -12,7 +12,7 @@ Source: protocol/brx-ir-protocol.md
 - **Bits:** each bit is a LOW pulse; **long ≈ 1000 µs = 1** (measured 990–994), **short ≈ 500 µs = 0** (489–512), spaces 489–512 µs; decision threshold ~750 µs.
 - **End of frame:** a trailing short pulse (< 250 µs in node1's test).
 - ⚠ A `> 1500 µs` sync gate is not BRX-unique (a Sony SIRC remote's 2390 µs header passes it). Bound sync to ~1800–2200 µs and require 25 bits + the parity rule.
-Source: protocol/brx-ir-protocol.md; protocol/brx-protocol.md §7c (laser mW)
+Source: protocol/brx-ir-protocol.md; protocol/session-findings-2026-08.md §7c (laser mW)
 
 ## Word layout (transmit order after sync; 25 bits)
 | Field | Bits | Offset | Meaning | Bench evidence | Conf |
@@ -62,7 +62,10 @@ Source: protocol/brx-ir-protocol.md (rule); illustrative implementation
 | Rocket Launcher | proto 10, magnitude 115 | | ✅ |
 | Melee (gyro swing, native game) | proto 13, subtype 1, magnitude 90 | Subtype 1 = Rifle Bash | ✅ |
 | Supremacy Sentinel death-nova (headset) | proto 10, magnitude 125, player/team = the **dying** player | Out-damages the rocket; credits kills to the corpse | ✅ |
-Source: protocol/brx-protocol.md §7r addendum; docs/experiment-log.md
+| Smart Grenade, Respawn station: boot word | proto 15, player 0, team 0, magnitude 56 | Sent once at power-up; before a game starts it arms a tagger to the station (self-respawn off) | ✅ |
+| Respawn station: beacon | proto 15, player 0, team = owner, magnitude 6 | Every ~2.5 s; revives a dead, armed gun of that team (4/4; wrong team 0/1). Does not arm a running game | ✅ |
+| Respawn station: button | proto 15, team = owner, magnitude 6, crit 1 | The beacon with the crit bit set; arms a tagger mid-game. All three were replayed from our ESP32 emitter with the grenade out of the building (2026-09-04); host-driven games ignore them | ✅ |
+Source: protocol/brx-ir-protocol.md (native words table), docs/reference/grenade.md §Respawn Station mode, docs/experiment-log/2026-09.md (2026-09-04)
 
 ## Headset emission cannot be forced over BLE.
 `$IRTX`, `$HFIRE`, `$MELEE` and `$BHIT` produced zero IR with a receiver control passing before and after. The headset emits only for a physical melee swing in a native game and for the Sentinel death-nova.

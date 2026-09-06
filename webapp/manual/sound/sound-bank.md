@@ -1,23 +1,23 @@
 # The sound bank
-_All 2166 ids the BRX will play, by family, with durations and the meanings the community has pinned_
-Last verified: 2026-08-27
+_All 2,477 sounds on the gun, by family, with durations, categories and the words each voice line says_
+Last verified: 2026-09-06
 
-## 2166 sounds. 78 minutes. One list.
-We recovered the complete set of valid sound ids from the official app's own configuration file, `Sounds.json`. Nothing here was guessed by ear. It is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
-Source: protocol/callsign-extract/sound-bank.md, docs/experiment-log.md #20
+## 2,477 sounds on the gun. One list.
+We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and transcribed the voice lines. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+Source: docs/reference/sound-catalog.md, protocol/callsign-extract/sound-bank.md, docs/experiment-log/2026-09.md (2026-09-03)
 
-- **2166** ids in the bank
-- **~4,700 s** (78 min) total audio
-- **136** `E_`-prefixed alternate takes of existing ids
+- **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
+- **~4,700 s** (78 min) of audio across the app's 2,166-id list
+- **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed) · **Shortest:** `N1A` at 0.04 s
-Source: protocol/callsign-extract/Sounds.json (computed)
+Source: docs/reference/sound-catalog.md, protocol/callsign-extract/Sounds.json (computed)
 
 ## How to read an id.
 The first letters are a family prefix (what kind of sound), and the rest is an index. `R02` is the second entry in the R (rifle-shot) family, and `V3A` is line A of the Heavy (V3) voice. An `E_` prefix marks an alternate take of the base id, so `E_VB17` is a variant of `VB17`. The `E_` set covers the VB, VA, J, K, N, X and VS families. Ids are the app's own names, and the protocol has no friendlier label.
 Source: protocol/callsign-extract/sound-bank.md
 
-## Category map: every family in the bank
-(prefix meanings restated from David Knox's audio map, counts computed from the bank file; 👥🔍)
+## Category map: every family in the app's list
+(prefix meanings restated from David Knox's audio map, counts computed from the app's `Sounds.json`; the on-gun catalog adds the `VX` and `VZ` voice families, `H102` to `H155` and more; 👥🔍)
 | Family | What it holds | Ids | Typical length |
 |---|---|---|---|
 | `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5–3 s (countdowns up to 11 s) |
@@ -52,8 +52,8 @@ Source: protocol/callsign-extract/sound-bank.md
 | `L` | Electrical | 7 | 0.4–4.5 s |
 | `Q` | Silencers | 7 | 0.2–0.9 s |
 | `O` | Big guns / ordnance | 6 | 1.5–2.5 s |
-Sums to 2166.
-Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extract/sound-bank.md (DK prefix legend)
+Sums to 2,166, the app's list; the gun holds 2,477 files.
+Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extract/sound-bank.md (DK prefix legend), docs/reference/sound-catalog.md
 
 ## Thirty-odd ids worth knowing
 (the confirmed core; ✅ = heard on our bench or in a capture, 👥 = DK map)
@@ -92,10 +92,10 @@ Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extr
 | `G10` | G | SMG-x3 fire | 1.32 s | 👥 |
 | `V3I` | V3 | "Get some": Heavy respawn line | 1.53 s | ✅ |
 | `VA3` / `VA5` | VA | Male scream / yell (death-cue swap candidates) | 1.27 / 1.29 s | 👥 |
-Source: protocol/callsign-extract/sound-bank.md "Confirmed meanings" + DK map, protocol/brx-protocol.md §7o/§7r, docs/experiment-log.md 2026-08-26, mcp/brx_mcp/sounds.py
+Source: protocol/callsign-extract/sound-bank.md "Confirmed meanings" + DK map, protocol/session-findings-2026-08.md §7o, §7r, docs/experiment-log.md 2026-08-26, mcp/brx_mcp/sounds.py
 
 ## Sound Bank Explorer
-the full 2166-row table, built from the repo data file at publish time (see Interactive ideas for the full spec). Columns: id · family · meaning (blank when unknown) · meaning status (known / unknown) · duration · provenance (✅ / 👥) · copy button. Every id, filename and duration is published. A meaning is shown only when it is known.
-Source: protocol/callsign-extract/Sounds.json (data), protocol/callsign-extract/sound-bank.md (meanings)
+the full table of what is on the gun (2,477 rows, plus the 157 app-only ids flagged as not on the gun), built from `mcp/brx_mcp/data/sound_catalog.json` at publish time (see Interactive ideas for the full spec). Columns: id · family · meaning (blank when unknown) · meaning status (known / unknown) · duration · on gun / app only · provenance (✅ / 👥) · copy button. Every id, filename and duration is published. A meaning is shown only when it is known.
+Source: mcp/brx_mcp/data/sound_catalog.json (data), docs/reference/sound-catalog.md, protocol/callsign-extract/sound-bank.md (DK meanings)
 
 _[diagram SND-03: Treemap of the bank by family, area = number of ids, one accent for voice families. GENERATE from the counts above.]_

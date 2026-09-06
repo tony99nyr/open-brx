@@ -40,6 +40,6 @@ Source: docs/reference/community-notes.md
 - **The phone app connects, then drops within a couple of seconds.** The app needs a paired headset and quietly disconnects without one. The gun is fine. Get the headset lit before you open the app. ✅ (
 - **Only some guns joined the phone game.** A gun whose headset is off or unpaired (slow rainbow) refuses to join, and gives no error. Eyeball every headset before you start. Before the game a paired headset shows team colour, and it only goes dark once play begins. ✅
 - **It paired yesterday and not today.** That is the headset battery. It charges from any USB 5 V. 📖
-Source: protocol/brx-protocol.md §7m) · docs/reference/community-notes.md, protocol/brx-protocol.md §7m, docs/gotchas.md, docs/field-process.md
+Source: protocol/session-findings-2026-08.md §7m) · docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7m, docs/gotchas.md, docs/field-process.md
 
 _[image OPS-06: ]_

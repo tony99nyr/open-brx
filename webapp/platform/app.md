@@ -1,6 +1,6 @@
 # Get the app
 _The Android test build of the phone HUD: one phone, one gun, over Bluetooth._
-Last verified: 2026-08-27
+Last verified: 2026-09-06
 
 ## This is a test build, not a release.
 The BRX Combat HUD is still being built, and what is below is a **debug build**. It sideloads and runs, but it is signed with Android's throwaway debug key, so a future release-signed build will not install over it (uninstall first). It is also **debuggable**, which is what `debug` means to Android: anything attached over USB debugging can inspect it and read its data. Fine on your own phone at the bench; a reason not to hand this build to a stranger. It never touches the tagger's firmware: everything it does goes over the documented Bluetooth serial protocol, and a power-cycle restores any gun.
