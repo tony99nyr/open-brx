@@ -2507,3 +2507,9 @@ so several of these are settled from data rather than recollection.
   (the RECAP history picker), so it can sum kills / deaths / assists per player across the session and carry them
   in the `score` push (`session_totals`); the HUD then shows MC's figure when linked and its own when not, and the
   two numbers agree with the laptop's recap. Server row for the brx session; HUD reads it when present.
+- **F25 · The kill strip says "CONFIRMED BY MISSION CONTROL" — Tony asked whether every kill is (HUD review 2026-09-04).**
+  Today it is true by construction: the KILL moment only fires from MC's `feedback {kind:"kill"}` push, so a kill the
+  phone never hears about from MC never shows at all (MC is not live mid-match; a player out of Wi-Fi sees no kill
+  confirms until they are back in range — see `mc-not-live-during-gameplay`). Open call for Tony: keep the line, or
+  replace it with something that does not name MC (e.g. "ELIMINATION" alone) so an out-of-range player is not told
+  their kills are "unconfirmed". One string in `hud.js` `_kill`; no wire change.
