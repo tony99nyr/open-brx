@@ -2,7 +2,7 @@
 end-to-end through the SimGame harness (real GameDriver + FakeTaggers, no BLE).
 
 Each scenario asserts the CORRECT behaviour promised by the engine docstrings +
-docs/m0-game-engine.md:
+the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06):
   * Infection (survival.py): a dead human respawns onto the INFECTED team (host flips
     $TID); last human falling ends the game (infected win); any human death flips the
     victim (regardless of who shot them); the win check is among-HUMANS (by team), not

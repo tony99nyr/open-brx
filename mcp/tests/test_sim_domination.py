@@ -2,7 +2,7 @@
 the full stack with the SimGame harness (GameConfig → GameDriver → engine →
 Action→frame execution), no hardware.
 
-Asserts the CORRECT behavior per DominationEngine's docstring + docs/m0-game-engine.md:
+Asserts the CORRECT behavior per DominationEngine's docstring + the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06):
   * N control points; each point a team owns scores 1 pt/s for that team, over TICKS.
   * Win at score_target point-seconds, OR (on a game_time_s clock) the most-held-time
     leader wins; an equal split is a draw; nobody-ever-held is a draw.

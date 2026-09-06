@@ -5,7 +5,9 @@ deciding where their change belongs. Read this before the spec.
 
 Open BRX is not one program. It is **three tiers of hardware that never all talk to each other at
 once**, and almost every design decision in this repo follows from that. This page draws the
-connections, states the limit on each one, and cites where the fact comes from.
+connections and says why. **The tables of links, counting limits, failure modes and proven-vs-specified status
+live once, dated and status-marked, in the public manual** (`manual/07-platform.md`, /platform/architecture
+and /platform/status); this page links them rather than restating them (2026-09-06).
 
 > **Legend:** ✅ proven on real hardware · ⚠ partly proven · ⬜ specified and software-tested, **not**
 > yet run on hardware. The distinction is load-bearing here — see §7.
@@ -46,7 +48,7 @@ The four facts that set the trap, each non-negotiable:
    last `$HIR`). So the scorekeeper can never be the gun. (`protocol/brx-protocol.md` §7n; ADR-0001.)
 3. **Native feel and host control are mutually exclusive** — until you drive the feel yourself.
    The green-sight flash and killstreak audio *are* BLE-drivable (`$SFLASH` + the token-4 `$PLAY`
-   slot, §7o), **but only by a host connected to that gun at the instant of the kill**.
+   slot), **but only by a host connected to that gun at the instant of the kill.**
 4. **The field is offline and dispersed.** Mission Control is a stationary base. Its BLE reaches the
    guns only when players are *at* the base — setup and recap. (ADR-0001 §Context 5.)
 
@@ -72,43 +74,27 @@ flowchart LR
       G2["BRX tagger<br/>+ headset"]
       PH2 <-->|"BLE · ONE gun per phone"| G2
     end
+    ST["Utility phone<br/>(respawn station)<br/>BLE advert only"]
   end
   MC <-.->|"field Wi-Fi · WebSocket<br/>best-effort, store-and-forward"| PH1
   MC <-.->|"field Wi-Fi · WebSocket"| PH2
+  MC <-.->|"Wi-Fi at muster only<br/>(station_config)"| ST
+  ST -.->|"BLE advert · presence"| PH1
   G1 -->|"IR shot · line of sight"| G2
   G2 -->|"IR shot · line of sight"| G1
 ```
 
 **Solid line = must hold. Dashed line = allowed to drop.** That is the whole resilience model: the
 BLE link rides the player and must survive the match; the Wi-Fi link may come and go, and events
-queue locally until it returns.
+queue locally until it returns. Stations (utility phones) are passive beacons once armed and never
+connect to anything.
 
 **There is deliberately no line from Mission Control to any gun during play.**
 
-### Every link, and what limits it
-
-| Link | Transport | Limit | Source |
-|---|---|---|---|
-| Gun ↔ headset | vendor link | headset must be present or the gun drops BLE entirely | `brx-protocol.md` §7r |
-| **Node (phone) ↔ gun** | **BLE** | **one gun per node**, link must hold all match | ADR-0001; `spec/node.md` |
-| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | `spec/net.md`; ADR-0002 |
-| Operator ↔ Mission Control | HTTP, localhost or LAN | `:8765` UI, `:8766` node socket | `field-runbook-mc.md` §0 |
-| Gun → gun | **IR**, line of sight | the only player-to-player channel | `protocol/brx-ir-protocol.md` |
-| Laptop ↔ gun | BLE | in **this** (Tier-1) topology, setup and recap only — never during play. In Tier 0 (§3) the laptop *does* hold gun links all match. | ADR-0001 §Context 5 |
-| Laptop ↔ gun | **USB** | one-time armory setup per gun | `spec/README.md` phase 0 |
-
-### Counting limits
-
-| Thing | Limit | Why |
-|---|---|---|
-| Guns per BLE radio | **~5–7 links at ~10–30 m** | ADR-0002 §Context 1 |
-| Guns per phone node | **exactly 1** | ADR-0001; the link rides one player |
-| Players per game | **63** | the gun accepts `$PSET` ids **0–63**; Open BRX reserves 0, so 1–63 are playable (`mc/types.py`) |
-| Native teams | **4** | `$TID` is masked to 2 bits |
-
-> ⚠️ **A documented disagreement.** ADR-0002 says one BLE central holds "~5–7 links at ~10–30 m";
-> `build-tiers.md` Tier 0 says "one radio reaches ~7–10 taggers". Both are estimates, neither is
-> cited to a measurement, and nobody has run the test. Treat 5–7 as the planning number.
+**Every link, what limits it, and the counting limits** (guns per radio, players per game = 63, native teams =
+4): the two tables at `manual/07-platform.md` → /platform/architecture ("Every link" and "Counting limits"),
+each row status-marked and sourced. The wire itself is `spec/contracts.md` §5; the gun↔headset and
+config-survival facts are `protocol/session-findings-2026-08.md` §7r.
 
 ---
 
@@ -157,8 +143,9 @@ scoring, respawn, frag limit, correct winner, BLE holding the whole match
 yard, a small field.
 
 **Tier 1 is what buys you a real field**, and it is the thinly-tested half. At the bench, one phone
-has gone as far as MC pushing a weapon try-out that fired a real gun — but not a whole match, and
-never a *field* of phones on a router-hosted LAN with a dispersed timed start. See §7 line-by-line.
+has gone as far as MC pushing a weapon try-out that fired a real gun, and a phone respawn station revived a
+dead gun (2026-09-04) — but not a whole match, and never a *field* of phones on a router-hosted LAN with a
+dispersed timed start. See §7.
 
 ---
 
@@ -166,14 +153,15 @@ never a *field* of phones on a router-hosted LAN with a dispersed timed start. S
 
 The phase names below are this project's own vocabulary, defined in
 [`spec/README.md`](spec/README.md) §3: **armory** = one-time USB setup per gun · **muster** =
-everyone connects and reports ready · **kit** = assigning names, teams and weapons · **lobby** =
-the config is pushed to each gun · a **FrameBundle** is that per-player bundle of gun commands.
+everyone connects and reports ready · **games** = the host picks the game · **kit** = assigning numbers,
+teams, loadouts · **lobby** = the config is pushed to each gun · a **FrameBundle** is that per-player bundle
+of gun commands.
 
 ```mermaid
 flowchart LR
   A["0 · ARMORY<br/>USB to each gun<br/>one time, at home"]
-  B["1 · MUSTER<br/>node-gun BLE UP<br/>node-MC Wi-Fi UP"]
-  C["2 · BUILD<br/>host authors the game<br/>no guns involved"]
+  B["1 · MUSTER<br/>node-gun BLE UP<br/>node-MC Wi-Fi UP<br/>stations armed"]
+  C["2 · GAMES<br/>host picks the game<br/>no guns involved"]
   D["3 · KIT<br/>Wi-Fi UP · BLE UP<br/>try-out pushes real frames"]
   E["4 · LOBBY<br/>MC pushes the FrameBundle;<br/>each node writes it to its gun"]
   F["5 · DISPERSED START<br/>players walk out of range;<br/>each node counts down LOCALLY<br/>no signal needed at T-0"]
@@ -182,12 +170,9 @@ flowchart LR
   A --> B --> C --> D --> E --> F --> G --> H
 ```
 
-In order: **0 armory** (USB, once per gun) → **1 muster** → **2 build** → **3 kit** → **4 lobby** →
-**5 dispersed start** → **6 live play** → **7 recap**.
-
 The interesting phase is **5**. The match starts on a wall-clock time agreed in advance, and each
 node counts itself down. No "go" signal crosses the field, because at T-0 there may be no network
-left to cross it.
+left to cross it. (`spec/start-sequence.md`.)
 
 ---
 
@@ -210,7 +195,9 @@ flowchart TB
 
 So on a large field, with patchy coverage: **you always know you died. You may not learn you got a
 kill until you walk back into range.** The spec calls this "coverage honesty"
-([`spec/README.md`](spec/README.md) §3, A4.8) and it is a deliberate trade, not a bug.
+([`spec/README.md`](spec/README.md) §2, contracts A4.8) and it is a deliberate trade, not a bug. Since
+2026-09-04 the rule is broader (contracts A11.4): the node fires every event its own gun can witness from the
+bundle it already holds; MC pushes only what no single gun can know.
 
 Final results are never wrong, only late — kills live in the *victims'* reports, so a scoreboard is
 provisional until every node has flushed.
@@ -219,39 +206,23 @@ provisional until every node has flushed.
 
 ## 6. What happens when things break
 
-| Failure | What happens | Where |
-|---|---|---|
-| Field Wi-Fi drops | Nodes keep playing. Events queue locally and flush on return. | `spec/net.md` |
-| BLE drops mid-match | The node reconciles on reconnect (live: a 3 s disarmed re-arm, no heal; lobby/armed: head re-write); **config survives a BLE drop** ✅ | `brx-protocol.md` §7r · node.md §3.10 |
-| Gun is power-cycled | Config is **wiped**; a zeroed `$LCD` is the node's tell to re-push ✅ | `brx-protocol.md` §7r |
-| Phone dies | That player is out. One phone = one gun = one node, with no failover. | ADR-0001 |
-| Node never returns | The recap stays provisional — that player's kills are missing. | `spec/README.md` §3 |
+The failure table (Wi-Fi drops, BLE drops mid-match, a power-cycled gun, a dead phone, a node that never
+returns, a headset off) is at `manual/07-platform.md` → /platform/architecture ("What happens when things
+break"). The mechanisms behind each row: `spec/contracts.md` §5a (store-and-forward), `spec/node.md` §3.10
+(the live-rejoin reconcile: a 3 s disarmed re-arm that never heals; lobby/armed rejoins re-write the head),
+`protocol/session-findings-2026-08.md` §7r (config survives a BLE drop, a power-cycle wipes it, headset off
+drops the link).
 
 ---
 
 ## 7. Proven vs. specified — read this before trusting a diagram
 
-| Element | Status |
-|---|---|
-| Laptop ↔ gun BLE, full game, scoring, respawn, winner | ✅ 2 guns, 2026-08-25 |
-| Synchronised start across guns | ✅ 3 guns (FOLLOWUPS B10) |
-| Config survives BLE drop; power-cycle wipes it | ✅ bench |
-| One phone ↔ one gun over BLE | ✅ single-gun bench |
-| **One** phone ↔ MC ↔ gun, at the bench | ⚠ reached hello → roster bind → an MC-pushed **try-out that fired the real gun**. The lobby config push was "next when we stopped" (`experiment-log.md`) — so: not a whole match. |
-| **More than one phone** on the MC LAN | ⬜ never run |
-| A router-hosted field LAN (rather than the bench) | ⬜ never run |
-| A dispersed, time-synced start on a real field | ⬜ never run |
-| The **local timed end** | ⬜ "not exercised yet" (`experiment-log.md`; `verification-checklist.md`) |
-| Store-and-forward recovery across a real outage | ⬜ never run |
-| Hold-across-disperse for 5 min | ⚠ only 2 min done (`brx-protocol.md` §7r) |
-| iOS BLE on a locked phone; phone auto-rejoin | ⬜ never run |
-| The ESP32 Companion and the Utility Box | ⚠ **neither is built** — but the Utility Box's IR emit is hardware-proven: a stock tagger accepted a fully synthetic shot from an ESP32 + LED rig (`FOLLOWUPS.md` B4/B13). The Companion is spec only. |
-
-> ⚠️ **Other docs summarise this differently** — `HANDOFF.md` calls the phone path "field-verified"
-> (while noting soak/scale certification is still open), whereas `README.md` and
-> [`field-runbook-mc.md`](field-runbook-mc.md) have called it unverified. Both are describing the same
-> thing at different resolutions. The table above is the resolution to trust: **one phone got as far
-> as a try-out that fired a real gun; nobody has run a whole match, and never a field of phones.**
+The dated status board is `manual/07-platform.md` → /platform/status (and its "Honest gaps" list). The
+resolution to trust, in one line: **Tier 0 is proven on two guns; one phone got as far as a try-out that
+fired a real gun and a station that revived one; nobody has run a whole match on phones, and never a field of
+phones over a router-hosted LAN, a dispersed timed start, the local timed end, or store-and-forward recovery
+across a real outage.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
+utility *phone* station is built and bench-proven.
 
 **A green test suite is not a working field.** That distinction is stated in FOLLOWUPS B15 in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
@@ -260,8 +231,8 @@ project's own words: "a green test ≠ 'works on real guns' — that's earned on
 
 ## Where to go next
 
-- **You own guns and want to play** → [`build-tiers.md`](build-tiers.md) for what each budget buys,
-  then the `brx-mcp` quickstart in the [root README](../README.md).
+- **You own guns and want to play** → `manual/07-platform.md` /platform/build-tiers for what each budget
+  buys, then the `brx-mcp` quickstart in the [root README](../README.md).
 - **You're running a match** → [`field-runbook-mc.md`](field-runbook-mc.md).
 - **You're changing the code** → [`spec/README.md`](spec/README.md), then
   [`spec/contracts.md`](spec/contracts.md).

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-08-25
 - **Deciders:** Tony (owner)
-- **Related:** `docs/adr/0001-companion-rider-architecture.md`, `docs/spec/mission-control.md`,
+- **Related:** `docs/adr/0001-companion-rider-architecture.md`, `mcp/brx_mcp/mc/API.md` + `docs/spec/design/mission-control.md` (the MC spec, formerly `docs/spec/mission-control.md`),
   `docs/adr/0003-native-app-over-web-bluetooth.md`, memory `mc-not-live-during-gameplay`.
 
 ---

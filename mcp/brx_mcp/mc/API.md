@@ -58,6 +58,9 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `GET /api/modes` | → `ModeInfo[]` `{mode, name, abbr, desc, brief, teams_text, win_text, respawn_text, defaults: GameConfig}` | any |
 | `POST /api/loadout/pool` | `{loadout_policy, mode?}` (partial policy ok) → `{policy, pool: LoadoutPool}` — preview a DRAFT ruleset's allowed ids for the game designer; nothing applied | any |
 | `GET /api/weapons` | → `WeaponView[]` `{weapon_id, name, cls, clip, mags, reserve, reload_s, reload_ms, dmg, rpm, rng, dmg_per_hit, pool, ammo_total, bars, verified, tags: string[], role, htk, ttk_ms, caution?}`. **Draw meters from `bars` `{power, rof, ammo, ttk}` (0–100, ranked across the arsenal, any may be `null`), never from raw `dmg`** — `dmg` is the *share of the 115 pool one hit removes* (7–11 for most guns), so a raw 0–100 bar reads near-empty for everything (field 2026-08-30). `bars.ttk` is inverted (faster kill = longer bar) and is `null` for a one-shot weapon, which has no time-to-kill. **There is no range bar**: `rng` is identical on all 18 guns. `reload_s` is **null** when the weapon has no reload time — render `—`, never `0.0` and never a bare unit. `dmg_per_hit` is the real per-hit damage and does NOT move with the pool. **`pool` is the HOST'S health config (`config.health.max_hp + max_armor`), not a constant** — `htk` and `ttk_ms` are quoted against it and both move when the host changes health (`docs/weapon-design.md` §2.5: the AR needs 13 hits at 45/70 and 23 at 100/100), so a UI showing either must show `pool` beside it. `ttk_ms` is `null` when it cannot be derived. `caution` = known live problem, show on tile + hero | any |
+| `GET /api/voices` | → `{default: string, voices: VoiceOption[]}` from `compile.voice_options()` — the selectable `$PSET` voice personas (the full pack, not just male/female); `PATCH /api/players/{id}` validates `voice` against these ids. Only HEAVY is confirmed by ear (`gameconfig.VOICE_PACKS`) | any |
+| `GET /api/range/verdicts` | → `{ [weapon_id]: {verdict: "pass"\|"issue", note, t} }` — the latest bench verdict per weapon, read from the tail of `~/.brx-mcp/range-verdicts.jsonl`; `{}` when the log is absent. Feeds the KIT arsenal's field-range badges | any |
+| `POST /api/range/verdict` | `{weapon_id, verdict: "pass"\|"issue", note?}` → `{ok}`; appends one JSONL record (`note` capped at 400 chars). `400` without both fields; a read-only disk is `{ok:false, error}`, never a 500 | any |
 | `GET /api/perks` | → `PerkView[]` `{perk_id, name, desc, tags, mechanism: "passive"\|"slot_frame", effects, verified, hidden}` — visible rows only (A10, `docs/spec/loadout.md` §1.2) | any |
 | `GET /api/presets` | → `SavedGame[]` `{preset_id, name, desc, builtin, created_t, updated_t, config}` — the builtin "Silenced Sniper" (`builtin:silenced_sniper`) is always first (A10 §8, `docs/spec/loadout.md`) | any |
 | `POST /api/presets` | `{name, desc?, config?, replace?}` → `SavedGame` (default `config` = the current draft; `config_id` stripped). `409` on a case-insensitive name clash unless `replace: true` (keeps the id); `403` for a builtin name; `400` bad name/config | any |
@@ -84,4 +87,34 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `POST /api/session/new` | `{keep_roster?: boolean}` → `State` (back to muster) | recap |
 
 Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
+
+## Behaviour the server owns (the operator flow; absorbed from the retired `docs/spec/mission-control.md`, 2026-09-06)
+
+- **MC is not BLE-connected to guns during play.** BLE only at the bench (armory enroll, `scan()` presence);
+  mid-match MC talks to nodes over the LAN. Cross-player truth is MC-derived from node facts and exact
+  (`death.shooter_num` → roster → killer); the live board is a coverage-zone view with staleness, never real-time.
+- **Readiness** (`State.readiness`, contracts §4): node-reported from `status.preflight`; the laptop's `scan()` only
+  lists unclaimed guns. Red (blocks the push) = no node, identity reverted/unknown, never synced, wrong SSID / MC
+  unreachable; amber (shown, not gating) = headset unknown, battery unsampled, low phone battery, screen off, fw
+  unknown. After the push an empty `ack_config.gun_echo` is red and blocks `start`. Fields are aged/decayed, never
+  shown stale as current.
+- **Kit → lobby:** `POST /api/players` assigns `player_num` in roster order (1–63); any player change re-sends `assign`
+  (re-compiles + re-pushes `config` once pushed); a phone `loadout_request` goes through the same policy
+  (`policy.py`); `tryout` pushes `tutorial`, is ended by the player's `ready`, a policy reset or END TRY-OUT, and
+  refuses once the lobby is pushed. Kit → lobby auto-advances only when every rostered player is ready.
+- **Push and start are separate:** `POST /api/lobby/push` compiles every bundle and refuses on reds (names them)
+  unless `force`; `POST /api/start` mints `match_id`, stamps a monotonic `seq`, `go_live_t = now + runway_s`
+  (default `DEFAULT_RUNWAY_S` 120; presets 60/120/180). A same-schedule re-push keeps `seq` + `match_id`; a
+  reschedule mints both anew; abort reaches only nodes in range (`reached`/`unreachable`).
+- **Scoring** (`scoring.py`, contracts §4): exact kills/assists, roster-based friendly (never in FFA), accuracy from
+  victims' hits over own `shots_total` ("—" on a stale status), `t_recv` re-basing for unsynced nodes, `match_id`
+  parking, end freeze (`post_end_facts`), fresh-only `feedback`/`alert` (`FEEDBACK_MAX_AGE_MS`), the A11.4
+  global-state alerts gated by `mc_confidence`. `win_by` other than `kills`/`survival` is `undecided` (no objective
+  scorer yet: `docs/utility-roadmap.md` §8).
+- **Recap** is provisional until every rostered node has flushed (`provisional`, `missing`, `settling`); late
+  `event_batch`es and parked events reconcile in; honors need ≥ 3 scored players; `session/new` returns to muster
+  with KITTED nodes (a rematch is a new push).
+- **Persistence:** session state under `~/.brx-mcp/` (`store.py`, SQLite: every inbound envelope with `t`, `t_recv`,
+  `match_id`, parked flag; `presets.json`; `range-verdicts.jsonl`), so a restart re-hydrates and `GET /api/matches`
+  survives a crash.
 Static UI: `GET /` serves `webapp/mc/dist` when present (dev: Vite proxies `/api` and `/ui-ws` to the server).

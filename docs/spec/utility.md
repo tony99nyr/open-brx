@@ -169,21 +169,9 @@ The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. 
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
 
-## 5d. Other kinds (designed, not built)
-
-Same primitive; the difference is the station's state machine and the player node's action from its bundle.
-For kinds where the station must know **who** is there, it reads **player** adverts (id, team, alive, intent
-bits) — no connection.
-
-| kind | station shows / advertises | player node does | still needs |
-|---|---|---|---|
-| powerup | what it gives; ready or depleted + cooldown (`value`) | present: `$LIFE` armor/HP · `$WEAP`+`$AMMO` swap · ammo; marks taken | shields (IR fn-11 only) |
-| extraction | zone active, who is channelling, alarm on its own speaker | present: channel starts; leave resets; death drops loot (engine already speaks ZONE/LEAVE) | — |
-| bomb | idle → planted (countdown in `value`) → defused / detonated | attacker present + plant intent → planted; defender present + defuse intent → defused; on detonate every phone in radius applies blast damage to its own gun (`$BHIT`, host-inflicted) | — |
-| control | owner by team over time | present counts for your team | shoot-to-capture = the IR box |
-
-Mission Control drives all of it from the ITEMS panel (§5b); stations are self-authoritative and report at
-recap (MC is not live mid-match).
+Mission Control drives all of the §5 kinds from the ITEMS panel (§5b); stations are self-authoritative and
+report at recap (MC is not live mid-match). (A duplicate of the §5 table that sat here as §5d was removed
+2026-09-06; the roadmap's "§5d" references mean §5.)
 
 ## 6. Platform notes (verified where marked)
 

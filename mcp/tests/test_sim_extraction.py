@@ -3,7 +3,7 @@ driven end-to-end through the SimGame harness (config → setup → driver → e
 Action execution → fake guns), no Bluetooth.
 
 Each scenario asserts the CORRECT behavior per the ExtractionGame /
-ExtractionEngineAdapter docstrings + docs/m0-game-engine.md — NOT merely what the
+ExtractionEngineAdapter docstrings + the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06) — NOT merely what the
 code happens to do. Passing scenarios are `test_*`; any scenario that exposes a
 real bug is demoted to `scenario_*` with a `# SUSPECTED BUG:` note so the suite
 stays green while flagging the defect.

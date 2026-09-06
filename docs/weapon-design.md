@@ -6,25 +6,16 @@
 > hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
 > Fix options in **§6.2**; it is a bug, not a design question.
 >
-> **On the mechanism, which has now flipped twice.** This banner originally said fn 24 is a status
-> function that touches no pool. A listen-only run then fired fn 24 on protocol 7 and reported damage
-> (armor 70→30), so I corrected it to "fn 24 is not inert". **A controlled matrix has since found fn
-> 24 pool-neutral on protocols 0, 5, 7, 9 and 10** — the damaging observation does not reproduce
-> (`eb73b0e`). So the original reading is the one currently supported, and my correction of it was
-> based on a result that did not hold. The Energy Launcher landing 0 is *consistent* with fn 24 being
-> pool-neutral; that is no longer a puzzle, though the non-reproducing observation is (§6.2).
->
-> *(An earlier revision of this banner questioned the measurement because it shared a session with
-> the then-disputed multipliers (settled 2026-09-02, §6.2). Withdrawn: the emitter has since been shown to deliver faithful
-> magnitudes — see §6.2 — so there is no rig-wide reliability problem, and this 0/3 stands.)*
+> **Mechanism:** fn 24 is pool-neutral on protocols 0, 5, 7, 9 and 10 (controlled matrix, `eb73b0e`); one
+> listen-only run that reported damage on protocol 7 did not reproduce. History of the flip-flop:
+> `docs/experiment-log.md` 2026-08-26/27.
 >
 > ✅ **SETTLED (2026-09-02): the ×1.25 / ×2 multipliers are REAL.** **fn 36 = floor(magnitude × 1.25),
 > fn 37 = magnitude × 2** — 16 trials, 4 magnitudes (20/40/9/7), 8 `$SIR` row-tail shapes, an fn 1
 > control in every trial. **The ×1.25 truncates: 7 × 1.25 = 8.75 lands as 8.** So five weapons —
 > Burst Rifle, Bolt Rifle, AMR (×2), Force Rifle, Sniper Rifle (×1.25) — **do** deal more than their
-> `t5`, and tuning on ×1.25/×2 is safe. Retracted: the 2026-08-27 "did not reproduce" reading (a
-> controlled matrix that read ×1.0 in all 24 cells with a clean fn 1 control) is **outvoted, not
-> explained** — we still do not know why it read ×1.0. §6.2.
+> `t5`, and tuning on ×1.25/×2 is safe. The one 2026-08-27 matrix that read ×1.0 is outvoted, not
+> explained (`docs/experiment-log.md` 2026-08-27, 2026-09-02). §6.2.
 
 What our weapons are, why their numbers are what they are, and where every one of them comes from.
 
@@ -39,7 +30,7 @@ Where the earlier analysis was wrong, it is marked *retracted* rather than quiet
   `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop` · named table in
   `docs/reference/weapons.md`.
 - **Token map:** `protocol/callsign-extract/protocol-classes.md` · **bench truth:**
-  `protocol/brx-protocol.md` §7r and the 2026-08-26 probe entries.
+  `protocol/session-findings-2026-08.md` §7r and the 2026-08-26 probe entries.
 - **Sound bank:** `protocol/callsign-extract/sound-bank.md` (prefix legend credited to David Knox,
   shared by the owner community).
 
@@ -50,7 +41,7 @@ value here is a number we send in a `$WEAP` frame over BLE.
 
 ## 0. The damage model
 
-Hardware-true, from `brx-protocol.md` §7r and the 2026-08-26 damage experiment:
+Hardware-true, from `session-findings-2026-08.md` §7r and the 2026-08-26 damage experiment:
 
 - The default pool is **115 = 45 HP + 70 armor** (`compile.py`, `health: {max_hp: 45, max_armor: 70}`).
 - **Armor absorbs at face value and spills into HP** — 70 → 46 → 22 → 0, then into HP.
@@ -353,31 +344,14 @@ cannot quietly rot.
 Other `O` candidates for a bench audition if `O01` does not sit right: `O05` 1.46 s, `O02` 1.71 s,
 `O04` 1.79 s, `O06` 1.81 s, `O03` 2.51 s. Any of them fits the Energy Launcher's 1600 ms cycle.
 
-### 3.3 Retracted: the duration ÷ cadence ceiling
+### 3.3 – 3.4 Two retracted sound rules (provenance in git history)
 
-> **The first pass defined a "2.07× ceiling"** — fire-sound duration divided by fire interval,
-> derived from the stock AR playing a 1.76 s sample at what was then read as an 850 ms cadence.
-> **`t14` is the fire interval, and the AR's real cadence is 100 ms**, so the stock reference ratio
-> is **17.6×**, not 2.07×. Battle Company ships a 1.76 s sample at ten shots a second and it sounds
-> like an assault rifle, which means the firmware truncates and retriggers by design.
->
-> **The ceiling does not exist, and everything derived from it is void** — the per-weapon verdict
-> column, the "audition shortlists", and the claim that no gunshot sample is short enough for a fast
-> weapon. Sample duration constrains only weapons slow enough to play a sample out; below that, what
-> identifies a weapon is its **attack transient**, which bank data (durations and community labels,
-> no waveforms) cannot measure.
-
-### 3.4 Retracted: the reload-chain budget
-
-> The first pass also assumed the three reload parts play in sequence inside `reload_ms`, and audited
-> every weapon for "dead air" and "overrun". The captured frames refute it: **six of Battle Company's
-> own frames overrun under that model**, including the Shotgun (a 0.82 s chain inside a 400 ms
-> `Shells` reload) and the Plasma Sniper (2.56 s inside 2000 ms). Whatever the parts do, it is not
-> "play end to end within the reload window" — most likely they truncate and retrigger like the fire
-> sound, or `t19` changes how they are used.
->
-> No replacement rule is offered, because none is supported by the data. The chains are Battle
-> Company's own and we now ship them unmodified. Timing is an open bench question (§5, U4).
+The first pass (2026-08-26, first revision) derived a "duration ÷ cadence ceiling" for fire sounds and a
+"three reload parts play in sequence inside `reload_ms`" budget. Both are void: the AR plays a 1.76 s sample at
+a 100 ms cadence (the firmware truncates and retriggers by design), and six stock frames "overrun" the reload
+model (the Shotgun's 0.82 s chain inside a 400 ms `Shells` reload). Sample duration constrains only weapons slow
+enough to play a sample out; the chains ship unmodified; reload-chain timing is an open bench question (§5, U4).
+The retracted text: `git log -- docs/weapon-design.md` before 2026-09-06.
 
 ### 3.5 What the bank still tells us
 
@@ -478,7 +452,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | done — the multiplier values were confirmed 2026-09-02 (U10). |
 | **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02: the multipliers are REAL and unconditional. fn 36 = floor(magnitude × 1.25), fn 37 = magnitude × 2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. Nothing "switches it on" — it is the function. *Still unexplained:* the 2026-08-27 controlled matrix that read ×1.0 in all 24 cells with a correct fn 1 control is **outvoted, not explained**. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
-| **U11′** | **Which status function, if any, is a real STUN? — REOPENED 2026-08-27.** fn 23 is **eliminated**: a trigger pull showed the gun fires and emits IR normally; it is an **audio suppressor**. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. ~~CLOSED 2026-08-26 — it is function 23.~~ 5/5 reps; the fn-1 control never fired it; it works under protocols 0/5/7/10 alike, so it is the **function**, not the protocol. It clears `$ALCD` **token 2 (100→0)** — the weapon *ready* flag — while **ammo and health are preserved**, and it **self-clears on a ~6–8 s firmware timer** (`$SPAWN` overrides early). ~~5/5 reps zeroed the victim to `$ALCD,0,0,0,0,0` … zeroing t2 *and* the slot is the "live gun, nothing loaded" state.~~ *(That all-zeros reading came from a victim with no loadout configured — superseded, see §6.3.)* | — | done |
+| **U11′** | **Which status function, if any, is a real STUN? — OPEN (reopened 2026-08-27).** fn 23 is eliminated: it is an **audio suppressor** (`$ALCD` token 2 = the audio level, driven 0 → 100 over ~6–8 s; the gun fires and emits IR normally, ammo and health preserved, `$SPAWN` clears it early). Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. The 2026-08-26 "it is an EMP" reading and its correction: `docs/experiment-log.md` 2026-08-26/27. | stun weapons | capture the Sentinel EMP |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
 | **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
@@ -586,53 +560,19 @@ the ×1.25 **truncates** (7 → 8, not 9), which is why the Force Rifle's 10 lan
 tails do **not** gate the multiplier: `0,0,1,,` / `,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none /
 `0,0,1,60` all produced ×1.25 and ×2.
 
-*Retracted:* the 2026-08-27 controlled matrix that read **×1.0 in all 24 multiplier cells** with the
-fn 1 control correct throughout. It is **outvoted, not explained** — no systematic difference between
-that run and the two that agree has been found. Kept on the record, not relied on. Note that all of
-this is measured through **our** `$SIR` table, which is the configuration we ship: the victim's row is
-what picks the function.
-
-**Half of this paragraph is now retracted (2026-09-02).** It used to read: *two results from the same
-measurement context have failed to reproduce — the ×2 multiplier, and fn 24 dealing damage on
-protocol 7 — and the one difference between the runs was **an operator physically holding the victim
-gun** versus an unattended gun on the bench, which pointed at the **sensor struck** (`$HIR` token 1
-distinguishes front dome, back dome and gun body) as the hidden variable.* **The ×2 half is gone:**
-the multipliers reproduced 2026-09-02 and are confirmed, so the held-gun/sensor hypothesis is not
-needed to explain them, and the 2026-08-27 ×1.0 matrix is simply unexplained. **What still stands** is
-the single open non-reproduction — fn 24 dealing damage on protocol 7 — and the untested question
-behind it: whether the sensor that catches the IR affects the damage applied.
-
-**And it cannot be settled from the existing data, which is the real lesson here.** The fn-24 evidence
-records no `$HIR` tokens at all — only pool deltas and what the operator heard. So that dataset
-neither supports nor kills the sensor hypothesis; it simply cannot speak to it.
-
-**What we now do know is the scope of everything else.** A 20-shot check came back **20/20 at the gun
-body** (`$HIR` tok1 = 4), delta 20 every shot, emitter at ~40 cm — the rig cannot produce a dome hit
-at all. So the function map should be read as *"measured at the gun-body sensor"*, the same way it
-carries a protocol. That converts an unknown condition into a known and uniform one, and it makes the
-outstanding question small: **two rows re-measured at a dome**, not the whole map.
-
-> ⚠️ With one limit on how far that reads. At ~40 cm, `$HIR` tok1 plausibly reports which sensor
-> **fired first**, not which was struck — IR floods every receiver at close range. So 20/20 at the gun
-> body does **not** establish that the domes were never illuminated, only that they never report first
-> at this distance. The honest claim is about reporting, not about incidence.
+The one 2026-08-27 matrix that read ×1.0 in all 24 cells is **outvoted, not explained**; it is on the record
+in `docs/experiment-log.md` (2026-08-27, 2026-09-02) and not relied on. What still stands open is the single
+non-reproduction of fn 24 dealing damage on protocol 7, and the untested question behind it: whether the sensor
+that catches the IR affects the damage applied. Everything in the function map was measured at the gun-body
+sensor (`$HIR` tok1 = 4, 20/20 at ~40 cm), so read it as "measured at the gun body" the way it carries a
+protocol; the outstanding question is two rows re-measured at a dome, not the whole map. The emitter is
+function-agnostic (a fn 1 control read 20 while fn 37 read 40 in the same run), so the doubling happens inside
+the gun. The full narrative of the flip-flop, including the held-gun hypothesis that is no longer needed, is in
+the experiment log.
 
 > **Method rule: record the protocol, the `$HIR` token 1, and the firing range beside every pool
-> measurement.** All three started as unstated conditions discovered after the fact — protocol first,
-> then sensor, then distance — and each cost a re-run or left a dataset unable to answer a question
-> retrospectively. Three in two days is a pattern, not bad luck. **The default question for any new
-> claim should be "under what conditions is this true?", asked at capture time rather than
-> reconstructed later**, because only the protocol one turned out cheap to clear.
-
-**Our emitter is not the explanation, and that matters.** The obvious suspicion was that the rig had
-encoded 40 where it meant 20, which would look exactly like a ×2. It didn't: the emitter is
-*function-agnostic* — it sends 25 bits, and which function the victim applies is decided by the
-victim's own `$SIR` row keyed on `<protocol, subtype>`. In the very run that produced the ×2, a fn 1
-control read **20** while fn 37 read **40**, same session, same emitter, same `damage=20`, the words
-differing only in the subtype field. Had the rig been sending 40, fn 1 would have read 40 too.
-**So the magnitude on the wire was 20 and the doubling happened inside the gun**, which makes the
-earlier measurement *more* credible, not less. The open question is what gun-side state differed
-between the two runs.
+> measurement.** All three started as unstated conditions discovered after the fact and each cost a re-run.
+> The default question for any new claim is "under what conditions is this true?", asked at capture time.
 
 | shipped row | function | magnitude 20 lands as | weapons on that key |
 |---|---|---|---|
@@ -658,12 +598,7 @@ they were first measured on, so the table above is the effective-damage table fo
 2. **Retune `t5`** for the five multiplied weapons and separately move the Energy Launcher off `<9,3>`
    (an `overrides` entry on `t3`/`t4`), or change that row's function.
 
-> ✅ **No longer moot (2026-09-02).** U10 is settled: the multipliers **are** real (fn 36 =
-> floor(mag × 1.25), fn 37 = ×2), so the five weapons really do land more than their `t5` and the
-> decision below is live. Retracted: the earlier note that this decision might be moot because the
-> shipped table already behaved as if flattened.
-
-**The multipliers are real, and the recommendation is flatten**, and the deciding argument is
+**The multipliers are real (U10, 2026-09-02), so this decision is live, and the recommendation is flatten**, and the deciding argument is
 asymmetry: flattening restores exactly the §2 numbers, which are *already* band-checked and
 dominance-checked, so it costs **zero retune**.
 Retuning means recomputing five weapons and re-running the dominance check with multipliers folded in —
@@ -722,13 +657,9 @@ than 115. The `mag ≥ htk` invariant in `validate()` uses the raw-`t5` reading,
 *conservative* direction for standard weapons (it over-estimates htk) but **under**-estimates it for
 armor-piercing — worth revisiting if AP ever ships.
 
-**4. §5's U6 was closed too strongly.** It was marked resolved on 2026-08-26 with *"mapped types play
-a distinct victim hit SFX (presentation only); **damage is always t5**"*. The hit-SFX half is right and
-stands. The parenthetical does not: `t3`/`t4` are the `$SIR` lookup key, and the table we push maps two
-of the three subtypes in use to multiplier functions, so damage is `t5 × the row's multiplier`. That
-earlier test was not wrong — every row it exercised happened to be a standard-damage row (`<0,0>`,
-`<10,0>`, `<6,0>`), which is precisely the set for which "damage is always t5" holds. U6 is re-opened
-in §5 as **U10**.
+**4. §5's U6 ("damage is always t5") held only for standard-damage rows** (`<0,0>`, `<10,0>`, `<6,0>`), which
+is all that test exercised; `t3`/`t4` are the `$SIR` lookup key and two of the three subtypes in use are
+multiplier rows. The hit-SFX half of U6 stands. Reopened as **U10**, closed 2026-09-02.
 
 One thing this *vindicates*: the first pass recommended reverting every weapon's `t4` to 0 because the
 field was unpinned. We never did — re-basing on captured frames preserved it — and `t4` turns out to
@@ -793,39 +724,17 @@ and **fn 18**, a further shields-only grant. (⚠️ An earlier draft called fn 
 4 HP; re-measured on a clean baseline it leaves **HP and armor untouched** — the apparent cost was a
 shifted baseline.)
 
-**Status effects — one now has an observable effect.** A whole family registers a `$HIR` and moves no
-pool: enemy-side **3, 8, 23, 24, 25, 26, 27, 28, 35**; friendly-side **31, 32, 34** **[two-sided map]**.
-These are the stun/EMP candidates, and until now the problem was that a stun looks identical to an inert
-row from the host side, because the effect is on the victim's *ability to fire*.
-
-**❌ RETRACTED 2026-08-27 — function 23 is NOT a weapon disable.** With Tony on the trigger: the magazine decremented shot by shot, and the receiver logged **14 / 21 / 14** IR frames before / during / after — the gun **fires normally**. What it actually does is **silence the gun** (`$ALCD` token 2 = the AUDIO LEVEL, driven 0 → 100 over ~6–8 s; Tony: *"no sound on trigger pull… then a bit louder… then normal"*). A **sensory-disruption** weapon, not a stun — the victim can still fight but loses fire/reload/overheat cues. **Category 10 "Stun" remains unbuilt; U11 is REOPENED.** The original text follows, superseded: ~~Function 23 is a weapon disable — the EMP is real~~ (experiment-log 2026-08-26). Enemy-side fn 23
-clears the victim's weapon **ready flag**: `$ALCD` token 2 goes **100 → 0**, 5/5 reps, while the fn-1
-control never did, and it fires under **protocols 0/5/7/10 alike** — so the effect belongs to the
-*function*, not the protocol.
-
-⚠️ **Corrected:** an earlier draft of this section said the disable produced `$ALCD,0,0,0,0,0` and
-"strips the gun to unloaded". With a real loadout the frame is **`$ALCD,32,0,0,192,0`** — **ammo is
-preserved** (mag 32, reserve 192 intact) and **only token 2 changes**. The all-zeros reading came from
-a victim that had no weapon/ammo configured at all. Health is untouched too.
-
-Design consequences — **corrected 2026-08-27, this is NOT a stun:**
-
-- **`$SIR,<proto>,<sub>,,23` is an AUDIO SUPPRESSOR**, not a disabler. A weapon keyed to that cell
-  **silences** its target: the victim keeps firing and keeps emitting IR, they just lose their gun's
-  audio for ~6–8 s. A **sensory-disruption** weapon — no fire sound, no reload chain, no overheat cue.
-  ~~`$SIR,<proto>,<sub>,,23` is an EMP … any weapon keyed to that cell becomes a disabler.~~
-- **The ~6–8 s timer, `$SPAWN`-clears-it and `$AMMO`-does-not are all correctly MEASURED — but they
-  describe the `$ALCD` token 2 AUDIO METER, not a disable.** Disabled-looking at 2.5 s and 5.3 s, back
-  to 100 by 8.0 s, 3/3 reps. `$AMMO` and `$WEAP` re-pushes do not move it; `$SPAWN` does (and also
-  restores health).
-- ~~Weapon category 10 ("Stun") is now buildable.~~ **Still UNBUILT.** No `$SIR` function has produced
-  a stun. `$STUN`-over-BLE remains a no-op. **U11 is REOPENED** — the live lead is to capture the
-  **native Sentinel EMP ability** and read its protocol/subtype off the wire.
-- ~~Inference: a stunned player has burned a reload.~~ **Withdrawn** — ammo is preserved.
-- ✅ **A human DID pull the trigger (2026-08-27), and it disproved the disable.** The operator's
-  magazine decremented shot by shot during the effect, and a receiver logged **14 / 21 / 14** IR frames
-  before / during / after — the gun fires and emits normally throughout.
-  ~~Still unconfirmed by a human: that the trigger genuinely does nothing during the window.~~
+**Status effects — one has an observable effect, and it is not a stun.** A whole family registers a `$HIR`
+and moves no pool: enemy-side **3, 8, 23, 24, 25, 26, 27, 28, 35**; friendly-side **31, 32, 34** **[two-sided
+map]**. **`$SIR,<proto>,<sub>,,23` is an AUDIO SUPPRESSOR** (2026-08-27, Tony on the trigger): the victim keeps
+firing and emitting IR (magazine decremented shot by shot; 14 / 21 / 14 IR frames before / during / after) but
+loses its gun audio for ~6–8 s — `$ALCD` token 2 is the audio level, driven 0 → 100 (2.5 s, 5.3 s, back to 100
+by 8.0 s, 3/3 reps); `$AMMO`/`$WEAP` re-pushes do not move it, `$SPAWN` clears it early; with a real loadout the
+frame is `$ALCD,32,0,0,192,0` (ammo and health preserved). A **sensory-disruption** weapon: no fire sound, no
+reload chain, no overheat cue. It works under protocols 0/5/7/10 alike, so it belongs to the function.
+**Category 10 "Stun" remains UNBUILT**: no `$SIR` function has produced a stun, `$STUN`-over-BLE is a no-op, and
+the live lead is to capture the native Sentinel EMP ability (U11′). The 2026-08-26 "fn 23 is an EMP / weapon
+disable" reading and its retraction are in `docs/experiment-log.md` 2026-08-26/27.
 
 **Three clean negatives worth carrying** — each one closes a design direction someone would otherwise
 spend a session on:

@@ -212,6 +212,13 @@ assign.game { name, desc,                       // saved-game name/desc when the
 - Mode art on the phone: downscaled copies of `webapp/mc/public/assets/modes/*.jpg` in `app/www/assets/modes/`.
 
 ## 5. MC screens
+
+Moved 2026-09-06 to `design/mission-control.md` (A2 GAMES + GAME DESIGNER, A3 KIT) — the one place the console's
+screens are described. The rules those screens render are §3 (policy, presets, pool) and §4 (the phone flow).
+
+<!-- superseded text follows for grep provenance only; the design brief is authoritative -->
+<details><summary>Superseded 2026-08-27 screen notes</summary>
+
 - **GAMES** (replaces BUILD in the stepper; Tony 2026-08-27 — "pick tonight's game" is a different job from
   "define a game"): `YOUR GAMES` row (saved cards: name, base-mode art, one-line summary, EDIT / DUPLICATE; `+ CREATE
   A GAME`) and `STOCK MODES` row (TDM / FFA / … with defaults; CUSTOMIZE opens the designer with that base). Tap a
@@ -246,6 +253,8 @@ assign.game { name, desc,                       // saved-game name/desc when the
 - **GAME DESIGNER** LOADOUT section (A14): three columns PRIMARY / SECONDARY / PERK. The PERK column has WHO PICKS
   (player / host / fixed / off) and the perk grid; the SECONDARY column's kind chips are `WEAPONS · SIDEARMS` only.
 
+</details>
+
 ## 6. Tests / e2e (screen truth)
 Server: policy presets + pool, `_check_loadout` matrix, compile (no slot 1 when empty; each perk effect on the
 frames; golden bundle updated), `loadout_request` happy/reject paths with **delivery assertions** for `loadout_ack`
@@ -253,7 +262,7 @@ and the catalog in `assign`, all-ready advance, ready-ends-tryout. UI rig: Kit t
 phone browser at 844×390 (+ short viewport), FFA hides heavies on BOTH UIs, snipers preset locks both, phone
 TRY IT → MC roster shows TRYING → READY → MC shows READY.
 
-## 7. Bench items (docs/bench-tomorrow.md)
+## 7. Bench items (docs/FOLLOWUPS.md, "Needs Tony at the bench", A10a-e)
 Body Armor: push head with $PSET armor +50 → `$LCD` shows it → a hit absorbs. Extended Mags: HUD max matches
 `$AMMO`. Easy Reload: ALT reloads. Empty slot 1: ALT press → reload, no crash. Quick Hands: reload chain timing.
 

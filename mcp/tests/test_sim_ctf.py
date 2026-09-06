@@ -8,7 +8,7 @@ team from the token, never the roster. (Feeding on a gun id would let the roster
 override the token — that path is the gun-death callout, tested separately.)
 
 Behaviour asserted here is the CtfEngine contract (objectives.py docstring +
-docs/m0-game-engine.md): per-team possession `held`; a CAP scores only if that team
+the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06)): per-team possession `held`; a CAP scores only if that team
 is carrying; a DROP returns the flag home; malformed/zero/missing team tokens are
 ignored (never fabricate team0); first to cap_target wins; on the clock the caps
 leader wins and a tie is a draw; everything is inert after game over.

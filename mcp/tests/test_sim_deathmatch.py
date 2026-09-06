@@ -3,7 +3,7 @@
 These drive the WHOLE stack (config→setup frames, DeathmatchEngine rules, driver
 Action→frame execution, host respawn, teardown) with in-memory guns, to harden the
 engine before bench testing. Each `test_*` asserts the CORRECT behaviour per the
-`deathmatch.py` docstring + docs/m0-game-engine.md — not merely what the code does.
+`deathmatch.py` docstring + the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06) — not merely what the code does.
 
 Any scenario that revealed a genuine engine/driver bug is preserved as a
 `scenario_*` function (skipped by the runner) with a `# SUSPECTED BUG:` note.

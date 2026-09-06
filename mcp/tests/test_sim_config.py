@@ -3,7 +3,7 @@ environment/loadout knobs — verified through both GameConfig directly and the
 SimGame harness (config-all-then-spawn driver path, no Bluetooth).
 
 This is the "the CONFIG must produce EXACTLY the right frames on real guns" test:
-every knob in the docs/m0-game-engine.md config table is asserted against the
+every knob in the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06) config table is asserted against the
 frame it is documented to drive, NOT blindly against whatever the code emits.
 
 ⚠ UNCONFIRMED-on-hardware bits (docs table + gameconfig docstrings): the LEDs-off

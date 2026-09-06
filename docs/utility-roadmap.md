@@ -1,12 +1,15 @@
-# Utility items: the implementation plan (2026-09-04)
+# Utility items: the implementation plan (2026-09-04; §8–§9 added 2026-09-06)
 
 The utility role turns a spare phone into an item on the field. One kind, the **respawn station**, is built,
 bench-proven on two Pixels and shipping in APK 0.1.6. This is the plan for everything else, written so any
 session can pick up a row and know what to build, on which surface, and what proves it.
 
 The spec of record stays `docs/spec/utility.md` (advert format, presence, the respawn rule, MC arming);
-mode rules stay `docs/game-modes.md`; hardware ceilings stay `docs/mode-limits.md`. This document is the
-**order of work** across them. When a row lands, mark it here and promote the facts into the spec.
+mode rules stay `docs/game-modes.md`; the frame compiler and the MC mode catalog are `docs/spec/modes.md`. This
+document is the **order of work** across them, plus (§8) where each objective mode stands and (§9) what it costs
+an outsider to add a mode. When a row lands, mark it here and promote the facts into the spec. The two review
+documents §8 and §9 were distilled from (`mode-readiness.md`, `mode-extensibility.md`, both 2026-09-04) are in
+`docs/archive/`.
 
 ## 0. Principles every row obeys
 
@@ -40,10 +43,10 @@ mode rules stay `docs/game-modes.md`; hardware ceilings stay `docs/mode-limits.m
 | 7 | MC side of arming: `station_config` push, ITEMS panel at muster, persisted assignments | `mcp/brx_mcp/mc`, `webapp/mc` | 🔴 not started (brx session, FOLLOWUPS S5) | — |
 | 8 | Headset out-blink while down, re-asserted | `engine.js` | ✅ built (A11.6/7) | bench 2026-09-04 |
 | 9 | Station intermittently hears no player adverts at high TX | `utility.js` scan | ✅ fixed (S6, 53e62bd: low-latency scan + restart) | soak on two phones pending |
-| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, a63aa10: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on Tactix-E20D 2026-09-04 (contracts A6.8, node.md §3.10) |
+| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, a63aa10: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on hardware 2026-09-04 (contracts A6.8, node.md §3.10) |
 | 11 | Harness: utility presets, fake players, fake `station_config` | `tools/stage.html`, `?stage` | ✅ built | — |
 
-Kinds 2–5 (powerup, extraction, bomb, control) are designed in the spec's §5d table and not built.
+Kinds 2–5 (powerup, extraction, bomb, control) are designed in the spec's §5 table and not built.
 
 ## 2. Cross-cutting work first
 
@@ -172,8 +175,8 @@ after K1–K4 prove the intent-bit path.
 
 | who | rows |
 |---|---|
-| **brx-grenade** (spec, plugin, radio) | spec updates for each kind (`utility.md` §5d → real sections), B1–B3, station state machines' spec text, S7 |
-| **brx** (MC server + console) | A1, A2, A4, A5 (compiler), A6, C1, the `hill` / `domination` / `cs` modes and scoring |
+| **brx-grenade** (spec, plugin, radio) | spec updates for each kind (`utility.md` §5 → real sections), B1–B3, station state machines' spec text, S7 |
+| **brx** (MC server + console) | A1, A2, A4, A5 (compiler), A6, C1, the `hill` / `domination` / `cs` modes and scoring, E1–E2 (§9) |
 | **brx-hud** (phones) | A3, A5 (phone), C2, every `utility.js` state machine and screen, every engine rule + HUD copy per kind, harness stages and screen-truth steps |
 | **Tony** | bench gates (§5), thresholds, the blast-damage decision, which kind after K1 |
 
@@ -182,3 +185,64 @@ after K1–K4 prove the intent-bit path.
 K1 is about a day across the three surfaces once A1/A2 exist (the presence primitive is done). K3 half a day.
 K2 a day (loot mirroring is the tricky part). K4 a day and a half plus its bench. A1–A6 a day for the MC side.
 B1 is an hour of code and an evening of soak. Total: about a week of sessions, with K1 playable first.
+
+## 8. Status per mode: how far a playable match is (snapshot 2026-09-04)
+
+**Two execution paths, the crux of every objective mode.** The repo has two runtimes: the **CLI + sim path**
+(`brx_mcp/modes/` engines + `driver.py`, run by `python -m brx_mcp play <mode>` / `game-sim`), where the
+objective logic actually lives and runs; and the **Mission Control path** (`brx_mcp/mc/` — `state.py`,
+`compile.py`, `scoring.py`), which configures, compiles, pushes and scores from death facts and **does not
+instantiate the mode engines** (no import of `modes.driver` anywhere under `mc/`). Match-day runs through MC, so
+the MC gap is what gates a real game. Until the spine above exists (S6, A1–A6, K1), objective modes only run in
+the CLI/sim with synthetic objective events.
+
+| mode | built (CLI/sim) | missing | distance |
+|---|---|---|---|
+| **Counter-Strike** (bomb, rounds) | `modes/cs.py` `BombEngine`: plant → countdown → defuse / elimination / round-time expiry, late-plant guard, `rounds_to_win`, `next_round()`; `counter_strike` presentation preset; `compile.py` refuses `cs` without a station source; `test_cs.py` + `test_sim_cs.py` | no side-swap / half-time (attackers pinned to team 2); no live multi-round loop (`GameDriver` never calls `next_round()`, so `play cs` is one round); **not in MC's `MODES` catalog** (`mc/state.py:32-53` lists tdm/ffa/infection/lms/extraction; anything else raises); no MC round scorer (`scoring.py` returns `undecided` for `win_by` other than kills/survival); plant/defuse input is synthetic until K4 | spine + **K4** (~1.5 days + bench) + a round-orchestration loop + side-swap + MC catalog entry + round scorer ≈ **3–4 sessions**. Open decision (Tony): the blast-damage model (K4). |
+| **Extraction** | `modes/extraction.py` `ExtractionGame`: per-player loot wallet, pickup + ground tokens, channel/hold with a loud callout, bank + `$LIFE` boost + win check, drop-on-death with three policies, channel interrupt on death; `extraction_adapter.py` maps ZONE/LEAVE/LOOT/PICKUP + `$HIR`/`$HP,0`; **first-class in MC** (`win_by:"objective"`, preset, not station-gated); `test_extraction*.py`, `test_sim_extraction.py` | no real zone/loot input (synthetic station commands until K2); no MC objective scorer (MC can select it but returns `undecided`, no loot board); no raid window / hard end producer (`extraction_closing`, `raid_over` events exist, nothing emits them); the field-wide alert is best-effort (Tier 4 for instant) | spine + **K2** (~1 day) + an MC banked-loot scorer ≈ **2–3 sessions**; the raid window is a second pass. **The shorter hop.** |
+| **Domination / KotH** | `modes/objectives.py` engines + sim tests | station input (K1); MC catalog + scorer | spine + K1 ≈ the first playable objective mode |
+| **CTF** | `modes/objectives.py` | K5 (`kind 6 flag`, carrier bit) after K1–K4 | later |
+
+**The grenade bridge (FOLLOWUPS B23).** Our phone stations are a hosted reimplementation of what the Smart
+Grenade does in native games: Respawn (yellow) ✅ built as the phone station; Hill (blue) and Assault (green) →
+K1; CTF (white) → K5; Frag (red) out of scope. A hosted (MC) gun ignores all the grenade's IR words, so inside
+our games the phone supersedes the grenade. B23 would bring the grenade back in as a physical station by
+*reading* its beacon: a passthrough `$SIR,15,*` row lets the gun report `$HIR,0,15,0,<team>,6` over BLE, and the
+node treats it as "a team-X station is present" (IR, directional) in the same `respawnGate` machinery. The
+catch: a firmware-dead gun hears no IR, so DOWN must become a node-defined stunned state (`$SPAWN` +
+`$AMMO,0,0`, painted dead by the node). Every link is bench-proven separately; the assembly is not.
+
+Order that falls out: **S6 soak → MC arming (A1–A6) → K1 → K2 (extraction playable) → K4 (CS playable)**, with
+the B23 grenade bridge as an optional physical-station bench alongside K1.
+
+## 9. Extensibility: what it costs an outsider to add a mode (review 2026-09-04; FOLLOWUPS E1–E7)
+
+- **Re-parameterize or re-skin a shipped mode** (a faster TDM, low-HP snipers, custom sounds/LEDs, loadout
+  rules): **well supported by JSON today** — `GameConfig` carries health, respawn, scoring, teams, loadout
+  policy and the full presentation profile.
+- **A genuinely new ruleset** (a new win condition or objective interaction): **not easy.** The engine seam is
+  good — `GameEngine(ABC)` is four methods (`add_player`, `on_event`, `tick`, `snapshot`) emitting a semantic
+  Action vocabulary (`Respawn`, `Heal`, `PlaySound`, `KillConfirm`, `Callout`, `Score`, `Eliminate`, `GameOver`,
+  `SetTeam`, `SendFrame`; a mode author never writes a raw BRX frame) — but the JSON wire schema
+  (`mc/types.py:GameConfig`) has **no slot for mode-specific parameters** (no `detonation_s`, `control_points`,
+  `channel_s`, `drop_policy`, `rounds_to_win`, lives…), those knobs exist only in the CLI dataclass
+  (`gameconfig.py`), and registration is hardcoded in four places (`modes/driver.py` `build_engine`,
+  `mc/state.py` `MODES`, `mc/presentation.py` `MODE_PRESET`, `mc/scoring.py`) — which is exactly why CS runs in
+  the CLI but is invisible to MC (§8).
+
+| # | change | unblocks | size |
+|---|---|---|---|
+| **E1** | `mode_params: dict` on the wire `GameConfig`, validated by the engine itself | JSON-carried custom params, incl. CS/extraction through MC | small |
+| **E2** | one `register_mode(name, engine_cls, meta, preset, scorer)` replacing the four hardcoded points; a mode may supply its own scorer | a mode lights up everywhere from one call | medium |
+| **E3** | unify the two config schemas (one source of truth) + publish a JSON Schema | contributors validate; no drift | medium |
+| **E4** | a "How to add a game mode" doc with a ~40-line worked example | the on-ramp | small |
+
+After E1–E4 a contributor writes `my_mode.py` (subclass, four methods, Actions), makes one `register_mode`
+call, and ships `{"mode": "my_mode", "mode_params": {…}, …}` validated against the schema.
+
+**Sound packs / custom announcers (E5–E7).** The gun plays only its on-gun bank by id — there is no
+audio-over-BLE — so a custom clip on the gun speaker must be USB-loaded as `<ID>.LTP` over an existing id (the
+bank is a fixed set; archive the originals; FOLLOWUPS B11). The A11 profile already maps event → id in JSON, so
+the reference layer works; missing are a **pack** abstraction (E6, supersets the B14 voice-pack selection), the
+**phone-speaker path** (E5, the clean path: the app plays no game audio today) and an `.LTP` import/gun-load tool
+(E7, lowest priority). Halo/UT announcer audio is copyrighted: the project ships the slot, never the packs.

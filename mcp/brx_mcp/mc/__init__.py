@@ -1,4 +1,4 @@
-"""Mission Control (M-MC) server package — spec: docs/spec/mission-control.md, contracts.md (A5).
+"""Mission Control (M-MC) server package — spec: docs/spec/contracts.md + mc/API.md (the former docs/spec/mission-control.md is archived).
 
 Lanes (each module is one workstream; bind to the shapes in `types.py` and the Protocols in
 `interfaces.py`, never to another lane's internals):

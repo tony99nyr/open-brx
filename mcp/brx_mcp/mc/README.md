@@ -14,7 +14,7 @@ python -m brx_mcp.mc.mock_node ws://<ip>:8766/ws --gun GUN-A --tail 3D4F   # pho
 
 - **`API.md`** — the server ⇄ web-UI contract (REST + `/ui-ws` snapshot), incl. the operator-token rule.
 - **`docs/spec/contracts.md`** §5 — the node ⇄ MC wire (`envelope.py`, `net.py`); amendments A1–A8.
-- **`docs/spec/mission-control.md`** — the module spec; `docs/spec/modes.md` — what `compile.py` emits.
+- **`API.md`** (behaviour) + **`docs/spec/design/mission-control.md`** (screens) — the MC spec since 2026-09-06 (the module spec is archived at `docs/archive/spec-mission-control.md`); `docs/spec/modes.md` — what `compile.py` emits.
 - **`docs/field-runbook-mc.md`** — match-day procedure.
 
 Modules: `state.py` (Session/phases/readiness), `scoring.py`, `compile.py` + `weapons.json`

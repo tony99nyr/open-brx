@@ -1,4 +1,4 @@
-"""M-ARMORY adapter for MC (docs/spec/armory.md A4/A5): list() over the USB inventory,
+"""M-ARMORY adapter for MC (docs/spec/contracts.md §1.1; the retired armory.md is docs/archive/spec-armory.md): list() over the USB inventory,
 scan-only BLE presence/identity → ScanRow[], bind_player validation. Thin by design."""
 from __future__ import annotations
 

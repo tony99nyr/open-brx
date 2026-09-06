@@ -1,9 +1,11 @@
 # BRX Design — Phone HUD (the per-player node)
 
-**Package for:** the player's phone. Read `foundation.md` (shared) + `tokens.css` first.
-**Visual source of truth: `hud-export/` (Phone HUD v2)** — landscape, rail-mounted, ten screen states.
-The **live shipping HUD today** is the app itself (`app/www/index.html`, 844×390 landscape) — a starting
-point to push past, not a target. Iterate these states in Claude Design.
+**Package for:** the player's phone. Shared brand/constraints: the header of `mission-control.md`.
+**The shipping HUD is the source of truth** (`app/www/index.html` + `app/src/hud/`, 844×390 landscape; iterate
+with `cd app && npm run ui:stage`, prove with `npm run ui:screens`). The 2026-08-25 Claude Design export it was
+built from (Phone HUD v2: landscape, rail-mounted, ten screen states) is archived at
+`docs/archive/design/hud-export/` for re-seeding the design tool; per Tony (2026-08-26) the exports were
+inspiration, not definitive.
 
 One phone, one gun, one player. Two jobs: a few **setup screens** (before the match) and the **in-game
 HUD** (during). The HUD is the star: a **first-person-shooter heads-up display** — instantly readable at
@@ -24,7 +26,8 @@ a glance, in sun or dark, while the player is moving and getting shot at.
 | **match over** | brief "MATCH OVER", then back to **KITTED** (gun + player kept) — never "Set my gun" |
 | any + Wi-Fi/MC lost | small, non-alarming "reconnecting" chip; the HUD keeps running (normal for most of a park match) |
 | any + gun link lost | red "GUN LINK LOST" strip; values freeze |
-| gun relinked (ARMED/LIVE) | amber **"GUN RELINKED — pull the trigger"** prompt (~10 s) → resolves to ALIVE / DOWN |
+| gun relinked (LIVE) | the **RECONCILING takeover**: GUN RELINKED · SYNCING WITH YOUR GUN · WEAPON DISARMED FOR A MOMENT (3 s fill); real pools kept, never a heal, no trigger pull asked (S7.1, 2026-09-04; node.md §3.10) |
+| gun relinked (LOBBY/ARMED) | amber **"GUN RELINKED"** prompt while the head is re-written (~10 s) |
 | any + preflight fail | small red preflight chip (Wi-Fi / MC / phone battery / screen / gun / headset) → diagnostics |
 
 ### B1 · Set my gun (connect)

@@ -1,4 +1,4 @@
-"""M-NET server — the node↔MC WebSocket (docs/spec/net.md, contracts.md §5/§7/§9, A5).
+"""M-NET server — the node↔MC WebSocket (docs/spec/contracts.md §5/§5a/§5b/§7/§9; the retired net.md is docs/archive/spec-net.md).
 
 `NetServer` is an asyncio component the M-MC core composes: it moves envelopes and enforces the
 wire rules (version gate, validation, size cap, per-node seq dedup + ack, status path with

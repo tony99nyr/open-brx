@@ -4,7 +4,7 @@
 - **Date:** 2026-08-25
 - **Deciders:** Tony (owner)
 - **Related:** `hardware/brx-companion-spec.md`,
-  `protocol/brx-protocol.md` §7o/§7n, FOLLOWUPS **B1/B18/B18b/P2/D1**,
+  `protocol/session-findings-2026-08.md` §7o/§7n, FOLLOWUPS **B1/B18/B18b/P2/D1**,
   memory `mc-not-live-during-gameplay`, `docs/reference/lasertagmods.md` (JEDGE),
   `docs/reference/jay-ecosystem.md`.
 

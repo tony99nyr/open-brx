@@ -313,7 +313,7 @@ must use the display layer.
 - **[HW-CONFIRM] Does an unspawned head echo `$LCD,0,0,0,0,0,0` with the headset off?** If yes, the lobby
   `gun_echo` is not a headset proof and the gate moves to the T-0 `$SPAWN` echo (§3.3).
 - **[HW-CONFIRM] Callsign revert** — verify the exact wiped advert string (`Tactix2` vs `Tactix`) and that
-  a single power-cycle + `rename` fully restores identity. (`verification-checklist.md`.)
+  a single power-cycle + `rename` fully restores identity. (`archive/verification-checklist.md`.)
 - **[DECIDE] gun_id key.** Contract uses headset PIN as `gun_id`; a re-paired headset changes the PIN.
   Accept re-enroll on re-pair (current), or add a stable synthetic id? Recommendation: keep the PIN;
   re-pair is already a re-enroll trigger in Armory Setup.

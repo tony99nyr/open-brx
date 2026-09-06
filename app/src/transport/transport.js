@@ -1,4 +1,4 @@
-// Node-side Transport — the M-NET client (docs/spec/net.md §6; contracts §4/§5/§7, A6).
+// Node-side Transport — the M-NET client (docs/spec/contracts.md §5/§5a/§7 (the retired net.md §6 interface, archived at docs/archive/spec-net.md)).
 // A pure state machine over a WebSocket-like object. The app owns the engine, HUD, BLE and the
 // §3.10 resync; this owns the wire: hello/welcome hydration, bind, live-only status, the persisted
 // fact ring + batch flush + ack prune, NTP-lite sync, reconnect with backoff.

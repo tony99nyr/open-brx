@@ -2,7 +2,7 @@
 
 Drives the REAL GameDriver + BombEngine + FakeTaggers end-to-end (station events,
 kills, and clock ticks) with no hardware. Asserts the CORRECT round/match rules
-from the cs.py docstring + docs/m0-game-engine.md:
+from the cs.py docstring + the gameconfig.py / modes/ docstrings (docs/m0-game-engine.md was retired 2026-09-06):
 
   * bomb defused                     → defenders
   * bomb detonates (timer)           → attackers

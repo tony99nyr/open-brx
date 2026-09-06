@@ -1,6 +1,6 @@
 # `app/src/transport/` — the node-side wire (M-NET client)
 
-Dependency-free ESM implementing `Transport` from `docs/spec/net.md` §6 against the real MC server
+Dependency-free ESM implementing `Transport` from the retired `docs/spec/net.md` §6 (now `docs/archive/spec-net.md`; the wire is `docs/spec/contracts.md` §5) against the real MC server
 (`mcp/brx_mcp/mc/net.py`). Mirrors `mcp/brx_mcp/mc/mock_node.py` — the Python reference node.
 
 ```js
