@@ -57,3 +57,16 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
 - No gun linked = dry run: the frames are logged, not written (useful to read a profile).
 
 Tests: `mcp/tests/test_stage.py` (engine, fake gun end-to-end), `test_stage_server.py` (routes).
+
+## Running it from WSL (how the 2026-09-04 session drove it)
+
+The stage must run on Windows Python (Bluetooth). From WSL: `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m
+brx_mcp stage --gun <addr> --ir COM8 --host 0.0.0.0 --port 8790` in the background. Reach it from WSL at the Windows
+host address (`ip route | awk '/default/ {print $3}'`, e.g. `http://192.168.16.1:8790`), from a Windows browser at
+`http://localhost:8790/`. To stop it, do NOT `pkill -f "brx_mcp stage"` from a shell whose own command line contains that
+text (it kills the shell); use PowerShell: `Get-CimInstance Win32_Process -Filter "name='python.exe'" | ? CommandLine
+-match 'brx_mcp stage' | % { Stop-Process -Id $_.ProcessId -Force }`. A restart drops the gun link; the next write
+reconnects once. The emitter port: `--ir COM8` here (COM3 is a different USB device; auto-detect picked it once and the
+stage now refuses a port that does not answer PING). Bench scripts drive `POST /api/do {"action":"raw", "frames":[...],
+"confirm":true, "delay_s":N}`; give the operator a lead ("fires in 3 s") and repeat a probe three times 3 s apart when
+they are judging by eye.
