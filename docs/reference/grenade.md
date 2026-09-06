@@ -290,3 +290,18 @@ The **KotH charge/progress level** is not in the beacon (it's a per-gun local ti
 value needs a `$SIR`-passthrough rig that lets the gun fire *and* surface grenade IR (exp-log #38) —
 **that rig now exists**: `$SIR,15,<sub>,,24,0,0,1,,*` (FF on) surfaces protocol-15 words as `$HIR` with no
 pool change (proven 2026-09-04). **Respawn mode is fully decoded and replayable** (banner above).
+
+## Replay words (for `ir-emit` one-liners; moved here from `docs/bench-grenade.md` 2026-09-06)
+
+```
+1111000000010000011000001  respawn beacon, owner team1/blue
+1111000000100000011000001  respawn beacon, owner team2
+1111000000000000011000010  respawn beacon, owner team0
+1111000000010000100000010  hill beacon, owner team1/blue
+1111000000100000100000010  hill beacon, owner team2
+0000101010101100100000001  kill shot (team2, mag 200)
+```
+
+Passthrough rows (after the bench `$SIR` table, friendly fire ON so a same-team beacon is not discarded):
+`$SIR,15,0,,24,0,0,1,,*` and the same for subtypes 1, 2, 3. fn 24 registers a `$HIR` and moves no pool
+(FOLLOWUPS U11').

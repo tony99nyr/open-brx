@@ -1,9 +1,9 @@
 # Open BRX
 
 Open-source platform orchestrating Battle Company BRX laser taggers.
-**Strategy/vision:** `docs/VISION.md`; what-to-build-by-budget: `docs/build-tiers.md`; mode catalog:
+**Strategy/vision:** `docs/VISION.md`; what-to-build-by-budget: `docs/manual/07-platform.md`; mode catalog:
 `docs/game-modes.md`. **Spec of record: `docs/spec/`** (`contracts.md` = the node↔MC wire + game data
-model, amendments A1–A8; + the module docs) — the software is built + tested against it. Architecture
+model, amendments A1–A14 folded into the body; + the module docs) — the software is built + tested against it. Architecture
 decisions: `docs/adr/` (0001 per-player node · 0002 laptop Mission Control + local LAN · 0003 native app
 over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 
@@ -11,10 +11,15 @@ over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 canonical, confirmed-facts manual (also the source the public website is built from) — read the section
 file there before digging through `reference/`/`protocol/`, and promote new confirmed facts into it
 (`docs/manual/README.md` → *How a fact gets in*). Before any hardware/protocol
-work also read `docs/HANDOFF.md` (current state), `docs/experiment-log.md` (lab notebook — **append
-after every session**), and `docs/FOLLOWUPS.md` (consolidated open work). Ground truth:
+work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (every open item,
+incl. **Needs Tony at the bench**), and the current month under `docs/experiment-log/` (lab notebook).
+**Session close is three writes:** one log entry, one FOLLOWUPS diff (strike or add rows, no prose), one
+HANDOFF replacement (overwrite, never stack). A closed item becomes one dated line in
+`docs/archive/followups-closed.md`; ids are never renumbered or reused. `docs/archive/` is history:
+grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
-token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/spec/`; hardware:
+token positions, the app's 2166-id sound list, game modes, grenade); the 2477 sounds actually on the gun are
+`docs/reference/sound-catalog.md` (generated from `mcp/brx_mcp/data/sound_catalog.json`). Product spec: `docs/spec/`; hardware:
 `hardware/brx-companion-spec.md` + `brx-station-spec.md`. Community/JEDGE facts:
 `docs/reference/lasertagmods.md` + `community-notes.md`.
 
@@ -62,7 +67,7 @@ token positions, 2166-id sound bank, game modes, grenade). Product spec: `docs/s
 `app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` builds
 the APK the public site hands out into `webapp/download/`; **always rebuild the site after it**, since a
 version bump deletes the old APK and an un-rebuilt page would link a file that no longer exists) ·
-`firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design source `docs/spec/design/mc-export/`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
+`firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
 website (`docs/manual/*.md` → `webapp/`; `cd site && npm run build && npm test` — the Playwright suite is
 the ui-build-verify checklist and refuses to run on a stale build; **a push to `main` deploys the site**

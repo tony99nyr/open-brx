@@ -15,7 +15,8 @@ Four hard facts from `docs/experiment-log.md` drive every design decision:
    Something on the player must be the game engine.
 2. **BLE cannot reach a moving player from a courtside laptop** (#12/19) — the link must be
    *on the player*, ~1 cm away, where it is rock-solid.
-3. **The gun's sound bank is fixed** — no SD, no upload command. Custom audio needs off-gun hardware.
+3. **The gun plays only the ids in its own bank** (2,477 files, swappable as a static pack over USB, never
+   uploaded over BLE). Dynamic or unlimited custom audio needs off-gun hardware.
 4. **Every game action is now a known BLE command** — `$SPAWN`, `$LIFE`, `$WEAP`, `$AMMO`, `$BUMP`,
    `$BHIT` (see `protocol/callsign-extract/protocol-classes.md`). Powerups are just command sequences.
 
@@ -27,7 +28,7 @@ of that phone — **not** a requirement for scoring: per-player attribution is B
 ## ⚡ 2026-08-25 reframe — the `$SFLASH` tier collapse + the real core BOM
 
 Two findings since this spec was written change the shape of the product (see ADR-0001,
-protocol §7o):
+`protocol/session-findings-2026-08.md` §7o):
 
 **The gun is already the speaker AND the display.** The `$SFLASH` capture proved a host can drive
 the gun's own feedback over BLE: `$SFLASH,*` greens the sight, `$PLAY` plays on the gun's (loud)
@@ -123,7 +124,7 @@ Each is a small command sequence the Companion sends over BLE. This is the payof
 | Powerup | Mechanism |
 |---|---|
 | **Extra life / auto-respawn** | on `$HP,0` → wait respawn timer → `$SPAWN,,*` + `$AMMO` reload |
-| **Faster rate of fire** | re-push `$WEAP` for the active slot with a lower fire-delay token (WEAP tok ~15) |
+| **Faster rate of fire** | re-push `$WEAP` for the active slot with a lower fire interval (WEAP tok 14, bench-proven; tok 15 is the swap delay) |
 | **Damage boost** | re-push `$WEAP` with higher `primaryDamage` (WEAP tok 5) |
 | **Overshield / heal** | `$LIFE,addedHP,addedArmor,addedShields,*` or `$BUMP` current pools |
 | **Infinite / refilled ammo** | `$AMMO,<slot>,<clip>,<reserve>,1,*` on demand |
@@ -205,19 +206,20 @@ toggled by what's populated.
 
 ## How it fits the system (the three pieces)
 
-The Companion is one of three complementary pieces — see `docs/spec/mission-control.md` and
+The Companion is one of three complementary pieces, see `mcp/brx_mcp/mc/API.md` and
+`docs/spec/design/mission-control.md`, and
 ADR-0003 (the native-app decision):
 
 | Piece | Role | For |
 |---|---|---|
 | **BRX Companion** (this) | per-player engine + powerups + audio, **hardware** | owned fleets, no phones, rugged/loud, out-of-range play |
-| **Phone app** | per-player engine + HUD, **software** (Web-Bluetooth PWA) | BYOD / casual players |
+| **Phone app** | per-player engine + HUD, **software** (native Capacitor app, ADR-0003) | BYOD / casual players |
 | **Mission Control** | operator console: scan → roster → teams → weapons → scoreboard | the game master |
 
 The Companion and the phone app are **interchangeable per-player nodes** — a match can mix them.
 All three share the decoded protocol (`protocol/callsign-extract/`), the `brx-mcp` command layer,
 and the node→MC WebSocket link over the LAN (MQTT is reserved for the deferred inter-Companion mesh,
-`docs/spec/net.md` §1). Mission Control assigns loadout/team/mode; the Companion executes and reports.
+`docs/spec/contracts.md` §5). Mission Control assigns loadout/team/mode; the Companion executes and reports.
 
 **Community validation:** LaserTagMods' proven mount is exactly this shape — a USB power bank +
 ESP32 riding the phone bracket, no permanent gun modification, ~15 h on a 5000 mAh pack

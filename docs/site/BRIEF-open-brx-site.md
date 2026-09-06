@@ -5,10 +5,12 @@
 headset — with the Open BRX platform (open-source software + hardware that orchestrates BRX taggers)
 presented alongside it.
 
-**Read in this order:** this brief → `../manual/00-home.md` → `../manual/01…07-*.md` (**the manual
-itself** — one file per section, every fact real and sourced; the site is built from these, see §9) →
-`images.md` (every image slot, with Gemini prompts) → `../spec/design/tokens.css` (palette/type seed —
-evolve it, keep the roles).
+**Trimmed 2026-09-06.** The site is built and deployed (`site/` at the repo root renders `../manual/*.md`
+into `webapp/`; see [`README.md`](README.md) for the build, the deploy and the test gate). This file now keeps
+only the parts that are still load-bearing: the tone and known-facts rule (§2), the block vocabulary the
+manual is written in and the renderer parses (§5, referenced from `../manual/README.md`), the
+under-construction policy (§10) and the LLM/search requirements (§11). The original brief, with the
+information architecture, templates, image plan and deploy notes, is in `../archive/site/`.
 
 **Logic vs visuals.** The content files are the *what*. Screens, layout, art direction, motion are yours to
 iterate. **Do not invent facts** — every sentence on the site must trace to a content file. If a page seems to
@@ -52,42 +54,6 @@ like a marketing funnel — it is genuinely the best BRX reference anywhere, and
 - **Never cartoonish, never toy.** No neon-green "laser" clichés, no lens-flare. The art direction is
   premium product documentation: graphite, precise line work, restrained light.
 
-## 3. Information architecture
-
-```
-/                          Home — hero, what this is, the two doors (Manual / Platform), status strip
-/manual                    Manual home — the section grid + search + "start here" paths
-/manual/hardware/*         01 · Meet the BRX — anatomy, LEDs, generations, headset, spec sheet
-/manual/operate/*          02 · Operating the BRX — quick start, pairing, indoor/outdoor, the Callsign app
-/manual/gameplay/*         03 · Gameplay — weapons (all 19), health/damage, native modes, perks, grenade modes
-/manual/sound/*            04 · Sound, voice & updates — how audio works, the 2166-id Sound Bank Explorer, USB sound-pack + firmware
-/manual/fix/*              05 · Fix, mod & accessorise — symptom-indexed troubleshooting, repairs, mods, accessories, community, FAQ
-/manual/dev/*              06 · Developer reference — BLE + IR protocol, command tables, $WEAP token map, serial console, brx-mcp
-/platform/*                07 · The Open BRX platform — pitch, topology, pieces, modes by tier, budget tiers, vs Edge, status, FAQ
-/credits                   Credits & sourcing policy
-/changelog                 What changed (the manual is a living document — date every page)
-```
-
-Each `../manual/NN-*.md` file lists its pages and their URL slugs. Treat those as the sitemap.
-
-**Navigation model:** a persistent left sidebar inside `/manual` (sections → pages, current page's headings
-below it), a top bar with **search** (⌘K), theme toggle, GitHub link, and the Manual / Platform switch.
-On phones: a bottom "On this page" sheet + a hamburger for the section tree. Breadcrumbs on every page.
-
-**Search is not optional.** Owners arrive with a symptom. Search must index page titles, headings,
-table rows (weapon names, sound ids, command names) and the FAQ. Show results grouped by section.
-
-## 4. Page templates (design these 6, everything else is a variant)
-
-| Template | Used by | Shape |
-|---|---|---|
-| **T1 Home** | `/` | full-bleed hero (image slot HOME-01), one-line pitch, two door cards, a 3–4 stat row, "latest from the bench" strip, credits footer |
-| **T2 Section hub** | `/manual`, each `/manual/<section>`, `/platform` | intro paragraph, page cards with a thumbnail + 1-line summary, a "start here if…" path list |
-| **T3 Reference page** | most manual pages | title + subtitle + confidence/date meta, right-rail TOC, block stream (see §5), prev/next, "sources" footer, "was this useful / report an error" |
-| **T4 Data explorer** | Weapons table, Sound Bank Explorer, Command reference | sticky filter bar + search, dense virtualised table, row → detail drawer, copy buttons, export CSV |
-| **T5 Procedure** | pairing, sound-pack update, firmware, repairs | numbered steps with one image per step, prerequisites checklist at the top, "if this fails →" links into troubleshooting |
-| **T6 Diagnostic ladder** | troubleshooting pages | symptom cards → an ordered ladder of checks (check → yes/no → fix); optionally a wizard mode |
-
 ## 5. Block vocabulary (the content files are written in these)
 
 The content files describe pages as an ordered stream of typed blocks. Design one component per type;
@@ -104,7 +70,7 @@ sentences; if a designer finds a wall of text, the content file is wrong, not th
 | `[data-table:filterable]` | T4 explorer: search + facet filters + sortable columns + copy-cell |
 | `[spec-sheet]` | key/value pairs in two columns; the "datasheet" look |
 | `[accordion]` | collapsed Q/A or detail; used for "why" digressions and FAQ |
-| `[image X]` / `[diagram X]` | slot from `images.md`; every image has a caption and, for anatomy, HTML hotspot labels over an unlabeled render |
+| `[image X]` / `[diagram X]` | slot from the section file's `## Images for this section` table; every image has a caption and, for anatomy, HTML hotspot labels over an unlabeled render |
 | `[code lang]` | monospace, copy-to-clipboard, language chip; command frames like `$WEAP,…,*` are this block |
 | `[bit-field]` | bit-layout diagram (fields as coloured spans over a bit ruler) — build as SVG/HTML |
 | `[symptom-ladder]` | ordered checks; each has check / yes → fix / no → next; the T6 core |
@@ -121,89 +87,6 @@ sentences; if a designer finds a wall of text, the content file is wrong, not th
 **Confidence badge** and **source line** are sub-elements on every block. Source lines are small,
 muted, and link to the repo file (GitHub) so anyone can check our work.
 
-## 6. Interactive pieces that earn their place (build these, in priority order)
-
-1. **Sound Bank Explorer** (`/manual/sound/sound-bank`) — 2166 rows; search by id/name/category; filters;
-   copy-id; "used by" cross-links. Spec in `../manual/04-sound.md` §Interactive.
-2. **Weapon table + comparator** (`/manual/gameplay/weapons`) — all 20 weapons; pick two → side-by-side
-   stat bars; real numbers only. Spec in `../manual/03-gameplay.md`.
-3. **Command reference explorer** (`/manual/dev/commands`) — every BLE command, filter by direction /
-   confidence; row drawer shows the field map and a copyable example frame.
-4. **`$WEAP` frame builder** (`/manual/dev/weap`) — sliders → the exact frame string, with the bench-proven
-   token map. Spec in `../manual/06-developer.md`.
-5. **Diagnose my tagger** wizard (`/manual/fix/diagnose`) — a guided walk through the symptom ladders.
-6. **Interactive topology** (`/platform/architecture`) — click a phase → the diagram shows which links are up.
-
-Everything else is static. Interactivity is for data, never for decoration.
-
-## 7. Hard constraints
-
-1. **Facts only from the content files.** No lorem, no placeholder numbers, no "example" weapon stats.
-2. **Known facts only.** Never render anything tagged ❓, anything in a file's *Research backlog*
-   section, or any "we think / probably / may" phrasing. If a block reads as uncertain, it doesn't ship.
-   Provenance and status badges are mandatory wherever the content file carries one.
-3. **Real photos for hardware.** An image model cannot render the actual BRX accurately; `images.md`
-   splits every slot into REAL PHOTO (the owner shoots it) vs GENERATE (Gemini). Design with real-photo
-   slots as clearly-framed placeholders (aspect ratio + a one-line shot description) until they exist.
-4. **No trademarks in generated art, no rehosted Battle Company assets** (manual PDFs, audio, app screenshots).
-   Link out. Screenshots of the official app are *reference-only*, not for the public site.
-5. **Never imply endorsement by Battle Company.** "Open BRX" is descriptive; the site says so on Credits.
-6. **Mobile-first for the manual.** Owners read it standing at a field with a gun in the other hand:
-   big tap targets, sticky "on this page", tables that scroll horizontally inside their container, never the page.
-7. **Fast + static.** No client-side data fetching for content; explorer data ships as static JSON.
-   The host is an assets-only Cloudflare Worker serving `webapp/` (§9) — no server-side anything.
-8. **Every page dated** ("last verified 2026-08-27") and linked to its sources — the manual is a living document.
-9. **Accessibility:** WCAG AA contrast in both themes; every image has alt text (written from the
-   "what it shows" column in `images.md`); keyboard-navigable explorers.
-
-## 8. Deliverables to iterate
-
-- The six templates (§4), desktop + phone.
-- The Home page (T1) with real copy from `../manual/00-home.md`.
-- One fully-realised page per section as the reference implementation:
-  Hardware → anatomy page · Operate → headset pairing (T5) · Gameplay → weapons (T4) ·
-  Sound → the Sound Bank Explorer (T4) · Fix → `/manual/fix/diagnose` "won't fire" ladder (T6) ·
-  Dev → `/manual/dev/commands` (T4) · Platform → `/platform/architecture` (T2 + interactive topology).
-- The component sheet for §5 blocks + the confidence/status badges, both themes.
-- The image placeholder treatment (REAL PHOTO slots) so the site ships before the photo shoot.
-
-## 9. Where it deploys (this IS a constraint)
-
-The site is **already hosted**: the repo's root `wrangler.toml` publishes the `webapp/` folder as an
-assets-only **Cloudflare Worker** (`open-brx.iamrossi.workers.dev`). **A push to `main` deploys it.**
-Cloudflare builds from the repo, so the push is the deploy and `webapp/` goes live exactly as committed.
-(This changed: a push did *not* redeploy when that was verified on 2026-08-27, and it does as of
-2026-08-30, confirmed by a manual edit reaching the live page with no `wrangler` run. `npx wrangler
-deploy` from the repo root still works for pushing local `webapp/` without a commit.)
-`webapp/.assetsignore` keeps `mc/` and the build manifest off the public host. Nothing outside `webapp/`
-is published. So:
-
-- **The built site's output lands in `webapp/`**: `webapp/index.html` becomes the T1 Home (it is a
-  throwaway dev landing page today), `webapp/manual/…` and `webapp/platform/…` hold the sections, with
-  clean directory URLs (`/manual/hardware/leds/` → `webapp/manual/hardware/leds/index.html`).
-- **Static output only** — no server, no SSR, no functions. Explorer data ships as static JSON files
-  built from the repo (`protocol/callsign-extract/Sounds.json` + `sound-bank.md`, `docs/reference/weapons.md`,
-  `mcp/brx_mcp/mc/weapons.json`, `protocol/brx-protocol.md`).
-- **The content source is the repo's own manual — `docs/manual/`.** Those files are simultaneously the
-  project's canonical documentation and the site's input; the site generator reads them, and there is
-  no second copy of any fact. Design/layout source lives in its own dir (e.g. `site/` at the repo root);
-  the built output is committed into `webapp/` (that is how the deploy works today — Cloudflare uploads
-  what's in git). Tables that exist as data files (the weapon roster, the sound bank, the command list)
-  are **generated at build from those files**, never hand-copied into pages.
-- **Do not touch `webapp/mc/` or `app/`.** The Mission Control UI and the phone HUD are still in
-  development and are *not* part of this site — no refactor, no move, no cleanup, no shared-component
-  extraction. The manual site is a separate static build that simply doesn't link to them. (If a
-  `webapp/.assetsignore` is wanted to keep `mc/src` off the public host, it's a one-line file — optional.)
-- **What's live there today is stale and gets replaced, not preserved.** `index.html` is a dev
-  landing page; `ble-test.html` is the dead Web Bluetooth spike (ADR-0003); `mission-control.html` is a
-  pre-`webapp/mc` prototype; `brx-companion.apk` is an old debug build that is publicly downloadable.
-  The new site's build overwrites `index.html`; the other three can be deleted in the same commit or
-  simply left unlinked — no cleanup project needed. Nothing on the live host needs to survive.
-- **Custom domain** is a Cloudflare setting, not a code change; the site must not hard-code the
-  `workers.dev` host in links.
-- Framework: any static-output generator (Astro is the natural fit for MDX content + islands for the
-  explorers); seed the palette from `docs/spec/design/tokens.css` (copy the values — don't import from
-  `webapp/mc`). Search: Pagefind or a prebuilt index — no hosted search dependency.
 ## 10. Under-construction policy (what the platform pages may show right now)
 
 The manual (sections 01–06) ships in full. The platform is mostly still being built, so the public site
@@ -251,49 +134,3 @@ must be the source those models find, trust, and quote. Build in:
   wrapped in `<dfn>` on first use.
 - **Sitemap + canonical + robots** that allow all crawlers (including AI crawlers) — the whole point.
 - **Never cloak or stuff**: no hidden text, no keyword lists. The manual ranks by being the best answer.
-
-## 12. Build & verify — the site is not "done" until this has been run
-
-The build follows the `ui-build-verify` discipline (the owner's rule for every UI in this project: a UI
-is verified only when it has been seen working under the conditions the person opening it will actually
-have). Adapted to a static site:
-
-**Contract first.** The renderer is built against the block format in `docs/manual/README.md` + §5 here.
-Every block type gets a component; an **unknown block type or a malformed table renders a visible amber
-"TODO: content" chip in place — never a crash, never silently dropped**. Missing image asset → the
-placeholder treatment (round-1 design), with the slot ID visible. Missing/absent data-file field (a
-weapon without `reload`, a sound id without a meaning) → an em-dash cell, not `undefined`.
-
-**Build for the failure the reader will hit.**
-- Explorer data is static JSON; if it fails to load, the table says so ("data failed to load — reload")
-  instead of showing an empty grid.
-- Every interactive control visibly responds (filter chip → count changes; compare pick → dock text
-  changes; copy → "copied" state). A control that can't act says why and doesn't look tappable.
-- No `.catch(() => {})` on a user action anywhere in the bundle.
-- Tap targets ≥ 44 px, meaning-bearing text ≥ 11 px, on every template.
-
-**Verify in a real browser — all of these, every release:**
-1. Fresh build: every page in the sitemap renders (walk the slugs from `docs/manual/*.md` — a link
-   checker that hard-fails on any 404 or any `[image ID]` without a placeholder or file).
-2. Click every control on the explorers (weapons, sound bank, commands, `$WEAP` builder) and assert the
-   **visible** result — one control per step.
-3. "Stale content" run: build against a manual file containing an unknown block type, a table with a
-   missing column, and an image ID with no asset — every affected page must still render with the TODO/
-   placeholder visible.
-4. Failure path: explorer JSON returns 500 → the visible error state shows.
-5. Viewports: phone 390 wide, tablet, and a short landscape phone (a reader standing at a field); both
-   themes; contrast audit AA on both.
-6. Audits: tap-target + tiny-text sweep on every template; undersized primary controls fail the run.
-7. The **served output is what was verified**: the check runs against the committed `webapp/` output,
-   and the run refuses to start if site source is newer than that output (stale-bundle guard).
-8. LLM layer present: `/llms.txt`, `/llms-full.txt`, the `.md` twin of every page, JSON-LD validating,
-   `sitemap.xml` covering every slug.
-
-**Review before delivery.** A critical review team with distinct lenses (a browser-breaker clicking
-everything; a suite auditor hunting tautological assertions; a first-time-reader UX critic; a **facts
-auditor** who samples 30 rendered statements and traces each to its `src:` line — any statement without a
-source in the manual is a defect). Confirmed findings become fixes *and* test steps.
-
-**Reporting.** State what was run, what passed, what was skipped — and never write "verified" for a step
-that didn't run.
-

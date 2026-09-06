@@ -277,20 +277,20 @@ it('2a · weapons explorer: search, every class chip, compare pick/unpick/evict,
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-it('2b · sound bank explorer: 2166 ids, search, family chips, show-more to exhaustion, copy $PLAY', async ({ page, context }) => {
+it('2b · sound bank explorer: 2634 ids (2477 on the gun + 157 app-only), search, family chips, show-more to exhaustion, copy $PLAY', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
   const errors = watchErrors(page);
   await page.goto('/manual/sound/sound-bank/');
   const ex = page.locator('[data-explorer="sounds"]');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/2166 of 2166 match · showing 300/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/2634 of 2634 match · showing 300/);
   await expect(ex.locator('tbody tr')).toHaveCount(300);
   await expect(ex.locator('[data-x-more]')).toBeVisible();
   let clicks = 0;
   while (await ex.locator('[data-x-more]').isVisible()) { await ex.locator('[data-x-more-btn]').click(); clicks++; expect(clicks).toBeLessThan(10); await page.waitForTimeout(50); }
-  await expect(ex.locator('tbody tr')).toHaveCount(2166);
-  await expect(ex.locator('[data-x-count]')).toHaveText(/2166 of 2166 shown/);
+  await expect(ex.locator('tbody tr')).toHaveCount(2634);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/2634 of 2634 shown/);
   await ex.locator('[data-x-search]').fill('R02');
-  await expect(ex.locator('[data-x-count]')).toHaveText(/^\d+ of 2166 shown/);
+  await expect(ex.locator('[data-x-count]')).toHaveText(/^\d+ of 2634 shown/);
   await expect(ex.locator('tbody tr').first()).toContainText('R02');
   await expect(ex.locator('[data-x-more]')).toBeHidden();
   await ex.locator('[data-x-search]').fill('');
@@ -300,7 +300,7 @@ it('2b · sound bank explorer: 2166 ids, search, family chips, show-more to exha
   const chip = ex.locator('[data-facet="VA"]');
   await chip.click();
   await expect(chip).toHaveAttribute('aria-pressed', 'true');
-  await expect(ex.locator('[data-x-count]')).not.toHaveText(/2166 of 2166/);
+  await expect(ex.locator('[data-x-count]')).not.toHaveText(/2634 of 2634/);
   await expect(ex.locator('tbody tr td:first-child').first()).toContainText(/^VA/);
   const copy = ex.locator('[data-copy]').first();
   const cmd = await copy.getAttribute('data-copy');
@@ -503,7 +503,7 @@ it('3c · the build refuses a manual with a broken internal link (link checker i
 });
 
 // ---- 4. failure paths --------------------------------------------------------------------------
-for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2166 of 2166 match'], ['/manual/gameplay/weapons/', 'weapons', '22 of 22 shown']]) {
+for (const [slug, id, count] of [['/manual/sound/sound-bank/', 'sounds', '2634 of 2634 match'], ['/manual/gameplay/weapons/', 'weapons', '22 of 22 shown']]) {
   it(`4 · ${id} explorer data 500 → visible error strip, retry recovers`, async ({ page }) => {
     let fail = true;
     await page.route(`**/data/${id}.json`, route => fail ? route.fulfill({ status: 500, body: 'boom' }) : route.continue());

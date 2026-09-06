@@ -1,5 +1,8 @@
 # Decoded capture transcripts
 
+> Section references of the form §7e, §7n, §7o point into `../session-findings-2026-08.md` (the archived
+> session write-ups); the current reading of each fact is in `../brx-protocol.md`.
+
 Decoded with `python -m brx_mcp.btsnoop <btsnoop-file>`. `>>` is host→tagger,
 `<<` is tagger→host.
 

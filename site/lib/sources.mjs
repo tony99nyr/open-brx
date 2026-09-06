@@ -27,7 +27,7 @@ export function sourceFiles(manualDir) {
     ...walk(manualDir),
     path.join(REPO_DIR, 'mcp/brx_mcp/mc/weapons.json'),
     path.join(REPO_DIR, 'docs/reference/weapons.md'),
-    path.join(REPO_DIR, 'protocol/callsign-extract/Sounds.json'),
+    path.join(REPO_DIR, 'mcp/brx_mcp/data/sound_catalog.json'),
   ].filter(p => fs.existsSync(p) && fs.statSync(p).isFile());
 }
 

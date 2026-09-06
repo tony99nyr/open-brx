@@ -135,9 +135,9 @@ War, and hosted Battle Royale need **base↔base networking** (ESP-NOW near, LoR
 
 ## 7. Feasibility in *our* tier system — and what an old phone can do
 
-Jay's ecosystem is the proof-of-existence for our `build-tiers.md` spend ladder. Mapping:
+Jay's ecosystem is the proof-of-existence for our `docs/manual/07-platform.md` spend ladder. Mapping:
 
-| Our tier (`build-tiers.md`) | Jay's proof it works | What we build (MIT, our own code) |
+| Our tier (`docs/manual/07-platform.md`) | Jay's proof it works | What we build (MIT, our own code) |
 |---|---|---|
 | **$0 — phone/laptop + guns you own** | Callsign + BLE control; his BLE domination base scoring standalone | Web-Bluetooth per-player node + Mission Control (Tier 0 modes, incl. the new syphon/shield variants) |
 | **+ objective stations** | **JBOX Mini** = ESP32 + IR rx/tx + 1 RGB + resistors (~$5–10) | our objective-station node — one primitive covers KotH/CTF/Domination/Assault/CS |
@@ -158,11 +158,7 @@ assumption is real hardware behavior.
 
 A spare/old phone is genuinely useful at several jobs — with one hard platform split:
 
-1. **Per-player node + HUD (~~Web-Bluetooth~~ → native app, ADR-0003):** the old plan had Android
-   **Chrome's Web Bluetooth** run a browser-based player engine/HUD against its own gun (and **iOS
-   Safari has NO Web Bluetooth** → an iPhone needed a wrapper browser like **Bluefy**). That path is
-   **ruled out** — the per-player node is now a **native app** (ADR-0003). Either way, one node drives
-   **one gun** (BLE central limits) → old phone = *per-player* node, not a 45-gun hub.
+1. *(Per-player node in a browser: removed; superseded by ADR-0003, the node is a native app.)*
 2. **Operator console / config screen (ANY phone, even iOS):** connect the phone to an ESP32 base's
    **WiFi AP** and open `192.168.4.1` — it's plain HTTP, so **any** browser works. An old phone is a
    zero-install config + live-score screen for any station (Jay's model, §3).
@@ -170,10 +166,7 @@ A spare/old phone is genuinely useful at several jobs — with one hard platform
    page (auto-refreshes every 5 s) → a live objective display for free.
 4. **Mission Control terminal:** an old phone/tablet on the field WiFi runs the browser Mission
    Control app (roster/teams/scoreboard) against the host — no BLE needed for this role.
-5. **What it *can't* do well:** be the central hub for many guns at once (BLE central limits + iOS
-   Web-BLE gap), or run heavy always-on radio bridging (that's an ESP32/Pi job, not a phone's).
-
-**Bottom line for an old phone:** excellent as a **per-player node (Android)**, a **universal
+**Bottom line for an old phone:** a **per-player node** (via the native app, ADR-0003), a **universal
 zero-install config/score screen (any phone, via a base's web AP)**, and a **Mission Control
 terminal** — which means the cheapest real deployment is *phones you already own for players +
 a handful of ~$8 ESP32 stations*, with a Pi or JEDGE-style host only when you scale to field radio.

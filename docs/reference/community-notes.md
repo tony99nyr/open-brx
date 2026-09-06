@@ -10,7 +10,7 @@ This is field-earned wisdom that complements the protocol/manual docs.
 **Gun won't fire — diagnostic ladder** (community consensus):
 1. **Is the headset on and paired?** Since a 2018/2019 firmware revision, the BRX **stops firing
    when the headset is off/disconnected** — anti-cheat. This is the #1 cause and corroborates our
-   own headset-lockout finding (`experiment-log` §16, manual §7h). A tagger that "charges its
+   own headset-lockout finding (`experiment-log` §16, `protocol/session-findings-2026-08.md` §7h). A tagger that "charges its
    energy weapon but nothing happens on trigger" is the classic symptom.
 2. Can you select a weapon by pulling the trigger *before* starting a game? If not, controls are
    locked / not in the right state.

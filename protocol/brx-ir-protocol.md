@@ -115,3 +115,24 @@ end-of-frame check, not a data bit).
 **Capture gotcha (our rig, not the protocol):** `ir_capture.ino` prints a long `RAW` line per frame,
 and at 115200 that takes ~15 ms — any shot landing inside that window is captured truncated. The
 symptom is a run of frames that are *prefixes* of the real word (16/17/20/21/24 bits). **FIXED 2026-08-27** — `IDLE_GAP_US` raised 8000 → 30000 and the RAW dump is now **toggleable with `r`**. **Send `r` to turn RAW off for any capture that matters**; it is a debugging aid, not a capture mode. This bug silently cost four captures (the `$GREN` accessory word, the Sentinel EMP ability, and two death-nova attempts) before it was found.
+
+## Native words captured off the air (reference rows)
+
+| Source | B (proto) | P | T | D (magnitude) | C | U | Note |
+|---|---|---|---|---|---|---|---|
+| Assault Rifle | 0 | id | team | 9 | 0 | 0 | the stock AR emits 9, not the manual's 24 |
+| Shotgun | 0 | id | team | 45 | 0 | 0 | |
+| Sniper | 0 | id | team | 80 | 0 | 1 | subtype 1 keys the fn-36 row |
+| Rocket Launcher | 10 | id | team | 115 | 0 | 0 | |
+| Melee (gyro swing, native game) | 13 | id | team | 90 | 0 | 1 | subtype 1 = Rifle Bash |
+| Supremacy Sentinel death-nova (headset) | 10 | dying player | dying team | 125 | 0 | 0 | credits kills to the corpse |
+| **Smart Grenade, Respawn station: boot / announce** | 15 | 0 | 0 | **56** | 0 | 0 | `1111000000000011100000001`; sent once at power-up; before a game starts it **arms** a tagger (self-respawn off, "respawn enabled" at start) |
+| **Respawn station: beacon** | 15 | 0 | owner | **6** | 0 | 0 | `1111000000010000011000001` (owner = team 1 shown); every ~2.5 s; **revives a dead, armed gun of that team** (4/4; wrong team 0/1); does not arm a running game |
+| **Respawn station: button** | 15 | 0 | owner | 6 | **1** | 0 | `1111000000010000011010010`; the beacon with the crit bit; **arms a tagger mid-game** |
+
+The three station words were captured on the VS1838B receiver and **replayed from the ESP32 emitter with the
+grenade out of the building** on 2026-09-04: our emitter is a working respawn station for native games. Host-driven
+(Mission Control) games ignore all three, with or without a `$SIR` row for protocol 15; the station logic is
+native-mode firmware (FOLLOWUPS B23). Full behaviour and the arming paths: `docs/reference/grenade.md`
+§Respawn Station mode; evidence `docs/experiment-log/2026-09.md` (2026-09-04). The Hill / Assault / CTF / Frag
+words and the headset-front-plus-trigger request word are not yet captured intact.

@@ -126,9 +126,9 @@
     } : {
       facetKey: 'family', facets: r => r.family, cols: [
         ['ID', r => `<strong>${esc(r.id ?? 'n/a')}</strong>`, r => r.id ?? ''], ['Family', r => `${r.family ? esc(r.family) : dash()}${r.family_meaning ? `<br><span class="muted">${esc(r.family_meaning)}</span>` : ''}`, r => r.family ?? ''],
-        ['Meaning', r => r.meaning_known && r.meaning ? esc(r.meaning) : `<span class="unknown">not yet identified</span>`, r => r.meaning ?? ''], ['Length s', r => n(r.len), r => r.len], ['File', r => r.file ? `<code>${esc(r.file)}</code>` : dash(), r => r.file ?? ''],
+        ['Meaning', r => r.meaning_known && r.meaning ? esc(r.meaning) : `<span class="unknown">not yet identified</span>`, r => r.meaning ?? ''], ['On gun', r => r.on_gun === false ? `<span class="unknown">app only</span>` : 'yes', r => r.on_gun === false ? 0 : 1], ['Length s', r => n(r.len), r => r.len], ['File', r => r.file ? `<code>${esc(r.file)}</code>` : dash(), r => r.file ?? ''],
         ['Play', r => r.play ? `<button type="button" class="x-cell-copy" data-copy="${esc(r.play)}" aria-label="Copy ${esc(r.play)}">copy $PLAY</button>` : dash(), null],
-      ], key: r => `${r.id ?? ''} ${r.family ?? ''} ${r.family_meaning ?? ''} ${r.meaning ?? ''}`,
+      ], key: r => `${r.id ?? ''} ${r.family ?? ''} ${r.family_meaning ?? ''} ${r.meaning ?? ''} ${r.speaker ?? ''} ${r.category ?? ''}`,
     };
     function n(v) { return v == null || v === '' || Number.isNaN(v) ? dash() : `<span class="num">${esc(v)}</span>`; }
     // the house style has no em dash, so a missing value reads as n/a

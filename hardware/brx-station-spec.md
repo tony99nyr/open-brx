@@ -20,7 +20,7 @@ reliable, any-mode, and driven live by Mission Control.
 
 ## Why it has to exist (what the teardown + crawl proved)
 
-1. **The gun keeps no game state** (`protocol/brx-protocol.md` §7n) — a *location* can't be authored
+1. **The gun keeps no game state** (`protocol/session-findings-2026-08.md` §7n) — a *location* can't be authored
    by the guns; it needs a local authority that shows truth (LED/sound) on the spot.
 2. **Objective modes need fixed contested points** (`docs/game-modes.md` Tier 1) — Domination/KotH/
    CTF/Assault all centre on *places*, not players.
@@ -80,7 +80,7 @@ The station both **receives** hits (capture) and **emits** tags (perks, respawn,
 ## LED / ownership model
 
 - **1× WS2812B** (Mini) or a **ring/strip** (Base/Tower) shows the **current owner's team colour**
-  (red/blue/yellow/green; the firmware's 9-colour index — `protocol/brx-protocol.md` §7i/§7j — maps
+  (red/blue/yellow/green; the firmware's 9-colour index — `protocol/session-findings-2026-08.md` §7i, §7j — maps
   cleanly to the LED). White/neutral = unclaimed.
 - **On capture:** flash + (Base tier) a sound; hold shows accumulation (e.g. a per-second pulse while
   a Domination point scores). This is the "truth on the spot" that makes objective play legible without
@@ -160,13 +160,12 @@ The box has to **emit BRX-compatible IR** so stock guns register its captures/re
   `$SIR`/token 1 of `$HIR`) that routes the effect — e.g. type→{standard hit, respawn+HP, add shields,
   add armor, …} per the `$SIR` table (`protocol/brx-protocol.md` §5); a grenade beacon reads as type 15
   carrying team + mode.
-- **❓ The one gap — the exact bit-layout** of each objective tag (which of the 25 bits carry type vs.
-  team vs. mode/effect). The gun hands us the *decoded* `$HIR`, not the raw bits. **Close it two ways:**
-  (1) **LaserTagMods/JBOX source** — they already emit CTF/KotH/respawn IR, so their code is the
-  bit-map reference; (2) **a bench capture** — a ~$2 TSOP38 + a logic analyzer (or an ESP32 timing the
-  pulses) recording real gun/grenade shots yields the raw 25-bit words directly. One session → full map.
+- **Bit layout (✅ solved 2026-08-26, `protocol/brx-ir-protocol.md`):** B (4 bits) protocol · P (6) player id ·
+  T (2) team · D (8) magnitude · C (1) crit · U (2) subtype · Z (2) parity; ~2 ms sync, 1000/500 µs marks. A stock
+  tagger accepted a fully synthetic word from our ESP32 rig, and on 2026-09-04 the rig replayed the grenade's three
+  Respawn-station words. The emit side is real.
 
-**Everything else is standard ESP32 work.** Once the emit format is confirmed, the box can produce any
+**Everything else is standard ESP32 work.** The emit format is confirmed, so the box can produce any
 capture/respawn/perk/heal tag on command — which is exactly what makes it programmable where the stock
 grenade is locked.
 
@@ -195,7 +194,7 @@ Consequences:
 |---|---|---|
 | **BRX Station** (this) | fixed contested point — capture/hold/respawn/extraction, **loud/visible truth on the spot** | IR to guns; ESP-NOW/LoRa to other nodes |
 | **BRX Companion** (`brx-companion-spec.md`) | rides the player — game engine + **loot wallet** + powerups + audio | BLE to its gun; ESP-NOW/LoRa to stations |
-| **Mission Control** (`docs/spec/mission-control.md`) | operator console — assigns modes, aggregates score | Wi-Fi (WebSocket) |
+| **Mission Control** (`mcp/brx_mcp/mc/API.md`, `docs/spec/design/mission-control.md`) | operator console — assigns modes, aggregates score | Wi-Fi (WebSocket) |
 
 Station and Companion talk over the **same ESP-NOW/LoRa mesh** — e.g. the Station announces "point A →
 red" or "extraction started", the Companion adjusts the player's HUD/loot. QR codes (paper, ~$0) remain
@@ -213,10 +212,7 @@ the zero-cost alternative for weapon-pickup / flag props where a powered box is 
 
 ## Open hardware questions (before a build)
 
-- **#1 — capture the BRX IR bit-layout (the one gating task).** Confirm the exact 25-bit payload of each
-  objective/effect tag (which bits = type / team / mode / damage) so the box can *emit* valid BRX IR.
-  Do it via **LaserTagMods/JBOX source** (they already emit it) or a **~$2 TSOP38 + logic-analyzer bench
-  capture** of real gun/grenade shots. Blocks the emit side; RX-only prototyping can start before it.
+- **IR bit layout: done** (2026-08-26; see above). The gating task is now packaging, not research.
 - **P10** — confirm the BRX IR **damage-value** decode (~7–8 bits) so damage-weighted scoring is exact
   (`docs/FOLLOWUPS.md`).
 - **D2** — adopt **LoRa-standard** + **ESP-NOW-with-antenna** as the field/arena baseline (measured).

@@ -11,7 +11,7 @@
 _Video game style tactical laser tag. Open, and you host it yourself._
 
 [hero] **Open BRX.** This is the full manual for the Battle Company BRX tagger and headset. It is also an open-source platform. It turns stock BRX guns into one connected laser tag system. You get real game modes, live scoring, and objectives from a laptop today. A phone HUD and a laptop Mission Control are still being built. No subscription. No firmware mods. No venue Wi-Fi needed.
-[image HOME-01] full-bleed hero (night field, dim red HUD glow; see images.md)
+[image HOME-01] full-bleed hero (night field, dim red HUD glow; see the Images table below)
 src: docs/VISION.md, README.md
 
 [cards] "Two doors"

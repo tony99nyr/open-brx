@@ -1,5 +1,5 @@
 # 01 · Meet the BRX  (section slug: /manual/hardware)
-**Last verified:** 2026-08-27
+**Last verified:** 2026-09-06
 **Audience:** new owners, event hosts and tinkerers who want to know what they are holding before they switch it on · **Goal of this section:** name every part of the tagger, headset and accessories. Explain what each light and port means. Show why the BRX is a simple IR instrument that remembers nothing, which every later section builds on.
 **Provenance legend:** ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign APK · 👥 community-reported. Only confirmed facts are published; see Research backlog at the end.
 
@@ -12,7 +12,7 @@
 ### Page: The BRX at a glance  (`/manual/hardware/overview`)
 _A laser tagger shaped like a rifle, a wireless sensor headset, and a smart grenade. Plus what they are not._
 
-[hero] The Battle Company BRX is a laser tagger shaped like a rifle, and it comes with a wireless sensor headset. 📖 It shoots a coded beam of invisible light at 980 nm and 38 kHz. It plays 2,000+ sounds through its own speaker, and a small bank of lights shows what it is doing. There is no screen, no WiFi, and no memory of the game you just played. ✅ src: docs/reference/brx-extended-user-guide.md, docs/reference/edge-brp.md, protocol/brx-protocol.md §7n
+[hero] The Battle Company BRX is a laser tagger shaped like a rifle, and it comes with a wireless sensor headset. 📖 It shoots a coded beam of invisible light at 980 nm and 38 kHz. It plays 2,000+ sounds through its own speaker, and a small bank of lights shows what it is doing. There is no screen, no WiFi, and no memory of the game you just played. ✅ src: docs/reference/brx-extended-user-guide.md, docs/reference/edge-brp.md, protocol/session-findings-2026-08.md §7n
 
 [image HW-01] (see Images table)
 
@@ -20,8 +20,8 @@ _A laser tagger shaped like a rifle, a wireless sensor headset, and a smart gren
 - **980 nm / 38 kHz**: the IR beam every shot rides on 📖
 - **~600 ft**: how far a shot usually reaches. Shade and night are better, and bright sun cuts it about in half 📖
 - **~8 h**: play time on one charge 📖
-- **2,000+**: sounds and voice lines stored on the tagger (we have catalogued 2,166 ids) ✅
-src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/callsign-extract/ (sound bank)
+- **2,477**: sound files on the tagger, every one catalogued ✅
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/sound-catalog.md
 
 [cards] "The system, in three objects"
 - **Tagger**: the rifle. It fires the IR beam and carries a hit sensor on its body. Inside sit the speaker, the sound bank, the battery, the Bluetooth radio and all the logic for a stock game. 📖 ✅
@@ -35,7 +35,7 @@ src: docs/reference/brx-manual-notes.md, docs/reference/grenade.md
 - **Keeps no game state.** Switch it off and on, and any settings you sent it are gone. It never reports a score, and a stock game keeps no score at all. "How do I see my score?" is the first question at every game. ✅ 👥
 - **No headset cable.** The headset is wireless. There is no headset jack on the tagger. 📖 ✅
 - **No firmware backup.** You can write firmware over USB, but you can never read it back (the bootloader is write-only). ✅
-src: docs/reference/edge-brp.md, protocol/brx-protocol.md §1 §7c §7n, docs/reference/community-notes.md
+src: docs/reference/edge-brp.md, protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c, §7n, docs/reference/community-notes.md
 
 [quote] "A gun whose headset is off, unpaired or flat just refuses to join. No error, no voice line." That is the number one cause of a wasted game start, straight from our field notes. ✅ src: docs/gotchas.md
 
@@ -62,7 +62,7 @@ src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.
 - micro-USB "Programing Port" | body | It does two jobs. On a normal boot it is a **USB serial console**. The tagger's Teensy microcontroller then shows up as a COM port ("PuTTY into the tagger"). Hold **SELECT at power-on** and it becomes a **USB disk** that shows the firmware `.BIN` and the `AUDIO` folder | ✅ 📖
 - Headset jack | n/a | **There is none.** The headset links wirelessly | ✅
 - Accessory port | n/a | **There is none** on the Gen2/3 units we have opened up and checked at the connector. Micro-USB is the only port | ✅
-src: protocol/brx-protocol.md §7c, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
+src: protocol/session-findings-2026-08.md §7c, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
 [accordion] "What's inside (for the curious, you do not need to open it)"
 - **Microcontroller:** a PJRC **Teensy** (ARM). Plug in USB and it shows up as "Teensyduino USB Serial". ✅
@@ -70,7 +70,7 @@ src: protocol/brx-protocol.md §7c, docs/reference/brx-extended-user-guide.md, d
 - **Sound storage:** an SD card on the mainboard. You never take it out to change sounds, because sound updates go over USB. 👥 📖
 - **Speaker:** a "pop" from the speaker when the gun boots means the speaker has power. 👥
 - **Warning:** always unplug the battery before *any* work inside. A live pack during a mod is the classic way to kill a mainboard. 👥
-src: protocol/brx-protocol.md §7c, docs/experiment-log.md (QUERY dump), docs/reference/community-notes.md
+src: protocol/session-findings-2026-08.md §7c, docs/experiment-log.md (QUERY dump), docs/reference/community-notes.md
 
 [image HW-05] (ports close-up, see Images table)
 
@@ -86,7 +86,7 @@ _The invisible beam that carries every tag. Here are the published specs and wha
 - Pulse repetition (carrier): **38,000 Hz**
 - Beam: **< 18 mm at the aperture**
 - Factory record on one of our units reports the laser at **16.9 mW** ✅
-src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
+src: docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7c
 
 [table] What a shot looks like on the air (bench-measured) - columns: Property | Value | Confidence
 - Frame | one ~25-bit word per shot, pulse-width encoded | ✅
@@ -109,7 +109,7 @@ src: protocol/brx-protocol.md §"$HIR token 1 - sensor id map", docs/reference/c
 [accordion] "The sight"
 - The tagger's sight has a **green kill-confirm flash**. Score a kill and the sight glows green for a few seconds. ✅
 - **Sighting a scope** happens in **Target Mode** (hold LEFT while powering on). Shots do zero damage, ammo is unlimited, and a direct hit flashes the target's headset green. Owners sight snipers long (300–400 ft) and shotguns or SMGs close (50–100 ft). 📖 👥
-src: protocol/brx-protocol.md §7o, docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
+src: protocol/session-findings-2026-08.md §7o, docs/reference/brx-manual-notes.md, docs/reference/community-notes.md
 
 [image HW-09] (IR waveform illustration, see Images table)
 
@@ -127,7 +127,7 @@ _The gun's LED bank and the headset's ring. Read them like a dashboard._
 - Segments going out | **Your health bar**: the three LEDs work like a bar that drains as you take damage | ✅
 - Manual's description | "LED indicator shows ammo & health" | 📖
 - Slow blink in team colour | A game run from an outside app that has not switched the health bar on | ✅
-src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7r (LEDs slow-blink team colour in an app-derived config), docs/experiment-log.md (LED life mode, 2026-08-27)
+src: docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7r (LEDs slow-blink team colour in an app-derived config), docs/experiment-log.md (LED life mode, 2026-08-27)
 
 [diagram HW-10] (gun LED gauge states, see Images table)
 
@@ -135,13 +135,13 @@ src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7r (L
 - **Slow rainbow cycling** | **Not connected, not paired** to a tagger. You can spot it across a room, so check every headset before a game starts | ✅
 - **Solid or pulsing team colour** (red, blue…) | Paired and synced to the tagger. You see this **before the game only** | ✅
 - **Dark** | **This is normal in play.** The band goes dark once the game starts, and dark is not a fault | ✅
-- **Green blink** | Hit feedback | ✅
-- **Holds green** | Kill feedback | ✅
+- **One green flash** | A hit registered on this headset. The flash fires on its own, with no command from a phone or host | ✅
+- **Sustained bright green blink** | This player is out (dead). It stops at respawn | ✅
 - **Green flash in Target Mode** | A direct hit on the sighting target | 📖
 - **Bright green burst** (4 directions) | The 3 W hit LEDs. They are built to show up in daylight, and indoor mode dims them | 📖
-src: docs/experiment-log.md (2026-08-27, "the HEADSET LED is autonomous"), docs/field-process.md, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
+src: docs/experiment-log/2026-09.md (2026-09-02, the native headset state model: blank the headset, shoot it, one green flash from dark; out = sustained blink), docs/experiment-log/2026-08.md (2026-08-27), docs/field-process.md, docs/reference/brx-extended-user-guide.md, docs/reference/brx-manual-notes.md
 
-[callout:warn] **We got this wrong in an earlier version of our own notes.** Green means *hit or kill*, not death. Team colour shows *only before* the game starts. If you read "green = dead" somewhere else, it came from that older reading. ✅ src: docs/experiment-log.md (2026-08-27 correction)
+[callout:warn] **We got this wrong twice in our own notes.** One green flash means a hit landed on this headset. A sustained green blink means the wearer is out. Team colour shows *only before* the game starts. Earlier readings said "green = dead" and then "holds green = kill feedback"; the sustained blink is the out state, and it is the firmware's own, not a host command. ✅ src: docs/experiment-log/2026-09.md (2026-09-02)
 
 [callout:tip] The headset LEDs work **on their own**. You get them in stock games and in games hosted by an outside app alike. Nothing needs to be set up first. ✅ src: docs/experiment-log.md
 
@@ -179,7 +179,7 @@ src: protocol/brx-protocol.md §"$HIR token 1", docs/reference/brx-extended-user
 - Extra functions | Short-range scoring without an app, and sensing players who are close by | 📖
 - Spares Battle Company sells | Speakers, sensor circuit boards (front/left/right, "HS 2.0"), a 19" 2-pin wire bundle | 👥
 - Water | A soaked tagger usually survives after days of drying. **A soaked headset usually does not** | 👥
-src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7m §7r, docs/reference/community-notes.md
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7m, §7r, docs/reference/community-notes.md
 
 [callout:tip] **Before every game, look for rainbow.** A headset cycling slowly through rainbow colours is unpaired. Its tagger will quietly refuse to join a hosted game. Five seconds of looking saves the whole round. ✅ src: docs/gotchas.md, docs/field-process.md
 
@@ -213,7 +213,7 @@ src: docs/reference/community-notes.md, docs/gotchas.md, docs/experiment-log.md 
 - Cell | one 18650 lithium cell (v2) | 👥
 - Charging | any USB 5 V supply | 📖
 - Voltage readout | shown in the tagger's USB console (e.g. "Head: 3.84 V") | ✅
-src: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7c
+src: docs/reference/community-notes.md, docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7c
 
 ---
 
@@ -227,18 +227,18 @@ _Gen1 speaks Bluetooth Classic; Gen2 and Gen3 speak BLE. Here is how to tell in 
 - Headset requirement for the radio | Headset must be connected for Bluetooth to work 👥 | A gun with no headset accepts a link, then drops it within seconds ✅
 - "Logo" vs "non-logo" | Non-logo units need extra steps after firmware/disk mode and a pair code 📖 | Logo units need no password and have the gesture (melee-swing) headset 📖
 - Everything else | Same IR, same sounds, same game modes | Same
-src: protocol/brx-protocol.md §1 §7a §7r, docs/reference/brx-extended-user-guide.md, docs/reference/lasertagmods.md
+src: protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7a, §7r, docs/reference/brx-extended-user-guide.md, docs/reference/lasertagmods.md
 
 [steps] "Identify your generation"
 1. Power on the tagger with its headset on and paired.
 2. Run a BLE scan on a phone or laptop (any BLE scanner app). **A `Tactix-…` device advertising a Nordic UART service = Gen2/3.** ✅
 3. Nothing on BLE, but it shows up in your phone's Bluetooth settings as a classic serial device = **Gen1**. ✅
 4. To read the exact firmware, plug the micro-USB port into a computer and open the serial console. The `QUERY` record lists gun firmware (ours: `v4.32`), headset firmware (`hds.59`), board revision (`PCB-5`) and Bluetooth chip (`BTchip-4`). ✅
-src: protocol/brx-protocol.md §1 §7c
+src: protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c
 
 [callout:info] **Gen2 vs Gen3** look the same over the air to every tool we have. Both use BLE with Nordic UART. The one difference the community relies on is the **Gen-3 headset**. It has its own re-pair steps (hold the headset button and RIGHT at tagger power-on → "PAIRING MODE"). The Pairing section covers it. 👥 src: docs/reference/community-notes.md
 
-[callout:warn] **Firmware note.** Firmware v4.30+ was a "makeover" update. It wipes your settings and breaks headset pairing until you set it up again. It also needs a completely new audio file set. Our own units run `v4.32` with a `devhost` build string. The official Callsign app refuses that build ("supported version is until v2.01e"). Firmware **cannot be backed up**, because the bootloader is write-only. Never reflash without Battle Company's original image in hand. 👥 ✅ src: docs/reference/community-notes.md, protocol/brx-protocol.md §7b §7c
+[callout:warn] **Firmware note.** Firmware v4.30+ was a "makeover" update. It wipes your settings and breaks headset pairing until you set it up again. It also needs a completely new audio file set. Our own units run `v4.32` with a `devhost` build string. The official Callsign app refuses that build ("supported version is until v2.01e"). Firmware **cannot be backed up**, because the bootloader is write-only. Never reflash without Battle Company's original image in hand. 👥 ✅ src: docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7b, §7c
 
 [diagram HW-08] (two radios, see Images table)
 
@@ -296,7 +296,7 @@ _One page to print. It lists the exact parts, numbers and kit contents for the t
 - MCU: PJRC Teensy ✅
 - Battery: 7.4 V ~2,200 mAh Li-ion (2-cell, reversed polarity) or 6×AA; ~8 h play 📖 👥
 - Manufacturer: Laser Tag Pro / Battle Company, Oak Creek, WI 📖
-src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1 §7c + docs/experiment-log.md 2026-08-23 (USB console, Teensy MCU), protocol/brx-protocol.md §7o (sight flash)
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md (IR specs, charger, manufacturer address), docs/reference/community-notes.md (battery pack, polarity), protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c + docs/experiment-log.md 2026-08-23 (USB console, Teensy MCU), protocol/session-findings-2026-08.md §7o (sight flash)
 
 [spec-sheet] BRX headset:
 - Sensors: IR receiver domes around the band (front/back distinguished on the wire) ✅
@@ -316,7 +316,7 @@ src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.
 - 8.4 V two-cell smart charger | red → green LED | 📖
 - Quick manual (V7) | link: Battle Company's BRX Manual V7 PDF | 📖
 - Optional | 6×AA battery holder use, scope, phone bracket, smart grenade | 📖 👥
-src: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md §7c
+src: docs/reference/brx-manual-notes.md, protocol/session-findings-2026-08.md §7c
 
 [callout:info] **Official documents** (linked, not rehosted): Battle Company *BRX Manual V7* (battlecompany.com, 2021) and the *BRX Extended User Guide* (Laser Tag Pro, 2018). The PDFs are the manufacturer's own word. Where we mark ✅, we measured it ourselves. src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
 
@@ -352,7 +352,7 @@ src: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md §7c
 - `docs/reference/edge-brp.md`: BRX vs Battle Rifle Pro / UBox (what the BRX lacks)
 - `docs/reference/lasertagmods.md`: LaserTagMods transport facts, phone-bracket rider
 - `docs/gotchas.md`: field lore (rainbow check, camera can't see IR, screamers)
-- `protocol/brx-protocol.md` §1, §2, §7a, §7b, §7c, §7h, §7i, §7m, §7n, §7o, §7r, sensor-id map, `$WEAP` fire-mode
+- `protocol/brx-protocol.md` §1, §2, `protocol/session-findings-2026-08.md` §7a, §7b, §7c, §7h, §7i, §7m, §7n, §7o, §7r, sensor-id map, `$WEAP` fire-mode
 - `protocol/brx-ir-protocol.md`: bench-measured IR frame timings and payload
 - `docs/experiment-log.md`: 2026-08-24 battery telemetry; 2026-08-26 screamer; 2026-08-27 gun LED life gauge and headset LED correction
 - `docs/field-process.md`: muster rainbow check
@@ -360,7 +360,7 @@ src: docs/reference/brx-manual-notes.md, protocol/brx-protocol.md §7c
 
 ## Research backlog (held, NOT published)
 Nothing below appears on the site. Each item is published only once confirmed; contradicted items list both values and pick neither.
-- **Headset green, whose hit and whose kill?** The band blinks green on a hit and holds green on a kill; not yet pinned whether that is the *wearer's* hit or the wearer being hit. (Removed from the Headset LEDs table: the "details not fully pinned" qualifiers.) src: docs/experiment-log.md (2026-08-27)
+- **Headset green in a hosted game.** The one-flash-on-hit and sustained-blink-when-out states are confirmed on a bare and on a host-armed gun (2026-09-02). Whether a hosted game shows them identically over a full match is a 12-minute eyeball check still owed (docs/HANDOFF.md, M2). src: docs/experiment-log/2026-09.md
 - **Gun LED life-gauge colour shift.** Removed claim: "protective pools (shields/armor) drain first, the colour shifts when they are exhausted, then health drains to zero". The three-segment drain is confirmed by eye; whether the colour change means "protective pools gone" or simply reflects faction colour is not pinned (watch a red or green faction character drain). src: docs/experiment-log.md (LED life mode, 2026-08-27)
 - **The full team → colour table.** Blue and yellow are pinned for teams 1 and 2; the community's 9-colour palette (still published as 👥) has not been walked end to end on our bench. src: docs/reference/community-notes.md
 - **The second radio.** Removed accordion bullet: the factory record lists `NRFhost`/`NRFslave`; the community identifies an nRF24-class 2.4 GHz link between taggers for kill confirmation; not driven by any public tool and not characterised. src: docs/experiment-log.md (QUERY dump), docs/reference/community-notes.md

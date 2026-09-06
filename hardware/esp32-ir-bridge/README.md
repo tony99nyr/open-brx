@@ -1,13 +1,37 @@
 # ESP32-S3 IR bridge — capture (and later emit) BRX IR
 
-The hardware half of `../ir-prototype-plan.md` and the eventual Claude↔hardware bridge for
-`docs/diagnostic-game.md` (`diag-game ir`). Sketch(es) here are Arduino-IDE / arduino-esp32.
+The IR capture/emit rig (the plan it grew from is archived at `docs/archive/hardware/ir-prototype-plan.md`;
+its three phases are done: capture, emit, and the `$SIR` effect sweep) and the eventual Claude↔hardware bridge for
+the `diag-game` block in `docs/manual/06-developer.md` (`diag-game ir`). Sketch(es) here are Arduino-IDE / arduino-esp32.
 
 ## Parts (the ordered kit)
 - **ESP32-S3-DevKitC-1** (WROOM-1-N16R8) — 16 MB flash / 8 MB PSRAM.
 - **VS1838B** 38 kHz IR receiver (CHANZON kit) — capture.
 - **940 nm IR LED** + an NPN transistor (2N2222, from the ELEGOO kit) — emit (Phase B).
 - Breadboard + jumpers + a 0.1 µF cap (ELEGOO kit).
+
+## Two kit traps (carried from the 2026-08-26 unboxing)
+
+1. **The CHANZON bag holds TWO different black receivers.** `IR LED Diode Kit BA0008x20` = 10× 5 mm emitter
+   (clear, 940 nm, 45°) · **5× bare 5 mm IR *receiver* photodiode (black, 940 nm, 30°, 2 legs)** · **5× VS1838B
+   (black, 3–5 V, 70°, 3 legs)**. Only the **3-leg VS1838B** demodulates the 38 kHz carrier; the 2-leg photodiode
+   produces nothing with `ir_capture.ino`. Count legs, not colour.
+2. **The VS1838B pinout is easy to mirror.** Domed face toward you, legs down: **OUT · GND · VCC, left → right**.
+   The bag label lists the pins in the opposite reading order (VCC/GND/OUT), which invites a 180° mistake, and
+   swapping VCC/GND kills the part.
+
+Board notes: the ESP32-S3 DevKitC-1 (WROOM-1-N16R8) has two USB-C ports; flash via the **UART** one (see the
+board registry at the end). Sketch pins RX 4 / TX 5 / status 6 are clear of the octal-PSRAM pins (33–37).
+
+## nRF24 adapter wiring (if an nRF24L01+PA/LNA is ever added; exploratory, off the critical path)
+
+Power the **HW-200 breakout** (AMS1117-3.3) from the ESP32 `5V`/`VIN` pin, never 3V3 (the regulator needs
+headroom) and never 5 V to a bare module. SPI on the S3 (avoid GPIO 26–37): `SCK`→GPIO12, `MISO`→GPIO13,
+`MOSI`→GPIO11, `CSN`→GPIO10, `CE`→GPIO9, `IRQ`→GPIO14, adapter `VCC`→5V, `GND`→GND. Reference params from
+LaserTagMods' NRFL-Bases: 1 Mbps, ackPayload, 5-byte addresses, channel 76 (RF24 default). Prove two boards
+with a stock RF24 `GettingStarted` ping/pong before chasing the gun's `NRFhost`/`NRFslave` mesh, whose params
+are unknown. The purchase record (Aideepen 3-pack + adapters, arrived 2026-08-26) is in
+`docs/archive/hardware/bench-shopping-list.md`.
 
 ## No soldering
 Everything is **breadboard + jumpers** — the VS1838B (3 pins), IR LED (2 pins), and transistor

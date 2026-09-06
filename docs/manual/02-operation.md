@@ -12,7 +12,7 @@ _From the box to your first "TARGET MODE" voice line in about fifteen minutes, p
 
 [hero] A tagger and a headset side by side, powered, headset dome lit. Short line: "Charge it, pair it, sight it, play." 📖 src: docs/reference/brx-manual-notes.md
 
-[callout:info] What you are holding. The BRX is a rifle-style infrared tagger (Class 1, 980 nm IR "laser"). The wireless headset carries the hit sensors, and the gun has a sensor too. Out of the box it is a **non-scoring** system. The gun keeps no score and no clock, so scoring comes from the on-gun game or the phone app. 📖👥 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/brx-protocol.md §7n
+[callout:info] What you are holding. The BRX is a rifle-style infrared tagger (Class 1, 980 nm IR "laser"). The wireless headset carries the hit sensors, and the gun has a sensor too. Out of the box it is a **non-scoring** system. The gun keeps no score and no clock, so scoring comes from the on-gun game or the phone app. 📖👥 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7n
 
 [steps] "First power-on checklist"
 1. **Charge the gun first.** Plug the two-cell 8.4 V smart charger into the round *charging* port. Do not use the micro-USB "Programing Port" next to it. The charger LED is red, then green when full. A full charge gives you roughly 8 h of play. The headset takes any USB 5 V supply. 📖
@@ -89,7 +89,7 @@ src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.
 | Volume | 1 – 5 | 📖 |
 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md (respawn delay ramps)
 
-[callout:info] The gun remembers these variables **per game mode**, and they live on the gun. They are not the numbers the Callsign app uses. The app keeps its own clock and respawn timer on the phone, and it never writes these to the gun. 📖✅ src: docs/reference/brx-extended-user-guide.md, protocol/brx-protocol.md §7n
+[callout:info] The gun remembers these variables **per game mode**, and they live on the gun. They are not the numbers the Callsign app uses. The app keeps its own clock and respawn timer on the phone, and it never writes these to the gun. 📖✅ src: docs/reference/brx-extended-user-guide.md, protocol/session-findings-2026-08.md §7n
 
 [cards] "Button holds worth memorising"
 - **ALT, hold 3 s**: toggle indoor / outdoor (it sticks). 📖
@@ -125,7 +125,7 @@ _One three-second hold changes your range, your LEDs and your blast radius._
 4. Driving a gun from your own code? It is `$GSET` **token 2**, `outdoorMode`. A second field,
    token 3 `gunLaserRegion`, carries the IR power limit. Both are in the
    [developer reference](/manual/dev/gset-pset). 🔍
-src: docs/reference/brx-extended-user-guide.md, docs/reference/callsign-ui.md, protocol/brx-protocol.md §7g
+src: docs/reference/brx-extended-user-guide.md, docs/reference/callsign-ui.md, protocol/session-findings-2026-08.md §7g
 
 [compare] "What changes"
 | | Indoor | Outdoor |
@@ -203,10 +203,10 @@ src: docs/reference/community-notes.md (Gen-3 headset re-pair procedure, contrib
 
 [faq] "Headset troubleshooting"
 - **The gun charges a weapon but nothing happens on the trigger.** That is the classic headset lockout. Look at the headset: rainbow means re-pair it. 👥✅
-- **The phone app connects, then drops within a couple of seconds.** The app needs a paired headset and quietly disconnects without one. The gun is fine. Get the headset lit before you open the app. ✅ (src: protocol/brx-protocol.md §7m)
+- **The phone app connects, then drops within a couple of seconds.** The app needs a paired headset and quietly disconnects without one. The gun is fine. Get the headset lit before you open the app. ✅ (src: protocol/session-findings-2026-08.md §7m)
 - **Only some guns joined the phone game.** A gun whose headset is off or unpaired (slow rainbow) refuses to join, and gives no error. Eyeball every headset before you start. Before the game a paired headset shows team colour, and it only goes dark once play begins. ✅
 - **It paired yesterday and not today.** That is the headset battery. It charges from any USB 5 V. 📖
-src: docs/reference/community-notes.md, protocol/brx-protocol.md §7m, docs/gotchas.md, docs/field-process.md
+src: docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7m, docs/gotchas.md, docs/field-process.md
 
 [image OPS-06]
 
@@ -274,14 +274,14 @@ src: docs/reference/grenade.md, docs/reference/community-notes.md
 ### Page: The Callsign App  (`/manual/operate/callsign-app`)
 _Battle Company's official phone app: what it does, how you build a game, and the three things nobody tells you._
 
-[callout:info] What the app is. Callsign turns a phone into the **game host**. It keeps the clock, the score and the respawn timer. It also pushes weapons and settings to the gun over Bluetooth. The gun enforces none of the rules. Take the phone out of Bluetooth range and nobody respawns, and the round never ends. ✅ src: protocol/brx-protocol.md §7g, §7n
+[callout:info] What the app is. Callsign turns a phone into the **game host**. It keeps the clock, the score and the respawn timer. It also pushes weapons and settings to the gun over Bluetooth. The gun enforces none of the rules. Take the phone out of Bluetooth range and nobody respawns, and the round never ends. ✅ src: protocol/session-findings-2026-08.md §7g, §7n
 
 [stat-row]
 - **~1 m**: keep the phone this close to its gun for the whole match. It is the game engine. ✅
 - **~1 min**: the typical wait for a hosted game to show up as joinable on a second phone. It round-trips through the cloud. ✅
 - **69 / 100**: the internal volume the app sets on the gun when it connects. ✅
 - **Android ≤ 10**: owners report the app only works on older Android. iOS is fine. 👥
-src: protocol/brx-protocol.md §7g, §7b, docs/experiment-log.md, docs/reference/community-notes.md
+src: protocol/session-findings-2026-08.md §7g, §7b, docs/experiment-log.md, docs/reference/community-notes.md
 
 [steps] "Building and starting a game"
 1. Get the top-right connection icon **green ("connected")**. You cannot create a game until it is, and it will not go green without a **paired headset**. ✅
@@ -290,7 +290,7 @@ src: protocol/brx-protocol.md §7g, §7b, docs/experiment-log.md, docs/reference
 4. Fill in **GAME SETTINGS**: primary and secondary weapon, then the rules in the table below. Press **CREATE**. Some modes add a step for teams, starting health, or the players-remaining display. ✅
 5. Wait in the **lobby** while other players join from their phones, pick weapons, and hit ready. On a single device, use **Start Offline Game**. ✅
 6. Let the host launch. Every gun goes live together, and the in-game HUD shows health, shield, ammo and weapon. ✅
-src: docs/reference/callsign-ui.md, protocol/brx-protocol.md §7g, §7m, docs/experiment-log.md (2026-08-25 cap10/cap11)
+src: docs/reference/callsign-ui.md, protocol/session-findings-2026-08.md §7g, §7m, docs/experiment-log.md (2026-08-25 cap10/cap11)
 
 [table] "Game settings the app exposes"
 | Setting | Choices |
@@ -311,13 +311,13 @@ src: docs/reference/callsign-ui.md, protocol/brx-protocol.md §7g, §7m, docs/ex
 
 [callout:info] Field objectives in Callsign are **printed QR codes**. Respawn points, weapon pickups, control points and supply drops are all paper you scan or fire at, not boxes. 📖✅ src: protocol/callsign-extract/apk-harvest.md, docs/reference/brx-extended-user-guide.md
 
-[callout:info] Volume. The app's whole global settings screen is one **Sound** slider. On connect it sets the gun to about 69 on its internal 0–100 scale. That is loud enough for weapon audio indoors and out. Anything much below 50 makes weapon sounds effectively silent, and we measured 30 as inaudible over room noise. ✅ src: docs/reference/callsign-ui.md, docs/experiment-log.md (finding 6), protocol/brx-protocol.md §7b
+[callout:info] Volume. The app's whole global settings screen is one **Sound** slider. On connect it sets the gun to about 69 on its internal 0–100 scale. That is loud enough for weapon audio indoors and out. Anything much below 50 makes weapon sounds effectively silent, and we measured 30 as inaudible over room noise. ✅ src: docs/reference/callsign-ui.md, docs/experiment-log.md (finding 6), protocol/session-findings-2026-08.md §7b
 
-[callout:warn] Gotcha 1: the app renames your gun. Every session Callsign writes the name **"Tactix2"** to the gun. Gave a gun a custom Bluetooth name with Open BRX tools? Opening Callsign on it silently resets that name. ✅ src: docs/gotchas.md, protocol/brx-protocol.md §7b
+[callout:warn] Gotcha 1: the app renames your gun. Every session Callsign writes the name **"Tactix2"** to the gun. Gave a gun a custom Bluetooth name with Open BRX tools? Opening Callsign on it silently resets that name. ✅ src: docs/gotchas.md, protocol/session-findings-2026-08.md §7b
 
-[callout:warn] Gotcha 2: "the app is flaky" is almost always the headset. With no headset paired, the app connects to the gun and drops it about a second later. There is no message, and the icon simply never turns green. Nothing is intermittent. It works exactly when the headset happens to be linked. ✅ src: protocol/brx-protocol.md §7m
+[callout:warn] Gotcha 2: "the app is flaky" is almost always the headset. With no headset paired, the app connects to the gun and drops it about a second later. There is no message, and the icon simply never turns green. Nothing is intermittent. It works exactly when the headset happens to be linked. ✅ src: protocol/session-findings-2026-08.md §7m
 
-[callout:warn] Gotcha 3: the firmware warning is soft. Newer guns show *"firmware v4.32 … supported until v2.01e"*. The gun is *ahead* of the app's list, not behind it, and games still run. Do not downgrade firmware to satisfy that message. ✅ src: docs/experiment-log.md (finding 3), protocol/brx-protocol.md §7b
+[callout:warn] Gotcha 3: the firmware warning is soft. Newer guns show *"firmware v4.32 … supported until v2.01e"*. The gun is *ahead* of the app's list, not behind it, and games still run. Do not downgrade firmware to satisfy that message. ✅ src: docs/experiment-log.md (finding 3), protocol/session-findings-2026-08.md §7b
 
 [callout:tip] The app shows player numbers as 1–64. The gun stores them 0–63. This only matters if you compare app numbers with developer tools. ✅ src: docs/experiment-log.md (2026-08-25 P2)
 
@@ -333,7 +333,7 @@ _A walkthrough of a whole match, on-gun or app-hosted, and what every light and 
 4. Step through lives, time, respawn and volume with SELECT. Agree the values across all guns, because each gun runs its own clock. 📖✅
 5. Count down together and **pull the reload handle** to start. 📖
 6. Keep score by voice, by a ref, or by team flags. The guns do not tally kills. 👥✅
-src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/brx-protocol.md §7n
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, protocol/session-findings-2026-08.md §7n
 
 [steps] "Option B: a game hosted from Callsign"
 1. Get every player set: headset paired, phone mounted on the gun, app icon green. ✅
@@ -341,7 +341,7 @@ src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.
 3. Let the host launch. Guns spawn together and HUDs light up. You do **not** need the reload handle to start. ✅
 4. Die, and the app respawns you after the set respawn time, or at a QR scanner. ✅
 5. Hit the time or score limit, and the app ends the game with a voice line and stops the guns. Scores live on the phones. ✅
-src: protocol/brx-protocol.md §7e, §7f, §7n, docs/reference/callsign-ui.md
+src: protocol/session-findings-2026-08.md §7e, §7f, §7n, docs/reference/callsign-ui.md
 
 [table] "During play: what you see and hear"
 | Signal | Meaning |
@@ -355,7 +355,7 @@ src: protocol/brx-protocol.md §7e, §7f, §7n, docs/reference/callsign-ui.md
 | "Dead / out of ammo" noise on trigger | you are dead and a respawn station is set up, so go to the station ✅ |
 src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/experiment-log.md (2026-08-27), docs/reference/grenade.md
 
-[callout:info] Where hits land. The headset carries sensor domes front, left, right and back, and the gun has a sensor of its own. At field distances the dome that catches the shot is the one you were facing with. Point-blank, IR floods every receiver and any dome can report it. The damage is the same either way, because a dome hit is a hit. ✅ src: protocol/brx-protocol.md §7r, docs/gotchas.md
+[callout:info] Where hits land. The headset carries sensor domes front, left, right and back, and the gun has a sensor of its own. At field distances the dome that catches the shot is the one you were facing with. Point-blank, IR floods every receiver and any dome can report it. The damage is the same either way, because a dome hit is a hit. ✅ src: protocol/session-findings-2026-08.md §7r, docs/gotchas.md
 
 [callout:info] Dead means dead. A tagger that is dead (out of health) ignores **all** incoming IR. It cannot take a hit, be healed, or be armed by a station until it respawns. ✅ src: docs/gotchas.md, docs/reference/grenade.md
 
@@ -387,9 +387,9 @@ src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.
 - **The headset is the bigger target.** Head-height domes on four sides catch far more than the gun's own sensor, so snipers aim for the head. 👥
 - **Close range is chaos.** Point-blank, every dome reports. At distance the facing dome reports. Neither changes the damage. ✅
 - **Feedback fades in sun.** The headset's green hit LEDs are hard to read in direct sun, so long-range tags look like misses. Listen for the target's hit sound instead. 👥
-src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, docs/gotchas.md, protocol/brx-protocol.md §7r
+src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md, docs/reference/community-notes.md, docs/gotchas.md, protocol/session-findings-2026-08.md §7r
 
-[callout:info] Bluetooth range is not IR range. The phone hosting a game has to stay within Bluetooth reach of its gun. In practice that means mounted on it. IR shots still land at hundreds of feet. It is the *game logic* that stops working when the phone is out of range. ✅ src: protocol/brx-protocol.md §7n
+[callout:info] Bluetooth range is not IR range. The phone hosting a game has to stay within Bluetooth reach of its gun. In practice that means mounted on it. IR shots still land at hundreds of feet. It is the *game logic* that stops working when the phone is out of range. ✅ src: protocol/session-findings-2026-08.md §7n
 
 ---
 
@@ -446,7 +446,7 @@ src: docs/reference/community-notes.md, docs/reference/brx-manual-notes.md
 - `docs/reference/grenade.md`: grenade modes and station operation (Extreme Laser Tag And More! videos, hardware-confirmed on our bench).
 - `docs/reference/callsign-ui.md`: Callsign app screens and settings (owner screenshots, restated).
 - `protocol/callsign-extract/apk-harvest.md`: Callsign mode list, QR-code objectives, lobby architecture.
-- `protocol/brx-protocol.md` §7b, §7e, §7g, §7h, §7m, §7n, §7r: app connect ritual (volume 69, name write), headset gate, gun-holds-no-state, sensor map.
+- `protocol/session-findings-2026-08.md` §7b, §7e, §7g, §7h, §7m, §7n, §7r: app connect ritual (volume 69, name write), headset gate, gun-holds-no-state, sensor map.
 - `docs/gotchas.md`, `docs/field-process.md`: headset eyeball check, screamer power-rest rule, name-reset gotcha, IR bounce.
 - `docs/experiment-log.md`: 2026-08-23 finding 3 (soft version gate) and 6 (30 inaudible / app 69); 2026-08-25 P2 (player id 1–64 vs 0–63); 2026-08-26 U6 (screamer reproduced); 2026-08-27 headset LED observations.
 
@@ -455,7 +455,7 @@ Nothing below appears on the site. Each item moves up into a page block only whe
 - **Top on-gun Lives step: 15 or 25.** *BRX Manual V7* lists ∞/1/3/5/10/**15**; the *Extended User Guide* lists 1/3/5/10/**25**/Unlimited. Whole Lives row removed from the "Game variables on the gun" table until confirmed per firmware. src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
 - **Gun charge time: 2 h or 2–4 h.** V7 manual says ~2 h; Extended Guide says 2–4 h. Number removed from Quick Start step 1 and the "Power at a glance" sheet (the ~8 h run time both agree on is kept). src: docs/reference/brx-manual-notes.md, docs/reference/brx-extended-user-guide.md
 - **Headset green blink / hold = hit / kill, and whose.** Seen on the bench, but not yet pinned whether it is the wearer's hit/kill or the wearer being hit. Rows removed from "Reading the headset LEDs" and "During play"; OPS-06 trimmed from four states to three; LED-decoder idea trimmed. One clean two-player session will settle it. src: docs/experiment-log.md (2026-08-27 headset LED entry)
-- **On-gun volume 1–5 → internal 0–100 mapping.** The 60/70/80/90/100 mapping is a field estimate, not a measurement. Removed from the game-variables table and the Callsign stat-row; "Volume translator" interactive idea dropped. The 1–5 range itself (📖) and the app's 69 (✅) stay. src: docs/experiment-log.md (on-gun volume estimate), protocol/brx-protocol.md §7b
+- **On-gun volume 1–5 → internal 0–100 mapping.** The 60/70/80/90/100 mapping is a field estimate, not a measurement. Removed from the game-variables table and the Callsign stat-row; "Volume translator" interactive idea dropped. The 1–5 range itself (📖) and the app's 69 (✅) stay. src: docs/experiment-log.md (on-gun volume estimate), protocol/session-findings-2026-08.md §7b
 - **"Install accessory" boot = RIGHT vs RIGHT+SELECT.** Owners report RIGHT+SELECT; the Extended User Guide says RIGHT alone. Published RIGHT only (📖); the RIGHT+SELECT variant is held. src: docs/reference/community-notes.md (Re-pair headset), docs/reference/brx-extended-user-guide.md (accessory pairing)
 - **Headset pairing "usually takes seconds".** Not in any source. Only the "up to 3 minutes with many taggers/BT devices" figure is official; removed from Quick Start step 3 and the Normal pairing steps. src: docs/reference/brx-manual-notes.md (Headset)
 - **Firing with no headset at boot.** V7 manual: a gun booted with no headset shoots without one. Owners: post-2018 firmware stops firing whenever the headset is off. Clause removed from the Pairing page callout; only the lock-on-loss behaviour (both agree) is published. Collecting firmware-version/behaviour pairs. src: docs/reference/brx-manual-notes.md, docs/reference/community-notes.md

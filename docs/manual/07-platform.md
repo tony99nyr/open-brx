@@ -1,5 +1,5 @@
 # 07 · The Open BRX platform  (section slug: /platform)
-**Last verified:** 2026-08-27
+**Last verified:** 2026-09-06
 **Audience:** BRX owners, clubs, meetups and small operators choosing whether to run games on this instead of (or alongside) Edge; makers and modders looking for a place to help. · **Goal of this section:** show what Open BRX is, how it is wired, and what it can do at each budget. Compare it to Edge in a fair way. Show, with dates, what is proven on real guns and what is only software or a plan.
 **Status legend:** ✅ proven on real hardware · 🧪 built + software-tested, not yet run on hardware · 📐 specified only
 
@@ -22,10 +22,10 @@ _Video game inspired tactical laser tag: open and self-hosted._
 - **2 taggers** played a full scored Team Deathmatch on 2026-08-25; a **3-gun** synced start is proven ✅
 - **63** player slots per game (wire ids 1–63; the gun accepts 0–63, 0 reserved) · **4** native hardware teams ✅
 - **~$15** in parts for the Companion rider (specified, not built) 📐
-- **2,166** sound ids decoded in the tagger's bank ✅
-src: `docs/architecture-topology.md` §3 + §7, `docs/build-tiers.md`, `hardware/brx-companion-spec.md`, `protocol/callsign-extract/sound-bank.md`
+- **2,477** sound files on the tagger, every one catalogued ✅
+src: `docs/architecture-topology.md` §3 + §7, `hardware/brx-companion-spec.md`, `docs/reference/sound-catalog.md`
 
-[callout:info] **The problem we're solving.** The official Edge engine costs **$599.99 / 6 months to $1,599.99 / year**. It is licensed to **one computer at one location**. It also expects the taggers to reach it over **venue Wi-Fi**. The BRX gun itself **keeps no game state**: no clock, no score, no respawn, no self-reported kills. So *everything* fun has to live off the gun. Open BRX puts that "everything" in open software you host yourself, on gear you already own. ✅ src: `docs/reference/edge-brp.md` §Pricing, `docs/VISION.md`, `protocol/brx-protocol.md` §7n
+[callout:info] **The problem we're solving.** The official Edge engine costs **$599.99 / 6 months to $1,599.99 / year**. It is licensed to **one computer at one location**. It also expects the taggers to reach it over **venue Wi-Fi**. The BRX gun itself **keeps no game state**: no clock, no score, no respawn, no self-reported kills. So *everything* fun has to live off the gun. Open BRX puts that "everything" in open software you host yourself, on gear you already own. ✅ src: `docs/reference/edge-brp.md` §Pricing, `docs/VISION.md`, `protocol/session-findings-2026-08.md` §7n
 
 [cards] **Three things the BRX can't do alone, and where Open BRX puts them**
 - **Keep score.** The gun cannot tell a host about its own kills. A kill is only visible from the victim's side (`$HP,0` plus its last `$HIR`). → A per-player **node** on each gun is the scorekeeper. ✅
@@ -42,7 +42,7 @@ src: `docs/adr/0001-companion-rider-architecture.md` §Context, `docs/HANDOFF.md
 - **BRX Companion** 🚧: a small ESP32-S3 rider (~$15 in parts), designed to rebuild the gun's native kill flash and audio with no phone. Specified; bench kit in hand.
 - **Utility Box / stations** 🚧: the open objective node (hill, flag, bomb site, extraction point, respawn). Design stage. Our ESP32 rig has already put a synthetic IR shot into a stock tagger.
 - **Effect nodes** 🚧: smoke, lights, DMX and music as peers on the event stream. Design stage.
-src: `README.md` §Repo layout, `docs/spec/README.md` §2, `hardware/*.md`, `docs/build-tiers.md` §Environmental effects
+src: `README.md` §Repo layout, `docs/spec/README.md` §2, `hardware/*.md`
 
 [callout:tip] **Start in one command.** On the machine with the Bluetooth radio, run `pip install -e ./mcp`. Then run `python -m brx_mcp play tdm <addr1> <addr2> volume=69`. That exact command ran a full, scored Team Deathmatch on two real taggers. No guns to hand? `python -m brx_mcp game-sim tdm` narrates a match in your terminal. ✅ src: `README.md` §brx-mcp quickstart, `docs/experiment-log.md` "FIRST LIVE M0 GAME"
 
@@ -64,12 +64,12 @@ _Three tiers of hardware that never all talk at once, and why._
 |---|---|---|---|
 | Gun ↔ headset | vendor link | headset must be present or the gun drops BLE entirely | ✅ bench |
 | **Node (phone) ↔ gun** | **BLE** | **exactly one gun per node**; link must hold all match | ✅ single-gun bench |
-| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | 🧪 one node at the bench; never a field |
+| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | ✅ two phones over field Wi-Fi, two whole matches (2026-08-30, 2026-09-01) |
 | Operator ↔ Mission Control | HTTP on localhost / LAN | `:8765` UI, `:8766` node socket | 🧪 |
 | Gun → gun | **IR**, line of sight | the only player-to-player channel | ✅ |
 | Laptop ↔ gun | BLE | **setup and recap only**, never during play (Tier 0 excepted) | ✅ |
 | Laptop ↔ gun | USB | one-time armory setup per gun | ✅ |
-src: `docs/architecture-topology.md` §2, `protocol/brx-protocol.md` §7r, `docs/spec/net.md`
+src: `docs/architecture-topology.md` §2, `protocol/session-findings-2026-08.md` §7r, `docs/spec/contracts.md` §5
 
 [table] **Counting limits**
 | Thing | Limit | Why | Status |
@@ -79,11 +79,11 @@ src: `docs/architecture-topology.md` §2, `protocol/brx-protocol.md` §7r, `docs
 | Players per game | **63** | the gun accepts `$PSET` ids 0–63 (✅ bench); Open BRX reserves wire id 0, so a match has ids 1–63 (`docs/spec/contracts.md` A5.1) | ✅ |
 | Native hardware teams | **4** | `$TID` is masked to 2 bits | ✅ bench 2026-08-26 |
 | Teams beyond 4 | unlimited *logical* teams | MC scores by roster; players wear armbands; no on-gun friendly-fire protection in that mode | 🧪 |
-src: `docs/architecture-topology.md` §2 + §7, `docs/FOLLOWUPS.md` B10, `docs/spec/contracts.md` A5.1, `protocol/brx-protocol.md` §7p, `docs/game-modes.md` §Team structure
+src: `docs/architecture-topology.md` §2 + §7, `docs/FOLLOWUPS.md` B10, `docs/spec/contracts.md` A5.1, `protocol/session-findings-2026-08.md` §7p, `docs/game-modes.md` §Team structure
 
 [diagram PLAT-07] **Two deployment shapes and the wall between them**: on the left, **Tier 0, laptop only** ✅ (laptop ↔ 4 guns over BLE). On the right, **Tier 1, phones as nodes** 🧪 (laptop = Mission Control + field Wi-Fi, dashed to phones; each phone solid BLE to one gun). The wall between them is labelled *"everyone must stay within ~10–30 m of the laptop."* src: `docs/architecture-topology.md` §3
 
-[callout:warn] **Tier 0 is real today. Tier 1 is what buys you a field, and it has never been run on one.** A full Team Deathmatch ran end to end on two real taggers on 2026-08-25. That run had scoring, respawn, a frag limit, the correct winner, and BLE holding the whole match. A three-gun synced start is hardware-proven too. The phone-node path has one proof only: one phone → Mission Control → one gun at the bench (2026-08-25 night). A match with several phones over real field Wi-Fi has not been run. Neither has a dispersed timed start, or a store-and-forward recovery after real coverage loss. ✅/🧪 src: `docs/architecture-topology.md` §3 + §7, `docs/experiment-log.md` "first phone→MC→gun path on real hardware"
+[callout:warn] **Tier 0 is real today. Tier 1 has run two whole matches on real hardware, at two phones.** A full Team Deathmatch ran end to end on two real taggers from a laptop on 2026-08-25, with scoring, respawn, a frag limit, the correct winner, and BLE holding the whole match. A three-gun synced start is hardware-proven too. The phone-node path then ran a 300 s Free For All on 2026-08-30 (two phones, two taggers, one MacBook hosting over field Wi-Fi: 12 kills, 126 landed hits, 12 deaths, 12 respawns, a winner) and an outdoor Team Deathmatch with two Android HUDs on 2026-09-01. What has not been run: a dispersed timed start with players out of Wi-Fi range before T-0, more than two phones, a 20-minute soak, and a store-and-forward recovery after real coverage loss. ✅/🧪 src: `docs/architecture-topology.md` §3 + §7, `docs/experiment-log/2026-08.md` (2026-08-30, MacBook), `docs/field-issues.md` (Session 2, 2026-09-01), `docs/FOLLOWUPS.md` "System proofs"
 
 [timeline] **Which links are up, phase by phase** ([diagram PLAT-08])
 0. **Armory**: USB to each gun, one time, at home. ✅
@@ -109,7 +109,7 @@ src: `docs/architecture-topology.md` §4, `docs/spec/README.md` §3, `mcp/brx_mc
 | Phone dies | That player is out. One phone = one gun = one node, with no backup | design |
 | Node never returns | Recap stays provisional; that player's kills are missing | design |
 | Headset off or asleep | The gun quietly refuses to join. A disconnected headset slow-blinks rainbow, which is a free visual muster check | ✅ 2026-08-25 / 27 |
-src: `docs/architecture-topology.md` §6, `protocol/brx-protocol.md` §7r, `docs/HANDOFF.md` 2026-08-27
+src: `docs/architecture-topology.md` §6, `protocol/session-findings-2026-08.md` §7r, `docs/HANDOFF.md` 2026-08-27
 
 ---
 
@@ -125,7 +125,7 @@ _Six parts, one decoded protocol, one event stream._
 - **Commands:** `scan` · `identify` · `listen` · `probe` · `diagnose` / `fleet` (firmware, battery, per-tagger health) · `play <mode> <addrs…>` (modes: tdm ffa infection lms cs domination koth ctf extraction) · `game-sim` / `extraction-sim` (no hardware) · `usb-query` (armory record over USB) · `ir-capture` / `ir-emit` / `ir-range` (the ESP32 IR rig) · `panic`.
 - **Safety:** it refuses malformed frames. Commands outside the known-safe list need `confirm=true`. `panic` sends `$CLEAR,*` then `$SP,99,*`.
 - **Proven:** a full TDM on 2 taggers; a 3-gun synced arm; diagnostics; custom `$WEAP` loadouts; native kill flash and announcer over BLE from our stack.
-src: `README.md`, `mcp/brx_mcp/`, `docs/verification-checklist.md` Session A/C½/D
+src: `README.md`, `mcp/brx_mcp/`, `docs/archive/verification-checklist.md` Session A/C½/D
 
 [under-construction spec-sheet] **Mission Control: the operator console** 🚧. Public site renders ONLY: title · one line · status badge · "details when it's on the bench". Full draft below is retained for later, not published. 🧪 (single-gun chain ✅)
 - **What:** a Python server (`python -m brx_mcp.mc`) that serves a local React web UI. The laptop is the author, the host and the coordinator. It runs on the field LAN (a battery travel router, or a laptop hotspot for small games). No cloud, no internet, no SIM.
@@ -168,7 +168,7 @@ src: `hardware/brx-station-spec.md`, `docs/FOLLOWUPS.md` B4/B13, `docs/experimen
 - **Next:** a Wi-Fi smart plug or ESP32 + relay (~$8–12) for "respawn → flash a light" or "smoke every 10 min"; WLED strips (~$15–25/zone) for team-colour or chase lighting via MQTT; DMX stage lighting via a DMX interface.
 - **Differentiator:** native, open DMX and scripting (Edge's is UBox-mediated and closed) and no per-location licence.
 - **Status:** the subscriber bus and the events exist. No effect-node firmware is written (`firmware/` is empty).
-src: `docs/build-tiers.md` §Environmental effects, `docs/reference/edge-brp.md` §UBox, `README.md` §Repo layout
+src: `docs/reference/edge-brp.md` §UBox, `README.md` §Repo layout
 
 [image PLAT-10] Real photo: the ESP32 IR transceiver rig on a breadboard next to a tagger. This is the instrument that proved synthetic shots. ✅ src: `hardware/esp32-ir-bridge/`, `hardware/ir-breadboard.svg`
 
@@ -187,7 +187,7 @@ _Every mode we know the BRX can run, sorted by the gear it needs._
 - **Generals / Commander / The Swarm**: one player *is* the team's mobile respawn point. 📐
 - **Supremacy**: three factions, class loadouts as `$WEAP`/`$PSET`. 📐
 - **Health variants**: Syphon (health-on-kill to the exact killer), Halo-style regen (host-driven; armor does not regen on its own), medic, armor overshield. 🧪 (`$LIFE`/`$BUMP` writes ✅)
-src: `docs/game-modes.md` §Catalog + §Health/regen, `docs/verification-checklist.md`, `mcp/brx_mcp/modes/`
+src: `docs/game-modes.md` §Catalog + §Health/regen, `docs/archive/verification-checklist.md`, `mcp/brx_mcp/modes/`
 
 [cards] **+ Props: a contested place needs a local authority** (engines built 🧪; need a station or a grenade to emit the IR events)
 - **Domination**: hold control points to score over time. Multi-point wants linked stations. 🧪 engine
@@ -197,12 +197,12 @@ src: `docs/game-modes.md` §Catalog + §Health/regen, `docs/verification-checkli
 - **Counter-Strike (plant / defuse)**: the grenade, a station, or *a phone's touchscreen* is the bomb. 🧪 engine
 - **Team Arena**: TDM plus QR weapon pickups and capturable flags (paper QR = ~$0 props). 📐
 - **VIP escort / Hostage rescue**: a special player role plus one extraction station. 📐
-src: `docs/game-modes.md` §Catalog + §Custom modes, `docs/mode-limits.md` §2
+src: `docs/game-modes.md` §Catalog + §Custom modes + §Hard ceilings
 
 [cards] **+ Broadcast / location**
 - **Battle Royale**: shrinking zone, GPS supply drops, last one alive. It needs per-node location and a live field-wide downlink (Tier 4 radio). 📐
 - **Any prop mode with live callouts**: "flag taken!" everywhere, plus a live HQ scoreboard, on a large park with no Wi-Fi. 📐
-src: `docs/game-modes.md` §Catalog, `docs/build-tiers.md` Tier 4
+src: `docs/game-modes.md` §Catalog
 
 [hero] **Extraction: the flagship mode Edge doesn't have** ([image PLAT-04])
 Extraction shooters (Tarkov, Hunt: Showdown, DMZ) fit laser tag perfectly. Drop in → **loot** → reach an extraction point and **start the channel, loudly, so everyone runs at you** → survive the channel → bank the loot. **Die and you drop everything.** 🧪 engine src: `docs/game-modes.md` §Extraction
@@ -235,7 +235,7 @@ src: `docs/game-modes.md` §Extraction, `mcp/brx_mcp/modes/extraction.py`
 ### Page: What you can build at each budget  (`/platform/build-tiers`)
 _Start at $0 with the gear you own. Every step after that is optional._
 
-[callout:info] Starting inventory assumed: **4 BRX taggers (+ headsets), 2 Smart Grenades, a laptop or phone you already own.** No mods, no builds, no purchases. These are *spend* tiers. src: `docs/build-tiers.md`
+[callout:info] Starting inventory assumed: **4 BRX taggers (+ headsets), 2 Smart Grenades, a laptop or phone you already own.** No mods, no builds, no purchases. These are *spend* tiers. src: this page's pricing tiers below
 
 [pricing-tiers]
 **Tier 0: $0 · exactly what you own** ✅ (the pilot)
@@ -253,7 +253,7 @@ _Start at $0 with the gear you own. Every step after that is optional._
 - The biggest jump in what you can do for the least money, because the link rides the player
 - Full-field roaming for every Tier-0 mode; a **per-player HUD** ("your score / ammo / lives", the #1 thing players ask for); offline play with results syncing at the base
 - Native app on Android + iOS (ADR-0003), one phone per gun
-- **Status:** one phone → MC → gun proven at the bench. Multi-phone field play not yet run
+- **Status:** two phones, two whole matches on real hardware outdoors (2026-08-30, 2026-09-01); more than two phones not yet run
 
 **Tier 2: ESP32 Companion per tagger · ~$12–25 each** 📐
 - A purpose-built, rugged, phone-free node that rebuilds the native kill flash and audio
@@ -267,7 +267,7 @@ _Start at $0 with the gear you own. Every step after that is optional._
 
 **Tier 4: field radio · LoRa ~$10/node (or the gun's own nRF, unprobed, maybe free)** 📐
 - Live coordination on a large park with no Wi-Fi: "flag taken!" broadcast, live HQ scoreboard, station status screens, Battle Royale
-src: `docs/build-tiers.md`, `docs/mode-limits.md` §3
+src: `docs/game-modes.md` §Hard ceilings
 
 [table] **The Tier-0 objective toolkit (no bought hardware)**
 | Mechanism | Interaction | Good for | Limit |
@@ -277,7 +277,7 @@ src: `docs/build-tiers.md`, `docs/mode-limits.md` §3
 | **Printed QR + phone camera** 📐 | scan it | checkpoints, plant sites, pickups | needs an active scan |
 | **Phone touch-terminal** 📐 | touch the screen | bomb plant/defuse, hack, hostage | needs a screen at the site |
 | **Spare gun as a point** 📐 | shoot it (IR) | an extra capture point | uses up a gun |
-src: `docs/build-tiers.md` §Tier 0
+src: this page's Tier 0 above
 
 [table] **Environmental effects: a listener layer, gated by devices not by tier**
 | Effect | Trigger | Controller | ~Cost | Status |
@@ -288,9 +288,9 @@ src: `docs/build-tiers.md` §Tier 0
 | Last 10 s → red pulse lighting | clock | WLED strip or smart plug | ~$8–25 | 📐 |
 | Smoke every 10 min / proximity smoke | timer or PIR / station | ESP32 + relay on the machine's remote jack | ~$8 + machine | 📐 |
 | Team-colour / chase lighting, blacklights | MQTT events | WLED ESP32 + addressable strip | ~$15–25/zone | 📐 |
-src: `docs/build-tiers.md` §Environmental effects
+src: this page's Environmental effects above
 
-[callout:tip] **Cheapest high-value path:** run the Tier-0 software on your laptop today. Later, put the phone app on the Android or iOS phones you already own. That alone gets you hosted, custom, multi-mode games for 4 taggers + 2 grenades with **no hardware spend**. Everything after that is optional. ✅/🧪 src: `docs/build-tiers.md` §Cheapest high-value path
+[callout:tip] **Cheapest high-value path:** run the Tier-0 software on your laptop today. Later, put the phone app on the Android or iOS phones you already own. That alone gets you hosted, custom, multi-mode games for 4 taggers + 2 grenades with **no hardware spend**. Everything after that is optional. ✅/🧪 src: this page's Tier ladder above
 
 ---
 
@@ -314,7 +314,7 @@ _What we match, what we beat, and what we can't do. Honestly._
 | **Per-player HUD** | CallSign phone app (iOS + Android) | BRX Combat HUD: native, blackout night mode ✅ single-gun |
 | **Props / objectives** | Utility Box: one unit, 20+ roles; "Order Activation" chaining | Utility Box design: one box, every objective, MC-programmable 📐; IR emit proven ✅ |
 | **Environmental effects** | Animatronics: lights, smoke, DMX, moving props (closed) | same event model; **native open DMX + scripting** 📐 |
-| **Custom sounds** | 2000+ on-gun SFX, SD card on BRP | 2,166-id bank decoded ✅; USB sound-pack swap on the BRX ✅; unlimited via Companion audio 📐 |
+| **Custom sounds** | 2000+ on-gun SFX, SD card on BRP | 2,477-file bank catalogued ✅; USB sound-pack swap on the BRX ✅; unlimited via Companion audio 📐 |
 | **Marketing / monetisation** | Battle Coin, EDGE Store, Message Center, Themes | none ❌ |
 | **"Enemies" module** | headsets that fight unpaired from a gun | not built ❌ (a differentiating target) |
 | **Hardware niceties (BRP)** | on-gun LCD scoring, hot-swap batteries, flip mag, recoil, sunlight-visible sensors | can't retrofit, the BRX is what it is ❌; the phone or Companion adds the HUD |
@@ -338,7 +338,7 @@ _What is proven on hardware, what is only software, what is only a spec. With da
 | Remote game start over BLE (config → spawn → live → timed match → respawn) | ✅ | multiple sessions, 2026-08-23 → 25 |
 | Full Team Deathmatch: scoring, respawn, frag limit, correct winner, BLE held all match | ✅ 2 guns | 2026-08-25 "FIRST LIVE M0 GAME" |
 | Synced start across guns (config-all-then-spawn barrier) | ✅ 3 guns | 2026-08-25, FOLLOWUPS B10 |
-| Exact per-player attribution over BLE (`$PSET` id → `$HIR` shooter) | ✅ | 2026-08-25, protocol §7p/§7q |
+| Exact per-player attribution over BLE (`$PSET` id → `$HIR` shooter) | ✅ | 2026-08-25, `protocol/session-findings-2026-08.md` §7p/§7q |
 | Native kill feedback from our stack: green-sight flash (`$SFLASH`) + announcer (`$PLAY` slot 4) | ✅ | 2026-08-25 / 26 |
 | Four native teams; firmware-enforced friendly fire; live team flip | ✅ | 2026-08-26 |
 | `$WEAP` map: damage, fire interval, fire modes (auto / single / burst / charge / melee), overheat; all 19 Callsign weapons captured (20 frames) | ✅ | 2026-08-26 |
@@ -352,8 +352,8 @@ _What is proven on hardware, what is only software, what is only a spec. With da
 | Phone → Mission Control → gun: hello, roster bind, try-out fired a real gun | ✅ single node, bench | 2026-08-25 night |
 | Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games | 🧪 | ~500 Python tests, 42 e2e, 2026-08-26 / 27 |
 | FFA / Infection / LMS / CS / Domination / KotH / CTF / Extraction engines | 🧪 | 156 sim scenarios; objective modes wait on a station |
-| **MC ↔ multiple phones over a real field Wi-Fi** | 🧪 never run | n/a |
-| **Dispersed timed start on a real field** | 🧪 never run | n/a |
+| **MC ↔ two phones over a real field Wi-Fi, a whole match** | ✅ 2 phones | 2026-08-30 FFA (300 s, 12 kills) and 2026-09-01 outdoor TDM; more than two phones untested |
+| **Dispersed timed start on a real field** (players out of range before T-0) | 🧪 never run | n/a |
 | **Store-and-forward recovery after real coverage loss** | 🧪 never run | n/a |
 | 20-minute two-node soak (screen-lock, backgrounding, out of Wi-Fi range) | 🧪 open | verification-checklist §NEXT 4 |
 | Loadout v2 (three slots: primary, secondary, perk; policy presets, phone picks) | 🧪 | 2026-08-27 and 2026-09-04, not bench-verified |
@@ -361,7 +361,7 @@ _What is proven on hardware, what is only software, what is only a spec. With da
 | Utility Box / objective station | 📐 design, ✅ emit | build is "a packaging exercise" |
 | Effect nodes (relay, WLED, DMX) | 📐 | `firmware/` empty |
 | Field radio (LoRa / the gun's nRF) | 📐 | nRF unprobed (D1) |
-src: `docs/architecture-topology.md` §7, `docs/verification-checklist.md`, `docs/FOLLOWUPS.md`, `docs/HANDOFF.md`, `docs/experiment-log.md`
+src: `docs/architecture-topology.md` §7, `docs/archive/verification-checklist.md`, `docs/FOLLOWUPS.md`, `docs/HANDOFF.md`, `docs/experiment-log.md`
 
 [timeline] **Roadmap: the project ladder**
 - **M1 · Identify**: scan, identify and listen to real taggers. ✅ done
@@ -374,7 +374,7 @@ src: `README.md` §Roadmap
 
 [callout:info] **Mission Control and the phone HUD: 🚧 under construction. Details when they have run on a real field.** src: `docs/spec/README.md` §8
 
-[callout:warn] **What we will not claim yet.** Nobody has run a multi-phone match on a real field. Nobody has run a dispersed start where players walk out of range before T-0. Nobody has run a store-and-forward recovery after real coverage loss. Three guns on one laptop radio is the most we have held at once, and the maximum is untested. FFA / Infection / LMS have not been played on real guns, and their logic is only sim-proven. The Companion and the Utility Box are not built. See *Honest gaps* below for the full list. src: `docs/architecture-topology.md` §7, `docs/FOLLOWUPS.md` B10, `docs/verification-checklist.md`
+[callout:warn] **What we will not claim yet.** Two phones is the most that have played a whole match together; nobody has run more. Nobody has run a dispersed start where players walk out of range before T-0. Nobody has run a store-and-forward recovery after real coverage loss, a 20-minute soak, a phone auto-rejoin to the field SSID, or a locked iPhone's BLE through a match. Three guns on one laptop radio is the most we have held at once, and the maximum is untested. FFA has been played on real guns (2026-08-30); Infection / LMS have not, and their logic is only sim-proven. The Companion and the Utility Box are not built. See *Honest gaps* below for the full list. src: `docs/architecture-topology.md` §7, `docs/FOLLOWUPS.md` B10, `docs/archive/verification-checklist.md`
 
 ---
 
@@ -423,7 +423,7 @@ _Open source, open hardware, open protocol, and one hard rule._
 - **Play**: you own guns. Read *How it's wired* §Two deployment shapes, then *Build tiers*, then the `brx-mcp` quickstart. ✅
 - **Run a match**: the match-day operator runbook (`docs/field-runbook-mc.md`) and the Armory Setup + Muster processes (`docs/field-process.md`). 🧪
 - **Change the code**: `docs/spec/README.md` → `docs/spec/contracts.md` (the node↔MC wire is the single point of coordination; interface changes go through documented amendments, not silent edits). 🧪
-- **Bench**: the hardware verification checklist and `docs/bench-tomorrow.md` list everything still blocked on a human with a tagger. Append to `docs/experiment-log.md` after every session. ✅ process
+- **Bench**: the "Needs Tony at the bench" and "System proofs" sections of `docs/FOLLOWUPS.md` list everything still blocked on a human with a tagger. Append to `docs/experiment-log.md` after every session. ✅ process
 - **Print**: no public BRX print library exists. `hardware/print-files.md` lists the asks (reload-handle push-button mod, D-pad buttons, Companion mount, station enclosures). Clean-room, version-tagged, MIT. 📐
 - **Sound**: the 2,477 on-gun sounds are catalogued by category and transcript, and custom on-tagger packs swap over USB. ✅
 src: `docs/README.md`, `docs/FOLLOWUPS.md` §Hardware / 3D printing, `hardware/print-files.md`
@@ -442,16 +442,16 @@ _Short answers, each pointing at the doc that proves it._
 [faq]
 - **Will this brick my gun?** No. Stock firmware is never touched, and everything is sent over the documented Bluetooth serial protocol. A power-cycle restores any tagger, and Battle Company's USB updater is the factory-restore path. The tools refuse malformed frames and ask for explicit confirmation for anything outside the known-safe command list. A `panic` command (`$CLEAR,*` then `$SP,99,*`) silences and stops a gun. Note it leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed or power cycled, which is intended for a panic stop but is not a playable state. ✅ src: `README.md` §Safety, `mcp/brx_mcp/protocol.py`
 - **Do I need to solder?** Not for Tier 0 or Tier 1, which use a laptop and the phones you own. The Companion prototype builds with **zero soldering** on a breadboard kit. A wearable unit is about 7 easy through-hole joints, or none if you pick an ESP32-S3 board with onboard LiPo charging. There is also an off-the-shelf route (an M5StickC-class module + IR unit + battery, ~$30–35, no fabrication). 📐 src: `hardware/brx-companion-spec.md` §Sourcing
-- **Does it work on iPhone?** Yes. The player app is native (Capacitor + CoreBluetooth), so iOS is first-class. What does *not* work is Web Bluetooth in any iOS browser, which is exactly why the app is native. Install is a one-time step: a free Apple ID gives 7-day on-device builds, then sideload or TestFlight for sharing. ✅ (the app ran on an iPhone X against real taggers on 2026-08-25) src: `docs/adr/0003-native-app-over-web-bluetooth.md`, `docs/handoff-ios-ble-findings.md`, `app/README.md`, `docs/mode-limits.md` §Platform
+- **Does it work on iPhone?** Yes. The player app is native (Capacitor + CoreBluetooth), so iOS is first-class. What does *not* work is Web Bluetooth in any iOS browser, which is exactly why the app is native. Install is a one-time step: a free Apple ID gives 7-day on-device builds, then sideload or TestFlight for sharing. ✅ (the app ran on an iPhone X against real taggers on 2026-08-25) src: `docs/adr/0003-native-app-over-web-bluetooth.md`, `docs/reference/ios-ble-notes.md`, `app/README.md`, `docs/game-modes.md` §Hard ceilings
 - **How many guns can one laptop run?** In laptop-only Tier 0, two things are proven. One laptop radio held a 2-gun scored match, and a 3-gun synced start. The maximum number of BLE links per radio is untested. On any real field, give each gun its own phone. The laptop then holds zero gun links during play. ✅ src: `docs/architecture-topology.md` §2 + §7, `docs/FOLLOWUPS.md` B10
 - **How many players and teams?** Up to **63** player slots per game (wire ids 1–63; the gun accepts 0–63 and Open BRX reserves 0) and **4** native hardware teams (with on-gun friendly-fire protection). More squads than four? Put everyone on one team, wear armbands, and let Mission Control score logical teams. There is no on-gun friendly-fire protection in that mode. ✅ src: `docs/game-modes.md` §Team structure
 - **Do I need internet or venue Wi-Fi?** No. The field is an island: a laptop and a $20 battery travel router (or a laptop hotspot for small games) make the LAN. No SIM, no cloud, no internet. Nodes keep playing with the Wi-Fi dead and sync when they are back in range. 🧪 src: `docs/adr/0002-laptop-mission-control-host.md`
 - **Why don't I see my kill instantly on a big field?** Because a kill is only visible from the victim's gun. It has to reach Mission Control and come back to the shooter's phone. You always know you died right away. Your kill confirm can wait until you are back in coverage. The Companion mesh (M6) is the fix for instant field-wide feedback. 🧪/📐 src: `docs/architecture-topology.md` §5
-- **Does the gun still play its own kill sounds and green sight flash?** In a host-configured game the gun goes quiet by itself. But the flash (`$SFLASH`) and the announcer audio (`$PLAY`) are BLE-drivable, and our stack drives them exactly the way the official app does. ✅ src: `protocol/brx-protocol.md` §7o, `docs/experiment-log.md` 2026-08-26 "$SFLASH validated from OUR stack"
+- **Does the gun still play its own kill sounds and green sight flash?** In a host-configured game the gun goes quiet by itself. But the flash (`$SFLASH`) and the announcer audio (`$PLAY`) are BLE-drivable, and our stack drives them exactly the way the official app does. ✅ src: `protocol/session-findings-2026-08.md` §7o, `docs/experiment-log.md` 2026-08-26 "$SFLASH validated from OUR stack"
 - **Can I still use the official Callsign app afterwards?** Yes, because nothing on the gun changes. One caution: opening Callsign resets a renamed gun's `$NAME` back to the default. Re-stamp it with `python -m brx_mcp rename`. ✅ src: `docs/HANDOFF.md` §Fleet ops rules
 - **Which BRX generations work?** Gen 2/3 (BLE, Nordic UART) are the supported path. Gen 1 taggers use Bluetooth Classic serial, which the BLE-only library does not speak. A serial-port guide is still to do. ✅/📐 src: `README.md` §Platform notes
 - **Do my Smart Grenades work with it?** Yes, for $0: five native objective modes set by the on-grenade button (Frag / Assault / Hill / Respawn / CTF). Hill and Respawn state is readable live over BLE. The mode itself cannot be set over BLE. ✅ src: `docs/reference/grenade.md`, `docs/game-modes.md` §Grenade
-- **Can I add my own sounds?** Yes. The tagger's 2,166-id sound bank is decoded. Custom packs swap over the USB port (hold SELECT at boot → `AUDIO` folder). A Companion with a microSD would give unlimited custom audio. ✅/📐 src: `protocol/callsign-extract/sound-bank.md`, `docs/build-tiers.md` Tier 0
+- **Can I add my own sounds?** Yes. The tagger's 2,477-file sound bank is catalogued. Custom packs swap over the USB port (hold SELECT at boot → `AUDIO` folder). A Companion with a microSD would give unlimited custom audio. ✅/📐 src: `docs/reference/sound-catalog.md`, this page's Tier 0 above
 - **Does the gun show my score?** The BRX has no screen. The phone HUD (or later a Companion HUD) is your score, ammo, lives and respawn timer. The gun's own sight flash and speaker give you the hit and kill feel. ✅ src: `docs/VISION.md` §How much can we get out of the BRX
 - **Is this affiliated with Battle Company?** No. Open BRX is an independent open-source project, and "BRX" is used descriptively to name the hardware it serves. Protocol discovery credit goes to LaserTagMods. ✅ src: `docs/VISION.md` §Naming, `README.md` §Credit
 - **What's the licence?** MIT, covering software, specs, and (as they land) firmware and STLs. ✅ src: `LICENSE`
@@ -467,7 +467,7 @@ _Short answers, each pointing at the doc that proves it._
 | PLAT-04 | `/platform/modes` Extraction hero | Extraction mood: one player kneeling at a glowing beacon in the open, channelling, while distant silhouettes converge | GENERATE | n/a | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: night, a lone player kneeling beside a small box-shaped beacon pulsing amber light on open ground, holding a black rifle-style laser-tag tagger and looking over their shoulder; three or four silhouetted figures converging from the treeline in the distance with faint blue glows; tense, exposed, cinematic, ground mist, strong amber-vs-blue contrast. |
 | PLAT-05 | `/platform` overview + `/platform/architecture` "Match-time topology" | The match-time topology diagram | SVG (build in site) | `docs/architecture-topology.md` §2 | Two regions side by side. LEFT region titled "BASE: Mission Control (a laptop)": a laptop box labelled "Mission Control · python -m brx_mcp.mc · HTTP UI :8765 / node WS :8766" and a person box "Host / operator in a browser" joined by a solid double-arrow. RIGHT region titled "FIELD: players scatter": two player groups, each a rounded box containing a phone box "Phone node · BRX Combat HUD" and a gun box "BRX tagger + headset" joined by a SOLID double-arrow labelled "BLE · ONE gun per phone". From the laptop to each phone: a DASHED double-arrow labelled "field Wi-Fi · WebSocket · best-effort, store-and-forward". Between the two gun boxes: a thin one-way arrow each direction labelled "IR shot · line of sight". No line of any kind from the laptop to any gun. Legend at the bottom: "Solid line = must hold · Dashed line = allowed to drop · No laptop↔gun line during play". Electric-blue solid lines, dimmed dashed lines, amber for the IR arrows. |
 | PLAT-06 | `/platform/architecture` "The squeeze" | The decision flow that forces a per-player node | SVG (build in site) | `docs/architecture-topology.md` §1 | Vertical flow of six rounded boxes with down-arrows. 1 (top, wide): "We want: host-controlled custom modes + the full native feel + scoring, on STOCK firmware, offline, dispersed". Branches to two boxes side by side: 2a "NATIVE game (set on the gun's own menu): ✓ guns self-fire the green-sight flash + killstreak audio · ✗ no synced start, no custom modes, no host control, no scoring"; 2b "HOST-configured game (armed over BLE): ✓ custom modes, synced start, scoring · ✗ the guns go quiet, so a live host must drive the feedback". From 2b: 3 "Could Mission Control be that live host? ✗ NO, players scatter out of BLE range. MC holds ZERO gun links mid-match". 4 "⇒ Something must hold a BLE link to each gun, in the field, for the whole match". 5 (bottom, highlighted electric-blue border): "DECISION: a per-player NODE, a phone today, an ESP32 Companion later". Checks in blue, crosses in amber. |
-| PLAT-07 | `/platform/architecture` "Two deployment shapes" | Tier 0 vs Tier 1 side-by-side with the wall | SVG (build in site) | `docs/architecture-topology.md` §3 | Two panels. LEFT panel header "TIER 0: laptop only ✅ PROVEN ON HARDWARE": one laptop box "Laptop · python -m brx_mcp play tdm …" with four SOLID lines labelled "BLE" fanning to four small gun icons. RIGHT panel header "TIER 1: phones as nodes 🧪 NOT YET RUN ON A FIELD": one laptop box "Laptop = Mission Control + field Wi-Fi" with three DASHED lines labelled "Wi-Fi" to three phone icons, each phone with a SOLID line labelled "BLE" to one gun icon. Between the panels a vertical wall/divider with the caption "the wall: everyone must stay within ~10–30 m of the laptop" and a small arrow from left to right. Left panel status badge green check; right panel badge a lab-flask. |
+| PLAT-07 | `/platform/architecture` "Two deployment shapes" | Tier 0 vs Tier 1 side-by-side with the wall | SVG (build in site) | `docs/architecture-topology.md` §3 | Two panels. LEFT panel header "TIER 0: laptop only ✅ PROVEN ON HARDWARE": one laptop box "Laptop · python -m brx_mcp play tdm …" with four SOLID lines labelled "BLE" fanning to four small gun icons. RIGHT panel header "TIER 1: phones as nodes ✅ TWO-PHONE MATCHES RUN; LARGER FLEETS 🧪": one laptop box "Laptop = Mission Control + field Wi-Fi" with three DASHED lines labelled "Wi-Fi" to three phone icons, each phone with a SOLID line labelled "BLE" to one gun icon. Between the panels a vertical wall/divider with the caption "the wall: everyone must stay within ~10–30 m of the laptop" and a small arrow from left to right. Left panel status badge green check; right panel badge a lab-flask. |
 | PLAT-08 | `/platform/architecture` phase timeline | Which links are up, phase by phase | SVG (build in site) | `docs/architecture-topology.md` §4 | Horizontal chain of eight numbered chips connected by arrows: "0 · ARMORY: USB to each gun, one time, at home" → "1 · MUSTER: node↔gun BLE UP · node↔MC Wi-Fi UP" → "2 · BUILD: host authors the game · no guns involved" → "3 · KIT: Wi-Fi UP · BLE UP · try-out pushes real frames" → "4 · LOBBY: MC pushes the FrameBundle; each node writes it to its gun" → "5 · DISPERSED START: players walk out of range; each node counts down LOCALLY; no signal needed at T-0" → "6 · LIVE PLAY: node↔gun BLE UP · node↔MC Wi-Fi best-effort · MC↔gun BLE: NEVER" → "7 · RECAP: players return, nodes flush, MC reconciles". Under each chip, three tiny link indicators (BLE / Wi-Fi / MC↔gun) rendered as filled (up), hollow (best-effort) or struck-through (never). Chip 5 highlighted amber. |
 | PLAT-09 | `/platform/architecture` "Coverage honesty" | The two-hop kill path | SVG (build in site) | `docs/architecture-topology.md` §5 | Top box "A kill happens out in the field". Arrow down to "The VICTIM's node sees it locally ($HP,0 + its last $HIR), INSTANT, no network needed". From there two branches: left (solid blue, short) to "Victim's own HUD, death audio, respawn timer: all immediate"; right (dashed) to "Victim's node must reach MC over the field Wi-Fi" → (dashed) "MC attributes the kill and sends feedback to the SHOOTER's node" → (dashed) "Shooter's green-sight flash + killstreak audio arrive ONLY when both hops complete". Caption: "You always know you died. You may not learn you got a kill until you walk back into range." |
 | PLAT-10 | `/platform/pieces` Utility Box spec-sheet | The real ESP32 IR transceiver rig on a breadboard next to a tagger | REAL PHOTO | owner shoots (`hardware/esp32-ir-bridge/`, `hardware/ir-breadboard.svg`) | (shoot on a dark surface, side light; keep sticker labels out of frame) |
@@ -477,30 +477,29 @@ _Short answers, each pointing at the doc that proves it._
 
 ## Interactive ideas (≤5)
 1. **Phase-aware topology**: the PLAT-05 diagram with a phase scrubber (Armory → Recap). Each step lights the links that are up, dims best-effort ones, and strikes MC↔gun in Live. Data: `docs/architecture-topology.md` §4.
-2. **"What can I build for $X?" ladder**: a slider across Tiers 0–4 that reveals the modes, features and status emojis unlocked at each rung, with a running BOM. Data: `docs/build-tiers.md`, `docs/mode-limits.md`.
-3. **Mode picker by gear**: checkboxes for "laptop / phones / grenades / stations / radio". The mode cards filter to what you can run, each showing ✅/🧪/📐. Data: `docs/game-modes.md`, `docs/mode-limits.md` §2.
+2. **"What can I build for $X?" ladder**: a slider across Tiers 0–4 that reveals the modes, features and status emojis unlocked at each rung, with a running BOM. Data: this page's pricing tiers, `docs/game-modes.md` §Hard ceilings.
+3. **Mode picker by gear**: checkboxes for "laptop / phones / grenades / stations / radio". The mode cards filter to what you can run, each showing ✅/🧪/📐. Data: `docs/game-modes.md` §Catalog + §Hard ceilings.
 4. **Edge cost comparator**: years × Edge tier ($599.99 / 6 mo · $1,199.99 / yr · $1,599.99 / yr) vs Open BRX ($0 + optional hardware from the ladder). Data: `docs/reference/edge-brp.md` §Pricing.
-5. **Live status board**: the `/platform/status` table rendered from a JSON the repo can regenerate, so ✅/🧪/📐 and dates stay honest as bench sessions close items. Data: `docs/verification-checklist.md`, `docs/FOLLOWUPS.md`.
+5. **Live status board**: the `/platform/status` table rendered from a JSON the repo can regenerate, so ✅/🧪/📐 and dates stay honest as bench sessions close items. Data: `docs/archive/verification-checklist.md`, `docs/FOLLOWUPS.md`.
 
 ## Sources used
 - `docs/VISION.md`: pitch, Edge verdict, Companion-as-flagship, naming, sourcing policy
 - `docs/architecture-topology.md`: §1–§7, the ✅/⬜ discipline preserved as ✅/🧪
-- `docs/build-tiers.md`: spend tiers, Tier-0 objective toolkit, environmental effects table
-- `docs/game-modes.md`: catalog, team structure, custom modes, Extraction, health variants, grenade
-- `docs/mode-limits.md`: hard ceilings vs pending tests, per-mode tier tables
+- this page's own pricing-tiers section: spend tiers, Tier-0 objective toolkit, environmental effects table
+- `docs/game-modes.md`: catalog, team structure, custom modes, Extraction, health variants, grenade, hard ceilings vs pending tests, per-mode tier tables
 - `docs/spec/README.md`: architecture, phases 0–7, invariants, milestones M1–M6
 - `docs/adr/0001-companion-rider-architecture.md`, `0002-laptop-mission-control-host.md`, `0003-native-app-over-web-bluetooth.md`
 - `hardware/brx-companion-spec.md`, `hardware/brx-station-spec.md`
 - `docs/reference/edge-brp.md`: Edge features, pricing, UBox, parity targets
 - `README.md`: prime directives, quickstart, roadmap, credit, safety, licence
 - `docs/README.md`: index, canonical-sources table
-- `docs/HANDOFF.md` (2026-08-27 top; "Where the project stands"), `docs/FOLLOWUPS.md` (B1–B18b, K1–K6, Q12), `docs/verification-checklist.md`
+- `docs/HANDOFF.md` (2026-08-27 top; "Where the project stands"), `docs/FOLLOWUPS.md` (B1–B18b, K1–K6, Q12), `docs/archive/verification-checklist.md`
 - `docs/experiment-log.md`: "FIRST LIVE M0 GAME", "first phone→MC→gun path on real hardware" (2026-08-25 night), "$SFLASH validated from OUR stack", "B13 CLOSED", "LANDMARK" (2026-08-26)
 - `app/README.md`, `mcp/brx_mcp/mc/API.md` (phase list), `mcp/brx_mcp/modes/` (engine list), `LICENSE`
 
 ## Honest gaps (what is NOT proven yet)
-From `docs/architecture-topology.md` §7 and `docs/verification-checklist.md`:
-- **Mission Control ↔ multiple phones over a real field Wi-Fi**: never run on hardware (one phone → MC → one gun at the bench is the only proof).
+From `docs/architecture-topology.md` §7 and `docs/archive/verification-checklist.md`:
+- **Mission Control ↔ more than two phones over a real field Wi-Fi**: two phones have played two whole matches (2026-08-30, 2026-09-01); larger fleets have not.
 - **A dispersed timed start on a real field** (players out of range before T-0): never run.
 - **Store-and-forward recovery after real coverage loss**: never run.
 - **20-minute two-node soak** with a screen-lock and a backgrounding, out of Wi-Fi range: open.

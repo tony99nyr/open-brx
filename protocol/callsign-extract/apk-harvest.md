@@ -123,7 +123,7 @@ A self-hosted platform simply reimplements any wanted mode host-side and skips t
 REST: `ltp-prod-v4.us-east-1.elasticbeanstalk.com`. Multiplayer: **AWS SQS/SNS** (the ~1-min
 lobby delay is a cloud round-trip). Networking DTOs live under
 `LaserTag.Network.ArenaClient.Edge.Domain.CallSign.Games.*`. Replace the whole layer with the
-local LAN (WebSocket, `docs/spec/net.md`).
+local LAN (WebSocket, `docs/spec/contracts.md` §5).
 
 ## Where the game DATA lives — server, not the APK (verified 2026-08-24, UnityPy)
 

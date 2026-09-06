@@ -81,7 +81,7 @@ _Every weapon the official app can hand you (19 weapons, 20 captured frames), wi
 - **SMG**: CQB · full auto · 8 dmg · 90 ms · 72/288 · 2.5 s · **heat 5/shot**. Big clip, long reload. It empties a health pool faster than any other automatic, in 15 hits. ✅ `src: docs/reference/weapons.md`
 - **Shotgun**: CQB · single shot · 45 dmg · 900 ms · 6/24 · **shell-by-shell reload at 0.4 s per shell**. Three hits to kill. It is the only weapon with the "Shells" reload type. ✅ `src: docs/weapon-design.md §1.1 + §4.3`
 - **Stinger**: CQB · full auto · 15 dmg · 120 ms · 18/72 · 1.7 s. The hardest-hitting automatic: 8 hits, and 0.84 s to kill. ✅ `src: docs/weapon-design.md §1.2`
-- **Sniper Rifle**: Marksman · bolt-action single shot · 80 dmg · 300 ms · 4/24 · 1.7 s. Two hits to kill. ✅ `src: docs/weapon-design.md §1.2 + §6.2, protocol/brx-protocol.md §7r addendum`
+- **Sniper Rifle**: Marksman · bolt-action single shot · 80 dmg · 300 ms · 4/24 · 1.7 s. Two hits to kill. ✅ `src: docs/weapon-design.md §1.2 + §6.2, protocol/session-findings-2026-08.md §7r addendum`
 - **Plasma Sniper**: Marksman · single shot · 80 dmg · 225 ms · 10/80 · 2.0 s · **heat 30/shot**. Spam it and it overheats. Fastest time-to-kill in the arsenal at 0.23 s. ✅ `src: docs/reference/weapons.md`
 - **AMR**: Support · single shot only · 18 dmg · 360 ms · 14/56 · 1.4 s. A slow, deliberate pace. ✅ `src: docs/reference/weapons.md`
 - **Suppressor**: Support · full auto · 8 dmg · 75 ms · 48/288 · 2.0 s. **Quiet (not silent) and no muzzle flash.** It is the only weapon with the stealth fields set. ✅ `src: docs/reference/weapons.md`
@@ -129,9 +129,9 @@ Also described in the Extended Guide: **TAR-33** (semi-auto, medium) and a **Sil
 ### Page: Health, armor & damage  (`/manual/gameplay/health`)
 _What a hit takes away, what armor does, and why nothing comes back on its own_
 
-[hero] Every player is a pool of points: **45 health and 70 armor by default, which is 115 in total**. A hit comes off your armor first. Whatever armor cannot soak up spills straight into your health. When your health hits zero you are out. Nothing in the stock firmware fills you back up until you respawn. ✅ `src: docs/weapon-design.md §0, protocol/brx-protocol.md §7r addendum`
+[hero] Every player is a pool of points: **45 health and 70 armor by default, which is 115 in total**. A hit comes off your armor first. Whatever armor cannot soak up spills straight into your health. When your health hits zero you are out. Nothing in the stock firmware fills you back up until you respawn. ✅ `src: docs/weapon-design.md §0, protocol/session-findings-2026-08.md §7r addendum`
 
-[diagram GAME-09] The three pools (shield → armor → health) draining under fire, with an 80-point standard hit splitting 70 into armor and 10 into health. `src: protocol/brx-protocol.md §7r addendum`
+[diagram GAME-09] The three pools (shield → armor → health) draining under fire, with an 80-point standard hit splitting 70 into armor and 10 into health. `src: protocol/session-findings-2026-08.md §7r addendum`
 
 [steps] **What happens when you get hit**
 1. The shot's damage number lands on your gun. The IR word carries it (see *How a kill works*).
@@ -139,7 +139,7 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 3. **Armor soaks damage 1 for 1, with no cap per hit.** An 80-point standard hit takes all 70 armor and 10 health at once.
 4. Health takes the rest. Your headset and gun play the hit tone. The gun reports your new pool to any connected phone.
 5. At 0 health the gun plays the death alarm, stops firing, and ignores every incoming shot until it respawns.
-✅ `src: protocol/brx-protocol.md §7r + §7r addendum, docs/weapon-design.md §6.1, docs/reference/grenade.md §Can we add new modes (dead gun accepts no IR)`
+✅ `src: protocol/session-findings-2026-08.md §7r, §7r addendum, docs/weapon-design.md §6.1, docs/reference/grenade.md §Can we add new modes (dead gun accepts no IR)`
 
 [table] **Health facts, in player terms**
 
@@ -153,11 +153,11 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. | ✅ |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: ×1.5 at the shipped t7=50, and t7=0 turns crits off. | ✅ |
 | Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. | ✅ 📖 |
-`src: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/brx-protocol.md §7r (sensor map)`
+`src: docs/weapon-design.md §0 + §6.1, docs/experiment-log.md #33 ("NO native regen"), docs/experiment-log.md 2026-08-27 (crit = magnitude × (1 + $GSET t7/100), exact at seven levels), docs/reference/brx-manual-notes.md §Supremacy characters, docs/game-modes.md §Health/regen variants + §Team structure, protocol/brx-ir-protocol.md (crit bit), protocol/session-findings-2026-08.md §7r (sensor map)`
 
 [callout:info] **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is *added* to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way. A host watches your pool and tops it up. ✅ `src: docs/experiment-log.md #33 "SEMANTICS + REGEN nailed", docs/game-modes.md §Health/regen variants`
 
-[callout:warn] **A dead gun is deaf, unless a station armed it.** At 0 health a tagger that was never armed to a respawn station takes no IR at all, and a tagger in a host-driven game takes none either. A tagger armed by a station in a native game is the exception: it stays dead, refuses the trigger, says "revive at respawn point", and comes back the moment the station beacon reaches it. ✅ `src: docs/experiment-log.md 2026-09-04 (respawn station), docs/reference/grenade.md §Respawn Station mode, protocol/brx-protocol.md §7r (Resync)`
+[callout:warn] **A dead gun is deaf, unless a station armed it.** At 0 health a tagger that was never armed to a respawn station takes no IR at all, and a tagger in a host-driven game takes none either. A tagger armed by a station in a native game is the exception: it stays dead, refuses the trigger, says "revive at respawn point", and comes back the moment the station beacon reaches it. ✅ `src: docs/experiment-log.md 2026-09-04 (respawn station), docs/reference/grenade.md §Respawn Station mode, protocol/session-findings-2026-08.md §7r (Resync)`
 
 [table] **Respawn & lives: the knobs every mode shares**
 
@@ -176,17 +176,17 @@ _What a hit takes away, what armor does, and why nothing comes back on its own_
 ### Page: How a kill actually works  (`/manual/gameplay/how-a-kill-works`)
 _From trigger pull to green flash in five steps (the developer section has the bit layout)_
 
-[hero] A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carrier. It carries **who fired (player id), which team, how much damage, and what kind of damage**. Your target's headset or gun catches it, looks it up, and takes off the damage. If that was the last of their health, your sight flashes green. ✅ `src: protocol/brx-ir-protocol.md, protocol/brx-protocol.md §7o + §7r`
+[hero] A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carrier. It carries **who fired (player id), which team, how much damage, and what kind of damage**. Your target's headset or gun catches it, looks it up, and takes off the damage. If that was the last of their health, your sight flashes green. ✅ `src: protocol/brx-ir-protocol.md, protocol/session-findings-2026-08.md §7o, §7r`
 
-[diagram GAME-10] The kill pipeline: gun → 25-bit IR word → the receivers on the victim → pool subtraction → death → kill-confirm flash back on the shooter. `src: protocol/brx-ir-protocol.md, protocol/brx-protocol.md §7r`
+[diagram GAME-10] The kill pipeline: gun → 25-bit IR word → the receivers on the victim → pool subtraction → death → kill-confirm flash back on the shooter. `src: protocol/brx-ir-protocol.md, protocol/session-findings-2026-08.md §7r`
 
 [steps] **The five steps**
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits) · player id (6 bits, 0–63) · team (2 bits, 4 teams) · damage (8 bits, up to 255) · crit flag · effect subtype · 2 check bits.
 2. **Catch.** Your target has five receivers: **four domes on the headset**, one of them at the back, and a sensor on the **gun body**. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
 3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped. Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
-4. **Feedback.** The target's headset lights green (a blink on a hit, a hold on a kill) and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
+4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the *shooter's* sight flashes green and the announcer says "kill". In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
-✅ `src: protocol/brx-ir-protocol.md §Frame + §Field layout, protocol/brx-protocol.md §7r (sensor map, FF), docs/sound-architecture.md §Native multikills, docs/experiment-log.md ("headset LED map" 2026-08-27 entries), protocol/callsign-extract/protocol-classes.md §FSET`
+✅ `src: protocol/brx-ir-protocol.md §Frame + §Field layout, protocol/session-findings-2026-08.md §7r (sensor map, FF), protocol/brx-protocol.md §5, protocol/session-findings-2026-08.md §7o (native multikills), docs/experiment-log.md ("headset LED map" 2026-08-27 entries), protocol/callsign-extract/protocol-classes.md §FSET`
 
 [callout:tip] **Why misses still make noise.** The manual's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts. 📖 `src: docs/reference/brx-extended-user-guide.md §Weapons`
 
@@ -194,11 +194,11 @@ _From trigger pull to green flash in five steps (the developer section has the b
 
 | Event | Victim | Shooter |
 |---|---|---|
-| Hit (non-lethal) | headset green blink · hit tone (HP / armor / shield / crit each have their own) · gun LEDs | nothing (no radio path for a plain hit) |
-| Kill | headset green hold · death alarm · gun stops firing | **green sight flash** + "kill" callout; in gun-menu games also "double kill" and other streak lines |
+| Hit (non-lethal) | one green headset flash · hit tone (HP / armor / shield / crit each have their own) · gun LEDs | nothing (no radio path for a plain hit) |
+| Kill | headset sustained green blink (the out state) · death alarm · gun stops firing | **green sight flash** + "kill" callout; in gun-menu games also "double kill" and other streak lines |
 | Same team, FF off | nothing (the gun drops the shot) | nothing |
 | Miss (accuracy roll) | headset lights + zip, 0 damage | – |
-✅👥 `src: protocol/brx-protocol.md §7o, docs/sound-architecture.md, docs/experiment-log.md (LED map entries 2026-08-27), docs/reference/brx-extended-user-guide.md`
+✅👥 `src: protocol/session-findings-2026-08.md §7o, protocol/brx-protocol.md §5, docs/experiment-log.md (LED map entries 2026-08-27), docs/reference/brx-extended-user-guide.md`
 
 [callout:info] **Every shot names its shooter.** The 6-bit player id in the word is why a host can credit the *exact* killer, run free-for-all scoring, and build health-on-kill. All of it comes from what the target's gun reports. Stock BRX uses it too: that is how the kill-confirm and streak callouts find the right gun. For the full bit layout, the timings and the effect-table mechanism: → *Developer / IR protocol*. ✅ `src: protocol/brx-ir-protocol.md §Why this matters, docs/game-modes.md (P2 closed note)`
 
@@ -403,7 +403,7 @@ _Five objective modes, one button, one colour, and which ones the guns can actua
 ### Page: Beyond stock: the Open BRX mode catalog  (`/manual/gameplay/open-brx-modes`)
 _The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode. This is a taste; the full catalog lives in the platform section._
 
-[hero] Every mode above is host-side rules over the same four building blocks: the hit stream, team ids, the health pools, and respawn. Open BRX runs those rules on a laptop (Mission Control) and on a small node per player. So the same gear plays modes Battle Company never shipped, and modes that need props scale up through cheap tiers. → *Platform section* for the architecture. ✅ `src: docs/game-modes.md, docs/mode-limits.md, protocol/callsign-extract/protocol-classes.md §What's moddable`
+[hero] Every mode above is host-side rules over the same four building blocks: the hit stream, team ids, the health pools, and respawn. Open BRX runs those rules on a laptop (Mission Control) and on a small node per player. So the same gear plays modes Battle Company never shipped, and modes that need props scale up through cheap tiers. → *Platform section* for the architecture. ✅ `src: docs/game-modes.md (incl. §Hard ceilings), protocol/callsign-extract/protocol-classes.md §What's moddable`
 
 [compare] **Modes by what they need**
 
@@ -412,7 +412,7 @@ _The gun keeps no game state, so any rule you can write over hits, teams, health
 | **Tier 0 · laptop-only with `brx-mcp`** (taggers + a laptop you own) | nothing | FFA · Team Death Match · Survival/Infection · The Swarm · Generals · Commander · Supremacy · Last Man Standing · **Syphon** (health on kill) · **Halo-style regenerating health** · overshield / medic roles · small-scale **Extraction** · grenade-site **Counter-Strike** |
 | **Tier 1 · + props** (objective stations, flags, QR codes, or the grenade) | contested places | Domination · King of the Hill / Territory · Capture the Flag (standard, one-sided, centre-flag) · Assault · Team Arena · VIP escort · Hostage rescue · a real **Extraction point** |
 | **Tier 2 · + broadcast** (a live field-wide downlink; location on each node) | live global awareness | Battle Royale · live scoreboards and "flag taken!" callouts on a big no-WiFi field · hidden multi-extracts |
-✅ `src: docs/game-modes.md §The three infrastructure tiers + §Catalog + §Custom/advanced modes, docs/mode-limits.md`
+✅ `src: docs/game-modes.md §The three infrastructure tiers + §Catalog + §Custom/advanced modes + §Hard ceilings`
 
 [cards] **Three modes stock BRX doesn't ship**
 - **Extraction**: drop in, loot, then reach an extraction point and *channel* it. That takes 30–60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets, and a rules engine already exists. ✅
@@ -422,7 +422,7 @@ _The gun keeps no game state, so any rule you can write over hits, teams, health
 
 [callout:info] **Teams are more flexible than red vs blue.** The hardware supports four native teams, with on-gun friendly-fire protection and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. The owner community proved this trick with clipped ribbon "flags". ✅👥 `src: docs/game-modes.md §Team structure, docs/reference/community-notes.md §Game-mode design ideas`
 
-[callout:tip] **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier. We design around all of it instead of ignoring it, and the constraints ledger is in the platform section. ✅ `src: docs/mode-limits.md §3`
+[callout:tip] **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier. We design around all of it instead of ignoring it, and the constraints ledger is in the platform section. ✅ `src: docs/game-modes.md §Hard ceilings`
 
 [diagram GAME-14] The tier ladder: Tier 0 (laptop + taggers) → Tier 1 (+ stations / grenade) → Tier 2 (+ field broadcast), with representative modes stacked on each rung. `src: docs/game-modes.md`
 
@@ -437,7 +437,7 @@ _The gun keeps no game state, so any rule you can write over hits, teams, health
 | GAME-06 | weapons / gun-menu table | REAL PHOTO: the tagger's rear display/LED area while cycling weapons in the on-gun menu | REAL PHOTO | owner shoots | – |
 | GAME-07 | health / hero | REAL PHOTO: a tagger being hit, headset dome lit green, gun LED strip visible | REAL PHOTO | owner shoots | – |
 | GAME-08 | modes / icon set | Eleven mode icons as one consistent set: FFA, TDM, Generals, Supremacy, Survival/Infection, Swarm, CTF, Domination, KotH, Battle Royale, Extraction | GENERATE (set of 11, one prompt each with the motif swapped) | – | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016); flat line-icon style with a single electric-blue accent (#39b4ff) and one amber (#ffb020) detail. One circular badge icon containing a simple abstract motif: [crossed swords for free-for-all / two opposing shield halves for team deathmatch / a star insignia with a small figure for generals / three interlocking hexagons for supremacy / a biohazard-like trefoil made of simple arcs for infection / a hive cell cluster for swarm / a flag on a pole for capture the flag / three linked map pins for domination / a hill contour with a crown for king of the hill / a shrinking concentric ring for battle royale / an upward arrow through a ring for extraction]; identical stroke weight and badge size across the set; NO text, NO labels, NO logos, NO brand names, NO watermarks; 1:1. |
-| GAME-09 | health / diagram | Three stacked pools (shield, armor, health) draining top-down, with one large hit overflowing from the armor bar into the health bar | GENERATE (or inline SVG) | protocol/brx-protocol.md §7r addendum | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient. Three horizontal capsule bars stacked vertically, the top one thin and pale, the middle one wide in electric-blue (#39b4ff), the bottom one in amber (#ffb020); a single glowing impact mark on the middle bar with a spill of light flowing down into the bottom bar; clean vector-like lines, generous spacing; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. |
+| GAME-09 | health / diagram | Three stacked pools (shield, armor, health) draining top-down, with one large hit overflowing from the armor bar into the health bar | GENERATE (or inline SVG) | protocol/session-findings-2026-08.md §7r addendum | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient. Three horizontal capsule bars stacked vertically, the top one thin and pale, the middle one wide in electric-blue (#39b4ff), the bottom one in amber (#ffb020); a single glowing impact mark on the middle bar with a spill of light flowing down into the bottom bar; clean vector-like lines, generous spacing; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. |
 | GAME-10 | how-a-kill-works / diagram | The kill pipeline: tagger emitting a coded burst of light → a headset with front and back domes plus a gun-body sensor → a pool bar dropping → a green sight flash on the shooter | GENERATE (or inline SVG) | protocol/brx-ir-protocol.md | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; single electric-blue accent (#39b4ff), occasional amber (#ffb020), a single green glow permitted for one element. Left-to-right flow: a stylised tagger silhouette emitting a short dashed beam made of long and short segments; the beam reaching a slim headband headset with two small dome sensors and a second sensor on a rifle body; a small capsule bar beneath them partly drained; and at the far left a rifle sight glowing green; connected by thin arrows; clean vector-like lines; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. |
 | GAME-11 | how-a-kill-works / feedback table | REAL PHOTO: a headset lit green mid-hit next to a tagger sight showing the kill-confirm flash | REAL PHOTO | owner shoots | – |
 | GAME-12 | grenade-modes / hero | REAL PHOTO: the Smart Grenade, top button and LED visible, lit in a mode colour | REAL PHOTO | owner shoots | – |
@@ -460,11 +460,11 @@ _The gun keeps no game state, so any rule you can write over hits, teams, health
 - `protocol/callsign-extract/weapon-categories-config.json`, `streak-rewards-config.json`, `game-medals-config.json`, `config-facts.md`: app categories, 16 streak rewards, 21 medals
 - `docs/reference/brx-manual-notes.md`: V7 manual: on-gun flow, modes, settings ranges, stock weapons, per-mode perks, 9 Supremacy characters and abilities
 - `docs/reference/brx-extended-user-guide.md`: 7 gun-menu modes with LED colours, factions, 13 classes, 8 perks, weapon descriptions, accuracy model, indoor/outdoor
-- `docs/game-modes.md`, `docs/mode-limits.md`: infrastructure tiers, catalog, custom modes, Extraction, health/regen variants, team structure, honest limits
+- `docs/game-modes.md` (incl. §Hard ceilings): infrastructure tiers, catalog, custom modes, Extraction, health/regen variants, team structure, honest limits
 - `docs/reference/grenade.md`, `docs/reference/community-notes.md`: the 5 grenade modes, setup procedure, beacon behaviour, respawn gotcha, quirks, CTF music, balance notes
-- `docs/sound-architecture.md`: who plays which sound; native multikill audio vs host-driven kill feedback
+- `docs/manual/04-sound.md`: who plays which sound; native multikill audio vs host-driven kill feedback
 - `docs/experiment-log.md` #33 and the `$SFLASH` / LED-map entries: health-write semantics, no native regen, kill-confirm flash, headset green = hit/kill feedback
-- `protocol/brx-protocol.md` §7o, §7r + addenda, `$WEAP t20`, overheat: sensor map, armor model, fire modes, heat gauge
+- `protocol/session-findings-2026-08.md` §7o, §7r + addenda, `$WEAP t20`, overheat: sensor map, armor model, fire modes, heat gauge
 - `protocol/brx-ir-protocol.md`: the 25-bit IR word
 
 ## Research backlog (held, NOT published)

@@ -1,5 +1,5 @@
 # 06 · Developer reference  (section slug: /manual/dev)
-**Last verified:** 2026-08-27
+**Last verified:** 2026-09-06
 **Audience:** developers, modders and integrators who want to drive a BRX from their own code (an ESP32 rider, a laptop, a phone app, a base station) · **Goal of this section:** the complete interoperability spec for the BRX tagger + headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and a copy-paste path from `pip install` to a live game. Every row says how sure we are of the fact it carries.
 **Provenance legend:** ✅ verified on our bench · 🔍 decoded from the Callsign APK · 👥 community / LaserTagMods. Only confirmed facts are published. See the Research backlog at the end.
 
@@ -14,10 +14,10 @@
 ### Page: Transport, framing & safety  (`/manual/dev/transport`)
 _How you reach the gun, what a frame looks like, and why nothing here can brick one. Start here if you want your own code to talk to a tagger._
 
-[hero] **One text protocol, three ways in.** The BRX speaks a plain ASCII, comma-delimited command language on a hardware UART. Gen1 exposes it over Bluetooth Classic, Gen2/3 over BLE, and the community drives it from a wire. The frames are identical on all three. ✅ src: protocol/brx-protocol.md §1, §7c
+[hero] **One text protocol, three ways in.** The BRX speaks a plain ASCII, comma-delimited command language on a hardware UART. Gen1 exposes it over Bluetooth Classic, Gen2/3 over BLE, and the community drives it from a wire. The frames are identical on all three. ✅ src: protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c
 [image DEV-01]
 
-[callout:info] **Who found this.** Protocol discovery for the BRX platform is the work of **LaserTagMods** (JEDGE / JBOX). This page restates their findings independently, with our own bench verification noted per row. 👥 src: protocol/brx-protocol.md (header, §7d), README.md
+[callout:info] **Who found this.** Protocol discovery for the BRX platform is the work of **LaserTagMods** (JEDGE / JBOX). This page restates their findings independently, with our own bench verification noted per row. 👥 src: protocol/brx-protocol.md (header), protocol/session-findings-2026-08.md §7d, README.md
 
 [table] **Transport by generation**
 | Generation | Link | Speed | How you connect | Confidence |
@@ -26,7 +26,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 | Gen2/3 | BLE (Nordic UART Service, NUS) | UART bridge at 115200 behind the radio | Connect from any BLE central: laptop (bleak), ESP32, phone. No pairing/PIN. | ✅ |
 | Any | Hardware UART inside the gun | 115200 | What JEDGE drives directly (`Serial1`). No external accessory port exists on the BRX. A wired tap means opening the gun. Untested by us. | 👥 |
 | Any | Micro-USB "Programing Port" | USB CDC (baud ignored) | **Not** the `$` protocol. It is a separate `QUERY`/`SETUP` console. See the Serial console page. | ✅ |
-✅👥 src: protocol/brx-protocol.md §1, §7c
+✅👥 src: protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c
 
 [spec-sheet] **BLE: Nordic UART Service UUIDs**
 - Service: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
@@ -35,11 +35,11 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 - Advertised name: `Tactix-XXXX` (the last two bytes of the BLE MAC). The NUS service UUID **is** present in the advertisement, so scan-time generation detection works.
 - ATT MTU negotiates to **23 bytes**. Chunk writes to ~20-byte payloads. This is required, not defensive.
 - `$PING,*` → `$PONG,*` round trip ≈ 59 ms over BLE.
-✅ src: protocol/brx-protocol.md §1, §7a, §7b; mcp/brx_mcp/protocol.py
+✅ src: protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7a, §7b; mcp/brx_mcp/protocol.py
 
 [callout:tip] **Generation detection heuristic.** Power on the tagger and run a BLE scan. If it advertises the UART service → Gen2/3. If nothing appears on BLE but the device pairs over Bluetooth Classic → Gen1. ✅ src: protocol/brx-protocol.md §1
 
-[diagram DEV-02] Link topology: host ↔ BLE NUS ↔ tagger ↔ (proprietary link) headset; tagger → IR → other tagger; USB console on the side. ✅ src: protocol/brx-protocol.md §1, §7c, §7r
+[diagram DEV-02] Link topology: host ↔ BLE NUS ↔ tagger ↔ (proprietary link) headset; tagger → IR → other tagger; USB console on the side. ✅ src: protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c, §7r
 
 [bit-field] **Frame anatomy**
 `$` + `COMMAND` + (`,` + token)* + `,*`
@@ -48,7 +48,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 - Example: `$PING,*` → reply `$PONG,*`.
 - Tokens may not contain a comma, `*` or a line break (that is the validator in `protocol.py`: `^\$[A-Z0-9!]+(,[^,*\r\n]*)*,\*$`).
 - Notifications can arrive merged (`$ALCD,…$BUT,0,1,*`); split on the next `$` as well as on `*`.
-✅ src: protocol/brx-protocol.md §2, §7e; mcp/brx_mcp/protocol.py
+✅ src: protocol/brx-protocol.md §2, protocol/session-findings-2026-08.md §7e; mcp/brx_mcp/protocol.py
 
 [diagram DEV-03] Annotated frame anatomy. ✅ src: protocol/brx-protocol.md §2
 
@@ -59,7 +59,7 @@ _How you reach the gun, what a frame looks like, and why nothing here can brick 
 4. Idle taggers are **silent**: outside app mode no unsolicited messages are sent: no button, trigger or hit traffic.
 5. The official app's connect ritual (captured, fw v4.32) is `$STOP,*` → `$PLAYX,0,*` → `$VOL,69,0,*` → `$PLAY,VA20,3,6,,,,,*` ("connection established"), then once per session `$NAME,<name>,*` + `$VERSION,*`. It never sends `$PHONE,*`.
 6. **The headset must be linked** or the gun will connect, answer a quick `$PING`, then drop within seconds and echo nothing to config. After a gun-initiated `$DISCONNECT,*`, back off ≥ 5 s before reconnecting.
-✅ src: protocol/brx-protocol.md §7a, §7b, §7m, §7r; docs/gotchas.md
+✅ src: protocol/session-findings-2026-08.md §7a, §7b, §7m, §7r; docs/gotchas.md
 
 [callout:warn] **The safety model.** Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` silences and stops a gun. **Note it leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed or power cycled**, which is intended for a panic stop but must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path. ✅ src: README.md "Safety", protocol/brx-protocol.md §8, mcp/brx_mcp/protocol.py
 
@@ -82,9 +82,9 @@ PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]
 [callout:warn] **Volume.** `$VOL,30` is kind to ears on a bench but **measurably inaudible for weapon and game audio**; `$VOL,45` is barely audible. Open BRX plays at **80 indoors / 90 outdoors** (`compile.play_volume()`). The iOS app's 69 measures as roughly on-gun level 2 and was inaudible on a field (2026-08-30). Try-outs stay at 69. ✅ src: CLAUDE.md hard rules; protocol/brx-protocol.md §3 (`$VOL`)
 
 [faq]
-- **Is the baud rate real over BLE?** No. BLE has no baud. 115200 is the UART behind the radio bridge. That is why BLE and a wire speak identical frames. ✅ src: protocol/brx-protocol.md §7c
-- **Why does my client drop at ~6.6 s?** The link *holds* fine once up (80 s+ sessions with the official app, multi-minute sessions with ours). Establishment is intermittent; retry in a loop. If it dies within seconds *and echoes nothing to config*, the headset is not linked. ✅ src: protocol/brx-protocol.md §7b, §7e, §7r
-- **Can a command brick the gun?** Nothing in the protocol writes firmware. Every state written over BLE is wiped by a power-cycle (except `$NAME`, which persists). ✅ src: protocol/brx-protocol.md §7r, docs/experiment-log.md (2026-08-24 `$NAME`)
+- **Is the baud rate real over BLE?** No. BLE has no baud. 115200 is the UART behind the radio bridge. That is why BLE and a wire speak identical frames. ✅ src: protocol/session-findings-2026-08.md §7c
+- **Why does my client drop at ~6.6 s?** The link *holds* fine once up (80 s+ sessions with the official app, multi-minute sessions with ours). Establishment is intermittent; retry in a loop. If it dies within seconds *and echoes nothing to config*, the headset is not linked. ✅ src: protocol/session-findings-2026-08.md §7b, §7e, §7r
+- **Can a command brick the gun?** Nothing in the protocol writes firmware. Every state written over BLE is wiped by a power-cycle (except `$NAME`, which persists). ✅ src: protocol/session-findings-2026-08.md §7r, docs/experiment-log.md (2026-08-24 `$NAME`)
 
 ---
 
@@ -117,7 +117,7 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 | `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. | ✅ |
 | `$SP,<n>,*` | >> | n | End-of-game / stop. `$SP,99,*` is the second half of the panic sequence. Do not probe it mid-game hoping for a score. The gun keeps none. | 👥 |
 | `$QUERY,*` | >> | n/a | Over BLE returns a `$`-framed status array (`$QUERY,0,0,0,0,0,,1,0,,0,…`) plus a `$LCD`. **Not** the USB device record (that is USB-only; see the Serial console page). | ✅ |
-✅ src: protocol/brx-protocol.md §3, §7a, §7e, §7f, §7l, §7o, §7r; docs/gotchas.md; docs/experiment-log.md (2026-08-24 `$QUERY`)
+✅ src: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7a, §7e, §7f, §7l, §7o, §7r; docs/gotchas.md; docs/experiment-log.md (2026-08-24 `$QUERY`)
 
 [data-table:filterable] **Host → tagger: in-game effects, feedback & pools**
 | Command | Dir | Args | Meaning | Conf |
@@ -134,14 +134,14 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. | 🔍 (fields) ✅ (bench result) |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA · `$PBWEAP,0` = M4 AUTO · `$PBPERK,2` = Body Armor · `$PBLIVES,2` = 5 lives · `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. | 👥 |
 | `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host↔host | n/a | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. | 👥 |
-✅ src: protocol/brx-protocol.md §3, §7d, §7i, §7j(community `$PB*`), §7o; protocol/callsign-extract/protocol-classes.md; docs/experiment-log.md (2026-08-26 headset emission, `$BHIT`, `$GREN` emission)
+✅ src: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7d, §7i, §7j(community `$PB*`), §7o; protocol/callsign-extract/protocol-classes.md; docs/experiment-log.md (2026-08-26 headset emission, `$BHIT`, `$GREN` emission)
 
 [data-table:filterable] **Headset commands (host → gun → headset)**
 | Command | Args (APK) | Meaning | Conf |
 |---|---|---|---|
 | `$HLED,<colour>,<effect>,,,,,*` | LedColorType (White, Pink, Orange; + green via `isUsedGreenLed`), BlinkLoopType (Once, ThreeTimes, Infinite), LedEffectType (incl. Heartbeat) | Headset LED. `$HLED,,6,,,,,*` is sent in the app's end-of-game tail and in the lobby. Token 1 is a colour index sharing the gun's palette for 0 to 7 (0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink); the two devices diverge at 8, which reads red on the headset and orange on the gun. 9 and 10 are dark. Measured 2026-09-02 with the camera rig, all visible headset modules agreeing. | ✅(captured) ✅(palette) 🔍(fields) |
 | `$HLOOP,0,0,*` | a, b | Sent by the app ~1.7 s after every death. | ✅(captured) 🔍(fields) |
-✅ src: protocol/brx-protocol.md §3, §7e, §7f; protocol/callsign-extract/protocol-classes.md (Enums)
+✅ src: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7e, §7f; protocol/callsign-extract/protocol-classes.md (Enums)
 
 [data-table:filterable] **Tagger → host: events and echoes**
 | Message | Fields | Meaning | Conf |
@@ -157,7 +157,7 @@ _Every command we know of, with args, meaning and confidence: host → tagger, t
 | `$BUT,<id>,<state>,*` | id 0–5, state 1 press / 0 release | Physical button event (ids match `$BMAP`). Streams only in app mode. `$BUT,4,0` is also returned by `$MELEE`. | ✅ |
 | `$QUERY,…` | ~11 `value,,` pairs | Status array in reply to BLE `$QUERY,*`. | ✅ |
 | `$WEAP` / `$PERK` / `$HS` | n/a | Selection echoes from the on-gun menus (LaserTagMods). | 👥 |
-✅ src: protocol/brx-protocol.md §4, §7e, §7f, §7j, §7r; mcp/brx_mcp/protocol.py (parsers); docs/experiment-log.md 2026-08-27
+✅ src: protocol/brx-protocol.md §4, protocol/session-findings-2026-08.md §7e, §7f, §7j, §7r; mcp/brx_mcp/protocol.py (parsers); docs/experiment-log.md 2026-08-27
 
 [data-table:filterable] **Seen in the app's vocabulary, not exercised by us**: facts about the Callsign app's request namespace only. On-tagger behaviour has not been observed. 🔍
 | Command | Direction | APK fields / enums | Note |
@@ -183,7 +183,7 @@ _The exact frame order that takes a tagger live, respawns it, and ends the game.
 
 [callout:warn] **`$CLEAR` wipes the `$SIR` table and the gun then ignores every hit** This is the single most confusing failure mode we have found: the gun arms, spawns, reports full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all. Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5, and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the table SIZE does not matter, only its absence: a one-row table and the full ten-row table both registered 24/24 in an interleaved A/B. ✅ src: docs/experiment-log.md 2026-09-02 (night, FINAL)
 
-[callout:info] This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**. ✅ src: protocol/brx-protocol.md §7e, §7o; protocol/captures/2026-08-23-ios-callsign-game-start.txt
+[callout:info] This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**. ✅ src: protocol/session-findings-2026-08.md §7e, §7o; protocol/captures/2026-08-23-ios-callsign-game-start.txt
 
 [code text] (copy-to-clipboard)
 ```text
@@ -206,9 +206,9 @@ $AMMO,0,36,108,1,*         <-- load magazines
 $AMMO,1,6,12,1,*
 $BMAP,0,0,,,,,*            <-- trigger re-mapped AFTER spawn
 ```
-✅ src: protocol/brx-protocol.md §7e, §7k
+✅ src: protocol/session-findings-2026-08.md §7e, §7k
 
-[diagram DEV-04] Sequence diagram: host → gun frames above, with the gun's echoes (`$LCD,0,0,0,0,0,0` after `$START`; `$LCD,45,70,0,0,36,216` after `$SPAWN`; `$ALCD` per shot; `$BUT` per trigger). ✅ src: protocol/brx-protocol.md §7e
+[diagram DEV-04] Sequence diagram: host → gun frames above, with the gun's echoes (`$LCD,0,0,0,0,0,0` after `$START`; `$LCD,45,70,0,0,36,216` after `$SPAWN`; `$ALCD` per shot; `$BUT` per trigger). ✅ src: protocol/session-findings-2026-08.md §7e
 
 [table] **What the gun echoes back**
 | After | Echo | Meaning |
@@ -218,9 +218,9 @@ $BMAP,0,0,,,,,*            <-- trigger re-mapped AFTER spawn
 | each shot | `$ALCD,35,100,0,108,0,*` … | Mag decrementing, slot 0, reserve, heat |
 | each trigger | `$BUT,0,1,*` / `$BUT,0,0,*` | Press / release |
 | ~30 s | `$VOLTS,7634,3770,53,45,*` | Telemetry continues in-game |
-✅ src: protocol/brx-protocol.md §7e
+✅ src: protocol/session-findings-2026-08.md §7e
 
-[callout:warn] **The config head is silent and safe.** Writing `$CLEAR … $TID` without `$SPAWN` plays nothing and **a configured-but-unspawned gun ignores IR**: no `$HIR`, no `$HP`. "Get some" and the cocking sound belong to `$SPAWN`. A head held unspawned for ~2 minutes then spawned went live with config intact. ✅ src: protocol/brx-protocol.md §7r
+[callout:warn] **The config head is silent and safe.** Writing `$CLEAR … $TID` without `$SPAWN` plays nothing and **a configured-but-unspawned gun ignores IR**: no `$HIR`, no `$HP`. "Get some" and the cocking sound belong to `$SPAWN`. A head held unspawned for ~2 minutes then spawned went live with config intact. ✅ src: protocol/session-findings-2026-08.md §7r
 
 [steps] **Death and respawn are host-driven**
 1. Victim reports `$HP,0,0,0,*` then `$LCD,0,0,0,1,1,1,*`. The gun does **not** revive itself, and a dead gun's trigger produces `$BUT` events but no `$ALCD` decrement (it cannot fire).
@@ -228,9 +228,9 @@ $BMAP,0,0,,,,,*            <-- trigger re-mapped AFTER spawn
 3. After the game's respawn delay (the app's own timer, ~10 s in the capture; 👥 community: a per-death ramp capping at 45/90 s) the host sends `$SPAWN,,*`.
 4. Gun echoes `$LCD,45,70,0,0,36,216,*`: HP, armor **and ammo** restored with no `$AMMO` needed.
 5. **A dead gun ignores all incoming IR**: 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can.
-✅ src: protocol/brx-protocol.md §7f, §7j(community ramp), §7q (dead gun cannot fire); docs/experiment-log.md 2026-08-26 ("448-word brute force: a DEAD gun accepts NO IR")
+✅ src: protocol/session-findings-2026-08.md §7f, §7j(community ramp), §7q (dead gun cannot fire); docs/experiment-log.md 2026-08-26 ("448-word brute force: a DEAD gun accepts NO IR")
 
-[callout:warn] **After a BLE drop, re-send the whole head.** Re-sending the full sequence (`$CLEAR`→`$START`→…→`$SPAWN,,*`→`$AMMO`) on a fresh link brought a gun back in every bench case. ✅ src: protocol/brx-protocol.md §7r and §7r addendum
+[callout:warn] **After a BLE drop, re-send the whole head.** Re-sending the full sequence (`$CLEAR`→`$START`→…→`$SPAWN,,*`→`$AMMO`) on a fresh link brought a gun back in every bench case. ✅ src: protocol/session-findings-2026-08.md §7r, §7r addendum
 
 [code text] (copy-to-clipboard)
 ```text
@@ -241,12 +241,12 @@ $STOP,*
 $CLEAR,*
 $PLAY,VSF,4,6,JAY,,,,*     # victory sting (slot 1) + "victory" announcer (slot 4); solo game: $PLAY,VS6,4,6,,,,,*
 ```
-✅ src: protocol/brx-protocol.md §7e, §7n, §7o
+✅ src: protocol/session-findings-2026-08.md §7e, §7n, §7o
 
 [faq]
-- **Do I need the reload-handle pull?** No. The manual's reload-handle pull is the *local* start; `$SPAWN,,*` is the *remote* one. Both exist. ✅ src: protocol/brx-protocol.md §7e
-- **Where do respawn time, game time, lives and score-to-win go?** Nowhere on the gun. Three captures at respawn 5/15/30 s gave byte-identical `$GSET`/`$PSET`. Your host keeps the clock. ✅ src: protocol/brx-protocol.md §7n
-- **Is the second `$BMAP,0,0` (after `$SPAWN`) needed?** Yes. Omit it and the trigger is dead. ✅ src: protocol/brx-protocol.md §7e, §7r addendum
+- **Do I need the reload-handle pull?** No. The manual's reload-handle pull is the *local* start; `$SPAWN,,*` is the *remote* one. Both exist. ✅ src: protocol/session-findings-2026-08.md §7e
+- **Where do respawn time, game time, lives and score-to-win go?** Nowhere on the gun. Three captures at respawn 5/15/30 s gave byte-identical `$GSET`/`$PSET`. Your host keeps the clock. ✅ src: protocol/session-findings-2026-08.md §7n
+- **Is the second `$BMAP,0,0` (after `$SPAWN`) needed?** Yes. Omit it and the trigger is dead. ✅ src: protocol/session-findings-2026-08.md §7e, §7r addendum
 
 ---
 
@@ -275,7 +275,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 2 | n/a | 100 | 100 | (unknown) | n/a |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard · 1 MedicHeal · 2 ActivateShield · 3 RallyPulse · 4 Radiation · 5 Cryogenic · 6 ArmorPiercing · 7 EMP · 8 Shrapnel · 9 StickyBomb · 10 StandardLethalExplosive · 11 NonLethalExplosive · 12 ShottyPellets · 13 MeleeDamage · 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. | ✅ (position) 🔍 (enum names) |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. | 🔍 |
-| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (§7r addendum). | ✅ |
+| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (protocol/brx-protocol.md §6). | ✅ |
 | 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (applies `$GSET` t7, ×1.5 at the shipped t7=50). | 🔍 |
 | 7–11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | n/a | n/a | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. | 🔍 |
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. | ✅ (correlation) |
@@ -309,7 +309,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. | 🔍 |
 | 41 | gunRangeIndoor | 75 | 75 | **The gun's INDOOR IR range**, as a percent. The APK field order places `gunRangeIndoor` here, between `ammoReserv` (t40) and `extraHeadsetRangeIndoor` (t42), and it reads 75 on all eighteen guns and **20 on melee**, which is the direction physics demands. `$GSET` token 2 selects whether the indoor or outdoor profile is live. **Lowering this is the most promising route to a weaker indoor beam** for tight spaces where bounced IR registers hits. Untested on the bench. | 🔍 |
 | 42 | extraHeadsetRangeIndoor | n/a | n/a | The **headset's** indoor range, separate from the gun's (t41). 30/30/40 on the three t1=2 weapons, blank elsewhere. There are four range fields in all: gun and headset, each with an indoor and an outdoor value. | ✅ (correlation) |
-🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6.1 and the t20 / overheat sections, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 `$WEAP` token probes; charge modes; overheat solved)
+🔍 ✅ src: protocol/callsign-extract/protocol-classes.md (WEAP exact token positions + cap14–cap24 sections; t14 cadence list), protocol/brx-protocol.md §6 (bench-proven tokens), protocol/session-findings-2026-08.md §6.1, §7r addendum (stock AR emits 9, manual's 24 stale), docs/experiment-log.md (2026-08-26 `$WEAP` token probes; charge modes; overheat solved)
 
 [callout:warn] **Two positions that bit us.** (1) The metadata's field order has `rateOfFire` before `weaponSwapDelay`; the wire has the *rate* at **t14** and the constant 850 at t15. A compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons. ✅ src: protocol/brx-protocol.md §6.1; protocol/callsign-extract/protocol-classes.md (cap17, cap18)
 
@@ -337,7 +337,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | `M92` | Melee | gyro swing, protocol 13, magnitude 90 |
 ✅ src: protocol/callsign-extract/protocol-classes.md (weapon signatures, cap14–cap22); docs/experiment-log.md (2026-08-26 melee capture, damage bench)
 
-[callout:tip] **Overheat is a balance lever on any weapon.** Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock `20,150`), and the live heat gauge streams in `$ALCD` token 5, climbing ~8/shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol. ✅ src: protocol/brx-protocol.md §7j, overheat section; docs/experiment-log.md (overheat mechanism solved)
+[callout:tip] **Overheat is a balance lever on any weapon.** Set t24 (heat per shot) + t35 (overheat sound) + t37/t38 (enable/params, stock `20,150`), and the live heat gauge streams in `$ALCD` token 5, climbing ~8/shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol. ✅ src: protocol/session-findings-2026-08.md §7j, overheat section; docs/experiment-log.md (overheat mechanism solved)
 
 [faq]
 - **Can I build a semi-auto rifle?** Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto "may not exist" predates the t20 proof.) ✅ src: protocol/brx-protocol.md t20 section
@@ -360,9 +360,9 @@ _The two frames that set on-gun rules and the player's pools, identity and voice
 | 6 | secondaryBluetoothWeapons | 0 | APK field name; not exercised on the bench. | 🔍 |
 | 7 | criticalShotModifier | 50 | APK field name. **Not** score-to-win (byte-identical across captures with different win conditions). | 🔍 ✅ |
 | 8 | gameMods | 1 | APK field name; not exercised on the bench. | 🔍 |
-✅ 🔍 src: protocol/callsign-extract/protocol-classes.md (GSET), protocol/brx-protocol.md §3, §7n; docs/experiment-log.md (FF enforcement table)
+✅ 🔍 src: protocol/callsign-extract/protocol-classes.md (GSET), protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7n; docs/experiment-log.md (FF enforcement table)
 
-[callout:info] **There is no respawn, time, lives or score token.** Three captures at respawn 5/15/30 s and different clocks produced byte-identical `$GSET` and `$PSET`, and the 8-field map from the app metadata contains none of them. Those live in the host. Stop looking. ✅ src: protocol/brx-protocol.md §7n
+[callout:info] **There is no respawn, time, lives or score token.** Three captures at respawn 5/15/30 s and different clocks produced byte-identical `$GSET` and `$PSET`, and the 8-field map from the app metadata contains none of them. Those live in the host. Stop looking. ✅ src: protocol/session-findings-2026-08.md §7n
 
 [table] **`$PSET,<t1>,…,*`, sample `$PSET,6,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*`**
 | tok | Field | Sample | Meaning | Conf |
@@ -375,9 +375,9 @@ _The two frames that set on-gun rules and the player's pools, identity and voice
 | 6 | n/a | 50 | (unknown) | n/a |
 | 7 | (empty) | n/a | | n/a |
 | 8+ | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | Sixteen sound ids on the wire. The app's metadata declares these voice-pack fields: deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit, emptyUnboundButtonSound, ammoOrGearPickUp, energyShieldLoop. Which wire slot carries which name: (unknown). | 🔍 |
-✅ 🔍 src: protocol/brx-protocol.md §3, §7e, §7p, §7r; protocol/callsign-extract/protocol-classes.md (PSET); mcp/brx_mcp/gameconfig.py; docs/unknowns.md (A10b′, P3)
+✅ 🔍 src: protocol/brx-protocol.md §3, protocol/session-findings-2026-08.md §7e, §7p, §7r; protocol/callsign-extract/protocol-classes.md (PSET); mcp/brx_mcp/gameconfig.py; docs/FOLLOWUPS.md (P3)
 
-[callout:tip] **Numbering a fleet is one token.** Give every gun a distinct `$PSET` token 1 at arm time and per-player kill attribution is BLE-native: no cable, no IR receiver. Show operators 1-based ids; write `id − 1`. ✅ src: protocol/brx-protocol.md §7p, §7q
+[callout:tip] **Numbering a fleet is one token.** Give every gun a distinct `$PSET` token 1 at arm time and per-player kill attribution is BLE-native: no cable, no IR receiver. Show operators 1-based ids; write `id − 1`. ✅ src: protocol/session-findings-2026-08.md §7p, §7q
 
 ---
 
@@ -437,7 +437,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 - **Heals clamp** at the pool max. Magnitude 200 is a fill, not a stack. ✅
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks. ✅
 - **Dead guns accept no IR at all.** ✅
-src: protocol/brx-protocol.md §7r addendum; docs/experiment-log.md (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)
+src: protocol/session-findings-2026-08.md §7r addendum; docs/experiment-log.md (tok5 raw magnitude, AP, heals clamp, DoT negative, 448-word brute force)
 
 [faq]
 - **Is there a stun?** None found. `$STUN` over BLE is a no-op, and fn 23 (the only function that visibly changes anything without touching a pool) leaves the gun firing. ✅ src: docs/experiment-log.md (2026-08-27)
@@ -459,9 +459,9 @@ _Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun ke
 | 5 | raw magnitude | e.g. 9, 45, 80, 115 | The IR word's D field (= shooter's t5). **Not the applied damage** where a multiplier row or crit is in play. Derive damage from the `$HP` delta. On a killing blow it can report the victim's remaining pool instead (overkill clamp). | ✅ |
 | 6 | crit flag | 0/1 | Echoes the IR word's C bit. 0 on every stock weapon. | ✅ |
 | 7 | subtype | 0–3 | Echoes the IR word's U field (sniper = 1). | ✅ |
-✅ src: protocol/brx-protocol.md §4, §7k, §7q, §7r, §7r addendum, tok1 sensor-map section; protocol/brx-ir-protocol.md
+✅ src: protocol/brx-protocol.md §4, protocol/session-findings-2026-08.md §7k, §7q, §7r, §7r addendum, tok1 sensor-map section; protocol/brx-ir-protocol.md
 
-[callout:info] **Not every `$HIR` is damage.** Pickups, heals and status effects arrive on the same message type. The protocol/subtype tells you which row fired. ✅ src: protocol/brx-protocol.md §7k
+[callout:info] **Not every `$HIR` is damage.** Pickups, heals and status effects arrive on the same message type. The protocol/subtype tells you which row fired. ✅ src: protocol/session-findings-2026-08.md §7k
 
 [table] **The other events**
 | Message | Decode | Conf |
@@ -472,11 +472,11 @@ _Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun ke
 | `$BUT,<id>,<state>,*` | 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire. | ✅ |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | Battery every ~30 s in app mode. **Only reliably returned at good RSSI**. Weak-signal guns in a fleet sweep returned none. | ✅ |
 | `$DISCONNECT,*` | The gun is hanging up (headset switched off, or the app closing). | ✅ |
-✅ src: protocol/brx-protocol.md §4, §7f, §7j, §7q, §7r; docs/experiment-log.md (2026-08-24 fleet sweep); docs/gotchas.md
+✅ src: protocol/brx-protocol.md §4, protocol/session-findings-2026-08.md §7f, §7j, §7q, §7r; docs/experiment-log.md (2026-08-24 fleet sweep); docs/gotchas.md
 
-[callout:warn] **The gun keeps no game state, proven three ways.** (1) Three captures at respawn 5/15/30 s: byte-identical config, nothing on the wire encodes respawn or clock. (2) The complete end-of-game tail is `$VOL → $HLED → $STOP → $CLEAR → $PLAY`, and **the app never asks the gun for a score**. (3) Reconnecting after out-of-range play yields zero frames, and bare `$UP,*` gets no reply. The phone tallies `$HIR`/`$HP` live; it is the only place the score ever existed. Anything needing respawn, a clock or scoring needs a host in range for the whole match. ✅ src: protocol/brx-protocol.md §7l, §7n
+[callout:warn] **The gun keeps no game state, proven three ways.** (1) Three captures at respawn 5/15/30 s: byte-identical config, nothing on the wire encodes respawn or clock. (2) The complete end-of-game tail is `$VOL → $HLED → $STOP → $CLEAR → $PLAY`, and **the app never asks the gun for a score**. (3) Reconnecting after out-of-range play yields zero frames, and bare `$UP,*` gets no reply. The phone tallies `$HIR`/`$HP` live; it is the only place the score ever existed. Anything needing respawn, a clock or scoring needs a host in range for the whole match. ✅ src: protocol/session-findings-2026-08.md §7l, §7n
 
-[diagram DEV-08] Kill attribution + feedback sequence: victim gun → `$HIR,…,<id>,<team>,…` + `$HP,0,0,0` → host credits `<id>` → host sends shooter gun `$SFLASH,*` then `$PLAY,,4,6,V3A,,,,*` (~0.4 s) and, on a lead change, `$PLAY,,4,6,VB17,,,,*`. ✅ src: protocol/brx-protocol.md §7o, §7q
+[diagram DEV-08] Kill attribution + feedback sequence: victim gun → `$HIR,…,<id>,<team>,…` + `$HP,0,0,0` → host credits `<id>` → host sends shooter gun `$SFLASH,*` then `$PLAY,,4,6,V3A,,,,*` (~0.4 s) and, on a lead change, `$PLAY,,4,6,VB17,,,,*`. ✅ src: protocol/session-findings-2026-08.md §7o, §7q
 
 [steps] **Per-player attribution and native kill feedback over BLE: the recipe**
 1. At arm time give every gun a distinct `$PSET` token 1 (0–63) and a `$TID`.
@@ -484,12 +484,12 @@ _Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun ke
 3. Send the **shooter's** gun `$SFLASH,*` (green-sight kill confirm) and `$PLAY,,4,6,V3A,,,,*` ("kill" on the announcer slot). The official app does exactly this, three kills → three pairs.
 4. Score lines (`VB17` "takes the lead") go to every gun's announcer slot from its own host. Nothing propagates gun-to-gun; there is no nRF score channel to discover.
 5. Game end: `$PLAY,VSF,4,6,JAY,,,,*` on the winner's guns (victory sting + "victory").
-✅ src: protocol/brx-protocol.md §4 (kill attribution pattern), §7o, §7p, §7q, §7r
+✅ src: protocol/brx-protocol.md §4.1 (kill attribution pattern), protocol/session-findings-2026-08.md §7o, §7p, §7q, §7r
 
 [faq]
-- **Why did earlier captures show shooter id 0,0?** Every gun sat on the default id. The field was always there; `$PSET` token 1 is what makes it vary. ✅ src: protocol/brx-protocol.md §7q
-- **Why is `$SFLASH` in the victim's capture "never near a hit"?** Because a kill you *score* is invisible in your own `$HIR`/`$HP` stream. Correlate it with `$BUT` trigger bursts. ✅ src: protocol/brx-protocol.md §7o
-- **Can a dead gun fire?** No: `$BUT,0,1/0` with no `$ALCD` decrement. ✅ src: protocol/brx-protocol.md §7q
+- **Why did earlier captures show shooter id 0,0?** Every gun sat on the default id. The field was always there; `$PSET` token 1 is what makes it vary. ✅ src: protocol/session-findings-2026-08.md §7q
+- **Why is `$SFLASH` in the victim's capture "never near a hit"?** Because a kill you *score* is invisible in your own `$HIR`/`$HP` stream. Correlate it with `$BUT` trigger bursts. ✅ src: protocol/session-findings-2026-08.md §7o
+- **Can a dead gun fire?** No: `$BUT,0,1/0` with no `$ALCD` decrement. ✅ src: protocol/session-findings-2026-08.md §7q
 
 ---
 
@@ -504,7 +504,7 @@ _A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMod
 - **Bits:** each bit is a LOW pulse; **long ≈ 1000 µs = 1** (measured 990–994), **short ≈ 500 µs = 0** (489–512), spaces 489–512 µs; decision threshold ~750 µs.
 - **End of frame:** a trailing short pulse (< 250 µs in node1's test).
 - ⚠ A `> 1500 µs` sync gate is not BRX-unique (a Sony SIRC remote's 2390 µs header passes it). Bound sync to ~1800–2200 µs and require 25 bits + the parity rule.
-✅ src: protocol/brx-ir-protocol.md; protocol/brx-protocol.md §7c (laser mW)
+✅ src: protocol/brx-ir-protocol.md; protocol/session-findings-2026-08.md §7c (laser mW)
 
 [bit-field] **Word layout (transmit order after sync; 25 bits)**
 | Field | Bits | Offset | Meaning | Bench evidence | Conf |
@@ -553,7 +553,10 @@ def decode_word(bits: str) -> dict:
 | Rocket Launcher | proto 10, magnitude 115 | | ✅ |
 | Melee (gyro swing, native game) | proto 13, subtype 1, magnitude 90 | Subtype 1 = Rifle Bash | ✅ |
 | Supremacy Sentinel death-nova (headset) | proto 10, magnitude 125, player/team = the **dying** player | Out-damages the rocket; credits kills to the corpse | ✅ |
-✅ src: protocol/brx-protocol.md §7r addendum; docs/experiment-log.md
+| Smart Grenade, Respawn station: boot word | proto 15, player 0, team 0, magnitude 56 | Sent once at power-up; before a game starts it arms a tagger to the station (self-respawn off) | ✅ |
+| Respawn station: beacon | proto 15, player 0, team = owner, magnitude 6 | Every ~2.5 s; revives a dead, armed gun of that team (4/4; wrong team 0/1). Does not arm a running game | ✅ |
+| Respawn station: button | proto 15, team = owner, magnitude 6, crit 1 | The beacon with the crit bit set; arms a tagger mid-game. All three were replayed from our ESP32 emitter with the grenade out of the building (2026-09-04); host-driven games ignore them | ✅ |
+✅ src: protocol/brx-ir-protocol.md (native words table), docs/reference/grenade.md §Respawn Station mode, docs/experiment-log/2026-09.md (2026-09-04)
 
 [callout:warn] **Headset emission cannot be forced over BLE.** `$IRTX`, `$HFIRE`, `$MELEE` and `$BHIT` produced zero IR with a receiver control passing before and after. The headset emits only for a physical melee swing in a native game and for the Sentinel death-nova. ✅ src: docs/experiment-log.md (2026-08-26 headset emission)
 
@@ -567,7 +570,7 @@ def decode_word(bits: str) -> dict:
 ### Page: The USB serial console: `QUERY` and `SETUP`  (`/manual/dev/serial-console`)
 _The micro-USB "Programing Port" is a Teensy serial console with two commands, not the `$` protocol and not SSH. Plug a tagger into a computer and this page tells you what you can ask it._
 
-[callout:info] The BRX has two ports: charging, and a separate micro-USB **"Programing Port"**. Plugged into a computer it enumerates as a **Teensyduino USB Serial** CDC device (Windows `COMx`, macOS `/dev/tty.usbmodem*`, Linux `/dev/ttyACM*`, VID `16C0`). Baud is ignored. This is what the community means by "PuTTY into the tagger". The command set came from LaserTagMods' headset-pairing note. ✅ 👥 src: protocol/brx-protocol.md §7c; docs/experiment-log.md (2026-08-24 B7)
+[callout:info] The BRX has two ports: charging, and a separate micro-USB **"Programing Port"**. Plugged into a computer it enumerates as a **Teensyduino USB Serial** CDC device (Windows `COMx`, macOS `/dev/tty.usbmodem*`, Linux `/dev/ttyACM*`, VID `16C0`). Baud is ignored. This is what the community means by "PuTTY into the tagger". The command set came from LaserTagMods' headset-pairing note. ✅ 👥 src: protocol/session-findings-2026-08.md §7c; docs/experiment-log.md (2026-08-24 B7)
 
 [table] **What the port does and does not do**
 | Sent | Result | Conf |
@@ -577,7 +580,7 @@ _The micro-USB "Programing Port" is a Teensy serial console with two commands, n
 | `QUERY` + CR | Dumps the device record (below). Case-insensitive. | ✅ |
 | `SETUP` + CR | Enters factory provisioning; prompts (EN/中文) for the **headset's** serial number | ✅ |
 | Hold SELECT while powering on with USB connected | Mass-storage mode exposing the on-board sound storage (the sound-pack update path). This is a different mode from the console | 👥 |
-✅ src: protocol/brx-protocol.md §7c; protocol/callsign-extract/protocol-classes.md ("New sounds ON THE TAGGER")
+✅ src: protocol/session-findings-2026-08.md §7c; protocol/callsign-extract/protocol-classes.md ("New sounds ON THE TAGGER")
 
 [code text] (copy-to-clipboard)
 ```text
@@ -603,7 +606,7 @@ PCB-5
 BTchip- 4
 BT central V: devhost.03
 ```
-✅ src: protocol/brx-protocol.md §7c (values are one unit's; PIN/serial redacted)
+✅ src: protocol/session-findings-2026-08.md §7c (values are one unit's; PIN/serial redacted)
 
 [callout:tip] **Real-format quirks** the parser has to survive: `Gun Name` is NUL-padded, lines end `\r\r\n`, `Laser` can read `UNTESTED` instead of a number, `Grenade Pin` is a real non-zero value. `brx-mcp` ships `parse_query()` and `python -m brx_mcp usb-query [port]`, which saves a backup to `~/.brx-mcp/device-backups/`. ✅ src: docs/experiment-log.md (2026-08-24 B7); mcp/brx_mcp/protocol.py
 
@@ -613,9 +616,9 @@ BT central V: devhost.03
 3. 👥 The community's "change tagger ID / re-pair the headset" procedure is this console (LaserTagMods' headset-pairing note); the identity fields it concerns are the ones `QUERY` prints: `PlayerID`, `FieldID`, `Serial Number/Head PIN`, `Grenade Pin`.
 4. Only the first prompt (the headset serial) has been walked on our bench. Do it only on a gun you can afford to re-pair.
 5. For per-game identity you do not need this: `$PSET` token 1 over BLE sets the player id each game.
-✅ 👥 src: protocol/brx-protocol.md §7c, §7p; docs/experiment-log.md (2026-08-24)
+✅ 👥 src: protocol/session-findings-2026-08.md §7c, §7p; docs/experiment-log.md (2026-08-24)
 
-[callout:warn] **Firmware backup is impossible; do not reflash.** Teensy's HalfKay bootloader is write-only by design, so no image can be read back. Rollback depends entirely on Battle Company supplying the original image. The official app's version gate (supports "until v2.01e") is an *upper* bound; it warns and still runs a game. ✅ src: protocol/brx-protocol.md §7b, §7c
+[callout:warn] **Firmware backup is impossible; do not reflash.** Teensy's HalfKay bootloader is write-only by design, so no image can be read back. Rollback depends entirely on Battle Company supplying the original image. The official app's version gate (supports "until v2.01e") is an *upper* bound; it warns and still runs a game. ✅ src: protocol/session-findings-2026-08.md §7b, §7c
 
 [faq]
 - **Is `$QUERY,*` over BLE the same thing?** No. Over BLE it returns a `$`-framed status array with no serial, PIN or version. The device record is USB-only. ✅ src: docs/experiment-log.md (2026-08-24)
@@ -637,11 +640,11 @@ _Which state lives where, and what a BLE drop, a headset switch-off, or a power-
 | Player id (`$PSET` t1) | Survives with config | n/a | Wiped (the USB `PlayerID` is separate and persistent) | ✅ |
 | Score, clock, respawn timer | **Never on the gun** | n/a | n/a | ✅ |
 | `$SIR` fn-23 state (`$ALCD` token 2 at 0) | Persists until `$SPAWN` | n/a | Cleared | ✅ |
-✅ src: protocol/brx-protocol.md §7r (E1), §7n; docs/experiment-log.md (2026-08-24 `$NAME`; EMP recovery matrix)
+✅ src: protocol/session-findings-2026-08.md §7r (E1), §7n; docs/experiment-log.md (2026-08-24 `$NAME`; EMP recovery matrix)
 
 [diagram DEV-09] The matrix above as a grid graphic. ✅ src: as above
 
-[callout:warn] **Headset off = no BLE.** Switching a linked headset off makes the gun send `$DISCONNECT,*` and drop. A headset-less gun "connects", answers a quick `$PING`, then dies within seconds and echoes **nothing** to a config head. A power-cycled gun needs its headset re-linked before BLE holds. **A held link plus `$ALCD` echoes *is* the headset check**. There is no dedicated probe. The official app silently drops a headset-less gun within ~1.2 s. ✅ src: protocol/brx-protocol.md §7m, §7r
+[callout:warn] **Headset off = no BLE.** Switching a linked headset off makes the gun send `$DISCONNECT,*` and drop. A headset-less gun "connects", answers a quick `$PING`, then dies within seconds and echoes **nothing** to a config head. A power-cycled gun needs its headset re-linked before BLE holds. **A held link plus `$ALCD` echoes *is* the headset check**. There is no dedicated probe. The official app silently drops a headset-less gun within ~1.2 s. ✅ src: protocol/session-findings-2026-08.md §7m, §7r
 
 [table] **Headset behaviours (native and autonomous: they work under any host's game head)**
 | Headset LED | When | Conf |
@@ -661,7 +664,7 @@ _Which state lives where, and what a BLE drop, a headset switch-off, or a power-
 | Headset sensor ids: `$HIR` tok1 0 = front dome, 1 = back dome (4 = gun body) | shield-isolated bench | ✅ |
 | Gun↔headset pairing PIN = the headset's serial, set via USB `SETUP` | LaserTagMods note + USB | ✅ 👥 |
 | Headset LED commands `$HLED`/`$BLINK`/`$CHASE`/`$HLOOP`/`$LED` exist; only `$HLED,,6` and `$HLOOP,0,0` have been seen in use | APK + captures | 🔍 ✅ |
-✅ 👥 🔍 src: protocol/brx-protocol.md §7h, §7m, §7r, tok1 section; docs/experiment-log.md (2026-08-27)
+✅ 👥 🔍 src: protocol/session-findings-2026-08.md §7h, §7m, §7r, tok1 section; docs/experiment-log.md (2026-08-27)
 
 [callout:tip] **Screamers.** A tagger left powered all day can stop holding BLE. It still advertises, but the connection drops or hangs. The community calls this the "screamer" state. Power-rest guns between sessions; keep them charged (firmware won't re-pair below a battery threshold). 👥 ✅ src: docs/gotchas.md; docs/experiment-log.md (2026-08-26 screamer)
 
@@ -714,13 +717,20 @@ claude mcp add brx -- python.exe -m brx_mcp
 | Command | What it does |
 |---|---|
 | `scan` · `identify <addr>` · `listen <addr>` · `probe <addr>` | Discover, check, watch, probe a single gun |
-| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Earlier single-purpose game drivers (the §7e sequence) |
+| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Earlier single-purpose game drivers (the arm sequence) |
 | `play <mode> <addr…> [volume=69]` | Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction |
 | `game-sim <mode>` · `extraction-sim` | Hardware-free narrated simulations |
 | `diag <addr>` · `diagnose <addr>` · `diag-game <addr>` · `fleet` | Diagnostics, fleet battery/reachability sweep |
 | `usb-query [port]` · `enroll` · `armory` · `rename` · `reset` | USB device record, armory enrolment, persistent `$NAME`, reset |
 | `ir-capture` · `ir-emit` · `ir-range` | Drive the ESP32 IR transceiver rig |
 ✅ src: mcp/brx_mcp/__main__.py (dispatch table)
+
+[spec-sheet] **`diag-game`: the repeatable diagnostic game**
+- **What:** a structured pass/fail scorecard of every BLE capability on one tagger: connectivity (ping, firmware, battery), config + spawn echoes, trigger and button events, audio (a sound by id, volume audible at 75), team LEDs, and with a second gun as shooter, damage (armor absorbs, `$LIFE` heals) and `$HIR` shooter attribution, plus the grenade Hill/Respawn beacon (`$HIR` token 2 = 15).
+- **Run it:** `python -m brx_mcp diag-game <addr>` · `… 2guns` adds the shooter · `… 2guns ir` adds the ESP32 IR bridge. Cases a rig cannot serve **skip**, they do not fail; a run is **CLEAN** when nothing failed or errored.
+- **How it judges:** declarative cases (`diag/cases.py`) with pure predicates over the parsed receive stream (`diag/model.py`, unit-tested with no BLE); a human answers y/N where the wire cannot judge ("did you hear it?", "are the LEDs blue?"). Reports save as JSON under `~/.brx-mcp/diag-reports/`.
+- **Why:** a regression baseline. A firmware update or a new tagger? Re-run and diff the scorecard instead of re-deriving "does health-write work?" each session.
+✅ src: mcp/brx_mcp/diag/ (cases.py, model.py, runner.py), mcp/tests/test_diag.py
 
 [table] **MCP tools (what an agent can call)**
 | Tool | Purpose |
@@ -757,7 +767,7 @@ _How every fact on these pages was obtained, and how to take the next one. Read 
 3. Drive the app: connect, create/join, arm, play, end. For a differential capture change **exactly one** setting per trace.
 4. **File → Export → btsnoop**. Two traps: export acts on the *frontmost* window (easy to re-export an old trace), and a trace that wasn't recording writes a silently useless file.
 5. `python -m brx_mcp.btsnoop <file>` → transcript. `python -m brx_mcp.gsetdiff <capA> <capB> [capC]` diffs the config frames across raw captures.
-✅ src: docs/capture-runbook.md (Job 2); protocol/brx-protocol.md §7m; protocol/captures/README.md
+✅ src: docs/capture-runbook.md (Job 2); protocol/session-findings-2026-08.md §7m; protocol/captures/README.md
 
 [steps] **Android (partial; the app rarely holds a connection here)**
 1. Enable **Developer options → Bluetooth HCI snoop log**.
@@ -778,11 +788,11 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 [table] **Published transcripts** (decoded frames only; raw btsnoop files contain all of a phone's Bluetooth traffic and are not published)
 | File | Shows |
 |---|---|
-| `2026-08-23-ios-callsign-game-start.txt` | The full working arm sequence (§7e) |
-| `2026-08-23-ios-callsign-two-tagger-combat.txt` | `$HIR`/`$HP` damage, death, host-driven respawn (§7f) |
-| `2026-08-23-gset-respawn15.txt` / `-respawn30.txt` / `-respawn05.txt` | Byte-identical `$GSET` at three respawn values; `respawn15` also contains a complete game ending (§7n) |
-| `2026-08-23-no-headset-disconnects.txt` | App ritual completes, zero frames back, hangs up ~1.2 s later (§7m) |
-✅ src: protocol/captures/README.md
+| `2026-08-23-ios-callsign-game-start.txt` | The full working arm sequence (findings §7e) |
+| `2026-08-23-ios-callsign-two-tagger-combat.txt` | `$HIR`/`$HP` damage, death, host-driven respawn (findings §7f) |
+| `2026-08-23-gset-respawn15.txt` / `-respawn30.txt` / `-respawn05.txt` | Byte-identical `$GSET` at three respawn values; `respawn15` also contains a complete game ending (findings §7n) |
+| `2026-08-23-no-headset-disconnects.txt` | App ritual completes, zero frames back, hangs up ~1.2 s later (findings §7m) |
+✅ src: protocol/captures/README.md; "findings" = protocol/session-findings-2026-08.md
 
 [steps] **IR capture rig (ESP32-S3 + VS1838B)**
 1. A phone camera **cannot** see the ~5 mA IR LED. Judge with the receiver, never a camera.
@@ -800,14 +810,14 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 | ID | Page / where | What it shows | Kind | Source | Gemini prompt |
 |---|---|---|---|---|---|
 | DEV-01 | Transport · hero | Atmospheric hero: a laser-tag rifle silhouette in profile, low-key, with a faint oscilloscope-style serial pulse train sweeping across the lower third and soft concentric radio arcs emanating from the receiver; a single amber dot for the IR emitter. | GENERATE | n/a | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: a sleek futuristic laser-tag rifle in side profile, rim-lit in electric blue, with thin concentric radio arcs radiating from its rear and a crisp oscilloscope pulse train (long and short pulses) glowing along the bottom edge; one small amber point of light at the muzzle; shallow depth of field, matte surfaces, no visible branding. |
-| DEV-02 | Transport · after the generation table | Link topology. Boxes: HOST (laptop/phone/ESP32), TAGGER, HEADSET, OTHER TAGGER, USB CONSOLE. Arrows: host→tagger labelled "BLE NUS write 6E400002" and tagger→host "notify 6E400003"; a dashed bidirectional line tagger↔headset labelled "proprietary link (team colour, hit sensors)"; tagger→other tagger a dotted amber arrow labelled "IR 38 kHz, 25-bit word"; a side arrow USB CONSOLE→tagger labelled "QUERY / SETUP (CR-terminated, not $)". A small note on the Gen1 path: "Gen1: SPP 57600 via HC-05". | SVG (build in site) | protocol/brx-protocol.md §1, §7c, §7r | n/a |
-| DEV-03 | Transport · frame anatomy | Annotated frame `$PLAY,,4,6,V3A,,,,*` as monospace chips: `$` (start), `PLAY` (command), `,` separators, an **empty** token highlighted in amber with the note "empty = leave unchanged", `4`, `6`, `V3A` (announcer slot), trailing empties, `,*` (terminator). Callouts: "max ~20-byte BLE chunks", "no commas / * / newlines inside tokens". | SVG (build in site) | protocol/brx-protocol.md §2, §7o; mcp/brx_mcp/protocol.py | n/a |
-| DEV-04 | Arm sequence | Sequence diagram, two lifelines HOST and TAGGER. Downward arrows in order: `$CLEAR` `$START` (return `$LCD,0,0,0,0,0,0`) `$GSET` `$PSET` `$WEAP×3` `$SIR×10` `$BMAP×7` `$TID` `$PLAYX,0` `$PLAY,VA81,4,6` `$SPAWN,,` (return `$LCD,45,70,0,0,36,216`) `$AMMO,0,36,108,1` `$AMMO,1,6,12,1` `$BMAP,0,0`. Then a shaded "in play" band with `$BUT,0,1`/`$ALCD` returns. Then a death band: return `$HP,0,0,0` + `$LCD,0,0,0,1,1,1`; host `$HLOOP,0,0` (~1.7 s); host `$SPAWN,,` (~10 s) return `$LCD,45,70,0,0,36,216`. Then end: `$VOL,69,0` `$HLED,,6` `$STOP` `$CLEAR` `$PLAY,VSF,4,6,JAY`. Blue for host frames, amber for gun echoes. | SVG (build in site) | protocol/brx-protocol.md §7e, §7f, §7o | n/a |
+| DEV-02 | Transport · after the generation table | Link topology. Boxes: HOST (laptop/phone/ESP32), TAGGER, HEADSET, OTHER TAGGER, USB CONSOLE. Arrows: host→tagger labelled "BLE NUS write 6E400002" and tagger→host "notify 6E400003"; a dashed bidirectional line tagger↔headset labelled "proprietary link (team colour, hit sensors)"; tagger→other tagger a dotted amber arrow labelled "IR 38 kHz, 25-bit word"; a side arrow USB CONSOLE→tagger labelled "QUERY / SETUP (CR-terminated, not $)". A small note on the Gen1 path: "Gen1: SPP 57600 via HC-05". | SVG (build in site) | protocol/brx-protocol.md §1, protocol/session-findings-2026-08.md §7c, §7r | n/a |
+| DEV-03 | Transport · frame anatomy | Annotated frame `$PLAY,,4,6,V3A,,,,*` as monospace chips: `$` (start), `PLAY` (command), `,` separators, an **empty** token highlighted in amber with the note "empty = leave unchanged", `4`, `6`, `V3A` (announcer slot), trailing empties, `,*` (terminator). Callouts: "max ~20-byte BLE chunks", "no commas / * / newlines inside tokens". | SVG (build in site) | protocol/brx-protocol.md §2, protocol/session-findings-2026-08.md §7o; mcp/brx_mcp/protocol.py | n/a |
+| DEV-04 | Arm sequence | Sequence diagram, two lifelines HOST and TAGGER. Downward arrows in order: `$CLEAR` `$START` (return `$LCD,0,0,0,0,0,0`) `$GSET` `$PSET` `$WEAP×3` `$SIR×10` `$BMAP×7` `$TID` `$PLAYX,0` `$PLAY,VA81,4,6` `$SPAWN,,` (return `$LCD,45,70,0,0,36,216`) `$AMMO,0,36,108,1` `$AMMO,1,6,12,1` `$BMAP,0,0`. Then a shaded "in play" band with `$BUT,0,1`/`$ALCD` returns. Then a death band: return `$HP,0,0,0` + `$LCD,0,0,0,1,1,1`; host `$HLOOP,0,0` (~1.7 s); host `$SPAWN,,` (~10 s) return `$LCD,45,70,0,0,36,216`. Then end: `$VOL,69,0` `$HLED,,6` `$STOP` `$CLEAR` `$PLAY,VSF,4,6,JAY`. Blue for host frames, amber for gun echoes. | SVG (build in site) | protocol/session-findings-2026-08.md §7e, §7f, §7o | n/a |
 | DEV-05 | `$WEAP` page | A horizontal token ruler of 43 cells (t0–t42) colour-coded by block: identity (t0–t2), damage/IR (t3–t6), secondary-dormant (t7–t11, hatched grey), extra-headset (t12–t13, t42), cadence & ammo (t14–t19), fire mode/accuracy/burst/overheat (t20–t26), sounds (t27–t36), overheat gate (t37–t38), ammo tail (t39–t41). Each cell shows its index and a short label; t14 and t20 get a "bench-proven" badge; t15 gets a "constant 850: don't write" badge. | SVG (build in site) | protocol/callsign-extract/protocol-classes.md; protocol/brx-protocol.md §6.1 | n/a |
 | DEV-06 | IR page | 25-bit field ruler: B(4) P(6) T(2) D(8) C(1) U(2) Z(2) with bit offsets 0–24 below, plus a pulse-train strip above showing the 2 ms sync, then long (≈1000 µs) and short (≈500 µs) marks for the sample word `1101000111010101101000110`, and the trailing short end pulse. Under each field: "= $WEAP t3 / $HIR tok2", "= $PSET t1 / $HIR tok3", "= $TID & 3 / $HIR tok4", "= $WEAP t5 / $HIR tok5", "= $HIR tok6 (×(1 + $GSET t7/100))", "= $SIR subtype / $HIR tok7", "parity: odd→01 even→10; gun checks only Z0≠Z1". | SVG (build in site) | protocol/brx-ir-protocol.md | n/a |
-| DEV-07 | `$SIR` page | Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch "no row → dropped silently" / "row found" → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×(1 + $GSET t7/100) if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches. | SVG (build in site) | protocol/brx-protocol.md §5, §7r addendum; docs/experiment-log.md | n/a |
-| DEV-08 | Events page | Kill attribution sequence with three lifelines: VICTIM GUN, HOST, SHOOTER GUN. Victim → host: `$HIR,4,0,19,2,9,0,3` (×N) then `$HIR` + `$HP,0,0,0` (same ms). Host box: "credit player 19 / team 2". Host → shooter: `$SFLASH,*` (+0.4 s), `$PLAY,,4,6,V3A,,,,*` (+0.2 s), `$PLAY,,4,6,VB17,,,,*` (lead change only). Host → victim after respawn delay: `$SPAWN,,*`. | SVG (build in site) | protocol/brx-protocol.md §7o, §7q | n/a |
-| DEV-09 | Headset/link page | Grid: rows = config, alive/dead+pools, ammo, `$TID`/LED colour, `$NAME`, player id, score/clock, fn-23 state; columns = BLE drop, headset off, power-cycle. Cells filled blue "survives", amber "wiped", grey "never on gun / untested", each with a two-word note. | SVG (build in site) | protocol/brx-protocol.md §7r, §7n; docs/experiment-log.md | n/a |
+| DEV-07 | `$SIR` page | Damage pipeline flow: [IR word: B,U,D,C] → [victim looks up $SIR(B,U)] → branch "no row → dropped silently" / "row found" → [function class: damage ×1 / ×1.25 / ×2 / AP / heal / armor / shield / status] → [×(1 + $GSET t7/100) if C=1] → [team gate: FF=0 blocks same-team damage and enemy heals] → [drain shields → armor → HP] → [emit $HIR + $HP]. Use amber for the drop/gate branches. | SVG (build in site) | protocol/brx-protocol.md §5, protocol/session-findings-2026-08.md §7r addendum; docs/experiment-log.md | n/a |
+| DEV-08 | Events page | Kill attribution sequence with three lifelines: VICTIM GUN, HOST, SHOOTER GUN. Victim → host: `$HIR,4,0,19,2,9,0,3` (×N) then `$HIR` + `$HP,0,0,0` (same ms). Host box: "credit player 19 / team 2". Host → shooter: `$SFLASH,*` (+0.4 s), `$PLAY,,4,6,V3A,,,,*` (+0.2 s), `$PLAY,,4,6,VB17,,,,*` (lead change only). Host → victim after respawn delay: `$SPAWN,,*`. | SVG (build in site) | protocol/session-findings-2026-08.md §7o, §7q | n/a |
+| DEV-09 | Headset/link page | Grid: rows = config, alive/dead+pools, ammo, `$TID`/LED colour, `$NAME`, player id, score/clock, fn-23 state; columns = BLE drop, headset off, power-cycle. Cells filled blue "survives", amber "wiped", grey "never on gun / untested", each with a two-word note. | SVG (build in site) | protocol/session-findings-2026-08.md §7r, §7n; docs/experiment-log.md | n/a |
 | DEV-10 | Serial console page · header | Atmosphere: a micro-USB cable plugged into the side of a matte device, a faint terminal glow reflecting on the surface; extreme close-up, shallow focus. | GENERATE | n/a | Technical-editorial style for a premium dark-mode product manual. Background near-black navy (#0c1016) with subtle graphite gradient; palette cool and desaturated with a single electric-blue accent (#39b4ff) and occasional amber (#ffb020); clean vector-like lines or restrained photoreal lighting; NO text, NO labels, NO logos, NO brand names, NO watermarks; 16:9. Subject: extreme close-up of a micro-USB cable seated in the port of a matte dark polymer device, a faint electric-blue glow spilling from an out-of-focus terminal screen in the background, one small amber status LED beside the port, shallow depth of field, no readable characters anywhere. |
 
 ## Interactive ideas (≤5)
@@ -818,14 +828,14 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 5. **`$SIR` matrix explorer**: a 16 × 4 grid of `<protocol, subtype>` cells; click a cell to assign a function class and sound, see stock rows pre-filled, and export the full `$SIR` block for a game head.
 
 ## Sources used
-- `protocol/brx-protocol.md`: §1–§8 in full (transport, framing, command/event tables, `$SIR`, `$WEAP`, and findings §7a–§7r, the tok1 sensor map, t20 fire mode, overheat).
+- `protocol/brx-protocol.md`: the command reference (transport, framing, command/event tables, `$SIR`, `$WEAP`, the console) and `protocol/session-findings-2026-08.md` for the dated findings §7a–§7r it was distilled from.
 - `protocol/callsign-extract/protocol-classes.md`: command vocabulary, `$GSET`/`$PSET`/`$WEAP`/`$BMAP`/`$GLED`/`$GREN`/`$LIFE`/`$BHIT`/`$BUMP`/`$FSET` field maps, enums, weapon signatures, token-position validation.
 - `protocol/callsign-extract/config-facts.md`, `protocol/callsign-extract/README.md`: APK teardown method and non-wire facts.
 - `protocol/brx-ir-protocol.md`: the 25-bit IR word, timings, parity, bench verification.
 - `protocol/captures/README.md`, `docs/capture-runbook.md`: transcripts, capture jobs and traps.
 - `README.md`: quickstart, safety, platform notes; `mcp/brx_mcp/protocol.py` (known-safe list, panic, parsers), `mcp/brx_mcp/server.py` (MCP tools), `mcp/brx_mcp/__main__.py` (CLI dispatch, captured frames), `mcp/brx_mcp/gameconfig.py` (`$PSET` builder), `mcp/brx_mcp/btsnoop.py`.
 - `docs/experiment-log.md`: `$WEAP` token probes (tok14/850), charge/overheat, `$SIR` function maps and FF enforcement, tok5 raw magnitude, fn 23 audio suppression, `$GREN` emission, headset LED, USB `QUERY`/`$QUERY`, `$NAME` persistence, capture decoder fixes.
-- `docs/gotchas.md`, `docs/unknowns.md`, `docs/VISION.md` ("The definitive BRX manual"), `CLAUDE.md` (hard rules).
+- `docs/gotchas.md`, `docs/FOLLOWUPS.md`, `docs/VISION.md` ("The definitive BRX manual"), `CLAUDE.md` (hard rules).
 - External, credited: LaserTagMods (JEDGE / JBOX / NRFL-Bases), Battle Company BRX Manual V7, the owner community (Facebook group captures on fw v4.30).
 
 ## Research backlog (held, NOT published)
@@ -868,13 +878,13 @@ Everything below was removed from the pages above because it is unconfirmed, sin
 - **Status functions** enemy 8, 24–28, 35 and ally 31, 32, 34: register and move no pool; a stun, a fire-rate buff, or nothing? Needs a trigger pulled during each to detect a fire lockout. Only "registers, no pool change" is published.
 - **`$SIR` p5–p8**: not a multiplier (published); what they are is open.
 - **Tear gas row (`$SIR,11,…,28`)**: reported by the community as not working; unverified.
-- **Grenade station beacon word**: predicted protocol 15 with the mode in the magnitude (Respawn 6, Hill 8); never captured intact. The native **Sentinel EMP** word has also never been captured intact.
+- **Grenade Hill / Assault / CTF / Frag words**: not yet captured intact (the three Respawn-station words were captured and replayed on 2026-09-04 and are published on the IR page). The native **Sentinel EMP** word has also never been captured intact.
 - **The 18-vs-9 armor drain split** in the first two-tagger capture remains unexplained.
 - **`$HIR` tok1 at field distance**: the front/back/gun sensor map was isolated at the bench; point-blank floods all receivers.
 - **Melee under a host-pushed head**: frames byte-identical to the app's, yet gyro melee only worked in a native on-gun game; cause unknown.
 
 **Link, headset, state**
-- **`$SPAWN` alone after a BLE drop: two contradicting bench readings.** (a) On a fresh link after a drop, `$SPAWN,,*` + `$AMMO` revived a dead gun with config intact (brx-protocol.md §7r). (b) A later note: a dead gun did **not** revive on `$SPAWN` alone and needed the full cold start (§7r addendum). Published: only "re-send the whole head after a reconnect". The state-survival matrix's *config ↔ BLE drop* cell (and diagram DEV-09's matching cell) therefore renders as unknown.
+- **`$SPAWN` alone after a BLE drop: two contradicting bench readings.** (a) On a fresh link after a drop, `$SPAWN,,*` + `$AMMO` revived a dead gun with config intact (session-findings-2026-08.md §7r). (b) A later note: a dead gun did **not** revive on `$SPAWN` alone and needed the full cold start (§7r addendum). Published: only "re-send the whole head after a reconnect". The state-survival matrix's *config ↔ BLE drop* cell (and diagram DEV-09's matching cell) therefore renders as unknown.
 - **Headset green LED**: the operator reports it blinks green on a hit and flashes/stays green on a kill, and flags uncertainty about whose hit/kill it reports. Held until repeated.
 - **Gun↔headset link protocol**: never characterised or driven.
 - **The nRF radio** (`NRFhost 1` / `NRFslave 1` in `QUERY`): is there a native gun-to-gun mesh, and does it carry the multikill confirm? Unwired.

@@ -18,7 +18,7 @@ src: docs/gotchas.md · docs/reference/community-notes.md · docs/reference/brx-
 
 [callout:info]
 **Three things to know before any ladder.** (1) The tagger keeps no game state. If it is not in a started game, it will not shoot anyone. ✅ (2) The gun locks when its headset disconnects *mid-game*. That is anti-cheat. 📖 (3) A dead player's trigger only clicks. That is a game rule, not a fault. ✅
-src: protocol/brx-protocol.md §7n §7r · docs/reference/brx-manual-notes.md (Headset §) · docs/experiment-log.md (2026-08-25 "dead gun can't fire")
+src: protocol/session-findings-2026-08.md §7n, §7r · docs/reference/brx-manual-notes.md (Headset §) · docs/experiment-log.md (2026-08-25 "dead gun can't fire")
 
 [symptom-ladder]  **"Won't fire": the ladder**
 1. **Is the headset slow-blinking a rainbow?** → yes → It is disconnected. The gun will not join a game or fire until the headset links. Power the headset on and wait for it to settle to team colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles, re-pair (→ *Headset, pairing & Bluetooth*). ✅📖
@@ -118,11 +118,11 @@ src: docs/gotchas.md ("The gun is called Tactix2 again") · docs/experiment-log.
 | Headset pairing (PIN) | Yes | Yes, but the gun needs the headset *re-linked* before Bluetooth will hold |
 | Smart grenade's locked objective mode | n/a | **Yes**. It flashes its mode colour for ~1 s at boot |
 | Firmware and sound files | Yes | Yes |
-✅📖 · src: protocol/brx-protocol.md §7r ("config survives a BLE drop (E1)", "Power-cycle WIPES the config") · docs/reference/brx-extended-user-guide.md (indoor/outdoor persists; SELECT menu) · docs/reference/grenade.md
+✅📖 · src: protocol/session-findings-2026-08.md §7r ("config survives a BLE drop (E1)", "Power-cycle WIPES the config") · docs/reference/brx-extended-user-guide.md (indoor/outdoor persists; SELECT menu) · docs/reference/grenade.md
 
 [callout:tip]
 **Two resets worth knowing.** In-game soft reset: hold LEFT+RIGHT for 5 s → the gun reboots to its menu. Fresh from a power cycle, a tagger ignores a bare version query until it has been greeted (the phone's handshake). So "it's not answering" right after boot is expected. 📖✅
-src: docs/reference/brx-extended-user-guide.md (RESET) · protocol/brx-protocol.md §7r ("Fresh power-up needs the handshake")
+src: docs/reference/brx-extended-user-guide.md (RESET) · protocol/session-findings-2026-08.md §7r ("Fresh power-up needs the handshake")
 
 ---
 
@@ -138,7 +138,7 @@ _When the gun fires but nothing lands, nothing is heard, or nothing lasts._
 6. **Mag-dumping?** → The simulated-recoil model pulls your accuracy off under rapid fire. A miss makes the enemy hear a zip and lights their headset with **0 damage**. Fire in bursts. 📖
 7. **Hits register from the front but not the back, or the other way round?** → The headset has separate front and back sensor domes, plus a gun-body sensor. A dead dome is a replaceable part, and sensor boards for front, left and right are sold. 📖👥✅
 8. **Never lands at any range, target mode included?** → IR emitters do die. The laser emitter is a separately replaceable part. 👥📖
-✅📖👥 · src: protocol/brx-protocol.md §7r (FF firmware-enforced; dead/unspawned guns ignore IR; sensor map) · docs/reference/brx-extended-user-guide.md (indoor/outdoor, target mode, accuracy) · docs/reference/brx-manual-notes.md · docs/reference/community-notes.md
+✅📖👥 · src: protocol/session-findings-2026-08.md §7r (FF firmware-enforced; dead/unspawned guns ignore IR; sensor map) · docs/reference/brx-extended-user-guide.md (indoor/outdoor, target mode, accuracy) · docs/reference/brx-manual-notes.md · docs/reference/community-notes.md
 
 [callout:info]
 **Outdoors, prefer the stock headset.** SwapTX-modded headsets have dimmer LEDs than the BRX headset. In direct sun that makes it hard to tell whether you are landing tags at range. 👥
@@ -385,8 +385,8 @@ _The questions owners ask first._
 - `hardware/print-files.md`: reload-button mod, rider mount, skins, D-pad gap, phone bracket, JBOX enclosures, Open BRX library plan
 - `hardware/brx-companion-spec.md`, `hardware/brx-station-spec.md`: Companion / Utility Box one-liners (design stage)
 - `docs/experiment-log.md`: §16 headset gates the app; 2026-08-25 late (headset-off = $DISCONNECT, config survives drop); 2026-08-26 screamer reproduction; 2026-08-27 headset LED table; 2026-08-24 QUERY/USB console and name fields; 2026-08-25 night (try-out couldn't fire; Callsign reset $NAME)
-- `protocol/brx-protocol.md`: transport table (Gen1 vs Gen2/3), "QUERY and SETUP" console, §7r (survives a BLE drop vs power cycle, handshake after boot, dead/unspawned guns ignore IR, sensor map, FF enforced), "Firmware backup: impossible"
-- `docs/unknowns.md`, `docs/VISION.md` ("The definitive BRX manual"): gaps list and sourcing policy
+- `protocol/brx-protocol.md`: transport table (Gen1 vs Gen2/3), "QUERY and SETUP" console; `protocol/session-findings-2026-08.md` §7r (survives a BLE drop vs power cycle, handshake after boot, dead/unspawned guns ignore IR, sensor map, FF enforced), "Firmware backup: impossible"
+- `docs/FOLLOWUPS.md`, `docs/VISION.md` ("The definitive BRX manual"): gaps list and sourcing policy
 - `CLAUDE.md`: volume 30 vs 69 rule
 
 ## Research backlog (held, NOT published)

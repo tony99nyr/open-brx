@@ -27,7 +27,7 @@ never ship Battle Company's assets.** The APK itself is NOT committed.
 - **The phone-to-phone lobby is AWS SQS/SNS.** Many `SendMessageAsync`/`GetQueueUrlAsync`/
   `ListSubscriptionsByTopicAsync` strings — the ~1-minute lobby delay noted in the field
   tests is a cloud round-trip, not BLE. (The whole multiplayer coordination layer is
-  Amazon-hosted; a self-hosted platform replaces this with the local LAN (WebSocket, `docs/spec/net.md`).)
+  Amazon-hosted; a self-hosted platform replaces this with the local LAN (WebSocket, `docs/spec/contracts.md` §5).)
 - **The app drives respawn** — `AUTO RESPAWN IN {0}` string present. Corroborates the
   experiment-log finding that respawn/clock live in the app, not the gun.
 - **The app can play offline** — `"Are you sure play offline game without connected players?"`

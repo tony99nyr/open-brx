@@ -158,10 +158,10 @@ function jsonldFor(page) {
 const weapons = buildWeapons(REPO);
 const sounds = buildSounds(REPO, MANUAL);
 write('data/weapons.json', JSON.stringify({ generated: NOW, source: ['mcp/brx_mcp/mc/weapons.json', 'docs/reference/weapons.md'], weapons }, null, 1));
-write('data/sounds.json', JSON.stringify({ generated: NOW, source: ['protocol/callsign-extract/Sounds.json', 'docs/manual/04-sound.md'], count: sounds.rows.length, meanings_known: sounds.meanings_known, families: sounds.families, rows: sounds.rows }));
+write('data/sounds.json', JSON.stringify({ generated: NOW, source: ['mcp/brx_mcp/data/sound_catalog.json', 'docs/manual/04-sound.md'], count: sounds.rows.length, on_gun: sounds.on_gun, app_only: sounds.app_only, meanings_known: sounds.meanings_known, families: sounds.families, rows: sounds.rows }));
 const EXPLORERS = {
   '/manual/gameplay/weapons': { id: 'weapons', src: '/data/weapons.json', title: 'Every weapon, from the wire', note: `${weapons.length} weapons · stats are the values the app sent over BLE when each was armed · pick two to compare` },
-  '/manual/sound/sound-bank': { id: 'sounds', src: '/data/sounds.json', title: 'Sound Bank Explorer', note: `${sounds.rows.length} ids · ${sounds.meanings_known} with a known meaning · search by id, family or meaning` },
+  '/manual/sound/sound-bank': { id: 'sounds', src: '/data/sounds.json', title: 'Sound Bank Explorer', note: `${sounds.on_gun} sounds on the gun (plus ${sounds.app_only} app-only ids that play the fallback) · ${sounds.meanings_known} with a known meaning · search by id, family, speaker or meaning` },
 };
 function explorerHtml(e, anchor) {
   return `<section class="blk blk-explorer" id="${e.id}-explorer" data-explorer="${e.id}" data-src="${e.src}">

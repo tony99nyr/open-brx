@@ -1,9 +1,8 @@
 # BRX Manual — distilled notes for agents
 
-Source: `BRX_Manual_V7.pdf` (this directory), © Battle Company, downloaded from
+Source: Battle Company's *BRX Manual V7* (2021), © Battle Company, linked and not rehosted:
 https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf
-**Note:** the PDF is here for private-repo reference only — before the repo goes public,
-replace it with the link (it's Battle Company's copyright).
+(The PDF was removed from the repo on 2026-09-06; keep any local copy outside git.)
 
 ## Hardware (parts diagram, p.2)
 
@@ -29,8 +28,8 @@ replace it with the link (it's Battle Company's copyright).
 3. Directional pad: team/faction. Trigger: cycle weapons/characters. ALT: cycle perks.
 4. Settings (lives/time/respawn/volume) via directional pad, Select advances.
    Settings persist as new defaults after a game starts.
-5. **Pull the reload handle to START the game.** ← key fact: reload-handle pull is the
-   "go" signal; our remote-start experiments likely reached ready-mode and stalled here.
+5. **Pull the reload handle to START the game.** (The local start; `$SPAWN,,*` is the remote
+   start, `protocol/brx-protocol.md` §3.)
 
 ## Headset (p.3, p.8) — protocol-relevant!
 
@@ -65,9 +64,8 @@ Respawn off/15/30/60/ramp45/ramp90 s · Volume 1–5.
 | SR-100 | 140 | 44 | 100–90 | 4 |
 | TAC-87 | 120–40 | 150 | 95–80 | 8 |
 
-The known-good `$WEAP,0` assault-rifle string carries a `24` in the damage-suspect
-position — matching the M-4. Forcing each stock weapon via the app (once it works) and
-diffing `$WEAP` outputs against this table is the fastest route to the 44-token map.
+(The Callsign app's Assault Rifle emits 9, not 24; the manual's stock presets are a different
+scale. Full token map: `protocol/callsign-extract/protocol-classes.md`.)
 
 ## Per-mode weapons & perks (p.6–7) — previously missing from these notes
 

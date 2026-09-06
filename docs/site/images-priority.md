@@ -1,6 +1,6 @@
 # Images — the short list, and how to actually get them out of Gemini
 
-`images.md` is the full 84-slot backlog. **Don't work from it.** The design (round 1, `Open BRX Site.dc.html`)
+The full 84-slot backlog (`docs/archive/site/images.md`, regenerable with `tools/build_images.py`) is not the working list. **Don't work from it.** The design (round 1, `Open BRX Site.dc.html`)
 carries readability with type, badges, blocks, and built-in SVG diagrams, and uses only nine slots. This
 sheet is the working list: **12 images in two tiers**, with prompts rewritten for how Gemini's image
 model actually behaves, and a workflow that starts from a real photo of *your* guns — which is the
@@ -8,7 +8,7 @@ part that will make the site look real.
 
 ## Why the first-round prompts will under-deliver, and what changes
 
-The 38 prompts in `images.md` are written like design specs: hex codes, long negative lists, "technical-
+The 38 prompts in the full backlog are written like design specs: hex codes, long negative lists, "technical-
 editorial style". Gemini's image model (Nano Banana / Imagen) mostly ignores hex values, treats long
 negative lists as noise, and produces its best work from **a short scene description in plain sentences
 + one reference image**. So:
@@ -82,7 +82,7 @@ restore it exactly as in the original photo." Gemini's edit mode is good at targ
 | 11 | **SND-02** | USB port + cable, 4:3 | Your photo → Master relight |
 | 12 | **HOME-07** | logo mark | Generate (prompt F), then trace to SVG |
 
-Everything else in `images.md` is deferred. The SVG diagrams (HOME-02, DEV-*, PLAT-*) are built in the
+Everything else in the full backlog is deferred. The SVG diagrams (HOME-02, DEV-*, PLAT-*) are built in the
 site, not generated, and don't need Gemini at all.
 
 ## Prompts (text-to-image, no reference photo)

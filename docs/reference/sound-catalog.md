@@ -1,5 +1,8 @@
 # BRX sound catalog (derived)
 
+> **Generated file.** Rendered from `mcp/brx_mcp/data/sound_catalog.json` by `mcp/tools/soundbank_classify.py`.
+> Regenerate it; do not edit it by hand.
+
 Every sound on a v4.32 tagger, read off the gun's own `AUDIO` folder on 2026-09-03 and analysed with `mcp/tools/soundbank_analyze.py` (transcripts by Whisper, shapes by librosa), then labelled by `soundbank_classify.py`. **Restated, derived data only: no audio and no Battle Company files live in this repo.** Machine-readable copy: `mcp/brx_mcp/data/sound_catalog.json`.
 
 - **2634 ids**: 2477 on the gun, 157 listed by the app but NOT on the gun (they play the fallback), 468 on the gun but unknown to the app.

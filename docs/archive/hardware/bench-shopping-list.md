@@ -84,7 +84,7 @@ plain 3.3V SPI). Don't cross the two up.
 
 ## Route 1 — BLE capture (the Callsign/nRF-enable question; mostly no hardware)
 
-Goal: capture what Callsign sends over BLE (done — see `protocol/brx-protocol.md` §7o).
+Goal: capture what Callsign sends over BLE (done — see `protocol/session-findings-2026-08.md` §7o).
 
 | Item | Why | Notes | Status |
 |---|---|---|---|
@@ -128,7 +128,7 @@ Goal: capture what Callsign sends over BLE (done — see `protocol/brx-protocol.
 
 ## Open decision this list serves
 
-`protocol/brx-protocol.md` §7o settled **Route 1 vs Route 2**:
+`protocol/session-findings-2026-08.md` §7o settled **Route 1 vs Route 2**:
 - If Callsign enables nRF peering **over BLE** → Route 1 wins, most nRF24 hardware becomes optional.
 - If not → Route 2 (nRF24 mesh tap) is available as **exploratory native-mesh feedback** — but note it is
   **no longer the attribution route** (P2 is BLE-native), so it is off the critical path either way.
