@@ -115,7 +115,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
     <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
-          {/* the sticker usually ALREADY ends in the tail ("R0BAT-3D4F"), and printing it again wrapped
+          {/* the sticker usually ALREADY ends in the tail ("ALPHA-3D4F"), and printing it again wrapped
               the title onto two lines and pushed the status tag off the card edge (field 2026-09-02) */}
           <span title={g.sticker} style={{ font: F.osw(700, 20), letterSpacing: '.06em', whiteSpace: 'nowrap',
                                            overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{g.sticker}</span>

@@ -27,7 +27,7 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 
 ## Setup (5 min)
 
-1. **Power-cycle the gun AND its headset** (screamer rule). Use `R0BP1` (`DF:F5:DA:08:94:98`), last
+1. **Power-cycle the gun AND its headset** (screamer rule). Use `Tactix-9498` (`DF:F5:DA:08:94:98`), last
    bench's victim. If it will not connect, `python.exe -m brx_mcp scan` and pick another.
 2. **Rig:** receiver board on **COM7**, emitter on **COM8** (both enumerated 2026-09-04). Emitter LED
    pointed at a headset dome from **no more than 3 ft** (it reaches 6/6 at 3 ft, ceiling 8-9 ft).

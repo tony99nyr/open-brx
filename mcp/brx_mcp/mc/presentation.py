@@ -190,7 +190,7 @@ DEATH_FLASH_MS = 750
 DEATH_BLINK_COUNT = 200
 HEADSET_BLANK = "$HLED,,6,,,,,*"
 
-# ---- the headset's SMALL flash LED (2026-09-04 ladder, R0BQT) -------------------------------------------------
+# ---- the headset's SMALL flash LED (2026-09-04 ladder, GAMMA) -------------------------------------------------
 # The native "camera flash" on a hit is a separate GREEN-ONLY LED next to the big RGB one (the APK's
 # `isUsedGreenLed`), and `$LED` drives it: `$LED,<colour>,<useGreenLed>,<effect>,<pulses>,*` -- token 2 = 1 fires
 # the small green LED (one clearly visible flash per frame -- well below the firmware's own hit flash by wall reflection,
@@ -207,7 +207,7 @@ def flash_frame(colour: str) -> str:
     return f"$LED,9,{FLASH_COLOURS[colour]},1,1,*"
 
 # ---- the GUN BODY LED (A11.7, S4) ------------------------------------------------------------------
-# Bench 2026-09-04 (brx-grenade, R0BQT, Tony watching; experiment-log "IN-GAME GUN LED CONTROL" + the
+# Bench 2026-09-04 (brx-grenade, GAMMA, Tony watching; experiment-log "IN-GAME GUN LED CONTROL" + the
 # three "GUN LED bench (S4)" entries): a spawned gun BREATHES its team colour and a plain $GLED only
 # alternates with it -- but `$GLED,,,,5,,,*` (the blank) takes the LED out of the breathing loop: the gun
 # goes dark and stays dark, and any colour painted after it HOLDS (snaps between colours, survives firing,
@@ -216,7 +216,7 @@ def flash_frame(colour: str) -> str:
 # after a blank, and 10 is already maximum brightness.
 #   in_play: "native"  = the firmware breathing; nothing is sent. NOT the default since the 2026-09-04 walkthrough:
 #                        with the breathing running, EVERY event burst alternated with it ("all of the leds in every
-#                        sequence were wrong, you aren't clearing the gleds" -- Tony, R0BQT, 45-step walkthrough).
+#                        sequence were wrong, you aren't clearing the gleds" -- Tony, GAMMA, 45-step walkthrough).
 #            "team"    = blank, then the team colour held solid (DEFAULT: bursts read, the body looks like today)
 #            "dark"    = blank only: the gun body is off in play (events still flash)
 #            "health"  = blank, then the health hue (green / yellow / red, poolgauge.HEALTH_BANDS); the node
@@ -224,7 +224,7 @@ def flash_frame(colour: str) -> str:
 #   pregame: "team" | "off"  the armed, unspawned gun body: team colour (like the headset) or dark. Walkthrough
 #                            2026-09-04, Tony: "the gun led does not get set on arm, its dark" -> default team.
 GUN_DEFAULT = {"in_play": "team", "pregame": "team"}
-# Bench 2026-09-04 (R0BQT, Tony watching, stage `raw` ladder): a blank INSIDE the spawn burst does not take -- the
+# Bench 2026-09-04 (GAMMA, Tony watching, stage `raw` ladder): a blank INSIDE the spawn burst does not take -- the
 # firmware's spawn animation re-enables the breathing. Bare $SPAWN then blank + paint at +1.0 s: breathing;
 # +1.5 s: breathing; +2.0 s: SOLID. So the node takes the body 2.5 s after every $SPAWN (margin over 2.0).
 GUN_AFTER_SPAWN_S = 2.5

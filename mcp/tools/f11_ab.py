@@ -1,6 +1,6 @@
 """F11, measured the only way that counts: both victims in the SAME photon burst.
 
-Every claim we made about R0BQT on 2026-09-02 that compared it to R0BAT at a DIFFERENT time was
+Every claim we made about GAMMA on 2026-09-02 that compared it to ALPHA at a DIFFERENT time was
 wrong -- eight hypotheses, all retracted (docs/FOLLOWUPS.md F11). The one claim that survived was the
 one taken in a single session with a single emitter. This tool makes that the whole design: both
 taggers are connected at once, both headsets sit in the emitter's cone, and ONE shot is graded

@@ -314,7 +314,7 @@ reconnect while `live` the node opens a `reconciling` window of `RECONCILE_MS = 
 A new match, a match end, and a panic each clear an in-flight reconcile; auto-respawn, the recovery `deadAt`
 stamp, scanner-revive, and reload takeover are all gated off while `reconciling`. `state().reconciling` drives
 the HUD's RECONCILING takeover (node.md §4.4 — "SYNCING WITH YOUR GUN · WEAPON DISARMED FOR A MOMENT"), and no
-trigger pull is asked of the player. **Validated on hardware 2026-09-04 (R0BQT):** shot to HP 29, force-close,
+trigger pull is asked of the player. **Validated on hardware 2026-09-04 (Tactix-E20D):** shot to HP 29, force-close,
 reopen -> held at 29, takeover shown, gun re-armed, no heal (experiment-log). Every reconcile action is logged.
 
 **LOBBY / ARMED reconnect (and resume) just re-write the head.** There is no live state to reconcile, so the

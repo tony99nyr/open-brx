@@ -50,7 +50,7 @@
 >   skipped on team kills, event `$HLED` over the out-blink, the confidence line reading as a fault pre-match,
 >   stale A11.1/A11.5 contract text, …). Every fix has a test that fails on the old code. Lows are listed in
 >   FOLLOWUPS S2 "Polish round 2026-09-04 (night)". Details: experiment-log, same heading.
-> - **S4 / A11.7, the gun body LED (late night)**: brx-grenade found on R0BQT that `$GLED,,,,5` (the blank)
+> - **S4 / A11.7, the gun body LED (late night)**: brx-grenade found on Tactix-E20D that `$GLED,,,,5` (the blank)
 >   takes the body out of the firmware breathing, after which a paint HOLDS through hits, reloads and firing
 >   (`$SPAWN` resets it). ~~Built as an OPT-IN, default `native`~~ -- superseded the same night on the bench:
 >   **default `team` + `pregame: team`, the body taken 2.5 s AFTER `$SPAWN` by the node** (see the gun-stage
@@ -62,7 +62,7 @@
 >   (selectors, the MC's applied config, or a presentation patch). **WALKTHROUGH** steps through every state of
 >   that config for a PASS/FAIL verdict each (saved to `~/.brx-mcp/stage-verdicts.jsonl`). Verified in a real
 >   browser against the fake gun; first real-gun run the same night (next bullet).
-> - **Gun-stage bench with Tony (late night, R0BQT + emitter on COM8 + the Pixel camera)**: gun body default is
+> - **Gun-stage bench with Tony (late night, Tactix-E20D + emitter on COM8 + the Pixel camera)**: gun body default is
 >   now blank-then-hold (`gun.in_play: team`, taken 2.5 s AFTER `$SPAWN` -- inside the burst the blank does not
 >   take, +1.0/+1.5 s breathing, +2.0 s solid); pre-game HLED + GLED team colour is an every-mode invariant;
 >   `headset.hit` is native; the headset's small flash LED is reachable over BLE (`$LED,9,1,1,1,*`, A11.8 kill
@@ -119,7 +119,7 @@
 > ## ✅ 2026-09-03 (afternoon) — EMITTER FIXED (ceiling ~8-9 ft) · HEADSET TEAM COLOUR NOW PERSISTS
 >
 > **The emitter blocker is gone.** Tony reseated board B and moved the IR LED's anode to **5 V**
-> (both at once, so which one fixed it is unknown; leave it on 5 V). Range ladder, gun `R0BP1-9498`:
+> (both at once, so which one fixed it is unknown; leave it on 5 V). Range ladder, gun `Tactix-9498`:
 > **3 ft 6/6 · 6 ft 10/10 · 8 ft 9/10 · 10 ft 0/10** -- a cliff, as a bare unlensed LED gives. Work
 > hits at ≤ 6 ft. `range_step.py` now reads pools after `$SPAWN` and refuses to score a dead gun.
 >
@@ -159,7 +159,7 @@
 > **Current fleet state:** one gun advertises as **`Tactix-9498`** -- the STOCK name, never enrolled.
 > That is not evidence Callsign was opened on it; it simply has no label. Fix with
 > `python -m brx_mcp rename <addr> <BARE-NAME>` (the gun appends its own `-<MACtail>`; feeding the
-> advert back is what produced `R0BAT-3D4F-3D4F`), then power-cycle to see the advert update.
+> advert back is what produced `ALPHA-3D4F-3D4F`), then power-cycle to see the advert update.
 >
 > 🔴 **THE BLOCKER: our emitter registers 5/6 at 3 INCHES and 0/6 at 3 FEET**, while a real gun
 > registers fine at 3 ft and the witness hears every shot. It degraded IN PLACE mid-session (it did

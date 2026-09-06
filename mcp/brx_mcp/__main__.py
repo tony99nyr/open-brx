@@ -1251,7 +1251,7 @@ def name_for_rename(name: str, address: str) -> tuple[str, bool]:
     """The name to actually put in `$NAME`: tail stripped FIRST, then sanitized/truncated.
 
     Order matters and getting it wrong is silent. `clean_callsign` truncates to CALLSIGN_MAX, so
-    stripping afterwards never matches -- feeding it `R0BAT-3D4F-3D4F` yielded `R0BAT-3D4F-3` and
+    stripping afterwards never matches -- feeding it `ALPHA-3D4F-3D4F` yielded `ALPHA-3D4F-3` and
     wrote that to a real gun on 2026-09-02. Test THIS function, not the two halves.
     """
     from .modes.driver import clean_callsign
@@ -1283,7 +1283,7 @@ def strip_advert_tail(name: str, address: str) -> tuple[str, bool]:
 
     The gun advertises as `<$NAME>-<last 4 hex of its MAC>`, and `scan` prints exactly that. So the
     obvious operator move -- copy the name you can see and rename with it -- silently produces
-    `R0BAT-3D4F-3D4F`, which is what R0BAT was actually called when we found it on 2026-09-02. The
+    `ALPHA-3D4F-3D4F`, which is what ALPHA was actually called when we found it on 2026-09-02. The
     tail is not part of `$NAME` and never should be sent in one.
 
     Only a tail that MATCHES THIS ADDRESS is stripped, so a legitimate name ending in hex (say
@@ -1313,7 +1313,7 @@ async def _rename(address: str, name: str) -> None:
     if stripped:
         print(f"# NOTE: dropped the '-<MACtail>' the gun appends itself -- sending $NAME,{nm}.\n"
               f"#       (`scan` shows the ADVERT, which is $NAME + the tail; renaming with the\n"
-              f"#        advert verbatim is what produced 'R0BAT-3D4F-3D4F'.)", file=sys.stderr)
+              f"#        advert verbatim is what produced 'ALPHA-3D4F-3D4F'.)", file=sys.stderr)
 
     # a duplicate name can't be mapped — correlate refuses to bind two guns that
     # share a name. Warn before renaming into a collision.

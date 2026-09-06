@@ -170,7 +170,7 @@ the same way.
 
 Pre-flight: kill stale `brx_mcp`, `loopback.py`, `range_step.py` at 3 ft; receiver ~3 ft from the
 muzzle on a soft background, `native_capture.py` with RAW on (F12 fragments stitched host-side);
-emitter board B ≤ 6 ft. Shooter R0BP1, victim R0BAT or R0BQT. Base frame = the AR line in the plan
+emitter board B ≤ 6 ft. Shooter Tactix-9498, victim Tactix-3D4F or Tactix-E20D. Base frame = the AR line in the plan
 doc, ONE token changed per run; victim armed from the golden head (full `$SIR`, `$PSET` armour 200,
 `$GSET` t7 = 100). Controls before results, extreme before subtle, closing control on every set.
 

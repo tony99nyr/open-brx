@@ -1,6 +1,6 @@
 """F11 caught in the act: WHAT does a deaf tagger need before it registers again?
 
-R0BQT registered 16/16 earlier on 2026-09-02 and then stopped, in the same rig, with nothing
+GAMMA registered 16/16 earlier on 2026-09-02 and then stopped, in the same rig, with nothing
 reconfigured in between. That is the F11 state Tony has described since the start -- "it maybe is a
 bad state it gets in". Every previous attempt to explain it compared measurements taken at different
 times, and produced eight retracted hypotheses.

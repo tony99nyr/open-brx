@@ -81,7 +81,7 @@ async def main():
             print(f"   CONNECTED    $HIR {hit}/{fired}", flush=True)
         finally:
             await mgr.disconnect("v")
-        print("   >>> BLE DISCONNECTED. Watch R0BQT's headset and COUNT FLASHES.", flush=True)
+        print("   >>> BLE DISCONNECTED. Watch GAMMA's headset and COUNT FLASHES.", flush=True)
         await asyncio.sleep(2.5)
 
         # --- half B: DISCONNECTED, scored by the operator's eyes

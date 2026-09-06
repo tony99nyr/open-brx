@@ -1,7 +1,7 @@
 """PASSIVE watcher: fire witnessed IR at a tagger running its OWN native game, send it NOTHING.
 
-The discriminator this exists for: R0BQT went deaf under OUR config (0/22 witnessed shots, headset
-showing no flash, while R0BAT took hits from the same emitter at the same moment). If it registers
+The discriminator this exists for: GAMMA went deaf under OUR config (0/22 witnessed shots, headset
+showing no flash, while ALPHA took hits from the same emitter at the same moment). If it registers
 normally in a NATIVE game with our frames never applied, the fault is in something we send. If it
 stays deaf, our frames are exonerated and the unit is the problem.
 

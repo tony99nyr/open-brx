@@ -125,7 +125,7 @@ games. Parity today (`reference/grenade.md`, 5 hardware-confirmed modes):
 
 | Grenade mode | What it does | Our coverage |
 |---|---|---|
-| **Respawn** (yellow) | IR beacon → gun self-respawns near it | ✅ built (phone respawn station, validated on R0BQT) |
+| **Respawn** (yellow) | IR beacon → gun self-respawns near it | ✅ built (phone respawn station, validated on Tactix-E20D) |
 | **Hill / KotH** (blue) | beacons owner; grants holder a rate-of-fire perk | 🟡 designed — K1 |
 | **Assault** (green) | capture point, silent (LED only, no beacon) | 🟡 designed — K1 |
 | **CTF** (white) | capture-the-flag, silent (no beacon) | 🟡 designed — K5 (new `kind 6 flag`) |

@@ -105,7 +105,7 @@ def test_a_gun_still_off_the_air_gets_a_power_cycle_hint_not_a_raw_bleak_error()
 # --- What actually goes ON THE WIRE ------------------------------------------ #
 # The hole that let the bad fix ship, found by mutation on 2026-09-02: changing the send loop to
 # `$NAME,{name}` (the RAW operator input) instead of `{nm}` (the sanitized, tail-stripped name) left
-# the ENTIRE suite green while the CLI would write `$NAME,R0BAT-3D4F-3D4F,*` to a real gun. Every
+# the ENTIRE suite green while the CLI would write `$NAME,ALPHA-3D4F-3D4F,*` to a real gun. Every
 # other test asserts stderr text or the armory record, and the armory value comes from the same
 # variable rather than from the transmitted frame. So: assert the frame.
 
@@ -127,10 +127,10 @@ def test_the_NAME_frame_ON_THE_WIRE_carries_the_stripped_name():
 
         mgr.send = spy
         # feed it the ADVERTISED name, tail and all -- what `scan` prints and an operator pastes
-        _rename_capturing_stderr(mgr, ADDR, "R0BAT-ee01")
+        _rename_capturing_stderr(mgr, ADDR, "ALPHA-ee01")
         names = [f for f in sent.get("frames", []) if f.startswith("$NAME")]
         assert names, "no $NAME frame was ever sent"
-        assert names[-1] == "$NAME,R0BAT,*", f"wrong name on the wire: {names[-1]}"
+        assert names[-1] == "$NAME,ALPHA,*", f"wrong name on the wire: {names[-1]}"
         assert "ee01" not in names[-1].lower(), "the gun's own tail was sent back to it"
 
     _with_tmp_base(body)

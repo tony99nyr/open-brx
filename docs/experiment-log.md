@@ -5434,12 +5434,12 @@ so it kept hearing shots the tagger could not.
 
 Pre-flight first: the only `brx_mcp` processes on the box were this session's own MCP server (both
 created 15:46:30, parented by `wsl.exe`), so nothing stale held a gun. The un-enrolled gun had been
-renamed earlier in the day and advertised as `R0BP1-9498`. `loopback.py COM8 COM7 6` before touching
+renamed earlier in the day and advertised as `Tactix-9498`. `loopback.py COM8 COM7 6` before touching
 anything: PING OK on both boards, 6/6 decoded, 2/6 bit-exact -- the F12 fragmentation, unchanged.
 
 Tony reseated every jumper on board B and moved the IR LED's anode resistor from the 3V3 rail to the
 **5 V** rail. Nothing else -- his words: *"reseated everything, moved to 5v ... thats all i did. no
-other changes"*. Then `range_step.py`, `R0BP1-9498` as victim, re-armed and re-spawned per rung:
+other changes"*. Then `range_step.py`, `Tactix-9498` as victim, re-armed and re-spawned per rung:
 
 | distance | registered | witness heard | operator |
 |---|---|---|---|
@@ -5466,7 +5466,7 @@ moved, so those are its own F12-class misses; it proves light left the LED, noth
 
 ### 2026-09-03 (afternoon, item 2) — `$HLED` ON A SPAWNED GUN: `$SPAWN` and every HIT CLEAR IT; a repaint after spawn holds
 
-Tool: `mcp/tools/hled_spawned.py`, gun `R0BP1-9498`, team 1, colour 4 (purple), headset 6 ft from
+Tool: `mcp/tools/hled_spawned.py`, gun `Tactix-9498`, team 1, colour 4 (purple), headset 6 ft from
 the emitter. Every `$HLED` write was **echoed by the gun** and the hit registered
 (`$HIR,0,0,42,2,20` → `$HP,45,50,0`), so what follows is headset behaviour, not lost writes. Tony's
 answers, one per step:
@@ -5624,7 +5624,7 @@ if any, is a separate question from the native one.
 
 ### ~~2026-09-03 (afternoon) — 🏆 THE EMP WORD, REPLAYED, STUNS A NATIVE GUN -- AND THE STUN LASTS UNTIL DEATH~~ (RETRACTED, see above)
 
-Tony holding `R0BP1-9498` in a native Supremacy game, headset ~3 ft from board B. Five emissions 8 s
+Tony holding `Tactix-9498` in a native Supremacy game, headset ~3 ft from board B. Five emissions 8 s
 apart from our emitter: the captured EMP word twice as captured (team 1), twice re-teamed to team 2,
 then a plain proto-0 shot at the same magnitude as the control.
 
@@ -5663,7 +5663,7 @@ fn (38, 8, 24, 25, 26, 27, 28, 35) in turn; the holder reports whether the trigg
 Correcting the two entries above in turn. Tony: *"i wasn't out of ammo"* -- his observation is
 primary, and the ammo reading is withdrawn. Every emission below is the captured Sentinel EMP word
 (`word(15, 8, team, pid=11)`) or the plain shot (`word(15, 0, 2, pid=11)`), sent from board B with the
-headset ~3 ft away, Tony holding `R0BP1-9498` in a native Supremacy game as blue/Nexus. A 30 s
+headset ~3 ft away, Tony holding `Tactix-9498` in a native Supremacy game as blue/Nexus. A 30 s
 trigger-shot capture at 17:12 read the gun's own words as **team 1, player 11** -- the team did NOT
 change across respawns, so "team 1" below is his own team and "team 2" is an enemy.
 
@@ -5710,7 +5710,7 @@ from the moment he sends "go").
 
 Tony: *"can we send custom IR and then have the gun emit bt to the app? and the app cause the tagger
 to become disabled?"* … *"can we do stun on our own?"* Yes, and it was proven end to end in five
-minutes with MCP tools and `ir-emit`, on `R0BP1-9498`, no scripts:
+minutes with MCP tools and `ir-emit`, on `Tactix-9498`, no scripts:
 
 1. Armed in OUR game with `$SIR,0,0,,1` (plain damage) + **`$SIR,8,0,,24`** (registers, moves no
    pool) and spawned: `$LCD,45,70,0,0,32,384`.
@@ -5989,7 +5989,7 @@ refused to run on a bundle another session had made stale, which is exactly what
 ### 2026-09-04 — 🔬 `$WEAP` tok15 IS the weapon-swap delay (F4 + F22 closed; Quick Switch is real)
 
 Tony wanted a Quick Switch perk; the gun had no known draw-time knob, but every captured frame carried
-`850` at tok15 and the APK field order names that position `weaponSwapDelay`. Six runs on R0BP1, trigger
+`850` at tok15 and the APK field order names that position `weaponSwapDelay`. Six runs on Tactix-9498, trigger
 HELD through every ALT press so the first shot leaves the instant the gun allows it (reaction time out
 of the number), gap = `$BUT,1,1` → first `$ALCD` on the new slot: **850 → 863 avg · 1700 → 1723 · 425 →
 437 · 100 → 120** (linear, no floor, ~15–20 ms BLE on top). Mixed slots (850/425 and 425/850) swapped
@@ -6006,7 +6006,7 @@ bundle regen, engine 76/76, screens 144/144.
 
 ### 2026-09-04 — 🎯 THE RESPAWN STATION IS ONE IR WORD: captured on the receiver, replayed from our emitter, arms AND revives a native-game gun; hosted games ignore it
 
-**Rig:** receiver (COM7) ~1 ft from the grenade, emitter (COM8) at the `R0BP1` headset within 3 ft, grenade
+**Rig:** receiver (COM7) ~1 ft from the grenade, emitter (COM8) at the `Tactix-9498` headset within 3 ft, grenade
 in **RESPAWN (yellow)**, gun in a **native TDM** (blue = team 1) for the replay runs, then a **hosted game
 over BLE** for the last three. Tool for the passive part: `native_capture.py` (F12 stitching); replays
 were `ir-emit` one-liners; the BLE part used the MCP tools. Sheet + tool: `docs/bench-grenade.md`,
@@ -6044,7 +6044,7 @@ auto-revived inside a 40 s trigger test. The native TDM **respawn timer was neve
 are the timer, not the station. Every "stayed dead" above was either > the timer or armed. Revive count
 with the team-1 beacon on an ARMED dead gun: **4/4**; wrong team 0/1; nothing sent 0/2.
 
-**Hosted game over BLE (bench config, team 1, `R0BP1`):**
+**Hosted game over BLE (bench config, team 1, `Tactix-9498`):**
 - With the **passthrough rows** `$SIR,15,<0..3>,,24,0,0,1,,*` and FF on: the crit-1 word surfaced as
   `$HIR,0,15,0,1,6,1,0` with **no pool change**, 3/3 → **the exp-log #38 passthrough row works**; a hosted gun
   can report grenade traffic to MC. No announcement. Kill → `$HP,0,0,0`. **Team-1 beacon ×5 at the dead gun →
@@ -6154,7 +6154,7 @@ the panel eyeballed in the built console (`?mock`). Every fix carries a test tha
 plain `$GLED,<c>,<c>,<c>,0,10` painted over it just **alternates** with the breathing — the firmware
 keeps reasserting. Hours went into trying to override it (2026-09-03) and it was written off as
 "can't control the gun LED in-game, so we can't put health/state on it." **Overturned on hardware
-2026-09-04 (R0BQT / Tactix-E20D, connected over BLE from the tower, Tony watching):**
+2026-09-04 (Tactix-E20D / Tactix-E20D, connected over BLE from the tower, Tony watching):**
 
 Reproducible sequence (each step confirmed by eye):
 1. Arm + spawn normally (`$CLEAR…$SPAWN,,*…`) → gun **breathes blue** (team colour), can shoot.
@@ -6179,10 +6179,10 @@ sequence, then let the node paint the gun per state, re-blanking after each resp
 (bench 2026-09-03 said hits clear the LED — if so the node repaints on `$HP` change, like the headset)?
 how long does a painted colour hold with no traffic (minutes)? does `$GLED,,,,5` need re-sending, or is
 one enough per life? which apply-gate/brightness combos are cleanest. Confirmed today: blank→paint
-holds through colour changes and firing; a spawn undoes it. Credit: Tony's eyes, R0BQT.
+holds through colour changes and firing; a spawn undoes it. Credit: Tony's eyes, Tactix-E20D.
 
 ### 2026-09-04 — GUN LED bench (S4): a painted colour SURVIVES a hit when the blank was sent first
-Continuing the in-game gun-LED find. R0BQT armed + spawned over BLE, `$GLED,,,,5` (blank) then
+Continuing the in-game gun-LED find. Tactix-E20D armed + spawned over BLE, `$GLED,,,,5` (blank) then
 `$GLED,3,3,3,0,10` (solid green) → held. Emitted two magnitude-20 hits (`$HIR,0,0,42,2,20`, armour
 70→50→30, gun ALIVE). **Result (Tony's eyes): the gun flashes BRIGHT green on the hit, then RETURNS to
 the held green — the painted colour is NOT cleared.** This overturns the 2026-09-03 "a hit clears the
@@ -6193,7 +6193,7 @@ after spawn) and repaints only on respawn, not on every hit. (S4 measurement (a)
 ### 2026-09-04 — GUN LED bench (S4): MIXED frames render per-LED after a blank → the 3-segment health bar is viable
 The 2026-09-03 note said a mixed `$GLED` (e.g. `5,9,9`) produced uniform output in a live game — the
 firmware breathing repainted the whole strip. **After the blank that no longer holds.** On the blanked,
-green-holding R0BQT: `$GLED,3,3,0,0,10` → **green / green / RED** (index 0 = red, so each LED took its
+green-holding Tactix-E20D: `$GLED,3,3,0,0,10` → **green / green / RED** (index 0 = red, so each LED took its
 own colour and held), and `$GLED,3,3,9,0,10` → **green / green / DARK** (index 9 = off). So the three
 body LEDs are an INDEPENDENT 3-segment display once blanked. ⇒ `poolgauge.pool_frame` (the health bar)
 is viable in-game: full = 3 lit, 2/3 = 2 lit + 1 dark, 1/3 = 1 lit + 2 dark, hue by health
@@ -6202,7 +6202,7 @@ hammer it in a live game" warning in `poolgauge.py` is superseded FOR THE BLANKE
 holds, no hammering, survives hits.)
 
 ### 2026-09-04 — GUN LED bench (S4): consolidated answers for the refactor
-Continuing on R0BQT (blank + paint, live). Answers to brx's S4 questions:
+Continuing on Tactix-E20D (blank + paint, live). Answers to brx's S4 questions:
 - **(a) Does a HIT clear a painted colour (blank sent first)? NO.** The gun flashes bright on the hit and
   RETURNS to the held colour; the paint persists (armour 70→0 over many mag-5/8/15/20 hits, colour held
   every time). Only `$SPAWN` re-enables the firmware breathing.
@@ -6246,7 +6246,7 @@ open from the bench: hold time with no traffic, blink forms after a blank, the m
 
 ### 2026-09-04 (late night) — 🟢 S7.1 ANTI-CHEAT VALIDATED ON HARDWARE: force-close at low HP no longer heals
 
-Re-ran the confirmed exploit on `R0BQT-E20D` with the reconcile-disarm build (commits a63aa10 engine,
+Re-ran the confirmed exploit on `Tactix-E20D` with the reconcile-disarm build (commits a63aa10 engine,
 f202f41 HUD copy). Bench harness: phone driven over CDP (webview_devtools_remote forwarded from WSL adb;
 the Windows-only `webview_eval.py` was bypassed with a tiny direct-CDP eval), match started by injecting
 `onMcMessage({kind:'start'})` into `window.brx.engine`, damage delivered by our ESP32 emitter on COM8.
@@ -6262,7 +6262,7 @@ the Windows-only `webview_eval.py` was bypassed with a tiny direct-CDP eval), ma
   a team ≠ the victim's `$TID` (victim was team 1; shot team 2). One reusable one-liner beats a per-shot
   script.
 - **The test.** Shot down to **HP 29 / armour 0, alive** (baseline recorded). Force-closed the app, reopened,
-  reconnected to R0BQT. Result: **HP 29 held (not healed to 45), same match_id, alive, no respawn fact.** Tony
+  reconnected to Tactix-E20D. Result: **HP 29 held (not healed to 45), same match_id, alive, no respawn fact.** Tony
   saw brx-hud's takeover ("GUN RELINKED / SYNCING WITH YOUR GUN / WEAPON DISARMED FOR A MOMENT · STAND BY",
   ~3 s) and could shoot again after it cleared. The old build countdown-healed to full here. **Exploit closed;
   the reconcile disarm→re-arm fires and never heals.** (Did not catch `reconciling:true` in the snapshot only
@@ -6272,7 +6272,7 @@ the Windows-only `webview_eval.py` was bypassed with a tiny direct-CDP eval), ma
 
 ### 2026-09-04 (late night, gun stage) — 🔬 THE BLANK MUST FOLLOW `$SPAWN` BY ≥ 2 s; inside the spawn burst it does not take
 
-First real-gun run of the GUN STAGE (R0BQT over BLE from the stage, emitter on COM8, Tony at the bench). The
+First real-gun run of the GUN STAGE (Tactix-E20D over BLE from the stage, emitter on COM8, Tony at the bench). The
 compiled spawn wrote `$SPAWN` → blank → team paint → ammo → bmap inside 0.3 s, and the body **breathed**. Ladder
 with the stage's `raw` action, one variable per rung, Tony calling each: blank alone on a spawned gun → **dark,
 stays dark**; team paint alone → **solid blue, holds** (brx-grenade's mechanism confirmed on this gun). Bare
@@ -6288,7 +6288,7 @@ played no sound -- fixed), every LED burst (native breathing under it -- default
 ### 2026-09-04 (late night, gun stage) — 🎧 HEADSET LED LADDER: the `$HLED` effect map, and `$BLINK` is real (shape found in the APK metadata)
 
 Goal (Tony): the native hit flash and death flash on the headset are "like a camera flash", ~10× brighter than
-anything we paint; on a hit we would rather leave the native flash. Ladder on R0BQT via the stage's `raw`
+anything we paint; on a hit we would rather leave the native flash. Ladder on Tactix-E20D via the stage's `raw`
 action (each frame with a 3 s lead so the operator is looking), colour 3 green throughout, Tony calling each:
 - `$HLED` **effect token (t2)**: 0 static (holds) · **1 = slow BREATHE loop dim→bright** (runs until blanked) ·
   2 = blink, dim, even · 3 = nothing · **4 = FADE-OUT blink: bright, dim, very dim, off (four steps regardless of
@@ -6359,7 +6359,7 @@ green slow blink on the big LED because the native out-blink does not run in a h
 ### ❌ RETRACTED — 2026-09-04 (late night) — 📷 (was: our small-LED flash is AS BRIGHT AS the native hit flash on camera) -- the camera on the LEDs clipped both; see the wall-reflection entries below
 
 Tony: "can you use my phone camera to watch the led as you brute force it?" -- the ledcam rule, applied.
-`mcp/tools/led_flashcam.py`: the Pixel 10 Pro on wireless adb (paired from WSL), camera app aimed at R0BQT's
+`mcp/tools/led_flashcam.py`: the Pixel 10 Pro on wireless adb (paired from WSL), camera app aimed at Tactix-E20D's
 headset (exposure at minimum, room lights + a TV still on), `screenrecord` for the whole run, frames sent through
 the gun stage at known offsets, the emitter firing a real hit as the native reference, then per-video-frame
 CHANGE vs the run's median frame (ambient, the TV and the camera UI cancel out). Traps met and handled: a
@@ -6399,7 +6399,7 @@ camera. Lesson for the ledcam method: a saturated core is a floor, not a measure
 Method (Tony's): the phone camera aimed at a dark WALL, LEDs out of frame, so nothing clips; metric = mean
 brightening of the frame vs the run's median (`led_flashcam.py`, `wall` column) and its integral over the flash.
 Take A (gun armed by the stage over BLE): `$LED,9,1,1,1,*` x3 -> **wall peak 44.1 / 44.3 / 41.2, integral 135-156,
-2-4 frames (33-66 ms), zero clipped pixels.** Take B (BLE released, R0BQT power-cycled into a NATIVE quick game,
+2-4 frames (33-66 ms), zero clipped pixels.** Take B (BLE released, Tactix-E20D power-cycled into a NATIVE quick game,
 same camera position, three emitter hits on the headset dome): **wall peak 95.8 / 95.7 / 95.8 -- with ~90k of 162k
 wall pixels above +100, i.e. the WALL is beginning to clip, so the true peak is higher -- integral 1391 / 1540 /
 1049, 12-18 frames (200-300 ms).** Ratio: peak >= 2.2x (clipped, so more), total light ~9-10x, duration 5-8x.
@@ -6412,7 +6412,7 @@ hits and native flashes stay the firmware's; our `$LED` green flash marks kills 
 Method (Tony's): the phone camera aimed at a dark WALL, LEDs out of frame, metric = mean brightening of the frame vs
 the run's median (`led_flashcam.py`, `wall` column) and its integral. Take A (gun armed by the stage over BLE):
 `$LED,9,1,1,1,*` x3 -> **wall peak 44.1 / 44.3 / 41.2, integral 135-156, 2-4 frames, zero clipped pixels.** Take B
-(BLE released, R0BQT power-cycled into a NATIVE quick game, the native headset taken OUT of respawn after a first
+(BLE released, Tactix-E20D power-cycled into a NATIVE quick game, the native headset taken OUT of respawn after a first
 take was contaminated by its blink, same camera position, three emitter hits on the headset dome, quiet baseline
 0.5): **wall peak 94.1 / 93.1 / 94.1 with ~91k of 162k wall pixels above +100 -- the WALL itself clips, so the true
 peak is well above 94 -- integral 345 / 348 / 331, 4 frames (~66 ms, same duration as ours).** So: native >= 2.1x
@@ -6425,10 +6425,10 @@ manual-shutter camera so the wall stops clipping.
 
 ### 2026-09-04 (close of day) — where things stand
 
-The gun stage ran its first real-gun session (R0BQT, emitter COM8, the Pixel camera): 45-step walkthrough, then the
+The gun stage ran its first real-gun session (Tactix-E20D, emitter COM8, the Pixel camera): 45-step walkthrough, then the
 gun-take timing ladder, the pre-game invariant, the headset effect map, `$BLINK` / `$LED` found in the APK metadata
 and proven, the small flash LED reached but not at native brightness (wall method), several sounds flagged wrong.
-Everything is committed and pushed; the stage process is stopped and the emitter's COM8 released; R0BQT was last
+Everything is committed and pushed; the stage process is stopped and the emitter's COM8 released; Tactix-E20D was last
 left power-cycled into a native quick game (BLE free). Open work is filed: S9 sound pass, S2 6b headset flash,
 S4 open items (hold time, blink forms), S5 station_config server build, S6 legacy shims; tomorrow's flash-control
 plan is `docs/bench-flash-control-2026-09-05.md`. Lesson of the night, twice: the operator's eyes are primary, and a

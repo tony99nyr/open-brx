@@ -227,7 +227,7 @@ def team_frame(team: int | None, night: bool = False) -> str:
 def headset_team_frame(team: int | None) -> str:
     """The HEADSET in the team colour, static, full brightness -- what OTHER players see.
 
-    Bench 2026-09-03 (`hled_spawned.py`, `hled_bright.py`, gun R0BP1-9498, operator watching):
+    Bench 2026-09-03 (`hled_spawned.py`, `hled_bright.py`, gun DELTA-9498, operator watching):
       * a static `$HLED` painted AFTER `$SPAWN` holds SOLID (20 s, no breathing, no fight) -- the
         headset really is uncontested between events;
       * `$SPAWN` CLEARS it, and so does every registered HIT (native flash, then dark, ours never

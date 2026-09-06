@@ -522,7 +522,7 @@ inaudible). BLE writes chunk at 20 bytes (§app).
   - **A6.7 Doc fixes:** `gun_echo` is "the gun answered", not "headset present" (unverified, NEXT #10); `$START`
     audibility at lobby unverified (NEXT #11); node lifecycle arrows → KITTED; runway text = `DEFAULT_RUNWAY_S`;
     first blood from a re-based never-synced batch is flagged provisional; module headers → A6.
-  - **A6.8 BLE reconnect reconcile supersedes A5.3/A6.6 for LIVE (S7.1, 2026-09-04; validated on R0BQT).**
+  - **A6.8 BLE reconnect reconcile supersedes A5.3/A6.6 for LIVE (S7.1, 2026-09-04; validated on Tactix-E20D).**
     The node now persists/restores `alive/hp/armor/shield/deadAt/killedBy` across an app kill, so a live
     rejoin no longer probes to reconstruct state. It opens a 3 s disarmed `reconciling` window
     (`RECONCILE_MS = 3000`): disarm both slots (`$AMMO,0,0,0,1`), keep the restored pools, then re-arm to the
@@ -672,7 +672,7 @@ inaudible). BLE writes chunk at 20 bytes (§app).
     that frame FIRST in the event's `leds[ev]` sequence; defaults: green on the kill family (`kill`, medals),
     null elsewhere (a death keeps its red gun burst; the small LED cannot show red). The node plays it like any LED step (not skipped while down,
     unlike a static `$HLED`), and kill feedback plays the top medal's lights alongside its line.
-  - **A11.7 The gun body (2026-09-04, S4; bench by brx-grenade, R0BQT, Tony watching).** A spawned gun BREATHES
+  - **A11.7 The gun body (2026-09-04, S4; bench by brx-grenade, Tactix-E20D, Tony watching).** A spawned gun BREATHES
     its team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) takes the
     LED out of the breathing loop**: the body goes dark and stays dark, and any colour painted after it HOLDS
     (colour changes snap; firing, reloads and registered hits do not disturb it; 10 is already maximum

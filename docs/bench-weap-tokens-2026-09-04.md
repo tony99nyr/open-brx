@@ -63,7 +63,7 @@ per weapon into the bundle (or the HUD reads t15 off the frame) and the SWITCHIN
 real number; (3) F4 and F22 close. If B ≈ 850: t15 is not the delay, mark it "tested, inert for swap"
 in the token table, and Quick Switch falls back to the phone-driven swap idea (F22).
 
-## Result (bench 2026-09-04, gun R0BP1, Tony on the trigger, trigger held through every ALT)
+## Result (bench 2026-09-04, gun Tactix-9498, Tony on the trigger, trigger held through every ALT)
 
 ALT press → first `$ALCD` on the new slot, ms:
 

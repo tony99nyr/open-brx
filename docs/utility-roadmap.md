@@ -40,7 +40,7 @@ mode rules stay `docs/game-modes.md`; hardware ceilings stay `docs/mode-limits.m
 | 7 | MC side of arming: `station_config` push, ITEMS panel at muster, persisted assignments | `mcp/brx_mcp/mc`, `webapp/mc` | 🔴 not started (brx session, FOLLOWUPS S5) | — |
 | 8 | Headset out-blink while down, re-asserted | `engine.js` | ✅ built (A11.6/7) | bench 2026-09-04 |
 | 9 | Station intermittently hears no player adverts at high TX | `utility.js` scan | ✅ fixed (S6, 53e62bd: low-latency scan + restart) | soak on two phones pending |
-| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, a63aa10: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on R0BQT 2026-09-04 (contracts A6.8, node.md §3.10) |
+| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, a63aa10: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on Tactix-E20D 2026-09-04 (contracts A6.8, node.md §3.10) |
 | 11 | Harness: utility presets, fake players, fake `station_config` | `tools/stage.html`, `?stage` | ✅ built | — |
 
 Kinds 2–5 (powerup, extraction, bomb, control) are designed in the spec's §5d table and not built.

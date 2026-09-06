@@ -1,7 +1,7 @@
 # Bench 2026-09-05 -- can BLE reach the headset's native camera flash?
 
 One question: can any BLE frame drive the small green flash LED as hard, or as long, as the firmware does on
-an IR hit in a native game? If not, prove where the drive lives. Gun R0BQT, stage `raw` action, emitter on
+an IR hit in a native game? If not, prove where the drive lives. Gun Tactix-E20D, stage `raw` action, emitter on
 COM8 (PING it first), phone camera on a dark wall.
 
 Standing numbers (2026-09-04): ours `$LED,9,1,1,1,*` wall peak 41-44, w-sum 135-156, 4 frames, no clipping.
@@ -20,7 +20,7 @@ means the path, not the mode or the frame. Rung 11 closes the last door.
 
 ## 2. Pre-flight (10 min)
 
-1. Stage up: `python.exe -m brx_mcp stage --gun <R0BQT> --ir COM8`, ARM, SPAWN. SHOOT ME once and see a `$HIR`
+1. Stage up: `python.exe -m brx_mcp stage --gun <Tactix-E20D> --ir COM8`, ARM, SPAWN. SHOOT ME once and see a `$HIR`
    in the log (F11).
 2. Camera per the `mcp/tools/ledcam.py` header: brightness and timeout pinned, exposure at minimum, aimed at
    the dark wall, BOTH LEDs out of frame, propped. Every other headset off (a respawn blink contaminated a

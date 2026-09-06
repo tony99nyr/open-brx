@@ -153,7 +153,7 @@ rail dimensions) before CAD. Publish as version-tagged STL + source (OpenSCAD/ST
 
 ## ✅ R2 (blocker) — FIXED 2026-09-03: reseated board B + LED anode moved to 5 V; ceiling ~8-9 ft
 
-> Range ladder, same rig, gun `R0BP1-9498`, magnitude-1 shots, re-armed per rung: **3 ft 6/6 · 6 ft
+> Range ladder, same rig, gun `Tactix-9498`, magnitude-1 shots, re-armed per rung: **3 ft 6/6 · 6 ft
 > 10/10 · 8 ft 9/10 · 10 ft 0/10** (witness 10/10 at 10 ft, Tony saw no flashes). All hits `dome0`.
 > Sharp cliff between 8 and 10 ft, as a bare unlensed LED should give. Reseat and 5 V were done
 > together, so which one fixed it is unknown; leave the rig on 5 V. The software power control below
@@ -430,7 +430,7 @@ documented**, not an accident of how attribution happens to work.
 ⚠️ **This item was first filed as a critical failure. That was wrong and is corrected here** — I read a
 mid-sequence snapshot instead of waiting for the run to finish. **Resilience actually works.**
 
-**What really happened**, running checklist item 2 with R0BAS power-cycled mid-match:
+**What really happened**, running checklist item 2 with Tactix-FE30 power-cycled mid-match:
 
 ```
  9-18  (send to D9:50:2F:98:FE:30 failed: Not connected)   x10   <- the gun is genuinely gone
@@ -1019,11 +1019,11 @@ runs, recovers after being off. USB-read headset voltages (`armory.json`, 2026-0
 | unit | headset volts |
 |---|---|
 | **the control tagger** (known good, tags normally) | **4.6** |
-| R0BAS | 3.911 |
+| Tactix-FE30 | 3.911 |
 | **the victim tagger** (faulty) | **3.833** |
-| R0BP1 | 3.677 |
+| Tactix-9498 | 3.677 |
 
-the control tagger sits well above the others. ⚠️ Not a clean correlation — R0BP1 is lower still and has not been
+the control tagger sits well above the others. ⚠️ Not a clean correlation — Tactix-9498 is lower still and has not been
 tested — and the snapshot is a week stale, so this is a lead, not a conclusion.
 
 **Next step, cheap and decisive: fully charge the victim tagger's headset, then re-test at 3 ft over several
@@ -1364,7 +1364,7 @@ Do it in one sweep with the golden bundle regenerated, then cut an APK: node and
 
 ## 🟠 S9 — EVENT SOUND PASS ON THE GUN STAGE (Tony, 2026-09-04 night: "we still have many sounds in game which are off and need adjustment") — was S7, renumbered 2026-09-05 to de-collide with the reconnect S7 (which is anchored as S7.1/S7.2 in contracts A6.8 / node.md)
 
-The 45-step walkthrough on R0BQT failed several sounds and the fixes were only trialled, not settled. Do a
+The 45-step walkthrough on Tactix-E20D failed several sounds and the fixes were only trialled, not settled. Do a
 dedicated sound pass on the stage: pick the mode, open the ADVANCED table + the stage's patch box, play each event,
 and for every wrong one patch `{"events": {"<ev>": {"sound": "<id>"}}}` until it is right, then write the id into
 `presentation.EVENTS` (and `sounds.py` where a constant exists) with a `test_sound_catalog` pin. Known wrong / open:
@@ -1412,7 +1412,7 @@ Build with the ui-build-verify discipline (fresh + stale server, old session, ev
 
 ## 🟢 S4 — THE GUN BODY LED AS A HOST-OWNED IN-GAME DISPLAY (2026-09-04) — BUILT (A11.7); default `team` + `pregame: team`, body taken 2.5 s after `$SPAWN` (bench-corrected)
 
-`experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (R0BQT, Tony watching): a spawned gun breathes its
+`experiment-log.md` 2026-09-04 "IN-GAME GUN LED CONTROL" (Tactix-E20D, Tony watching): a spawned gun breathes its
 team colour and a plain `$GLED` only alternates with it -- but **`$GLED,,,,5,,,*` (the blank) first takes
 the LED out of the breathing loop**: the gun goes dark and stays dark, and any `$GLED,<c>,<c>,<c>,0,10,*`
 after that HOLDS solid, snaps between colours, and survives firing. **`$SPAWN` re-enables the breathing**, so
@@ -1425,7 +1425,7 @@ were tuned against the breathing (a single frame was "invisible" because the fir
 ~0.33 s -- 2026-09-03). After a blank the firmware no longer repaints, so the burst's "end on the team
 frame" step becomes a HOLD, and the single-frame-is-invisible finding no longer applies.
 
-**Bench-corrected the same night on R0BQT (stage ladder):** the blank must come **≥ 2 s after `$SPAWN`** (+1.0 / +1.5 s
+**Bench-corrected the same night on Tactix-E20D (stage ladder):** the blank must come **≥ 2 s after `$SPAWN`** (+1.0 / +1.5 s
 breathing, +2.0 s solid); inside the spawn burst it is undone by the spawn animation. Shipped as `gun.take` on a
 2.5 s node timer. Default is now `in_play: team` + `pregame: team` (Tony's verdicts). Open: an event burst that
 lands before the take (first 2.5 s of a life) still fights the breathing; the exact threshold (1.5-2.0 s).
@@ -1447,14 +1447,14 @@ also superseded -- see the "Bench-corrected" paragraph). Open bench items: (b) h
    says a hit clears it); a health ramp green → yellow → red on `$HP` changes when `in_play: health`.
 4. `poolgauge.event_burst` / `led_table`: the burst's last step becomes the in-play frame, not `team_frame`.
 
-**Bench first (brx-grenade offered R0BQT):** (a) does a registered HIT clear a painted colour (2026-09-03
+**Bench first (brx-grenade offered Tactix-E20D):** (a) does a registered HIT clear a painted colour (2026-09-03
 said hits clear the LED -- with or without the blank?); (b) hold time with no traffic; (c) is one blank per
 life enough, or does the breathing come back on any event; (d) does the 3-flash burst still read after a
 blank, and does its final frame hold; (e) does `cues.hurt_led` (the Callsign low-health blink form) still
 run after a blank; (f) does the blank affect the `$SFLASH` sight or the headset. Then build 1-4 with the
 same test-first discipline as A11.6.
 
-**✅ BENCH DONE 2026-09-04 (R0BQT — experiment-log "GUN LED bench (S4)"):** (a) a hit does NOT clear a
+**✅ BENCH DONE 2026-09-04 (Tactix-E20D — experiment-log "GUN LED bench (S4)"):** (a) a hit does NOT clear a
 painted colour when the blank was sent first (flashes, returns; only `$SPAWN` re-breathes) → paint once
 per life, repaint on respawn only. **Mixed frames render per-LED after a blank** (`$GLED,3,3,0`=green/
 green/red, `$GLED,3,3,9`=green/green/dark) → the 3-segment health bar (`pool_frame`) is viable in-game.
@@ -1473,7 +1473,7 @@ and the app RESPAWNED the player to FULL — a free respawn on demand. Root caus
 persisted, so a rejoin defaulted alive:false/hp:0, the recovery deadAt guard stamped a death, and
 auto-respawn healed to max. **Fixed (commit 3b6d1c7): `_save`/`_load` now persist
 alive/hp/armor/shield/deadAt/killedBy** — a rejoin restores the REAL pools (live at 25 → back at 25,
-no false down, no heal). Verified on R0BQT: force-close at 25 → reopen → waits past the respawn delay →
+no false down, no heal). Verified on Tactix-E20D: force-close at 25 → reopen → waits past the respawn delay →
 still 25, deadAt 0, no respawn. Engine test added.
 
 **✅ BUILT (S7.1, Tony's design, 2026-09-04): an explicit RECONCILING phase on rejoin where the gun is
@@ -1492,7 +1492,7 @@ in-flight reconcile. Auto-respawn, the recovery deadAt stamp, and scanner-revive
 8 old §3.10 live-reconnect resync tests were rewritten to the reconcile contract; suite green (99 engine
 / 124 app). HUD takeover copy landed by brx-hud (f202f41: "GUN RELINKED / SYNCING WITH YOUR GUN / WEAPON
 DISARMED FOR A MOMENT · STAND BY", ~3 s, self-clearing). **✅ VALIDATED ON HARDWARE 2026-09-04
-(R0BQT-E20D):** shot down to HP 29 / armour 0, force-closed, reopened, reconnected → **HP held at 29 (not
+(Tactix-E20D):** shot down to HP 29 / armour 0, force-closed, reopened, reconnected → **HP held at 29 (not
 healed to 45), same match, alive, no respawn**; Tony saw the takeover and could shoot after it cleared.
 The old build countdown-healed to full here. Exploit closed. See experiment-log 2026-09-04 (late night).
 
@@ -1513,7 +1513,7 @@ the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
   the reconcile trusts the restored "alive" and re-arms it. The firmware gates firing on a truly-dead gun (so
   no cheat — you can't fire a dead gun), but the HUD would read alive until the gun re-announces. Confirm the
   exact failure mode on hardware; decide whether the reconcile should also re-probe once. (node.md §3.10)
-- **Dead-player rejoin path untested.** Only the alive-at-low-HP path was validated on R0BQT. Force-close
+- **Dead-player rejoin path untested.** Only the alive-at-low-HP path was validated on Tactix-E20D. Force-close
   while actually DOWN → reopen → confirm you come back DOWN at the real `deadAt` (awaiting your real respawn),
   not healed and not auto-revived early. Should already hold (reconcile gates auto-respawn while reconciling,
   and re-arms only if alive), but verify on the gun.

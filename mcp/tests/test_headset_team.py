@@ -1,6 +1,6 @@
 """The headset shows the TEAM COLOUR for the whole life, not just until the first spawn or hit.
 
-Bench 2026-09-03 (`mcp/tools/hled_spawned.py`, `hled_bright.py`, gun R0BP1-9498, Tony watching):
+Bench 2026-09-03 (`mcp/tools/hled_spawned.py`, `hled_bright.py`, gun DELTA-9498, Tony watching):
 `$SPAWN` clears the headset; every registered hit clears it (native flash, then dark, ours never
 returns); a static `$HLED` painted AFTER spawn holds solid; a paint 1 s after spawn lit; token 5 is a
 two-level brightness with 10 already maximum. So the team colour must be re-sent after every spawn and
