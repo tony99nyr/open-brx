@@ -3,20 +3,17 @@
 The match-day operator guide for running a game from the MacBook. **Grounded in what the code does
 today** (`mcp/brx_mcp/mc/` — `__main__.py`, `api.py`, `state.py`), not the spec's aspirations.
 
-> ⚠️ **Hardware-verified status.** The MC↔phone field path — a MacBook hosting the game over a field
-> Wi-Fi, phones joining as nodes and driving real BRX taggers — has **NOT** yet been run end-to-end on
-> real hardware over a real field LAN. It is proven in software (`cd mcp && python3 run_tests.py` — the full suite incl. the full-stack e2e
-> scenarios with mock phones; `cd app && npm run ui:e2e` for the browser suite) and in the earlier **single-gun bench** (one phone ↔ one tagger over BLE).
-> Everything below that touches a real tagger or the field network is **UNVERIFIED** until a live
-> muster confirms it; those steps are tagged **[UNVERIFIED]**. The open hardware items live in
-> `docs/verification-checklist.md`.
+> ✅ **Hardware-verified.** The MC↔phone↔gun path ran whole matches on real hardware: a 300 s FFA on
+> 2026-08-30 (two iPhones, MacBook host) and a TDM outdoors on 2026-09-01 (two Android HUDs). It is also
+> proven in software (`cd mcp && python3 run_tests.py`, incl. the full-stack e2e with mock phones; `cd app
+> && npm run ui:e2e` for the browser suite). What is still unproven at scale (20-min soak, phone auto-rejoin,
+> iOS locked-phone BLE, a gun joining a running match) is listed in `docs/FOLLOWUPS.md` under **System proofs**.
 
 ---
 
 ## 0a. Capture the evidence BEFORE you start (added 2026-08-30)
 
-This path has never run on real hardware, so assume something will misbehave and make sure it leaves a
-trace. Two sides, two mechanisms:
+Assume something will misbehave and make sure it leaves a trace. Two sides, two mechanisms:
 
 **MC — tee it, or it scrolls away.** MC logs to stdout only. Start it as:
 
@@ -79,7 +76,7 @@ pip install -e ./mcp websockets starlette uvicorn zeroconf
 Combat HUD** in `app/` (Capacitor → Android + iOS, one codebase; HUD v2). Build/sign/sync per
 **`app/README.md`** — Android via the hosted APK or `adb install`, iOS via Xcode. Each player needs it
 installed and BLE-paired to their tagger **before** match day; on the field the app only needs the game
-Wi-Fi and the MC `ws://` URL (from the join QR). `[UNVERIFIED]` end-to-end on real hardware.
+Wi-Fi and the MC `ws://` URL (from the join QR).
 
 Verify the install with no hardware and no phones:
 
@@ -98,10 +95,10 @@ MC coordinates over a **local Wi-Fi LAN with no internet** (ADR-0002). Two ways 
 
 **Recommended — a battery travel router.** Power it, note its SSID/password, and join the MacBook to
 it. The router is the AP; MC binds its sockets to whatever LAN IP it's given. This keeps the Mac free
-and is more robust than a laptop AP.
+and is more robust than a laptop AP. Both live matches so far used a travel router.
 
 **Fallback — the Mac's own hotspot.** macOS is a weak AP (Internet Sharing needs a separate uplink and
-flakes with many clients); use it only for a small game. `[UNVERIFIED]` at scale.
+flakes with many clients); use it only for a small game. Untested at scale.
 
 **Phone node checklist** (each player's phone, from `net.md §8b`; the Android app's `android-setup.sh`
 already sets the cleartext + Wi-Fi permissions and forces landscape):
@@ -150,19 +147,24 @@ read-only board plus the token prompt).
 
 ## 4. Phase-by-phase (the host flow)
 
-The server owns the `phase`; the UI walks it. Phases (`api.py`): **muster → build → kit → lobby →
-armed → live → recap**. Each phase's actions map to REST calls (§7) the UI makes for you.
+The server owns the `phase`; the UI walks it. Phases (`state.py`): **muster → build → kit → lobby →
+armed → live → recap**. The console names them differently in two places: the `build` phase is two
+pages, **GAMES** (pick a saved game, a stock mode, the venue) and **GAME DESIGNER** (define and save a
+game), and `live` + `recap` are one **MATCH** tab that shows the result when there is one and the live
+board otherwise. Each phase's actions map to REST calls (§7) the UI makes for you.
 
 ### Muster — is the gear ready?
 The **readiness board** must be green-enough to start. Its gate is **no reds** (amber never blocks).
 - Add each player and assign their gun (`POST /api/players`). A player's phone, once it opens the app,
   joins the node socket and **binds to that player by gun**, turning its row from "NO NODE" to linked.
-- `[UNVERIFIED]` A bench **armory scan** (`POST /api/armory/scan`, needs `bleak` + BLE on the Mac) can
-  pre-populate guns; without it, nodes self-identify and the board fills as phones connect.
+- A bench **armory scan** (`POST /api/armory/scan`, needs `bleak` + BLE on the Mac) can pre-populate
+  guns; without it, nodes self-identify and the board fills as phones connect. A fresh Mac has an empty
+  `~/.brx-mcp/armory.json` (it holds headset PINs and is never in git): copy it over, or KIT offers the
+  connected nodes' guns by tail.
 - **Green needs:** node linked + **clock synced** + on the right Wi-Fi + gun link up. **Reds block
   start** (see §6). Battery-unread / screen-off / firmware-unread are **amber** — they don't block.
 
-### Build — pick the game
+### GAMES + GAME DESIGNER (the `build` phase) — pick the game
 Choose a **mode** (tdm / ffa / infection / lms / extraction) and settings — **`time_limit_s` is
 required** on the phone path (it's the only end that reaches a dispersed node), plus respawn, scoring,
 health, indoor/outdoor, night. `PUT /api/config` validates live; **`config_errors` block**,
@@ -171,16 +173,16 @@ in-coverage early-end, provisional until recap).
 
 ### Kit — set each player up (while they gear up)
 Per player: **display name, team, weapon, voice** (`PATCH /api/players/{id}`). A weapon change can push a
-**silent try-out** (`POST /api/players/{id}/tryout`) so the player fires + reloads to feel it. `[UNVERIFIED]`
-Try-outs are disabled once any node is in LOBBY (a stray try-out shot hitting a configured gun is
-untested) — point the gun away from others.
+**silent try-out** (`POST /api/players/{id}/tryout`) so the player fires + reloads to feel it.
+Try-outs are disabled once any node is in LOBBY. A configured-but-unspawned gun ignores IR completely
+(bench 2026-08-25), so try-outs are safe in a crowd; point the gun away from others anyway.
 
 ### Lobby — ready up, then push
 Players **ready up** on their phones; the board fills (`ready N/total`). When everyone's ready and
 readiness is `go`, **push the config** (`POST /api/lobby/push`): MC compiles each player's frame bundle
 and sends it; each gun answers with an **echo** (`ack_config.gun_echo`). A gun that doesn't echo goes
-**red — headset off?** and **blocks start**. `[UNVERIFIED]` the head-echo-as-headset-proof is a bench
-item (the proven detector is the spawn echo at T-0).
+**red — headset off?** and **blocks start** (bench 2026-08-25: with the headset off the head write
+echoes nothing and the link dies, so the echo is the headset proof).
 > **Known gap (software):** a player **added after the push** is scheduled but not sent a bundle — re-do
 > the lobby push (or re-add before pushing) so their gun is configured.
 
@@ -190,18 +192,19 @@ hands every node a synced **go-live time**; players disperse **out of Wi-Fi rang
 its own gun down and spawns it at T-0 — **no signal needed at the moment of start**. The board shows each
 node **armed, T-minus**.
 
-### Live — the match
+### MATCH, live
 Phones run their own guns and stream events as the LAN allows; MC shows a **Halo-style scoreboard**
 (`live` view). **Attribution is exact** (`$PSET`/`$HIR` player ids) — kills, deaths, K/D, accuracy per
-player. `[UNVERIFIED]` on real dispersed hardware, but proven in the e2e suite. Nodes out of range show
+player (accuracy shows only once MC has counted hits for that player). Nodes out of range show
 **last-known + a staleness age** — they are **stale, not gone**; their buffered events flush when they
 walk back into coverage (store-and-forward, credited exactly once).
 
-### Recap — the payoff
+### MATCH, recap
 At the time limit (or `POST /api/control {end}`), MC computes the winner, K/D, accuracy, and medals.
 `GET /api/recap`, and **`GET /api/recap.csv`** for the full table. Recap stays **provisional** until every
-victim's facts have flushed (a returning phone can still backfill). `POST /api/session/new` starts the
-next game (keep or clear the roster).
+victim's facts have flushed (a returning phone can still backfill). Every finished match is kept:
+`GET /api/matches` lists them and `GET /api/matches/{id}.csv` exports one. `POST /api/session/new`
+starts the next game (keep or clear the roster).
 
 ---
 
@@ -234,7 +237,7 @@ Other field issues:
   reconnects, and it shows **stale** on the board meanwhile.
 - **MC's address changed** (router handed a new IP / you restarted) → the printed `ws://` and the UI's
   QR update; phones re-scan the QR or re-enter the IP. Pin the router's DHCP lease for the Mac to avoid
-  this. `[UNVERIFIED]` phone auto-reconnect across an MC IP change.
+  this. Phone auto-reconnect across an MC IP change is untested.
 - **Nothing connects at all** → check the Mac's firewall isn't blocking `8765`/`8766`, and that phones
   and Mac are on the **same** LAN (not the router's guest network).
 - **Console shows OPERATOR TOKEN REQUIRED** → open the `#tok=` link the server printed, or paste the
@@ -251,8 +254,15 @@ All JSON, all times Unix ms, from `mcp/brx_mcp/mc/API.md`:
 | method path | phase | purpose |
 |---|---|---|
 | `GET /api/state` | any | full `State` snapshot (same as the live `/ui-ws` feed) |
-| `POST /api/armory/scan` | muster | BLE scan for guns `[UNVERIFIED — needs Mac BLE]` |
-| `PUT /api/config` | ≤ kit | set/patch the `GameConfig` → `{ok, errors, config}` |
+| `GET /api/armory` · `POST /api/armory/scan` | muster | known guns; BLE scan for guns (needs Mac BLE) |
+| `GET /api/modes` · `/api/weapons` · `/api/perks` · `/api/voices` | any | the catalogs the console renders |
+| `GET/POST /api/presets` · `PUT/DELETE /api/presets/{id}` · `POST /api/presets/{id}/apply` | ≤ kit | saved games (GAME DESIGNER) |
+| `PUT /api/config` | ≤ kit | set/patch the `GameConfig` → `{ok, errors, config}` (incl. `presentation`) |
+| `GET /api/presentation` | any | the resolved sounds-and-lights profile for the current config |
+| `POST /api/phase` | ≤ lobby | move the phase by hand (muster/build/kit/lobby only) |
+| `POST /api/loadout/pool` | kit | preview what a loadout policy lets a player pick |
+| `DELETE /api/nodes/{nid}` | any | evict a stale node |
+| `GET /api/range/verdicts` · `POST /api/range/verdict` | kit | weapon-range verdicts from the KIT try-out |
 | `POST /api/players` · `PATCH /api/players/{id}` · `DELETE …` | ≤ lobby | roster + kit-out (server assigns `player_num`) |
 | `POST /api/players/{id}/tryout` (`DELETE` to end) | kit | silent weapon try-out |
 | `POST /api/players/{id}/ready` | lobby | host ready override |
@@ -260,6 +270,7 @@ All JSON, all times Unix ms, from `mcp/brx_mcp/mc/API.md`:
 | `POST /api/start` · `/api/start/reschedule` · `/api/start/abort` | lobby/armed | the dispersed start controls |
 | `POST /api/control` | armed/live | `{end｜recall｜panic}` (`panic` needs `confirm:true`) |
 | `GET /api/recap` · `GET /api/recap.csv` | live/recap | results + export |
+| `GET /api/matches` · `GET /api/matches/{id}.csv` | any | past matches of this session + per-match CSV |
 | `POST /api/session/new` | recap | next game (`keep_roster?`) |
 
 Live UI feed: `GET /ui-ws` (WebSocket) — `snapshot` on every state change + `feed` entries for kills.

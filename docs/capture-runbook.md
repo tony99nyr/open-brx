@@ -5,7 +5,8 @@ missing plan for them. All of it is **gun-free except G3**, and all of it needs 
 Callsign is iOS-only, and PacketLogger (the BLE tracer) is macOS-only. Batch these for when the Mac
 is out — that is the whole reason they keep slipping.
 
-Covers: **P8/R1** (HTTPS API) · **P12** (`$PB*` enums) · **G3** (grenade config) · **R2** (FB re-scrape).
+Covers: **P8/R1** (HTTPS API) · **P12** (`$PB*` enums) · **G3** (grenade config) · **C2** (FB re-scrape; was
+called R2 here until 2026-09-06, renamed because FOLLOWUPS R2 is the IR emitter power control).
 
 ---
 
@@ -63,7 +64,7 @@ Same PacketLogger rig as Job 2, plus the grenade. Pair it, then change its setti
 
 ---
 
-## Job 4 — R2: re-scrape the FB group with comments expanded
+## Job 4 — C2: re-scrape the FB group with comments expanded
 **No Mac, no gun.** The 2026-08-24 crawl expanded post "See more" but **not** "View more comments" —
 so the comment threads, where most of the Q&A lives, were missed.
 Method: the Chrome-over-CDP setup in memory (`chrome-cdp-crawling`), clicking "view/more comments" and

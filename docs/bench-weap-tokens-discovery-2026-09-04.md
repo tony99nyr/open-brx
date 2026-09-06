@@ -1,7 +1,7 @@
 # `$WEAP` blind tokens: discovery before the bench (2026-09-04)
 
 Four research lenses ran in parallel over everything we hold before spending bench time on the
-tokens listed in `docs/bench-weap-tokens-2026-09-04.md` (the plan that proved tok15 = swap delay):
+tokens listed at the end of this file (carried in from the 2026-09-04 plan sheet that proved tok15 = swap delay, now `docs/archive/bench-weap-tokens-2026-09-04.md`):
 
 - **APK** — the Callsign IL2CPP teardown (`protocol/callsign-extract/`): field names in declaration
   order, enum member lists. No types, no defaults, no UI; weapon data is server-fetched so no APK
@@ -198,3 +198,25 @@ Every result goes into `docs/experiment-log.md`, then the token table in
 - Callsign App Store notes (Critical Strike / Foregrip / Laser Focus perks): https://apps.apple.com/us/app/callsign-live/id1117100222
 - JEDGE source (the t6 = 100 respawn weapon, the `$HIR` tok6 receiver check, the three ammo modes):
   https://github.com/LaserTagMods/JEDGE and https://github.com/LaserTagMods/LoRa-Controlled-Taggers
+
+## The blind tokens: sent identical on every weapon, no compile key, no verified meaning
+
+(Carried in from `bench-weap-tokens-2026-09-04.md` on 2026-09-06 when that sheet was archived; the tok15 = swap delay result it held is in `experiment-log.md` 2026-09-04 and `protocol/callsign-extract/protocol-classes.md`.)
+
+| tok | we send | documented guess (APK field order) | cheapest probe |
+|---|---|---|---|
+| t2 | `100` | **gunRangeOutdoor** (discovery pass: APK field order; melee 90) | 2×2 with t41 against `$GSET` t2 — see the discovery doc |
+| t6 | `0` | primaryCriticalChance | send 100: do hits land as crits (bigger `$HIR` dmg / different sound)? |
+| t7–t11 | `∅` | the secondary-fire block (fireChance, damageType, powerType, damage, critChance) | empty in every Callsign capture too; fill t7=100,t10=5 and see whether ALT-fire changes behaviour — low priority, ALT is our swap button |
+| **t15** | `850` | **weaponSwapDelay — PROVEN 2026-09-04** | done, see Result |
+| t21 | `100` | maxAccuracy | send 0 or 50: do shots stop registering / register less? (needs a target gun + the IR rig) |
+| t22 | `100` | singleShotAccuracy | same probe as t21, one token at a time |
+| t30 | `∅` | secondary mix sound | inert until t7–t11 do something |
+
+Two more that are constant on the wire but are NOT blind: t41 `75` is gun range % (documented, we
+never vary it — a range perk would live here), and t19 reloadType is `0` on 20 weapons and `2` on
+one (the SHOTGUN's shells — not the Plasma Sniper, corrected by the 2026-09-04 discovery pass) — and the wire already shows the gun honours it: the Shotgun reloads shell by shell, one `$ALCD` per ~400 ms. See `docs/bench-weap-tokens-discovery-2026-09-04.md`.
+
+Everything else we send either varies per weapon under a compile key (t3 t4 t5 t14 t16 t17 t18 t20
+t23 t24 t27–t29 t31–t34 t39 t40) or is a per-weapon flag we copy from the capture (t1 t12 t13 t25 t26
+t35–t38 t42). Frames are 42 tokens long; there is no t43/t44.

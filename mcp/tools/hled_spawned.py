@@ -5,7 +5,7 @@ by the firmware's own animation, so a single paint only breathes; headset = what
 UNcontested because in native play the headset is dark and lights only on a hit, at team assignment
 and while out. From that it follows that a single `$HLED` frame should hold steady with no hammering
 and no strobe. Every word of that after "says" is REASONING, and reasoning has lost to the operator's
-eyes on this exact class of question three times in two days (`bench-2026-09-03.md` item 2).
+eyes on this exact class of question three times in two days (`docs/archive/bench-2026-09-03.md` item 2).
 
 First run (2026-09-03, purple, one frame after spawn, 20 s hold): the operator saw the spawn's dim
 blue blink, then dark, one native hit flash, then dark. **Our colour never appeared.** That run had

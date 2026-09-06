@@ -181,17 +181,7 @@ Paste the terminal output and your notes here in chat. I append the session to
 `docs/experiment-log.md`, update `docs/reference/grenade.md`, and close or re-word B12, G6, G9 and the
 star item in `docs/FOLLOWUPS.md`.
 
-## Replay words (for `ir-emit` one-liners)
+## Replay words
 
-```
-1111000000010000011000001  respawn beacon, owner team1/blue
-1111000000100000011000001  respawn beacon, owner team2
-1111000000000000011000010  respawn beacon, owner team0
-1111000000010000100000010  hill beacon, owner team1/blue
-1111000000100000100000010  hill beacon, owner team2
-0000101010101100100000001  kill shot (team2, mag 200)
-```
-
-Passthrough rows (after the bench `$SIR` table, friendly fire ON so a same-team beacon is not discarded):
-`$SIR,15,0,,24,0,0,1,,*` and the same for subtypes 1, 2, 3. fn 24 registers a `$HIR` and moves no pool
-(unknowns.md U11').
+The `ir-emit` one-liners (respawn beacons per owner team, hill beacons, the kill shot) and the
+protocol-15 passthrough rows moved to `docs/reference/grenade.md` → *Replay words* on 2026-09-06.

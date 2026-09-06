@@ -8,14 +8,14 @@ protocol 8. NOTE the host-driven stun (`$AMMO` zero/restore, FOLLOWUPS F15) is t
 this hunt is about whether the firmware has a stun FUNCTION of its own. In a native game that row
 is the firmware's own; in ours it is whatever we send, and nobody knows which function number is
 "stun" -- the enemy-polarity shortlist (functions that register a `$HIR` but move no pool) is
-8, 24, 25, 26, 27, 28, 35 (`unknowns.md` U11'), plus 38, the value our bench table already puts on
+8, 24, 25, 26, 27, 28, 35 (`FOLLOWUPS.md` U11'), plus 38, the value our bench table already puts on
 protocol 8.
 
 Per candidate: arm the gun with proto 0 -> fn 1 (plain damage, the control row) and proto 8 -> the
 candidate; spawn; emit the EMP word; the holder tries to fire AT ONCE; then emit a plain proto-0
 shot as the control. Every step is timestamped, and the `$HIR`/`$HP` the gun sends back are printed
 so a "no effect" can be told from "the shot never registered" (a wrongly-teamed or unmatched frame
-produces NO `$HIR` at all and looks exactly like a dead emitter -- `bench-tomorrow.md`).
+produces NO `$HIR` at all and looks exactly like a dead emitter -- `gotchas.md`, team gating).
 
 The holder answers ONE question per candidate: after the EMP hit, could you fire? A candidate where
 the trigger dies is the stun. A candidate where the shot did not register (no `$HIR`) is VOID, not a

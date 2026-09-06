@@ -46,6 +46,23 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    gate. KILL buttons play the shooter-side stack (`$SFLASH` + medal lines, or the kill line).
 6. **HEADSET SEQUENCES** — start / hit / death / respawn / carry-flag per team / scored.
 7. **LOG** — `tx` written to the gun, `rx` what it said, `ir` emitted, with the reason for each write.
+8. **SOUNDBOARD** — the character voices (Tony, 2026-09-06: "pick the voice for the player ... the sounds that
+   are related to the chosen voice indicated ... various hit sounds and various personality moments", then "act as
+   the character selection and let me hear and test all of these to make sure they are correct per character").
+   The game's VOICE selector sits in GAME CONFIG; it rides in the head's `$PSET`, so a change lights a **RE-ARM:
+   VOICE CHANGED** pill until ARM is pressed again. The section has its own **CHARACTER** select, independent of the
+   game voice (**USE AS THE GAME VOICE** copies it to section 2), **PLAY ALL** (every line in slot order, its
+   duration + 0.5 s apart, the playing line highlighted; **STOP** cancels) and, per line, **✓ / ✗** verdicts that
+   append to `~/.brx-mcp/voice-verdicts.jsonl` (the walkthrough note box is the note) and colour the line; the
+   header pill counts `<n> CHECKED · <m> WRONG` for the board's character. **THE GUN'S SIX (+ KILL)** stay tied to the
+   GAME voice: one picker per `$PSET` voice field (deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain,
+   painRelief) plus the bundle's kill cue, each naming the event the firmware plays it on. The lines are grouped
+   **HIT SOUNDS** (death screams, pains, hurt loop, healed, long death -- the firmware's own reactions) and
+   **PERSONALITY MOMENTS** (intro, idle, boast, kill confirms, taunts, defeat taunt, name -- lines we place with a
+   `$PLAY`); a badge marks the family's default for each `$PSET` field and the kill cue. In GAME EVENTS a button
+   whose sound is `voice:<role>` is drawn in the voice colour with the resolved id and words, and `hit_taken` /
+   `died` / `healed` / `respawned` say which `$PSET` line the firmware itself plays there. The patch box takes
+   `{"events": {"respawned": {"sound": "voice:boast"}}}` to hang a personality moment on an event.
 
 ## Rules it enforces (so a bench run cannot fake a result)
 - Every button's frames come from `Compiler.compile()` of the chosen config. The one exception is the **RAW** action (used by
@@ -57,6 +74,15 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
 - No gun linked = dry run: the frames are logged, not written (useful to read a profile).
 
 Tests: `mcp/tests/test_stage.py` (engine, fake gun end-to-end), `test_stage_server.py` (routes).
+
+## Voice
+
+The gun holds ONE line per `$PSET` voice field, so "various hit sounds" is a choice made before ARM, not a rotation:
+pick the death scream (slots 3/4/5), the pains (C-H) and the respawn cry (I, or an intro / taunt) in section 8, re-ARM,
+then get shot. Every family shares the 22-slot layout read off the gun (`docs/reference/sound-catalog.md`,
+`mcp/brx_mcp/voices.py`); the walkthrough's second step plays the respawn cry so the voice is confirmed by ear before
+the first spawn. The three commander packs are not player voices (their slots do not follow the layout) and are not
+offered.
 
 ## Running it from WSL (how the 2026-09-04 session drove it)
 

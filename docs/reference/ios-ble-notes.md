@@ -1,7 +1,8 @@
-# Handoff — iOS BLE findings for the app (read before touching scan/connect)
+# iOS BLE notes for the app (read before touching scan/connect)
 
-**For:** the WSL session improving the app's scanning features.
-**From:** the MacBook session, 2026-08-25, after getting `app/` running on an iPhone X.
+Reference, not a handoff (it was `docs/handoff-ios-ble-findings.md` until 2026-09-06). Written by the
+MacBook session on 2026-08-25 after getting `app/` running on an iPhone X; the facts still hold
+(`app/src/brxlink.js` memoizes `initialize()` exactly as §1 says).
 **Trace:** `protocol/captures/raw/2026-08-25-our-app-ios-double-init-drop.btsnoop` (`cap9`) — the
 first capture of **our own** software failing rather than Callsign's.
 
@@ -45,7 +46,7 @@ Worth knowing by heart:
 | reason | meaning |
 |---|---|
 | `0x16` | **local host terminated** — our app/the phone hung up (a bug on our side) |
-| `0x13` | **remote user terminated** — the gun hung up (e.g. the §7m headset gate) |
+| `0x13` | **remote user terminated** — the gun hung up (e.g. the `protocol/session-findings-2026-08.md` §7m headset gate) |
 | `0x08` | supervision timeout — out of range / gun powered off |
 | `0x3E` | connection failed to be established — the flaky-establishment case |
 

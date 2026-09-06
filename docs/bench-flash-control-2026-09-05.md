@@ -9,7 +9,8 @@ Native hit: peak 94 with the wall clipping (true peak higher), w-sum 331-348, 4 
 
 ## 1. Hypotheses, ranked
 
-(a) An untried `$LED` token or value raises the drive or the duration. Decisive: rungs 1-6, any wall peak above
+(a) An untried `$LED` token or value raises the drive or the duration. Decisive: rung 6 and appendix frame 1
+(rungs 1-5 were dropped once Appendix A showed `$LED` has only two fields), any wall peak above
 54 (control spread ~3, so 10 is the smallest real change) or a flash longer than 4 frames.
 (b) A different request owns the flash: `$HLOOP` (Callsign sends `$HLOOP,0,0,*` 1.7 s after every death, so it
 plausibly starts or stops a headset loop), `$CHASE`, `$STUN`, `$VIB`. Decisive: rungs 9-12, a small-LED flash
@@ -43,13 +44,10 @@ means the path, not the mode or the frame. Rung 11 closes the last door.
 
 Hosted, armed and spawned, unless stated. Frames go through `led_flashcam.py --frames`: measured, not watched.
 
-1. Token 4 (pulses), tok3 = 1: `$LED,9,1,1,<v>,*`, v in 0, 1, 2, 3, 5, 10, 50, 100, 255, 1000, 65535. Pass:
-   peak or duration change. A value that refuses to flash is a finding. 8 min.
-2. Token 3 (effect), tok4 = 1: `$LED,9,1,<v>,1,*`, same eleven values. The metadata's ledEffectType has a
-   Heartbeat member: look for a multi-pulse or held shape in the frames column. 8 min.
-3. Token 2 (green flag): `$LED,9,<v>,1,1,*`, v in 2, 3, 255. Pass: anything different from v = 1. 3 min.
-4. More tokens: `$LED,9,1,1,1,1,*`, `$LED,9,1,1,1,255,*`, `$LED,9,1,1,1,1,1,1,*`, `$LED,9,1,1,1,,,10,*`. 4 min.
-5. Fewer tokens: `$LED,9,1,*`, `$LED,9,1,1,*`. Pass: fires at all, and peak. 2 min.
+1-5. **Dropped 2026-09-06.** Appendix A read the `$LED` layout from the APK metadata: exactly two fields
+   (colour, green flag), so there is no intensity, duration or count lever to sweep. Appendix frame 1
+   (`$LED,3,1,*`) is the one check worth keeping from these rungs. Rung numbers below are unchanged so
+   the cross-references still hold.
 6. Integration: stage `raw` with five `$LED,9,1,1,1,*` at `delay_s` 0, 0.02, 0.05, one recording each. Does
    w-sum scale ~5x with the peak flat (a longer flash at our drive, a design fallback) or does the peak climb
    (the driver accumulates, push the count)? 6 min.
@@ -72,7 +70,7 @@ Hosted, armed and spawned, unless stated. Frames go through `led_flashcam.py --f
     followed by `$VIB,0,*`. After: pull the trigger and see a shot, a stun may lock the gun. Pass: a
     native-class green flash from a non-LED request. 4 min.
 
-About 75 min of rungs. Re-run the hosted control after rung 6 and at the end; a drift outside 34-54 means the
+About 45 min of rungs (75 before rungs 1-5 were dropped). Re-run the hosted control after rung 6 and at the end; a drift outside 34-54 means the
 headset or camera moved, and the rungs between are re-run.
 
 ## 4. Stopping rule and write-up
@@ -146,3 +144,39 @@ applies damage, so expect `$HP` to drop, and it is a candidate mechanism for F15
 12. `$IRTX,0,0,1,0,5,0,1,50,0,1,1,*` same rig, same question.
 If rung 9 flashes native-bright, the design question becomes whether MC/node may inject hits (a `$BHIT` with Damage 0?)
 purely for the flash -- and F15 gets a second mechanism.
+
+## 6. Addendum 2026-09-06 (LED review, `docs/led-language.md`) -- the DOWN-signal ladder, one variable each
+
+Same rig, same reading rule (Tony's call of WHICH LED is primary; camera peak/w-sum second). Blank first. Gun
+KILLED via SHOOT ME until `$HP,0` unless a rung says spawned. Every rung ends with `$HLOOP,0,0,*`, `$HLED,,6,,,,,*`,
+then RESPAWN no sooner than 3 s later; a stuck green blink = F13, note it and power-cycle.
+
+- **L1** `$LED,9,1,1,1,*` at +0.3 / +1.0 / +3.0 s after `$HP,0` on the DEAD gun, three repeats each. Pass: a small-LED
+  flash at every offset. Fail at +0.3 only ⇒ `quiet_after_death_s` = 1.0 stands. Fail at all ⇒ a dead gun does not
+  execute `$LED` and the down signal must be `$HLED` (colour) or `$HLOOP` -- decisive for the design.
+- **L2** `$LED,9,1,*` (two fields) vs `$LED,9,1,1,1,*`, A/B ×3, spawned. Pass: same flash. Decides the wire shape.
+- **L3** `$HLED,3,1,,,10,,*` (breathe) running, then `$LED,9,1,1,1,*` ×3 at 750 ms. Pass: breathe continues AND the
+  small LED flashes. Fail ⇒ the day down signal is `$LED,3,1,1,1,*` / `$HLED,,6,,,,,*` alternating at 375 ms (L4).
+- **L4** dead dark headset: `$LED,3,1,1,1,*`. Pass: small flash + big LED green holds; then `$HLED,,6` blanks it.
+- **L5** stacked `$LED,9,1,1,1,*` ×2 / ×3 / ×5 at 0 / 20 / 50 ms (stage `raw` `delay_s`), camera. Pass: wall peak or
+  w-sum above the ×1 control (34-54). The only remaining brightness lever on this LED.
+- **L6** `$HLOOP,2,750,*` on the dead gun (confirm), 10 s, then `$HLOOP,0,0,*`, then RESPAWN at +3 s. Pass: which
+  LED, how bright, cadence; the respawn clean. A native-bright small-LED loop replaces ~80 writes/min.
+- **L7** `$LED,9,1,1,1,*` at -0.05 / -0.1 / -0.25 / -0.5 s before `$SPAWN,,*`, five deaths each. Pass: headset dark
+  after every spawn, no stuck blink. Sets `quiet_before_spawn_s` (design assumes 1.0).
+- **L8** `$HLED,6,2,120,120,10,2,*` at +0.05 / +0.3 / +1.0 s after `$SPAWN,,*`. Pass: the white blink is seen.
+  Today's engine writes it at ~+0.05 s.
+- **L9** `$HLED,3,2,400,400,10,3,*` alone. Pass: three blinks then dark by itself (removes the explicit rest step).
+- **L10** spawned + blanked gun: `$GLED,3,3,9,0,1,,*` (dim, 2 of 3). Pass: two segments, clean green, held 60 s
+  (S4 b + the dim-hue question in one rung). Then `$PLAY,VA81,4,6,,,,,*`, `$AMMO,0,30,90,1,*`, `$HLED,6,0,,,10,,*`,
+  `$LED,9,1,1,1,*` one at a time: the paint must survive each.
+- **L11** `$TID,4,*` + `$HLED,4,0,,,10,,*` on a head, `$GLED,4,4,4,0,10,,*` on the body. Pass: purple on both
+  (the fourth team colour that is not native green).
+About 40 min. Write-up: one experiment-log entry, the `$LED` / `$HLOOP` protocol rows, FOLLOWUPS S10 sub-rows.
+- **L12** spawned gun, NO blank: `$GLED,9,9,9,0,10,,*`. Pass/fail: is the breathing suppressed, or only dimmed (the
+  2026-09-02 155-vs-209 reading)? Decides whether a dark PAINT can ever stand in for the blank.
+- **L13** blank → `$GLED,3,3,3,0,10` → blank → `$GLED,4,4,4,0,10`. Pass: the second blank behaves like the first
+  (idempotent mid-life), purple holds.
+- **L14** blank → paint → `$GLED,9,9,9,0,10` → wait 30 s, then blank → `$GLED,3,3,3,5,10` (dim after a blank).
+  Pass: stays dark with no breathing return; then a clean ~1/3 green (the night dim). Add `$GLED,3,3,9,5,10` for a
+  dim 2-of-3 and one dim burst `3 × $GLED,0,0,0,5,10` with blank gaps.

@@ -9,7 +9,7 @@ What this settles, in the order the steps run:
            our emitter. Three gun configs, because the config decides what the gun surfaces:
              bare      no game at all -- the gun reports every IR word it hears (exp-log #35)
              passthru  a full bench game PLUS `$SIR,15,<sub>,,24,...` rows -- fn 24 registers a
-                       `$HIR` and moves no pool (unknowns.md U11'), so the gun can fire AND still
+                       `$HIR` and moves no pool (FOLLOWUPS.md U11'), so the gun can fire AND still
                        surface grenade IR; the thing exp-log #38 said to build
              game      the full bench game with no protocol-15 row -- the control, predicted to
                        show ZERO beacons (a spawned gun drops IR that has no `$SIR` row)

@@ -18,7 +18,7 @@ src/transport/       the M-NET client (Transport) — owned by a separate lane; 
 src/hud/hud.js       the Phone HUD v2 renderer (a pure function of engine state)
 src/app.js           composition: engine + brxlink + transport + hud + Capacitor plugins
 src/demo.js          ?demo — a scripted fake gun + fake MC for desktop-browser development
-www/index.html       the holo-theme CSS + #frame stage (design: docs/spec/design/hud-export/)
+www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/design/phone-hud.md; the 2026-08-25 export is archived at docs/archive/design/hud-export/)
 ```
 
 ## Run it
@@ -211,3 +211,8 @@ we come to depend on belongs in that script too.
 - **iOS deployment target is 15.0**, so an iPhone X (which tops out at iOS 16.7) is supported.
 - The app's arm sequence in `src/app.js` mirrors `mcp/brx_mcp/gameconfig.py`. If you change the
   protocol frames, change both — the Python side is the reference implementation and has the tests.
+- **Never let a Capacitor plugin proxy be a promise's resolution value.** Plugin objects are proxies with
+  a fake `then`, so `await somethingThatResolvesWith(Plugin)` calls `proxy.then()` and never settles. One
+  such line hung the whole boot on device and web (keep-awake, app-state listener, auto-scan, camera and
+  demo mode all silently dead) on 2026-08-26. Box the plugin (`{v: Plugin}`) instead. The `?demo` page
+  reaching phase `connected` is the regression canary.

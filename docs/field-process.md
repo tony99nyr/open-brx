@@ -3,7 +3,7 @@
 The two recommended Open BRX operator processes, from "a box of identical taggers" to "a game running."
 Names are the **current naming** (Tony, 2026-08-25). Both lean on the existing `brx-mcp` CLI; steps are
 marked **[BUILT]** (tooling exists + verified where noted) or **[HW-CONFIRM]** (procedure believed correct
-but needs a hardware session — tracked in `verification-checklist.md`).
+but needs a hardware session — tracked in `FOLLOWUPS.md` under **System proofs**).
 
 - **Armory Setup** — the **one-time, per-tagger** enrollment that builds a permanent
   gun ↔ headset ↔ BLE-MAC map (plus a physical label). Do it once per tagger (re-run only if you
@@ -62,8 +62,8 @@ indistinguishable stock guns. (Ref: exp-log 2026-08-24 armory correlation; `_enr
    MAC). **[recommended practice — no tooling]**
 5. **Power-cycle & confirm.** Power-cycle the gun (so the advert refreshes to `<name>-<MACtail>`), then run
    **`python -m brx_mcp armory`** to reconfirm — the row should flip to `MAP=ok` with the BLE address bound.
-   Repeat 1–5 for the next tagger. **[BUILT]** (BLE binding of renamed guns end-to-end is
-   **[HW-CONFIRM]** — see verification-checklist "armory/correlation loop".)
+   Repeat 1–5 for the next tagger. **[BUILT]** (the rename → re-enroll → map-update loop end to end is
+   still a **[HW-CONFIRM]** row under FOLLOWUPS System proofs.)
 
 **Output of Armory Setup:** a permanent **gun ↔ headset ↔ MAC** table in `~/.brx-mcp/armory.json`
 (printable via `armory`), a self-identifying BLE advert per gun, and a physical sticker on each tagger.
@@ -89,9 +89,10 @@ objective modes — every tagger armed to its station **before** kickoff.
    when it is disconnected / not paired**, and a gun with a dark or unpaired headset **silently refuses
    to join** (§7m / B18b) — the real cause of every "only 2 of 3 armed". **Any rainbow = that player will
    stand there dead all round.** Fix it before you arm anything. A settled headset shows its tagger's **team colour
-   pre-game** and then goes **dark once the game starts** (dark in play is normal, not a fault). Green
-   blinks on a hit and holds on a kill. All native, and they work under our game heads too.
-   (Tony, 2026-08-27; he flags the green details as not fully pinned.)
+   pre-game** and then goes **dark once the game starts** (dark in play is normal, not a fault). The
+   pre-game team colour is **host-sent** (`$HLED`, re-painted after every spawn and hit since
+   2026-09-03); the headset's green is the firmware's own hit flash and the once-per-life low-health
+   alert, and there is **no per-kill headset frame** (decoded from captures 2026-09-01).
 
 1. **Roster from the armory.** Pick the guns for this match by their armory identity (sticker id / gun
    name), confirm readiness (battery, headset linked, firmware) via `fleet` / `diagnose`. **[BUILT]** for
@@ -100,8 +101,7 @@ objective modes — every tagger armed to its station **before** kickoff.
    `python -m brx_mcp play <mode> <addr…> [k=v…]` (optionally `<addr>@<Gamertag>` for a display name).
 3. **Config-all-then-spawn barrier.** Config **all** guns fully **first**, *then* send `$SPAWN` to all
    back-to-back so they go live ~together (sequential config-then-spawn starts guns ~10 s apart). This
-   barrier is validated (`g2_regen.py`) and is the intended engine behavior. **[BUILT / HW-CONFIRM live]**
-   — approach validated, live multi-gun run is a verification item (B10; Session A).
+   barrier is the engine's behaviour and was proven live on three guns on 2026-08-25 (B10). **[BUILT]**
 4. **Station Arming** *(objective modes only — respawn stations, and by extension any station-armed
    behavior).* Before kickoff, **deliver the station IR to each tagger** so it switches from auto-behavior
    to station-behavior for the game:
@@ -118,10 +118,11 @@ objective modes — every tagger armed to its station **before** kickoff.
        **pressing the grenade button** beams the station IR to each gun in range and **forces respawn-station
        mode mid-match**. This is the **reliable per-gun force / re-arm** — usable to arm stragglers or to
        arm the whole field just after `$SPAWN`.
-   - **[HW-CONFIRM]** (narrowed — the button-after-start path is reported working by Jay): confirm on
-     hardware that (a) a gun armed by the post-start button **stays** station-respawn for the rest of the
-     match, and (b) whether the **passive beacon alone (no button)** also arms. See
-     `reference/grenade.md` §Respawn Station and `verification-checklist.md`.
+   - **Measured 2026-09-04 (native games):** the station's boot word (team 0, magnitude 56) before the
+     game or its button word (crit 1) during it **arms** the gun; the team-owner beacon **revives** it
+     (4/4, wrong team 0/1). Our emitter can send all three words. **Hosted (MC) games ignore every
+     station word** (FOLLOWUPS B23), so a hosted respawn station is node-defined, not IR. Still open:
+     whether a button-armed gun stays armed all match. See `reference/grenade.md` §Respawn Station.
    - **Respawn-authority caveat (B12):** if a mode uses grenade respawn stations, the host engine must
      **not** also drive `$SPAWN` respawns for those players (two competing authorities). Pick one respawn
      authority per mode. (`FOLLOWUPS.md` B12.)
@@ -138,15 +139,15 @@ every tagger armed to its station.
 | Step | Command | State |
 |---|---|---|
 | Read a cabled tagger's device record (headset PIN, voltages, PCB…) | `python -m brx_mcp usb-query [port]` | **[BUILT]**, verified 2026-08-24 |
-| Isolation-enroll a tagger (USB identity + BLE bind + optional rename) | `python -m brx_mcp enroll [GunName]` | **[BUILT]**; end-to-end bind **[HW-CONFIRM]** |
+| Isolation-enroll a tagger (USB identity + BLE bind + optional rename) | `python -m brx_mcp enroll [GunName]` | **[BUILT]**; end-to-end bind **[HW-CONFIRM]** (System proofs) |
 | Rename a gun's persistent `$NAME` over BLE | `python -m brx_mcp rename <address> <name>` | **[BUILT]** ($NAME persists, confirmed) |
-| Print / reconfirm the armory map | `python -m brx_mcp armory` | **[BUILT]**; correlate loop **[HW-CONFIRM]** |
-| Config + start a game (config-all-then-spawn) | `python -m brx_mcp play <mode> <addr…> [k=v…]` | **[BUILT]**; live run **[HW-CONFIRM]** |
+| Print / reconfirm the armory map | `python -m brx_mcp armory` | **[BUILT]**; correlate loop **[HW-CONFIRM]** (System proofs) |
+| Config + start a game (config-all-then-spawn) | `python -m brx_mcp play <mode> <addr…> [k=v…]` | **[BUILT]**; live runs proven 2026-08-25 and 2026-08-30 |
 | Physical sticker label (headset code on the gun) | *(label printer — no tooling)* | recommended practice |
-| Station Arming (deliver station IR to each tagger) | *(on-device grenade + per-tagger IR; pre-game or grenade-button mid-game)* | reported working (Jay); **[HW-CONFIRM]** persistence |
+| Station Arming (deliver station IR to each tagger) | *(on-device grenade + per-tagger IR; pre-game or grenade-button mid-game)* | arm + revive measured 2026-09-04 in native games; hosted games ignore it (B23); persistence **[HW-CONFIRM]** |
 
 ## See also
 - `reference/grenade.md` — grenade modes, on-grenade programming, Respawn Station mechanics + the timing reconciliation.
-- `docs/spec/mission-control.md` — the operator console (roster, readiness, gamertag display layer).
+- `mcp/brx_mcp/mc/API.md`, `docs/spec/design/mission-control.md` — the operator console (roster, readiness, gamertag display layer).
 - `FOLLOWUPS.md` — B10 (config-all-then-spawn barrier), B12 (host-vs-grenade respawn), B7/P2 (USB SETUP writes), B8 (grenade state display).
-- `verification-checklist.md` — the hardware items that confirm Armory Setup, Muster, and Station-Arming timing.
+- `FOLLOWUPS.md` → **System proofs** — the hardware items that still confirm Armory Setup, Muster, and Station-Arming persistence.

@@ -116,9 +116,9 @@ txt = ''.join(json.loads(b)['chunk'] for b, in c.execute(
 | what | where |
 |---|---|
 | Every issue reported from a live session + status | [`field-issues.md`](field-issues.md) |
-| Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`verify-together.md`](verify-together.md) |
+| Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`field-issues.md`](field-issues.md) → *Check next match* |
 | The lab notebook — append after every session | [`experiment-log.md`](experiment-log.md) |
-| Open work split by machine | [`handoff-post-first-match.md`](handoff-post-first-match.md) |
+| Open work, all of it (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 
 **Record a refuted theory as loudly as a confirmed one.** In one session `outdoorMode`, daylight, gun
 uptime and a whole-session "the domes never fired" were each proposed and then killed by the

@@ -72,7 +72,7 @@ def test_pistol_sounds_are_unique_on_gun_ids():
 
 
 def test_pistols_draw_in_500ms_but_the_gun_takes_the_slower_slot():
-    """Bench 2026-09-04 (docs/bench-weap-tokens-2026-09-04.md): tok15 IS the swap delay and the gun applies the
+    """Bench 2026-09-04 (docs/archive/bench-weap-tokens-2026-09-04.md): tok15 IS the swap delay and the gun applies the
     LARGER of the two loaded slots, so a 500 ms pistol only draws fast beside another quick weapon or a perk."""
     for w in PISTOLS:
         assert CAT.swap_ms(w) == 500, w

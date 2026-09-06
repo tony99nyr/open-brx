@@ -1,83 +1,34 @@
 # Gotchas — the field lore
 
-## 🔴 `$HIR` NEVER REACHES BLE IN A GUN'S OWN NATIVE GAME (2026-09-02)
+**Everything that will waste an hour if you don't know it.** Organised **by symptom**, because when one
+of these bites you, you search for *what you're seeing* — not for what you should have known.
 
-A gun running its **native** game registers hits, flashes its headset and takes damage while sending
-**nothing at all** over Bluetooth. Measured 0/11 while the operator watched it get hit every time.
+Each entry: **what it looks like → what it actually is → what to do.** Nearly all of these were learned
+by losing a session to them.
 
-**So BLE silence has never meant "not hit".** Any "deaf tagger" conclusion drawn from an absent
-`$HIR` on a gun that is not in OUR game state is measuring our blindness, not the gun. This is
-exactly how hours were lost. Score a native game BY EYE (headset flash) or with the camera.
-
-## 🔴 ENVIRONMENT VARIABLES DO NOT CROSS THE WSL -> WINDOWS BOUNDARY (2026-09-03)
-
-`FOO=1 /mnt/c/.../python.exe script.py` arrives with `os.environ["FOO"]` **unset**. There is no error;
-the flag silently does nothing.
-
-This faked a hardware result within 24 hours of being written: a `PAINT_HZ=25` repaint test was
-judged "pretty good" when the option had never applied and a single frame was actually being sent.
-**Use `sys.argv`, not env vars, for anything a Windows-side bench tool reads.** And the general rule:
-**if a knob does not visibly change behaviour, check it is being READ before believing the result.**
-
-## 🟠 A LIT LED WASHES ITS NEIGHBOURS: luminance cannot tell lit from dark (2026-09-02)
-
-A lit LED bathes the whole housing in its colour, so a **dark** neighbour's camera ROI fills with
-reflected light. Painting armour 2-of-3 measured the dark LED3 at 170 against a 134 dark baseline,
-and BOTH a flat threshold and a nearest-reference classifier called it lit. Cropping the strip and
-LOOKING settled it in seconds -- LED3 was visibly dark, merely washed.
-
-**Discriminate by SATURATED-PIXEL FRACTION, not luminance.** A lit LED core blows out to white
-(255/254/255); reflected wash does not (that LED3 peaked at G=203). The two populations then do not
-overlap: lit 0.108-0.509, dark 0.000-0.025. Cost three attempts and two retractions.
+---
 
 
-## 🟠 THE GREEN DEATH BLINK STICKS ON if you respawn within ~2 s of the kill (2026-09-02)
+## Before a bench session (pre-flight)
 
-**Symptom:** a player's headset keeps flashing the out/respawning green after they are back. The gun
-is fine — alive, full pools, registering hits normally (8/8 measured while it was blinking). Only the
-presentation is wrong, so the player looks dead to everyone while playing normally.
+Four checks, in order, every time. Two of them would each have saved hours in the sessions that
+produced them (carried in from the 2026-09-03 session sheet when it was archived).
 
-**Cause:** the headset is a second device behind a relay. `$SPAWN` has to reach the gun, be relayed,
-then be received, processed and executed by the headset. Sent while the death sequence is still
-running there, it is lost; the gun's own state updates regardless.
+1. **Kill stale `brx_mcp` processes** (see below: a forgotten server silently owns a gun).
+2. **Power-cycle the gun AND the headset**, and use guns that have been powered off (screamer rule).
+3. **Check the emitter reaches** at the distance you will work at:
+   `$PY mcp/tools/range_step.py <addr> "range check" COM8 6 COM7` (`$PY` = the Windows venv python;
+   on the Mac, native `python3` and the Mac's serial device paths). Then `$PY mcp/tools/loopback.py
+   COM8 COM7 12` to confirm both boards are ALIVE (it is not a decode benchmark, the receiver
+   fragments frames).
+4. **Never conclude "deaf" without reading the pools.** A dead gun and a `$SIR`-less gun are
+   indistinguishable through `$HIR`. Tony: *"it isn't going to register a hit while dead. thats dead
+   not deaf."* The tools check this themselves; a hand-run probe must too.
 
-**Threshold, measured:** 1.0 s and 2.0 s stick; 2.5 s, 3.0 s and 6.0 s are clean. **Leave ≥ 3 s
-between a death and a respawn.** `GameConfig.respawn_s` defaults to 15 s so normal matches are safe —
-this bites fast respawns and bench tooling.
-
-**Generalises:** any command that must be executed by the tagger AND the headset (`$SPAWN`, `$HLOOP`,
-`$HLED`) needs a settling gap. Note the gun QUEUES commands and drains them serially, so an echo back
-proves the GUN received it, not that the headset executed it.
-
-
-## 🔴 `$CLEAR` WIPES THE `$SIR` TABLE, AND A GUN WITH NO `$SIR` ROWS IGNORES EVERY HIT (2026-09-02)
-
-**Symptom:** the gun arms, spawns, reports full pools, answers `$QUERY` normally, is alive and in
-game, and **registers nothing**. No `$HIR`, no headset flash, pools never move, every dome AND the
-gun body silent. It looks exactly like a dead headset or a broken sensor.
-
-**Cause:** `$CLEAR` clears the `$SIR` matrix, and unmatched `$SIR` cells are silently ignored. With no
-rows, every incoming hit matches nothing and is discarded above the sensor layer.
-
-**Cure:** re-send the `$SIR` rows. That alone restores it (4/4 immediately). `$START`, `$GSET`,
-`$PSET`, `$TID` and any number of `$SPAWN`s do NOT.
-
-**Rule: never send `$CLEAR` without sending `$SIR` behind it.** The arm sequence already does this;
-the danger is a PARTIAL bundle, or a bare `$CLEAR` sent by a probe or a panic sequence mid-session.
-
-⚠️ **Table size is not the issue — absence is.** A one-row table and the full ten-row table both
-registered 24/24 in an interleaved A/B. Do not "fix" this by making tables longer.
-
-⚠️ **When a tagger seems deaf, check that it is ALIVE first.** A dead gun and a `$SIR`-less gun are
-indistinguishable through `$HIR`, and a whole session was lost to reading corpses as deafness. Read
-`$LCD`/`$QUERY` pools before concluding anything.
-
-Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
-Repro: `mcp/tools/clear_spawn_repro.py`.
+And never end a run on a bare `$CLEAR` (it wipes the `$SIR` table, under Sending commands below).
 
 
-## 🔴 A STALE `brx_mcp` SERVER SILENTLY OWNS A GUN — it looks like broken hardware (2026-09-02)
-
+**🔴 A STALE `brx_mcp` SERVER SILENTLY OWNS A GUN — it looks like broken hardware (2026-09-02)**
 **Symptom:** a powered-on tagger never appears in `scan` (three scans, one 25 s), and the moment you
 power-cycle it the gun announces **"phone connected"** with no phone anywhere near it.
 
@@ -110,13 +61,6 @@ SOMETHING which puts it in this cant get hit state."* Something was. It just was
 **Rule: enumerate and kill stale `brx_mcp` processes BEFORE any bench session.** A gun held by a
 process you forgot about is indistinguishable from a broken gun, and it will cost you an afternoon.
 
-
-**Everything that will waste an hour if you don't know it.** Organised **by symptom**, because when one
-of these bites you, you search for *what you're seeing* — not for what you should have known.
-
-Each entry: **what it looks like → what it actually is → what to do.** Nearly all of these were learned
-by losing a session to them.
-
 ---
 
 ## Before you start
@@ -135,6 +79,23 @@ battery threshold, so keep them charged.
 **"The gun is called Tactix2 again."**
 **Opening the Callsign app wipes an enrolled gun's `$NAME`.** Never open it on our guns. Re-stamp with
 `python -m brx_mcp rename`.
+
+**"The gun says `phone connected` so the app must be fine."**
+Two different signals. The tagger saying **"phone connected"** means a central attached; the app saying
+**"connection established"** means its ritual succeeded, and only the second is a health check.
+**You cannot create a game in Callsign unless its top-right icon is green and reads "connected"**; that
+icon is both the gate and the source of truth, the voice lines are not. This is the whole explanation
+for the "app is flaky then suddenly works" pattern: nothing was intermittent, the headset was linked
+sometimes and not others.
+
+**Hardware facts worth knowing before a session.** Both taggers run fw **`v4.32` / `devhost.03`**
+(developer images, not retail; Callsign's "supported until v2.01e" warning is soft, games run). The
+MCU is a **Teensy**: the micro-USB "Programing Port" enumerates as `USB Serial` / `Teensyduino`; console
+commands are **`QUERY`** (read-only dump of versions, serial, voltages, flags) and **`SETUP`** (factory
+provisioning, asks for the headset SN); everything else is `ERROR`. **Firmware cannot be backed up**
+(HalfKay is write-only; the sound storage IS writable over USB, that is a different thing). Settings
+backups live in `~/.brx-mcp/device-backups/`, out of the repo.
+
 
 ---
 
@@ -165,6 +126,15 @@ The **Windows console is cp1252**. Any non-ASCII character in a `print()` — a 
 em-dash, a box-drawing glyph — **kills the script mid-run**, usually after it has already reconfigured a
 gun. **Keep bench-script output ASCII-only.** (`mcp/tools/weapon_range.py` says so in its docstring;
 the lesson does not travel unless you look.)
+
+**🔴 ENVIRONMENT VARIABLES DO NOT CROSS THE WSL -> WINDOWS BOUNDARY (2026-09-03)**
+`FOO=1 /mnt/c/.../python.exe script.py` arrives with `os.environ["FOO"]` **unset**. There is no error;
+the flag silently does nothing.
+
+This faked a hardware result within 24 hours of being written: a `PAINT_HZ=25` repaint test was
+judged "pretty good" when the option had never applied and a single frame was actually being sent.
+**Use `sys.argv`, not env vars, for anything a Windows-side bench tool reads.** And the general rule:
+**if a knob does not visibly change behaviour, check it is being READ before believing the result.**
 
 **"That IR function does nothing" / "my emitter fired but the victim never reacted."**
 **Check the SHOOTER TEAM in the IR word before believing any negative result.** The receiver gates IR
@@ -267,6 +237,47 @@ self-emit `$HP`** — the new value appears on the next hit or HUD refresh.
 **"`$SPAWN` cleared the effect, so I'll use it as a reset."**
 It also **restores health**. It is not a clean "clear one thing" tool.
 
+**🔴 `$CLEAR` WIPES THE `$SIR` TABLE, AND A GUN WITH NO `$SIR` ROWS IGNORES EVERY HIT (2026-09-02)**
+**Symptom:** the gun arms, spawns, reports full pools, answers `$QUERY` normally, is alive and in
+game, and **registers nothing**. No `$HIR`, no headset flash, pools never move, every dome AND the
+gun body silent. It looks exactly like a dead headset or a broken sensor.
+
+**Cause:** `$CLEAR` clears the `$SIR` matrix, and unmatched `$SIR` cells are silently ignored. With no
+rows, every incoming hit matches nothing and is discarded above the sensor layer.
+
+**Cure:** re-send the `$SIR` rows. That alone restores it (4/4 immediately). `$START`, `$GSET`,
+`$PSET`, `$TID` and any number of `$SPAWN`s do NOT.
+
+**Rule: never send `$CLEAR` without sending `$SIR` behind it.** The arm sequence already does this;
+the danger is a PARTIAL bundle, or a bare `$CLEAR` sent by a probe or a panic sequence mid-session.
+
+⚠️ **Table size is not the issue — absence is.** A one-row table and the full ten-row table both
+registered 24/24 in an interleaved A/B. Do not "fix" this by making tables longer.
+
+⚠️ **When a tagger seems deaf, check that it is ALIVE first.** A dead gun and a `$SIR`-less gun are
+indistinguishable through `$HIR`, and a whole session was lost to reading corpses as deafness. Read
+`$LCD`/`$QUERY` pools before concluding anything.
+
+Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
+Repro: `mcp/tools/clear_spawn_repro.py`.
+
+**🟠 THE GREEN DEATH BLINK STICKS ON if you respawn within ~2 s of the kill (2026-09-02)**
+**Symptom:** a player's headset keeps flashing the out/respawning green after they are back. The gun
+is fine — alive, full pools, registering hits normally (8/8 measured while it was blinking). Only the
+presentation is wrong, so the player looks dead to everyone while playing normally.
+
+**Cause:** the headset is a second device behind a relay. `$SPAWN` has to reach the gun, be relayed,
+then be received, processed and executed by the headset. Sent while the death sequence is still
+running there, it is lost; the gun's own state updates regardless.
+
+**Threshold, measured:** 1.0 s and 2.0 s stick; 2.5 s, 3.0 s and 6.0 s are clean. **Leave ≥ 3 s
+between a death and a respawn.** `GameConfig.respawn_s` defaults to 15 s so normal matches are safe —
+this bites fast respawns and bench tooling.
+
+**Generalises:** any command that must be executed by the tagger AND the headset (`$SPAWN`, `$HLOOP`,
+`$HLED`) needs a settling gap. Note the gun QUEUES commands and drains them serially, so an echo back
+proves the GUN received it, not that the headset executed it.
+
 ---
 
 ## Capturing IR
@@ -281,7 +292,7 @@ The capture sketch's per-frame **`RAW` print takes ~15–20 ms at 115200**, long
 to start mid-print. **Send `r` to turn the RAW dump OFF for any capture that matters.** This silently
 cost four captures before it was found. (`IDLE_GAP_US` is now 30 ms.)
 
-⚠️ **RETRACTED 2026-09-02: this is NOT fixed.** `IDLE_GAP_US` 30 ms + RAW off did not cure it -- our emitter decoded whole only 4/20 and a REAL BRX GUN only 3/44, with every frame arriving as a full 52 edges. See `FOLLOWUPS.md` **F12**. Grenade capture is blocked on it.
+⚠️ **RETRACTED 2026-09-02: this is NOT fixed.** `IDLE_GAP_US` 30 ms + RAW off did not cure it -- our emitter decoded whole only 4/20 and a REAL BRX GUN only 3/44, with every frame arriving as a full 52 edges. See `FOLLOWUPS.md` **F12**. ⚠️ And that retraction is itself superseded (2026-09-03): `native_capture.py` re-joins split frames (an odd-length fragment lost a space, an even-length one lost a mark; parity picks), so captures are UNBLOCKED. The board still fragments; the host fixes it.
 
 **"The receiver drops out mid-burst at close range."**
 **VS1838B AGC saturates point-blank.** For loopback work, **attenuate** — aim the emitter away, or add
@@ -297,6 +308,7 @@ The `>1500 µs` sync gate is **not BRX-unique** — Sony SIRC's 2390 µs header 
 ~1990 µs. For a station in a room with TVs, bound the sync and require 25 bits **plus** the parity rule.
 
 ---
+---
 
 ## Reading results
 
@@ -311,6 +323,25 @@ from a corpse is not evidence about your word.
 **"Same word, but the player id doubled and so did the damage."**
 A **one-bit misalignment**. If two decodes differ by exactly 2×, you are reading the same frame at two
 offsets — usually from stitching fragments. Fix the capture, don't trust the decode.
+
+---
+**🔴 `$HIR` NEVER REACHES BLE IN A GUN'S OWN NATIVE GAME (2026-09-02)**
+A gun running its **native** game registers hits, flashes its headset and takes damage while sending
+**nothing at all** over Bluetooth. Measured 0/11 while the operator watched it get hit every time.
+
+**So BLE silence has never meant "not hit".** Any "deaf tagger" conclusion drawn from an absent
+`$HIR` on a gun that is not in OUR game state is measuring our blindness, not the gun. This is
+exactly how hours were lost. Score a native game BY EYE (headset flash) or with the camera.
+
+**🟠 A LIT LED WASHES ITS NEIGHBOURS: luminance cannot tell lit from dark (2026-09-02)**
+A lit LED bathes the whole housing in its colour, so a **dark** neighbour's camera ROI fills with
+reflected light. Painting armour 2-of-3 measured the dark LED3 at 170 against a 134 dark baseline,
+and BOTH a flat threshold and a nearest-reference classifier called it lit. Cropping the strip and
+LOOKING settled it in seconds -- LED3 was visibly dark, merely washed.
+
+**Discriminate by SATURATED-PIXEL FRACTION, not luminance.** A lit LED core blows out to white
+(255/254/255); reflected wash does not (that LED3 peaked at G=203). The two populations then do not
+overlap: lit 0.108-0.509, dark 0.000-0.025. Cost three attempts and two retractions.
 
 ---
 
@@ -348,9 +379,26 @@ only "and `$GLED` cannot override it" was wrong.
 **Your filter can lie.** A `$HIR` filter matching `,42,` reported zero hits on a run that had actually
 killed the player, because the sweep varied the player id.
 
+**A saturated camera core is a floor, not a measurement.** At the phone camera's minimum exposure both our
+`$LED` flash and the native hit flash pinned the sensor to 255, so every core/mid/energy number was a sum of
+clipped values and read "equal" while the wall reflection said the native flash was several times brighter.
+Aim the camera at a dark WALL away from the LEDs (reflected light does not clip), or use an ND filter, before
+ranking two lights (2026-09-04, `mcp/tools/led_flashcam.py`).
+
+**Record `$HIR` tok1 (the sensor struck) and the firing distance beside every pool number.** Range and sensor
+are both unstated conditions that surfaced after the fact; the unattended rig lands 20/20 on the gun body at
+~40 cm and cannot produce a dome hit, and a Callsign capture shows different applied damage on sensor 0 than
+on sensor 4 (F23). A dataset without tok1 and range cannot answer that question retrospectively (2026-08-27).
+
+**Over CDP, push the config before the start.** Injecting `start` into a `kitted` engine spawns the state model
+but does not re-arm a gun that lost its head (fresh app process, power cycle): the gun cannot shoot or reload
+and it looks like a corrupt `$CLEAR`. Send `onMcMessage({kind:'config'})`, wait ~2.5 s for the paced head
+write, then `start` (2026-09-04, `docs/wsl-cdp-phone-engine` memory + experiment-log 2026-09-04 S7.1).
+
+---
 ---
 
 ## See also
-`docs/bench-tomorrow.md` (**the bench queue — its START HERE block names the first three things**) ·
-`docs/unknowns.md` (what is still open) ·
-`hardware/esp32-ir-bridge/README.md` (board identities and wiring) · `docs/field-process.md` (muster).
+`docs/FOLLOWUPS.md` (**"Needs Tony at the bench"** is the bench queue; one dated run sheet at a time) ·
+`hardware/esp32-ir-bridge/README.md` (board identities and wiring) · `docs/field-process.md` (muster) ·
+`docs/HANDOFF.md` (state as of the last session).
