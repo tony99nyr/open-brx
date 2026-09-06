@@ -21,7 +21,8 @@ only light up for events".
    RED gun), `night: true` is a blackout that also deletes the DOWN signal, and the last-stand / infection
    "died: red headset" never lands because the engine marks the player dead before it plays the event.
 3. The DOWN signal (small LED at 750 ms) is right in principle but has never been fired on a DEAD gun, starts
-   inside the headset's death window, and runs right up to `$SPAWN`: the F13 relay-wedge class of risk.
+   inside the headset's death window (where the native hit flash and death handling must be left alone), and runs
+   right up to `$SPAWN`: the F13 relay-wedge class of risk.
 4. Night must become an overlay (dim, sparse, slower) over the per-mode block, with the DOWN signal exempt.
 5. The gun body becomes **dark at rest** with a **transient 3-segment pool readout** (now viable after the blank)
    and event bursts; the headset stays native on hits, gets **held role states** (carrier, infected, VIP,
@@ -51,7 +52,7 @@ only light up for events".
 | pool change (damage, heal, grant) | **readout**: 3 / 2 / 1 segments of the pool that moved, hue by pool; held 4 s after the last change, then dark | native hit flash only, untouched | native hit flash only |
 | reload | readout glance, 2 s | nothing | nothing |
 | low health (armour 0, HP falling, once per life) | readout already shows 1–2 red/yellow segments | Callsign's pink fade-blink (`hurt_led`, byte-identical) | native |
-| death | `died` burst: red ×3 ending **dark**; dark while down | quiet for the settling gap, then the **down signal** | down signal |
+| death | **nothing written for 2.5 s** (the gun's own hit flash runs), then the blank; dark while down | **nothing written for 2.5 s** (the native hit flash and whatever the firmware runs on the headset at death are left alone; we cannot replicate them), then the **down signal** | native, then the down signal |
 | last 1 s before an auto `$SPAWN` | dark | quiet | quiet |
 | respawn | breathing, then `take`: dark | white ×2 at +1.0 s after `$SPAWN`, then dark | dark |
 | kill credited (MC push) | no burst (the sight already flashes: `$SFLASH`) | nothing | one green flash (`$LED,9,1`) |
@@ -73,6 +74,8 @@ the frame is unchanged, a change inside 300 ms of the last write only restarts t
 the live readout frame if its hold is running, never on the top band. Segment count is the primary channel
 (lit-vs-dark reads in sun, at night and for red-green colour-blind players); hue confirms it.
 
+**Death is hands-off.** Between `$HP,0` and +2.5 s the node writes nothing to either surface: the killing hit's native gun flash, the native headset flash and the firmware's death handling occur automatically and are the brightest thing we have; a write inside that window can only mask them or wedge the relay (F13: 2.0 s sticks, 2.5 s clean). The `died` gun burst is dropped for the same reason (the death sound and the HUD carry it); the strip is blanked at +2.5 s and the down pulse starts then.
+
 Dropped from today's defaults, with the reason: the `hit_taken` gun burst (the firmware already flashes the body
 on a registered hit, the readout step is the feedback, and native + three of ours can exceed three flashes a
 second); the `healed` / `armour_up` / `shield_up` bursts (the readout paint IS the feedback); the `respawned` gun
@@ -89,9 +92,9 @@ writes per cycle). Night: small LED only, same cadence (it has no dim; dropping 
 
 | respawn type | after death | while down | before `$SPAWN` | at `$SPAWN` |
 |---|---|---|---|---|
-| auto (timer) | quiet 1.0 s (bench L1 may move this) | pulse 750 ms | pulses stop 1.0 s before the timer (the stopping IS the countdown others can read) | white ×2 at +1.0 s |
-| scanner (walk) | quiet 1.0 s | pulse 750 ms indefinitely (node timer, no count to expire) | when the gate is satisfied: stop, blank the big LED, wait 1.0 s, then `$SPAWN` | white ×2 at +1.0 s |
-| none (eliminated) | quiet 1.0 s | pulse 750 ms for 30 s | then one pulse every 3 s to game end (a marshal can find them, the field is not full of blinking heads) | — |
+| auto (timer) | hands-off 2.5 s (F13 clean threshold; bench L1 may shorten it) | pulse 750 ms | pulses stop 1.0 s before the timer (the stopping IS the countdown others can read) | white ×2 at +1.0 s |
+| scanner (walk) | hands-off 2.5 s | pulse 750 ms indefinitely (node timer, no count to expire) | when the gate is satisfied: stop, blank the big LED, wait 1.0 s, then `$SPAWN` | white ×2 at +1.0 s |
+| none (eliminated) | hands-off 2.5 s | pulse 750 ms for 30 s | then one pulse every 3 s to game end (a marshal can find them, the field is not full of blinking heads) | — |
 
 `respawn.delay_s` is validated ≥ 3 at PUT and floored in the engine (F13). The DOWN signal is **never cleared by
 blackout**: it is the one light other players must read and it has no redundant channel.
@@ -117,7 +120,7 @@ A `headset.role` state the node re-asserts after every registered hit (the way t
 | gun pregame | team, full | team, dim (**apply-gate 5**: `$GLED,c,c,c,5,10,,*` is the ~1/3 paint; token 5 does not compose with it and its own dim curve is unreliable, log 2026-09-02) |
 | gun rest | dark | dark |
 | gun readout | full, 4 s hold, reload glance 2 s | dim, 2 s hold, glance 1 s |
-| gun bursts | died, objective, extraction ladder | same set, dim; no decorative bursts |
+| gun bursts | objective, extraction ladder (none at death) | same set, dim; no decorative bursts |
 | headset pregame / role states / low health | full (`$HLED` tok5 = 10) | dim (tok5 = 1) |
 | headset start / respawn | white ×2 | white ×1, dim |
 | headset hit | native only | native only |
@@ -165,7 +168,7 @@ presentation.lights: {
   headset: { pregame: "team"|"off", start_flash: true, in_play: "dark"|"team", hit: null|colour,
              low_health: "native"|"soft", respawn_flash: true, role: true },       // A11.6, `carrier` → `role`
   down:    { flash: true, period_ms: 750, companion: "breathe"|"blink"|null,        // NOT subject to blackout
-             quiet_after_death_s: 1.0, quiet_before_spawn_s: 1.0, eliminated_slow_after_s: 30 },
+             quiet_after_death_s: 2.5, quiet_before_spawn_s: 1.0, eliminated_slow_after_s: 30 },   // 2.5 = hands-off for the native death handling
   night:   {                             // overlay, applied when config.night is true; every key optional
     brightness: "dim",                   // gun: apply-gate 5 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
     events: [/* the events that keep their lights at night; others sound only */],
@@ -206,8 +209,8 @@ headset: { rest, blank, start, respawn, hit, low_health, role: { carrier: [[…]
 
 Node rules (engine.js): on every `$HP`, `pool = changed_pool(prev, now)`, band by `level/max`, write only on frame
 change, restart the hold, revert to `rest` on expiry; bursts end on `rest`, re-write the live readout frame after
-a burst if its hold is running; `_death` clears the readout and the died burst ends dark; the down pulse starts
-after `quiet_after_death_ms`, stops `quiet_before_spawn_ms` before an auto `$SPAWN`, and a scanner revive blanks,
+a burst if its hold is running; `_death` clears the readout and cancels every pending gun/headset step, writes NOTHING for
+`quiet_after_death_ms` (native hit flash + death handling), then blanks the gun; the down pulse starts after the same gap, stops `quiet_before_spawn_ms` before an auto `$SPAWN`, and a scanner revive blanks,
 waits, then spawns; the respawn white flash is scheduled ≥ 1.0 s after `$SPAWN`; one `_lightGen` bumped in
 `_endLocal`, panic, resync, reconcile and BLE drop cancels every pending light step; `max` for shield comes from
 MC (`$PSET` token 5), never parsed from a frame. Night arrives pre-compiled: no engine change.
