@@ -85,10 +85,22 @@ team).
 
 ### 3.2 The down signal (constraint b)
 
-Day: the small LED pulsed every **750 ms** (the native out cadence) **over a big-LED green breathe**
-(`$HLED,3,1,,,10,,*` started once, `$LED,9,1,1,1,*` per pulse). If the bench shows colour 9 disturbs a running
-breathe (L3), the fallback is `$LED,3,1,1,1,*` alternating with `$HLED,,6,,,,,*` at 375 ms (both lamps, two
-writes per cycle). Night: small LED only, same cadence (it has no dim; dropping the companion is the sparseness).
+Target (Tony): the native out indication is **a bright flash every 0.75 s**, hosted games do not get it, we cannot
+replicate its drive, so get as close as possible. In order of closeness:
+
+1. **Turn the firmware's own out loop on** (bench L6, first after L1): Callsign sends `$HLOOP,0,0,*` 1.7 s after
+   every death, which reads as "disable the headset loop", so `$HLOOP,1,750,*` (enable) or `$HLOOP,2,750,*`
+   (heartbeat) on a DEAD gun may start the native-drive flash for one write. If it does, that IS the down signal
+   (stopped with `$HLOOP,0,0,*` ≥ 3 s before `$SPAWN`, the same relay rule as F13).
+2. **Both lamps flashing together, one fresh frame per period** (the default until L6 says otherwise):
+   `$LED,3,1,1,1,*` (small-LED flash + big LED painted green in one write) then `$HLED,,6,,,,,*` at +150 ms, every
+   **750 ms**. Single-shot frames, never a `$HLED` blink loop: the firmware makes only the FIRST flash of a
+   count-limited blink bright and dims the rest, so a new frame each period keeps every flash at full.
+   Two writes per period, ~160/min per downed player, well inside the link budget.
+3. Stacked `$LED` at 0–50 ms inside each flash if L5 shows the driver accumulates.
+
+Night: the same 750 ms cadence (it is the thing others must read, and native runs it at full at night too); the
+sparseness is dropping the big-LED half, so `$LED,9,1,1,1,*` alone (the small LED has no dim).
 
 | respawn type | after death | while down | before `$SPAWN` | at `$SPAWN` |
 |---|---|---|---|---|
@@ -124,7 +136,7 @@ A `headset.role` state the node re-asserts after every registered hit (the way t
 | headset pregame / role states / low health | full (`$HLED` tok5 = 10) | dim (tok5 = 1) |
 | headset start / respawn | white ×2 | white ×1, dim |
 | headset hit | native only | native only |
-| down signal | small LED + big-LED breathe, 750 ms | small LED only, **1000 ms**, **full** (no dim exists, so a slightly sparser cadence is the only softening; the downed player has nothing to lose from being lit and is the one most likely to be shot again or walked into in the dark) |
+| down signal | both lamps flash together every 750 ms (§3.2) | small LED only, **750 ms**, **full** (no dim exists; the downed player has nothing to lose from being lit and is the one most likely to be shot again or walked into in the dark) |
 | MC-pushed bursts (objectives) | dim, ≥ 2 s apart | same |
 | blackout (explicit `lights.blackout`) | nothing anywhere except the down signal | same |
 
@@ -167,14 +179,14 @@ presentation.lights: {
   },
   headset: { pregame: "team"|"off", start_flash: true, in_play: "dark"|"team", hit: null|colour,
              low_health: "native"|"soft", respawn_flash: true, role: true },       // A11.6, `carrier` → `role`
-  down:    { flash: true, period_ms: 750, companion: "breathe"|"blink"|null,        // NOT subject to blackout
+  down:    { flash: true, period_ms: 750, companion: "sync"|"hloop"|null,          // NOT subject to blackout; sync = big LED flashes with the small one
              quiet_after_death_s: 2.5, quiet_before_spawn_s: 1.0, eliminated_slow_after_s: 30 },   // 2.5 = hands-off for the native death handling
-  night:   {                             // overlay, applied when config.night is true; every key optional
+  night:   {                             // overlay, applied when config.night is true; every key optional (down.period_ms stays 750)
     brightness: "dim",                   // gun: apply-gate 5 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
     events: [/* the events that keep their lights at night; others sound only */],
     gun:     { readout: { hold_s: 2, reload_glance_s: 1 } },
     headset: { start_flash: "single", respawn_flash: "single" },
-    down:    { companion: null, period_ms: 1000 }
+    down:    { companion: null }
   },
   events: { <event>: { sound, gun_led, headset, flash } }   // unchanged (A11.2)
 }
@@ -203,7 +215,7 @@ gun: { rest: "$GLED,,,,5,,,*",       // the BLANK is the rest frame: the one fra
                             { pool: "armor",  max: 70, bands: […] },
                             { pool: "health", max: 45, bands: […] } ] } }
 headset: { rest, blank, start, respawn, hit, low_health, role: { carrier: [[…]], infected: [[…]], vip: [[…]], beacon: [[…]], extracted: [[…]] },
-           down: { frame: "$LED,9,1,1,1,*", period_ms: 750, companion?: "$HLED,3,1,,,10,,*",
+           down: { frames: [["$LED,3,1,1,1,*", 0.15], ["$HLED,,6,,,,,*", 0]], period_ms: 750,   // night: [["$LED,9,1,1,1,*", 0]]
                    quiet_after_death_ms, quiet_before_spawn_ms, eliminated_slow_after_ms } }
 ```
 
