@@ -309,7 +309,9 @@ class Session:
         actually goes out on `$PSET`. Review 2026-09-01 caught it missing the perk: a player holding
         `body_armor` is armed at a 165 pool while KIT quoted the AR at 13 hits / 1.68 s when the
         truth is 19 / 2.52 s. A stat block that is wrong for the one perk that moves the pool is
-        worse than one that never claimed to be per-player."""
+        worse than one that never claimed to be per-player. The arithmetic itself lives in
+        `compile.armed_pool()` (shared with `_to_gc()` and `Compiler.validate()`); this method's
+        own job is just resolving which hp/armor/perk win for THIS player."""
         h = self.config.get("health") or {}
         ov = ((p or {}).get("loadout") or {}).get("overrides") or {}
 
@@ -320,13 +322,14 @@ class Session:
             except (TypeError, ValueError):
                 return default
 
-        add = 0
+        fx = {}
         if p is not None:
             try:
-                add = int(self.compiler._perk_effects(p).get("max_armor_add") or 0)
+                fx = self.compiler._perk_effects(p)
             except Exception:      # a fake/older compiler has no perk model; the base pool still holds
-                add = 0
-        return max(1, n("max_hp", 45) + min(255, n("max_armor", 70) + add))
+                fx = {}
+        from .compile import armed_pool                  # the one shared arithmetic (see docstring)
+        return max(1, armed_pool(n("max_hp", 45), n("max_armor", 70), fx))
 
     def _catalog_views(self, p: Player | None = None) -> dict:
         """`assign.catalog` — what the phone browses (visible weapons as WeaponView + visible perks)."""
@@ -425,10 +428,7 @@ class Session:
             pl = self.players[pid]
             if pid in self.trying:                       # an in-flight try-out of a weapon the ruleset just took away
                 self.tryout(pid, None)                   # → tutorial {end} teardown on the node
-            if pl.get("node_id"):
-                self.net.push(pl["node_id"], "assign", self._assign_body(pl))
-                if self.lobby_pushed:
-                    self._push_config_to(pl)
+            self._resend(pl)
         if changed:
             label = _policy.PRESET_LABELS.get(self.policy().get("preset"), "THE LOADOUT RULES")
             try:
@@ -656,13 +656,26 @@ class Session:
         self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
         self._changed()
 
+    def _resend(self, p: Player, with_start: bool = False) -> None:
+        """Re-send `assign` to `p`'s node, plus a fresh `config` compile if the lobby is already
+        pushed -- so a pick/policy change made after `push_config()` reaches the gun, not just the
+        phone's browse screen. `with_start=True` also re-sends `start` when a match is running.
+
+        ⚠ Only `_after_player_change` passes `with_start=True` today. The review suspects that a
+        phone loadout pick arriving after `start()` (the other call sites, `with_start=False`)
+        leaves the node with a cleared ack and no schedule -- that is a real, separate question and
+        this merge does NOT change which callers ask for `start`. If you're here to fix it, do it
+        deliberately and update the call sites' `with_start` on purpose."""
+        if not p.get("node_id"):
+            return
+        self.net.push(p["node_id"], "assign", self._assign_body(p))
+        if self.lobby_pushed:
+            self._push_config_to(p)
+            if with_start and self.start_info:
+                self.net.push(p["node_id"], "start", self._start_body())
+
     def _after_player_change(self, p: Player, new: bool = False):
-        if p.get("node_id"):
-            self.net.push(p["node_id"], "assign", self._assign_body(p))
-            if self.lobby_pushed:
-                self._push_config_to(p)
-                if self.start_info:
-                    self.net.push(p["node_id"], "start", self._start_body())
+        self._resend(p, with_start=True)
         self._validate()
         if self.phase in ("muster", "build") and new:
             self.phase = "kit"
@@ -1210,9 +1223,7 @@ class Session:
         if ok:
             p["loadout"] = new
             self.browsing.pop(pid, None)
-            self.net.push(nid, "assign", self._assign_body(p))
-            if self.lobby_pushed:
-                self._push_config_to(p)
+            self._resend(p)
             self._validate()
             if body.get("try") and kind == "weapon" and rid:
                 try:

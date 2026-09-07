@@ -473,25 +473,6 @@ def test_sir_guard_reports_each_weapon_once():
     assert len(warns) == 1, warns
 
 
-# ---- medals ---------------------------------------------------------------
-def test_award_medals_basic():
-    rows = [
-        {"player_id": "a", "display": "A", "team_id": "blue", "kills": 10, "deaths": 2,
-         "assists": 3, "shots": 100, "hits": 40, "accuracy": 0.4, "kd": 5.0, "streak": 4, "medals": []},
-        {"player_id": "b", "display": "B", "team_id": "yellow", "kills": 4, "deaths": 8,
-         "assists": 1, "shots": 90, "hits": 20, "accuracy": 0.22, "kd": 0.5, "streak": 1, "medals": []},
-        {"player_id": "c", "display": "C", "team_id": "yellow", "kills": 1, "deaths": 6,
-         "assists": 0, "shots": 40, "hits": 5, "accuracy": 0.13, "kd": 0.17, "streak": 1, "medals": []},
-    ]
-    kills = [{"t": 100, "killer": "b", "victim": "a", "multi": 1},
-             {"t": 200, "killer": "a", "victim": "b", "multi": 2}]
-    m = C.award_medals(rows, kills)
-    assert "MVP" in m["a"] and "TOP_GUN" in m["a"]
-    assert "FIRST_BLOOD" in m["b"], "b got the earliest kill"
-    assert "DOUBLE_KILL" in m["a"]
-    assert "SURVIVALIST" in m["a"], "a has fewer deaths"
-
-
 # ---- the shared golden bundle (M10) --------------------------------------
 def test_golden_bundle_json_matches_the_compiler():
     """The checked-in fixture is consumed by the phone app's tests and its demo mode, so a compiler
@@ -513,13 +494,6 @@ def test_golden_bundle_is_well_formed():
     assert b["head"][-1] == "$TID,1,*"
     assert b["player_id"] == "p-golden" and b["config_id"] == "golden-tdm"
 
-
-def test_award_medals_gated_for_tiny_rosters():
-    """Design review 2026-08-26 #3: no participation trophies — < 3 scored players → no honors."""
-    row = {"player_id": "a", "display": "A", "team_id": "blue", "kills": 0, "deaths": 1,
-           "assists": 0, "shots": 10, "hits": 0, "accuracy": 0.0, "kd": 0.0, "streak": 0, "medals": []}
-    assert C.award_medals([row], []) == {"a": []}
-    assert C.award_medals([row, {**row, "player_id": "b"}], []) == {"a": [], "b": []}
 
 
 # ---- native behaviour inherited from the captured frames --------------------

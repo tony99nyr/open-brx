@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Protocol
 
 from .types import (ArmoryRecord, Envelope, Event, FrameBundle, GameConfig, Player, RosterEntry,
-                    ScanRow, ScoreRow, Team, Weapon)
+                    ScanRow, Team, Weapon)
 
 
 class Hello(dict):
@@ -39,7 +39,6 @@ class Compiler(Protocol):
     def cues(self, voice: str) -> dict[str, str]: ...
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict: ...
     def weapon_catalog(self) -> list[Weapon]: ...
-    def award_medals(self, rows: list[ScoreRow], kills: list[dict]) -> dict[str, list[str]]: ...
 
 
 class Armory(Protocol):

@@ -20,7 +20,7 @@ from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
-from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team, Weapon
+from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, Team, Weapon
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -101,6 +101,23 @@ def play_volume(environment: str | None) -> int:
     not loud: guessing "outdoor" for an unknown venue means blasting L4 into someone's ear indoors.
     """
     return VOL_BY_ENV.get((environment or "").strip().lower(), VOL_PLAY)
+
+
+def armed_armor(armor: int, fx: dict) -> int:
+    """$PSET armor after the body_armor perk's `max_armor_add`, capped at the 255 policy ceiling
+    (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in `_to_gc()`;
+    this is our own policy choice). One arithmetic, called wherever the armed armor is needed --
+    it drifted into three disagreeing copies once already (review 2026-09-01: a `body_armor`
+    player was armed at a 165 pool while a simpler, perk-blind version of the sum graded it at
+    115), so `_to_gc()`, `Compiler.validate()`, and `Session.health_pool()` all go through here."""
+    return min(255, int(armor) + int(fx.get("max_armor_add") or 0))
+
+
+def armed_pool(hp: int, armor: int, fx: dict) -> int:
+    """hp + `armed_armor()` -- the total pool hits-to-kill math (KIT, ARSENAL, the mag>=htk gate in
+    `validate()`) is quoted against. `_to_gc()` needs hp and armor as separate `$PSET` fields, so
+    it calls `armed_armor()` directly instead of this."""
+    return int(hp) + armed_armor(armor, fx)
 
 # ---- $SIR effect classes (bench-measured 2026-08-26; experiment-log "the COMPLETE two-sided $SIR
 # function map + crit multiplier + FF enforcement"). A weapon's <t3,t4> is the composite key into the
@@ -561,7 +578,7 @@ class Compiler:
             # pools are not 8-bit -- armor and HP store and decrement exactly to at least 1000,
             # clamping at zero with no wrap (shield was never measured that far). Keep the cap,
             # but do not "fix" it believing the hardware requires it.
-            armor=min(255, int(ov.get("max_armor", config["health"]["max_armor"])) + int(fx.get("max_armor_add") or 0)),
+            armor=armed_armor(ov.get("max_armor", config["health"]["max_armor"]), fx),
             alt_reload=bool(fx.get("alt_reload")),          # easy_reload perk: $BMAP,1,97
         )
 
@@ -991,12 +1008,13 @@ class Compiler:
             hp, armor = ov.get("max_hp", health.get("max_hp")), ov.get("max_armor", health.get("max_armor"))
             if hp is None or armor is None:
                 continue                                     # no health model to check against
-            # THE SAME arithmetic as `_to_gc()` and `Session.health_pool()` — the perk's armour and
-            # the 255 ceiling included. This used to be a third, simpler version, so it graded a
-            # `body_armor` player at 115 while the gun was armed at 165 and the mag>=htk gate could
-            # pass a weapon that cannot actually kill on one magazine (review 2026-09-01).
+            # `armed_pool()` — the SAME arithmetic as `_to_gc()` and `Session.health_pool()`, the
+            # perk's armour and the 255 ceiling included. This used to be a third, simpler version,
+            # so it graded a `body_armor` player at 115 while the gun was armed at 165 and the
+            # mag>=htk gate could pass a weapon that cannot actually kill on one magazine (review
+            # 2026-09-01).
             fx = self._perk_effects(p)
-            pool = int(hp) + min(255, int(armor) + int(fx.get("max_armor_add") or 0))
+            pool = armed_pool(hp, armor, fx)
             mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
             for w in (p.get("loadout", {}) or {}).get("weapons", []):
                 wid = w.get("weapon_id")
@@ -1087,54 +1105,6 @@ class Compiler:
     def perk_catalog(self) -> list[dict]:
         """Visible perks (loadout.md §1.2) — `PerkView` rows."""
         return self.perks.all()
-
-    def award_medals(self, rows: list[ScoreRow], kills: list[dict]) -> dict[str, list[str]]:
-        """§5b award rules → {player_id: [medal_id]}. Exact per-player (A4.1)."""
-        out: dict[str, list[str]] = {r["player_id"]: [] for r in rows}
-        # honors need an audience: with < 3 scored players every medal is a participation trophy
-        # ("MVP · 0 K · 0.0 K/D" on a 1-player recap — design review 2026-08-26 #3)
-        if len(rows) < 3:
-            return out
-
-        def add(pid: str, medal: str) -> None:
-            if pid in out and medal not in out[pid]:
-                out[pid].append(medal)
-
-        # single-winner medals (ties broken as noted)
-        mvp = max(rows, key=lambda r: (r["kills"] - r["deaths"], r["kd"]))
-        if mvp["kills"] > 0:                      # an MVP with zero kills is noise, not an honor
-            add(mvp["player_id"], "MVP")
-        top = max(rows, key=lambda r: r["kills"])
-        if top["kills"] > 0:
-            add(top["player_id"], "TOP_GUN")
-        # K/D floored so a 1-0 isn't crowned
-        kd_pool = [r for r in rows if (r["deaths"] + r["shots"]) > 0]
-        if kd_pool:
-            best_kd = max(kd_pool, key=lambda r: r["kd"])
-            add(best_kd["player_id"], "HIGHEST_KD")
-        acc_pool = [r for r in rows if r["accuracy"] is not None and r["shots"] >= 10]
-        if acc_pool:
-            sharp = max(acc_pool, key=lambda r: r["accuracy"] or 0.0)
-            add(sharp["player_id"], "SHARP_SHOOTER")
-        surv = min(rows, key=lambda r: r["deaths"])
-        if surv["deaths"] < max(r["deaths"] for r in rows):   # only when someone actually outlived the field
-            add(surv["player_id"], "SURVIVALIST")
-        most_assist = max(rows, key=lambda r: r["assists"])
-        if most_assist["assists"] > 0:
-            add(most_assist["player_id"], "ASSISTANT")
-
-        # first blood — earliest kill by t
-        real_kills = [k for k in kills if k.get("killer")]
-        if real_kills:
-            fb = min(real_kills, key=lambda k: k["t"])
-            add(fb["killer"], "FIRST_BLOOD")
-        # double / triple — per-player, repeatable
-        for k in kills:
-            m = k.get("multi") or 0
-            if k.get("killer") and m >= 2:
-                add(k["killer"], "TRIPLE_KILL" if m >= 3 else "DOUBLE_KILL")
-        return out
-
 
 # Module singleton + the committed golden bundle other lanes import as their fixture (M10).
 _DEFAULT = Compiler()
