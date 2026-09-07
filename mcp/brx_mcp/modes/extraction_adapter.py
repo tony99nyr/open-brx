@@ -22,7 +22,7 @@ from typing import Optional
 
 from .. import sounds as snd
 from . import base
-from .base import Action, GameEngine, hp_values, is_hit, shooter_team
+from .base import Action, GameEngine, hp_values, is_hit, shooter_team, shooter_player_id
 from . import extraction as ex
 
 ATTRIB_FUSE_S = 6.0
@@ -68,9 +68,13 @@ class ExtractionEngineAdapter(GameEngine):
         self._now = now
         self._players: list[str] = []
         self._teams: dict[str, int] = {}
-        self._team_player: dict[int, str] = {}     # FFA: team → the one gun on it
+        # wire player id ($PSET token 1, echoed as $HIR token 3) -> player_id. Populated by the
+        # driver, which assigns those ids; empty until it does, and attribution then falls back to
+        # team resolution. Mirrors `Roster.wire_ids` -- this engine has no Roster of its own.
+        self.wire_ids: dict[int, str] = {}
         self._game: Optional[ex.ExtractionGame] = None
-        self._last_shot: dict[str, tuple[int, float]] = {}   # victim → (shooter team, when)
+        # victim -> (shooter team, when, shooter wire id or None)
+        self._last_shot: dict[str, tuple[int, float, Optional[int]]] = {}
         self._down_since: dict[str, float] = {}    # victim → time went DOWN (host respawn)
 
     # -- setup --------------------------------------------------------------- #
@@ -88,7 +92,6 @@ class ExtractionEngineAdapter(GameEngine):
         if player_id not in self._teams:
             self._players.append(player_id)
         self._teams[player_id] = team
-        self._team_player[team] = player_id        # FFA → 1:1
         self._game = None                           # rebuild lazily with the new roster
 
     def _ensure(self) -> ex.ExtractionGame:
@@ -123,7 +126,7 @@ class ExtractionEngineAdapter(GameEngine):
         if is_hit(ev):
             st = shooter_team(ev)
             if st is not None:
-                self._last_shot[player_id] = (st, now)
+                self._last_shot[player_id] = (st, now, shooter_player_id(ev))
             return []
         hv = hp_values(ev)
         if hv is not None and hv[0] == 0:
@@ -139,12 +142,35 @@ class ExtractionEngineAdapter(GameEngine):
             return acts
         return []
 
+    def _sole_member_of_team(self, team: int) -> Optional[str]:
+        """The one gun on `team`, or None when the team holds several.
+
+        Deliberately fails CLOSED. The map this replaced was `team -> last player registered on it`,
+        which failed to the WRONG gun."""
+        members = [pid for pid, t in self._teams.items() if t == team]
+        return members[0] if len(members) == 1 else None
+
     def _resolve_killer(self, victim_id: str, now: float) -> Optional[str]:
+        """Credit the specific gun that fired, mirroring `DeathmatchEngine` (Q17, bench 2026-08-30).
+
+        Prefer the shooter's PLAYER id ($HIR token 3, set per gun via $PSET token 1) -- it names one
+        gun even when a team holds several. Fall back to team resolution, which is only sound 1:1.
+
+        ⚠ This used to read `self._team_player[team]`, a LAST-WRITE-WINS map. With two guns on one
+        team it did not fail to nobody the way old TDM did -- it credited whichever gun was
+        registered last, silently handing the kill and its loot to a teammate who never fired. That
+        is worse than no attribution, because no attribution is visible and a wrong one is not. It
+        was unreachable only while `assign_teams` happened to give extraction guns unique teams,
+        which is a caller's habit, not a guarantee."""
         entry = self._last_shot.pop(victim_id, None)
         if not entry or now - entry[1] > ATTRIB_FUSE_S:
             return None
-        team = entry[0]
-        killer = self._team_player.get(team)
+        team, _when, wire = entry
+        killer = self.wire_ids.get(wire) if wire is not None else None
+        if killer is not None and self._teams.get(killer) != team:
+            killer = None          # id and team disagree: trust neither, don't guess
+        if killer is None:
+            killer = self._sole_member_of_team(team)
         return killer if killer and killer != victim_id else None
 
     # -- time ---------------------------------------------------------------- #

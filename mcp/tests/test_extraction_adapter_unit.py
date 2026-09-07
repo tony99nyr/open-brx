@@ -32,9 +32,10 @@ def _cfg(**kw):
     return GameConfig(mode="extraction", **kw)
 
 
-def hir(team, grenade=False):
+def hir(team, grenade=False, shooter_pid=0):
+    """`$HIR`: token 2 = 15 marks grenade IR, token 3 = shooter PLAYER id, token 4 = shooter team."""
     tok2 = "15" if grenade else "0"
-    return {"command": "HIR", "tokens": ["HIR", "0", tok2, "0", str(team), "9", "0", "3"]}
+    return {"command": "HIR", "tokens": ["HIR", "0", tok2, str(shooter_pid), str(team), "9", "0", "3"]}
 
 
 def death():
@@ -189,37 +190,65 @@ def test_ffa_three_player_roster_resolves_each_teams_sole_owner():
     assert game.carried("red") == 0
 
 
-def test_KNOWN_BUG_two_guns_sharing_a_team_misattribute_kill_loot():
-    """PINS a known bug — NOT the intended behaviour. Do not "fix" this test by
-    updating the assertion; fix the adapter instead (clone-review followup,
-    2026-09-07) and then flip this test to assert the CORRECT killer.
+def test_two_guns_sharing_a_team_credit_the_gun_that_actually_fired():
+    """FIXED 2026-09-07 (was pinned here as a known bug). The adapter now resolves the SPECIFIC
+    shooter gun from `$HIR` token 3 via `wire_ids`, exactly as DeathmatchEngine does (Q17).
 
-    Unlike DeathmatchEngine (resolves the SPECIFIC shooter gun via `$HIR` token
-    3 + `roster.by_wire_id`, Q17), `ExtractionEngineAdapter` has no per-gun map:
-    `add_player` does `self._team_player[team] = player_id`, which is
-    last-write-wins. Once two guns share a team, `_resolve_killer` therefore
-    always credits whichever gun was registered LAST for that team — not
-    whichever gun actually fired the shot on record. This is a WORSE failure
-    mode than the old TDM bug: TDM credited nobody (a visible absence); this
-    silently misattributes kill-loot to a teammate who may not have fired at
-    all.
-
-    Currently unreachable via the normal `assign_teams()` path (driver.py
-    always gives extraction guns unique teams there) — it only bites a caller
-    that passes explicit `config.teams` putting two extraction guns on one
-    team. Not fixed here: `ExtractionEngineAdapter` doesn't use `Roster`, so
-    the fix isn't a natural consequence of the ScoredEngine refactor, and a
-    silent scoring change is the user's call, not ours."""
+    Before the fix `add_player` kept `self._team_player[team] = player_id` -- last-write-wins -- so
+    once two guns shared a team the kill and its loot always went to whichever was registered LAST,
+    silently crediting a teammate who may never have fired. That is worse than the old TDM bug it
+    resembles: TDM credited nobody, which is a visible absence; this credited the wrong player, which
+    looks exactly like a correct result."""
     e = ExtractionEngineAdapter(_cfg(loot_per_kill=10))
     e.add_player("red", 1)      # registered FIRST on team 1
-    e.add_player("amber", 1)    # registered SECOND on team 1 -> overwrites _team_player[1]
+    e.add_player("amber", 1)    # registered SECOND -- used to win by being last
     e.add_player("blue", 2)
-    e.on_event("blue", hir(1), now=0.0)      # a team-1 gun shot blue — could be either
+    e.wire_ids = {1: "red", 2: "amber", 3: "blue"}    # what the driver hands a roster-less engine
+    e.on_event("blue", hir(1, shooter_pid=1), now=0.0)   # wire id 1 == red
     e.on_event("blue", death(), now=0.5)
     game = e._ensure()
-    # BUG: always "amber" (last-registered), regardless of which gun actually fired.
-    assert game.carried("amber") == 10
-    assert game.carried("red") == 0
+    assert game.carried("red") == 10, "the gun that fired must be credited"
+    assert game.carried("amber") == 0, "the last-registered teammate must NOT be credited"
+
+
+def test_a_shared_team_kill_with_no_wire_id_credits_nobody_rather_than_guessing():
+    """The fallback fails CLOSED. With two guns on a team and no `$HIR` player id to disambiguate,
+    the honest answer is "unknown" -- a visible absence beats a confident wrong attribution, which is
+    the whole lesson of the bug this replaced."""
+    e = ExtractionEngineAdapter(_cfg(loot_per_kill=10))
+    e.add_player("red", 1)
+    e.add_player("amber", 1)
+    e.add_player("blue", 2)
+    e.on_event("blue", hir(1), now=0.0)      # team only, no shooter id, two candidates
+    e.on_event("blue", death(), now=0.5)
+    game = e._ensure()
+    assert game.carried("red") == 0 and game.carried("amber") == 0
+
+
+def test_a_wire_id_that_disagrees_with_the_shot_team_is_not_trusted():
+    """If token 3 names a gun on a different team than token 2 says fired, the two facts contradict
+    each other and neither is used -- same rule as DeathmatchEngine."""
+    e = ExtractionEngineAdapter(_cfg(loot_per_kill=10))
+    e.add_player("red", 1)
+    e.add_player("amber", 1)
+    e.add_player("blue", 2)
+    e.wire_ids = {3: "blue"}                              # wire id 3 is on team 2, not team 1
+    e.on_event("blue", hir(1, shooter_pid=3), now=0.0)    # claims team 1 fired
+    e.on_event("blue", death(), now=0.5)
+    game = e._ensure()
+    assert game.carried("blue") == 0, "a self-credit from contradictory ids must not happen"
+    assert game.carried("red") == 0 and game.carried("amber") == 0
+
+
+def test_a_sole_gun_on_a_team_is_still_credited_without_any_wire_id():
+    """The 1:1 case (FFA, 1v1) must keep working with no wire ids at all -- that is the path every
+    extraction game uses today, since assign_teams gives each gun its own team."""
+    e = ExtractionEngineAdapter(_cfg(loot_per_kill=10))
+    e.add_player("red", 1)
+    e.add_player("blue", 2)
+    e.on_event("blue", hir(1), now=0.0)
+    e.on_event("blue", death(), now=0.5)
+    assert e._ensure().carried("red") == 10
 
 
 # --------------------------------------------------------------------------- #

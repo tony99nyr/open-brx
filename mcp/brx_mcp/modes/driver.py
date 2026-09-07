@@ -152,8 +152,13 @@ class GameDriver:
         # Hand the engine the reverse map so it can credit a kill to the SPECIFIC gun
         # from $HIR token 3, instead of guessing from the shooter's team (Q17).
         roster = getattr(self.engine, "roster", None)
+        wire_map = {wire: pid for pid, wire in self.player_ids.items()}
         if roster is not None and hasattr(roster, "wire_ids"):
-            roster.wire_ids = {wire: pid for pid, wire in self.player_ids.items()}
+            roster.wire_ids = wire_map
+        elif hasattr(self.engine, "wire_ids"):
+            # Engines with no Roster of their own (the extraction adapter) expose the map directly.
+            # Without this branch they never see a wire id and fall back to team resolution forever.
+            self.engine.wire_ids = wire_map
 
     async def _send(self, pid: str, frame: str, critical: bool = False,
                     reply_window_ms: int | None = None) -> None:
