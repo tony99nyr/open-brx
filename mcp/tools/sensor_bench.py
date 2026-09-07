@@ -3,6 +3,7 @@ Usage: python sensor_bench.py <shooter> <victim> [secs=12]
 """
 import asyncio, sys, time
 
+import bench_common as B
 from bench_common import AR, arming_frames   # one copy of the arming frames + their ORDER
 PHASES = ["HEADSET FRONT ONLY - shield the gun sensors and the back dome", "HEADSET BACK ONLY - shield the gun and the front dome", "GUN ONLY - shield the whole headset dome"]
 
@@ -45,7 +46,9 @@ async def main() -> None:
                 print("    victim<<", raw, flush=True)
     print("done - clearing", flush=True)
     for a in ("shooter", "victim"):
-        await send(a, "$PLAYX,0,*"); await send(a, "$CLEAR,*")
+        await send(a, "$PLAYX,0,*")
+        for _f in B.teardown_frames():          # never sign off on a bare $CLEAR (F11)
+            await send(a, _f)
     await mgr.disconnect("shooter"); await mgr.disconnect("victim")
 
 

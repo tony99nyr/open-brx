@@ -3,6 +3,7 @@ Silence on a same-team shot = token1=1 blocks friendly fire (our bench 0 allowed
 """
 import asyncio, sys
 
+import bench_common as B
 from bench_common import AR, GSET_FF, PSET, SIRS   # one copy of the arming frames (bench_common.py)
 
 
@@ -34,7 +35,9 @@ async def main() -> None:
     for h in hirs[:4]:
         print("  ", h, flush=True)
     for a in ("shooter", "victim"):
-        await mgr.send(a, "$PLAYX,0,*", reply_window_ms=300); await mgr.send(a, "$CLEAR,*", reply_window_ms=300)
+        await mgr.send(a, "$PLAYX,0,*", reply_window_ms=300)
+        for _f in B.teardown_frames():          # never sign off on a bare $CLEAR (F11)
+            await mgr.send(a, _f, reply_window_ms=300)
     await mgr.disconnect("shooter"); await mgr.disconnect("victim")
 
 

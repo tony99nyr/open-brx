@@ -2,9 +2,11 @@
 
 Usage: python weapon_range.py <address> [secs_per_weapon=22] [start_index=0]
 The operator just keeps firing; a tick sound + reload chain marks each advance.
-Ends with $CLEAR. Output is ASCII-only (Windows console safe).
+Ends with a $CLEAR + $SIR restore (F11). Output is ASCII-only (Windows console safe).
 """
 import asyncio, sys, time
+
+import bench_common as B
 
 
 async def main() -> None:
@@ -37,7 +39,9 @@ async def main() -> None:
             await asyncio.sleep(secs)
         print("", flush=True)
         print("range complete - clearing", flush=True)
-        await send_all(["$PLAYX,0,*", "$CLEAR,*"])
+        # never sign off on a bare $CLEAR: it wipes the $SIR table and the next run gets a gun
+        # that silently ignores every hit while reporting healthy (F11).
+        await send_all(["$PLAYX,0,*"] + B.teardown_frames())
     finally:
         try:
             await mgr.disconnect("range")

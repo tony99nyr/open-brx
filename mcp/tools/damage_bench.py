@@ -4,6 +4,7 @@ Usage: python damage_bench.py <shooter_addr> <victim_addr> [secs_per_phase=25]
 """
 import asyncio, sys, time
 
+import bench_common as B
 from bench_common import AR, GSET, PSET, SIRS   # one copy of the arming frames (bench_common.py)
 
 FRAMES = [
@@ -68,7 +69,9 @@ async def main() -> None:
                 print("    victim<<", raw, flush=True)
     print("", flush=True); print("done - clearing both", flush=True)
     for a in ("shooter", "victim"):
-        await send(a, "$PLAYX,0,*"); await send(a, "$CLEAR,*")
+        await send(a, "$PLAYX,0,*")
+        for _f in B.teardown_frames():          # never sign off on a bare $CLEAR (F11)
+            await send(a, _f)
     await mgr.disconnect("shooter"); await mgr.disconnect("victim")
 
 

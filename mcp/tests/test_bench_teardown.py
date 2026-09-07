@@ -6,44 +6,93 @@ hands the NEXT experiment a victim that cannot be hit, with no error anywhere --
 "deaf taggers" kept appearing between runs during the session that found this.
 
 Scope note: sending `$CLEAR` while ARMING is correct and normal (the `$SIR` rows follow it in the
-same bundle). Only a TEARDOWN that ends on `$CLEAR` is the bug, so this looks at `finally:` blocks
-rather than at the file as a whole -- a broader scan produced 19 false positives and a test nobody
-would trust.
+same bundle). Only a `$CLEAR` with NO restore after it is the bug.
+
+⚠ WHY THIS CHECK WAS REWRITTEN (2026-09-07). It used to scan `finally:` blocks only, on the
+reasoning that a broader scan produced 19 false positives. That narrowing was the bug: it silently
+assumed every teardown lives in a `finally`, and FIVE tools whose teardown sat in the plain body of
+`main()` -- `tid_bench`, `sensor_bench`, `damage_bench`, `ff_probe`, `weapon_range` -- were invisible
+to it for as long as it existed. They all ended on a bare `$CLEAR`: the exact fault this file exists
+to prevent, sailing past the guard that was supposed to catch it. A safety net with a shape
+assumption in it is worse than none, because it is trusted.
+
+The false positives that motivated the narrowing were real but were never a reason to look at
+`finally` only -- they came from matching `$CLEAR` in COMMENTS, DOCSTRINGS and PRINTED PROSE (four
+tools mention it in exactly those places, including the "never sign off on a bare $CLEAR" comment on
+the correct fix), and from a restore held in a constant the old substring match did not know about
+(`SIR_PLAIN`). Matching real frame LITERALS via the AST, and recognising any SIR-ish name as a
+restore, gives zero false positives across all 66 tools while catching all five. Keep it that way:
+if this check ever starts over-firing, tighten what counts as a restore -- do not narrow where it
+looks.
 """
 import ast
 import pathlib
+import re
 import sys
 
 TOOLS_DIR = pathlib.Path(__file__).resolve().parents[1] / "tools"
 TOOLS = sorted(TOOLS_DIR.glob("*.py"))
-# These REPRODUCE the fault deliberately; leaving the gun stranded is their whole point.
-EXEMPT = {"clear_spawn_repro.py", "desync_fuzz.py"}
+
+# A real frame literal ('$CLEAR,*'), never prose that merely mentions the command.
+CLEAR_FRAME = re.compile(r"^\$CLEAR\b.*\*$")
+# Any SIR-ish name restores the table: SIRS, SIR_PLAIN, SIR_TABLE, ...
+SIRISH = re.compile(r"SIR")
+RESTORE_CALLS = {"teardown_frames", "arming_frames"}
+
+# These deliberately leave the gun stranded, or strand it on purpose as a phase of the experiment.
+EXEMPT = {
+    # Reproduce the fault; leaving the gun stranded is the whole point.
+    "clear_spawn_repro.py",
+    "desync_fuzz.py",
+    # Strands the gun in PHASE 2 ("the F11 fault") and proves GameDriver.setup() RECOVERS it in
+    # PHASE 3. The restore is real but goes through driver.setup(), which no static check can see.
+    "mc_driver_bench.py",
+}
 
 
-def _finally_source(path):
-    """Source text of every `finally:` block in the file."""
-    src = path.read_text()
-    lines = src.split("\n")
-    out = []
-    for node in ast.walk(ast.parse(src)):
-        if isinstance(node, ast.Try) and node.finalbody:
-            a = node.finalbody[0].lineno - 1
-            b = max(getattr(n, "end_lineno", n.lineno) for n in node.finalbody)
-            out.append("\n".join(lines[a:b]))
-    return out
+def audit(path):
+    """(line of the last `$CLEAR` frame, line of the first restore at/after it or None).
+
+    (None, None) when the file never SENDS a `$CLEAR` at all."""
+    tree = ast.parse(path.read_text())
+    clears, restores = [], []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            v = n.value.strip()
+            if CLEAR_FRAME.match(v):
+                clears.append(n.lineno)
+            elif v.startswith("$SIR"):
+                restores.append(n.lineno)
+        elif isinstance(n, (ast.Name, ast.Attribute)):
+            nm = getattr(n, "id", None) or getattr(n, "attr", "")
+            if SIRISH.search(nm) or nm in RESTORE_CALLS:
+                restores.append(n.lineno)
+    if not clears:
+        return None, None
+    last = max(clears)
+    after = [r for r in restores if r >= last]
+    return last, (min(after) if after else None)
 
 
-def test_no_teardown_ends_on_a_bare_CLEAR():
+def test_no_tool_ends_on_a_bare_CLEAR():
+    """The check that matters — and it looks at the WHOLE file, not just `finally:` blocks."""
     bad = []
     for f in TOOLS:
         if f.name in EXEMPT:
             continue
-        for block in _finally_source(f):
-            if "$CLEAR" in block and not ("$SIR" in block or "SIRS" in block or "teardown_frames" in block
-                                          or "arming_frames" in block):
-                bad.append(f.name)
-    assert not bad, ("these tools end a run on a bare $CLEAR, leaving the gun unhittable for "
-                     "whatever runs next: " + ", ".join(sorted(set(bad))))
+        clear_line, restore_line = audit(f)
+        if clear_line is not None and restore_line is None:
+            bad.append(f"{f.name}:{clear_line}")
+    assert not bad, (
+        "these tools send a $CLEAR with no $SIR restore after it, leaving the gun unhittable for "
+        "whatever runs next (F11): " + ", ".join(sorted(bad)))
+
+
+def test_every_exemption_is_still_a_real_file():
+    """A stale exemption is a hole: it would silently excuse a NEW tool that reused the name."""
+    names = {f.name for f in TOOLS}
+    missing = sorted(EXEMPT - names)
+    assert not missing, f"EXEMPT names tools that no longer exist: {missing}"
 
 
 def test_teardown_frames_clears_then_restores_the_table():
@@ -56,14 +105,52 @@ def test_teardown_frames_clears_then_restores_the_table():
     assert frames.index("$CLEAR,*") < min(sir_at), "$SIR must come AFTER the $CLEAR"
 
 
-def test_the_checker_can_actually_fail():
-    """A guard that cannot fail is worthless."""
+def _audit_source(src: str):
+    """audit() over a source string, via a temp file — used by the self-tests below."""
     import tempfile
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as fh:
-        fh.write("try:\n    pass\nfinally:\n    send('$CLEAR,*')\n")
+        fh.write(src)
         p = pathlib.Path(fh.name)
     try:
-        blocks = _finally_source(p)
-        assert blocks and "$CLEAR" in blocks[0] and "$SIR" not in blocks[0]
+        return audit(p)
     finally:
         p.unlink()
+
+
+def test_the_checker_can_actually_fail():
+    """A guard that cannot fail is worthless."""
+    clear_line, restore = _audit_source('send("$CLEAR,*")\n')
+    assert clear_line == 1 and restore is None, "a bare $CLEAR must be flagged"
+
+
+def test_the_checker_catches_a_teardown_that_is_not_in_a_finally_block():
+    """THE REGRESSION THAT MOTIVATED THE REWRITE. This exact shape — a teardown in the plain body of
+    a function, no try/finally anywhere — was invisible to the previous check, and five real tools
+    were sitting in it."""
+    src = ('async def main():\n'
+           '    for fr in ["$CLEAR,*"] + SIRS:\n'
+           '        await send(fr)\n'
+           '    await send("$PLAYX,0,*")\n'
+           '    await send("$CLEAR,*")\n')
+    clear_line, restore = _audit_source(src)
+    assert clear_line == 5, f"expected the teardown $CLEAR on line 5, got {clear_line}"
+    assert restore is None, "a teardown outside a finally: block must still be flagged"
+
+
+def test_the_checker_accepts_a_proper_restore_however_it_is_spelled():
+    """SIRS, SIR_PLAIN and teardown_frames() are all valid restores — the old substring match knew
+    only the first, which is why two correct tools looked broken."""
+    for restore in ('SIRS', 'SIR_PLAIN', 'B.teardown_frames()'):
+        src = f'send("$CLEAR,*")\nsend({restore})\n'
+        _clear, got = _audit_source(src)
+        assert got is not None, f"a restore spelled {restore!r} should count"
+
+
+def test_the_checker_ignores_the_command_named_in_prose():
+    """Comments, docstrings and printed text mention $CLEAR constantly — including in the comment on
+    the CORRECT fix. Matching those was the whole source of the 19 false positives."""
+    for prose in ('"""Ends with $CLEAR."""\n',
+                  '# never sign off on a bare $CLEAR (F11)\n',
+                  'print("=== STRAND it ($CLEAR then $SPAWN) ===")\n'):
+        clear_line, _r = _audit_source(prose)
+        assert clear_line is None, f"prose mentioning $CLEAR must not count as a sent frame: {prose!r}"
