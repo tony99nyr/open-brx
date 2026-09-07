@@ -80,11 +80,10 @@
     any paint, once per life; a held paint survives 8 min and all game traffic. **night is a DIM overlay, not
     a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the "~1/3" documented since 2026-09-02 — retracted);
     a separate `blackout` switch empties the tables and the DOWN signal survives both.
-  - **`$TID` is 0-3 only (F35).** The IR word's team field is 2 bits so a gun transmits `tid & 3` while the
-    victim compares the FULL tid: on tid >= 4 teammates damage each other, their shots do nothing to the tid
-    they alias onto, and a gun can kill itself off a nearby surface (observed — one drained its own armour to
-    zero). Guarded in `state.py` and `compile.validate()`. Team COLOUR is now decoupled from the tid, so team
-    3 keeps green on the wire and paints PURPLE. FFA is white (Q19 closed).
+  - **`$TID` is 0-3 only (F35).** The IR team field is 2 bits so a gun sends `tid & 3` while the victim
+    compares the FULL tid: on tid >= 4 teammates damage each other, their shots do nothing to the tid they
+    alias onto, and a gun can kill itself off a surface (observed). Guarded in `state.py` + `compile.validate()`.
+    Team COLOUR is decoupled from the tid now (team 3 = green on the wire, PURPLE painted); FFA white (Q19).
   - Headset **role states** survive hits (carrier WHITE, infected, vip, beacon, extracted); the last three
     have no trigger reaching the node yet (S10 sub-item).
   - **The gun stage is event-driven now** (`ble.py` `on_frame` callback): a hit reacts in ~36 ms not a poll
@@ -93,8 +92,7 @@
   - ⚠ **Phones are on a pre-`role` APK**: `headset_frames()` still ships the legacy `headset.carrier` key on
     purpose (deleting it breaks the flag blink in the field; delete once an APK with `role` is deployed, S10),
     and **no node-side work reaches a player until that APK ships.**
-  - `mcp/tests/test_led_invariants.py` walks every reachable frame across every preset x team x night x ffa
-    and pins these facts; it caught a real defect within an hour.
+  - `mcp/tests/test_led_invariants.py` pins these facts across every preset x team x night x ffa.
 - Docs consolidation:- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
   screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10 (the old files sit in `archive/`).
 
