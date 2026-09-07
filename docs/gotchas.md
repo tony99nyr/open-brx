@@ -154,6 +154,16 @@ whether the victim's pools had headroom** — a grant into a full pool clamps an
 drain against an empty one does too. **Carry a known-good control at both ends** — without a control you cannot
 tell "rejected" from "broken".
 
+**A same-length edit written in the same second leaves Python running STALE BYTECODE.**
+CPython decides a `__pycache__/*.pyc` is current by the source's **mtime (1-second granularity) and
+size**. Flip `4.0` to `5.0` and back inside one second and both are unchanged, so the interpreter
+keeps the *first* compile. Seen 2026-09-07: a test was deliberately broken to prove it could fail,
+reverted, and then kept failing against a constant that read correctly on disk and showed no
+`git diff`. If a test's verdict disagrees with the file in front of you,
+`find . -name __pycache__ -type d -exec rm -rf {} +` before believing either. Same trap when a probe
+script edits a module and re-imports it in the same run: writing a byte-length-different value (or
+`touch`ing the file afterwards) is enough to dodge it.
+
 **A purge of `main` frees nothing while any other ref still holds the blobs.**
 `git filter-repo` rewrites every ref it can see, but the objects only go away once *nothing* points at
 them. Two things kept the 2026-09-07 purge at 0 bytes reclaimed until they were dealt with, and neither
