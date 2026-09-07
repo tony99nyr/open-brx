@@ -147,6 +147,14 @@ purely for the flash -- and F15 gets a second mechanism.
 
 ## 6. Addendum 2026-09-06 (LED review, `docs/led-language.md`) -- the DOWN-signal ladder, one variable each
 
+> **STATUS 2026-09-07: L1-L9 are ANSWERED and MOST ARE NOW MOOT. Do not re-run them.** The bench found that the
+> firmware's own bright out-flash runs in hosted games all along and that our `$HLED,,6` was disabling it, so the
+> `$LED`-pulsing signal these rungs were tuning has been deleted (see the experiment-log entry for 2026-09-07 and
+> `led-language.md` §3.2). `$HLOOP,<1|2>,<ms>` drives the firmware's loop directly; `$HLOOP,0,0` and `$SPAWN` both
+> stop it. **Still worth running:** a metered A/B of `$HLOOP,2,750` against a native out-blink (is it really as
+> bright or brighter, as it looked by eye), the rate's usable range, and **L10-L14, the gun-body rungs, which were
+> never touched.**
+
 Same rig, same reading rule (Tony's call of WHICH LED is primary; camera peak/w-sum second). Blank first. Gun
 KILLED via SHOOT ME until `$HP,0` unless a rung says spawned. Every rung ends with `$HLOOP,0,0,*`, `$HLED,,6,,,,,*`,
 then RESPAWN no sooner than 3 s later; a stuck green blink = F13, note it and power-cycle.
@@ -157,11 +165,15 @@ then RESPAWN no sooner than 3 s later; a stuck green blink = F13, note it and po
 - **L2** `$LED,9,1,*` (two fields) vs `$LED,9,1,1,1,*`, A/B ×3, spawned. Pass: same flash. Decides the wire shape.
 - **L3** `$HLED,3,1,,,10,,*` (breathe) running, then `$LED,9,1,1,1,*` ×3 at 750 ms. Pass: breathe continues AND the
   small LED flashes. Fail ⇒ the day down signal is `$LED,3,1,1,1,*` / `$HLED,,6,,,,,*` alternating at 375 ms (L4).
-- **L4** dead dark headset: `$LED,3,1,1,1,*`. Pass: small flash + big LED green holds; then `$HLED,,6` blanks it.
+- **L4** dead dark headset: `$LED,3,1,1,1,*` then `$HLED,,6,,,,,*` at +150 ms, repeated every 750 ms for 10 s beside a
+  native headset in its out-blink. Pass: both lamps flash together each period, every flash as bright as the first
+  (single-shot frames, no blink loop); Tony rates it against native. This is the default day down signal.
 - **L5** stacked `$LED,9,1,1,1,*` ×2 / ×3 / ×5 at 0 / 20 / 50 ms (stage `raw` `delay_s`), camera. Pass: wall peak or
   w-sum above the ×1 control (34-54). The only remaining brightness lever on this LED.
-- **L6** `$HLOOP,2,750,*` on the dead gun (confirm), 10 s, then `$HLOOP,0,0,*`, then RESPAWN at +3 s. Pass: which
-  LED, how bright, cadence; the respawn clean. A native-bright small-LED loop replaces ~80 writes/min.
+- **L6 (run right after L1)** `$HLOOP,1,750,*` then, separately, `$HLOOP,2,750,*` on the DEAD gun, 10 s each, then
+  `$HLOOP,0,0,*`, then RESPAWN at +3 s. Pass: the native-bright 0.75 s out flash from one write (Callsign's post-death
+  `$HLOOP,0,0` reads as "disable the loop", so enable may start it); the respawn clean. Decisive: if it passes, it IS
+  the hosted down signal (`led-language.md` §3.2).
 - **L7** `$LED,9,1,1,1,*` at -0.05 / -0.1 / -0.25 / -0.5 s before `$SPAWN,,*`, five deaths each. Pass: headset dark
   after every spawn, no stuck blink. Sets `quiet_before_spawn_s` (design assumes 1.0).
 - **L8** `$HLED,6,2,120,120,10,2,*` at +0.05 / +0.3 / +1.0 s after `$SPAWN,,*`. Pass: the white blink is seen.

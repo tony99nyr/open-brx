@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-06. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-07. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -193,7 +193,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   trial U100, alts U13/U41), `extraction_closing` VX0R and `extraction_complete` VQ8 failed, `unstoppable` had no line
   (trial VX0U), `killing_spree` V125 vs VA7K, `healed`/`armour_up`/`shield_up` have no sound. Then every mode preset.
   One sound per verdict, Tony's ear decides; write ids into `presentation.EVENTS` with a `test_sound_catalog` pin. `ears`.
-- **S10 🔴** LED language v2 (A16): build [`led-language.md`](led-language.md) §3–§5 -- `presentation.lights` block
+- **S10 🔴** LED language v2 (A16): build [`led-language.md`](led-language.md) §3–§5. **Bench 2026-09-07 settled the
+  down signal**: never send `$HLED,,6` in play (effect 6 disables the firmware's own death flash for the life; a
+  colour write does not, so `dark` = `$HLED,9,0,,,10,,*`), write nothing at death, re-arm with one `$HLOOP,2,750,*`;
+  **delete `death_flash` / `flash_frame` / `_deathFlash` / `_reassertDeathBlink` and the `death: flash` enum** -- `presentation.lights` block
   with the night OVERLAY (dim + sparse, never a blackout; the DOWN signal exempt), gun body DARK at rest with the
   transient 3-segment pool readout + bursts, headset role states that survive hits (carrier white, infected,
   VIP, extraction beacon), the DOWN pulse with quiet gaps around death/`$SPAWN` and the eliminated cadence, `_lightGen`
@@ -287,8 +290,9 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **A10c** Extended Mags HUD max matches the `$AMMO,0` we write (64/768).
 - **B20**, **S4** (b)/(e)/muzzle LED, **S8** two-Pixel confirm, **F13** (2) headset state across the arming burst,
   **F21** on both Pixels, **F28/F29** in a match, **S2 6b** flash-LED ladder with an ND filter.
-- **S10** L-ladder (bench sheet §6, ~40 min): L1 `$LED` on a DEAD gun (decisive), L7 `$LED` before `$SPAWN` (F13), L3/L4 the
-  breathe + pulse companion, L5 stacked `$LED`, L6 `$HLOOP,2`, L10 dim 2-of-3 held 60 s, L11 purple `$TID,4`.
+- **S10** L-ladder: L1–L9 ANSWERED 2026-09-07 (the `$LED` pulsing scheme is deleted; `$HLOOP` is the down signal).
+  Left: a metered A/B of `$HLOOP,2,750` against a native out-blink, the rate's usable range, L10 dim 2-of-3 held
+  60 s, L11 purple `$TID,4`, L12–L14 (gun body dark paint vs blank, blank idempotency, dim after a blank).
 - Night mode: confirm a blanked gun stays dark once spawned (the S4 blank holds; only `$SPAWN` re-breathes).
 
 **Ears:** **P3** voice-pack token; the defeat line (`JAW`/`JAX` beside the confirmed `JAY`); **W4a** Energy Launcher fire
