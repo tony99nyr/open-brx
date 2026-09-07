@@ -71,12 +71,18 @@ def pset_foot(hits: dict | None = None) -> list[str]:
 
     `hits` = `{hitaudio.MATERIAL_ROLES role: sound id}`; a role it omits keeps the inherited id, so a
     caller that passes nothing gets the byte-identical frame we have always sent."""
+    from .hitaudio import MATERIAL_DEFAULT, MATERIAL_ROLES, SHIELD_LOOP, SHIELD_LOOP_INDEX
     foot = list(_PSET_FOOT_INHERITED)
+    foot[SHIELD_LOOP_INDEX] = SHIELD_LOOP     # A17: Callsign's A10 LOOPS a geiger tick while shield is up
+    # A17: the four hit slots default to the EAR-CONFIRMED heads, not the inherited ids, so a gun that
+    # is armed but not yet spawned already sounds right. `hits` (a roll or an operator pin) overrides.
+    for i, role in enumerate(MATERIAL_ROLES, start=1):
+        foot[i] = MATERIAL_DEFAULT[role]
     if hits:
-        from .hitaudio import MATERIAL_ROLES
         for i, role in enumerate(MATERIAL_ROLES, start=1):      # foot[0] is missShothit, then the four hits
-            if hits.get(role):
-                foot[i] = str(hits[role])
+            v = hits.get(role)
+            if v is not None:            # "" is a DELIBERATE pick meaning the field ships EMPTY (A17
+                foot[i] = str(v)         # health). Only a MISSING role keeps the default above.
     return foot
 
 # The six voice slots, as suffixes on the family prefix, in $PSET order.

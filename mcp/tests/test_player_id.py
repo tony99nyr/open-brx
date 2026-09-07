@@ -75,4 +75,7 @@ def test_resetup_reuses_the_same_id():
     # The voice slots are now the DEFAULT family (male / VA*), not the hardcoded Heavy pack (V3*)
     # every player used to get regardless of their `voice` — see gameconfig.VOICE_PACKS.
     # A15.3: the battleRespawnCry token AND the three pain tokens are EMPTY -- the node plays those itself.
-    assert first == again == "$PSET,1,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*"
+    # A17 (bench 2026-09-07): the four hit slots carry the EAR-CONFIRMED material sounds instead of
+    # Callsign's inherited H55/H13/H21/H02; hitHp ships EMPTY (health is silent -- the node's pain grunt
+    # carries it), and energyShieldLoop ships EMPTY (A10 loops a geiger tick while the shield is up).
+    assert first == again == "$PSET,1,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,H43,U15,W71,,*"

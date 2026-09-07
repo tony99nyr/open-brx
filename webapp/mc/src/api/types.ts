@@ -67,6 +67,10 @@ export interface GameConfig {
    *  identical to the player they hit. DEFAULT OFF — an unmatched cell is silently ignored (the F11
    *  shape), so it stays off until the bench clears FOLLOWUPS F38/F39. The material layer (metal on
    *  armour, body on health) and the rolled variety are always on and need no flag. */
+  /** A17: per-weapon $SIR sounds. DEFAULT OFF — a non-empty $SIR sound REPLACES the $PSET pool
+   *  sound rather than layering with it (bench 2026-09-07), so enabling this silences the
+   *  ear-confirmed material layer (armour metal / shield fizz / silent health) on every hit. */
+  hit_audio_class?: boolean;
   hit_audio_rekey?: boolean;
 }
 

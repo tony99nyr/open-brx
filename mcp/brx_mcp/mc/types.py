@@ -174,6 +174,10 @@ class GameConfig(TypedDict):
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
     loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
     presentation: NotRequired[dict]              # A11 (mc/presentation.py): sounds + lights per event, preset or custom
+    hit_audio_class: NotRequired[bool]           # A17: per-WEAPON $SIR sounds. DEFAULT OFF -- bench F38: a non-empty
+    #                                              $SIR sound REPLACES the $PSET pool sound rather than layering, so
+    #                                              turning this on SILENCES the ear-confirmed material layer (armour
+    #                                              metal / shield fizz / silent health) on every standard hit.
     hit_audio_rekey: NotRequired[bool]           # A17: give each weapon FAMILY its own $SIR cell so hits sound different
     #                                              per weapon. DEFAULT OFF -- an unmatched cell is silently ignored (the
     #                                              F11 shape), so it stays off until FOLLOWUPS F38/F39 clear it at the bench.

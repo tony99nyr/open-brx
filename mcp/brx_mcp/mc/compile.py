@@ -644,10 +644,18 @@ class Compiler:
         ms = [self.catalog.cycle_ms(w) for w, c in plan.cells.items() if c == cell]
         return int(min(ms)) if ms else None
 
-    def sir_table(self, plan, rng) -> list[str]:
-        """The `$SIR` table for one head: the stock rows, each given the sound of the family that keys
-        it, plus a row per re-keyed cell. Stock rows are never removed -- a cell we vacate keeps its
-        row, so a stock gun or a grenade station still registers exactly as it does today."""
+    def sir_table(self, plan, rng, class_sounds: bool = False) -> list[str]:
+        """The `$SIR` table for one head. Stock rows are never removed -- a cell we vacate keeps its row,
+        so a stock gun or a grenade station still registers exactly as it does today.
+
+        `class_sounds` DEFAULTS OFF, and that is a bench decision, not caution. F38 (2026-09-07): a
+        non-empty `$SIR` sound REPLACES the `$PSET` pool sound rather than layering with it, so the
+        per-WEAPON layer and the per-POOL layer compete for the same hit and only one can speak. The
+        material layer wins by default because it is EAR-CONFIRMED (armour metal, shield fizz, silent
+        health) while `hitaudio.CLASS_POOLS` has never been auditioned at all and was built by the
+        shape method that produced zero surviving picks. Turning this on silences the material layer on
+        every standard hit -- which is why the shipped rows keep the EMPTY sound token Callsign ships.
+        Those empty tokens are not a gap to fill; they are what makes the pool sounds audible."""
         cells = _sir_cells(_SIR_TABLE)
         rows = list(_SIR_TABLE)
         by_fn: dict[int, str] = {}
@@ -655,6 +663,11 @@ class Compiler:
             fn = _sir_index([row]).get(cell)
             if fn is not None:
                 by_fn.setdefault(fn, row)
+        if not class_sounds:
+            # Stock rows VERBATIM, in stock order, plus a silent row for any re-keyed cell. Order is
+            # preserved deliberately: the table is a wire artefact and churning it churns every bundle.
+            return rows + [_sir_row(cell, "", fn, by_fn.get(fn))
+                           for cell, (_k, fn) in sorted(plan.groups.items()) if cell not in cells]
         for cell, (cls, fn) in sorted(plan.groups.items()):
             sound = _ha.class_sound(cls, rng, self._cell_cycle_ms(plan, cell))
             if cell in cells:
@@ -746,7 +759,7 @@ class Compiler:
         play_hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
         gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
-        head += self.sir_table(plan, hits_rng) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
+        head += self.sir_table(plan, hits_rng, bool(config.get("hit_audio_class", False))) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
         assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
@@ -816,7 +829,8 @@ class Compiler:
         # A17: the class layer, rolled the same way -- one full $SIR table per take. The node writes one
         # before every $SPAWN and again after a lull, so the same weapon does not land the same clip all
         # match. Re-sending $SIR rows is the F11 REPAIR path, so this write is bench-safe by construction.
-        bundle["sir_pool"] = [self.sir_table(plan, hits_rng) for _ in range(_SIR_TAKES)]
+        _cs = bool(config.get("hit_audio_class", False))
+        bundle["sir_pool"] = [self.sir_table(plan, hits_rng, _cs) for _ in range(_SIR_TAKES)] if _cs else []
         bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
                                "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
                                "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},
