@@ -15,16 +15,34 @@ F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (col
 
 ## 1. Before going public
 
-- **Purge `docs/reference/BRX_Manual_V7.pdf` from history.** It is Battle Company's copyrighted manual. rev-ref
-  deletes it from the tree; the blob stays in every clone until `git filter-repo --path docs/reference/BRX_Manual_V7.pdf --invert-paths`
-  is run once, coordinated (rewrites every hash; force-push, then everyone re-clones). Do it in the same pass as the next item.
-- **Purge the raw Callsign JSONs** per `protocol/callsign-extract/RAW_ASSETS_NOTE.md` (Battle Company's data). The
-  derived docs (`protocol-classes.md`, `apk-harvest.md`, `sound-bank.md`) stay; the raw extracts and the APK never go public.
-- **Keep `mcp/tests/test_docs_hygiene.py` green**: no headset sticker ids (write `Tactix-XXXX`), the Updated stamp
-  above moves with the file, one id per H2, HANDOFF ≤ 150 lines, every relative link in `docs/` resolves.
-  `~/.brx-mcp/armory.json`, `device-backups/`, the audio bank and `session-*.sqlite` stay out of the repo.
-- **Credit LaserTagMods** in anything public (CLAUDE.md hard rule). **Release-sign the APK** (B21) and drop
-  `webContentsDebuggingEnabled` before a build leaves the bench.
+The repo is private, MIT-licensed, 0 forks. Nothing below blocks day-to-day work; all of it blocks a public flip.
+
+- **✅ DONE 2026-09-07 — history purge, binaries.** `docs/reference/BRX_Manual_V7.pdf` (Battle Company's
+  copyrighted manual, 14 MB) and every stale APK blob were removed from history with `git filter-repo`
+  and force-pushed. Old clones are invalid; re-clone rather than pull.
+- **✅ DONE 2026-09-07 — raw Callsign assets.** The five raw JSONs are gone from the tree per
+  `protocol/callsign-extract/RAW_ASSETS_NOTE.md`; three were unreferenced, two were restated as our own
+  derived data under `mcp/brx_mcp/data/`. Regeneration reads a gitignored local copy of the APK.
+- **✅ DONE 2026-09-07 — headset ids in binary captures.** The two `protocol/captures/raw/2026-08-25-*.btsnoop`
+  traces carried a sticker id in the advertised name; both were patched in place with an equal-length alias,
+  byte count unchanged, and both still decode identically.
+- **⬜ Flip the APK to the Release.** One apk is still tracked in `webapp/download/` because a release asset
+  on a *private* repo is not downloadable by an anonymous visitor, and the site is public. The moment the repo
+  goes public: `git rm --cached webapp/download/*.apk` and append `webapp/download/*.apk` to `.gitignore`.
+  The download card already prefers the local file and falls back to `build.json`'s `url`, so the page does
+  not change. Every build from now on is published to the `app-v<version>` release by `npm run android:apk`.
+- **⬜ Device identifiers in text history.** Sticker ids and BLE MACs remain in ~88 old commits (the tree is
+  clean; `mcp/tests/test_docs_hygiene.py` keeps it that way). Deliberately not purged: they label Tony's own
+  four headsets and grant nothing remotely. Revisit only if that judgement changes; it needs `--replace-text`
+  plus a `--blob-callback` for binaries (`docs/gotchas.md` has the traps).
+- **⬜ Delete the two dead local branches** `bench/feedback-fork-ir-nrf-2026-08-25` and
+  `worktree-agent-a8593058024df0d96`. Superseded 2026-08-25 forks, local-only, and they still carry the
+  pre-purge tree including the PDF. Do not push them.
+- **⬜ Release-sign the APK** (B21) and drop `webContentsDebuggingEnabled` before a build leaves the bench.
+- **Standing rules.** Credit LaserTagMods in anything public-facing (CLAUDE.md hard rule). Keep
+  `test_docs_hygiene.py` green: no sticker ids (write `Tactix-XXXX`), the Updated stamp above moves with the
+  file, one id per H2, HANDOFF ≤ 150 lines, every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`,
+  `device-backups/`, the audio bank and `session-*.sqlite` stay out of the repo.
 
 ## 2. Extensibility — let outsiders build modes and sound packs (E1–E7)
 

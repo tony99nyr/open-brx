@@ -100,7 +100,42 @@ fs.writeFileSync(dir + "/build.json", JSON.stringify({
 }, null, 1) + "\n");
 ' "$NAME" "$OUT" "$VERSION" "$GIT_SHA" "$([ -n "$DIRTY" ] && echo 1 || echo 0)"
 
+# Publish the build as a GitHub Release asset and record its URL in the sidecar. The release, not the
+# repo, is where a build is meant to live: a committed apk adds ~5 MB to git history that no purge
+# short of a rewrite ever gets back, and the download page reads its href from the sidecar either way.
+# Never fatal: no gh, no auth, or no network still leaves a complete local build and a valid sidecar.
+if [ "${APK_PUBLISH:-1}" = "1" ] && [ "$OUT" = "$REPO/webapp/download" ]; then
+  TAG="app-v${VERSION}"
+  if command -v gh >/dev/null 2>&1; then
+    if gh release view "$TAG" >/dev/null 2>&1; then
+      gh release upload "$TAG" "$OUT/$NAME" --clobber >/dev/null 2>&1 \
+        && echo "    release: uploaded to existing $TAG" \
+        || echo "    WARNING: could not upload to $TAG; the sidecar keeps its previous url" >&2
+    else
+      gh release create "$TAG" "$OUT/$NAME" --title "BRX Combat HUD ${VERSION} (Android ${VARIANT:-debug})" \
+        --notes "Android build of the BRX Combat HUD, the per-player phone node. Built from ${GIT_SHA}." >/dev/null 2>&1 \
+        && echo "    release: created $TAG" \
+        || echo "    WARNING: could not create release $TAG; the sidecar keeps its previous url" >&2
+    fi
+    ASSET_URL="$(gh release view "$TAG" --json assets -q ".assets[] | select(.name==\"$NAME\") | .url" 2>/dev/null || true)"
+    if [ -n "$ASSET_URL" ]; then
+      node -e '
+const fs = require("fs");
+const [dir, url, tag] = process.argv.slice(1);
+const p = dir + "/build.json";
+const d = JSON.parse(fs.readFileSync(p, "utf8"));
+d.url = url; d.release = tag;
+fs.writeFileSync(p, JSON.stringify(d, null, 1) + "\n");
+' "$OUT" "$ASSET_URL" "$TAG"
+      echo "    url:     $ASSET_URL"
+    fi
+  else
+    echo "    WARNING: gh not found, so this build was not published to Releases" >&2
+  fi
+fi
+
 echo
 echo "==> $OUT/$NAME"
 echo "    $(du -h "$OUT/$NAME" | cut -f1)  sha256 $(sha256_of "$OUT/$NAME" | cut -c1-16)…"
 echo "    Next: (cd site && npm run build && npm test), then commit webapp/ and push (a push to main deploys)."
+echo "    The apk itself belongs in the Release, not in git: see webapp/download/README.md."

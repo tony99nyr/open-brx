@@ -102,7 +102,10 @@ npm run ui:moments      # the transient-moment suite; npm run ui:e2e = the full 
 and is not optional): it finds a JDK 21, re-applies `android-setup.sh`
 (the platform is generated, so those patches are not in git), builds a **debug** APK, and copies it
 to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there.
-Exactly one APK lives in that folder: the site build refuses to guess between two.
+Exactly one APK lives in that folder: the site build refuses to guess between two. It then
+**publishes the APK as a GitHub Release asset** (tag `app-v<version>`) and writes that asset's URL
+into `build.json`. Set `APK_PUBLISH=0` to skip the release; a missing or unauthenticated `gh` only
+warns, so a build always completes offline.
 
 **What lands in the APK is your working tree, not the last commit** — `npm run build` bundles `src/`
 as it is right now. So before cutting a build meant for the site: commit or stash `app/src`, and bump
@@ -127,6 +130,21 @@ git add webapp/download webapp/platform docs/manual app && git commit -m "cut <v
 
 Name the paths. A bare `git add -A` here will sweep up whatever another session has in flight (this
 repo often has two running), and `webapp/download/` is the one place where that publishes a binary.
+
+**Where a build belongs: the Release, not git.** A committed APK costs ~5 MB of git history per
+release that nothing short of a rewrite gets back; a purge on 2026-09-07 reclaimed ~80 MB of
+accumulated binaries, most of it old APK builds. One APK is still tracked in `webapp/download/`
+because **the site is public while the repo is private**, and a release asset on a private repo is
+not downloadable by an anonymous visitor, so that file is what the download button actually serves
+today. The site build prefers the local file when present and falls back to `build.json`'s `url`
+when it is absent, so going public makes the switch a single commit with no visible page change:
+
+```bash
+git rm --cached webapp/download/*.apk
+printf 'webapp/download/*.apk\n' >> .gitignore
+```
+
+That item is tracked in `docs/FOLLOWUPS.md` under "Before going public".
 
 **How the site and this script meet** (three rules, all enforced by the site build):
 

@@ -75,8 +75,33 @@ function findDownload() {
   const apks = all.filter(f => /^[A-Za-z0-9][A-Za-z0-9._-]*\.apk$/.test(f)).sort();
   for (const bad of all.filter(f => !apks.includes(f))) dlProblems.push(`webapp/download/${bad}: unexpected filename, cut the build with \`npm run android:apk\``);
   if (!apks.length) {
-    if (fs.existsSync(path.join(dlDir, 'build.json'))) dlProblems.push(`webapp/download/build.json describes a build that is not there: restore the apk or delete the sidecar`);
-    return null;
+    // No apk in the tree is the EXPECTED state once builds live in a GitHub Release rather than in
+    // git (app/scripts/android-apk.sh publishes them and records the asset url here). The sidecar is
+    // then the only source for what the page states, so it has to carry the facts AND the url; a
+    // sidecar without a url still means someone deleted an apk by hand, which is a problem.
+    const sidecarPath = path.join(dlDir, 'build.json');
+    if (!fs.existsSync(sidecarPath)) return null;
+    let meta = null;
+    try { meta = JSON.parse(fs.readFileSync(sidecarPath, 'utf8')); } catch { /* handled below */ }
+    if (!meta || typeof meta.url !== 'string' || !/^https:\/\//.test(meta.url)) {
+      dlProblems.push(`webapp/download/build.json describes a build that is not there and carries no release url: restore the apk, or cut it again with \`npm run android:apk\` so the sidecar records where it lives`);
+      return null;
+    }
+    if (typeof meta.bytes !== 'number' || typeof meta.sha256 !== 'string' || typeof meta.file !== 'string') {
+      dlProblems.push(`webapp/download/build.json is missing file/bytes/sha256, so the page cannot state what it links`);
+      return null;
+    }
+    if (meta.dirty === true) dlProblems.push(`${meta.file} was built from a dirty tree (build.json git ${meta.git || '?'}): commit app/ and cut it again before publishing`);
+    return {
+      file: meta.file, href: meta.url,
+      version: meta.version || (meta.file.match(/-(\d+\.\d+(?:\.\d+)?)-/) || [])[1] || '',
+      variant: meta.variant || (/-release\.apk$/i.test(meta.file) ? 'release' : 'debug'),
+      bytes: meta.bytes,
+      size: `${(meta.bytes / 1e6).toFixed(1)} MB`,
+      sha256: meta.sha256,
+      date: (meta.built || '').slice(0, 10),
+      offsite: true,
+    };
   }
   if (apks.length > 1) { dlProblems.push(`webapp/download/: ${apks.length} apks (${apks.join(', ')}): keep exactly one, the site links a single build`); return null; }
   const file = apks[0];

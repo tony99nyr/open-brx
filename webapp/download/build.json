@@ -6,5 +6,7 @@
  "bytes": 5392890,
  "sha256": "94364f863dc6db248a19b8f4199f01837575c1b28f834c743d7bfe3345fed11e",
  "git": "a1380f8",
- "dirty": false
+ "dirty": false,
+ "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.1.6/brx-companion-0.1.6-android-debug.apk",
+ "release": "app-v0.1.6"
 }
