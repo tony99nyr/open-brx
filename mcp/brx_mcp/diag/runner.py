@@ -11,7 +11,11 @@ import asyncio
 import time
 from typing import Callable, Optional
 
+from ..gameconfig import _SIR_TABLE
 from .model import Capability, DiagCase, Outcome, Report, Result
+
+# Clear, then put the table back -- the order matters (the rows follow the $CLEAR that wipes them).
+TEARDOWN = ("$CLEAR,*", *_SIR_TABLE)
 
 
 # An "asker" turns a yes/no question into a bool. Default = stdin prompt.
@@ -103,7 +107,11 @@ async def run_game(address: str, cases: list[DiagCase], available: set[Capabilit
             report.add(r)
     finally:
         try:
-            for f in ("$STOP,*", "$CLEAR,*"):
+            # F11: never sign off on a bare $CLEAR. It wipes the $SIR table, and a gun with no rows
+            # silently ignores EVERY hit while reporting alive and healthy -- so the diagnostic whose
+            # job is answering "can this gun be hit?" used to leave it un-hittable on the way out, and
+            # the next person to pick it up saw a "deaf tagger" with no idea what caused it.
+            for f in ("$STOP,*", *TEARDOWN):
                 await mgr.send(sid, f, reply_window_ms=200)
         except Exception:
             pass

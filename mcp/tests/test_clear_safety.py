@@ -7,12 +7,20 @@ reporting alive, in-game and healthy to `$QUERY`. It presents as a dead headset 
 Leaving a gun unhittable is CORRECT for a teardown or a panic stop, and catastrophic anywhere else.
 So the rule is not "never send a bare `$CLEAR`" -- it is "say which one you meant". Anything not on
 the allowlist below must restore the table.
+
+⚠ THIS SWEEP ONLY SEES NAMED SEQUENCES, which is how it missed a real one (2026-09-07). The diag
+runner's actual teardown was an INLINE tuple inside a `finally:` block -- `("$STOP,*", "$CLEAR,*")` --
+so it never appeared in `_shipped_sequences()` and was never checked. Meanwhile `diag.END`, a constant
+that nothing referenced, sat on the allowlist below legitimising the shape. The dead one was declared
+and the live one was invisible. `runner.TEARDOWN` is now a named constant precisely so this file can
+see it. When you add a teardown, give it a NAME and add it here; an inline frame tuple is unreviewable.
 """
 import json
 import pathlib
 
 from brx_mcp import gameconfig as gc
 from brx_mcp.diag import cases as diag
+from brx_mcp.diag import runner as diag_runner
 from brx_mcp import protocol
 from brx_mcp import __main__ as cli
 
@@ -21,7 +29,6 @@ from brx_mcp import __main__ as cli
 INTENTIONAL_TEARDOWNS = {
     "gameconfig.END_SEQUENCE": "game over: the gun should be inert until the next match arms it",
     "protocol.PANIC_SEQUENCE": "panic stop: making the gun unhittable is the POINT",
-    "diag.END": "diagnostic teardown between cases",
     "cli.END_SEQUENCE": "CLI teardown",
     "golden_bundle/end": "game over (the bundle MC ships for teardown)",
     "golden_bundle/panic": "panic stop",
@@ -52,7 +59,7 @@ def _shipped_sequences():
         "gameconfig.spawn_frames": list(gc.GameConfig().spawn_frames()),
         "protocol.PANIC_SEQUENCE": list(protocol.PANIC_SEQUENCE),
         "diag.CONFIG": list(diag.CONFIG),
-        "diag.END": list(diag.END),
+        "diag.TEARDOWN": list(diag_runner.TEARDOWN),
         "cli.GAME_CONFIG": list(cli.GAME_CONFIG),
         "cli.END_SEQUENCE": list(cli.END_SEQUENCE),
     }

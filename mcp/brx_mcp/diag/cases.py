@@ -35,7 +35,9 @@ CONFIG = (
     *_BMAP,
 )
 SPAWN = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*")
-END = ("$STOP,*", "$CLEAR,*")
+# (There was an `END = ("$STOP,*", "$CLEAR,*")` here. It was never referenced by anything, and a
+# dead constant shaped like a correct teardown is a trap: the next person wires it up and ships the
+# F11 fault. The real teardown lives in `runner.py` and restores the $SIR table. Deleted 2026-09-07.)
 
 
 CATALOG: list[DiagCase] = [

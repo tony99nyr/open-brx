@@ -30,8 +30,15 @@ import pathlib
 import re
 import sys
 
-TOOLS_DIR = pathlib.Path(__file__).resolve().parents[1] / "tools"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+TOOLS_DIR = ROOT / "tools"
 TOOLS = sorted(TOOLS_DIR.glob("*.py"))
+# The package too (2026-09-07): pointing this only at tools/ was the same "assumption about where to
+# look" that let the five tools through. `test_clear_safety.py` already checks the package's NAMED
+# frame sequences and owns the reasoned allowlist for them -- but it can only see what has a name,
+# which is exactly how `diag/runner.py`'s inline `("$STOP,*", "$CLEAR,*")` teardown stayed invisible
+# inside a `finally:` block. This scan reads code rather than constants, so it catches the inline ones.
+PACKAGE = sorted((ROOT / "brx_mcp").rglob("*.py"))
 
 # A real frame literal ('$CLEAR,*'), never prose that merely mentions the command.
 CLEAR_FRAME = re.compile(r"^\$CLEAR\b.*\*$")
@@ -47,6 +54,16 @@ EXEMPT = {
     # Strands the gun in PHASE 2 ("the F11 fault") and proves GameDriver.setup() RECOVERS it in
     # PHASE 3. The restore is real but goes through driver.setup(), which no static check can see.
     "mc_driver_bench.py",
+}
+
+# Package sequences that deliberately leave the gun inert. Each of these is ALSO declared, with its
+# reason, in `test_clear_safety.INTENTIONAL_TEARDOWNS` -- that file is the authority on WHY each one
+# is allowed; this set only stops the code scan double-reporting them. If you add one here without
+# adding it there, `test_clear_safety` will fail, which is the intended coupling.
+PACKAGE_EXEMPT = {
+    "protocol.py",     # PANIC_SEQUENCE -- making the gun unhittable is the entire point
+    "state.py",        # TRYOUT_TEARDOWN -- the gun stays idle until the real game is pushed
+    "__main__.py",     # cli.END_SEQUENCE -- game over, the app's own captured tail
 }
 
 
@@ -86,6 +103,32 @@ def test_no_tool_ends_on_a_bare_CLEAR():
     assert not bad, (
         "these tools send a $CLEAR with no $SIR restore after it, leaving the gun unhittable for "
         "whatever runs next (F11): " + ", ".join(sorted(bad)))
+
+
+def test_no_package_module_ends_on_a_bare_CLEAR():
+    """The same rule inside `brx_mcp/`, where a stranded gun reaches a real player rather than a bench.
+
+    This found `diag/runner.py`'s `finally:` teardown, which ran after EVERY diagnostic run and left
+    the gun deaf on the way out -- so the tool whose job is answering "can this gun be hit?" was
+    creating the fault it exists to detect."""
+    bad = []
+    for f in PACKAGE:
+        if f.name in PACKAGE_EXEMPT:
+            continue
+        clear_line, restore_line = audit(f)
+        if clear_line is not None and restore_line is None:
+            bad.append(f"{f.relative_to(ROOT)}:{clear_line}")
+    assert not bad, (
+        "these ship a $CLEAR with no $SIR restore after it, leaving the gun unhittable (F11): "
+        + ", ".join(sorted(bad)))
+
+
+def test_the_package_exemptions_all_still_exist_and_are_declared():
+    """A stale exemption is a hole, and one that is not also declared in test_clear_safety is an
+    undocumented one."""
+    names = {f.name for f in PACKAGE}
+    missing = sorted(PACKAGE_EXEMPT - names)
+    assert not missing, f"PACKAGE_EXEMPT names modules that no longer exist: {missing}"
 
 
 def test_every_exemption_is_still_a_real_file():
