@@ -20,9 +20,9 @@ only light up for events".
 2. **Three real bugs ship today**: the gun-body team table is offset from the server's tids (yellow team gets a
    RED gun), `night: true` is a blackout that also deletes the DOWN signal, and the last-stand / infection
    "died: red headset" never lands because the engine marks the player dead before it plays the event.
-3. The DOWN signal (small LED at 750 ms) is right in principle but has never been fired on a DEAD gun, starts
-   inside the headset's death window (where the native hit flash and death handling must be left alone), and runs
-   right up to `$SPAWN`: the F13 relay-wedge class of risk.
+3. **The DOWN signal is solved and costs nothing** (bench 2026-09-07): the firmware's own bright out-flash runs in
+   hosted games all along, and our `$HLED,,6` blank was disabling it. Swap the blank for colour 9, write nothing at
+   death, and re-arm with one `$HLOOP,2,750` as insurance. The whole `$LED` pulsing scheme is deleted.
 4. Night must become an overlay (dim, sparse, slower) over the per-mode block, with the DOWN signal exempt.
 5. The gun body becomes **dark at rest** with a **transient 3-segment pool readout** (now viable after the blank)
    and event bursts; the headset stays native on hits, gets **held role states** (carrier, infected, VIP,
@@ -35,9 +35,9 @@ only light up for events".
 | surface | proven (log entry) | not proven (bench row) |
 |---|---|---|
 | gun body, 3 RGB LEDs | breathes team colour when spawned; `$GLED,,,,5,,,*` takes it out of the loop and any paint then HOLDS through fire, reload, registered hits; mixed frames render per LED (3-segment bar works in play); `$SPAWN` re-enables breathing; blank inside the spawn burst fails, +2.0 s holds (2026-09-04 ×4) | hold with no traffic over minutes (S4 b); whether `$PLAY`/`$AMMO`/`$HLED`/`$LED` disturb a held paint; a dim (tok5 = 1) paint keeping its hue after a blank (the 2026-09-02 "dim loses hue" was measured under the breathing) |
-| headset big LED | one lamp, one colour; solid / breathe / blink / fade-blink / blank; brightness 1 dim, ≥ 2 full; `$SPAWN` and every hit clear a paint; **the firmware out-blink does NOT run in a hosted game** (2026-09-04 live) | a count-limited blink ending dark by itself; `$HLED,4..7` on a head |
-| headset small flash LED | green only; `$LED,9,1,1,1,*` = one ~66 ms flash, big LED untouched; `$LED,3,1,…` = same flash + big LED green; native hit/out flash ≥ 2× ours (camera floor), "orders of magnitude" by eye; no intensity/count field | fires on a DEAD gun; stacking at 0–50 ms; `$HLOOP,2,<rate>` heartbeat; whether `$LED` inside the F13 window wedges the relay |
-| relay | `$SPAWN` within ~2 s of death sticks the headset in the out-blink (F13, 2.5 s clean); any headset-executed frame needs a settling gap | which write kills the firmware's own hosted out-blink (a phone-less fallback if none does) |
+| headset big LED | one lamp, one colour; solid / breathe / blink / fade-blink / blank; brightness 1 dim, ≥ 2 full; `$SPAWN` and every hit clear a paint; **effect 6 (blank) disables the firmware's death-flash loop for the rest of the life, a colour write does not** (2026-09-07, retracts the 2026-09-04 reading) | a count-limited blink ending dark by itself; `$HLED,4..7` on a head |
+| headset small flash LED | green only; the firmware's own hit flash and death loop live here and are far brighter than any `$LED` one-shot; **`$HLOOP,<1\|2>,<ms>` drives this loop over BLE at native drive or better, on a live OR dead gun, with a settable period; `$HLOOP,0,0` and `$SPAWN` both stop it; the big LED is independent** (2026-09-07) | a metered A/B against a native out-blink; the rate's usable range; whether the loop can be pushed brighter than native |
+| relay | `$SPAWN` within ~2 s of death sticks the headset in the out-blink (F13, 2.5 s clean); any headset-executed frame needs a settling gap | how long before `$SPAWN` a `$HLOOP,0,0` must land (moot for safety: `$SPAWN` clears the loop itself) |
 | safety | ≤ 3 flashes in any 1 s window per surface; ~30 Hz repaint strobes; bursts ≥ 1 s apart | — |
 
 ## 3. The language
@@ -83,33 +83,56 @@ burst (it lands inside the first 2.5 s where it fights the breathing, and the he
 already mark it); the `raid_ending` / `raid_over` headset red on everyone (tells others nothing, collides with red
 team).
 
-### 3.2 The down signal (constraint b)
+### 3.2 The down signal (constraint b) — SOLVED ON HARDWARE 2026-09-07, this replaces the earlier plan
 
-Target (Tony): the native out indication is **a bright flash every 0.75 s**, hosted games do not get it, we cannot
-replicate its drive, so get as close as possible. In order of closeness:
+**We were switching the native flash off ourselves.** Bench 2026-09-07 (experiment-log, `$HLOOP` entry): a hosted
+game's dead gun DOES run the firmware's own bright out-flash on the small LED, exactly as native play does — unless
+an `$HLED,,6` (effect 6, the blank) was sent during that life, which disables the loop for the rest of it. That
+blank is the A11.6 `rest` frame for `in_play: dark`, so every hosted game blanked its own death flash away. The
+2026-09-04 "hosted games do not get the out-blink" entry named the wrong cause and is retracted.
 
-1. **Turn the firmware's own out loop on** (bench L6, first after L1): Callsign sends `$HLOOP,0,0,*` 1.7 s after
-   every death, which reads as "disable the headset loop", so `$HLOOP,1,750,*` (enable) or `$HLOOP,2,750,*`
-   (heartbeat) on a DEAD gun may start the native-drive flash for one write. If it does, that IS the down signal
-   (stopped with `$HLOOP,0,0,*` ≥ 3 s before `$SPAWN`, the same relay rule as F13).
-2. **Both lamps flashing together, one fresh frame per period** (the default until L6 says otherwise):
-   `$LED,3,1,1,1,*` (small-LED flash + big LED painted green in one write) then `$HLED,,6,,,,,*` at +150 ms, every
-   **750 ms**. Single-shot frames, never a `$HLED` blink loop: the firmware makes only the FIRST flash of a
-   count-limited blink bright and dims the rest, so a new frame each period keeps every flash at full.
-   Two writes per period, ~160/min per downed player, well inside the link budget.
-3. Stacked `$LED` at 0–50 ms inside each flash if L5 shows the driver accumulates.
+Established, all by eye on a real kill (`$HIR` + `$HP,0,0,0`):
 
-Night: the same 750 ms cadence (it is the thing others must read, and native runs it at full at night too); the
-sparseness is dropping the big-LED half, so `$LED,9,1,1,1,*` alone (the small LED has no dim).
+| write during the life | native death flash afterwards |
+|---|---|
+| nothing | **runs** (bright, native) |
+| `$HLED,<colour>,0,,,10,,*` — any colour, including **9 (dark)** | **runs** |
+| `$HLED,,6,,,,,*` — effect 6, the blank | **suppressed for the rest of the life** |
+
+And `$HLOOP,2,750,*` on a dead gun **restores** the flash after a blank, at native drive or brighter; the big LED
+is untouched by it; `$HLOOP,0,0,*` stops it and **`$SPAWN` clears it by itself**, so a revived player cannot be
+left flashing. The native HIT flash is unaffected by any of the above (it fires even from a blanked headset,
+2026-09-02).
+
+**The design, therefore:**
+
+1. **Never send `$HLED,,6` while a match is running.** `dark` on the headset is `$HLED,9,0,,,10,,*`. Effect 6
+   survives only in the game-over teardown, after the last death that matters.
+2. **Write nothing to the headset at death.** The hands-off window of §3.1 now pays for itself: the firmware's own
+   flash is already running and is the brightest thing we have.
+3. **Belt-and-braces:** one `$HLOOP,2,750,*` at the end of the hands-off window (2.5 s after `$HP,0`). Harmless
+   when the native loop is already running, and it recovers the flash for any life where a blank slipped through
+   (an older node, a teardown race, a mode that paints effect 6). One write per death, not eighty.
+4. **At revive:** `$HLOOP,0,0,*`, then `$SPAWN` after the F13 settling gap. The stop is belt-and-braces too, since
+   `$SPAWN` clears the loop on its own.
+5. **Night: identical.** The small LED has no brightness field and this is the one signal others must read. The
+   night overlay changes nothing here.
+6. **Blackout: identical.** The down signal was already exempt; now it costs no writes at all.
+
+**Deleted by this finding:** the A11.8 `death_flash` scheme in full — `$LED,9,1,1,1,*` pulsed by the node every
+750 ms, ~80 writes/min, measured at least 2× dimmer than the firmware's own flash. It existed only to replace
+something we were disabling. `flash_frame`, `headset.death_flash`, `DEATH_FLASH_MS`, `_deathFlash` and
+`_reassertDeathBlink` all go, along with the `death: flash|colour` enum (`death` becomes `native`, with a colour
+still available as a deliberate opt-in for a mode that wants a coloured big LED alongside the native flash).
 
 | respawn type | after death | while down | before `$SPAWN` | at `$SPAWN` |
 |---|---|---|---|---|
-| auto (timer) | hands-off 2.5 s (F13 clean threshold; bench L1 may shorten it) | pulse 750 ms | pulses stop 1.0 s before the timer (the stopping IS the countdown others can read) | white ×2 at +1.0 s |
-| scanner (walk) | hands-off 2.5 s | pulse 750 ms indefinitely (node timer, no count to expire) | when the gate is satisfied: stop, blank the big LED, wait 1.0 s, then `$SPAWN` | white ×2 at +1.0 s |
-| none (eliminated) | hands-off 2.5 s | pulse 750 ms for 30 s | then one pulse every 3 s to game end (a marshal can find them, the field is not full of blinking heads) | — |
+| auto (timer) | hands-off 2.5 s, then one `$HLOOP,2,750,*` | native flash, no writes | `$HLOOP,0,0,*` | white ×2 at +1.0 s |
+| scanner (walk) | same | native flash, no writes, indefinitely | `$HLOOP,0,0,*`, gap, then `$SPAWN` | white ×2 at +1.0 s |
+| none (eliminated) | same | native flash until game end | — | — |
 
-`respawn.delay_s` is validated ≥ 3 at PUT and floored in the engine (F13). The DOWN signal is **never cleared by
-blackout**: it is the one light other players must read and it has no redundant channel.
+The eliminated-player "slow to one pulse every 3 s" idea is dropped: the cadence is the firmware's, and matching
+native everywhere is worth more than a marshal-finding refinement.
 
 ### 3.3 Held role states on the headset (survive hits)
 
@@ -179,14 +202,13 @@ presentation.lights: {
   },
   headset: { pregame: "team"|"off", start_flash: true, in_play: "dark"|"team", hit: null|colour,
              low_health: "native"|"soft", respawn_flash: true, role: true },       // A11.6, `carrier` → `role`
-  down:    { flash: true, period_ms: 750, companion: "sync"|"hloop"|null,          // NOT subject to blackout; sync = big LED flashes with the small one
-             quiet_after_death_s: 2.5, quiet_before_spawn_s: 1.0, eliminated_slow_after_s: 30 },   // 2.5 = hands-off for the native death handling
+  down:    { rearm: true, period_ms: 750,          // one $HLOOP,2,<period> after the hands-off window; the NATIVE flash
+             quiet_after_death_s: 2.5, quiet_before_spawn_s: 1.0 },   // rearm:false = rely on the firmware alone
   night:   {                             // overlay, applied when config.night is true; every key optional (down.period_ms stays 750)
     brightness: "dim",                   // gun: apply-gate 5 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
     events: [/* the events that keep their lights at night; others sound only */],
     gun:     { readout: { hold_s: 2, reload_glance_s: 1 } },
     headset: { start_flash: "single", respawn_flash: "single" },
-    down:    { companion: null }
   },
   events: { <event>: { sound, gun_led, headset, flash } }   // unchanged (A11.2)
 }
@@ -214,8 +236,10 @@ gun: { rest: "$GLED,,,,5,,,*",       // the BLANK is the rest frame: the one fra
                    pools: [ { pool: "shield", max: 70, bands: [[0.66, f3], [0.33, f2], [0.0, f1]] },   // outermost first
                             { pool: "armor",  max: 70, bands: […] },
                             { pool: "health", max: 45, bands: […] } ] } }
-headset: { rest, blank, start, respawn, hit, low_health, role: { carrier: [[…]], infected: [[…]], vip: [[…]], beacon: [[…]], extracted: [[…]] },
-           down: { frames: [["$LED,3,1,1,1,*", 0.15], ["$HLED,,6,,,,,*", 0]], period_ms: 750,   // night: [["$LED,9,1,1,1,*", 0]]
+headset: { rest: "$HLED,9,0,,,10,,*",   // dark BY COLOUR: $HLED,,6 (effect 6) would disable the death flash for the life
+           blank: "$HLED,,6,,,,,*",         // TEARDOWN ONLY, never in play
+           start, respawn, hit, low_health, role: { carrier: [[…]], infected: [[…]], vip: [[…]], beacon: [[…]], extracted: [[…]] },
+           down: { rearm: "$HLOOP,2,750,*", stop: "$HLOOP,0,0,*",   // the firmware's own loop; identical day, night and blackout
                    quiet_after_death_ms, quiet_before_spawn_ms, eliminated_slow_after_ms } }
 ```
 
@@ -233,7 +257,7 @@ MC (`$PSET` token 5), never parsed from a frame. Night arrives pre-compiled: no 
 |---|---|---|---|
 | 1 | ✔ **Gun-body team table is offset**: `TEAM_COLOURS = {1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}` vs server tids red 0 / blue 1 / yellow 2 / green 3. Yellow team guns paint RED, red team WHITE, green YELLOW; only blue (every bench) agrees | identity map, tests for tid 0 and 2 | `poolgauge.py:46`, `state.py:25-29` |
 | 2 | ✔ **Night is a blackout, not a profile**, and it deletes the DOWN signal: `leds = … and not night` empties every table incl. `death_flash`; the dim path is unreachable and its unit test asserts a state compile cannot produce | night overlay (§3.4); `down` exempt from blackout | `compile.py:465`, `gameconfig.py:265`, `presentation.py:537`, `test_presentation.py:305` |
-| 3 | ✔ **Death pulse never fired on a dead gun** and starts ≤ 250 ms after `$HP,0`, then runs up to `$SPAWN`; no F13 floor on `respawn.delay_s` (MC accepts 0–600) | bench L1/L7 first; quiet gaps (§3.2); validate ≥ 3 s | `engine.js:846`, `state.py:765` |
+| 3 | ✅ **ANSWERED ON HARDWARE 2026-09-07.** The native death flash runs in hosted games; our `$HLED,,6` blank disables it; a colour write does not; `$HLOOP,2,750` restores it at native drive or better; `$SPAWN` clears it. The whole `$LED` death-pulse scheme is deleted. F34 (no F13 floor on `respawn.delay_s`, MC accepts 0–600) still stands | §3.2; swap the blank for colour 9; validate `delay_s ≥ 3` | `presentation.py:194`, `engine.js:846`, `state.py:765` |
 | 4 | ✔ **Static "died" headset colour never lands** (`alive=false` precedes `_event('died')`; `_eventLeds` skips `$HLED` while down): last_stand / infection presets' only headset feature is dead code | mode down-looks go through the death sequence / role state, not the events table | `engine.js:1053, 1069, 526`, `presentation.py:260, 269` |
 | 5 | ✔ Gun rest is a static bright team colour; a dead gun shows full health (died burst ends on the top band; repaint needs alive); health mode ignores armour and shield; poolgauge's 3-segment code is orphaned and its docstring still says segments do not work in play | dark rest + transient readout (§3.1) | `presentation.py:229, 514-518`, `engine.js:485-496`, `poolgauge.py:14-24` |
 | 6 | Held headset states are one-shot event frames wiped by the first hit (infected red, extraction beacon orange); alive-event static `$HLED` under `in_play: dark` never returns to rest (VIP orange stays until the next hit, and an operator reads a lit head as "never joined") | `headset.role` re-asserted after hits; every static event `$HLED` gets a hold then rest | `presentation.py:260, 273, 519-521`, `engine.js:983-985` |
@@ -242,7 +266,7 @@ MC (`$PSET` token 5), never parsed from a frame. Night arrives pre-compiled: no 
 | 9 | Config is four overlapping switches: `led` is dead but in the contract, `headset_team:false` strips spawn/revive but leaves the head and rest lit, `death` default (`flash`) contradicts the spec, `death_flash` is in no spec file, the 4-token `$LED` is narrated as `<effect>,<pulses>` | `presentation.lights` (§4) + one A16 amendment | `contracts.md:136, 162-173`, `compile.py:599`, `presentation.py:187-210` |
 | 10 | Headset cadence has no rate gate: the hit-colour opt-in + native + a respawn flash can exceed 3/s; MC-pushed bursts land on every gun in sync in a dark arena | headset shares the 1 s gap; MC bursts ≥ 2 s apart, dim at night | `engine.js:984`, `presentation.py:509` |
 | 11 | Carrier blinks the flag's team colour (identity spent on a non-identity fact); green team head = native out green; FFA paints 3+ team colours (Q19) | white carrier; purple 4th team after bench; FFA white | `presentation.py:551`, `poolgauge.py:46` |
-| 12 | Phone dies → the gun holds the last readout and the headset stays dark on death: the player looks alive forever | bench: which write kills the firmware's hosted out-blink; MC NODE LOST + operator call until then | — |
+| 12 | ✅ **Largely answered 2026-09-07.** A phone that dies mid-match no longer hides a death: as long as no `$HLED,,6` was sent that life, the firmware flashes the headset on its own with nobody driving it. Stopping the blank buys a phone-independent down indication for free. The gun body still holds its last readout | swap the blank for colour 9 (same fix as #3); MC NODE LOST for the operator | `presentation.py:194` |
 | 13 | Headset tid range disagrees: compile paints heads 0–3, presentation 0–7; two different blank frames (`$HLED,0,0,0,0,0,0` in END_SEQUENCE vs `$HLED,,6`) | one `HEADSET_TIDS`; one blank | `compile.py:71`, `gameconfig.py:165`, `__main__.py:188` |
 | 14 | Stale hardware claims in code and docs (poolgauge in-play prohibitions; "firmware blinks green while out"; 2-field `$LED` stated as fact but unrun; "team colour pre-game only" in manual/gotchas wrong for `in_play: team`) | sweep in the same commit as A16 | `poolgauge.py:14-20, 62-66, 104-106, 198, 211`, `presentation.py:166, 198`, `brx-protocol.md:98` |
 
