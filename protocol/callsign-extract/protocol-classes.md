@@ -381,7 +381,8 @@ FlashHit, TearGasHit, TypeFourteenHit`. This is the audio-design surface for the
 - **ReloadType:** Magazine, Quiver, Shells, SingleBolt, BoltWithMagazine, AutoReload
 - **LedEffect (GLED `effect`):** Solid, Glow, ChaseBack, ChaseForward, StopIR
 - **WeaponCategory (id):** 0 Rifle,1 SMG,2 Sniper,3 Shotgun,4 Heavy,5 Energy,6 Support,
-  7 Power,8 Exotic,9 Launcher,10 Stun,11 Ability,12 Melee (from weapon-categories-config.json)
+  7 Power,8 Exotic,9 Launcher,10 Stun,11 Ability,12 Melee (from weapon-categories-config.json,
+  restated in config-facts.md; raw file removed 2026-09-07, RAW_ASSETS_NOTE.md)
 - **Headset LED (HLED/BLINK/etc.):** LedColorType = White, Pink, Orange (+ green via
   `isUsedGreenLed`); BlinkLoopType = Once, ThreeTimes, Infinite; LedEffectType includes Heartbeat.
 - **ButtonCode (`$BUT` notification):** Trigger, AltFire, Analog (plus the numeric ids 0–5 we

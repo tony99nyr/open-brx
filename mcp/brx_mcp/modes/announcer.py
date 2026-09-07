@@ -20,8 +20,9 @@ FFA / unique `$TID`, or once P2 sets a real PlayerID) and `on_death` when a gun
 dies (its streak ends). The returned `PlaySound`/`Callout` Actions are executed by
 the driver like any other.
 
-Multikill window = **4 s** (game-medals-config.json Key 14: 2+ kills within 4 s of
-the previous kill). Streaks are per-life and reset on the shooter's own death.
+Multikill window = **4 s** (data/medals.json Key 14 "Double Kill", restated from the app's own
+game-medals-config.json -- see protocol/callsign-extract/RAW_ASSETS_NOTE.md: 2+ kills within 4 s
+of the previous kill). Streaks are per-life and reset on the shooter's own death.
 
 The plain **kill** line is CONFIRMED (`V3A`, documented as "kill" in `sound-bank.md`
 and captured live). The **medal/streak** ids were read off the gun's own audio on
@@ -36,7 +37,7 @@ from .base import Action, Callout, KillConfirm, PlaySound
 # The per-kill confirm line — CONFIRMED (sound-bank.md "V3A kill"; live in cap8).
 KILL_LINE = "V3A"
 
-MULTIKILL_WINDOW_S = 4.0  # game-medals-config.json Key 14
+MULTIKILL_WINDOW_S = 4.0  # data/medals.json Key 14 "Double Kill" (window_s)
 
 # announcer sound ids -- read off the gun's own audio 2026-09-03 (Whisper transcripts in
 # data/sound_catalog.json): VA7H "First Blood" · VA7E "Double Kill" · VA7Q "Triple Kill!" ·

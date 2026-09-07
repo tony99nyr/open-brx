@@ -5,19 +5,20 @@ import pathlib
 
 from brx_mcp import sounds as snd
 
-_BANK = (pathlib.Path(__file__).resolve().parents[2]
-         / "protocol" / "callsign-extract" / "Sounds.json")
+_BANK = (pathlib.Path(__file__).resolve().parents[1]
+         / "brx_mcp" / "data" / "sound_ids.json")
 
 
 def _bank_ids():
     data = json.loads(_BANK.read_text())
-    return set(data["SoundsLengthMap"].keys())
+    return {s["id"] for s in data["sounds"]}
 
 
 def test_every_catalog_id_is_a_real_bank_id():
     """Since 2026-09-03 the authority is the ON-GUN catalog (2477 ids read off the hardware), not the
-    app's 2166-id Sounds.json: 468 ids exist only on the gun (VA8X "Fail." is one) and 157 app ids are
-    not on the gun at all. So validate against what the gun actually has."""
+    app's 2166-id bank (`data/sound_ids.json`, derived from the app's own Sounds.json -- see
+    protocol/callsign-extract/RAW_ASSETS_NOTE.md): 468 ids exist only on the gun (VA8X "Fail." is
+    one) and 157 app ids are not on the gun at all. So validate against what the gun actually has."""
     missing = snd.unknown_against_bank(snd.on_gun_ids())
     assert missing == [], f"catalog ids not on the gun: {missing}"
 

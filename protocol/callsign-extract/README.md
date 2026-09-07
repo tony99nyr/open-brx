@@ -9,18 +9,22 @@ never ship Battle Company's assets.** The APK itself is NOT committed.
 - **Unity / IL2CPP** game (C# compiled to native ARM in `libil2cpp.so`, ~67 MB; symbols/strings
   in `global-metadata.dat`, ~11 MB). An Android build exists but has never worked for Tony —
   consistent with its "iOS-only" reputation; we only need it as a static artifact.
-- Config data ships as JSON in `assets/Configs/` (extracted here) plus data baked into the
-  IL2CPP metadata and/or fetched from the server.
+- Config data ships as JSON in `assets/Configs/` (extracted, mined for facts, never committed —
+  see `RAW_ASSETS_NOTE.md`) plus data baked into the IL2CPP metadata and/or fetched from the
+  server.
 
 ## Wins
 
 - **`sound-bank.md` — the complete 2166-id sound inventory** (with durations), from
   `Sounds.json`. This is the deliverable the architecture doc §5 asked for, and it kills the
   microphone-sweep dead end (experiment-log #7): any id not in the list is invalid, so no
-  fallback-sound ambiguity. IDs are the app's own names — the protocol uses them directly.
+  fallback-sound ambiguity. IDs are the app's own names — the protocol uses them directly. The
+  raw `Sounds.json` id → duration map is restated as `mcp/brx_mcp/data/sound_ids.json`
+  (`RAW_ASSETS_NOTE.md`).
 - **`config-facts.md`** — restated (not copied) facts from the app's config JSONs: weapon
   category ids 0–12, the post-game medal set and the stats it implies, and killstreak
-  rewards. Per repo policy (`RAW_ASSETS_NOTE.md`) we do not commit the raw assets.
+  rewards. Per repo policy (`RAW_ASSETS_NOTE.md`) the raw assets are never committed; the full
+  medal set is restated as `mcp/brx_mcp/data/medals.json`.
 
 ## Architecture confirmations (from metadata strings)
 

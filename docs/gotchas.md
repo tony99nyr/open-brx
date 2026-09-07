@@ -162,7 +162,10 @@ pass, both `protocol/captures/raw/2026-08-25-*.btsnoop` still carried the gun's 
 Two further traps in the same area: **commit messages** need `--replace-message` (a blob filter never
 sees them), and any replacement inside a **btsnoop** must be **byte-length-neutral** — the format
 stores per-packet length fields, so a longer string desynchronises every following packet and the
-capture stops parsing.
+capture stops parsing. **Closed in the working tree 2026-09-07:** both files were patched in place with
+an equal-length alias (5 chars for 5), byte count unchanged, and both still decode identically under
+`python -m brx_mcp.btsnoop`. The blobs in git *history* are untouched, so a history purge still needs
+the `--blob-callback` route.
 
 **"`$QUERY` says the config changed" — check the reply LENGTH before believing it.**
 `$QUERY,*` replies are **variable-length across reads for identical state**: long replies span several

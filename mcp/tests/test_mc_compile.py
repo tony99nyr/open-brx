@@ -782,8 +782,8 @@ def test_every_voice_id_exists_in_the_shipped_sound_bank():
     import json, pathlib
     from brx_mcp.gameconfig import VOICE_PACKS, voice_tail
     from brx_mcp.mc.compile import kill_line
-    bank_path = pathlib.Path(__file__).resolve().parents[2] / "protocol" / "callsign-extract" / "Sounds.json"
-    bank = set(json.loads(bank_path.read_text())["SoundsLengthMap"])
+    bank_path = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "data" / "sound_ids.json"
+    bank = {s["id"] for s in json.loads(bank_path.read_text())["sounds"]}
     missing = [(v, i) for v in VOICE_PACKS for i in voice_tail(v) + [kill_line(v)] if i and i not in bank]   # A15.2: the cry token is empty
     assert not missing, f"voice ids not in the sound bank: {missing}"
 
@@ -799,8 +799,8 @@ def test_voice_slot_roles_hold_across_every_family():
     import json, pathlib
     from brx_mcp.gameconfig import VOICE_PACKS, voice_tail
     from brx_mcp import voices as V
-    bank_path = pathlib.Path(__file__).resolve().parents[2] / "protocol" / "callsign-extract" / "Sounds.json"
-    lens = json.loads(bank_path.read_text())["SoundsLengthMap"]
+    bank_path = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "data" / "sound_ids.json"
+    lens = {s["id"]: s["duration_s"] for s in json.loads(bank_path.read_text())["sounds"]}
     for v in VOICE_PACKS:
         tail = voice_tail(v)                       # death, respawnCry, meleeGrunt, shortPain, longPain, painRelief
         assert tail[1] == tail[2] == tail[3] == tail[4] == "", v    # A15.3: cry + all three pains ship EMPTY

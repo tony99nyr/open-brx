@@ -1,8 +1,9 @@
 """Grounded BRX sound catalog — semantic names → verified `$PLAY` sound IDs.
 
-The gun's **2166-id bank** (`protocol/callsign-extract/sound-bank.md`, from the
-Callsign app's `Sounds.json`) is the set of valid `$PLAY,<id>,…` arguments — an id
-not in the bank plays a fallback (experiment-log #7). This module gives the engines
+The gun's **2166-id bank** (`protocol/callsign-extract/sound-bank.md`, restated from the
+Callsign app's own bank as `data/sound_ids.json` -- see
+protocol/callsign-extract/RAW_ASSETS_NOTE.md) is the set of valid `$PLAY,<id>,…` arguments —
+an id not in the bank plays a fallback (experiment-log #7). This module gives the engines
 *semantic* names so they emit the RIGHT clip instead of a raw literal, and records
 how sure we are of each mapping.
 
@@ -153,8 +154,9 @@ def _catalog() -> dict:
 
 
 def on_gun_ids() -> set[str]:
-    """Ids physically present on a v4.32 tagger (2026-09-03). The app's Sounds.json lists 157 ids the
-    gun does not have; those play the fallback, so THIS is the set to validate against."""
+    """Ids physically present on a v4.32 tagger (2026-09-03). The app's own bank (data/sound_ids.json)
+    lists 157 ids the gun does not have; those play the fallback, so THIS is the set to validate
+    against."""
     return {i for i, e in _catalog().items() if e.get("on_gun")}
 
 

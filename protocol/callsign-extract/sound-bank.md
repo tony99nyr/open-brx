@@ -8,7 +8,9 @@
 > category and transcript per id, is **`docs/reference/sound-catalog.md`** /
 > `mcp/brx_mcp/data/sound_catalog.json`. This file is kept for the durations and the prefix legend.
 
-Derived from the Callsign app's `assets/Configs/Sounds.json` (Battle Company).
+Derived from the Callsign app's `assets/Configs/Sounds.json` (Battle Company); the raw file was
+committed here as a temporary exception and removed 2026-09-07 (`RAW_ASSETS_NOTE.md`) — its
+id → duration map is restated as `mcp/brx_mcp/data/sound_ids.json`.
 **2166 sound IDs** with playback durations. IDs are the app's own names; there is no friendlier
 label in the app (the protocol uses these codes directly). This retires the microphone-sweep
 approach (which failed because unknown ids play a fallback — see experiment-log #7).

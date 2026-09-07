@@ -187,7 +187,8 @@ first_blood · double_kill / triple_kill / killtacular · killing_spree at 5 · 
 cues; recap honors (`scoring.honors()` + `compile.award_medals`): MVP (top `kills − deaths`, tie → K/D), Top Gun
 (most kills), Highest K/D, Sharp Shooter (accuracy above a min-shots threshold), Survivalist (fewest deaths),
 First Blood, multi-kills, Assistant. No honors under 3 scored players; MVP and Top Gun require kills > 0
-(design-review 2026-08-26). Names track the stock BRX set (`callsign-extract/game-medals-config.json`).
+(design-review 2026-08-26). Names track the stock BRX set (`mcp/brx_mcp/data/medals.json`, restated from the app's own
+game-medals-config.json; raw file removed 2026-09-07, `protocol/callsign-extract/RAW_ASSETS_NOTE.md`).
 
 **Feedback cues are shipped in the bundle, not looked up on the node** (A6.3): the node turns MC's
 `feedback{kind, t, cue?, medals?}` into `$SFLASH,*` + the pre-composed `cues[kind]` (or the carried `cue`) +

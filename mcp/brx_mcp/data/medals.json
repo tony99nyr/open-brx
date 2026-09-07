@@ -1,0 +1,133 @@
+{
+ "generated": "2026-09-07",
+ "source": "Callsign app's game-medals-config.json (raw asset, not committed -- see protocol/callsign-extract/RAW_ASSETS_NOTE.md); derived by mcp/tools/derive_callsign_data.py",
+ "count": 21,
+ "medals": [
+  {
+   "key": 1,
+   "name": "MVP",
+   "description": "This is the player with the highest score for their team",
+   "window_s": null
+  },
+  {
+   "key": 2,
+   "name": "Top Gun",
+   "description": "This is the player in the game that got the most kills",
+   "window_s": null
+  },
+  {
+   "key": 3,
+   "name": "Sharp Shooter",
+   "description": "This is the player in the game who was the most accurate",
+   "window_s": null
+  },
+  {
+   "key": 4,
+   "name": "Trigger Happy",
+   "description": "This is the player in the game that has shot the most bullets in a game",
+   "window_s": null
+  },
+  {
+   "key": 5,
+   "name": "Grave Lover",
+   "description": "This player that died the most",
+   "window_s": null
+  },
+  {
+   "key": 6,
+   "name": "Highest K/D",
+   "description": "This player had the highest kill to death ratio.",
+   "window_s": null
+  },
+  {
+   "key": 7,
+   "name": "Survivalist",
+   "description": "This person died the least.",
+   "window_s": null
+  },
+  {
+   "key": 8,
+   "name": "Ninja",
+   "description": "Get 3 melee kills within one life",
+   "window_s": null
+  },
+  {
+   "key": 9,
+   "name": "Assasin",
+   "description": "Get the most melee kills for your game",
+   "window_s": null
+  },
+  {
+   "key": 10,
+   "name": "Top 3",
+   "description": "Finish in the top 3 for score on your team",
+   "window_s": null
+  },
+  {
+   "key": 11,
+   "name": "First Blood",
+   "description": "Be the first player in a game to get a kill",
+   "window_s": null
+  },
+  {
+   "key": 12,
+   "name": "The Assistant",
+   "description": "This person has the most assists",
+   "window_s": null
+  },
+  {
+   "key": 13,
+   "name": "Objective King",
+   "description": "This is the player that completed the most objectives for their game. Like capturing flags, or boxes.",
+   "window_s": null
+  },
+  {
+   "key": 14,
+   "name": "Double Kill",
+   "description": "Get 2 kills with in a set period of time - 4 secs - meaning getting kill within 4 secs from the last kill",
+   "window_s": 4
+  },
+  {
+   "key": 15,
+   "name": "Triple Kill",
+   "description": "Get 3 kills with in a set period of time - 4 secs meaning getting kill within 4 secs from the last kill",
+   "window_s": 4
+  },
+  {
+   "key": 16,
+   "name": "Killtacular",
+   "description": "Get 4 Kills with in a set period of time - 4 secs meaning getting kill within 4 secs from the last kill",
+   "window_s": 4
+  },
+  {
+   "key": 17,
+   "name": "Weapons Expert",
+   "description": "Get 3 kills with at least 2 different weapons in one game",
+   "window_s": null
+  },
+  {
+   "key": 18,
+   "name": "Head Shot",
+   "description": "Kill 5 Players with only head shots in game",
+   "window_s": null
+  },
+  {
+   "key": 19,
+   "name": "Streaky",
+   "description": "Player gets a 5 kill streak in game",
+   "window_s": null
+  },
+  {
+   "key": 20,
+   "name": "Streakerten",
+   "description": "Player gets 10 kills streak in game",
+   "window_s": null
+  },
+  {
+   "key": 21,
+   "name": "Streakernaut",
+   "description": "Gets the highest kill streak in the game",
+   "window_s": null
+  }
+ ]
+}

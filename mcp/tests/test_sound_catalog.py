@@ -2,8 +2,9 @@
 
 2026-09-03: the whole bank (2477 `.LTP` files) was read off a v4.32 tagger and analysed. Two things
 this pins: (1) the catalog file is well-formed and carries the facts the pickers rely on; (2) every
-sound id hard-coded anywhere in the server exists ON THE GUN -- the app's `Sounds.json` lists 157
-ids the gun does not have, and `test_sounds.py`'s bank check could not see that.
+sound id hard-coded anywhere in the server exists ON THE GUN -- the app's own bank (restated as
+`data/sound_ids.json`, from Sounds.json -- see protocol/callsign-extract/RAW_ASSETS_NOTE.md) lists
+157 ids the gun does not have, and `test_sounds.py`'s bank check could not see that.
 """
 import json
 import pathlib

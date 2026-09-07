@@ -59,3 +59,15 @@ firmware host string (`devhost.03`) — both already public in our docs. They we
 This is exactly why `$SFLASH` was logged for two days as "periodic, never near a hit" — the file
 it was first seen in was the **victim's** gun. Correlate host→gun feedback against **`$BUT`
 bursts**, not against `$HIR`.
+
+
+## Device names in these captures (2026-09-07)
+
+A BLE trace carries whatever the gun advertised, and two of these files carried a **headset sticker id**
+(the sticker is the headset serial/PIN, which `docs/gotchas.md` says never enters the repo). Both were
+patched in place on 2026-09-07: the id was replaced with an equal-length alias, five characters for five,
+so the per-packet length fields still line up and the files decode byte-identically. The traces are
+otherwise untouched, and no other capture here contained one.
+
+Link-layer **MAC addresses remain** in every trace: they are the addresses the packets are addressed to,
+so removing them would destroy the capture. A gun's BLE MAC is not a credential and is not the sticker id.

@@ -21,3 +21,7 @@ site/playwright-report/
 *.jks
 *.keystore
 keystore.properties
+
+# raw Callsign APK config assets: never commit (protocol/callsign-extract/RAW_ASSETS_NOTE.md);
+# a maintainer regenerating derived data pulls fresh copies here, gitignored
+protocol/callsign-extract/.raw-assets/

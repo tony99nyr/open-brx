@@ -107,7 +107,7 @@ _Every weapon the official app can hand you (19 weapons, 20 captured frames), wi
 | Melee | a swing the gyro picks up | Melee |
 ✅ `src: protocol/brx-protocol.md §"$WEAP t20 - FIRE MODE", docs/weapon-design.md §4.1`
 
-[callout:info] **The app's own weapon categories** (a UI grouping, not a wire field): Rifle · SMG · Sniper · Shotgun · Heavy · Energy · Support · Power · Exotic · Launcher · Stun, plus Ability and Melee. Nothing the gun receives says which category a weapon is in. So the table above uses Open BRX's role grouping instead. 🔍 `src: protocol/callsign-extract/weapon-categories-config.json, protocol/callsign-extract/config-facts.md`
+[callout:info] **The app's own weapon categories** (a UI grouping, not a wire field): Rifle · SMG · Sniper · Shotgun · Heavy · Energy · Support · Power · Exotic · Launcher · Stun, plus Ability and Melee. Nothing the gun receives says which category a weapon is in. So the table above uses Open BRX's role grouping instead. 🔍 `src: protocol/callsign-extract/config-facts.md`
 
 [callout:tip] **No stock weapon has an alt-fire.** The secondary-fire fields are empty on all 20 captured frames. The orange ALT button cycles perks and abilities in the modes that have them. Every weapon is also just *data*. A host can send its own weapon into any of the gun's 6 slots: damage, rate, clip, reload, burst, overheat and sounds. That is exactly what Open BRX does. ✅🔍 `src: docs/reference/weapons.md (tokens 7–11), protocol/callsign-extract/protocol-classes.md §What's moddable`
 
@@ -345,13 +345,13 @@ _What Supremacy's characters are made of, what the ALT button cycles, and what t
 | Chopper | yes |
 | Air Raid (bombing run) | yes |
 | Nuke | yes |
-🔍 `src: protocol/callsign-extract/streak-rewards-config.json, protocol/callsign-extract/config-facts.md`
+🔍 `src: protocol/callsign-extract/config-facts.md`
 
 [accordion] **Post-game medals (21, from the app's config)** 🔍
 - **MVP**: highest score on their team · **Top Gun**: most kills · **Sharp Shooter**: most accurate · **Trigger Happy**: most shots fired · **Grave Lover**: most deaths · **Highest K/D** · **Survivalist**: fewest deaths · **Top 3**: top three score on your team · **The Assistant**: most assists · **Objective King**: most flags/boxes
 - **First Blood**: first kill of the game · **Double Kill / Triple Kill / Killtacular**: 2/3/4 kills, each within 4 s of the last · **Streaky**: a 5-kill streak · **Streakerten**: a 10-kill streak · **Streakernaut**: highest streak in the game
 - **Ninja**: 3 melee kills in one life · **Assassin**: most melee kills · **Weapons Expert**: 3 kills with 2+ weapons · **Head Shot**: 5 kills by head shots only
-`src: protocol/callsign-extract/game-medals-config.json`
+`src: mcp/brx_mcp/data/medals.json`
 
 [callout:info] **Where each fact on this page comes from.** ✅ On the bench: the character health/armor/shield shapes are real pools the gun tracks; medic heal and shield grant exist as IR effect functions; the gun announces "double kill" by itself in gun-menu games. 📖 From the manuals: the character table, the abilities, the factions and the perk list. 🔍 From the app's config: the 16 streak rewards and the 21 medals. `src: docs/experiment-log.md (#33, killstreak/multikill entries), docs/sound-architecture.md §Native multikills`
 
@@ -457,7 +457,7 @@ _The gun keeps no game state, so any rule you can write over hits, teams, health
 - `docs/reference/callsign-ui.md`: the app's weapon screen (clip/mags/reload), categories, mode tiles, every GAME SETTINGS field
 - `protocol/callsign-extract/apk-harvest.md`: the app's 14 modes, win conditions, QR stations, weapon pickup pool, grenade fields, region enum, where the data lives
 - `protocol/callsign-extract/protocol-classes.md`: enums (damage/ability types, reload types, weapon categories), FSET sound slots, moddability bounds
-- `protocol/callsign-extract/weapon-categories-config.json`, `streak-rewards-config.json`, `game-medals-config.json`, `config-facts.md`: app categories, 16 streak rewards, 21 medals
+- `protocol/callsign-extract/config-facts.md`: app categories, 16 streak rewards; `mcp/brx_mcp/data/medals.json`: 21 medals
 - `docs/reference/brx-manual-notes.md`: V7 manual: on-gun flow, modes, settings ranges, stock weapons, per-mode perks, 9 Supremacy characters and abilities
 - `docs/reference/brx-extended-user-guide.md`: 7 gun-menu modes with LED colours, factions, 13 classes, 8 perks, weapon descriptions, accuracy model, indoor/outdoor
 - `docs/game-modes.md` (incl. §Hard ceilings): infrastructure tiers, catalog, custom modes, Extraction, health/regen variants, team structure, honest limits
@@ -482,6 +482,6 @@ Items removed from the pages above under the known-facts rule, plus open questio
 - **Grenade CTF team assignment.** Shooting a CTF-mode grenade turned it red rather than the shooter's colour on the bench; the flag/team step has not been reproduced. *Removed:* the "Capture the Flag base" row of the "$0" table. `src: docs/reference/grenade.md §Known grenade quirks`
 - **Thrown-grenade blast types.** FlashBang / Gas / Confusion / Molotov are configurable for a *paired* thrown grenade in the app's data; untested end-to-end on hardware. *Removed:* the "Area denial" row of the "$0" table. `src: docs/reference/grenade.md §Resolved/still open, protocol/callsign-extract/apk-harvest.md §Grenade`
 - **Reserve accounting.** Every frame carries a reserve value exactly twice a second reserve value; which one the gun counts down from is known, why there are two is not. `src: docs/reference/weapons.md`
-- **Streak rewards & medals in play.** All 16 rewards and 21 medals are published as app-config facts; none has been watched firing in a hosted game. `src: protocol/callsign-extract/streak-rewards-config.json, game-medals-config.json`
+- **Streak rewards & medals in play.** All 16 rewards and 21 medals are published as app-config facts; none has been watched firing in a hosted game. `src: protocol/callsign-extract/config-facts.md, mcp/brx_mcp/data/medals.json`
 - **Region setting.** `GunLaserRegion` = USA / International is published as the app's setting name; the "IR emitter power profile" reading of what it changes on the gun is *removed*. `src: protocol/callsign-extract/apk-harvest.md §Region`
 - **Images:** none removed. No image slot illustrated a held claim (GAME-09's caption was reworded from "a sniper's 80-point hit" to "an 80-point standard hit").
