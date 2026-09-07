@@ -73,9 +73,11 @@ website (`docs/manual/*.md` → `webapp/`; `cd site && npm run build && npm test
 the ui-build-verify checklist and refuses to run on a stale build; **a push to `main` deploys the site**
 (Cloudflare builds `webapp/` from the repo via the root `wrangler.toml`, so commit a fresh build or you
 publish a stale one); `webapp/mc/` is the separate MC UI and is never touched by the site build;
-**`webapp/download/`** holds the committed Android APK + its `build.json` sidecar — a committed
-artifact the generator protects but never writes, exactly one `.apk`, rebuilt only by
-`npm run android:apk`).
+**`webapp/download/`** holds only the `build.json` sidecar: the APK itself is **git-ignored and lives on
+the `app-v<version>` GitHub Release** (a committed APK cost ~5 MB of history per cut). `npm run android:apk`
+builds it, publishes the release and writes the asset URL into the sidecar; the download page links that URL
+and reads every fact it states off the real bytes. `mcp/tests/test_published_build.py` fails if the sidecar
+goes stale, names a commit that does not exist, or an APK gets committed).
 **No em dashes in `docs/manual/`**: a test fails the build if one reaches a page. See
 `docs/manual/README.md` for the house style.
 

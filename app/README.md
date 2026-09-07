@@ -101,7 +101,8 @@ npm run ui:moments      # the transient-moment suite; npm run ui:e2e = the full 
 `npm run android:apk` is the build half of the release (the site rebuild below is the other half,
 and is not optional): it finds a JDK 21, re-applies `android-setup.sh`
 (the platform is generated, so those patches are not in git), builds a **debug** APK, and copies it
-to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there.
+to `../webapp/download/brx-companion-<version>-android-debug.apk`, deleting any older APK there. That
+copy is **git-ignored**: it exists so the site build can read the real bytes on the machine that cut it.
 Exactly one APK lives in that folder: the site build refuses to guess between two. It then
 **publishes the APK as a GitHub Release asset** (tag `app-v<version>`) and writes that asset's URL
 into `build.json`. Set `APK_PUBLISH=0` to skip the release; a missing or unauthenticated `gh` only
@@ -111,8 +112,7 @@ warns, so a build always completes offline.
 as it is right now. So before cutting a build meant for the site: commit or stash `app/src`, and bump
 `package.json` if the version should change. The script prints a WARNING listing every uncommitted
 `app/` file it just baked in, and records `git` (short SHA) + `dirty` in `build.json` so a published
-APK is traceable to a tree. (The sidecar committed on 2026-08-30 predates those two fields, so the
-APK served today carries no recorded provenance; the next cut will.) Heed the warning; it is the difference between publishing a
+APK is traceable to a tree. Heed the warning; it is the difference between publishing a
 reviewed build and publishing whatever another session had half-written.
 
 Just want an APK to install locally, without touching the site? Send it somewhere else:
@@ -131,26 +131,22 @@ git add webapp/download webapp/platform docs/manual app && git commit -m "cut <v
 Name the paths. A bare `git add -A` here will sweep up whatever another session has in flight (this
 repo often has two running), and `webapp/download/` is the one place where that publishes a binary.
 
-**Where a build belongs: the Release, not git.** A committed APK costs ~5 MB of git history per
+**Where a build belongs: the Release, not git.** A committed APK cost ~5 MB of git history per
 release that nothing short of a rewrite gets back; a purge on 2026-09-07 reclaimed ~80 MB of
-accumulated binaries, most of it old APK builds. One APK is still tracked in `webapp/download/`
-because **the site is public while the repo is private**, and a release asset on a private repo is
-not downloadable by an anonymous visitor, so that file is what the download button actually serves
-today. The site build prefers the local file when present and falls back to `build.json`'s `url`
-when it is absent, so going public makes the switch a single commit with no visible page change:
+accumulated binaries, most of it old APK builds. Since then the APK is **git-ignored** and every cut
+is published to the `app-v<version>` GitHub Release, which the download page links.
 
-```bash
-git rm --cached webapp/download/*.apk
-printf 'webapp/download/*.apk\n' >> .gitignore
-```
-
-That item is tracked in `docs/FOLLOWUPS.md` under "Before going public".
+One consequence while the repo is **private**: a release asset is not downloadable by an anonymous
+visitor, so the public page's download button only works for someone with repo access. That is a
+deliberate trade (the maintainer is the only consumer today) and it resolves itself the moment the
+repo goes public, with no edit: the URL does not change, it just starts working for everyone.
 
 **How the site and this script meet** (three rules, all enforced by the site build):
 
-- `webapp/download/` is a **committed artifact**, not generated. `site/build.mjs` neither writes nor
-  sweeps it (`PROTECTED`), so it survives a site rebuild. Don't `.assetsignore` it: Cloudflare has to
-  upload it.
+- `webapp/download/build.json` is a **committed artifact**, not generated. `site/build.mjs` neither
+  writes nor sweeps it (`PROTECTED`), so it survives a site rebuild. The **APK beside it is not
+  committed** (`.gitignore`); the page links the Release asset instead, so Cloudflare has nothing to
+  upload but the sidecar.
 - **Exactly one `.apk`** in that folder. Two, and the site build fails ("keep exactly one") rather
   than guessing which one the page should link.
 - `build.json` beside it records the **build date** plus `git`/`dirty` provenance (the date is

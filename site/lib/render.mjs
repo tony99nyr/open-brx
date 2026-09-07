@@ -263,7 +263,7 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
 <body class="${klass}">
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
-  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>☰</button>
+  ${sidebar ? `<button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>&#9776;</button>` : ''}
   <a class="brand" href="/">${LOGO}<span>OPEN BRX</span></a>
   <nav class="topnav" aria-label="Primary">${nav}</nav>
   <div class="tools">

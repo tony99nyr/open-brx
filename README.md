@@ -40,7 +40,7 @@ the manual, the spec of record (`docs/spec/`), the ADRs and the open-work list.
 | `protocol/` | The serial command reference (`brx-protocol.md`), the IR word (`brx-ir-protocol.md`), the Callsign APK teardown (`callsign-extract/`: command/field maps, `$WEAP` token map) and the decoded captures |
 | `mcp/` | **brx-mcp**, the MCP server + CLI that drives taggers over BLE, and **`mcp/brx_mcp/mc/`**, the Mission Control server (game modes, scoring, the frame compiler; `API.md` is the server⇄UI contract) |
 | `app/` | **BRX Combat HUD**, the native per-player phone app (Capacitor: one codebase → Android + iOS, native BLE). See [`app/README.md`](app/README.md) |
-| `webapp/` | **Generated output, do not hand-edit.** The public site built from `docs/manual/` by `site/`, plus `webapp/mc/` (the Mission Control console, Vite/React) and `webapp/download/` (the committed Android APK) |
+| `webapp/` | **Generated output, do not hand-edit.** The public site built from `docs/manual/` by `site/`, plus `webapp/mc/` (the Mission Control console, Vite/React) and `webapp/download/` (the `build.json` sidecar for the Android build, which itself lives on the GitHub Release) |
 | `site/` | The static-site generator and its Playwright verification suite |
 | `hardware/` | `esp32-ir-bridge/` (the IR capture/emit rig, built and proven), the Companion and Utility Box specs, print-file notes |
 | `firmware/` | Empty. Companion / station firmware is still to write; the only ESP32 code that exists is the IR bridge in `hardware/` |

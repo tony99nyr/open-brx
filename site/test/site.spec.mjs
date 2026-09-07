@@ -425,6 +425,31 @@ it('2e · diagnostic ladder rungs; sidebar (or phone drawer) navigates; drawer c
   await expect(page.locator('h1')).toContainText('Repairs');
 });
 
+it('2i · the nav toggle is never a dead control: a visible burger always opens a real drawer', async ({ page }) => {
+  const vp = page.viewportSize();
+  test.skip(vp.width >= 820, 'the drawer toggle is phone-only (display:none above the breakpoint)');
+  // 2e proves the drawer works on ONE manual page. That is exactly why this bug survived: the home
+  // page, /credits, /changelog and /404 have no sidebar by design, but still rendered the burger, so
+  // on a phone it was a control that visibly did nothing. Sweep the page TYPES, not one page.
+  for (const url of ['/', '/credits/', '/changelog/', '/404.html', '/manual/', '/manual/hardware/', '/platform/', '/platform/app/']) {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    const btn = page.locator('[data-nav-toggle]');
+    if (await page.locator('nav.side').count() === 0) {
+      await expect(btn, `${url} renders a nav toggle but has no drawer for it to open`).toHaveCount(0);
+      continue;
+    }
+    await expect(btn, `${url} has a drawer but no way to open it on a phone`).toBeVisible();
+    await btn.click();
+    const side = page.locator('nav.side');
+    await expect(side, `${url}: tapping the toggle did not put a drawer on screen`).toBeVisible();
+    const box = await side.boundingBox();
+    expect(box.width, `${url}: the drawer opened with no width`).toBeGreaterThan(150);
+    expect(await side.locator('a').count(), `${url}: the drawer opened empty`).toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+    await expect(btn, `${url}: Escape did not close the drawer`).toHaveAttribute('aria-expanded', 'false');
+  }
+});
+
 it('2h · under-construction policy: five 🚧 cards on /platform/pieces/, brx-mcp in full, no held details leak', async ({ page }) => {
   await page.goto('/platform/pieces/');
   await expect(page.locator('.uc')).toHaveCount(5);
@@ -553,7 +578,8 @@ it('6 · primary controls ≥ 44px on phone (≥ 36px desktop); no meaning-beari
   const min = vp.width < 820 ? 44 : 36;
   for (const u of ['/manual/gameplay/weapons/', '/manual/fix/diagnose/', '/manual/sound/sound-bank/', '/manual/dev/transport/', '/manual/dev/commands/', '/']) {
     await page.goto(u, { waitUntil: 'networkidle' });
-    if (vp.width < 820) await page.locator('[data-nav-toggle]').click();
+    // open the drawer so its controls are measured too; pages without a sidebar have no toggle (2i)
+    if (vp.width < 820 && await page.locator('[data-nav-toggle]').count()) await page.locator('[data-nav-toggle]').click();
     await page.locator('[data-search-open]').click();
     await page.locator('[data-search-input]').fill('headset');
     await expect(page.locator('[data-search-results] a').first()).toBeVisible();
