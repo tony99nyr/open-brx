@@ -137,7 +137,16 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `_lan_ip` twice; in tests, the Session-builder `mk()` 5x and the API TestClient bootstrap 3x. **F42.7**
   `mc/armory.py:19`'s `gen` check is case-sensitive, so `"Gen1"` silently becomes `gen2_3` (pinned as current
   behaviour, not fixed); `mc/interfaces.py` documents `resolve_gun`/`evict` as "optional on fakes" but not
-  `on_batch`, which `state.py` guards identically. `build`.
+  `on_batch`, which `state.py` guards identically. **F42.8 DO NOT MERGE, for whoever runs the next pass:**
+  `hitaudio.MATERIAL_POOLS["hit_hp"]` is `("",)` -- a deliberate empty id meaning SILENCE, not a missing
+  value (health ships silent by bench decision 2026-09-07). `roll_material` tests `role in fixed` rather than
+  truthiness, and `pset_foot` tests `v is not None`, precisely so a pinned `""` is not rolled over. Both read
+  as defensive noise and are load-bearing: a truthiness "simplification" puts a sound back into a slot
+  measured as better empty, and no test could catch it by inspecting output because the frame stays valid
+  (pinned by `test_an_explicit_empty_pick_is_not_rolled_over`). Likewise `sir_table(..., class_sounds=False)`
+  is a real behavioural default, not a flag awaiting cleanup: F38 proved `$SIR` REPLACES the `$PSET` pool
+  sound rather than layering, so enabling it silences the material layer. The stock `$SIR` rows' empty sound
+  tokens are what make the pool sounds audible, not a gap to fill. `build`.
 
 - **F41 🟡** the FAKE tagger diverges from real hardware on SHIELD, and it produced a false bug report. Our compiled
   `$PSET` sets shield 70, and `fake.py` applies it on spawn and reports `$HP,hp,armor,70`. A REAL gun reports
