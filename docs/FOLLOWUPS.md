@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F37 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S15.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F40 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S16.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -213,6 +213,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   own pool, so it computes `min(grant, max - current)` and the stack shows that; a gain of 0 shows nothing at all
   —
   **S14.3** prove it on hardware. `build`.
+- **S15 🟡** **Nothing guards the FrameBundle boundary** (raised by brx-sound, 2026-09-07). The UI contract test
+  added 2026-09-07 compares `types.py` against `webapp/mc/src/api/types.ts`, which covers the MC console. The
+  **phone** consumes a different contract, `FrameBundle`, and reads it in **57 places** in `app/src/engine.js`
+  against **zero** mirrored declarations, so a field the compiler renames or drops fails as `undefined` at
+  match time rather than in CI. It is the same class of bug the UI test was written for, on the boundary that
+  actually runs a game. A cheap first cut: assert every key `compile.py` emits is named in `contracts.md` §3,
+  and that each bundle key the engine reads is one the compiler emits. Worth doing before the bundle grows
+  again — S14's `siphon` block crosses exactly this line. `build`.
 - **S13 🟡** **Per-player kit powers beyond the pool** (Tony 2026-09-07). The per-player POOL override
   (`loadout.overrides`, KIT) covers health and armour and shipped 2026-09-07. The same per-player idea could
   carry more: a damage or fire-rate modifier, a respawn-delay handicap, extra lives. Each needs a home on the
@@ -325,6 +333,19 @@ for every IR test (damage from an enemy, grants from the victim's own team, or t
 never advance an operator-in-the-loop sweep on a timer; never end a run on a bare `$CLEAR` (F11). Run everything from
 the Windows venv (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp …`); the ESP32 rig is board A =
 receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
+
+**A17 hit audio** (one gun, our compiled game, an armoured life; `ears` + `trigger`):
+- F37 🟠 **`$PSET` hit-slot ORDER.** hitHp / hitArrmor / hitShield / hitCrit are source-derived from the APK, but
+  `docs/manual/06-developer.md` still marks the wire-slot -> name mapping unknown. Arm with three unmistakably
+  different clips in those slots, take an armour hit then a health hit on one life, and say which played when.
+  Everything in `hitaudio.MATERIAL_POOLS` rides on this; a wrong order plays a real but wrong clip per pool.
+- F38 🟠 **Does a `$SIR` sound LAYER with the `$PSET` pool sound, or REPLACE it?** Put a bell on `$SIR,0,0` and a
+  thud in hitHp, then take one standard hit on health. Two sounds = the ideal (weapon impact + material); one =
+  the class layer wins and the material layer only speaks on the rows we leave silent. Decides which layer we tune.
+- F39 🟡 **The real `$SIR` row ceiling.** "Max 14 distinct IR recognitions per game" is a community figure we have
+  never measured; `hitaudio.MAX_SIR_ROWS` treats it as a soft budget. Push a 20-row table and check every row still
+  registers. Gates `hit_audio_rekey`, which is DEFAULT OFF until F38 and this are both in.
+- F37-39 all read off `FrameBundle.hit_audio` (cells, families, material roles) for what the gun was actually armed with.
 
 **Trigger in hand** (one gun, our compiled game, Tony firing):
 - 1.1 **K4** melee swing, watch `$BUT,8` / `$HIR,…,13`.
