@@ -180,9 +180,17 @@ A `headset.role` state the node re-asserts after every registered hit (the way t
 
 Palette rules: **green is never painted on a headset** (native hit + out green); red / yellow on the gun are safe
 only because the body no longer rests on team colour; orange means "the objective changed" (one meaning per
-mode); white is neutral / good / objective. Teams: 0 red · 1 blue · 2 yellow · 3 green on both surfaces
-(identity map, fixing the gun table); a green team head reads as an out-blink at range, so a fourth team should be
-**purple (tid 4)** once `$TID,4` + `$HLED,4` are bench-confirmed. Form carries state for colour-blind players:
+mode); white is neutral / good / objective.
+
+**Teams and colours are separate things (bench 2026-09-07).** `$TID` is combat identity and is **0-3 only**: the
+IR word's team field is 2 bits, the gun transmits `tid & 3`, and the victim compares against its FULL tid, so a
+tid >= 4 makes teammates damage each other, makes their shots read as friendly to the tid they alias onto, and
+lets a gun kill itself off a nearby surface (all three observed). The **colour** palette is 0-7 on both surfaces
+and fully verified. So the displayed team colour is a LOOKUP the profile owns, defaulting to the tid's palette
+entry but overridable: team 3 stays green in combat while being painted **purple** on gun and headset, which is
+how green stays off a headset without inventing a fifth team. FFA is **white** (palette 6, Tony: stock uses
+white) on one shared tid — Q19 closed. The only place a tid's own colour leaks is the firmware breathing in the
+first 2.5 s of a life, before `gun.take` blanks the body. Form carries state for colour-blind players:
 solid = identity, slow blink (≤ 2 Hz) = a state, triple 80 ms = an event, small-LED pulse = down.
 
 Low-health: Callsign's `$HLED,7,4,90,90,10,15` is ~5.5 Hz for 2.7 s, inside the 3–30 Hz band. Kept as the

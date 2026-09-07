@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F35 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F36 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S11.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -116,6 +116,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
+
+- **F35 🔴** `$TID` 4-7 are display-only and BREAK combat (bench 2026-09-07): the IR word's team field is 2 bits so
+  the gun transmits `tid & 3`, but the victim compares the FULL tid — teammates on tid ≥ 4 damage each other, their
+  shots read as friendly to the tid they alias onto (no damage), and a gun can kill itself off a nearby surface
+  (observed, `$HIR` naming its own player id). **Guard it in code**: reject `tid > 3` in `state.validate()` /
+  team assignment, and make the displayed team COLOUR a separate lookup (palette 0-7) from the tid. `build`.
 
 - **F3 🟡** empty-mag / reload prompt never appeared on sustained full-auto. Gun and engine are eliminated from captures;
   what is left is the phone transport/render layer. Needs the phone's BLE frame ring (Share log before closing the app). `capture`.
