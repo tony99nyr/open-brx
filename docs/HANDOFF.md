@@ -113,8 +113,8 @@
    `docs/bench-weap-tokens-discovery-2026-09-04.md` (sensor damage F23 first).
 
 **The bench queue** is the "Needs Tony at the bench" section of `FOLLOWUPS.md` plus one dated run
-sheet at a time (today: the gun-body rungs above, then weap-tokens-discovery, then the remaining steps in
-`bench-grenade.md`). Read `gotchas.md` first; its "Before a bench session" block is the pre-flight.
+sheet at a time (today: `bench-super-indoor-2026-09-07.md` on the Mac, the gun-body rungs above, then
+weap-tokens-discovery, then `bench-grenade.md`). Read `gotchas.md` first; its "Before a bench session" block is the pre-flight.
 
 ## Machine roles
 

@@ -220,9 +220,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   so 1–2 s puts every `$SPAWN` inside the relay wedge. Validate ≥ 3 at PUT, floor in the engine. `build`.
 - **Q13 decision** friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
   score teamkills as policy, or accept no teamkill feedback. Decide before any mode advertises it. `decision`.
-- **Q15 🔴** sub-indoor IR power: only power exists, no width field. Lever 1 = `$WEAP` t41 `gunRangeIndoor` (75 on all
-  guns, 20 on melee); lever 2 = `$GSET` t3 `gunLaserRegion`. `$IRTX`/`$HFIRE` emit nothing on v4.32. Sweep t41
-  75 → 30 → 20 → 10 → 75 at a fixed distance on the receiver; a null is an answer. If it works, an indoor preset. `space` (bench 2.1).
+- **Q15 🔴** sub-indoor IR power (Tony: indoor bounces register hits from everywhere). Lever 1 = `$WEAP` t41
+  `gunRangeIndoor` (75 on all guns, 20 on melee) — **one prior positive, see `weapon-design.md` §5 U2**; lever 2 =
+  `$GSET` t3 `gunLaserRegion`. `$IRTX`/`$HFIRE` emit nothing on v4.32. **Run sheet:
+  [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md)** (MacBook — the rig has never run on
+  macOS; find the margin before sweeping). A null is an answer. If it works, an `indoor_tight` venue preset.
+  `space` (bench 2.1).
 - **Q16 🟠** beam divergence: on-axis then 10–50° off-axis at 3 m, 10 shots each, closing control. Sharp fall-off ⇒ skip
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
 - **Q18 🟡** the first mid-game reconnect prints "reconnected" before the gun is listening (`modes/driver.py`), burning
@@ -421,7 +424,9 @@ sound (O01 ships; alternates O05 O02 O04 O06 O03) and, first, its zero damage (d
 **S-A12.1**; **D4** does "double kill" fire under our config (3 guns); **P15** alarm id.
 
 **Space / tape measure** (receiver on a taped mark, no victim gun):
-- 2.1 **Q15** t41 100 → 5 → 100 (closing control), `ir-range` detect%. 2.4 **Q16** divergence at 3 m, 0/10/20/30/40/50°.
+- 2.1 **Q15** t41 ladder, `ir-range` detect%/decode% — **superseded by the run sheet
+  [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md)** (Mac; margin first, closing control
+  mandatory — a missing one spoiled U2). 2.4 **Q16** divergence at 3 m, 0/10/20/30/40/50°, taken in the same sitting.
 - 2.2 the "halo assassinate": a back-dome melee is a different word, or the same word on tok1 = 1? (melee is magnitude 90).
 - 2.3 sensor map (tok1 0/1/2/3/4) at ~5 m. **F28** back dome at field distance.
 - IR range of real guns vs our emitter, outdoor mode / weapon / angle (`docs/archive/hardware/range-experiment.md`); the grenade beacon's ~18–20 ft.
