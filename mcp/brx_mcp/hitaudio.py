@@ -166,7 +166,7 @@ MATERIAL_DEFAULT = {r: MATERIAL_POOLS[r][0] for r in MATERIAL_ROLES}
 # Callsign's inherited `A10` is a geiger-ish tick, and because it loops it ran UNDER every shield-band
 # hit of the session -- which is what made an hour of shield readings incoherent ("that geiger counter
 # hit came back", "wtf"). It ships EMPTY until a hum is chosen by ear: an unexplained ticking loop
-# during play is worse than no shield ambience at all. Followup: pick a low hum (`fx:scifi_fx` /
+# during play is worse than no shield ambience at all. Followup F44: pick a low hum (`fx:scifi_fx` /
 # `fx:retro_fx` on PITCH, not centroid; the whole `SW` family is Star-Wars-style and was rejected).
 SHIELD_LOOP_INDEX = 7
 SHIELD_LOOP = ""
