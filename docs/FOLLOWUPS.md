@@ -136,7 +136,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   that, `test_bench_teardown.py`, could not see them because it only scanned `finally:` blocks while all five put
   their teardown in the body of `main()`. A safety net trusted precisely because it existed. Fixed by the refactor
   lane (AST scan of whole files, zero false positives across 66 tools, plus a regression test for the
-  not-in-a-`finally` shape). Add (5): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
+  not-in-a-`finally` shape). Add (5) **the purest instance, and it is the DETECTOR**: `diag/cases.py` — the tool
+  whose whole job is answering "can this gun be hit?" — shipped FIVE of the ten `$SIR` rows (no rocket, no melee),
+  so it would sign off a gun that is deaf to three weapon classes; its docstring claimed the frames were kept in
+  sync by hand. Fixed 2026-09-07 (`028cc4e`) by importing them. **And the same file still ends on a bare `$CLEAR`
+  (`END = ("$STOP,*", "$CLEAR,*")`, cases.py:38), so running the diagnostic LEAVES the gun un-hittable** — F11,
+  the very fault it exists to detect. The AST teardown guard did not catch it because it scans `mcp/tools/` only.
+  Add (6): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
   in `led-language.md` §6 and were never assigned, so a KNOWN bug was indistinguishable from an unknown one until a
   refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
   reports a file that did not run, a compiler asserts its `$SIR` cells cover the weapons (done, A17), a light rule is
