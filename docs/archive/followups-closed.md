@@ -2054,3 +2054,4 @@ the field."
 
 
 ---
+- 2026-09-07 **Q19** FFA colour: WHITE (tid 6) on both surfaces — Tony, matches stock FFA; eight teams verified on hardware the same night. **S4 (b)** a held gun paint survives 8 min with no traffic.

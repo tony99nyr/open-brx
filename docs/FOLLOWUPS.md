@@ -174,8 +174,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
 - **Q18 🟡** the first mid-game reconnect prints "reconnected" before the gun is listening (`modes/driver.py`), burning
   `RECONNECT_CAP`; verify with a round trip first. Also untested: can a gun absent at START join a running match? `build` + `space`.
-- **Q19 decision** our FFA shows three team colours (unique `$TID` per gun); native FFA is white. `$GLED,6,6,6` paints
-  white directly now, and Q17 attributes by player id, so choose: white like stock, or distinct colours. `decision`.
+
 - **Q12′ decision** should `hit_taken` carry the shield delta as its own field (both sessions said yes; `dmg: 0` invites
   `if dmg:` guards to drop the event)? `decision`.
 - **B20 🟢** is `$LCD` token 3 the shield? Grant a shield (fn 11, friendly), `$HP` shows it, trigger an `$LCD`, read
@@ -239,8 +238,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   a malformed uuid; Android catches only `SecurityException`; `webview_eval.py` carries a personal adb path;
   `compile.py` legacy `$WEAP` `int(f.split(",")[16])` has no guard; `_turned` not persisted or reset; 3-team infection
   survivor count is wrong (restrict to two teams in `validate()`).
-- **S4 leftovers 🟢** gun body LED (A11.7, default `team` + `pregame: team`, body taken 2.5 s after `$SPAWN`): (b) hold
-  time with no traffic over minutes; (e) blink forms after a blank; the separate muzzle-flash LED's addressability; an
+- **S4 leftovers 🟢** gun body LED (A11.7, body taken 2.5 s after `$SPAWN`): (b) CLOSED 2026-09-07 (a paint held
+  8 min with no traffic); (e) blink forms after a blank; the separate muzzle-flash LED's addressability; an
   event burst in the first 2.5 s of a life still fights the breathing (exact threshold 1.5–2.0 s). `eyes`.
 - **S7 leftovers 🟡** reconnect (S7.1/S7.2 built + hardware-validated): gap-death re-arm (a gun that died while the app
   was closed and does not re-report `$HP,0` is re-armed as alive; decide whether reconcile re-probes once); the
@@ -333,7 +332,7 @@ sound (O01 ships; alternates O05 O02 O04 O06 O03) and, first, its zero damage (d
 expanded (the 2026-08-24 crawl missed threads).
 
 **Decisions (Tony's call):** Energy Launcher deals zero damage in every shipped game (`$SIR,9,3,,24` is a status row;
-flatten `_SIR_TABLE` or retune five weapons); **Q12′**; **Q13**; **Q19**; **F5**; **F20**; **F25**; **K1** which kid
+flatten `_SIR_TABLE` or retune five weapons); **Q12′**; **Q13**; **F5**; **F20**; **F25**; **K1** which kid
 mode; **P14**.
 
 ## 10. System proofs (needs players, space, time)
