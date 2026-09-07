@@ -25,3 +25,7 @@ keystore.properties
 # raw Callsign APK config assets: never commit (protocol/callsign-extract/RAW_ASSETS_NOTE.md);
 # a maintainer regenerating derived data pulls fresh copies here, gitignored
 protocol/callsign-extract/.raw-assets/
+
+# Android builds live in the GitHub Release (app-v<version>), never in git: a committed apk
+# costs ~5 MB of history per release. The download page reads build.json and links the release url.
+webapp/download/*.apk

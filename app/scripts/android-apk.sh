@@ -138,4 +138,4 @@ echo
 echo "==> $OUT/$NAME"
 echo "    $(du -h "$OUT/$NAME" | cut -f1)  sha256 $(sha256_of "$OUT/$NAME" | cut -c1-16)…"
 echo "    Next: (cd site && npm run build && npm test), then commit webapp/ and push (a push to main deploys)."
-echo "    The apk itself belongs in the Release, not in git: see webapp/download/README.md."
+echo "    The apk itself belongs in the Release, not in git: see app/README.md."

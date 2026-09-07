@@ -113,6 +113,7 @@ function findDownload() {
   // is trusted only while it still describes these exact bytes.
   let date = fs.statSync(path.join(dlDir, file)).mtime.toISOString().slice(0, 10);
   let variant = /-release\.apk$/i.test(file) ? 'release' : 'debug';
+  let meta_url = null;
   const sidecar = path.join(dlDir, 'build.json');
   if (!fs.existsSync(sidecar)) {
     // without it the page would date the build from the checkout's mtime and state it as fact
@@ -123,15 +124,21 @@ function findDownload() {
     if (!meta || meta.file !== file || meta.sha256 !== sha256) dlProblems.push(`webapp/download/build.json does not describe ${file} (rerun \`npm run android:apk\`)`);
     else if (meta.dirty === true) dlProblems.push(`${file} was built from a dirty tree (build.json git ${meta.git || '?'}): commit app/ and cut it again before publishing`);
     else if (typeof meta.git !== 'string' || typeof meta.dirty !== 'boolean') dlProblems.push(`webapp/download/build.json has no git/dirty provenance: cut the build with \`npm run android:apk\` rather than writing the sidecar by hand`);
-    else { if (meta.variant) variant = meta.variant; if (meta.built) date = meta.built.slice(0, 10); }
+    else { if (meta.variant) variant = meta.variant; if (meta.built) date = meta.built.slice(0, 10); if (typeof meta.url === 'string') meta_url = meta.url; }
   }
+  // The apk is NOT committed (see .gitignore + app/README.md): it lives on the GitHub Release, so
+  // `/download/<file>` would 404 once deployed even though the file is right here on the machine
+  // that cut it. A local copy is still worth having: every hard fact below is read off those real
+  // bytes rather than trusted from the sidecar. So verify locally, link the release.
+  const href = (typeof meta_url === 'string' && /^https:\/\//.test(meta_url)) ? meta_url : `/download/${file}`;
   return {
-    file, href: `/download/${file}`,
+    file, href,
     version: m ? m[1] : '', variant,
     bytes: buf.length,
     size: `${(buf.length / 1e6).toFixed(1)} MB`,
     sha256,
     date,
+    offsite: href !== `/download/${file}`,
   };
 }
 ctx.download = findDownload();

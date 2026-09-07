@@ -612,44 +612,40 @@ it('8 · llms.txt, llms-full.txt, sitemap, robots, JSON-LD (TechArticle/Breadcru
 // ---- 9. the app download: the button must hand over the exact bytes the page describes --------
 // A download page that 404s, or that advertises a size/checksum from an older build, is worse than
 // no page at all: the visitor installs a file they cannot verify, or nothing at all.
-it('9 · /platform/app: the download button serves the committed APK, and the page facts match the bytes', async ({ page, request }) => {
+it('9 · /platform/app: the download button links the published Release, and the page facts match it', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/platform/app/', { waitUntil: 'networkidle' });
   const btn = page.locator('a.dl-btn');
   await expect(btn).toBeVisible();
   const href = await btn.getAttribute('href');
-  expect(href, 'the button links an apk under /download/').toMatch(/^\/download\/[\w.-]+\.apk$/);
 
-  // the file the site will actually deploy (Cloudflare publishes webapp/ from the repo)
-  const onDisk = path.join(WEB, href.replace(/^\//, ''));
-  expect(fs.existsSync(onDisk), `${href} is not committed under webapp/`).toBe(true);
-  const bytes = fs.readFileSync(onDisk);
-  expect(bytes.length, 'an apk under 1 MB is not a real build').toBeGreaterThan(1e6);
-  expect(bytes.subarray(0, 2).toString('latin1'), 'not a zip/apk').toBe('PK');
-
-  // served, not just present
-  const r = await request.get(href);
-  expect(r.status()).toBe(200);
-  expect((await r.body()).length).toBe(bytes.length);
-
-  // and the button actually hands the file over when a person taps it
-  const [dl] = await Promise.all([page.waitForEvent('download'), btn.click()]);
-  expect(dl.suggestedFilename()).toBe(path.basename(href));
-  expect(fs.statSync(await dl.path()).size).toBe(bytes.length);
-
-  // every hard fact on the page is the file's own
-  const sha = createHash('sha256').update(bytes).digest('hex');   // not sha256sum: macOS has shasum
-  const meta = (await page.locator('.dl-meta').innerText()).replace(/\s+/g, ' ');
-  expect(meta).toContain(path.basename(onDisk));
-  expect(meta).toContain(sha);
-  expect(meta, 'size on the page must match the file').toContain(`${(bytes.length / 1e6).toFixed(1)} MB`);
-  const ver = path.basename(onDisk).match(/-(\d+\.\d+\.\d+)-/)?.[1];
-  expect(ver, 'the filename carries the version').toBeTruthy();
-  expect(meta).toContain(ver);
-  // the Built row comes from the sidecar, not from the file's mtime, which a checkout rewrites
+  // The apk is NOT committed (it costs ~5 MB of git history per release, see app/README.md): it
+  // lives on the GitHub Release and the sidecar records where. So the button must leave the site.
   const sidecar = JSON.parse(fs.readFileSync(path.join(WEB, 'download', 'build.json'), 'utf8'));
-  expect(sidecar.sha256, 'sidecar must describe the served apk').toBe(sha);
+  expect(sidecar.url, 'build.json must record the release url').toMatch(/^https:\/\/github\.com\/.+\/releases\/download\/.+\.apk$/);
+  expect(href, 'the button links the release asset, not a path this site serves').toBe(sidecar.url);
+  expect(href, 'the release url names the published file').toContain(sidecar.file);
+  // Every hard fact on the page is the sidecar's, and the sidecar is checked against the real bytes
+  // at build time. On the machine that cut the build the apk is still on disk (git-ignored), so
+  // re-verify against it here; on a fresh clone there is nothing to re-verify and the sidecar stands.
+  const onDisk = path.join(WEB, 'download', sidecar.file);
+  if (fs.existsSync(onDisk)) {
+    const bytes = fs.readFileSync(onDisk);
+    expect(bytes.length, 'an apk under 1 MB is not a real build').toBeGreaterThan(1e6);
+    expect(bytes.subarray(0, 2).toString('latin1'), 'not a zip/apk').toBe('PK');
+    expect(createHash('sha256').update(bytes).digest('hex'),
+      'sidecar must describe the apk it was cut from').toBe(sidecar.sha256);
+    expect(bytes.length, 'sidecar byte count must match the file').toBe(sidecar.bytes);
+  }
+
+  const meta = (await page.locator('.dl-meta').innerText()).replace(/\s+/g, ' ');
+  expect(meta).toContain(sidecar.file);
+  expect(meta).toContain(sidecar.sha256);
+  expect(meta, 'size on the page must match the sidecar').toContain(`${(sidecar.bytes / 1e6).toFixed(1)} MB`);
+  expect(meta, 'the filename carries the version').toContain(sidecar.version);
+  // the Built row comes from the sidecar, not from the file's mtime, which a checkout rewrites
   expect(meta).toContain(sidecar.built.slice(0, 10));
+  expect(sidecar.dirty, 'a published build must come from a clean tree').toBe(false);
 
   // the honesty the page owes a sideloader
   const body = (await page.locator('main').innerText()).toLowerCase();
