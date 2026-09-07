@@ -661,11 +661,17 @@ class Session:
         pushed -- so a pick/policy change made after `push_config()` reaches the gun, not just the
         phone's browse screen. `with_start=True` also re-sends `start` when a match is running.
 
-        ⚠ Only `_after_player_change` passes `with_start=True` today. The review suspects that a
-        phone loadout pick arriving after `start()` (the other call sites, `with_start=False`)
-        leaves the node with a cleared ack and no schedule -- that is a real, separate question and
-        this merge does NOT change which callers ask for `start`. If you're here to fix it, do it
-        deliberately and update the call sites' `with_start` on purpose."""
+        Only `_after_player_change` passes `with_start=True`, and that asymmetry is CORRECT --
+        investigated 2026-09-07 after a review suspected a post-`start()` loadout pick left the node
+        "with a cleared ack and no schedule". Neither half holds, for reasons that live on the node:
+        `engine.js` `_applyConfig()` keeps an armed/live phase and never touches `this.start`, so the
+        schedule survives a config push; and the ack is cleared here on purpose (the node holds a new
+        head it has not echoed -- calling it acked would be a lie) then restored by the node's own
+        `ack_config` ~1.5 s later. Re-sending `start` would be a no-op anyway: `startAt()` returns
+        `reason: 'noop'` for a repeat with the same seq and match_id.
+
+        Pinned by `tests/test_mc_loadout_after_start.py` -- if you are about to "fix" this asymmetry,
+        read that first."""
         if not p.get("node_id"):
             return
         self.net.push(p["node_id"], "assign", self._assign_body(p))
