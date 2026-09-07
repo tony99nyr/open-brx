@@ -78,7 +78,7 @@ ruleset is a small Python plugin.** The Action/ABC seam already makes that plugi
 
 Do them in order: **E1 unblocks the most immediately** (objective modes become configurable over the wire at
 all), E2 removes the multi-place-registration foot-gun, E3 makes it safe for outsiders, E4 is the on-ramp.
-Tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) as **E1-E4**.
+Tracked in [`FOLLOWUPS.md`](../FOLLOWUPS.md) as **E1-E4**.
 
 ## What a contributor experience looks like after E1-E4
 
@@ -114,7 +114,7 @@ character id map, P3), the **phone-speaker path**, and any **import/convert tool
 **Legal:** Halo/UT announcer audio is copyrighted — fine on your own guns, but the project can only ship the
 *slot* for user-supplied packs, never the packs themselves.
 
-The workstream is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) as **E5-E7**: a phone-side audio channel (E5, the
+The workstream is tracked in [`FOLLOWUPS.md`](../FOLLOWUPS.md) as **E5-E7**: a phone-side audio channel (E5, the
 clean path — no gun storage, no per-gun load), a sound-pack config abstraction (E6, supersets B14), and a
 `.LTP` import/gun-load tool (E7, lowest priority since the manual USB path exists). Bottom line: **on the gun
 speaker, sounds must live on gun storage; the phone speaker is the unbuilt-but-clean path for custom packs.**

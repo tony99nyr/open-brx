@@ -1,6 +1,6 @@
 # M-MC — Mission Control (the host app)
 
-- **Status:** Draft (Wave 3 integrator), updated to contracts **A6**. Binds to [`contracts.md`](contracts.md) — **read it first**.
+- **Status:** Draft (Wave 3 integrator), updated to contracts **A6**. Binds to [`contracts.md`](../spec/contracts.md) — **read it first**.
 - **Owner:** M-MC session. This is the **current MC spec** (the authority for the feature catalog); it
   matches/beats the operator surface in `docs/reference/callsign-ui.md`. Anchored by ADR-0002 (laptop = author
   + host + coordinator, BLE only at the bench).

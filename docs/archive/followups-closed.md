@@ -13,7 +13,7 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 
 # Followups — open research, prioritised
 
-> **HISTORICAL — superseded by [`docs/FOLLOWUPS.md`](FOLLOWUPS.md)**, the single source for open
+> **HISTORICAL — superseded by [`docs/FOLLOWUPS.md`](../FOLLOWUPS.md)**, the single source for open
 > work. This A–G list is kept as a notebook snapshot; do not treat its statuses as current.
 
 ## A. The range problem — **ANSWERED 2026-08-23, see entries 17-19 and protocol §7n**

@@ -8,7 +8,7 @@ build/
 .claude/worktrees/
 
 # site generator
-site/node_modules/
+node_modules/
 site/test-results/
 site/test/out-stale/
 site/test/tmp-*/

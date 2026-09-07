@@ -2,8 +2,8 @@
 
 How far off is a **playable end-to-end match** for the two flagship objective modes, and what physical
 hardware (stations, phones, the grenade) each one leans on. Companion to
-[`utility-roadmap.md`](utility-roadmap.md) (the objective-station build plan) and
-[`game-modes.md`](game-modes.md) (the mode design/vision). This doc is a status snapshot, not a spec;
+[`utility-roadmap.md`](../utility-roadmap.md) (the objective-station build plan) and
+[`game-modes.md`](../game-modes.md) (the mode design/vision). This doc is a status snapshot, not a spec;
 where it names code it cites `file:line` so it can be re-checked.
 
 ## 0. Two execution paths — the crux of both stories

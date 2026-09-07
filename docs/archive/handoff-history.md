@@ -448,7 +448,7 @@ notes, environment, hardware facts) as they were on 2026-09-04.
 > bars are ranked across the arsenal (raw `dmg` is a *share of a 115 pool*, so every meter read empty),
 > and `golden_bundle.json` had been **five days stale** — now pinned by a test.
 
-**Read [`docs/gotchas.md`](gotchas.md) before any bench work** — the field
+**Read [`docs/gotchas.md`](../gotchas.md) before any bench work** — the field
 lore, indexed by symptom; several of those quirks each cost a whole session.
 [`docs/unknowns.md`](unknowns.md) is every open question grouped by what unblocks it.
 **The bench queue is [`docs/bench-tomorrow.md`](bench-tomorrow.md), and it is the ONLY one.**
@@ -703,7 +703,7 @@ station/broadcast tier" question, not the linchpin it was framed as here.
 
 ## Followups and unknown fields
 
-Open work is tracked in **[`docs/FOLLOWUPS.md`](FOLLOWUPS.md)** (the single source; refer to items by
+Open work is tracked in **[`docs/FOLLOWUPS.md`](../FOLLOWUPS.md)** (the single source; refer to items by
 id — P2, F, D1…). Summary below is a snapshot only:
 
 | Item | Status |

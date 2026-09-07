@@ -10,7 +10,7 @@ on unwired hardware, or on a decision — see [`unknowns.md`](unknowns.md).
 **Ordered to minimise re-rigging.** Do a whole group before moving to the next; the rig change between
 groups is the expensive part, not the tests.
 
-> ### 🗓️ NEXT (2026-09-04): run [`bench-grenade.md`](bench-grenade.md)
+> ### 🗓️ NEXT (2026-09-04): run [`bench-grenade.md`](../bench-grenade.md)
 > The grenade + emitter session (RF check, beacon word + box test, protocol-15 passthrough, station
 > respawn on an ARMED gun, hill impersonation). ~20 min, one gun, tool `mcp/tools/grenade_bench.py`.
 >
