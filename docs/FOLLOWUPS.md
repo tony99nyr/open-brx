@@ -7,7 +7,7 @@ add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `pro
 same commit, or it gets a row here saying "promote X".
 
 **Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F42 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S16.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+K7 · P18 · Q20 · R3 · S16.** (F42 taken 2026-09-07 by the Python DRY review; next free F is F43.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -116,6 +116,28 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
+
+- **F42 🟡** **the DRY-review backlog** (2026-09-07 Python review, agent team). Six bugs from that pass are FIXED
+  and pushed; what is left is real but none of it is blocking. Evidence: every item below was measured, not read.
+  **F42.1** `Compiler.cues()` carries THREE values that are unreachable — `presentation.cue_frames` overwrites
+  `game_over`, `medal` and `multi` for the same resolved profile, so `cues()` is stale for them. No live impact
+  (`state._push_voice_preview` reads only `kill`, which agrees). `game_over` is the interesting one: same VA33
+  sound, different `$PLAY` token slot (token1 vs token4), so which is right needs an `ear`. Decide which table
+  owns which key, then delete the loser. **F42.2** 12 bench tools hand-roll the body of `B.teardown_frames()`
+  instead of calling it (~55-60 lines); `tools/f11_ab.py`, a one-shot experiment, is imported as a LIBRARY by 18
+  scripts for `SENSOR`/`witnessed`/`word` — those three belong in `bench_common.py`. **F42.3**
+  `tools/led_ingame_usable.py` reaches into `led_effects.py` through a hardcoded Windows UNC path and `exec()`s a
+  slice of its source to borrow `record_roi`; a same-directory import replaces it. **F42.4** still zero-coverage:
+  `ble.ConnectionManager` (monkeypatched everywhere, asserted nowhere), `protocol.py`'s pure helpers,
+  `storage.py`, `btsnoop.py` (no malformed-capture case), `usbconsole.py`, `irbridge.py`, `mock_node`'s
+  reconnect/persisted-fact ring, and ~85% of `__main__.py`. **F42.5** god modules unsplit: `state.py` 1665,
+  `stage.py` 1319, `compile.py` 1163, `__main__.py` 1452 — seams and line ranges are in the review reports.
+  **F42.6** smaller repeats: the mute rule 4x in `presentation.py`, the (primary, secondary, perk) unpack 5x in
+  `policy.py`, `views.weapon_view` re-implementing `WeaponCatalog.hits_to_kill`, `net._send`/`_send_raw`,
+  `_lan_ip` twice; in tests, the Session-builder `mk()` 5x and the API TestClient bootstrap 3x. **F42.7**
+  `mc/armory.py:19`'s `gen` check is case-sensitive, so `"Gen1"` silently becomes `gen2_3` (pinned as current
+  behaviour, not fixed); `mc/interfaces.py` documents `resolve_gun`/`evict` as "optional on fakes" but not
+  `on_batch`, which `state.py` guards identically. `build`.
 
 - **F41 🟡** the FAKE tagger diverges from real hardware on SHIELD, and it produced a false bug report. Our compiled
   `$PSET` sets shield 70, and `fake.py` applies it on spawn and reports `$HP,hp,armor,70`. A REAL gun reports
