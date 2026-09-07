@@ -1146,7 +1146,10 @@ class GunStage:
         # A16 §3.3: held roles. `carrier`/`vip`/`beacon`/`extracted` are ONE flat state each (carrier is
         # WHITE now, never the flag's team colour, finding #11); `infected` alone stays per-team (the
         # one role whose colour is a team fact). A bundle that predates `headset.role` offers none of
-        # these -- the pre-A16 `headset.carrier` shim is not built here (it is being retired).
+        # these -- the stage never builds walkthrough steps off the pre-A16 `headset.carrier` shim, but
+        # that shim itself stays in `presentation.headset_frames()` on purpose: every phone still in the
+        # field runs an APK that predates `role` and falls back to reading it (FOLLOWUPS S10) -- this
+        # slice ending at the BLE boundary is not the same as nothing on the other side reading it.
         role = hs.get("role") or {}
         if role.get("carrier"):
             add("carrier", "CARRYING A FLAG / OBJECTIVE", "headset: WHITE blink held; a hit keeps it blinking", "headset", {"name": "carrier"})
