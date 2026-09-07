@@ -462,6 +462,16 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   a hit sound is mostly tail. Confirm every candidate SOLO. The catalog's `speech_untrusted` transcripts are wrong
   too (`V116` is catalogued "Can't believe!"; on the gun it says "gained the lead"). This is the S1 ear-audit's
   real justification: 20-odd `fx:hit` ids now have by-ear meanings and the rest do not.
+  **AND THE REASON THIS ROW EXISTS RATHER THAN A TEST.** There are two kinds of "individually valid, wrong in
+  relation to something else", and only one can be guarded. Wrong-between-CODE-PATHS is testable: when a fake
+  and a real compiler disagree, an assertion comparing them finds it (that is F42's `FakeCompiler` game_over
+  bug, and how it was caught). Wrong-against-a-MEASUREMENT is not: a non-empty `hit_hp` id plays a real clip
+  that sounds like a hit, and is wrong only relative to a bench result saying silence tested better. No
+  assertion can reach that, because nothing in the repo disagrees with it -- the disagreement lives in an
+  operator's ear on a particular evening. So the only defence is to WRITE THE REASON DOWN NEXT TO THE CODE,
+  which is why `hitaudio.MATERIAL_POOLS` carries its rejections inline and F42.8 records reasons and not
+  rules. A rule without its reason is the first thing a tidy-minded pass deletes, and it will be deleted by
+  someone who is reading the code correctly.
 
 **Trigger in hand** (one gun, our compiled game, Tony firing):**Trigger in hand** (one gun, our compiled game, Tony firing):
 - 1.1 **K4** melee swing, watch `$BUT,8` / `$HIR,…,13`.
