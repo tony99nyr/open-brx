@@ -39,6 +39,13 @@ import re
 import sys
 import time
 
+# Wire tables shared with the MC compiler (verified byte-identical between the two
+# copies before this import replaced one of them — see test_cli_gameconfig_parity.py).
+# `_SIR_TABLE`/`_BMAP` stay private (leading underscore) on purpose: imported as-is,
+# not re-exported public here.
+from .gameconfig import (WEAPON_TAILS, WEAPON_AMMO, SPAWN_SEQUENCE, RESPAWN_SEQUENCE,
+                         _SIR_TABLE, _BMAP)
+
 
 def _print(obj: object) -> None:
     print(json.dumps(obj, indent=2))
@@ -149,75 +156,41 @@ GAME_CONFIG = [
     "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
     "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
-    # IR event table — what each incoming IR protocol does to us
-    "$SIR,0,0,,1,0,0,1,,*",
-    "$SIR,0,1,,36,0,0,1,,*",
-    "$SIR,0,3,,37,0,0,1,,*",
-    "$SIR,8,0,,38,0,0,1,,*",
-    "$SIR,9,3,,24,10,0,,,*",
-    "$SIR,10,0,X13,1,0,100,2,60,*",
-    "$SIR,6,0,H02,1,0,90,1,40,*",
-    "$SIR,13,1,H57,1,0,0,1,,*",
-    "$SIR,13,0,H50,1,0,0,1,,*",
-    "$SIR,13,3,H49,1,0,100,0,60,*",
+    # IR event table — what each incoming IR protocol does to us (gameconfig._SIR_TABLE)
+    *_SIR_TABLE,
     # Button map — mandatory. Without these the trigger gives the "disabled" chirp.
-    "$BMAP,0,0,,,,,*",
-    "$BMAP,1,100,0,1,99,99,*",
-    "$BMAP,2,97,,,,,*",
-    "$BMAP,3,98,,,,,*",
-    "$BMAP,4,98,,,,,*",
-    "$BMAP,5,98,,,,,*",
-    "$BMAP,8,4,,,,,*",
+    # (gameconfig._BMAP)
+    *_BMAP,
     "$PLAYX,0,*",
     "$PLAY,VA81,4,6,,,,,*",
 ]
 
 # Takes the tagger live. $AMMO loads the magazines; $BMAP,0,0 is re-sent after
 # spawn (the app does this, and the trigger does not work reliably without it).
-SPAWN_SEQUENCE = [
-    "$SPAWN,,*",
-    "$AMMO,0,36,108,1,*",
-    "$AMMO,1,6,12,1,*",
-    "$BMAP,0,0,,,,,*",
-]
-
-# Respawn after death. Ammo is restored implicitly — no $AMMO needed (§7f).
-RESPAWN_SEQUENCE = ["$HLOOP,0,0,*", "$SPAWN,,*"]
+# Respawn after death: ammo is restored implicitly — no $AMMO needed (§7f).
+# (both imported from gameconfig — see the module import at the top of this file)
 
 # Clean teardown, as the app does it at end of game.
-END_SEQUENCE = ["$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
+# ⚠ 2026-08-25 revive fix (gameconfig.END_SEQUENCE) never reached this CLI copy: a gun
+# that died at the whistle stayed stuck in the death glow because nothing here restores
+# it before the STOP/CLEAR. The leading $SPAWN,,* is that fix (SPAWN clears the dead HP
+# state). $HLED,,6 / $PLAY,VS6 are the app's own captured end-of-game tail (protocol
+# §3.2/§7) and are CORRECT here even though "$HLED,,6" looks like the in-play
+# teardown-only warning — that rule is about mid-game, not game-over.
+END_SEQUENCE = ["$SPAWN,,*", "$HLED,,6,,,,,*", "$STOP,*", "$CLEAR,*",
                 "$PLAY,VS6,4,6,,,,,*"]
 
 # Back-compat: the config phase alone.
 GAME_SEQUENCE = GAME_CONFIG
 
-# Weapon definitions, stored as the frame TAIL (everything after "$WEAP,<slot>")
-# so the same weapon can be loaded into any slot. The first three are transcribed
-# from the iOS Callsign capture and are verified on hardware; the rest come from
-# protocol §6 and have NOT been fired by us.
-WEAPON_TAILS = {
-    # verified (§7e capture)
-    "primary": ",,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
-    "secondary": ",2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
-    "melee": ",1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
-    # unverified (§6 doc examples)
-    "ar": ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
-    "charge": ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
-}
-
 WEAPONS = tuple(WEAPON_TAILS)
 
-# (magazine, reserve) per weapon, for the $AMMO frames sent after $SPAWN.
-# Taken from the capture for the verified three; the $WEAP token positions that
-# carry ammo are not confidently decoded, so these are stated explicitly rather
-# than parsed back out of the tail.
-WEAPON_AMMO = {
-    "primary": (36, 108),      # from $AMMO,0,36,108,1,* in the §7e capture
-    "secondary": (6, 12),      # from $AMMO,1,6,12,1,*
-    "melee": (1, 0),
-    "ar": (32, 9999999),       # unverified — from the §6 doc string
-    "charge": (20, 9999999),   # unverified
-}
+# WEAPON_AMMO (imported above) is the (magazine, reserve) per weapon for the $AMMO
+# frames sent after $SPAWN: primary (36, 108) and secondary (6, 12) are from the §7e
+# capture's $AMMO,0,36,108,1,*/$AMMO,1,6,12,1,*; melee is (1, 0); ar/charge (32/20,
+# 9999999) are unverified, from the §6 doc string. The $WEAP token positions that carry
+# ammo are not confidently decoded, so these are stated explicitly rather than parsed
+# back out of the tail.
 
 
 def weap(slot: int, name: str) -> str:
@@ -1207,8 +1180,9 @@ async def _enroll(name: str | None) -> None:
 
 async def _reset(address: str) -> None:
     """Reset a tagger to a clean idle state — including reviving a gun left DEAD at
-    game end (the death glow that END_SEQUENCE doesn't clear). Finds the sequence
-    that clears it; the winner becomes the teardown fix."""
+    game end ($SPAWN clears the dead HP state). Deliberately reuses gameconfig's
+    canonical END_SEQUENCE (the same teardown MC ships) rather than this module's own
+    CLI-flavoured one below, so `reset` stays correct even if the two drift again."""
     from .ble import ConnectionManager
     mgr = ConnectionManager()
     # revive (SPAWN clears the dead HP state), immediately silence the spawn voice
