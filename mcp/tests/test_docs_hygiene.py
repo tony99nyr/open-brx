@@ -94,17 +94,63 @@ def test_followups_stamp_moves_with_the_file():
     assert stamp >= committed, f"FOLLOWUPS.md was committed {committed} but its Updated stamp says {stamp}"
 
 
-def test_followups_ids_are_unique_headings():
-    ids: dict[str, list[int]] = {}
-    for n, line in enumerate(FOLLOWUPS.read_text(encoding="utf-8").split("\n"), 1):
-        if not line.startswith("## "):
-            continue
-        for m in re.finditer(r"\b([A-Z])(\d{1,3})\b", line):
-            # ids the file uses: one capital letter + number, first one on the heading
-            ids.setdefault(m.group(0), []).append(n)
-            break
-    dupes = {k: v for k, v in ids.items() if len(v) > 1}
-    assert not dupes, "an id heads more than one H2 in FOLLOWUPS.md (never reuse an id): " + str(dupes)
+# A followup id is DEFINED by a row that carries a status marker (`- **F42 🟡** ...`); the same id may
+# then be REFERENCED freely, which §9's bench run-sheet does constantly. Definitions must be unique.
+_STATUS = ("🔴", "🟠", "🟡", "🟢", "✅", "⬜")
+_ROW = re.compile(r"\s*- \*\*([A-Z]\d{1,3})\b(.*)$")
+
+
+def _followup_definitions(text: str) -> dict[str, list[int]]:
+    out: dict[str, list[int]] = {}
+    for n, line in enumerate(text.split("\n"), 1):
+        m = _ROW.match(line)
+        if m and any(s in m.group(2)[:12] for s in _STATUS):
+            out.setdefault(m.group(1), []).append(n)
+    return out
+
+
+def test_followups_ids_are_defined_exactly_once():
+    """No id may head two different items.
+
+    ⚠ THIS CHECK USED TO SCAN `## ` HEADINGS ONLY, and every followup id lives in a BULLET row — so it
+    saw ONE id (`E1`) out of 89 and was effectively vacuous. On 2026-09-07 three sessions read "Next
+    free" concurrently and all claimed the same numbers: F40, F41 and F42 each ended up naming two
+    different items, and the guard whose entire job is "never reuse an id" reported green throughout.
+    Same shape as the bench-teardown scan that only read `finally:` blocks and the clear-safety sweep
+    that only read named constants — a guard correct for the place it looked, and blind everywhere else.
+    """
+    dupes = {k: v for k, v in _followup_definitions(FOLLOWUPS.read_text(encoding="utf-8")).items()
+             if len(v) > 1}
+    assert not dupes, ("an id defines more than one item in FOLLOWUPS.md (ids are never reused — "
+                       "claim the next one in the header FIRST, then write the row): " + str(dupes))
+
+
+def test_the_id_check_sees_the_ids_that_actually_exist():
+    """The floor that stops it going vacuous again: if a format change drops the row pattern, this
+    fails instead of the file silently checking nothing."""
+    found = _followup_definitions(FOLLOWUPS.read_text(encoding="utf-8"))
+    assert len(found) > 50, f"only {len(found)} followup ids found — the row pattern has stopped matching"
+
+
+def test_the_id_check_can_actually_fail():
+    """A uniqueness check that cannot be made to fail is indistinguishable from no check."""
+    dupes = _followup_definitions("- **F42 🟡** one thing\n- **F42 🔴** a different thing\n")
+    assert dupes["F42"] == [1, 2], f"the checker did not flag a duplicate definition: {dupes}"
+    refs = _followup_definitions("- **F42 🟡** the definition\n- **F42** a bench-sheet reference\n")
+    assert refs["F42"] == [1], "a reference without a status marker must NOT count as a definition"
+
+
+def test_the_next_free_ids_are_actually_free():
+    """The collision's root cause: three sessions trusted the header and it was already stale. An id
+    advertised as free that is in use is worse than no header at all."""
+    text = FOLLOWUPS.read_text(encoding="utf-8")
+    defined = set(_followup_definitions(text))
+    m = re.search(r"\*\*Next free:([^*]+)\*\*", text)
+    assert m, "FOLLOWUPS.md no longer advertises a 'Next free:' list"
+    claimed = set(re.findall(r"\b([A-Z]\d{1,3})\b", m.group(1)))
+    assert claimed, "the 'Next free:' list parsed to nothing"
+    taken = sorted(claimed & defined)
+    assert not taken, ("'Next free' advertises ids that are already in use: " + ", ".join(taken))
 
 
 def test_handoff_is_one_screen():
