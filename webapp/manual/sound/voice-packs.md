@@ -29,8 +29,11 @@ Source: protocol/callsign-extract/protocol-classes.md
 | energyShieldLoop | Looping shield hum (e.g. `A10`) |
 Source: protocol/callsign-extract/protocol-classes.md "PSET"; ✅ the "Get some" respawn line was traced to this block on the bench · docs/experiment-log.md 2026-08-23
 
-🚧 **Open BRX uses the three pool slots on purpose.** Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player *what it went through*: metal for armor, an impact for the body, an energy note for the shield. Open BRX picks all three (and re-draws them between lives, so the same hit does not sound identical all match), and it holds the character's own pain grunt back for hits that reached health. Which wire slot carries which of the three names is source derived and not yet confirmed on hardware.
+🚧 **Open BRX uses the pool slots on purpose.** Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player *what it went through*. Open BRX rings metal for armor and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately **silent**: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The slot order above was confirmed on hardware 2026-09-07, and every sound was chosen by ear rather than from the catalog.
 Source: mcp/brx_mcp/hitaudio.py, docs/spec/contracts.md A17
+
+🚧 **An empty slot is not silence.** Clearing one of these fields makes the gun fall through to a neighbouring pool's sound, not go quiet: an empty hitShield plays the armor clip. Health can ship empty only because it is the innermost pool, with nothing further in to fall through to. This differs from the voice fields, where an empty value really does mean the gun says nothing. Confirmed on hardware 2026-09-07.
+Source: mcp/brx_mcp/hitaudio.py
 
 The **named voice profiles** you choose in Callsign are not stored in the app. The app fetches them from Battle Company's server (`…/callsign/voice-profiles/selected/`) and writes the resulting slot ids into `$PSET`. Open BRX offers the same idea as a `voice` field on each player.
 Source: protocol/callsign-extract/apk-harvest.md, mcp/brx_mcp/mc/API.md
