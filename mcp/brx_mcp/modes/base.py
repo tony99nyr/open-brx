@@ -194,6 +194,58 @@ class GameEngine(ABC):
     def snapshot(self) -> dict: ...
 
 
+class ScoredEngine(GameEngine):
+    """Shared foundation for the host-rule engines that keep a `Roster` and end
+    the game once via a single `GameOver`: Deathmatch/FFA, LMS, Infection,
+    Domination and CTF each hand-rolled this ~identical bookkeeping (clone
+    review, 2026-09-07). Two engines deliberately do NOT inherit this because
+    they answer a different shape of question: `cs.BombEngine` ends per-ROUND
+    (best-of-N, `next_round()` resets mid-match) rather than once, and
+    `extraction_adapter.ExtractionEngineAdapter` wraps its own wallet/`_Player`
+    model instead of a `Roster`.
+
+    Subclasses still implement `add_player` themselves — each seeds genuinely
+    different extra state (lives, `team_score`, `_acc`, `caps`, ...) — and
+    override `on_event` when they react to more than a bare death (Deathmatch's
+    `$HIR` attribution + regen; Domination/CTF's station events)."""
+
+    def __init__(self, config, now: float = 0.0) -> None:
+        self.config = config
+        self.roster = Roster()
+        self.start = now
+        self.over = False
+        self.winner: Optional[str] = None
+
+    def _live_player(self, player_id: str) -> Optional[Player]:
+        """Resolve `player_id` to its live `Player`, or None once the game is
+        over or the id was never registered — the on_event prologue every
+        engine here re-implemented (`if self.over: return []` / `roster.get` /
+        `if p is None: return []`)."""
+        if self.over:
+            return None
+        return self.roster.get(player_id)
+
+    def on_event(self, player_id: str, ev: dict, now: float) -> list[Action]:
+        """Default for the modes that react to nothing but a fresh death (LMS,
+        Infection): hand it to `self._handle_death`. Deathmatch (also reads
+        `$HIR`/non-fatal `$HP`) and the objective modes (station events) define
+        their own on_event instead of using this."""
+        p = self._live_player(player_id)
+        if p is None or not (is_death(ev) and p.alive):
+            return []
+        return self._handle_death(player_id, now)
+
+    def _end(self, winner: str, detail: str = "") -> list[Action]:
+        """End the match once: set over/winner, emit exactly one `GameOver`. A
+        second call (already over) is a no-op — callers may compute `detail`
+        unconditionally without double-firing."""
+        if self.over:
+            return []
+        self.over = True
+        self.winner = winner
+        return [GameOver(winner, detail=detail)]
+
+
 # --------------------------------------------------------------------------- #
 # Event helpers — read the parsed rx frames uniformly                         #
 # --------------------------------------------------------------------------- #

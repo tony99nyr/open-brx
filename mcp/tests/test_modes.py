@@ -116,6 +116,23 @@ def test_infection_last_human_wins():
     assert over and over[0].winner == "infected"
 
 
+def test_infection_simultaneous_last_two_humans_only_ends_after_both():
+    # Edge case (pre-refactor pin, per review): two humans falling at the SAME
+    # `now` must still be processed one death at a time — the game must not end
+    # after the first (one human still standing) and must end on the second.
+    e = InfectionEngine(GameConfig(mode="infection", game_time_s=0))
+    e.add_player("h1", 1)
+    e.add_player("h2", 1)
+    e.add_player("z", 2)
+    acts1 = e.on_event("h1", death(), now=5.0)
+    assert not _types(acts1, GameOver), "one human still standing — must not end yet"
+    assert e.roster.get("h1").team == 2
+    acts2 = e.on_event("h2", death(), now=5.0)      # second falls at the identical instant
+    over = _types(acts2, GameOver)
+    assert over and over[0].winner == "infected"
+    assert e.roster.get("h1").team == 2 and e.roster.get("h2").team == 2
+
+
 # ---- last man standing ------------------------------------------------------ #
 def test_lms_eliminates_at_zero_lives_and_declares_winner():
     e = LastManStandingEngine(GameConfig(mode="lms", respawns=0, game_time_s=0))  # 1 life
@@ -134,6 +151,47 @@ def test_lms_respawns_while_lives_remain():
     e.on_event("a", death(), now=0.0)           # a: 3→2 lives
     acts = e.tick(now=10.0)
     assert _types(acts, Respawn) and not e.over
+
+
+def test_lms_two_lives_survives_first_eliminated_on_second():
+    # Edge case (pre-refactor pin, per review): lives=N>1 must survive its first
+    # death (respawn, no Eliminate/GameOver) and only go out on the LAST life.
+    e = LastManStandingEngine(GameConfig(mode="lms", respawns=1, respawn_s=5, game_time_s=0))
+    e.add_player("a", 1)
+    e.add_player("b", 2)
+    acts = e.on_event("b", death(), now=1.0)    # b: 2 lives → 1, still in
+    assert not _types(acts, Eliminate) and not e.over
+    assert e.roster.get("b").lives == 1
+    tick_acts = e.tick(now=6.0)                 # respawns on its last life
+    assert _types(tick_acts, Respawn) and e.roster.get("b").alive
+    acts2 = e.on_event("b", death(), now=7.0)   # b: 1 → 0, eliminated
+    assert _types(acts2, Eliminate)
+    over = _types(acts2, GameOver)
+    assert over and over[0].winner == "a"
+
+
+def test_lms_last_team_standing_at_engine_level():
+    # Multi-member team wins by TEAM label, distinct from LMS's per-player naming
+    # when a single player is the last one in (see test above / test_lms_eliminates_*).
+    e = LastManStandingEngine(GameConfig(mode="lms", respawns=0, game_time_s=0))
+    e.add_player("a", 1)
+    e.add_player("b", 1)
+    e.add_player("c", 2)
+    acts = e.on_event("c", death(), now=1.0)    # team2 wiped (1 life each)
+    over = _types(acts, GameOver)
+    assert over and over[0].winner == "team1"
+    assert e.roster.get("a").alive and e.roster.get("b").alive, "winners never had to die"
+
+
+def test_lms_time_limit_resolves_to_most_lives_at_engine_level():
+    e = LastManStandingEngine(GameConfig(mode="lms", respawns=5, respawn_s=99, game_time_s=5))
+    e.add_player("a", 1)
+    e.add_player("b", 2)
+    e.on_event("a", death(), now=1.0)           # a: 6→5 lives; b stays at 6
+    assert e.tick(now=4.0) == []                # too soon
+    acts = e.tick(now=5.0)                      # time up, multiple still in
+    over = _types(acts, GameOver)
+    assert over and over[0].winner == "b", "most lives left wins on the clock"
 
 
 # ---- build_engine + driver -------------------------------------------------- #

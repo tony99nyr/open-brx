@@ -19,9 +19,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .. import sounds as snd
-from .base import (
-    Action, Callout, GameEngine, GameOver, PlaySound, Roster, Score, hp_values,
-)
+from .base import Action, Callout, PlaySound, Score, ScoredEngine, hp_values
 
 
 def _ev(ev, i, default=None):
@@ -43,7 +41,7 @@ def _team(ev, idx, roster, player_id):
         return None
 
 
-class DominationEngine(GameEngine):
+class DominationEngine(ScoredEngine):
     """N control points; each point owned by a team scores 1 pt/s for it. Win at
     score_target (or most points-time when the clock runs out). KotH = 1 point.
 
@@ -51,17 +49,13 @@ class DominationEngine(GameEngine):
     it never self-ends; the operator stops it manually (teardown / GameOver)."""
 
     def __init__(self, config, now: float = 0.0):
-        self.config = config
-        self.roster = Roster()
+        super().__init__(config, now)
         n = max(1, getattr(config, "control_points", 3))
         self.sites = [chr(ord("A") + i) for i in range(n)]
         self.owner: dict[str, Optional[int]] = {s: None for s in self.sites}
         self.target = getattr(config, "score_target", 0) or 0
-        self.start = now
         self._last_tick = now
         self._acc: dict[int, float] = {}
-        self.over = False
-        self.winner: Optional[str] = None
 
     def add_player(self, player_id: str, team: int) -> None:
         self.roster.add(player_id, team)
@@ -118,9 +112,7 @@ class DominationEngine(GameEngine):
     def _end(self, winner: str) -> list[Action]:
         if self.over:
             return []
-        self.over = True
-        self.winner = winner
-        return [GameOver(winner, detail=f"points={ {t:int(s) for t,s in self._acc.items()} }")]
+        return super()._end(winner, detail=f"points={ {t:int(s) for t,s in self._acc.items()} }")
 
     def snapshot(self) -> dict:
         return {"mode": "domination", "over": self.over, "winner": self.winner,
@@ -129,7 +121,7 @@ class DominationEngine(GameEngine):
                 "players": {pid: {"team": p.team} for pid, p in self.roster.players.items()}}
 
 
-class CtfEngine(GameEngine):
+class CtfEngine(ScoredEngine):
     """Capture the Flag: grab the enemy flag, return it to your base to score.
     Possession is tracked per team (`held`) — a CAP only scores if that team is
     actually carrying a flag. The station is the source of truth for grab/cap and
@@ -141,14 +133,10 @@ class CtfEngine(GameEngine):
     resolved from the token, not the roster. A malformed/zero team is ignored."""
 
     def __init__(self, config, now: float = 0.0):
-        self.config = config
-        self.roster = Roster()
+        super().__init__(config, now)
         self.target = getattr(config, "cap_target", 3)
-        self.start = now
         self.caps: dict[int, int] = {}
         self.held: set[int] = set()   # teams currently carrying the enemy flag
-        self.over = False
-        self.winner: Optional[str] = None
 
     def add_player(self, player_id: str, team: int) -> None:
         self.roster.add(player_id, team)
@@ -215,9 +203,7 @@ class CtfEngine(GameEngine):
     def _end(self, winner: str) -> list[Action]:
         if self.over:
             return []
-        self.over = True
-        self.winner = winner
-        return [GameOver(winner, detail=f"caps={self.caps}")]
+        return super()._end(winner, detail=f"caps={self.caps}")
 
     def snapshot(self) -> dict:
         return {"mode": "ctf", "over": self.over, "winner": self.winner,

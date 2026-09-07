@@ -7,10 +7,8 @@ its own team via a unique $TID, so shooter-team → the specific killer).
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .base import (
-    Action, Callout, Eliminate, GameEngine, GameOver, Heal, Respawn, Roster, Score,
+    Action, Callout, Eliminate, Heal, Respawn, Score, ScoredEngine,
     hp_values, is_hit, shooter_team, shooter_player_id,
 )
 from .announcer import KillAnnouncer
@@ -21,14 +19,10 @@ from .announcer import KillAnnouncer
 ATTRIB_FUSE_S = 6.0
 
 
-class DeathmatchEngine(GameEngine):
+class DeathmatchEngine(ScoredEngine):
     def __init__(self, config, now: float = 0.0):
-        self.config = config
-        self.roster = Roster()
+        super().__init__(config, now)
         self.team_score: dict[int, int] = {}
-        self.start = now
-        self.over = False
-        self.winner: Optional[str] = None
         self._last_shot: dict[str, tuple[int, float]] = {}  # victim_id → (shooter team, when)
         self._ffa = (config.mode == "ffa")
         self._last_damage: dict[str, float] = {}   # player_id → time last hit (for regen)
@@ -42,9 +36,7 @@ class DeathmatchEngine(GameEngine):
         self.team_score.setdefault(team, 0)
 
     def on_event(self, player_id: str, ev: dict, now: float) -> list[Action]:
-        if self.over:
-            return []
-        p = self.roster.get(player_id)
+        p = self._live_player(player_id)
         if p is None:
             return []
         if is_hit(ev):
@@ -157,6 +149,14 @@ class DeathmatchEngine(GameEngine):
     def _check_last_standing(self) -> list[Action]:
         # "still in" = alive OR has a life left to respawn — a dead-but-respawning
         # teammate must NOT be counted out (else finite-lives games end early).
+        #
+        # NOT shared with LMS's _check_win (clone review, 2026-09-07): this always
+        # names the winner `team{t}`, even in FFA (a unique-team-per-gun mode) —
+        # Deathmatch never resolves "which team" down to "which player". LMS's
+        # version names a lone survivor by PLAYER id and only falls back to a team
+        # label for a multi-member team win. Same shape (count standing teams, end
+        # if ≤1), different question ("which team" vs "which player or team") —
+        # collapsing them would silently change one engine's winner format.
         teams = self.roster.standing_teams()
         if len(teams) <= 1:
             return self._end(f"team{next(iter(teams))}" if teams else "draw")
@@ -165,9 +165,7 @@ class DeathmatchEngine(GameEngine):
     def _end(self, winner: str) -> list[Action]:
         if self.over:
             return []
-        self.over = True
-        self.winner = winner
-        return [GameOver(winner, detail=f"scores={self.team_score}")]
+        return super()._end(winner, detail=f"scores={self.team_score}")
 
     def snapshot(self) -> dict:
         return {

@@ -7,36 +7,21 @@ life and host-respawns while lives remain; at zero lives the player is eliminate
 
 from __future__ import annotations
 
-from typing import Optional
-
-from .base import (
-    Action, Callout, Eliminate, GameEngine, GameOver, Respawn, Roster,
-    is_death,
-)
+from .base import Action, Callout, Eliminate, Respawn, ScoredEngine
 
 
-class LastManStandingEngine(GameEngine):
+class LastManStandingEngine(ScoredEngine):
     def __init__(self, config, now: float = 0.0):
-        self.config = config
-        self.roster = Roster()
-        self.start = now
-        self.over = False
-        self.winner: Optional[str] = None
+        super().__init__(config, now)
         # default 3 lives if unlimited was left on (LMS needs finite lives)
         self._lives = config.lives() if config.lives() is not None else 3
 
     def add_player(self, player_id: str, team: int) -> None:
         self.roster.add(player_id, team, lives=self._lives)
 
-    def on_event(self, player_id: str, ev: dict, now: float) -> list[Action]:
-        if self.over:
-            return []
-        p = self.roster.get(player_id)
-        if p is None:
-            return []
-        if is_death(ev) and p.alive:
-            return self._handle_death(player_id, now)
-        return []
+    # on_event: inherited from ScoredEngine — a fresh death is the only event
+    # LMS reacts to, and that shared prologue+dispatch is byte-identical to
+    # Infection's (clone review, 2026-09-07).
 
     def _handle_death(self, victim_id: str, now: float) -> list[Action]:
         v = self.roster.get(victim_id)
@@ -72,6 +57,13 @@ class LastManStandingEngine(GameEngine):
                 if p.alive or (p.lives or 0) > 0]
 
     def _check_win(self, force: bool = False) -> list[Action]:
+        # NOT shared with Deathmatch's _check_last_standing (clone review,
+        # 2026-09-07): this names a lone survivor by PLAYER id and only falls
+        # back to a team label for a multi-member team win. Deathmatch always
+        # names the winner `team{t}`, even in FFA, and never looks at player
+        # identity. Same shape (count who's still in, end if ≤1 standing),
+        # different question ("which player or team" vs "which team") —
+        # collapsing them would silently change one engine's winner format.
         standing = self._still_in()
         teams = {p.team for p in standing}
         if len(standing) <= 1 or len(teams) <= 1:
@@ -86,12 +78,7 @@ class LastManStandingEngine(GameEngine):
             return self._end(standing[0].player_id)
         return []
 
-    def _end(self, winner: str) -> list[Action]:
-        if self.over:
-            return []
-        self.over = True
-        self.winner = winner
-        return [GameOver(winner)]
+    # _end: inherited from ScoredEngine (no per-mode detail string to add).
 
     def snapshot(self) -> dict:
         return {

@@ -7,42 +7,27 @@ converted. Win: last human alive (humans win at time limit if any survive).
 
 from __future__ import annotations
 
-from typing import Optional
-
-from .base import (
-    Action, Callout, GameEngine, GameOver, Respawn, Roster, SetTeam,
-    is_death,
-)
+from .base import Action, Callout, Respawn, ScoredEngine, SetTeam
 
 HUMAN_TEAM = 1
 INFECTED_TEAM = 2
 
 
-class InfectionEngine(GameEngine):
+class InfectionEngine(ScoredEngine):
     def __init__(self, config, now: float = 0.0,
                  human_team: int = HUMAN_TEAM, infected_team: int = INFECTED_TEAM):
-        self.config = config
-        self.roster = Roster()
+        super().__init__(config, now)
         self.human_team = human_team
         self.infected_team = infected_team
-        self.start = now
-        self.over = False
-        self.winner: Optional[str] = None
 
     def add_player(self, player_id: str, team: int) -> None:
         # team as given (caller designates the starting infected — usually 1 player)
         self.roster.add(player_id, team, lives=None)
 
-    def on_event(self, player_id: str, ev: dict, now: float) -> list[Action]:
-        if self.over:
-            return []
-        p = self.roster.get(player_id)
-        if p is None:
-            return []
-        # infection scores by conversion, not kill credit — only deaths matter
-        if is_death(ev) and p.alive:
-            return self._handle_death(player_id, now)
-        return []
+    # on_event: inherited from ScoredEngine — infection scores by conversion,
+    # not kill credit, so a fresh death is the only event that matters, and
+    # that shared prologue+dispatch is byte-identical to LMS's (clone review,
+    # 2026-09-07).
 
     def _handle_death(self, victim_id: str, now: float) -> list[Action]:
         v = self.roster.get(victim_id)
@@ -79,12 +64,7 @@ class InfectionEngine(GameEngine):
             return self._end("infected")
         return []
 
-    def _end(self, winner: str) -> list[Action]:
-        if self.over:
-            return []
-        self.over = True
-        self.winner = winner
-        return [GameOver(winner)]
+    # _end: inherited from ScoredEngine (no per-mode detail string to add).
 
     def snapshot(self) -> dict:
         humans = [pid for pid, p in self.roster.players.items() if p.team == self.human_team]
