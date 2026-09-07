@@ -28,7 +28,7 @@ Every objective mode rides the **objective-station primitive**: a physical thing
 that advertises its state, and player nodes that read presence off it — the same primitive as the respawn
 station we shipped. The cross-cutting prerequisites, from `utility-roadmap.md`:
 
-- **S6** — the station reliably hears player adverts (fixed in code, commit `53e62bd`; two-Pixel bench pending).
+- **S6** — the station reliably hears player adverts (fixed in code, commit `73d391a`; two-Pixel bench pending).
   Nothing objective works without it.
 - **MC arming loop (A1-A6)** — the operator assigns/args stations at muster (ITEMS panel, `station_config`
   push, persisted assignments). ~1 day, **not started** (brx session, FOLLOWUPS S5).

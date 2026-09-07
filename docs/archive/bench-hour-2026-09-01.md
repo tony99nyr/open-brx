@@ -9,7 +9,7 @@ items get struck in `bench-tomorrow.md`.
 item 1** — it is the only path we ship that no one has ever seen work, and it gates a correction to a
 ✅ claim the public manual is making right now.
 
-**Updated after pulling `31507ce`: the morning's repo blocker is cleared, and item 1
+**Updated after pulling `7943f6b`: the morning's repo blocker is cleared, and item 1
 is sharper — a merge review checked the new `$HLED` frame against the captures its own comment cited
 and found the provenance wrong in two ways we can now test for directly.
 

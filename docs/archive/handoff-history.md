@@ -8,7 +8,7 @@ notes, environment, hardware facts) as they were on 2026-09-04.
 
 ---
 
-> ## 🎛️ 2026-09-04 (evening/night) — SOUNDS & LIGHTS ARE A PER-GAME PROFILE (A11–A11.8) · EVENTS ARE HUD-DRIVEN · APK 0.1.6 = a1380f8, **0.1.7 REQUIRED** (gun take, A11.8 flash, A14, utility MC link)
+> ## 🎛️ 2026-09-04 (evening/night) — SOUNDS & LIGHTS ARE A PER-GAME PROFILE (A11–A11.8) · EVENTS ARE HUD-DRIVEN · APK 0.1.6 = 83542f3, **0.1.7 REQUIRED** (gun take, A11.8 flash, A14, utility MC link)
 >
 > - **Presentation profile** (`mc/presentation.py`, contracts A11): presets `standard / silenced /
 >   counter_strike / vip / infection / last_stand / extraction` (assigned per mode), and per event a sound
@@ -38,18 +38,18 @@ notes, environment, hardware facts) as they were on 2026-09-04.
 >   teaches the scanner respawn (run → get closer → hold → pull the trigger, gate-aware) and recaps the race to the
 >   cap only while MC is linked; the result tally is per MC session (F24 queued for MC-owned totals); native
 >   builds inset the frame under the status bar. Open on the HUD side: F15–F21 in FOLLOWUPS.
-> - **APK 0.1.6 (debug)** = `a1380f8` (`dirty: false`; A11.7 gun-body opt-in, utility status screen, S5.2 clean
+> - **APK 0.1.6 (debug)** = `83542f3` (`dirty: false`; A11.7 gun-body opt-in, utility status screen, S5.2 clean
 >   spawn), site rebuilt and deployed. **0.1.7 is REQUIRED before the next game with this server**: 15 app commits
->   since a1380f8 are un-shipped, including the engine's 2.5 s `gun.take` timer (a 0.1.6 phone never blanks the
+>   since 83542f3 are un-shipped, including the engine's 2.5 s `gun.take` timer (a 0.1.6 phone never blanks the
 >   body under the new `team` default), the A11.8 kill flash and the 750 ms out-pulse, brx-hud's A14 perk slot
->   (5641b12) and the utility phone's MC link (e3490e3). Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
+>   (aec840f) and the utility phone's MC link (00a6a7d). Also landed today by the peer sessions: **sidearms** (A12: Glock-18 / USP-S / Desert Eagle,
 >   the `sidearm` slot kind), **`$WEAP` tok15 = weapon-swap delay** (F4/F22 closed, Quick Switch is real),
 >   the **BLE-beacon respawn station + utility mode** (A13, proven on hardware), and the HUD's alert
 >   banner, medal stack and scanner-mode DOWN screen.
 > - **Multi-session lessons** (now in memory + FOLLOWUPS): sessions share ONE git index, so commit with
 >   `git commit --only <paths>`; the APK sidecar's `dirty` covers all of `app/`, and 0.1.3 had to be
 >   rebuilt from a clean tree; gate the site build on its exit code (it writes pages even when it fails);
->   `.gitignore` had swallowed a plugin's native source until ed5989f.
+>   `.gitignore` had swallowed a plugin's native source until d2b075c.
 > - **Polish round (night, three passes × three reviewers)**: one High fixed -- an app reload mid-match on a
 >   HEALTHY gun ended resync as "dead" and auto-revived a live gun -- plus twelve Mediums (catalog re-parse
 >   blocking the event loop, the alert subject id lost, `last_survivor` never firing in infection, alerts
@@ -79,7 +79,7 @@ notes, environment, hardware facts) as they were on 2026-09-04.
 >   walkthrough (extraction_closing / complete, healed / armour_up / shield_up want sounds?).
 > - **Next server build (S5, A13.5)**: MC arms utility stations at muster -- `hello role:"utility"`, the ITEMS
 >   panel, the `station_config` push, `config.stations` from the assigned ids. Spec frozen by brx-grenade
->   (a1380f8); phone apply is brx-hud's. Not started.
+>   (83542f3); phone apply is brx-hud's. Not started.
 > - **Open**: count-limited `$HLED` blink end state; white start flash and carrier blink legibility at
 >   6 ft; the CLI `GameDriver` still paints the A11 team colour in play (S2 item 7); preset picker +
 >   switches as a WRITE UI; S3 HUD-side extraction engine; F15 stun in the engine; the remaining sound

@@ -12,7 +12,7 @@ what was changed. Evidence: `app/shots/e2e/` (suite screenshots), WCAG numbers c
 3. **Honors with tiny rosters read as parody** — → FIXED: no honors/medals under 3 scored players; MVP and
    MOST KILLS require kills > 0; SURVIVOR requires someone to actually outlive the field and now reads
    "FEWEST DEATHS · N" (both `scoring.honors()` and `compile.award_medals`, with tests).
-4. ✅ FIXED (b3401e7 — after Tony hit it live) **Kit has no gun-binding affordance** — roster rows say NO GUN but only auto-adopt/API can set it. An
+4. ✅ FIXED (93357c9 — after Tony hit it live) **Kit has no gun-binding affordance** — roster rows say NO GUN but only auto-adopt/API can set it. An
    operator manually pairing a walk-up player cannot do it from the UI. → add a gun picker to the Kit
    detail panel (armory guns not yet bound, + UNBIND).
 
@@ -54,7 +54,7 @@ every flow, audits animations/tap-targets/aria/console errors, and screenshots e
 25 ranked findings; the three "do-not-lose" strengths noted: HUD glance hierarchy (corner anchors/sizes),
 the honest distributed-system microcopy semantics, and the single design system + two-step-confirm pattern.
 
-**Confirmed + already fixed this round:** #4 armory GO gate (afe41e0, plus Tony independently hit it live —
+**Confirmed + already fixed this round:** #4 armory GO gate (aae3209, plus Tony independently hit it live —
 the board also presented 11-hour-old data as current: now aged/decayed server-side fields).
 
 **Fix next (behavioral, code):**
@@ -77,10 +77,10 @@ the board also presented 11-hour-old data as current: now aged/decayed server-si
 #11 fixed-stage scaling / portrait handling, #17's pinned control rail, #21 write-failure toasts.
 
 ## Round 5 — live-bench driven (Tony at the desk)
-- ✅ Armory board: STANDBY gate + stale-decay card + real age field (afe41e0); phantom-node prune (193d70a).
-- ✅ Armory/Build redesign after Tony's "horrendous" verdict (c6dcae9): mode boards uncropped at native
+- ✅ Armory board: STANDBY gate + stale-decay card + real age field (aae3209); phantom-node prune (7bad3b6).
+- ✅ Armory/Build redesign after Tony's "horrendous" verdict (f27aa6c): mode boards uncropped at native
   aspect (they carry baked-in text), real NodeCards/GhostCards, screen width capped 1380px.
-- ✅ Kit gun picker (b3401e7). Suite at 34/34 (run 7); e2e caught-and-fixed along the way: shared-context
+- ✅ Kit gun picker (93357c9). Suite at 34/34 (run 7); e2e caught-and-fixed along the way: shared-context
   localStorage collapsed both HUD pages into one node_id; an inline comment swallowed the config envelope
   spec (every config push silently dropped — third silent-drop incident: assert DELIVERY, not just send).
 - brx-opus session took the HUD lane: tap targets ≥44, labeled plates, human status copy, tiny-text sweep.

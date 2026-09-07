@@ -117,7 +117,7 @@ in range) → **GET CLOSER** with a closeness bar and STATION IN RANGE · the li
 STATION · ALMOST THERE (present, the respawn delay still running) → **PULL THE TRIGGER TO RESPAWN** (trigger
 gate) or **RESPAWNING…** (presence gate) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.
 The trigger-vs-presence copy is selected by the engine's `respawnGate` getter, so the HUD never re-derives the
-gate from config (commit c97e5ce).
+gate from config (commit 0ac162b).
 
 ## 5. Other kinds (designed, not built)
 
@@ -197,7 +197,7 @@ Resolved since the first draft (see FOLLOWUPS + experiment-log):
 - **Reconnect / new-match reconciliation — BUILT + VALIDATED ON HARDWARE** (S7.1; contracts A6.8; node.md §3.10).
   A live rejoin runs a 3 s disarmed reconcile that keeps the real pools and **never heals or infers death**; a
   new match clears an in-flight reconcile and spawns clean. Closed the force-close-at-low-HP cheat on Tactix-E20D.
-- **Station doesn't see player adverts at high TX — FIXED in code** (S6, commit 53e62bd): the station scans
+- **Station doesn't see player adverts at high TX — FIXED in code** (S6, commit 73d391a): the station scans
   low-latency and restarts the scan every 8 s to recover an Android-stalled scan. Still needs the two-Pixel
   bench to confirm; a lower station TX is the fallback.
 

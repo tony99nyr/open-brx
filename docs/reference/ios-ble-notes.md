@@ -65,10 +65,10 @@ Two things worth building into the scan work:
   control. `requestLEScan` + our own list would let us show **RSSI** (closest = the one in your
   hand) and the **MAC tail**, which is what actually disambiguates.
 - **Lean on `$NAME`.** It sets the *persistent* gun name over BLE and the advert becomes
-  `<GunName>-<MACtail>`, confirmed to survive a power-cycle (commit `a8ad710`, `rename` CLI). The
+  `<GunName>-<MACtail>`, confirmed to survive a power-cycle (commit `4889e2c`, `rename` CLI). The
   Armory Setup process already calls for naming each gun after its headset sticker id. Guns that
   have been through it are unambiguous in any picker — **the naming problem is already solved,
-  it just hasn't been applied to the field units.** Note the deliberate rule from `1fdf865`:
+  it just hasn't been applied to the field units.** Note the deliberate rule from `70e5aba`:
   `$NAME` is the permanent hardware label, vanity callsigns stay a display layer — don't push
   gamertags to the gun.
 

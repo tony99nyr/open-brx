@@ -157,7 +157,7 @@ in a couple of one-setting diffs.
 
 ---
 
-# Bench 2026-08-25 (late) · Phone-path bench · Phone HUD polish · end-of-match (fixed in 23a5930)
+# Bench 2026-08-25 (late) · Phone-path bench · Phone HUD polish · end-of-match (fixed in 5278561)
 *closed 2026-08-26 (open bullets carried into FOLLOWUPS.md) · was FOLLOWUPS.md L2186–2244*
 
 ## Bench 2026-08-25 (late) — new items
@@ -165,14 +165,14 @@ in a couple of one-setting diffs.
   in the team colour, stepping down as health falls (Tony, native FFA). Confirmed in native games; the open
   part — does it appear in **our compiled** games? — is tracked in **F1**, not here.
 - **5-min hold-across-disperse** — re-run (the 2-min run passed; the 5-min run was cut by the headset event).
-- ✅ BUILT (23a5930, peer session: MC pushes `victory` to the winning team's connected nodes at recap + e2e test; defeat line still unpinned) **Victory cue wiring** — `compile.py` now has `victory` (VSF+JAY) separate from `game_over` (VA33); MC should
+- ✅ BUILT (5278561, peer session: MC pushes `victory` to the winning team's connected nodes at recap + e2e test; defeat line still unpinned) **Victory cue wiring** — `compile.py` now has `victory` (VSF+JAY) separate from `game_over` (VA33); MC should
   send `victory` to winning nodes in coverage at recap (M-MC), losers get nothing extra. Find a defeat line
   (`JAW`/`JAX` are 8-s announcer lines next to `JAY` — pin by ear).
 - **Reconnect-after-`$DISCONNECT`** — a fresh link right after the gun's own `$DISCONNECT` comes up dead
   (NUS TX char missing). Node should back off ≥5 s before reconnecting after a gun-initiated drop; log it.
 - **Node: detect a power-cycled gun** — after resync, a `$SPAWN` that echoes `$LCD,0,0,0,0,0,0` means the config
   was wiped (power-cycle): re-write the head (§3.10 "silence → re-push" gets a second, positive trigger).
-- ✅ FIXED (23a5930, peer session) **MC banner** printed `nodes: ws://<ip>:0/ws` before the net server binds — print after `_start_net`.
+- ✅ FIXED (5278561, peer session) **MC banner** printed `nodes: ws://<ip>:0/ws` before the net server binds — print after `_start_net`.
 - **Phone-path bench** (items 4/8/13 + the whole MC↔phone↔gun path) — APK is on the Pixel; MC runs on the
   Windows Python (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --no-auth`).
 
@@ -181,8 +181,8 @@ in a couple of one-setting diffs.
   LED-quieting token for the tutorial head (relates to the LED-life-mode item above).
 - **MC self-discovery on the phone** — MC advertises `_brx-mc._tcp` over mDNS; the app should auto-fill the MC
   URL (and offer a camera QR scan) instead of manual `ws://ip:8766/ws` entry.
-- ✅ FIXED (23a5930: full-width MC LINKED ✓ chip on the connected screen) **HUD: MC-link state is too subtle** — "MC LINKED" is tiny green top-right; make link/disconnect obvious.
-- ✅ FIXED (23a5930: moved to the free corner) **HUD: info icon clips behind "LINKED"** on the post-connect screen (CSS alignment).
+- ✅ FIXED (5278561: full-width MC LINKED ✓ chip on the connected screen) **HUD: MC-link state is too subtle** — "MC LINKED" is tiny green top-right; make link/disconnect obvious.
+- ✅ FIXED (5278561: moved to the free corner) **HUD: info icon clips behind "LINKED"** on the post-connect screen (CSS alignment).
 - **Node keep-alive across shade/short-lock** — investigate a foreground-service or wake path so a brief shade
   pull / glance doesn't drop the socket (today it recovers in ~10 s; acceptable but not ideal).
 - **HUD weapon-select (self-serve kitting)** — let each player pick/try weapons on their own phone during KIT
@@ -193,16 +193,16 @@ in a couple of one-setting diffs.
   modes want fixed loadouts. Touches: node HUD picker + `engine`/`transport`, a NODE_KIND, contract, MC state.
 
 ## Phone HUD polish — bench 2026-08-25 (night), on-device findings (batch before next bench)
-- ✅ FIXED (23a5930, pending device re-test) **Cam button dead** — `@capacitor-community/camera-preview` throws: the Android manifest has no `CAMERA`
+- ✅ FIXED (5278561, pending device re-test) **Cam button dead** — `@capacitor-community/camera-preview` throws: the Android manifest has no `CAMERA`
   permission (only INTERNET/BT/LOCATION) and no runtime request; iOS needs `NSCameraUsageDescription`. Add both
   in `scripts/android-setup.sh` / `scripts/ios-setup.sh` + request at first toggle.
-- ✅ FIXED (23a5930) **RELOAD blinks constantly** — `lowMag = st.ammo/st.mag <= .15` fires in transient states; should only show
+- ✅ FIXED (5278561) **RELOAD blinks constantly** — `lowMag = st.ammo/st.mag <= .15` fires in transient states; should only show
   when live, alive, ammo<mag, ratio<=.15 (never at spawn / on a fresh mag).
-- ✅ FIXED (23a5930: bigger pips + warn gating; root cause was the boot hang + warn rule) **Ammo pips bar bugged** — the pip strip above the weapon name shows a single yellow tick at full ammo
+- ✅ FIXED (5278561: bigger pips + warn gating; root cause was the boot hang + warn rule) **Ammo pips bar bugged** — the pip strip above the weapon name shows a single yellow tick at full ammo
   instead of a filled magazine; `_pips()` mis-maps mag→pips (likely divides by the wrong max or fixed pip count).
 - **Top-right cluster cramped/tiny on device** — LINK + battery + CAM chip on one skewed row plus K/D/A/ACC
   reads micro on a phone; needs a responsive pass (bigger CAM target, wrap/space the row).
-- ✅ FIXED (23a5930: edge-triggered cues, runway_30/20 silenced; re-verify by ear) **Countdown audio bunches on the gun** — heard "10,9,8,10,3,2,1" with the last 3-2-1 together; the node's
+- ✅ FIXED (5278561: edge-triggered cues, runway_30/20 silenced; re-verify by ear) **Countdown audio bunches on the gun** — heard "10,9,8,10,3,2,1" with the last 3-2-1 together; the node's
   runway/countdown voice cues are scheduled or written with wrong timing/duplication. Review the M-START
   countdown scheduler on the node (BLE write pacing vs tick clock).
 - (already logged: info icon clips behind "LINKED"; MC-LINKED text too subtle; MC mDNS auto-fill + QR.)
@@ -212,11 +212,11 @@ in a couple of one-setting diffs.
   overlay treatment only when CAM is on. (Design-tool pass — Tony owns the HUD visuals per the design workflow.)
 
 ## Phone HUD — end-of-match + history (bench 2026-08-25 night)
-- ✅ BUILT (23a5930: GAME OVER + K/D/A/ACC/shots + session totals → OK → MATCH COMPLETE; VICTORY/DEFEAT variants still need the winner reaching the node) **No game-over / victory / defeat screen** — at match end the HUD shows nothing (no result, no stats). Want a
+- ✅ BUILT (5278561: GAME OVER + K/D/A/ACC/shots + session totals → OK → MATCH COMPLETE; VICTORY/DEFEAT variants still need the winner reaching the node) **No game-over / victory / defeat screen** — at match end the HUD shows nothing (no result, no stats). Want a
   real end screen: VICTORY / DEFEAT / GAME OVER banner + this player's K/D/A/ACC, an **OK** button → the existing
   "MATCH COMPLETE — READY FOR NEXT" idle-between-games screen. (MC already sends `score`/recap; the node has its
   own totals.) Ties into the `victory`/`game_over` cues just pinned (VSF+JAY / VA33).
-- ✅ BUILT (23a5930: localStorage per-match history, session totals on the result screen; a browsable history view is still open) **Game history / running totals (nice-to-have)** — keep per-game results on the phone (localStorage) so a
+- ✅ BUILT (5278561: localStorage per-match history, session totals on the result screen; a browsable history view is still open) **Game history / running totals (nice-to-have)** — keep per-game results on the phone (localStorage) so a
   player can see how they did each game across a session; optional lifetime totals. Node-local, no MC needed.
 
 
@@ -263,7 +263,7 @@ in a couple of one-setting diffs.
   member**, so per-pull semi-auto may not be expressible in this firmware — every built weapon stays
   full-auto. **What DID resolve:** fire RATE is now real — `tok14` = fire-interval ms is **bench-PROVEN**
   (sniper `1250`→1 shot/s), and the compiler bug that had pinned every weapon at 10 shots/s is fixed
-  (it wrote `fire_ms` to the constant `tok15`; now writes `tok14`, commit c606417). Cadences work; only
+  (it wrote `fire_ms` to the constant `tok15`; now writes `tok14`, commit a5dbec2). Cadences work; only
   per-pull discipline can't be enforced.
 
 - **Bench: held-trigger fire sounds — retrigger-from-zero or ring-under?** Decides whether any
@@ -1677,7 +1677,7 @@ addressability. Refactor (1-4) is **brx's** — bench answers delivered, they ho
 **🔴 ANTI-CHEAT (found + FIXED on hardware 2026-09-04, Tony):** force-close the app at low HP, reopen,
 and the app RESPAWNED the player to FULL — a free respawn on demand. Root cause: alive/hp weren't
 persisted, so a rejoin defaulted alive:false/hp:0, the recovery deadAt guard stamped a death, and
-auto-respawn healed to max. **Fixed (commit 3b6d1c7): `_save`/`_load` now persist
+auto-respawn healed to max. **Fixed (commit 0c3ddf4): `_save`/`_load` now persist
 alive/hp/armor/shield/deadAt/killedBy** — a rejoin restores the REAL pools (live at 25 → back at 25,
 no false down, no heal). Verified on Tactix-E20D: force-close at 25 → reopen → waits past the respawn delay →
 still 25, deadAt 0, no respawn. Engine test added.
@@ -1696,7 +1696,7 @@ death during the BLE gap keeps its real respawn timer. A new match, a match end,
 in-flight reconcile. Auto-respawn, the recovery deadAt stamp, and scanner-revive are all gated off while
 `reconciling`. Reload takeover does not open while disarmed. `state().reconciling` is exposed for the HUD.
 8 old §3.10 live-reconnect resync tests were rewritten to the reconcile contract; suite green (99 engine
-/ 124 app). HUD takeover copy landed by brx-hud (f202f41: "GUN RELINKED / SYNCING WITH YOUR GUN / WEAPON
+/ 124 app). HUD takeover copy landed by brx-hud (9f06b19: "GUN RELINKED / SYNCING WITH YOUR GUN / WEAPON
 DISARMED FOR A MOMENT · STAND BY", ~3 s, self-clearing). **✅ VALIDATED ON HARDWARE 2026-09-04
 (Tactix-E20D):** shot down to HP 29 / armour 0, force-closed, reopened, reconnected → **HP held at 29 (not
 healed to 45), same match, alive, no respawn**; Tony saw the takeover and could shoot after it cleared.
@@ -1707,7 +1707,7 @@ the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
 1. **✅ RESOLVED by the reconcile (S7.1).** The old trigger-first resync left the gun `alive:true hp:0` until
    the player pulled the trigger. The reconcile restores the real pools and shows brx-hud's "SYNCING WITH YOUR
    GUN · WEAPON DISARMED" takeover for 3 s — no trigger pull, no live-but-empty window.
-2. **✅ FIXED (S7.2, commit fec301d): a new match started on a just-reconnected node now spawns clean** —
+2. **✅ FIXED (S7.2, commit 6512dfa): a new match started on a just-reconnected node now spawns clean** —
    `startAt` clears an in-flight resync/reconcile (a new match supersedes the old one's reconnect state); the
    T-0 spawn is no longer blocked on `!resync`, so it goes alive at full health. Engine test added.
 3. **A soft reload left the native BLE link half-open** (still open), so the rejoin scan couldn't find the
@@ -1732,7 +1732,7 @@ the utility work; only unit-tested before). `app/src/engine.js` / `app.js`:
 
 ## 🟢 S8 — the utility STATION intermittently doesn't see PLAYER adverts at high TX (2026-09-04) (was numbered S6; S6 is the legacy-shim sweep)
 
-**Status:** fixed in code (low-latency scan + 8 s restart, commit 53e62bd); two-Pixel bench confirmation pending.
+**Status:** fixed in code (low-latency scan + 8 s restart, commit 73d391a); two-Pixel bench confirmation pending.
 
 On the two-Pixel bench the respawn station (advertising at high TX) sometimes read **zero** player adverts
 though players were advertising and its own scan was open; it recovered on its own. Suspect: scanning WHILE
@@ -1753,7 +1753,7 @@ concurrency (the roadmap's B "RSSI-vs-distance per TX level" bench will settle t
 # S2 — presentation profile (A11) — BUILT
 *closed 2026-09-04 (write UI + open bullets + Lows carried) · was FOLLOWUPS.md L1555–1647*
 
-## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BUILT 2026-09-04 (backend, read-only UI; APK 0.1.6 = a1380f8, the A11.7 take + A11.8 flash engine changes await 0.1.7); the WRITE UI is pending
+## 🟢 S2 — PRESENTATION PROFILE (A11): sounds + lights per event, per game — BUILT 2026-09-04 (backend, read-only UI; APK 0.1.6 = 83542f3, the A11.7 take + A11.8 flash engine changes await 0.1.7); the WRITE UI is pending
 
 Tony: *"how the gleds and hleds behave, what sounds are used and when, these should be made into a
 config that MC can program … silenced snipers cuts out the announcer stuff and extra led flashes …
@@ -1791,14 +1791,14 @@ per-second guard; contracts A11; 17 tests + 2 engine tests. **Open:**
    old-session boot (fixed on the way: a restored pre-A11 config now gets the mode's presentation
    default, or the console read a stock mode as TUNED). **Next**: the preset picker + switches (write).
    Until then `PUT /api/config {"presentation":{"preset":"silenced"}}`.
-2. ✅ **APK rebuilt** 0.1.2 → 0.1.3 (clean tree) → 0.1.4 → 0.1.6 (a1380f8) on 2026-09-04, site rebuilt each time. **0.1.7 pending** (gun take, A11.8, A14, utility MC link).
+2. ✅ **APK rebuilt** 0.1.2 → 0.1.3 (clean tree) → 0.1.4 → 0.1.6 (83542f3) on 2026-09-04, site rebuilt each time. **0.1.7 pending** (gun take, A11.8, A14, utility MC link).
 3. **Objective / VIP emitters**: the cues + `alert` plumbing exist; the extraction/objective engines on
    the phone path do not call `Session._alert("objective_scored", …)` yet, and `survivors_win` needs
    the infection end decided. Wire when those modes move onto the phone path.
 4. **Per-event override editor** (custom sounds from the catalog picker) — after 1.
 5. `bomb_detonated` uses X12 on Tony's ear ("X13 might actually be a sniper"); confirm and align
    `sounds.BOMB_DETONATED` + the proto-10 `$SIR` row.
-6. ✅ **HUD** (brx-hud, 0a72462): `alert` moment banner + medal stack badges on the kill moment. ✅ The scanner DOWN hint now follows the respawn gate ("pull the trigger" vs "stand there", brx-hud c97e5ce, same night).
+6. ✅ **HUD** (brx-hud, a34eb3e): `alert` moment banner + medal stack badges on the kill moment. ✅ The scanner DOWN hint now follows the respawn gate ("pull the trigger" vs "stand there", brx-hud 0ac162b, same night).
 6b. **Headset flash LED (A11.8, 2026-09-04 night)**: `$LED,9,1,1,1,*` fires the small green flash LED (kill
    feedback). The native hit flash is >= 2x ours by wall reflection and the wall clipped on native -- bound the ratio
    from above with an ND filter / manual shutter; try `$LED` tokens 3/4 at other values for a longer or repeated
@@ -1861,7 +1861,7 @@ Left as LOW (not fixed, no behaviour at stake tonight):
 | B3 | **Mission Control** (scan → assign games/teams/weapons → live scoreboard) | 🟢 **BUILT + TESTED** | `docs/spec/mission-control.md`. Operator console built + tested **with operator auth**; compiles per-player `FrameBundle`s (`mcp/brx_mcp/mc/compile.py`) and drives the live game over the LAN (WebSocket). MC↔phone field path VERIFIED for the live path (2026-08-25/26 real phone→MC→gun sessions); soak/scale still unverified on hardware (verification-checklist). |
 | B4 | **BRX Utility Box** (open, MC-programmable objective node) | 🟢 **UNBLOCKED 2026-08-26 — emit PROVEN on hardware**: a stock tagger accepted a fully synthetic word from our ESP32+LED rig (`$HIR,4,0,42,2,33` = our invented player/team/damage), armor model applied correctly. Build is now a packaging exercise, not a research one. | `hardware/brx-station-spec.md` — one ESP32+IR box → Hill/Assault/CTF/Respawn/Domination/**Extraction**/**Bomb**/perk emitter, driven live by Mission Control. The open answer to the sealed grenade (G7/G8). ~~Gating build task → B13~~ — **B13 is closed and emit is hardware-proven**; the build is now a packaging exercise. Sounds are `$SIR`-mapped (ours to assign), not cloned from the grenade. QR codes stay the ~$0 alt for simple pickups. |
 | B13 | **Capture the BRX IR bit-layout** (for the Utility Box emit side) | ✅ **CLOSED — BENCH-VERIFIED 2026-08-26** (timings, 25 bits, field offsets, parity rule; B=IR-protocol not bullet-type; `payload_parity()` added). Emit side (Session 2) is next. | **Answered from LaserTagMods `NRFL-Bases/Nodes/node1.ino`** — full layout in `protocol/brx-ir-protocol.md`: ~25-bit word after a **2 ms sync**, pulse-width bits (**~1000 µs=1 / ~500 µs=0**, split 750 µs), fields **B4 bullet · P6 player-id · T2 team · D8 damage · C1 crit · U2 · Z parity** (accept if `Z1≠Z0 && Z2<250`). IR-RX prototyping (VS1838B, arriving 2026-08-26) now has a target to confirm. ~~Verify pulse timings/thresholds before trusting the emit side.~~ **Done** — measured sync 1988–1991 µs, marks 990/500, and a stock gun accepted our synthetic word. Field names updated: **B = IR protocol / DamageType**, **U = `$SIR` subtype** (the old "B4 bullet … U2" labels are retracted). |
-| B5 | Fix `server.py` for **mcp 2.0** | ✅ **DONE** (commit `2c963b1`) | Ported to the 2.0 API — `mcp.server.mcpserver.MCPServer` replaces the removed `mcp.server.fastmcp.FastMCP`. Verified 2026-08-26 on the Windows venv (`mcp` 2.0.0): `import brx_mcp.server` OK and the `mcp__brx__*` tools are live in-session. No pin needed. |
+| B5 | Fix `server.py` for **mcp 2.0** | ✅ **DONE** (commit `6d74728`) | Ported to the 2.0 API — `mcp.server.mcpserver.MCPServer` replaces the removed `mcp.server.fastmcp.FastMCP`. Verified 2026-08-26 on the Windows venv (`mcp` 2.0.0): `import brx_mcp.server` OK and the `mcp__brx__*` tools are live in-session. No pin needed. |
 | B9 | **Definitive BRX manual website** (high-polish public site) | 🟡 strategic | Aggregate everything on tagger + headset into *the* authoritative, beautifully-designed public reference (searchable sound bank, pairing/repairs/mods/protocol). Community magnet + SEO funnel to the platform/hardware. Prototype the design + sound-bank explorer as an Artifact first. Restate-with-credit, link official PDFs. See `VISION.md`. |
 | B8 | **Grenade STATE app** (phone/web, $0) | 🟡 reframed (exp-log #35/#36) | **Config-over-BLE is DEAD** — objective modes are button-set + locked on the grenade (G8 negative); the app can't replace the on-grenade setup. **Real value = a live STATE DISPLAY:** read the grenade's beacons over BLE (`$HIR` token2=15) → show **Hill** possession + **Respawn** availability live (those two beacon; Assault/CTF/Frag don't). Pair with a printed setup cheat-sheet for the manual button config. Optional: thrown-blast config via `$GREN` if paired (G10). |
 | B7 | **Serial-console backend** (pyserial) for `brx-mcp` | 🟢 **QUERY built + verified 2026-08-24** | `brx_mcp/usbconsole.py` + CLI `usb-query [port]`. Reads the full device record over the Teensy USB CDC (VID 16C0): **Serial/Head PIN (= the paired headset's sticker id), Headset Version + Head voltage, Gun voltage, PlayerID, nRF flags, Grenade Pin, PCB rev, BT versions**. Live-confirmed on COM5 (`headset_linked=true`, head 4.0 V). Raw dump backed up to `~/.brx-mcp/device-backups/<serial>.txt` (**out of repo — contains the headset PIN**). **Still open:** `SETUP` (write — set tagger ID / re-pair headset; feeds **P2** per-player identity) — deliberately NOT built yet (factory-provisioning writes; gate behind explicit confirm). |
@@ -1924,7 +1924,7 @@ stats straight off the hardware (part of what P8 is for, with no proxy or Mac).
 | **K2** | **Equip a secondary weapon / perk to the ALT-FIRE button** | 🟡 **mechanism corrected — NOT the t7–t11 block** | ⚠️ My earlier claim that `$WEAP` t7–t11 is the alt-fire mechanism is **refuted by the captures**: t7–t13 are empty in **every** captured frame *and* in ours, and Callsign's alt-fire works anyway. The real path: **the alt button cycles weapon slots** via `$BMAP,1,100,0,1,99,99` (slots 0↔1), which we already push — so "secondary weapon on ALT" is a **slot-loading** question (put the perk/weapon in slot 1), not a token-filling one. `$BUT`'s `ButtonCode` enum (`Trigger, AltFire, Analog`) still gives a host-side path for arbitrary perks. P1's "t7–t11 dormant" call **stands** — I was wrong to reopen it. |
 | ~~K3~~ | **Death-explosion** | ✅ **CLOSED 2026-08-27 — CAPTURED**: `proto=10 (StandardLethalExplosive), MAG=125, player/team = the DYING player`. Out-damages the Rocket Launcher (115) and **credits kills to the corpse**. Replayable from any emitter. See the experiment log. Original note: | Tony (hardware fact): a Supremacy robot's death **emits IR from the HEADSET**, damaging like a grenade. That means **the headset is an IR emitter we don't control yet** — and `$WEAP`'s field map has **`extraHeadsetDamage`, `extraHeadsetRangeOutdoor`, `extraHeadsetRangeIndoor`, `headsetDirection`, `headsetRepeat`** (tokens 12–13, 39–40, 43), plus **`PowerType/IRSource` enum members `HeadSetOnly`, `GunAndHead`, `DoubleGunAndHead`**. So headset emission is a **`$WEAP` `primaryPowerType` (t4) setting**, not a hidden command. ⇒ **Suicide-bomber / death-nova is buildable**: set powerType to a HeadSet variant + `extraHeadsetDamage`. Verify on hardware. |
 | **K4** | **MELEE does not work in our compiled game** (native mode does) | 🔴 NEW — **NOT a config bug** | Tony had to reboot into a native on-gun game to melee (2026-08-26). But two independent capture reviews found **our melee surface is byte-identical to Callsign's**: `$WEAP,4` character-for-character (`…,4,1,90,13,1,90,…M92…` — proto 13, sub 1, magnitude 90, matching the native swing we captured), all three `$SIR,13,*` rows, `$GSET` with `gyroscope=1`, and all seven `$BMAP` rows including **`$BMAP,8,4`** (button 8 = gyro → melee). Callsign sends only `$GLED` and `$PLAY` beyond what we send; neither gates a swing. ⇒ **runtime/state/trial issue, not a frame.** **Bench (one swing):** in *our* compiled game, **select slot 4 and swing hard**, watching the victim for `$HIR,…,13,…` and the shooter for **`$BUT,8`**. `$BUT,8` + no IR ⇒ slot-4 firing. No `$BUT,8` ⇒ the gyro mapping isn't live despite being sent (check whether `$SPAWN` wipes `$BMAP`, since spawn only re-sends `$BMAP,0,0`). |
-| **K5** | **Slot 2 = weapon; PERK is its own slot (A14, 2026-09-04 — was "weapon OR perk"); loadout policy; phone self-serve picks** | 🟢 **BUILT** — server 2026-08-27 (`docs/spec/loadout.md`, contracts A10), perk slot across server + MC + HUD 2026-09-04 (contracts A14, `5641b12`); ⚠️ **not in an APK yet** (0.1.6 = `a1380f8`) — the next cut carries it with `e3490e3` | v1 perks are the PASSIVE ones (Body Armor → `$PSET` armor; Extended Mags → `$AMMO,0` + t16/t39/t17/t40; Quick Hands → t18; **Easy Reload = K1's `alt_reload`, now per-player**). **Med Kit / Concussion stay `hidden` in `perks.json`** until the emit-side bench: their effect lives in the VICTIM's `$SIR` table (a shared constant, game-wide), so a per-player heal-gun needs the table to become policy-derived first. **Empty slot 1 is now legal** (Tony: "alt-fire just does nothing") — the compiler no longer writes a silent default shotgun; bench item: one ALT press with slot 1 empty should reload, not chirp (`brx-protocol.md:48` says reload). The `tutorial` path is unchanged (a try-out is the raw weapon, no perk knobs). |
+| **K5** | **Slot 2 = weapon; PERK is its own slot (A14, 2026-09-04 — was "weapon OR perk"); loadout policy; phone self-serve picks** | 🟢 **BUILT** — server 2026-08-27 (`docs/spec/loadout.md`, contracts A10), perk slot across server + MC + HUD 2026-09-04 (contracts A14, `aec840f`); ⚠️ **not in an APK yet** (0.1.6 = `83542f3`) — the next cut carries it with `00a6a7d` | v1 perks are the PASSIVE ones (Body Armor → `$PSET` armor; Extended Mags → `$AMMO,0` + t16/t39/t17/t40; Quick Hands → t18; **Easy Reload = K1's `alt_reload`, now per-player**). **Med Kit / Concussion stay `hidden` in `perks.json`** until the emit-side bench: their effect lives in the VICTIM's `$SIR` table (a shared constant, game-wide), so a per-player heal-gun needs the table to become policy-derived first. **Empty slot 1 is now legal** (Tony: "alt-fire just does nothing") — the compiler no longer writes a silent default shotgun; bench item: one ALT press with slot 1 empty should reload, not chirp (`brx-protocol.md:48` says reload). The `tutorial` path is unchanged (a try-out is the raw weapon, no perk knobs). |
 | **K6** | **Per-game WEAPON TUNING (damage / fire-sound / rate overrides inside a saved game)** | ⬜ deferred — own spec | Tony's "silenced sniper" wants a fire-sound override. `SavedGame.weapon_tuning` is RESERVED in `docs/spec/loadout.md` §8 (always absent today) so it slots in without a schema change; the builtin "Silenced Sniper" preset ships with the stock sound and says so in its desc. Needs: which `$WEAP` tokens per weapon are host-tunable (t5 dmg, t14 fire interval, t27–t29 sounds — `compile._NAMED`), a per-preset override shape, and the bench for sound ids. |
 
 

@@ -246,7 +246,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   was closed and does not re-report `$HP,0` is re-armed as alive; decide whether reconcile re-probes once); the
   dead-player rejoin path is untested on hardware; a soft reload left the native BLE link half-open (release on
   teardown). `trigger` + `build`.
-- **S8 🟢** station scan fix (low-latency scan + 8 s restart, 53e62bd) needs the two-Pixel bench to confirm; try a lower
+- **S8 🟢** station scan fix (low-latency scan + 8 s restart, 73d391a) needs the two-Pixel bench to confirm; try a lower
   station TX if it recurs. `eyes`.
 - **S1 leftovers 🟡** sound catalog: Tony's by-ear audit (148 of 2477 done; `fx:hit` is the most valuable batch left);
   the category-driven picker in the MC game-mode editor. `ears` + `build`.

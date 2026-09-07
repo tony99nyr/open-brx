@@ -42,8 +42,8 @@ documents §8 and §9 were distilled from (`mode-readiness.md`, `mode-extensibil
 | 6 | Phone side of MC arming: hello as `utility`, heartbeat, `station_config` apply → MC-ARMED · game | `utility.js` | ✅ built | screens #49 |
 | 7 | MC side of arming: `station_config` push, ITEMS panel at muster, persisted assignments | `mcp/brx_mcp/mc`, `webapp/mc` | 🔴 not started (brx session, FOLLOWUPS S5) | — |
 | 8 | Headset out-blink while down, re-asserted | `engine.js` | ✅ built (A11.6/7) | bench 2026-09-04 |
-| 9 | Station intermittently hears no player adverts at high TX | `utility.js` scan | ✅ fixed (S6, 53e62bd: low-latency scan + restart) | soak on two phones pending |
-| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, a63aa10: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on hardware 2026-09-04 (contracts A6.8, node.md §3.10) |
+| 9 | Station intermittently hears no player adverts at high TX | `utility.js` scan | ✅ fixed (S6, 73d391a: low-latency scan + restart) | soak on two phones pending |
+| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, 2e36f58: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on hardware 2026-09-04 (contracts A6.8, node.md §3.10) |
 | 11 | Harness: utility presets, fake players, fake `station_config` | `tools/stage.html`, `?stage` | ✅ built | — |
 
 Kinds 2–5 (powerup, extraction, bomb, control) are designed in the spec's §5 table and not built.
@@ -65,7 +65,7 @@ These unblock every kind and are cheap relative to the kinds themselves.
 ### B. Radio hardening
 | what | surface | owner | done when |
 |---|---|---|---|
-| B1 S6: station scan starvation while advertising — ✅ fixed (53e62bd); the two-phone soak is still owed | `utility.js` | brx-grenade | 10-minute soak: player list never empties while a player phone stands there |
+| B1 S6: station scan starvation while advertising — ✅ fixed (73d391a); the two-phone soak is still owed | `utility.js` | brx-grenade | 10-minute soak: player list never empties while a player phone stands there |
 | B2 Android opportunistic-scan demotion: restart the HUD's beacon scan every 25 min | `app.js` | brx-grenade | soak |
 | B3 iOS: build `BrxBeaconPlugin.swift` on the MacBook, verify advertise + scan | plugin | whoever has the Mac | iPhone as station revives a Pixel |
 | B4 RSSI-vs-distance at each TX level, phone-to-phone; per-kind default thresholds (a zone is bigger than a respawn point) | bench doc | Tony + a session | a table in `utility.md` §3 |

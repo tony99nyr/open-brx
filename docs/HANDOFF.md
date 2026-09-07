@@ -11,8 +11,8 @@
   drives its own gun over BLE and reports to MC over the LAN. Verified end to end: a 300 s FFA on
   2026-08-30 (two iPhones, MacBook host, 12 kills / 126 hits) and a TDM outdoors on 2026-09-01 (two
   Android HUDs). MC is setup, start and recap only; it is not BLE-connected to guns during play.
-- **APK 0.1.6 = `a1380f8` is what phones have; 0.1.7 is REQUIRED before the next game** and has not
-  been built (`webapp/download/build.json` still reads 0.1.6). Un-shipped since a1380f8: the engine's
+- **APK 0.1.6 = `83542f3` is what phones have; 0.1.7 is REQUIRED before the next game** and has not
+  been built (`webapp/download/build.json` still reads 0.1.6). Un-shipped since 83542f3: the engine's
   2.5 s `gun.take` timer, the A11.8 kill flash and 750 ms out-pulse, the A14 perk slot, the utility
   phone's MC link. Build: `cd app && npm run android:apk`, then rebuild the site.
 - **Presentation profile (contracts A11)** is built: presets `standard / silenced / counter_strike / vip
@@ -75,7 +75,7 @@
   bench probes behind it - a `$PSET` re-sent in play keeps `$SIR`, does not heal and the gun still fires; an
   empty voice field plays nothing; `$SPAWN` + our `$PLAY` in one write is clean, but `$PLAYX,0` after `$SPAWN`
   clips the firmware line too late. Open decision: the player's own voice has no off switch (S12).
-- Docs consolidation: sticker ids swept (d748d15); `docs/archive/` created; this file cut to one
+- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
   screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10 (the old files sit in `archive/`).
 
 ## Next actions

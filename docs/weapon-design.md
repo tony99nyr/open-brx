@@ -6,7 +6,7 @@
 > hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
 > Fix options in **§6.2**; it is a bug, not a design question.
 >
-> **Mechanism:** fn 24 is pool-neutral on protocols 0, 5, 7, 9 and 10 (controlled matrix, `eb73b0e`); one
+> **Mechanism:** fn 24 is pool-neutral on protocols 0, 5, 7, 9 and 10 (controlled matrix, `fad28f2`); one
 > listen-only run that reported damage on protocol 7 did not reproduce. History of the flip-flop:
 > `docs/experiment-log.md` 2026-08-26/27.
 >
@@ -485,7 +485,7 @@ reading any negative result in this area.
 
 > ✅ **Scope: resolved — the classes travel.** An earlier revision of this note warned that each class
 > had been measured at a single IR protocol and might not generalise. A controlled matrix across
-> protocols **0, 5, 7, 9 and 10** has since found **no cell varying by protocol** (`eb73b0e`), with fn 1
+> protocols **0, 5, 7, 9 and 10** has since found **no cell varying by protocol** (`fad28f2`), with fn 1
 > holding a correct 40 as control throughout. So "fn 6 is armor-piercing" can be read plainly, and a
 > weapon designed on protocol 9 gets the same behaviour as one on protocol 0. The caveat was
 > over-cautious and is withdrawn.
