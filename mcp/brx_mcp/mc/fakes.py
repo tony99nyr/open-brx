@@ -101,8 +101,14 @@ class FakeCompiler:
         # `hurt`/`hurt_led` are here so the demo and every fake-backed test exercise the same key set
         # the real compiler emits — without them the low-health alert path is unreachable in the
         # demo, and a node bug in it could only ever be found on hardware (review 2026-09-01).
+        # ⚠ `game_over` was `$PLAY,VSF,4,6,JAY,,,,*` until 2026-09-07 -- that is the real compiler's
+        # VICTORY frame, and there was no `victory` key at all. So every `--demo` run, and every
+        # fall back to this compiler, played the victory sting TO EVERYONE at the whistle, winners
+        # and losers alike. This class is a RUNTIME FALLBACK (`__main__.build()` selects it whenever
+        # the real compiler raises on import), not a test-only stub, so that reached real games.
         return {"countdown": "$PLAY,VA81,4,6,,,,,*", "kill": "$PLAY,,4,6,VAA,,,,*",
-                "game_over": "$PLAY,VSF,4,6,JAY,,,,*",
+                "game_over": "$PLAY,,4,6,VA33,,,,*",   # neutral "game over" -- what the real compiler ships
+                "victory": "$PLAY,VSF,4,6,JAY,,,,*",   # winners only, and only when MC sends it at recap
                 "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*"}
 
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:

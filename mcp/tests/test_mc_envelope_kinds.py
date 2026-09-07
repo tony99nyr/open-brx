@@ -105,3 +105,23 @@ def test_node_and_mc_kind_sets_do_not_overlap_by_accident():
     `apply` is the known, deliberate exception (envelope.py:161 unions it into the MC direction)."""
     both = (T.NODE_KINDS & T.MC_KINDS) - {"apply"}
     assert not both, f"these kinds are in both directions: {sorted(both)}"
+
+
+# --- the fallback compiler must not disagree with the real one --------------- #
+
+def test_the_fallback_compiler_does_not_play_the_victory_sting_at_every_game_over():
+    """`FakeCompiler` is a RUNTIME FALLBACK, not a test stub: `__main__.build()` selects it whenever
+    the real compiler raises on import. Until 2026-09-07 its `game_over` cue was byte-identical to
+    the real compiler's VICTORY frame, and it carried no `victory` key at all — so every `--demo`
+    run and every fallback game played the victory sting to everyone at the whistle, losers included.
+
+    Pinned as an inequality plus a key check rather than a literal, so it keeps holding if either
+    sound id is later re-pinned by ear."""
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeCompiler
+    real, fake = Compiler().cues("male"), FakeCompiler().cues("male")
+    assert fake["game_over"] != real["victory"], (
+        "the fallback compiler files the VICTORY frame under game_over — everyone hears the win sting")
+    assert "victory" in fake, "the fallback compiler has no victory cue at all"
+    assert fake["victory"] == real["victory"], "victory should be the same frame in both compilers"
+    assert fake["game_over"] == "$PLAY,,4,6,VA33,,,,*", "game_over should be the neutral line the real bundle ships"
