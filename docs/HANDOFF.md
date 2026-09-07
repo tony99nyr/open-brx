@@ -67,15 +67,36 @@
 - `docs/gun-stage.md` gained the WSL driving notes (host address, safe stop, emitter port).
 - FOLLOWUPS: F25 (is every kill "confirmed by MC"?), E1-E7 extensibility (`docs/utility-roadmap.md` §9),
   S7/S9 de-collided.
-- **LED review done, not built** (`docs/led-language.md`, S10): dark gun rest + transient 3-segment pool readout,
-  night as a dim/sparse overlay (today it is a blackout that also deletes the DOWN pulse), headset role states,
-  the down pulse with quiet gaps around `$SPAWN`. Verified bugs: gun team table offset from tids (F33, yellow team
-  = red gun), no F13 floor on `respawn.delay_s` (F34). Bench ladder L1–L11 in the flash-control sheet §6.
-- **Voice work shipped (A15-A15.3)**: the soundboard, per-character line map, sound variety, and the two
-  bench probes behind it - a `$PSET` re-sent in play keeps `$SIR`, does not heal and the gun still fires; an
-  empty voice field plays nothing; `$SPAWN` + our `$PLAY` in one write is clean, but `$PLAYX,0` after `$SPAWN`
-  clips the firmware line too late. Open decision: the player's own voice has no off switch (S12).
-- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
+- **⭐ LEDs: A16 BUILT AND COMMITTED (parts 1 + 2), after a bench night that retracted two beliefs.**
+  `docs/led-language.md` is the design of record; `contracts.md` A16/A16.2 is the spec.
+  - **The native death flash was never missing from hosted games — our own `$HLED,,6` was disabling it.**
+    Effect 6 kills the firmware's death-flash loop for the rest of that life, and it was our `in_play: dark`
+    rest frame. A colour write does not. In-play dark is now `$HLED,9,0,,,10,,*`; effect 6 is teardown-only.
+    This deletes the whole A11.8 `death_flash` scheme (`$LED` pulsed at 750 ms, ~80 writes/min, at least 2x
+    dimmer than the firmware's own). `$HLOOP,<1|2>,<ms>` drives that loop over BLE at native drive or better;
+    `$HLOOP,0,0` stops it and `$SPAWN` clears it. The node now writes NOTHING at death and re-arms once.
+  - **Gun body rests DARK** with a transient 3-segment pool readout (shield WHITE, armour PURPLE, health
+    GREEN/YELLOW/RED, innermost pool that moved wins, 4 s hold, 2 s reload glance). The blank is mandatory
+    before any paint and once per life is enough; a held paint survives 8 min and all game traffic.
+  - **night is a DIM overlay, not a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the "~1/3" we
+    documented since 2026-09-02 — retracted). A separate `blackout` switch empties the tables, and the DOWN
+    signal survives both.
+  - **`$TID` is 0-3 only (F35).** The IR word's team field is 2 bits so a gun transmits `tid & 3` while the
+    victim compares the FULL tid: on tid >= 4 teammates damage each other, their shots do nothing to the tid
+    they alias onto, and a gun can kill itself off a nearby surface (observed — one drained its own armour to
+    zero). Guarded in `state.py` and `compile.validate()`. Team COLOUR is now decoupled from the tid, so team
+    3 keeps green on the wire and paints PURPLE. FFA is white (Q19 closed).
+  - Headset **role states** survive hits (carrier WHITE, infected, vip, beacon, extracted); `vip`/`beacon`/
+    `extracted` have no trigger reaching the node yet (S10 sub-item).
+  - **The gun stage is now event-driven** (`ble.py` gained an `on_frame` callback): a hit reacts in ~36 ms
+    instead of up to a poll tick, `spawn()` waits the real T-3 countdown lead instead of cutting the
+    countdown off mid-"2", and `page.html` shows a GUN BODY READOUT tile.
+  - ⚠ **Phones are on a pre-`role` APK**, so `presentation.headset_frames()` still ships the legacy
+    `headset.carrier` key on purpose — deleting it breaks the flag blink in the field. Delete once an APK
+    carrying `role` is deployed (S10). **None of the node-side work reaches a player until that APK ships.**
+  - `mcp/tests/test_led_invariants.py` (contributed by the refactor lane) walks every reachable frame across
+    every preset x team x night x ffa and pins these facts; it caught a real defect within an hour.
+- Docs consolidation:- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
   screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10 (the old files sit in `archive/`).
 
 ## Next actions
@@ -84,13 +105,18 @@
    CONNECT, ARM, then spawn/respawn a few times and take rifle and BIG HIT (80) hits. Confirm the scream changes
    per life, the spawn line varies, short vs long pain match the damage, and a kill draws from the 5 takes.
 2. **Build and ship APK 0.1.7**, rebuild the site, install on both phones.
-3. **Run `docs/bench-flash-control-2026-09-05.md` incl. §6 L1–L11** (L1 = does a DEAD gun fire `$LED`; decisive for the down signal) (about 75 min, one gun, emitter, camera): can BLE
-   reach the headset's native flash? Log to `experiment-log.md`, close or re-word FOLLOWUPS S2 6b.
-4. **Build S5** (MC arms utility stations at muster), then run the `$WEAP` blind-token plan in
+3. **Build an APK carrying A16** — until it ships, none of the node-side LED work (dark rest, the pool
+   readout, the `$HLOOP` down signal, headset roles) reaches a player, and `presentation.py`'s legacy
+   `headset.carrier` key cannot be deleted. Then see the A16 bar and the down flash in a real match.
+4. **Bench, gun body only** (`bench-flash-control-2026-09-05.md` §6 L10-L14, ~15 min): the down-signal
+   ladder L1-L9 is ANSWERED and mostly moot; what is left is a metered A/B of `$HLOOP,2,750` against a
+   native out-blink (the "might be brighter" call was one operator, one session, no meter), the rate's
+   usable range, a dim 2-of-3 held 60 s, and `$TID,4` purple.
+5. **Build S5** (MC arms utility stations at muster), then run the `$WEAP` blind-token plan in
    `docs/bench-weap-tokens-discovery-2026-09-04.md` (sensor damage F23 first).
 
 **The bench queue** is the "Needs Tony at the bench" section of `FOLLOWUPS.md` plus one dated run
-sheet at a time (today: bench-flash-control, then weap-tokens-discovery, then the remaining steps in
+sheet at a time (today: the gun-body rungs above, then weap-tokens-discovery, then the remaining steps in
 `bench-grenade.md`). Read `gotchas.md` first; its "Before a bench session" block is the pre-flight.
 
 ## Machine roles
