@@ -76,26 +76,25 @@
     dimmer than the firmware's own). `$HLOOP,<1|2>,<ms>` drives that loop over BLE at native drive or better;
     `$HLOOP,0,0` stops it and `$SPAWN` clears it. The node now writes NOTHING at death and re-arms once.
   - **Gun body rests DARK** with a transient 3-segment pool readout (shield WHITE, armour PURPLE, health
-    GREEN/YELLOW/RED, innermost pool that moved wins, 4 s hold, 2 s reload glance). The blank is mandatory
-    before any paint and once per life is enough; a held paint survives 8 min and all game traffic.
-  - **night is a DIM overlay, not a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the "~1/3" we
-    documented since 2026-09-02 — retracted). A separate `blackout` switch empties the tables, and the DOWN
-    signal survives both.
+    GREEN/YELLOW/RED, innermost moved pool wins, 4 s hold, 2 s reload glance). The blank is mandatory before
+    any paint, once per life; a held paint survives 8 min and all game traffic. **night is a DIM overlay, not
+    a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the "~1/3" documented since 2026-09-02 — retracted);
+    a separate `blackout` switch empties the tables and the DOWN signal survives both.
   - **`$TID` is 0-3 only (F35).** The IR word's team field is 2 bits so a gun transmits `tid & 3` while the
     victim compares the FULL tid: on tid >= 4 teammates damage each other, their shots do nothing to the tid
     they alias onto, and a gun can kill itself off a nearby surface (observed — one drained its own armour to
     zero). Guarded in `state.py` and `compile.validate()`. Team COLOUR is now decoupled from the tid, so team
     3 keeps green on the wire and paints PURPLE. FFA is white (Q19 closed).
-  - Headset **role states** survive hits (carrier WHITE, infected, vip, beacon, extracted); `vip`/`beacon`/
-    `extracted` have no trigger reaching the node yet (S10 sub-item).
+  - Headset **role states** survive hits (carrier WHITE, infected, vip, beacon, extracted); the last three
+    have no trigger reaching the node yet (S10 sub-item).
   - **The gun stage is now event-driven** (`ble.py` gained an `on_frame` callback): a hit reacts in ~36 ms
     instead of up to a poll tick, `spawn()` waits the real T-3 countdown lead instead of cutting the
     countdown off mid-"2", and `page.html` shows a GUN BODY READOUT tile.
   - ⚠ **Phones are on a pre-`role` APK**, so `presentation.headset_frames()` still ships the legacy
     `headset.carrier` key on purpose — deleting it breaks the flag blink in the field. Delete once an APK
     carrying `role` is deployed (S10). **None of the node-side work reaches a player until that APK ships.**
-  - `mcp/tests/test_led_invariants.py` (contributed by the refactor lane) walks every reachable frame across
-    every preset x team x night x ffa and pins these facts; it caught a real defect within an hour.
+  - `mcp/tests/test_led_invariants.py` walks every reachable frame across every preset x team x night x ffa
+    and pins these facts; it caught a real defect within an hour.
 - Docs consolidation:- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
   screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10 (the old files sit in `archive/`).
 
