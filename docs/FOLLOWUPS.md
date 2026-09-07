@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F36 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S11.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F37 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S15.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -191,6 +191,32 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 
 ## 7. September build items (S)
 
+- **S14 🟠** **SYPHON: heal the killer, as a HUD-driven event** (Tony 2026-09-07, for a fair 2v1). The mechanic
+  exists only in `modes/deathmatch.py`, the laptop-BLE CLI path, and has never run on hardware; the phone node
+  and the node↔MC bundle know nothing about it, so it does not exist in a real match. **Design (agreed):** it is
+  a HUD event, not an MC push. MC already tells the killer's node it scored (`feedback` `kind: "kill"`,
+  `engine.js` §3.6, the same body that carries medals), so the node writes the heal to its OWN gun and animates
+  it. The alternative, MC composing `$LIFE` for a remote gun over A6.4 `apply`, needs coverage at the instant of
+  the kill and silently does nothing out of range. Shape: a `siphon` block in the game config compiled into the
+  bundle (`{hp, armor}` + the precompiled `$LIFE` frame), so the node holds it and works offline. Guards: never
+  heal a node that is not `live` and alive; `$LIFE` is additive-and-clamped so it cannot overfill; **no shield**
+  (P16, the pool is IR-only). Open sub-items: **S14.1** the Designer control + a per-team or per-player switch
+  (a 2v1 wants it for the solo side only, and the config is game-wide today), **S14.2** the HUD treatment (brx-hud owns
+  `app/src/hud`) — Tony 2026-09-07: **not a new screen. It rides the KILL CONFIRMED takeover as another entry in
+  the medal stack, coloured differently**, so a heal reads as part of the kill it came from. It **plays a heal
+  sound and the health bar animates up** — reuse the profile's existing `healed` event (presentation.py already
+  defines its sound and LED per preset) rather than inventing a siphon cue, so a silenced game stays silent. The
+  engine puts it on the kill moment as `siphon: {hp, armor}` beside `medals`, which is the same shape the stack
+  already walks, and the health it heals is the node's own pool so the bar has something to animate to —
+  **S14.3** prove it on hardware. `build`.
+- **S13 🟡** **Per-player kit powers beyond the pool** (Tony 2026-09-07). The per-player POOL override
+  (`loadout.overrides`, KIT) covers health and armour and shipped 2026-09-07. The same per-player idea could
+  carry more: a damage or fire-rate modifier, a respawn-delay handicap, extra lives. Each needs a home on the
+  wire before it is worth a control: pools ride `$PSET`, weapon numbers ride that player's `$WEAP`, respawn and
+  lives are node-side. Decide which are worth it before building any. `decision`.
+- **F36 🟡** **The published APK is unproven on hardware.** 0.1.7 is cut, published and advertised on the site,
+  but no build since 0.1.6 (2026-09-04) has run on a phone, and it carries 16 commits including the S7.1 rejoin
+  anti-cheat, A11.7/A11.8 LED work and the A15 voices. Install it before the next match. `trigger`.
 - **S3 🟠** extraction on the phone path, HUD-driven (ARC Raiders / Fortnite Sprite reference): zone presence from the
   station beacon on the player's own gun; call → window → close timers on the node with `extraction_tick`; a wallet;
   hard end at expiry (`raid_ending` → `raid_over`); MC reconciles wallets at recap. Port `modes/extraction.py`'s rules,
@@ -228,7 +254,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   VIP, extraction beacon), the DOWN pulse with quiet gaps around death/`$SPAWN` and the eliminated cadence, `_lightGen`
   cancel on end/panic/resync, respawn white flash at +1.0 s, preset name on every `MODES` row, console lights editor +
   muster lights check + DOWN-screen copy. Findings table and build lanes in the doc. Gate for the down-signal timing:
-  the L-ladder (bench sheet §6). `build` + `eyes`.
+  the L-ladder (bench sheet §6). **Open sub-item (found in the A16 part-2 build):** the node's headset ROLE
+  mechanism is general and wired for `carrier` (via `alert()`) and `infected` (via the death/team_flip path), but
+  **`vip` / `beacon` / `extracted` have no signal that reaches the node** — nothing on an `alert()` body or in the
+  config tells a phone "you are the VIP". Needs an MC-side contract field before those three role states can fire;
+  the engine side is ready. `build` + `eyes`.
 - **S2 leftovers 🟡** presentation profile: the WRITE UI (preset picker + switches; today `PUT /api/config`);
   per-event override editor with the catalog picker; objective/VIP emitters (`Session._alert("objective_scored")`,
   `survivors_win` for infection); `bomb_detonated` X12 vs X13 (Tony: X13 might be a sniper); **6b** the headset flash
