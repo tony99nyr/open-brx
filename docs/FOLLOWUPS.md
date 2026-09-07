@@ -141,7 +141,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   so it would sign off a gun that is deaf to three weapon classes; its docstring claimed the frames were kept in
   sync by hand. Fixed 2026-09-07 (`028cc4e`) by importing them. **And the same file still ends on a bare `$CLEAR`
   (`END = ("$STOP,*", "$CLEAR,*")`, cases.py:38), so running the diagnostic LEAVES the gun un-hittable** — F11,
-  the very fault it exists to detect. The AST teardown guard did not catch it because it scans `mcp/tools/` only.
+  the very fault it exists to detect. **Corrected 2026-09-07 (`f25981e`): `cases.END` was DEAD code; the live
+  fault was `diag/runner.py`'s inline `finally:` teardown, running after every diagnostic — worse, not better.
+  And BOTH guards missed it for complementary reasons: `test_clear_safety` sweeps NAMED sequences, so an inline
+  teardown was never in the sweep, while the dead `diag.END` sat on that file's ALLOWLIST legitimising the shape.
+  The declared one was safe and the live one was invisible — the allowlist entry is what made the file look
+  considered.** Fix: name-based sweep for deliberate sequences, AST code-scan for inline ones, over `brx_mcp/`
+  and not just `mcp/tools/`.
   Add (6): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
   in `led-language.md` §6 and were never assigned, so a KNOWN bug was indistinguishable from an unknown one until a
   refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
