@@ -2,6 +2,8 @@
 
 import asyncio
 
+from _async import run as _run
+
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes import GameDriver, clean_callsign
 
@@ -29,8 +31,6 @@ def test_clean_callsign_caps_by_wire_bytes_not_python_characters():
     assert clean_callsign("A" + "Ω" * 20) == "A" + "Ω" * 5
 
 
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 def test_callsigns_are_display_only_never_pushed_as_name():

@@ -11,6 +11,8 @@ rename failure to the operator, and (a) must not stop the armory record from bei
 updated — the rename DID land on the wire.
 """
 import asyncio
+
+from _async import run as _run
 import contextlib
 import io
 import pathlib
@@ -26,8 +28,6 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 ADDR = "AA:BB:CC:DD:EE:01"
 
 
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 def _with_tmp_base(fn):

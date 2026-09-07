@@ -140,13 +140,7 @@ def test_connected_always_disconnects():
 
     A bench tool that died holding an open BLE link left a gun that would not accept the next
     connection until it was power-cycled."""
-    import asyncio
-
-    def _run(coro):
-        """The suite's shared loop, NOT `asyncio.run()` — that closes the loop it creates, and this
-        module sorts early enough that every later `get_event_loop()` test would then fail
-        (see the same note in test_announcer.py)."""
-        return asyncio.get_event_loop().run_until_complete(coro)
+    from _async import run as _run
 
     class FakeMgr:
         def __init__(self, fail_disconnect=False):

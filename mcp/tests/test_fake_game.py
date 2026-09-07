@@ -11,13 +11,13 @@ or that $GSET/weapon config changes on-gun damage."""
 
 import asyncio
 
+from _async import run as _run
+
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.fake import FakeTagger, FakeConnectionManager
 from brx_mcp.modes.driver import run_live
 
 
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 # ---- FakeTagger unit behaviour --------------------------------------------- #

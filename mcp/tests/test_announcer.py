@@ -7,6 +7,8 @@ flash plus $PLAY on the token-4 announcer slot.
 
 import asyncio
 
+from _async import run as _run
+
 from brx_mcp.modes.announcer import KILL_LINE, KillAnnouncer
 from brx_mcp.modes.base import Callout, KillConfirm, PlaySound
 from brx_mcp.modes.deathmatch import DeathmatchEngine
@@ -17,13 +19,6 @@ def _phrases(actions):
     return [a.text for a in actions if isinstance(a, Callout)]
 
 
-def _run(coro):
-    """Drive a coroutine on the suite's shared loop.
-
-    Deliberately NOT `asyncio.run()`: that closes the loop it creates, and this
-    module sorts first, so every later `get_event_loop()` test would fail.
-    """
-    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 # --------------------------------------------------------------------------- #

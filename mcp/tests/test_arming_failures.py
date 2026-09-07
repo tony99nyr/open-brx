@@ -7,26 +7,12 @@ the rows, so a COMPLETE bundle is safe; the live-match exposure is a PARTIAL one
 """
 import asyncio
 
+from _async import run as _run
+
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes.driver import GameDriver
 
 
-def _run(coro):
-    """Run on the suite's SHARED loop, recreating it only if something closed it.
-
-    Two wrong versions of this preceded it. `asyncio.get_event_loop()` alone is flaky -- once any
-    earlier test leaves a closed loop behind these fail intermittently (seen as 607-pass and 604-pass
-    runs of the same suite). `asyncio.run()` is worse: it closes the loop afterwards, which broke 19
-    tests in other files that rely on the shared one.
-    """
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("closed")
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
 
 
 def _driver(fail_pred):

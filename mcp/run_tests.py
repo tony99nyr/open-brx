@@ -27,7 +27,23 @@ total_pass = total_fail = total_skip = 0
 failures: list[str] = []
 skipped: dict[str, int] = {}
 for f in files:
-    mod = importlib.import_module(f.stem)
+    try:
+        mod = importlib.import_module(f.stem)
+    except Skipped as e:
+        # A module-level `needs(...)` — the whole file bows out, and says why.
+        total_skip += 1
+        skipped[str(e)] = skipped.get(str(e), 0) + 1
+        print(f"  {f.stem}: skipped (needs {e})")
+        continue
+    except Exception:
+        # An import error used to abort the ENTIRE run here, so every later file
+        # silently never ran and the totals still looked plausible. Now it is one
+        # loud failure and the suite carries on (review 2026-09-07).
+        total_fail += 1
+        failures.append(f"{f.stem}::<import>")
+        print(f"FAIL {f.stem}::<import>")
+        traceback.print_exc()
+        continue
     fns = [n for n in dir(mod) if n.startswith("test_")]
     p = fl = sk = 0
     for name in fns:

@@ -7,6 +7,8 @@ attribution — with every gun on the default id, the shooter field is a constan
 
 import asyncio
 
+from _async import run as _run
+
 from brx_mcp.gameconfig import MAX_PLAYER_ID, GameConfig
 from brx_mcp.modes.driver import GameDriver
 
@@ -34,23 +36,6 @@ def test_out_of_range_is_clamped_not_wrapped():
     assert MAX_PLAYER_ID == 63          # 6 bits, matching the IR payload's player field
 
 
-def _run(coro):
-    """Run a coroutine on a USABLE loop, whatever earlier test files did to it.
-
-    The suite shares one loop via `asyncio.get_event_loop()`, but `test_modes.py`
-    calls `asyncio.run()`, which CLOSES the loop it creates — and `test_modes`
-    sorts before this file, so a plain `get_event_loop()` here gets a closed loop
-    and every async test fails only when the full suite runs. Installing a fresh
-    loop when the current one is missing or closed also repairs it for any file
-    that sorts after this one."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("closed")
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
 
 
 def _setup_sends(players, cfg=None):

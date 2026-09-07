@@ -1,4 +1,3 @@
-import asyncio
 """F1: the pool gauge painted onto the three gun LEDs.
 
 Tony's spec: any change to health/armour/shield paints that pool as a bar; after 3-5 s with no
@@ -7,10 +6,15 @@ further change, revert to the team colour; a new change inside the window restar
 The config route was ruled out on hardware first (2026-09-02): ten `$GSET`/`$PSET` candidates all
 left the three LEDs moving together, so there is no native gauge to switch on and we paint it.
 """
+from _async import own_loop
 from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes.base import Eliminate, Respawn, SendFrame
 from brx_mcp.modes.driver import GameDriver
+
+# This file drains GameDriver's background LED bursts across calls, so it needs a persistent loop --
+# a private one, not the process-wide default. See _async.own_loop().
+_run = own_loop()
 
 
 # --- the mapping (pure) ------------------------------------------------------ #
@@ -131,16 +135,6 @@ def test_no_change_paints_nothing():
 
 # --- the driver wiring ------------------------------------------------------- #
 
-def _run(coro):
-    """The suite shares one event loop; recreate it only if something closed it."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("closed")
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
 
 
 def _driver():

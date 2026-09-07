@@ -3,12 +3,12 @@ Protects the $STOP→$PHONE→$VERSION→$VOLTS sequence fixed live on 2026-08-2
 
 import asyncio
 
+from _async import run as _run
+
 from brx_mcp.fake import FakeTagger, FakeConnectionManager
 from brx_mcp.diagnostics import run_diagnose
 
 
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
 
 
 def test_diagnose_reads_firmware_and_battery():

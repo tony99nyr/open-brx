@@ -6,7 +6,11 @@ returns); a static `$HLED` painted AFTER spawn holds solid; a paint 1 s after sp
 two-level brightness with 10 already maximum. So the team colour must be re-sent after every spawn and
 every hit, on both paths: the direct-BLE `GameDriver` and the phone bundle MC compiles.
 """
-import asyncio
+from _async import own_loop
+
+# This file drains GameDriver's background LED bursts across calls, so it needs a
+# persistent loop -- a private one, not the process-wide default. See _async.own_loop().
+_run = own_loop()
 import dataclasses
 
 from brx_mcp import poolgauge as pg
@@ -23,15 +27,6 @@ def _drain(d, pid="p1"):
         _run(t)
 
 
-def _run(coro):
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("closed")
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
 
 
 def _driver(sent, leds=True, team=1):
