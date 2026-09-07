@@ -49,7 +49,17 @@
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-04 night to 2026-09-06)
+## What changed since the last handoff (2026-09-04 night to 2026-09-07)
+
+- **Repo hygiene, 2026-09-07 (decision: keep ONE repo).** A split was reviewed and rejected on evidence:
+  only 24 of 741 commits touch the manual/site *and* software, but the site build reads two code-owned
+  data files and the manual's provenance citations point into `protocol/` and `mcp/`; and 160 commits
+  touch software *and* the working docs, which a public/private split would break. Executed instead:
+  the raw Callsign JSONs are gone (restated as our own data under `mcp/brx_mcp/data/`), CONTRIBUTING and
+  a code of conduct exist, `test_ui_contract.py` now fails on UI↔server drift (it caught three real
+  gaps), apk builds publish to a GitHub Release, and the PDF + ten stale apk blobs are purged from
+  history: **pack 93 MB → 28 MB, so every SHA changed. `git fetch && git reset --hard origin/main`,
+  do not pull.** Backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle`.
 
 - The APK's own metadata was read: `$LED` has two fields (colour, green flag), `$BLINK` is
   `colour, on, off, level 0-10, loop`, `$BHIT` injects a hit through the firmware path. Wall-camera

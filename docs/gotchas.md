@@ -154,6 +154,20 @@ whether the victim's pools had headroom** — a grant into a full pool clamps an
 drain against an empty one does too. **Carry a known-good control at both ends** — without a control you cannot
 tell "rejected" from "broken".
 
+**A purge of `main` frees nothing while any other ref still holds the blobs.**
+`git filter-repo` rewrites every ref it can see, but the objects only go away once *nothing* points at
+them. Two things kept the 2026-09-07 purge at 0 bytes reclaimed until they were dealt with, and neither
+announced itself: (1) a **dead remote branch** (`origin/bench/…`) still carried the PDF and all ten old
+apks, and the next `git fetch` pulled every one of them straight back into the local object store;
+(2) the **release tag** `app-v0.1.6`, created minutes earlier by `gh release create`, pointed at a
+*pre-purge* commit and pinned that whole history. Translate such a tag through
+`.git/filter-repo/commit-map` (old sha → new sha), force it, delete and re-push it; the GitHub Release
+and its uploaded assets survive that, they hang off the release, not the tag. Only then do
+`git remote prune`, `git reflog expire --expire=now --all` and `git gc --prune=now` shrink anything.
+Symptom to watch for: `git count-objects -vH` still large while `git rev-list --objects --all` lists
+blobs you thought you purged. Ask **which ref reaches them**:
+`for r in $(git for-each-ref --format='%(refname)'); do git log --oneline "$r" -- <path>; done`.
+
 **`git filter-repo --replace-text` reports success but silently SKIPS binary blobs.**
 A scrub that greps clean afterwards in text and commit messages can still leave the value inside
 `.btsnoop` captures, images or any other binary — `--replace-text` does not touch them. Reaching those
