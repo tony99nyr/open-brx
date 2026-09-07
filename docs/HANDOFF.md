@@ -67,7 +67,7 @@
 - `docs/gun-stage.md` gained the WSL driving notes (host address, safe stop, emitter port).
 - FOLLOWUPS: F25 (is every kill "confirmed by MC"?), E1-E7 extensibility (`docs/utility-roadmap.md` §9),
   S7/S9 de-collided.
-- **⭐ LEDs: A16 BUILT AND COMMITTED (parts 1 + 2), after a bench night that retracted two beliefs.**
+- **⭐ LEDs: A16 BUILT + COMMITTED (parts 1+2); a bench night retracted two beliefs.**
   `docs/led-language.md` is the design of record; `contracts.md` A16/A16.2 is the spec.
   - **The native death flash was never missing from hosted games — our own `$HLED,,6` was disabling it.**
     Effect 6 kills the firmware's death-flash loop for the rest of that life, and it was our `in_play: dark`
@@ -87,12 +87,12 @@
     3 keeps green on the wire and paints PURPLE. FFA is white (Q19 closed).
   - Headset **role states** survive hits (carrier WHITE, infected, vip, beacon, extracted); the last three
     have no trigger reaching the node yet (S10 sub-item).
-  - **The gun stage is now event-driven** (`ble.py` gained an `on_frame` callback): a hit reacts in ~36 ms
-    instead of up to a poll tick, `spawn()` waits the real T-3 countdown lead instead of cutting the
-    countdown off mid-"2", and `page.html` shows a GUN BODY READOUT tile.
-  - ⚠ **Phones are on a pre-`role` APK**, so `presentation.headset_frames()` still ships the legacy
-    `headset.carrier` key on purpose — deleting it breaks the flag blink in the field. Delete once an APK
-    carrying `role` is deployed (S10). **None of the node-side work reaches a player until that APK ships.**
+  - **The gun stage is event-driven now** (`ble.py` `on_frame` callback): a hit reacts in ~36 ms not a poll
+    tick, `spawn()` waits the real T-3 lead instead of cutting the countdown off mid-"2", and `page.html`
+    shows a GUN BODY READOUT tile.
+  - ⚠ **Phones are on a pre-`role` APK**: `headset_frames()` still ships the legacy `headset.carrier` key on
+    purpose (deleting it breaks the flag blink in the field; delete once an APK with `role` is deployed, S10),
+    and **no node-side work reaches a player until that APK ships.**
   - `mcp/tests/test_led_invariants.py` walks every reachable frame across every preset x team x night x ffa
     and pins these facts; it caught a real defect within an hour.
 - Docs consolidation:- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
