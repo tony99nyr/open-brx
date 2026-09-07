@@ -49,21 +49,68 @@ RED, BLUE, YELLOW, GREEN, PURPLE, TEAL, WHITE, PINK, ORANGE = range(9)
 DARK = 9
 
 # Our choice, not the gun's: nothing on the wire dictates a team colour, so the tid IS the palette
-# index -- red 0 / blue 1 / yellow 2 / green 3, matching `state.py`'s TEAM_DEFS and the headset's own
-# painting (`$HLED,<tid>,0,...` in `mc.presentation.headset_frames`, tid used directly).
+# index by default -- red 0 / blue 1 / yellow 2 / green 3, matching `state.py`'s TEAM_DEFS and the
+# headset's own painting. This is the WIRE IDENTITY map (F33 below); the colour actually PAINTED is a
+# separate lookup, `TEAM_DISPLAY_COLOURS`, a few lines down -- see its comment for why.
 # F33 (2026-09-07 bench, led-language.md §6 #1): this table used to be OFFSET from the server's tids
 # (`{1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}`), so a yellow-team (tid 2) gun painted RED, a red-team
 # (tid 0, not a key at all) gun fell through to DEFAULT_TEAM_COLOUR (WHITE), and only blue (tid 1, the
-# one colour every bench happened to test) ever agreed with the headset. Identity below fixes both
-# `team_frame` (the gun) and `headset_team_frame` (the direct-BLE `GameDriver` path) in one place.
+# one colour every bench happened to test) ever agreed with the headset.
 TEAM_COLOURS = {0: RED, 1: BLUE, 2: YELLOW, 3: GREEN}
 DEFAULT_TEAM_COLOUR = WHITE   # an unknown/None tid (5th+ team, or no team yet) -- not itself a bug
 
+# F35 (bench 2026-09-07, FOLLOWUPS): the IR word's team field is only 2 BITS, so a gun armed on
+# `$TID,4`-`$TID,7` transmits `tid & 3` on the wire while the VICTIM compares the shooter's word
+# against its own FULL tid -- proven both directions: a `$TID,4` gun took FULL damage from a team-0
+# shot (a real friendly hit misread as hostile), and a tid>=4 player's own shots read as a DIFFERENT,
+# lower team to everyone else, who then treat them as friendly and take nothing. Teams 4-7 are
+# therefore BROKEN for combat; only 0-3 are valid `$TID` values. Validated in `state.py` (config
+# teams) and `mc.compile.Compiler.validate()`. The COLOUR range (0-7, below) is NOT affected by this --
+# it is a separate, cosmetic lookup and colours 4-7 are bench-confirmed fine on both surfaces.
+TEAM_TIDS = tuple(range(4))
+
+# led-language.md §6 finding #11 / Q19: FFA has no team identity to protect, so both surfaces paint
+# WHITE (palette 6, "white is usually used for ffa" -- Tony, matches stock behaviour) for every player
+# instead of a per-player colour. FFA's own `$TID` stays within TEAM_TIDS (0-3) -- only the PAINT is
+# fixed to white, same colour/identity split as `TEAM_DISPLAY_COLOURS` below.
+FFA_COLOUR = WHITE
+
+# Headset colour indices the palette is confirmed on: 0-3 bench 2026-09-02/03, 4-7 (purple/teal/white/
+# pink, the SAME palette as the gun) bench-confirmed 2026-09-07 -- shared with the gun's own 0-8
+# palette. led-language.md §6 finding #13: `compile.py` used to allow only 0-3 here while
+# `presentation.py` allowed 0-7 -- one constant, both modules agree on 0-7. Colour 8 (orange on the
+# gun) is still UNVERIFIED on the headset (the protocol doc claims it reads red there) and stays out
+# of this range.
+HEADSET_TIDS = tuple(range(8))
+
+# The colour actually PAINTED for a team -- decoupled from `TEAM_COLOURS` (the wire identity a gun
+# fights under). Bench 2026-09-07: green reads as the headset's own native hit/out flash at range
+# (led-language.md §6 finding #11), and colours 4-7 are now confirmed on the headset, so team 3 keeps
+# GREEN on the wire (`$TID,3`, F35 -- its combat identity cannot move) but PAINTS purple instead.
+# `display_colour()` is the one place this mapping happens; nothing else should assume colour == tid.
+TEAM_DISPLAY_COLOURS = {0: RED, 1: BLUE, 2: YELLOW, 3: PURPLE}
+
+
+def display_colour(tid: int | None, overrides: dict[int, int] | None = None) -> int:
+    """The colour to PAINT for wire team `tid`: an explicit per-tid override first (a future
+    presentation-profile knob -- none ships yet, this is the hook for it), else `TEAM_DISPLAY_COLOURS`,
+    else the generic fallback. `tid` itself is never returned as a colour by assumption."""
+    if overrides and tid in overrides:
+        return overrides[tid]
+    return TEAM_DISPLAY_COLOURS.get(tid, DEFAULT_TEAM_COLOUR)
+
 # Pool identity is carried by HUE so the player can tell at a glance WHICH bar they are looking at.
-SHIELD_COLOUR = TEAL
+# F33-adjacent (led-language.md §3.1 readout mapping, 2026-09-07 design review): shield reads WHITE,
+# not teal -- teal was never bench-validated as the shield hue and the reviewed readout table calls
+# for white/purple/health-band on the three pools.
+SHIELD_COLOUR = WHITE
 ARMOUR_COLOUR = PURPLE
 # Health additionally shifts colour as it falls -- the one bar where the level itself is urgent.
 HEALTH_BANDS = ((0.66, GREEN), (0.33, YELLOW), (0.0, RED))
+# The transient pool readout (led-language.md §3.1/§5): fraction-of-max -> how many of the 3 LEDs
+# light up. Same thresholds as HEALTH_BANDS, expressed as segment counts rather than colours so
+# shield/armour (constant hue) and health (hue shifts per band) can share one table shape.
+READOUT_THRESHOLDS = ((0.66, 3), (0.33, 2), (0.0, 1))
 
 REVERT_AFTER_S = 4.0     # Tony: "a few seconds maybe 3-5s"
 
@@ -239,14 +286,47 @@ def pool_paint_frame(pool: str, level: int, maximum: int, night: bool = False) -
     return f"$GLED,{colour},{colour},{colour},0,{b},,*"
 
 
-def team_frame(team: int | None, night: bool = False) -> str:
-    """Revert frame: all three LEDs to the team colour."""
-    c = TEAM_COLOURS.get(team, DEFAULT_TEAM_COLOUR)
+def segment_frame(colour: int, lit: int, night: bool = False) -> str:
+    """A `$GLED` frame with the first `lit` (0-3) of the three LEDs in `colour`, the rest dark.
+
+    The BLANKED-gun form of a pool reading (led-language.md §3.1/§5): unlike `pool_paint_frame`
+    (whole strip, safe on a still-breathing gun), this is only meaningful once the strip has been
+    taken out of the native animation (`mc.presentation.GUN_BLANK`) -- callers that paint a live,
+    unblanked gun should use `pool_paint_frame` instead.
+    """
+    leds = [colour if i < lit else DARK for i in range(3)]
+    b = BRIGHT_DIM if night else BRIGHT_FULL
+    return f"$GLED,{leds[0]},{leds[1]},{leds[2]},0,{b},,*"
+
+
+def readout_bands(pool: str, night: bool = False) -> list[tuple[float, str]]:
+    """[[fraction_above, frame], ...], highest band first, for the transient pool readout
+    (led-language.md §5 `gun.readout.pools[].bands`). The node picks the first band whose
+    `level/max` exceeds `fraction_above`; a level of exactly 0 exceeds none of them, so the caller
+    reverts to the gun's rest frame -- there is no "0" row here (down: dark, §3.1).
+
+    Shield and armour hold ONE hue across all three bands (only the segment count moves); health's
+    hue shifts band to band too (`HEALTH_BANDS`), so its row pairs each threshold with its own colour.
+    """
+    if pool == "shield":
+        return [(thr, segment_frame(SHIELD_COLOUR, lit, night)) for thr, lit in READOUT_THRESHOLDS]
+    if pool == "armor":
+        return [(thr, segment_frame(ARMOUR_COLOUR, lit, night)) for thr, lit in READOUT_THRESHOLDS]
+    if pool == "health":
+        return [(thr, segment_frame(colour, lit, night))
+                for (thr, colour), (_thr2, lit) in zip(HEALTH_BANDS, READOUT_THRESHOLDS)]
+    raise ValueError(f"readout_bands: unknown pool {pool!r}")
+
+
+def team_frame(team: int | None, night: bool = False, ffa: bool = False) -> str:
+    """Revert frame: all three LEDs to the team's PAINT colour (`display_colour`, e.g. purple for the
+    green team, F35/finding #11), or WHITE for every player in FFA (Q19)."""
+    c = FFA_COLOUR if ffa else display_colour(team)
     b = BRIGHT_DIM if night else BRIGHT_FULL
     return f"$GLED,{c},{c},{c},0,{b},,*"
 
 
-def headset_team_frame(team: int | None) -> str:
+def headset_team_frame(team: int | None, ffa: bool = False) -> str:
     """The HEADSET in the team colour, static, full brightness -- what OTHER players see.
 
     Bench 2026-09-03 (`hled_spawned.py`, `hled_bright.py`, gun DELTA-9498, operator watching):
@@ -260,11 +340,12 @@ def headset_team_frame(team: int | None) -> str:
       * token 5 is a two-level brightness exactly like the gun's: 1 dim, 2/10/255 identical and
         maximum. 10 (Callsign's value) is already full. The dim team blink seen at spawn is the
         firmware's own and cannot be turned up -- we paint over it instead.
-    Colour indices 0-7 are shared with the gun palette (camera rig, 2026-09-02). Never dimmed for
-    night mode: callers skip the headset entirely when LEDs are off, because lighting a player's
-    head in a blackout game is the one thing that setting exists to prevent.
+    Colour indices 0-7 are shared with the gun palette (camera rig, 2026-09-02; 4-7 bench-confirmed on
+    the headset itself 2026-09-07). Never dimmed for night mode: callers skip the headset entirely
+    when LEDs are off, because lighting a player's head in a blackout game is the one thing that
+    setting exists to prevent. Paints `display_colour(team)`, not the raw tid (F35/finding #11).
     """
-    c = TEAM_COLOURS.get(team, DEFAULT_TEAM_COLOUR)
+    c = FFA_COLOUR if ffa else display_colour(team)
     return f"$HLED,{c},0,,,{BRIGHT_FULL},,*"
 
 

@@ -215,7 +215,20 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   presentation?: { preset, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence,
                    custom_events, headset: { pregame, start_flash, in_play, hit, death, respawn_flash, carrier },
                    gun: { in_play, pregame } },   // A11 summary echo
-  gun?: { in_play: "team"|"dark"|"health", blank: string, rest: string,   // A11.7: the gun BODY when the game owns it (default
+  gun?: { in_play: "team"|"dark"|"health"|"native", blank: string, rest: string,   // A11.7/A16: the gun BODY when the game owns it
+          readout?: { hold_s: number, reload_glance_s: number,   // A16: the TRANSIENT pool bar. Default rest is now DARK.
+                      pools: [{ pool: "shield"|"armor"|"health", max: number,
+                                bands: [fraction_above: number, frame: string][] }] },
+          // A16 [2026-09-07]: outermost pool FIRST (shield, armor, health); bands highest first; frames are 3/2/1 lit
+          // segments in the pool's hue (shield WHITE, armour PURPLE, health GREEN/YELLOW/RED). MC ships each `max`
+          // so the node never parses a frame. NODE RULE: on every $HP paint the band of the INNERMOST pool that
+          // moved, write only on a frame change, coalesce changes inside 300 ms, restart the hold on every change,
+          // and write `rest` when it expires. A reload repaints the last moved pool for `reload_glance_s`. An event
+          // burst ends on the live readout frame if its hold is running, else on `rest`. Nothing is written to the
+          // body during the 2.5 s hands-off window after $HP,0. Segments render per-LED only AFTER the blank
+          // (bench 2026-09-04/07); a dark paint with no prior blank leaves the firmware breathing.
+          // ⚠ The old whole-strip `bands` below is kept for older nodes.
+
           after_spawn_s: number, take: string[],                           // team). The node writes `take` (blank, rest) after_spawn_s
           bands?: [fraction_above: number, frame: string][] },             // after every $SPAWN. Absent for "native" (opt-in).
                                                                            // health: the node paints the first band whose
@@ -228,7 +241,13 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
               // A16 [2026-09-07, bench]: `rest`/`blank` are DARK BY COLOUR (`$HLED,9,0,,,10,,*`). ⚠ `$HLED,,6`
               // (effect 6) DISABLES the firmware's own death-flash loop for the rest of that life, so it is a
               // TEARDOWN frame only and must never be written in play; a colour write does not suppress it.
-              down: { rearm: string, stop: string, rearm_after_ms: number } },
+              down: { rearm: string, stop: string, rearm_after_ms: number },
+              role?: { carrier, infected, vip, beacon, extracted: [string, number][] } },
+              // A16: HELD role states the node re-asserts after every registered hit (a hit wipes the headset) and
+              // clears on death. `carrier` is WHITE, never the flag's team colour — team colours are identity.
+              // `infected` is the infected team's colour, `vip`/`extracted` solid white, `beacon` an orange blink.
+              // ⚠ `vip`/`beacon`/`extracted` have NO trigger reaching the node yet (FOLLOWUPS S10 sub-item).
+
               // A16: the DOWN indication is the FIRMWARE's own bright flash (~0.75 s on the small LED), which
               // runs in a hosted game on its own. The node writes NOTHING to the headset at death; at
               // `rearm_after_ms` (2500) it writes `rearm` ONCE ($HLOOP,2,750) as insurance for any life where a
@@ -252,6 +271,18 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                                      //   different take each life -- the scream stays native because our own $PLAY on the death landed a BLE hop
                                      //   late ("a little off", Tony, bench 2026-09-06). Re-sending $PSET mid-game keeps $SIR, does not heal, the
                                      //   gun still fires (all bench-verified). A pinned `death_scream` = one frame = head[4].
+                                     //   [A17] each take ALSO carries its own hitHp / hitArrmor / hitShield / hitCrit draw
+                                     //   (`hitaudio.MATERIAL_POOLS`), so the write that re-rolls the scream re-rolls what a hit
+                                     //   on each POOL sounds like -- metal for armour, body for health, energy for shield.
+  sir_pool?: string[][],             // [A17] one full $SIR table per take; the rows differ ONLY in their sound tokens. The node
+                                     //   writes one on the REVIVE path (not the first spawn: that write is on the critical path and
+                                     //   the headset needs its F13 settling gap), so the sound a given WEAPON makes on you changes
+                                     //   between lives. Re-sending $SIR rows is the F11 REPAIR path, so the write cannot cost the
+                                     //   table. Absent = the head's own table stands, as before A17.
+  hit_audio?: { rekey: bool, cells: {[weapon_id]: "proto,sub"}, classes: {"proto,sub": family},
+                shared: string[], material: string[] },   // [A17] what this gun was actually armed with, for the UI and the bench
+                                     //   probes (F37/F38/F39). `rekey` false = nothing was moved off its stock cell (the default);
+                                     //   `shared` names the families that had to share a cell and therefore share a clip.
   voice?: { id, family, pset: {role: id}, kill, rolled: {role: id}, pools: {role: string[]}, spawn: string[],
             pset_pool: string[], pain_long_min: int },
                                      // [A15] what the head's $PSET holds per voice field and the kill line; [A15.1] `rolled` = the fields MC drew
@@ -610,6 +641,8 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 | A8 | 2026-08-25 | A8.1 operator auth, A8.2 node re-claim key, A8.3 input hardening | §5b |
 | A9 | 2026-08-26 | A9.1 `apply.preview` | §5 `apply` |
 | A10 | 2026-08-27 | M-LOADOUT: two slots + perks, `loadout_policy`, `loadout_request`/`browse`/`ack`, ready semantics, saved games (`/api/presets*`) | §2, §5; full text `loadout.md` |
+| A17 | 2026-09-07 | HIT AUDIO: what a hit sounds like to the player who took it, in three orthogonal layers (`mcp/brx_mcp/hitaudio.py`). **MATERIAL** — the `$PSET` foot's `hitHp` / `hitArrmor` / `hitShield` / `hitCrit` slots are chosen and rolled from `MATERIAL_POOLS` (metal for armour, body for health, energy for shield) instead of shipping Callsign's inherited ids; each `FrameBundle.pset_pool` take carries its own draw, so the write that re-rolls the death scream re-rolls these too. **CLASS** — the `$SIR` `<soundID>` plays on the victim and is keyed by the shooter's `$WEAP` tok3/tok4, so it is per WEAPON: the three commonest rows (`<0,0>` `<0,1>` `<0,3>`, between them 17 of the 22 catalogued weapons) ship an EMPTY token today, and `Compiler.sir_table` fills them from `CLASS_POOLS` by family. `FrameBundle.sir_pool` = one full table per take, written by the node before every revive. `GameConfig.hit_audio_rekey` (**default off**) additionally gives each (family, function) group its own free cell so an AR and a shotgun stop sounding identical; `compile.assert_sir_covers_weapons` guards every head, because an unmatched cell is silently ignored (the F11 shape). **A17.1 CHARACTER** — the node's pain grunt now plays only when the hit reached HEALTH (`engine.js _pain(dmg, proto, pool)`, `stage.py` mirrored): armour or shield absorbing it is a hit on equipment, and the firmware's material sound is the feedback. Short vs long is still chosen by damage from the same pain pools (A15.3). Bench: F37 (`$PSET` slot order), F38 (`$SIR` sound layers with or replaces the `$PSET` pool sound), F39 (the real `$SIR` row ceiling). | §2 GameConfig, §3 FrameBundle; `mcp/brx_mcp/hitaudio.py`; `docs/manual/04-sound.md` |
+| A16.2 | 2026-09-07 | LEDs part 2: `presentation.lights` groundwork — `night` becomes a DIM/shorten overlay and a separate `blackout` switch is the only thing that empties the light tables (the DOWN signal survives both); the gun body rests DARK with a transient per-pool `readout`; `headset.role` replaces carrier-only; team COLOUR is decoupled from `$TID` (`poolgauge.display_colour`, so team 3 keeps its green wire identity and paints purple); FFA paints white; `$TID` validated to 0-3 (F35) | §3, §4 |
 | A16 | 2026-09-07 | LEDs, bench-driven: `$HLED,,6` disables the firmware death flash for the life ⇒ in-play dark is `$HLED,9,0` and effect 6 is teardown-only; `headset.down` ($HLOOP rearm/stop) REPLACES A11.8 `death_flash`; gun-body team colour uses the tid as the palette index (was an offset table); `respawn.delay_s` floored at 3 s (F13) | §3, §4 |
 | A11 | 2026-09-04 | PRESENTATION: A11.1 profile, A11.2 bundle `cues`+`leds`, A11.3 node plays its own events, A11.4 HUD-driven events + `alert` + medals, A11.5 event classes + `mc_confidence`, A11.6 headset, A11.7 gun body, A11.8 small flash LED | §3, §4, §5 |
 | A12 | 2026-09-04 | SIDEARMS: three pistols; `SlotRule.kinds` gains `"sidearm"` | §2, §3; `loadout.md` §1.1 |

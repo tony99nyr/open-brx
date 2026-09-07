@@ -206,6 +206,21 @@ def test_validate_unknown_weapon():
     assert not r["ok"] and any("death_ray" in e for e in r["errors"])
 
 
+def test_validate_rejects_a_team_tid_above_3_f35():
+    """F35 (bench 2026-09-07): the IR word's team field is 2 bits -- a $TID of 4+ makes teammates
+    damage each other. `state.py` already rejects this at PUT time; this is the compiler's own
+    belt-and-braces check for any config that reaches it another way."""
+    cfg = _cfg()
+    cfg["teams"] = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 0},
+                    {"team_id": "purple", "name": "Purple", "color": "purple", "tid": 4}]
+    r = C.validate(cfg, [_player(team="blue")])
+    assert not r["ok"] and any("F35" in e for e in r["errors"])
+    ok_cfg = _cfg()
+    ok_cfg["teams"] = _TEAMS
+    r2 = C.validate(ok_cfg, [_player()])
+    assert not any("F35" in e for e in r2["errors"])
+
+
 # ---- catalog --------------------------------------------------------------
 def test_catalog_excludes_hidden_melee_and_flags_verified():
     cat = WeaponCatalog()
@@ -854,17 +869,25 @@ def test_voice_slots_pick_which_line_of_the_family_the_gun_holds():
 
 
 def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn():
-    """A11.7 / S4: native (default) leaves spawn/revive untouched; an opt-in inserts blank + rest after $SPAWN."""
+    """A11.7 / S4: native leaves spawn/revive untouched; an opt-in inserts blank + rest after $SPAWN.
+
+    led-language.md §3.1/§6 finding #5 (2026-09-07): the DEFAULT `in_play` changed from "team" to
+    "dark" -- the body rests dark and the transient readout is the standard feedback now, so this test
+    exercises "team" as an explicit opt-in rather than the default."""
     base = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "native"}}}, _player(), _TEAMS)
     assert "gun" not in base and not any(f.startswith("$GLED,,,,5") for f in base["spawn"] + base["revive"])
-    b = C.compile(_cfg(), _player(), _TEAMS)            # the default is team: the NODE blanks + paints 2.5 s after $SPAWN
+    dflt = C.compile(_cfg(), _player(), _TEAMS)         # the default rests DARK, no readout event bursts by default
+    assert dflt["gun"]["in_play"] == "dark" and dflt["gun"]["rest"] == "$GLED,9,9,9,0,10,,*"
+    b = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
     assert not any(f.startswith("$GLED") for f in b["spawn"] + b["revive"]), "a blank inside the spawn burst does not take (bench 2026-09-04)"
-    assert b["gun"] == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*", "after_spawn_s": 2.5,
-                        "take": ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]}
+    assert b["gun"]["in_play"] == "team" and b["gun"]["blank"] == "$GLED,,,,5,,,*" and b["gun"]["rest"] == "$GLED,1,1,1,0,10,,*"
+    assert b["gun"]["after_spawn_s"] == 2.5 and b["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
     assert b["head"][-2:] == ["$GLED,1,1,1,0,10,,*", "$TID,1,*"]         # pregame: armed body in the team colour, head still ends with $TID
     off = C.compile({**_cfg(), "presentation": {"gun": {"pregame": "off"}}}, _player(), _TEAMS)["head"]
     assert off[-1] == "$TID,1,*" and not off[-2].startswith("$GLED,1,1,1")
-    assert b["leds"]["hit_taken"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    # "extraction_failed" (default RED) stands in for the old hit_taken check -- hit_taken carries no
+    # default gun burst any more (finding #5).
+    assert b["leds"]["extraction_failed"][-1][0] == "$GLED,1,1,1,0,10,,*"
     h = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "health"}}}, _player(), _TEAMS)
     assert h["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,3,3,3,0,10,,*"] and len(h["gun"]["bands"]) == 3
     off = C.compile({**_cfg(led={"mode": "off"}), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
@@ -877,25 +900,28 @@ def test_every_mode_and_preset_paints_headset_and_gun_body_pregame():
     every preset's head carries the headset team paint AND the gun-body team paint, before the closing $TID."""
     from brx_mcp.mc import presentation as P
     from brx_mcp.mc.state import default_config, MODES
+    from brx_mcp import poolgauge as _pg
     for m in MODES:
         for preset in [None] + sorted(P.PRESETS):
             cfg = default_config(m["mode"])
             cfg["config_id"] = "c1"
             if preset:
                 cfg["presentation"] = P.merge(cfg["presentation"], {"preset": preset})
+            ffa = m["mode"] == "ffa"
             for t in cfg["teams"]:
                 tid, team = int(t["tid"]), t["team_id"]
                 b = C.compile(cfg, _player(team=team), cfg["teams"])
                 head = b["head"]
                 assert head[-1] == f"$TID,{tid},*", (m["mode"], preset)
-                assert f"$HLED,{tid},0,,,10,,*" in head, ("headset pregame missing", m["mode"], preset)
+                # led-language.md §6 finding #11 / Q19 (2026-09-07): FFA paints WHITE on both surfaces,
+                # not the tid's identity colour -- there is no team to protect. Non-FFA paints
+                # `display_colour(tid)` (F35: green stays green on the wire but PAINTS purple), never
+                # the raw tid.
+                hled_colour = _pg.FFA_COLOUR if ffa else _pg.display_colour(tid)
+                assert f"$HLED,{hled_colour},0,,,10,,*" in head, ("headset pregame missing", m["mode"], preset)
                 gled = [f for f in head if f.startswith("$GLED,") and not f.startswith("$GLED,,,,5")]
-                assert gled and gled[-1].startswith(f"$GLED,{_team_colour(tid)},"), ("gun pregame missing", m["mode"], preset, gled)
-
-
-def _team_colour(tid):
-    from brx_mcp import poolgauge as pg
-    return pg.TEAM_COLOURS.get(tid, pg.DEFAULT_TEAM_COLOUR)
+                want = _pg.FFA_COLOUR if ffa else _pg.display_colour(tid)
+                assert gled and gled[-1].startswith(f"$GLED,{want},"), ("gun pregame missing", m["mode"], preset, gled)
 
 
 def test_a_roll_draws_the_pset_voice_fields_and_the_kill_cue_is_a_pool():

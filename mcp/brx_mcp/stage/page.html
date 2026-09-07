@@ -124,6 +124,7 @@
     <div class="tele">
       <div><b>HP</b><span id="t-hp">—</span></div><div><b>ARMOR</b><span id="t-armor">—</span></div><div><b>SHIELD</b><span id="t-shield">—</span></div>
       <div><b>MAG / RES</b><span id="t-ammo">—</span></div><div><b>MODEL</b><span id="t-model">—</span></div>
+      <div><b>GUN BODY READOUT</b><span id="t-readout" style="font-size:14px">—</span></div>
     </div>
     <div class="hint" id="lasthir"></div>
   </section>
@@ -181,7 +182,20 @@
 </main>
 <script>
   const $ = s => document.querySelector(s);
+  const PAL = ['red', 'blue', 'yellow', 'green', 'purple', 'teal', 'white', 'pink', 'orange'];
   let st = null, lastLogLen = 0, headStale = false, voiceKey = '', boardKey = '';
+  // A16 §3.1/§5: decode a `$GLED` readout band frame into "how many of the 3 segments are lit, in
+  // what colour" for a simple text/ASCII view -- the page has no LED hardware to show, but Tony can
+  // watch this move live at the bench the same way the segments move on the gun.
+  function readoutView(frame) {
+    if (!frame) return '—';
+    const t = frame.replace(/^\$GLED,/, '').split(',');
+    const leds = [0, 1, 2].map(i => Number(t[i]));
+    const lit = leds.filter(c => c !== 9 && !Number.isNaN(c)).length;
+    const colourIdx = leds.find(c => c !== 9 && !Number.isNaN(c));
+    const colour = colourIdx != null ? PAL[colourIdx] : 'dark';
+    return `${'█'.repeat(lit)}${'░'.repeat(3 - lit)} ${colour.toUpperCase()} (${lit}/3)`;
+  }
   const fill = (sel, items, val, label = x => x) => { const el = $(sel); el.innerHTML = items.map(v => `<option value="${v}">${label(v)}</option>`).join(''); el.value = String(val); };
   async function api(action, args = {}) {
     $('#err').textContent = '';
@@ -218,9 +232,12 @@
     const t = s.tele; $('#t-hp').textContent = t.hp ?? '—'; $('#t-armor').textContent = t.armor ?? '—'; $('#t-shield').textContent = t.shield ?? '—';
     $('#t-ammo').textContent = t.mag != null ? `${t.mag} / ${t.reserve}` : '—'; $('#t-model').textContent = `${m.hp}/${m.max_hp} · ${m.armor}/${m.max_armor}${m.carrying != null ? ' · FLAG ' + m.carrying : ''}`;
     $('#lasthir').textContent = t.last_hir ? 'last $HIR: ' + t.last_hir : '';
+    // A16 §3.1/§5: the transient gun-body pool readout -- what Tony would see painted on the strip
+    const ro = s.readout || {};
+    $('#t-readout').textContent = !ro.configured || !ro.configured.length ? 'not configured in this profile'
+      : ro.frame ? `${(ro.pool || '').toUpperCase()}: ${readoutView(ro.frame)}` : `tracks ${ro.configured.join('/')} · no pool has moved yet`;
     // events: grouped, coloured by source, greyed when the profile has nothing for them
     const groups = {}; for (const e of s.events) (groups[e.group || 'other'] ||= []).push(e);
-    const PAL = ['red', 'blue', 'yellow', 'green', 'purple', 'teal', 'white', 'pink', 'orange'];
     $('#events').innerHTML = Object.entries(groups).map(([g, evs]) => `<div class="grp">${g.toUpperCase()}</div>` + evs.map(e => {
       const has = e.has_sound || e.gun_led != null || e.headset != null;
       const isVoice = typeof e.sound === 'string' && e.sound.startsWith('voice:');
@@ -229,9 +246,20 @@
       const fw = (e.firmware || []).map(f => `<br><span class="fw">firmware: ${f.id} "${escapeHtml(f.words)}"</span>`).join('');
       return `<button data-act="event" data-kind="${e.event}" class="${isVoice ? 'voice' : e.source === 'mc' ? 'mc' : e.source === 'hud' ? 'hud' : ''}" ${has ? '' : 'disabled title="nothing configured for this event in this profile"'}>${e.event}<span class="sub">${e.desc || ''}<br>${snd} · gun ${e.gun_led != null ? PAL[e.gun_led] : '—'} · head ${e.headset != null ? PAL[e.headset] : '—'}${fw}</span></button>`;
     }).join('')).join('');
-    $('#headsets').innerHTML = (s.headset_seqs.length ? s.headset_seqs : []).map(k => k === 'carrier'
-      ? s.teams.map(tm => `<button data-act="headset" data-name="carrier" data-tid="${tm.tid}">CARRY FLAG ${tm.name}</button>`).join('') + `<button data-act="headset" data-name="carrier_off">FLAG SCORED / LOST</button>`
-      : `<button data-act="headset" data-name="${k}">${k.toUpperCase()}</button>`).join('') + (s.headset_seqs.length ? '' : '<span class="hint">LEDs are off in this profile (night / blackout): no headset sequences</span>');
+    // A16 §3.3: the held roles -- carrier/vip/beacon/extracted are ONE flat WHITE-ish state each
+    // (never a team colour any more, finding #11); infected alone is per-team.
+    const R = s.roles || {};
+    let roleButtons = '';
+    if (R.carrier) roleButtons += `<button data-act="headset" data-name="carrier">CARRY A FLAG / OBJECTIVE</button>`;
+    if (R.vip) roleButtons += `<button data-act="headset" data-name="vip">VIP</button>`;
+    if (R.beacon) roleButtons += `<button data-act="headset" data-name="beacon">CARRYING THE BEACON</button>`;
+    if (R.extracted) roleButtons += `<button data-act="headset" data-name="extracted">EXTRACTED</button>`;
+    if (Array.isArray(R.infected)) roleButtons += R.infected.map(tid => {
+      const tm = s.teams.find(x => x.tid == tid); return `<button data-act="headset" data-name="infected" data-tid="${tid}">INFECTED (survivors see ${tm ? tm.name : tid})</button>`;
+    }).join('');
+    if (roleButtons) roleButtons += `<button data-act="headset" data-name="carrier_off">ROLE ENDED</button>`;
+    const flatButtons = (s.headset_seqs || []).map(k => `<button data-act="headset" data-name="${k}">${k.toUpperCase()}</button>`).join('');
+    $('#headsets').innerHTML = roleButtons + flatButtons + (roleButtons || flatButtons ? '' : '<span class="hint">LEDs are off in this profile (night / blackout): no headset sequences</span>');
     // walkthrough
     const w = s.walk;
     if (!w) { $('#walk').innerHTML = 'No walkthrough running. Verdicts are saved to <code>~/.brx-mcp/stage-verdicts.jsonl</code> on the stage machine.'; $('#walksteps').innerHTML = ''; }

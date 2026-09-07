@@ -63,6 +63,11 @@ export interface GameConfig {
   loadout_policy: LoadoutPolicy;
   /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
   presentation?: Record<string, unknown>;
+  /** A17: give each weapon FAMILY its own $SIR cell, so a shotgun and a suppressor stop sounding
+   *  identical to the player they hit. DEFAULT OFF — an unmatched cell is silently ignored (the F11
+   *  shape), so it stays off until the bench clears FOLLOWUPS F38/F39. The material layer (metal on
+   *  armour, body on health) and the rolled variety are always on and need no flag. */
+  hit_audio_rekey?: boolean;
 }
 
 /** A11/A11.5 — one row of the resolved presentation profile (GET /api/presentation). */

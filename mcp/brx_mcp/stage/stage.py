@@ -28,6 +28,7 @@ SFLASH = "$SFLASH,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
+READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
 MODES = ["tdm", "ffa", "infection", "lms", "extraction"]
@@ -127,6 +128,14 @@ class GunStage:
         self.profile: dict[str, Any] = {"mode": "tdm", "preset": None, "gun": "team", "headset": "dark",
                                         "night": False, "tid": 1, "environment": "outdoor",
                                         "voice": "male", "voice_slots": {}}
+        # 2026-09-07: `gun`/`headset` are DISPLAY-ONLY until the operator explicitly picks one via
+        # set_profile(); an untouched selector tracks whatever the preset/config's own gun.in_play /
+        # headset.in_play resolves to (recompile() syncs it there) instead of always re-patching this
+        # literal onto the presentation -- the old unconditional patch made every compile diverge from
+        # its own preset's default the moment GUN_DEFAULT changed underneath it, so EVERY game read
+        # `preset: "custom"` even with nothing actually customised.
+        self._gun_touched = False
+        self._headset_touched = False
         self.auto_react = True
         self.log: deque = deque(maxlen=400)
         self.tele: dict[str, Any] = {"hp": None, "armor": None, "shield": None, "mag": None, "reserve": None,
@@ -136,14 +145,24 @@ class GunStage:
         self.alive = False
         self.hp = 45
         self.armor = 70
+        self.shield = 0
         self.max_hp = 45
         self.max_armor = 70
         self.carrying: int | None = None
+        self._active_role: tuple[str, int | None] | None = None   # A16 §3.3: the one held role (name, tid) currently on the headset
         self._hs_gen = 0
         self._gun_band: str | None = None
+        # A16 §3.1/§5: the transient gun-body pool readout state (mirrors engine.js's `_readout*` fields)
+        self._readout_frame: str | None = None
+        self._readout_last_write_at: float | None = None
+        self._readout_last_pool: str | None = None
+        self._readout_gen = 0
         self._last_event_led: float | None = None
         self._hurt_fired = False
         self._last_seq = 0
+        self._reacted_seq = 0          # highest rx seq already turned into a reaction -- distinct from
+                                        # `_last_seq` (poll's own fetch cursor) so the instant on_frame
+                                        # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
@@ -197,6 +216,10 @@ class GunStage:
                 self._external = None; self._local_pres = None    # the selectors take over from a pulled config
             if k == "mode" and self.profile.get(k) != v:
                 self.profile["preset"] = None                     # a new mode starts on ITS default preset
+            if k == "gun":
+                self._gun_touched = True                          # an explicit pick: honour it over the preset from now on
+            if k == "headset":
+                self._headset_touched = True
             self.profile[k] = v
         self.recompile()
         self._log(f"profile: {self.profile}", "info")
@@ -319,6 +342,7 @@ class GunStage:
         self.profile.update(mode=config["mode"], preset=pres.get("preset") if pres.get("preset") in _pres.PRESETS else None,
                             gun=pres.get("gun", {}).get("in_play", "native"), headset=pres.get("headset", {}).get("in_play", "dark"),
                             night=bool(config.get("night", False)), environment=config.get("environment", "outdoor"))
+        self._gun_touched = False; self._headset_touched = False   # showing this config's OWN truth until touched again
         self.recompile()
         self._log(f"config loaded from {source}: {config.get('mode')} / {pres.get('preset')} (id {config.get('config_id')})", "ok")
         return self.state()
@@ -341,11 +365,18 @@ class GunStage:
         from the family's equal takes (A15, Tony 2026-09-06: "they are all equal and should be picked at random to
         make the sounds more dynamic"); every other recompile is un-rolled so the pickers and the state stay put."""
         p = self.profile
+        # 2026-09-07: only re-patch gun/headset onto the presentation when the OPERATOR actually chose
+        # one (`_gun_touched`/`_headset_touched`, set by set_profile()) -- re-patching the selector's
+        # literal unconditionally, on every recompile, made every game read `preset: "custom"` the
+        # moment its value stopped matching the preset's own default (exactly what happened when
+        # GUN_DEFAULT changed under it). An untouched selector leaves the preset's own choice alone.
+        gun_patch: dict = {"in_play": p["gun"]} if self._gun_touched else {}
+        hs_patch: dict = {"in_play": p["headset"]} if self._headset_touched else {}
         if getattr(self, "_external", None):
             cfg = dict(self._external)
             cfg["night"] = p["night"]
-            pres = _pres.merge(cfg.get("presentation"), {"gun": {"in_play": p["gun"]}, "headset": {"in_play": p["headset"]}})
-            cfg["presentation"] = pres
+            ext_patch = {k: v for k, v in {"gun": gun_patch, "headset": hs_patch}.items() if v}
+            cfg["presentation"] = _pres.merge(cfg.get("presentation"), ext_patch)
         else:
             cfg = default_config(p["mode"])
             cfg["environment"] = p["environment"]
@@ -353,8 +384,10 @@ class GunStage:
             patch: dict = {}
             if p["preset"]:
                 patch["preset"] = p["preset"]
-            patch["gun"] = {"in_play": p["gun"]}
-            patch["headset"] = {"in_play": p["headset"]}
+            if gun_patch:
+                patch["gun"] = gun_patch
+            if hs_patch:
+                patch["headset"] = hs_patch
             base = getattr(self, "_local_pres", None) if not p["preset"] else None
             cfg["presentation"] = _pres.merge(base or cfg.get("presentation"), patch)
         teams = cfg["teams"]
@@ -374,6 +407,17 @@ class GunStage:
             self.rolled = dict((self.bundle.get("voice") or {}).get("rolled") or {})
         else:
             self.bundle = self.compiler.compile(cfg, player, teams)
+        # an UNTOUCHED selector shows the truth: whatever the preset/config actually resolved to, not
+        # a stale literal from before GUN_DEFAULT/HEADSET_DEFAULT last changed underneath it.
+        eff = (cfg.get("presentation") or {})
+        if not self._gun_touched:
+            eg = (eff.get("gun") or {}).get("in_play")
+            if eg in GUN_IN_PLAY:
+                self.profile["gun"] = eg
+        if not self._headset_touched:
+            eh = (eff.get("headset") or {}).get("in_play")
+            if eh in HEADSET_IN_PLAY:
+                self.profile["headset"] = eh
 
     def roll_text(self) -> str:
         """`death scream V34 "AHHH", short pain V3H "MMMM"` for the log and the page."""
@@ -413,13 +457,20 @@ class GunStage:
         sid = toks[10] if kind == "pset_pool" and len(toks) > 10 else ""   # $PSET token 10 = deathScream
         return frame, tag, sid
 
-    def _pain(self, dmg: int, proto: int | None) -> None:
+    def _pain(self, dmg: int, proto: int | None, pool: str | None = None) -> None:
         """A15.3 (Tony 2026-09-06 bench): the three `$PSET` pain fields ship EMPTY and WE play the grunt on
         each SURVIVED hit -- `pain_melee` on a melee word (ir protocol 13), `pain_long` when the hit took at
         least `voice.pain_long_min` (shotgun / snipers / power weapons), else `pain_short`; one random take of
         that pool. Gated to one grunt per PAIN_GAP_S (dropped, never queued). Never called on the lethal hit
-        (the caller returns on death before reaching this). Mirrors engine.js `_pain`."""
+        (the caller returns on death before reaching this). Mirrors engine.js `_pain`.
+
+        A17 (Tony 2026-09-07): the grunt is the CHARACTER being hurt, so it only plays when the hit reached
+        HEALTH. `pool` is the innermost pool that moved; a hit absorbed by armour or shield is a hit on
+        EQUIPMENT and the firmware's own material sound ($PSET hitArrmor / hitShield) is the feedback."""
         f = self.bundle
+        if pool and pool != "health":
+            self._log(f"pain: not played -- {pool} absorbed it (A17: the character grunts for HEALTH only)", "info")
+            return
         long_min = ((f.get("voice") or {}).get("pain_long_min")) or 40
         kind = "pain_melee" if proto == 13 else ("pain_long" if dmg >= long_min else "pain_short")
         cues = f.get("cues", {})
@@ -471,10 +522,11 @@ class GunStage:
     async def connect(self, address: str) -> dict:
         if self.connected:
             await self.disconnect()
-        await self.mgr.connect(address, self.alias)
+        await self.mgr.connect(address, self.alias, on_frame=self._on_frame)
         self.address = address
         self.connected = True
         self._last_seq = 0
+        self._reacted_seq = 0
         self._log(f"connected {address}", "ok")
         return self.state()
 
@@ -521,9 +573,10 @@ class GunStage:
             await self.mgr.disconnect(self.alias)
         except Exception:
             pass
-        await self.mgr.connect(self.address, self.alias)
+        await self.mgr.connect(self.address, self.alias, on_frame=self._on_frame)
         self.connected = True
         self._last_seq = 0
+        self._reacted_seq = 0
         self._log(f"reconnected {self.address}", "ok")
 
     async def _seq(self, steps: list, why: str, headset: bool = False) -> None:
@@ -567,9 +620,19 @@ class GunStage:
             self._log(f"scream this life: {ps_id} \"{_snd.describe(ps_id)}\"", "info")
         return ps, f" + scream {ps_id}{ps_tag}"
 
+    # start-sequence.md §2: `cues.countdown` (VA81) runs 2.97 s and its built-in "GO" is timed to land ON
+    # T-0, so a real node fires it at T-3 and writes `frames.spawn` three seconds later. The stage used to
+    # write both back to back (0.1 s apart), so every bench spawn cut the countdown off mid-"2" -- the spawn
+    # burst's own $PLAYX/$PLAY took the speaker (Tony, 2026-09-07: "the gun announced 3...2... and then was
+    # cut off"). The bench must hear what a player hears, so wait the same T-3 -> T-0 the field does.
+    COUNTDOWN_LEAD_S = 3.0
+
     async def spawn(self) -> dict:
         cues = self.bundle.get("cues", {})
-        await self.write([cues.get("countdown", "")], "countdown cue")
+        countdown = cues.get("countdown", "")
+        await self.write([countdown], "countdown cue")
+        if countdown:
+            await self.sleep(self.COUNTDOWN_LEAD_S)   # self.sleep, not asyncio.sleep -- tests inject a no-op here
         # A15.2 (Tony 2026-09-06, bench-verified on the bench gun): the $PSET cry field is EMPTY, so the firmware says nothing at
         # $SPAWN and WE play one take of the spawn pool in the SAME write ($SPAWN then $PLAY plays clean; a $PLAYX in
         # between clipped the firmware's line). A pre-A15.2 bundle has no cues["spawn"]: nothing is appended.
@@ -597,16 +660,20 @@ class GunStage:
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
         self.event("respawned", sound=False)                     # the lights; the sound went out with the revive write
-        self.carrying = None
+        self.carrying = None; self._active_role = None
         if hs.get("respawn"):
             self._headset(hs["respawn"], "headset respawn")
         return self.state()
 
     def _after_spawn(self) -> None:
         self.spawned = True; self.alive = True
-        self.hp = self.max_hp; self.armor = self.max_armor
+        self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
         self._hurt_fired = False
         self._gun_band = None; self._gun_taken = False
+        # A16 §3.1/§5: a fresh life starts with no readout -- any hold from the last life is dead the
+        # moment `_gun_taken` drops False (mirrors engine.js `_gunTake`'s reset).
+        self._readout_frame = None; self._readout_last_write_at = None; self._readout_last_pool = None
+        self._readout_gen += 1
         self._life = getattr(self, "_life", 0) + 1
         g = self.bundle.get("gun")
         if g and g.get("take"):
@@ -620,6 +687,7 @@ class GunStage:
         await self.write(list(g["take"]), f"gun take (+{g.get('after_spawn_s', 2.5)} s after spawn)", gap_ms=60)
         self._gun_taken = True
         self._gun_band = g["rest"]
+        self._readout_frame = g.get("rest")           # A16 §5: the strip now shows `rest` -- dark until a pool change paints a band
 
     async def game_end(self, outcome: str = "game_over") -> dict:
         """What the phone does at the whistle: the game_over / victory cue (+ its burst), then the end frames.
@@ -693,17 +761,34 @@ class GunStage:
             self._spawn_task(self._seq(list(seq), f"lights {top}"))   # A11.8: the small-LED flash (+ burst) for the top medal
         return self.state()
 
+    def _role_seq(self, name: str, tid: int | None) -> list | None:
+        """A16 §3.3: the frames for one held role. `carrier`/`vip`/`beacon`/`extracted` are flat (a
+        single sequence, no tid needed -- carrier is WHITE now, never the flag's team colour, finding
+        #11); `infected` is keyed by tid, the one role whose colour is a team fact. Falls back to the
+        pre-A16 `headset.carrier` table (`carrier` only) when this bundle predates `headset.role`."""
+        hs = self.bundle.get("headset") or {}
+        role = hs.get("role")
+        if role:
+            entry = role.get(name)
+            return entry.get(str(tid)) if isinstance(entry, dict) else entry
+        if name == "carrier":
+            return (hs.get("carrier") or {}).get(str(tid)) if tid is not None else None
+        return None
+
     def headset(self, name: str, tid: int | None = None) -> dict:
         hs = self.bundle.get("headset") or {}
         if not hs:
             self._log("headset: LEDs are off in this profile (night / blackout) -- nothing to paint", "warn")
             return self.state()
-        if name == "carrier":
-            seq = (hs.get("carrier") or {}).get(str(tid if tid is not None else self.enemy_tid()))
+        if name in _pres.ROLE_STATES:
+            t = int(tid) if tid is not None else (self.enemy_tid() if name in ("carrier", "infected") else None)
+            seq = self._role_seq(name, t)
             if seq:
-                self.carrying = int(tid if tid is not None else self.enemy_tid())
-        elif name == "carrier_off":
-            self.carrying = None
+                self._active_role = (name, t)
+                if name == "carrier":
+                    self.carrying = t             # kept for state()'s "carrying" display + older callers
+        elif name in ("carrier_off", "role_off"):
+            self.carrying = None; self._active_role = None
             seq = [[hs["rest"], 0]]
         elif name == "rest":
             seq = [[hs["rest"], 0]]
@@ -788,8 +873,32 @@ class GunStage:
         return self.state()
 
     # ---- what the gun says back ---------------------------------------------------------------------
+    def _on_frame(self, ev) -> None:
+        """The INSTANT path: `ble.ConnectionManager.connect(on_frame=...)` calls this the moment a BLE
+        notification decodes a NEW rx frame -- like `app/src/engine.js` reacting to a notification, not
+        on our next poll tick. `ev` duck-types `protocol.BufferedEvent` (`.direction`, `.seq`, `.raw`);
+        the fake manager used by the tests has no notifications, so this is never called there and
+        poll() alone drives it (see `_reacted_seq` below). Runs synchronously inside the BLE backend's
+        notify callback, so it must never block -- `_on_rx` only ever spawns tasks (A11 events, pain,
+        headset), it never awaits."""
+        if getattr(ev, "direction", None) != "rx":
+            return
+        seq = int(getattr(ev, "seq", 0))
+        if seq <= self._reacted_seq:
+            return
+        self._reacted_seq = seq
+        raw = ev.raw
+        self.tele["last_rx"] = raw
+        self._log(raw, "rx")
+        self._on_rx(raw)
+
     def poll(self) -> list[str]:
-        """Drain new rx frames; with auto-react on, play the victim-side overlay the phone would."""
+        """Drain new rx frames; with auto-react on, play the victim-side overlay the phone would.
+
+        Reconciler/fallback for whatever the instant `_on_frame` callback did not see -- the fake gun
+        (no notifications) is driven by this alone; on a real link it mainly just advances the fetch
+        cursor, since `_reacted_seq` (bumped by `_on_frame` the moment a frame lands) makes every rx
+        frame it already reacted to a no-op here, so nothing is ever handled twice."""
         if not self.connected:
             return []
         is_up = getattr(self.mgr, "is_connected", None)
@@ -811,6 +920,10 @@ class GunStage:
                 continue
             raw = e.get("raw", "")
             seen.append(raw)
+            seq = int(e.get("seq", 0))
+            if seq <= self._reacted_seq:
+                continue                      # the instant callback already reacted to this one
+            self._reacted_seq = seq
             self.tele["last_rx"] = raw
             self._log(raw, "rx")
             self._on_rx(raw)
@@ -830,19 +943,31 @@ class GunStage:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
             elif cmd in ("HP", "LCD") and len(t) > 2:
                 hp, armor = int(t[1] or 0), int(t[2] or 0)
-                shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else 0
-                self.tele.update(hp=hp, armor=armor, shield=shield)
-                self._on_pools(hp, armor)
+                # $LCD's tokens 3+ are undocumented and read 0 in every observed frame (engine.js
+                # `feedFrame`'s LCD case, same note): treating that 0 as a real shield report would
+                # phantom-reset a live shield on every LCD, then read it as a "gain" on the next real
+                # $HP -- masking real damage behind a fake pool increase. `None` here means "not
+                # reported", not "zero"; `_on_pools` then keeps whatever shield it already had.
+                shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
+                self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
+                self._on_pools(hp, armor, shield)
         except ValueError:
             pass
 
-    def _on_pools(self, hp: int, armor: int) -> None:
+    def _on_pools(self, hp: int, armor: int, shield: int | None = None) -> None:
+        if shield is None:
+            shield = self.shield          # not reported on this frame (an $LCD): keep the last known value
         if not (self.auto_react and self.spawned):
-            self.hp, self.armor = hp, armor
+            self.hp, self.armor, self.shield = hp, armor, shield
             return
-        before = self.hp + self.armor
-        dmg = max(0, before - (hp + armor))
-        self.hp, self.armor = hp, armor
+        before = self.hp + self.armor + self.shield
+        prev_hp, prev_armor, prev_shield = self.hp, self.armor, self.shield
+        dmg = max(0, before - (hp + armor + shield))
+        # A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors engine.js
+        # `_onHp` / `poolgauge.changed_pool`: BRX depletes shield -> armour -> health, so if a hit went
+        # all the way through to HP, health -- the innermost pool -- is the one worth showing).
+        moved = "health" if hp != prev_hp else "armor" if armor != prev_armor else "shield" if shield != prev_shield else None
+        self.hp, self.armor, self.shield = hp, armor, shield
         cues = self.bundle.get("cues", {})
         hs = self.bundle.get("headset") or {}
         if hp == 0 and self.alive:
@@ -854,7 +979,7 @@ class GunStage:
             down = hs.get("down")
             if down and down.get("rearm"):
                 self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
-            self.carrying = None
+            self.carrying = None; self._active_role = None
             return
 
         if dmg > 0 and self.alive:
@@ -865,18 +990,92 @@ class GunStage:
                 self._hs_gen += 1
                 self._spawn_task(self.write(fr, "low health", gap_ms=0))
             self.event("hit_taken")
-            self._pain(dmg, self._last_hir_proto)   # A15.3: our pain grunt by damage -- never on a death (that returned above)
+            self._pain(dmg, self._last_hir_proto, moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
             if hs and not hurt_now:
-                if self.carrying is not None and (hs.get("carrier") or {}).get(str(self.carrying)):
-                    self._headset(hs["carrier"][str(self.carrying)], "carrier after hit")
+                # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
+                # hit -- the native flash wipes the headset on every registered hit, so re-assert it.
+                name, tid = self._active_role or (None, None)
+                role_seq = self._role_seq(name, tid) if name else None
+                if role_seq:
+                    self._headset(role_seq, f"role {name} after hit")
                 elif hs.get("hit"):
                     self._headset(hs["hit"], "headset hit")
-            g = self.bundle.get("gun")
-            if g and g.get("in_play") == "health" and getattr(self, "_gun_taken", False):
-                r = self._gun_rest()
-                if r and r != self._gun_band:
-                    self._gun_band = r
-                    self._spawn_task(self.write([r], "gun health band", gap_ms=0))
+        # A16 §3.1/§5 (readout) / A11.7 legacy (health bands): a hit does not clear a held paint, only
+        # a real pool change writes a new one -- mirrors engine.js `_onHp`'s `if (hp > 0) this._gunPoolPaint(...)`,
+        # called on ANY pool change (gains included), not only damage.
+        if hp > 0:
+            self._gun_pool_paint(moved)
+
+    def _gun_pool_paint(self, pool: str | None) -> None:
+        """A16 §3.1/§5: repaint the gun-body pool readout for whichever pool actually moved (mirrors
+        engine.js `_gunPoolPaint`). A bundle with `gun.readout` pools gets the new segmented per-pool
+        band; an older bundle (or a profile with `readout.pools` emptied) falls back unchanged to the
+        pre-A16 health-only whole-strip band."""
+        g = self.bundle.get("gun")
+        if not g or not self.alive or not self.spawned or not getattr(self, "_gun_taken", False):
+            return
+        readout = g.get("readout")
+        if readout and readout.get("pools"):
+            if pool:
+                self._readout_paint(pool)
+            return
+        if g.get("in_play") == "health":
+            r = self._gun_rest()
+            if r and r != self._gun_band:
+                self._gun_band = r
+                self._spawn_task(self.write([r], "gun health band", gap_ms=0))
+
+    def _readout_band(self, entry: dict) -> list | None:
+        """A16 §5: the highest band whose fraction the pool's CURRENT level/max exceeds (bands ordered
+        highest-first, the same `frac > threshold` rule as `_gun_rest`). Mirrors engine.js `_readoutBand`."""
+        pool = entry.get("pool")
+        level = self.hp if pool == "health" else self.armor if pool == "armor" else self.shield
+        maximum = entry.get("max") or 0
+        frac = (level / maximum) if maximum > 0 else 0
+        bands = entry.get("bands") or []
+        for thr, frame in bands:
+            if frac > thr:
+                return [thr, frame]
+        return bands[-1] if bands else None
+
+    def _readout_paint(self, pool: str) -> None:
+        """A16 §3.1: write the moved pool's band if it differs from what is currently believed to be on
+        the strip, and (re)start its hold; a repaint inside READOUT_COALESCE_S of the last WRITE
+        restarts the hold but is not written again (mirrors engine.js `_gunReadoutPaint`; a generation
+        counter stands in for its tick-poll -- it cancels a pending revert instead of needing one)."""
+        g = self.bundle.get("gun") or {}
+        readout = g.get("readout") or {}
+        entry = next((p for p in (readout.get("pools") or []) if p.get("pool") == pool), None)
+        if not entry or not entry.get("bands"):
+            return
+        band = self._readout_band(entry)
+        if not band:
+            return
+        self._readout_last_pool = pool          # which pool a reload would glance -- not built here (no reload path on the stage yet)
+        frame = band[1]
+        if frame == self._readout_frame:
+            return
+        now = self.now()
+        hold_s = float(readout.get("hold_s", 4))
+        self._readout_gen += 1
+        gen = self._readout_gen
+        if self._readout_last_write_at is not None and now - self._readout_last_write_at < READOUT_COALESCE_S:
+            self._spawn_task(self._readout_revert(gen, hold_s))     # coalesced: restart the hold, drop the write
+            return
+        self._readout_frame = frame
+        self._readout_last_write_at = now
+        self._spawn_task(self.write([frame], f"readout {pool}", gap_ms=0))
+        self._spawn_task(self._readout_revert(gen, hold_s))
+
+    async def _readout_revert(self, gen: int, hold_s: float) -> None:
+        await self.sleep(hold_s)
+        if gen != self._readout_gen or not self.alive:
+            return                                  # a newer paint (or the life itself) superseded this hold
+        g = self.bundle.get("gun") or {}
+        rest = g.get("rest")
+        if rest and self._readout_frame != rest:
+            self._readout_frame = rest
+            await self.write([rest], "readout rest", gap_ms=0)
 
     async def _down_rearm(self, life: int, down: dict) -> None:
         """§3.2 (2026-09-07 bench, led-language.md): the firmware runs its OWN bright out-flash on the
@@ -928,11 +1127,11 @@ class GunStage:
             + f" · gun body: {gun_txt} · sounds: countdown{', klaxon' if cues.get('klaxon') else ''}", "spawn")
         if can_ir:
             add("hit", "TAKING A HIT (emitter shoots you)",
-                "gun: native hit flash, then our hit_taken burst" + (" ending on the held body" if g else "") +
+                "gun: native hit flash, then " + ("the pool readout's band for whatever moved (shield/armour/health)" if g and g.get("readout") else "our hit_taken burst" if g else "no gun feedback") +
                 (" · headset: " + ("flash then rest" if hs.get("hit") else "nothing") if hs else "") + (" · sound: hit_taken" if cues.get("hit_taken") else " · no hit sound"),
                 "ir", {"kind": "shot"}, needs_ir=True)
             add("low_health", "LOW HEALTH (armour gone, first HP hit)",
-                "sound: the hurt line · headset: Callsign's fast blink · " + ("gun body: YELLOW then RED bands" if g and g.get("in_play") == "health" else "gun: hit burst only"),
+                "sound: the hurt line · headset: Callsign's fast blink · " + ("gun body: pool readout shows the health band" if g and g.get("readout") else "gun body: YELLOW then RED bands" if g and g.get("in_play") == "health" else "gun: hit flash only"),
                 "ir", {"kind": "shot", "repeat": 1}, needs_ir=True)
             add("death", "DEATH (emitter kills you)",
                 # §3.2 (2026-09-07 bench): the FIRMWARE flashes the headset's small LED brightly on its own
@@ -944,11 +1143,24 @@ class GunStage:
             add("death_overlay", "DEATH OVERLAY (no emitter: the frames only)",
                 "headset out-blink + died burst + died line, without a real death", "event", {"kind": "died"})
         add("revive", "RESPAWN", (("headset: WHITE double flash then rest · " if hs.get("respawn") else "") + f"gun body: re-blanked, {gun_txt} · respawned burst/sound"), "revive")
+        # A16 §3.3: held roles. `carrier`/`vip`/`beacon`/`extracted` are ONE flat state each (carrier is
+        # WHITE now, never the flag's team colour, finding #11); `infected` alone stays per-team (the
+        # one role whose colour is a team fact). A bundle that predates `headset.role` offers none of
+        # these -- the pre-A16 `headset.carrier` shim is not built here (it is being retired).
+        role = hs.get("role") or {}
+        if role.get("carrier"):
+            add("carrier", "CARRYING A FLAG / OBJECTIVE", "headset: WHITE blink held; a hit keeps it blinking", "headset", {"name": "carrier"})
+        if role.get("vip"):
+            add("role_vip", "VIP", "headset: WHITE held; a hit keeps it lit", "headset", {"name": "vip"})
+        if role.get("beacon"):
+            add("role_beacon", "CARRYING THE RESPAWN BEACON", "headset: ORANGE blink held; a hit keeps it blinking", "headset", {"name": "beacon"})
+        if role.get("extracted"):
+            add("role_extracted", "EXTRACTED", "headset: WHITE held; a hit keeps it lit", "headset", {"name": "extracted"})
         for t in self.config["teams"]:
-            if (hs.get("carrier") or {}).get(str(t["tid"])):
-                add(f"carrier_{t['tid']}", f"CARRYING {t['name'].upper()}'S FLAG", "headset: BLINKS the flag colour; a hit keeps it blinking", "headset", {"name": "carrier", "tid": int(t["tid"])})
-        if hs.get("carrier"):
-            add("carrier_off", "FLAG SCORED / LOST", "headset: back to the in-play rest (dark or team)", "headset", {"name": "carrier_off"})
+            if (role.get("infected") or {}).get(str(t["tid"])):
+                add(f"infected_{t['tid']}", f"INFECTED (survivors see {t['name'].upper()})", "headset: that team's colour held; a hit keeps it lit", "headset", {"name": "infected", "tid": int(t["tid"])})
+        if role:
+            add("carrier_off", "ROLE ENDED (flag scored/lost, cured, extraction closed…)", "headset: back to the in-play rest (dark or team)", "headset", {"name": "carrier_off"})
         for sid, medals in MEDAL_STACKS:
             have = [m for m in medals if cues.get(m)] if medals else (["kill"] if cues.get("kill") else [])
             if have:
@@ -1109,10 +1321,22 @@ class GunStage:
             "config_id": self.config.get("config_id"),
             "presentation": self.config.get("presentation"),
             "model": {"spawned": self.spawned, "alive": self.alive, "hp": self.hp, "armor": self.armor,
-                      "max_hp": self.max_hp, "max_armor": self.max_armor, "carrying": self.carrying,
-                      "auto_react": self.auto_react},
+                      "shield": self.shield, "max_hp": self.max_hp, "max_armor": self.max_armor,
+                      "carrying": self.carrying, "auto_react": self.auto_react},
             "tele": dict(self.tele),
-            "headset_seqs": sorted(k for k, v in hs.items() if isinstance(v, list) and v and k != "pregame") + (["carrier"] if hs.get("carrier") else []),
+            # the flat sequences (start/hit/death/respawn/rest…) plus the A16 §3.3 held roles -- carrier
+            # is ONE flat state now (WHITE, never the flag's team colour), not a per-team table, so it is
+            # its own "roles" shape rather than living in this list any more (the deleted `carrier` shim
+            # used to ride here).
+            "headset_seqs": sorted(k for k, v in hs.items() if isinstance(v, list) and v and k != "pregame"),
+            "roles": {n: (sorted((hs.get("role") or {}).get(n, {}).keys())
+                          if isinstance((hs.get("role") or {}).get(n), dict) else bool((hs.get("role") or {}).get(n)))
+                      for n in _pres.ROLE_STATES},
+            "active_role": {"name": self._active_role[0], "tid": self._active_role[1]} if self._active_role else None,
+            # A16 §3.1/§5: the transient gun-body pool readout, for the bench to watch shield/armour/health
+            # move live -- `configured` is empty for a profile/older bundle with no readout at all.
+            "readout": {"pool": self._readout_last_pool, "frame": self._readout_frame,
+                        "configured": [p.get("pool") for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools", [])]},
             "events": self.event_catalog(),
             "voice": self.voice_view(),
             "voices": _voices.options(),

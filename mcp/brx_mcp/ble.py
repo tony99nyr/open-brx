@@ -16,7 +16,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
@@ -128,13 +128,22 @@ class ConnectionManager:
     # -- lifecycle ---------------------------------------------------------
 
     async def connect(self, address: str, alias: str, pair: bool = False,
-                      attempts: int = 5) -> dict[str, Any]:
+                      attempts: int = 5,
+                      on_frame: Callable[[BufferedEvent], None] | None = None) -> dict[str, Any]:
         """Connect, retrying — establishment is intermittent, holding is not.
 
         Verified 2026-08-23: a session that comes up cleanly runs for 75 s+,
         but roughly 1 connect in 3 succeeds (the official app shows the same
         behaviour). A single failed attempt says nothing about the link, so
         retry rather than surfacing the first error.
+
+        `on_frame` (additive, default None — every existing caller is unaffected) is called with
+        the `BufferedEvent` the instant a NEW rx frame is decoded off a BLE notification, before the
+        next notification (or poll) can arrive. This is how a caller (the GUN STAGE) reacts like the
+        real node does — the instant a hit lands — instead of waiting for its next poll() tick. The
+        callback runs synchronously on the event loop inside the notify handler, so it must not block
+        (dispatch a task, don't await); an exception in it is swallowed so a callback bug can never
+        take down the BLE link.
         """
         if alias in self.sessions:
             raise ValueError(f"alias '{alias}' already connected to "
@@ -159,7 +168,12 @@ class ConnectionManager:
                     _s.rx_partial += data.decode("utf-8", errors="replace")
                     new_frames, _s.rx_partial = extract_frames(_s.rx_partial)
                     for frame in new_frames:
-                        _s.record("rx", frame)
+                        ev = _s.record("rx", frame)
+                        if on_frame is not None:
+                            try:
+                                on_frame(ev)
+                            except Exception:   # noqa: BLE001 — a callback bug must never break the link
+                                pass
 
                 # start_notify is part of a working link — a drop here (the
                 # ~6.6 s client bug, §7e) must retry the whole connect, not crash.

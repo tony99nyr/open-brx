@@ -174,6 +174,9 @@ class GameConfig(TypedDict):
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
     loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
     presentation: NotRequired[dict]              # A11 (mc/presentation.py): sounds + lights per event, preset or custom
+    hit_audio_rekey: NotRequired[bool]           # A17: give each weapon FAMILY its own $SIR cell so hits sound different
+    #                                              per weapon. DEFAULT OFF -- an unmatched cell is silently ignored (the
+    #                                              F11 shape), so it stays off until FOLLOWUPS F38/F39 clear it at the bench.
 
 
 class FrameBundle(TypedDict):
@@ -206,6 +209,12 @@ class FrameBundle(TypedDict):
     pset_pool: NotRequired[list[str]]    # A15.3: the node writes ONE of these at random immediately before every `$SPAWN` (spawn and revive),
     #                                      so the firmware's death scream changes per life. One full $PSET per death-scream take; only the
     #                                      deathScream token differs. A pinned `death_scream` (or a one-take family) = one frame = head[4].
+    #                                      A17: each take ALSO carries its own hitHp/hitArrmor/hitShield/hitCrit draw (hitaudio.MATERIAL_POOLS).
+    sir_pool: NotRequired[list[list[str]]]   # A17: one full `$SIR` table per take -- the node writes one before every `$SPAWN` and again after a
+    #                                      lull, so the same weapon does not land the same clip all match. Re-sending `$SIR` rows is the F11 repair
+    #                                      path, so the write is safe by construction; the rows are identical apart from their sound tokens.
+    hit_audio: NotRequired[dict]         # A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
+    #                                      material[roles]} -- what the UI/console shows for "what does a hit sound like", and what a bench probe reads.
 
 
 class Weapon(TypedDict):

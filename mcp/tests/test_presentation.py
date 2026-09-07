@@ -131,12 +131,20 @@ def test_low_health_plays_the_players_own_hurt_loop_and_long_death_is_retired():
 def test_standard_bundle_carries_led_bursts_and_verified_cues():
     b = golden_bundle()
     assert b["presentation"]["preset"] == "standard" and b["presentation"]["custom_events"] == []
-    # the tuned burst: three flashes back to the team colour, per player event
-    for ev in ("hit_taken", "died", "respawned", "healed", "armour_up", "shield_up"):
-        seq = b["leds"][ev]
-        flashes = [f for f, _ in seq if f != pg.team_frame(1) and not f.startswith("$LED")]   # A11.8: the small-LED flash step rides first
-        assert len(flashes) == pg.BURST_FLASHES and all(f.startswith("$GLED,") for f in flashes), ev
-        assert seq[-1][0] == pg.team_frame(1), "a burst ends on the team colour"
+    # led-language.md §3.1/§6 finding #5 (2026-09-07): hit_taken/died/healed/armour_up/shield_up no
+    # longer carry a default gun burst -- the transient pool readout is the feedback for a pool change,
+    # and death is hands-off. "respawned" is dropped too (team-lead correction, 2026-09-07): a burst
+    # there lands inside the 2.5 s the body is still blanking off the firmware's own spawn breathing
+    # (`gun.take`) and would fight it; the headset's white flash + spawn sound already mark a respawn.
+    for ev in ("hit_taken", "died", "healed", "armour_up", "shield_up", "respawned"):
+        assert ev not in b["leds"], ev
+    assert b["gun"]["rest"] == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,10,,*", "dark by default"
+    # a burst still ends on the gun's rest frame for any event that DOES carry one -- "extraction_failed"
+    # (default RED) stands in, since none of the player-status events keep a default burst any more.
+    seq = b["leds"]["extraction_failed"]
+    flashes = [f for f, _ in seq if f != b["gun"]["rest"] and not f.startswith("$LED")]
+    assert len(flashes) == pg.BURST_FLASHES and all(f.startswith("$GLED,") for f in flashes)
+    assert seq[-1][0] == b["gun"]["rest"], "a burst ends on the gun's rest frame (dark by default)"
     assert b["cues"]["multi"] == "$PLAY,,4,6,VA7E,,,,*"          # "Double Kill", transcript-verified
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
     assert b["cues"]["objective_scored"] == f"$PLAY,,4,6,{snd.OBJECTIVE_SCORED},,,,*"
@@ -153,6 +161,11 @@ def test_silenced_mutes_the_announcer_and_drops_the_gun_flashes_but_keeps_the_pl
     assert b["cues"]["hurt"] == "$PLAY,,4,6,VA6,,,,*"  # the player's own low-health alert (hurt loop) survives
     assert b["cues"]["countdown"] == "$PLAY,VA81,4,6,,,,,*"
     assert b["headset"]["pregame"] == ["$HLED,1,0,,,10,,*"]   # the lobby team colour is not "announcer stuff" (A11.6: dark in play)
+    # led-language.md §3.5 "readout off" (2026-09-07 gap, caught by the engine lane): a silenced sniper
+    # mode must not paint a three-segment pool bar on every hit either -- the gun body stays dark and
+    # otherwise unlit, `readout` absent entirely from the bundle.
+    assert "readout" not in b["gun"]
+    assert P.gun_readout(P.resolve({"presentation": {"preset": "silenced"}}), False) == {}
 
 
 def test_counter_strike_preset_uses_the_real_bomb_lines():
@@ -166,7 +179,11 @@ def test_counter_strike_preset_uses_the_real_bomb_lines():
 def test_vip_preset_and_a_custom_event_override():
     b = _compile({"preset": "vip"})
     assert b["cues"]["vip_hit"] == "$PLAY,,4,6,VIP,,,,*" and b["cues"]["vip_down"] == "$PLAY,,4,6,VA72,,,,*"
-    assert b["leds"]["vip_hit"][-1] == [f"$HLED,{pg.ORANGE},0,,,10,,*", 0.0]   # static headset paint appended
+    # led-language.md §6 finding #6 (2026-09-07): a one-shot event headset colour HOLDS then reverts to
+    # the headset's own rest frame, rather than staying lit for the rest of the life.
+    vip_hit_seq = b["leds"]["vip_hit"]
+    assert vip_hit_seq[-2] == [f"$HLED,{pg.ORANGE},0,,,10,,*", P.STATIC_EVENT_HLED_HOLD_S]
+    assert vip_hit_seq[-1] == [b["headset"]["rest"], 0.0]
     c = _compile(P.merge(None, {"events": {"hit_taken": {"sound": "H29", "gun_led": "orange"}}}))
     assert c["presentation"]["preset"] == "custom" and c["presentation"]["custom_events"] == ["hit_taken"]
     assert c["cues"]["hit_taken"] == "$PLAY,H29,4,6,,,,,*"
@@ -179,9 +196,26 @@ def test_headset_team_off_removes_every_team_colour_frame():
     assert not any(f.startswith("$HLED,") for f in b["spawn"] + b["revive"])
 
 
-def test_night_game_has_no_led_table_at_all():
-    b = _compile(None, night=True)
-    assert b["leds"] == {}
+def test_night_dims_and_shortens_but_blackout_alone_empties_everything():
+    """led-language.md §6 finding #2 (2026-09-07 fix): night USED TO be a blackout that also deleted the
+    down signal; it is now a brightness/hold overlay, and `presentation.blackout` is the only switch
+    that empties every table -- `down` survives even that."""
+    day = _compile(None, night=False)
+    night = _compile(None, night=True)
+    assert night["leds"] != {}                                       # night is NOT a blackout any more
+    assert night["gun"]["rest"] == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{pg.BRIGHT_DIM},,*"
+    assert night["gun"]["readout"]["hold_s"] < day["gun"]["readout"]["hold_s"]
+    assert night["headset"]["down"] == day["headset"]["down"] == {
+        "rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
+    blackout = _compile(P.merge(None, {"blackout": True}))
+    assert blackout["leds"] == {} and "gun" not in blackout    # no `bundle["gun"]` at all -- readout included
+    # `gun_readout()` itself is a pure table-builder that does not know about `blackout` (it is gated
+    # one level up, in `gun_frames()`'s leds_on check) -- confirm the GATE, not the builder in isolation.
+    bo_prof = P.resolve({"presentation": {"blackout": True}})
+    assert P.gun_frames(bo_prof, 1, False, False) == {}, "leds_on=False (blackout) must drop the whole gun table, readout included"
+    assert P.gun_readout(bo_prof, False) != {}, "the builder itself is unconditional -- blackout is enforced by its caller"
+    assert blackout["headset"] == {"down": blackout["headset"]["down"]}   # only the down signal survives blackout
+    assert blackout["headset"]["down"] == day["headset"]["down"]
 
 
 def test_put_config_accepts_a_preset_and_rejects_an_off_gun_sound():
@@ -234,10 +268,14 @@ def test_extraction_preset_follows_the_genre_loop_and_last_stand_has_no_last_sur
                     ("loot_picked", "VA1Q"), ("raid_ending", "VA3U")):
         assert b["cues"][ev] == f"$PLAY,,4,6,{sid},,,,*", ev
     assert b["cues"]["raid_over"] == "$PLAY,X20,4,6,,,,,*" and b["cues"]["extraction_tick"] == "$PLAY,K01,4,6,,,,,*"
-    assert b["leds"]["extraction_called"][-1] == [f"$HLED,{pg.ORANGE},0,,,10,,*", 0.0]
+    # led-language.md §6 finding #6: the static headset paint holds then reverts, it does not stay lit
+    assert b["leds"]["extraction_called"][-2] == [f"$HLED,{pg.ORANGE},0,,,10,,*", P.STATIC_EVENT_HLED_HOLD_S]
+    assert b["leds"]["extraction_called"][-1] == [b["headset"]["rest"], 0.0]
     ls = _compile({"preset": "last_stand"})
     assert "last_survivor" not in ls["cues"], "MC cannot know it reliably with HUDs offline; not a default"
-    assert ls["leds"]["died"][-1] == [f"$HLED,{pg.RED},0,,,10,,*", 0.0]
+    # led-language.md §3.1 "Death is hands-off" (2026-09-07): `died` no longer paints the gun or the
+    # headset at all -- the node writes NOTHING to either surface in the 2.5 s after $HP,0.
+    assert "died" not in ls["leds"]
 
 
 
@@ -247,14 +285,16 @@ def test_event_sources_and_the_class_switches():
     assert prof["events"]["lead_taken"]["source"] == "mc" and prof["events"]["kill"]["source"] == "mc"
     assert prof["events"]["infected"]["source"] == "both"
     assert P.GLOBAL_STATE_EVENTS <= {ev for ev, spec in prof["events"].items() if spec["source"] in ("mc", "both")}
-    # mute the MC class: MC-sourced cues go "" and their LEDs vanish; HUD-sourced ones stay
+    # mute the MC class: MC-sourced cues go "" and their LEDs vanish; HUD-sourced ones stay.
+    # "extraction_called" (source hud, default gun_led ORANGE) stands in for the old "hit_taken" check
+    # here -- hit_taken carries no default light any more (led-language.md §6 finding #5, 2026-09-07).
     b = _compile(P.merge(None, {"mc_events": False}))
     assert b["cues"]["lead_taken"] == "" and b["cues"]["first_blood"] == ""
-    assert b["cues"]["time_60"].startswith("$PLAY") and "hit_taken" in b["leds"]
+    assert b["cues"]["time_60"].startswith("$PLAY") and "extraction_called" in b["leds"]
     assert "objective_taken" not in b["leds"]
     # mute the HUD class: the reverse
     c = _compile(P.merge(None, {"hud_events": False}))
-    assert c["cues"]["time_60"] == "" and "hit_taken" not in c["leds"]
+    assert c["cues"]["time_60"] == "" and "extraction_called" not in c["leds"]
     assert c["cues"]["first_blood"].startswith("$PLAY")
     assert b["presentation"]["mc_events"] is False and c["presentation"]["hud_events"] is False
 
@@ -286,7 +326,18 @@ def test_headset_block_defaults_validation_and_frames():
     green = P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "green"}})}), 1, True)
     assert green["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]]
     assert P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "native"}})}), 1, True)["death"] == []
-    assert set(hs["carrier"]) == {"1", "2"} and hs["carrier"]["2"][0][0] == "$HLED,2,2,300,300,10,200,*"
+    # led-language.md §3.3 (2026-09-07 build): the old carrier-only, per-team-coloured table is now
+    # `role`, with 5 states; carrier/vip/beacon/extracted are single held frames (WHITE or ORANGE --
+    # never a team colour, finding #11), only `infected` is still keyed by team.
+    assert set(hs["role"]) == {"carrier", "infected", "vip", "beacon", "extracted"}
+    assert hs["role"]["carrier"] == [[f"$HLED,{pg.WHITE},2,300,300,10,200,*", 0.0]]
+    assert hs["role"]["vip"] == [[f"$HLED,{pg.WHITE},0,,,10,,*", 0.0]]
+    assert hs["role"]["beacon"] == [[f"$HLED,{pg.ORANGE},2,300,300,10,200,*", 0.0]]
+    assert hs["role"]["extracted"] == [[f"$HLED,{pg.WHITE},0,,,10,,*", 0.0]]
+    assert set(hs["role"]["infected"]) == {"1", "2"} and hs["role"]["infected"]["2"][0][0] == "$HLED,2,0,,,10,,*"
+    # `headset.carrier` (legacy) is still accepted and maps onto the same one switch as `role`
+    off_legacy = P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"carrier": False}})}), 1, True)
+    assert off_legacy["role"] == {}
     # LEDs off/blackout: only the down signal survives -- it costs no light budget and is the one
     # signal other players must read (led-language.md §3.2, §3.4 "blackout: identical").
     assert P.headset_frames(prof, 1, False) == {"down": hs["down"]}
@@ -299,10 +350,32 @@ def test_headset_block_defaults_validation_and_frames():
     assert q["headset"]["death"] == pg.RED and q["headset"]["pregame"] == "off"
     fr = P.headset_frames(P.resolve({"presentation": q}), 1, True, {1: 1})
     assert fr["pregame"] == [] and fr["start"] == [["$HLED,1,0,,,10,,*", 0.0]] and fr["death"][0][0] == "$HLED,0,2,400,400,10,200,*"
-    for bad in ({"headset": {"in_play": "purple"}}, {"headset": {"hit": 12}}, {"headset": {"glow": True}}, {"headset": "loud"}):
+    for bad in ({"headset": {"in_play": "purple"}}, {"headset": {"hit": 12}}, {"headset": {"glow": True}},
+                {"headset": "loud"}, {"headset": {"role": "yes"}}, {"headset": {"carrier": "yes"}}):
         with raises(ValueError):
             P.merge(None, bad)
 
+
+def test_ffa_paints_white_headset_and_gun_body():
+    """led-language.md §6 finding #11 / Q19: FFA has no team identity to protect."""
+    prof = P.resolve({"mode": "ffa"})
+    hs = P.headset_frames(prof, 1, True, ffa=True)
+    assert hs["pregame"] == [f"$HLED,{pg.WHITE},0,,,10,,*"]
+    assert P.gun_pregame(prof, 1, False, True, ffa=True) == [f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"]
+    team = P.resolve({"presentation": {"gun": {"in_play": "team"}}})
+    assert P.gun_frames(team, 1, False, True, ffa=True)["rest"] == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
+
+
+def test_headset_night_dims_and_single_flashes_the_start_and_respawn():
+    """led-language.md §3.4: pregame/role states dim to tok5=1; start/respawn go from a double flash to
+    a single one at night."""
+    prof = P.resolve({"mode": "tdm"})
+    hs = P.headset_frames(prof, 1, True, night=True)
+    assert hs["pregame"] == [f"$HLED,1,0,,,{pg.BRIGHT_DIM},,*"]
+    assert hs["start"][0][0] == f"$HLED,{pg.WHITE},2,120,120,{pg.BRIGHT_DIM},1,*"
+    assert hs["role"]["vip"] == [[f"$HLED,{pg.WHITE},0,,,{pg.BRIGHT_DIM},,*", 0.0]]
+    day = P.headset_frames(prof, 1, True, night=False)
+    assert day["start"][0][0] == f"$HLED,{pg.WHITE},2,120,120,{pg.BRIGHT_FULL},2,*"
 
 
 def test_headset_death_null_is_rejected_at_merge_not_at_push():
@@ -319,36 +392,64 @@ def test_headset_death_null_is_rejected_at_merge_not_at_push():
 
 
 def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint():
-    """A11.7 / S4 (bench 2026-09-04): $GLED,,,,5 after $SPAWN suppresses the firmware breathing; a paint then holds."""
+    """A11.7 / S4 (bench 2026-09-04): $GLED,,,,5 after $SPAWN suppresses the firmware breathing; a paint then holds.
+
+    led-language.md §3.1/§6 finding #5 (2026-09-07): the DEFAULT rest changed from "team" to "dark" --
+    the body rests dark and the transient readout is now the standard feedback."""
     prof = P.resolve({"mode": "tdm"})
-    assert prof["gun"] == {"in_play": "team", "pregame": "team"} and P.summary(prof)["gun"]["in_play"] == "team"   # defaults since the walkthrough
+    assert prof["gun"] == {"in_play": "dark", "pregame": "team"} and P.summary(prof)["gun"]["in_play"] == "dark"
     assert P.gun_pregame(prof, 1, False, True) == ["$GLED,1,1,1,0,10,,*"] and P.gun_pregame(prof, 1, False, False) == []
     assert P.gun_pregame(P.resolve({"presentation": {"gun": {"pregame": "off"}}}), 1, False, True) == []
     native = P.resolve({"presentation": P.merge(None, {"gun": {"in_play": "native"}})})
     assert native["preset"] == "custom"
     assert P.gun_frames(native, 1, False, True) == {} and P.gun_spawn_tail(native, 1, False, True) == []
-    team = prof
-    gf = P.gun_frames(team, 1, False, True)
-    assert gf == {"in_play": "team", "blank": "$GLED,,,,5,,,*", "rest": "$GLED,1,1,1,0,10,,*", "after_spawn_s": 2.5,
-                  "take": ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]}
-    assert P.gun_spawn_tail(team, 1, False, True) == []          # retired: the node takes the body on a timer
-    assert P.gun_frames(team, 1, True, True)["rest"] == "$GLED,1,1,1,0,1,,*"        # night dims
-    assert P.gun_frames(team, 1, False, False) == {}                                  # LEDs off for the game
-    dark = P.resolve({"presentation": {"gun": {"in_play": "dark"}}})
-    assert P.gun_frames(dark, 1, False, True)["rest"] == "$GLED,9,9,9,0,10,,*"
+    dark = prof   # the default profile now RESTS dark
+    gf = P.gun_frames(dark, 1, False, True)
+    assert gf["in_play"] == "dark" and gf["blank"] == "$GLED,,,,5,,,*" and gf["rest"] == "$GLED,9,9,9,0,10,,*"
+    assert gf["after_spawn_s"] == 2.5 and gf["take"] == ["$GLED,,,,5,,,*", "$GLED,9,9,9,0,10,,*"]
+    assert "bands" not in gf, "the legacy whole-strip health bands are only built for in_play=='health'"
+    assert P.gun_spawn_tail(dark, 1, False, True) == []          # retired: the node takes the body on a timer
+    assert P.gun_frames(dark, 1, True, True)["rest"] == "$GLED,9,9,9,0,1,,*"        # night dims
+    assert P.gun_frames(dark, 1, False, False) == {}                                  # LEDs off for the game
+    team = P.resolve({"presentation": {"gun": {"in_play": "team"}}})
+    assert P.gun_frames(team, 1, False, True)["rest"] == "$GLED,1,1,1,0,10,,*"    # explicit "team" still fully supported
     health = P.resolve({"presentation": {"gun": {"in_play": "health"}}})
     hf = P.gun_frames(health, 1, False, True)
     assert hf["take"] == ["$GLED,,,,5,,,*", hf["bands"][0][1]]
     assert [b[0] for b in hf["bands"]] == [0.66, 0.33, 0.0]
     assert [b[1] for b in hf["bands"]] == ["$GLED,3,3,3,0,10,,*", "$GLED,2,2,2,0,10,,*", "$GLED,0,0,0,0,10,,*"]
     assert hf["rest"] == hf["bands"][0][1]
-    # event bursts end on the gun's resting frame, not the team colour, once the body is host-owned
-    assert P.led_table(team, 1, False, True)["hit_taken"][-1][0] == "$GLED,1,1,1,0,10,,*"
-    assert P.led_table(dark, 1, False, True)["hit_taken"][-1][0] == "$GLED,9,9,9,0,10,,*"
-    assert P.led_table(native, 1, False, True)["hit_taken"][-1][0] == pg.team_frame(1, False)
-    for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}, {"gun": {"pregame": "blue"}}):
+    # led-language.md §4 collapse map: `in_play: "health"` (no explicit `readout` override) collapses
+    # onto "readout limited to health" rather than the default three pools.
+    assert [p["pool"] for p in hf["readout"]["pools"]] == ["health"]
+    # event bursts end on the gun's resting frame; "extraction_failed" (default RED) stands in for the
+    # old hit_taken/died check -- those two carry no default gun burst any more (finding #5).
+    assert P.led_table(dark, 1, False, True)["extraction_failed"][-1][0] == "$GLED,9,9,9,0,10,,*"
+    assert P.led_table(team, 1, False, True)["extraction_failed"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    assert P.led_table(native, 1, False, True)["extraction_failed"][-1][0] == pg.team_frame(1, False)
+    for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}, {"gun": {"pregame": "blue"}},
+                {"gun": {"readout": {"pools": ["mana"]}}}, {"gun": {"readout": {"hold_s": 0}}}, {"gun": {"readout": "yes"}}):
         with raises(ValueError):
             P.merge(None, bad)
+
+
+def test_gun_readout_ships_static_per_band_segment_frames_outermost_pool_first():
+    """led-language.md §3.1/§5 (2026-09-07 build): shield/armor/health, outermost first, 3/2/1 lit
+    segments per band, `max` shipped so the node never parses a frame."""
+    b = golden_bundle()   # hp 45, armor 70, shield defaults to gc.shield (70)
+    ro = b["gun"]["readout"]
+    assert ro["hold_s"] == 4 and ro["reload_glance_s"] == 2
+    assert [p["pool"] for p in ro["pools"]] == ["shield", "armor", "health"]
+    shield, armor, health = ro["pools"]
+    assert shield["max"] == 70 and armor["max"] == 70 and health["max"] == 45
+    assert shield["bands"] == [[thr, f] for thr, f in pg.readout_bands("shield")]
+    assert armor["bands"] == [[thr, f] for thr, f in pg.readout_bands("armor")]
+    assert health["bands"] == [[thr, f] for thr, f in pg.readout_bands("health")]
+    # a narrowed pool list is honoured, and the order stays outermost-first regardless of input order
+    only_health = P.resolve({"presentation": {"gun": {"readout": {"pools": ["health", "shield"]}}}})
+    rf = P.gun_readout(only_health, False, hp=45, armor=70, shield=70)
+    assert [p["pool"] for p in rf["pools"]] == ["shield", "health"]
+    assert P.gun_readout(P.resolve({"presentation": {"gun": {"readout": {"pools": []}}}}), False) == {}
 
 
 def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated():
@@ -357,7 +458,9 @@ def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated
     assert prof["events"]["kill"]["flash"] == "green" and prof["events"]["died"]["flash"] is None and prof["events"]["lead_taken"]["flash"] is None
     leds = P.led_table(prof, 1, False, True)
     assert leds["kill"][0] == ["$LED,9,1,1,1,*", 0.0]                     # kill: flash only (no gun burst configured)
-    assert leds["died"][0][0].startswith("$GLED,0,0,0")                    # died: the red gun burst only (the small LED is green-only)
+    # "extraction_failed" (default RED, no flash) stands in for the old "died" check -- died carries no
+    # default gun burst any more (led-language.md §6 finding #5, "Death is hands-off").
+    assert leds["extraction_failed"][0][0].startswith("$GLED,0,0,0")       # the red gun burst only (the small LED is green-only)
     assert leds["first_blood"][0] == ["$LED,9,1,1,1,*", 0.0]
     q = P.merge(None, {"events": {"lead_taken": {"flash": "green"}, "kill": {"flash": None}}})
     r = P.led_table(P.resolve({"presentation": q}), 1, False, True)
@@ -367,6 +470,35 @@ def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated
             P.merge(None, {"events": {"kill": {"flash": bad}}})
     rows = {x["event"]: x for x in P.table({"mode": "tdm"})}
     assert rows["kill"]["flash"] == "green" and rows["died"]["flash"] is None
+
+
+def test_no_burst_ever_alternates_a_colour_identical_to_the_rest_frame():
+    """led-language.md §6 finding #3 (2026-09-07, caught by the LED invariant tests, fixed here): a
+    burst alternates flash-colour and rest-colour, so a burst whose event colour EQUALS the rest colour
+    produces zero visible transitions -- `objective_scored` (WHITE) against an FFA/no-team rest (also
+    WHITE, Q19) was the concrete instance found, but this walks every preset x team (incl. None and
+    FFA) as the GENERAL guard, not just that one case. Every burst still ends on the TRUE rest frame,
+    and still has exactly three flash->non-flash transitions (the photosensitivity-relevant count)."""
+    for preset in sorted(P.PRESETS):
+        prof = P.resolve({"presentation": {"preset": preset}})
+        for team in (0, 1, 2, 3, None):
+            for ffa in (False, True):
+                leds = P.led_table(prof, team, False, True, ffa)
+                gf = P.gun_frames(prof, team, False, True, ffa)
+                rest = gf["rest"] if gf else pg.team_frame(team, False, ffa)
+                for ev, seq in leds.items():
+                    gled = [f for f, _h in seq if f.startswith("$GLED,")]
+                    if not gled:
+                        continue
+                    flash_frame = gled[0]
+                    transitions = sum(1 for f in gled if f == flash_frame)
+                    assert transitions == pg.BURST_FLASHES, (preset, team, ffa, ev, gled)
+                    assert gled[-1] == rest, (preset, team, ffa, ev, "must end on the true rest frame")
+                    # the real invariant: no two ADJACENT frames in the burst are identical -- equal
+                    # neighbours is what makes a "flash" invisible, whatever the two colours involved
+                    # (this is finding #3's general form: flash-colour == whatever-comes-next).
+                    for f1, f2 in zip(gled, gled[1:]):
+                        assert f1 != f2, (preset, team, ffa, ev, "two adjacent burst frames are identical: invisible transition")
 
 
 def test_voice_role_pools_reach_the_bundle_for_multi_take_roles_only():

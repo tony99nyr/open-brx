@@ -58,7 +58,26 @@ MAX_PLAYER_ID = 63
 # Only SIX of those are the character's own voice; the rest are shared effects. The shipped frame
 # used the HEAVY pack (V3*) for every player, so persona was never per-player on the gun at all.
 _PSET_HEAD = ["50", "", "H44", "JAD"]           # criticalDamageBonus, deathAlarm, stealthDeathScream, musicMixOnDeath
-_PSET_FOOT = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]   # shared, not voice
+# A17 MATERIAL LAYER: tokens 2-5 of this foot are hitHp / hitArrmor / hitShield / hitCrit -- the
+# firmware's own branch on WHICH POOL a hit bit into. They shipped as Callsign's inherited ids in
+# every game we have run; `hitaudio.MATERIAL_POOLS` chooses and rolls them instead (metal for armour,
+# body for health, energy for shield). `pset_foot(None)` still returns the inherited frame.
+_PSET_FOOT_INHERITED = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]   # shared, not voice
+_PSET_FOOT = _PSET_FOOT_INHERITED                                                 # back-compat alias
+
+
+def pset_foot(hits: dict | None = None) -> list[str]:
+    """The eight shared (non-voice) `$PSET` tail tokens, with the four A17 hit slots overridable.
+
+    `hits` = `{hitaudio.MATERIAL_ROLES role: sound id}`; a role it omits keeps the inherited id, so a
+    caller that passes nothing gets the byte-identical frame we have always sent."""
+    foot = list(_PSET_FOOT_INHERITED)
+    if hits:
+        from .hitaudio import MATERIAL_ROLES
+        for i, role in enumerate(MATERIAL_ROLES, start=1):      # foot[0] is missShothit, then the four hits
+            if hits.get(role):
+                foot[i] = str(hits[role])
+    return foot
 
 # The six voice slots, as suffixes on the family prefix, in $PSET order.
 # Read off the HEAVY pack, which is decoded BY EAR in protocol/callsign-extract/sound-bank.md:
@@ -208,6 +227,12 @@ class GameConfig:
     armor: int = 70
     shield: int = 70                  # ⚠ shield pool inactive until activated (P16)
 
+    # -- A17 hit audio ------------------------------------------------------- #
+    # `{hitaudio.MATERIAL_ROLES role: sound id}` PINNED for this game: an operator's explicit pick
+    # for what a hit on health / armour / shield / a crit sounds like. Roles left out are rolled per
+    # $PSET write (`pset_frames(rng=…)`); None pins nothing and rolls all four.
+    hit_sounds: Optional[dict] = None
+
     # -- CS / bomb mode ------------------------------------------------------ #
     attackers_team: int = 2
     defenders_team: int = 1
@@ -269,7 +294,14 @@ class GameConfig:
         return cfg
 
     def is_night_mode(self) -> bool:
-        """The requested combo: outdoor behaviour with the LEDs off."""
+        """The requested combo: outdoor behaviour with the LEDs off.
+
+        ⚠ The MC compiler (`mc.compile.Compiler`) no longer calls this (led-language.md §6 finding #2):
+        conflating "outdoor and LEDs off" with "night" is exactly what made night mode delete the down
+        signal along with every other light. MC reads `config["night"]` directly and treats it as a
+        brightness/hold OVERLAY (`presentation.py`'s `night: bool` frame-builder arguments), separate
+        from the `presentation.blackout` switch that actually turns every light off. This method stays
+        for the legacy per-tagger CLI driver (`modes/driver.py`), which still uses this exact combo."""
         return self.outdoor and not self.leds
 
     # -- frame builders ------------------------------------------------------ #
@@ -282,7 +314,8 @@ class GameConfig:
             bmap[1] = "$BMAP,1,97,,,,,*"
         return bmap
 
-    def _pset(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None) -> str:
+    def _pset(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None,
+              hits: dict | None = None) -> str:
         """`$PSET,<playerId>,0,<hp>,<armor>,<shield>,…`
 
         Token 1 is the PLAYER ID (protocol §7p, confirmed by cap10+cap11): 6 bits,
@@ -292,20 +325,32 @@ class GameConfig:
         pid = max(0, min(int(player_id), MAX_PLAYER_ID))
         toks = ["PSET", str(pid), "0",
                 str(self.hp), str(self.armor), str(self.shield)] \
-            + _PSET_HEAD + voice_tail(voice or getattr(self, "voice", None), slots) + _PSET_FOOT
+            + _PSET_HEAD + voice_tail(voice or getattr(self, "voice", None), slots) \
+            + pset_foot(hits if hits is not None else getattr(self, "hit_sounds", None))
         return "$" + ",".join(toks) + ",*"
 
-    def pset_frames(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None) -> list[str]:
+    def pset_frames(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None,
+                    rng=None) -> list[str]:
         """A15.3: one full `$PSET` frame per death-scream take of the family (`voices.roll_pool`), so the node can
         write ONE of them at random right before every `$SPAWN` and the firmware screams a different take each
         life. A pinned `death_scream` (or a family with one take) gives a single frame -- the same as `_pset`.
-        Bench 2026-09-06: a `$PSET` re-sent mid-game keeps `$SIR`, does not heal, and the gun still fires."""
+        Bench 2026-09-06: a `$PSET` re-sent mid-game keeps `$SIR`, does not heal, and the gun still fires.
+
+        A17: when `rng` is given, EACH frame also carries its own draw from the material pools, so the same
+        write that re-rolls the death scream re-rolls the four hit sounds. That is the whole anti-repetition
+        mechanism for the material layer -- variety arrives between hits, never as a BLE round trip inside one.
+        A pinned `hit_sounds` on the config still wins per role (`hitaudio.roll_material`)."""
         from .voices import check_slots, roll_pool
+        from .hitaudio import roll_material
         fixed = check_slots(slots)
+        pinned = getattr(self, "hit_sounds", None)
+        def hits():
+            return roll_material(rng, pinned) if rng is not None else pinned
         if "death_scream" in fixed:
-            return [self._pset(player_id, voice, slots)]
+            return [self._pset(player_id, voice, slots, hits())]
         takes = roll_pool(voice, "death_scream") or [None]
-        return [self._pset(player_id, voice, {**(slots or {}), "death_scream": t} if t else slots) for t in takes]
+        return [self._pset(player_id, voice, {**(slots or {}), "death_scream": t} if t else slots, hits())
+                for t in takes]
 
     def _gset(self) -> str:
         # $GSET,friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,

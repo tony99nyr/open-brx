@@ -32,6 +32,7 @@ const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long 
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 const EVENT_MIN_GAP_MS = 1000;
+const READOUT_COALESCE_MS = 300;    // A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again
 const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
@@ -76,11 +77,24 @@ export class Engine {
     this.matchId = null;
     this.hp = 0; this.armor = 0; this.shield = 0; this.ammo = 0; this.reserve = null; this.mag = null;
     this.alive = false; this.deaths = 0; this.shots = 0; this.battery = null; this.fw = null;
-    this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it
+    this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it (kept for back-compat reads; the source of truth is `_activeRole` once `headset.role` exists)
+    this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
+    this._lastHeadsetFlashAt = null; // A16 §C: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
+    // A16 §3.1/§5: the transient gun-body pool readout (frames.gun.readout). `_readoutFrame` is whatever
+    // frame is PHYSICALLY on the strip right now because of this system (a band, or `gun.rest` once the
+    // hold has expired) — null before the gun has been taken. `_readoutHoldActive` + the pair below drive
+    // a tick()-polled expiry (the same pattern as `_downRearm`/`_reassertDeathBlink`), never `this.delay`,
+    // because a hold must be repeatedly RESTARTABLE by later pool changes, not a one-shot timer.
+    this._readoutFrame = null;
+    this._readoutHoldActive = false;
+    this._readoutHoldStartAt = 0;
+    this._readoutHoldMs = 0;
+    this._readoutLastWriteAt = null; // last time a readout band was actually WRITTEN (for the 300 ms coalesce window)
+    this._readoutLastPool = null;    // which pool most recently moved this life (what a reload glances)
     this._lightGen = 0;             // bumped on teardown (end/panic/BLE drop) so a stray delayed $GLED/$HLED/cue write can't land after it
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
@@ -475,12 +489,16 @@ export class Engine {
   _gunTake() {
     const g = this.frames && this.frames.gun;
     this._gunTaken = false; this._gunBand = null;
+    // A16: a fresh life starts with no readout — any hold from the last life is dead the moment `_gunTaken`
+    // drops false (the tick-poll below is gated on it), but null the frame too so a reload glance before
+    // the take completes has nothing stale to show.
+    this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
     this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
       if (life !== this._gunLife || this._lightGen !== lg || !this.alive) return;
-      this._write(g.take, 'gun take'); this._gunTaken = true; this._gunBand = g.rest;
+      this._write(g.take, 'gun take'); this._gunTaken = true; this._gunBand = g.rest; this._readoutFrame = g.rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
     });
   }
   /** A11.7: the gun body's resting frame when the game owns it (frames.gun; absent = firmware breathing).
@@ -492,20 +510,139 @@ export class Engine {
     const band = g.bands.find(b => frac > b[0]) || g.bands[g.bands.length - 1];
     return band[1];
   }
-  /** Repaint the health hue when the band changed (one write per band, never per hit). */
-  _gunHealthPaint(why) {
-    const g = this.frames && this.frames.gun; if (!g || g.in_play !== 'health' || !this._gunTaken) return;
+  /** A16 §3.1/§5: on every `$HP`, repaint the transient pool readout for the innermost pool that moved
+   *  (or, when the bundle has no `gun.readout`, fall back unchanged to the pre-A16 `gun.bands` health-only
+   *  paint). Replaces `_gunHealthPaint` as the one entry point `_onHp` calls. */
+  _gunPoolPaint(movedPool) {
+    const g = this.frames && this.frames.gun; if (!g) return;
+    if (g.readout && Array.isArray(g.readout.pools) && g.readout.pools.length) { if (movedPool) this._gunReadoutPaint(movedPool); return; }
+    // legacy path (readout absent): unchanged health-band behaviour, keyed off health only
+    if (g.in_play !== 'health' || !Array.isArray(g.bands) || !g.bands.length || !this._gunTaken) return;
     if (this.phase !== 'live' || !this.alive || !this.spawned) return;
     const f = this._gunRest(); if (!f || f === this._gunBand) return;
-    this._gunBand = f; this._write([f], `gun health ${why}`);
+    this._gunBand = f; this._write([f], 'gun health hp');
+  }
+  /** A16 §5: the current band for one `gun.readout.pools[]` entry — highest band whose fraction the
+   *  pool's level/max exceeds (bands ordered highest-first, same `frac > threshold` rule as `_gunRest`). */
+  _readoutBand(entry) {
+    const level = entry.pool === 'health' ? this.hp : entry.pool === 'armor' ? this.armor : this.shield;
+    const frac = entry.max > 0 ? level / entry.max : 0;
+    const bands = entry.bands || [];
+    return bands.find(b => frac > b[0]) || bands[bands.length - 1] || null;
+  }
+  /** A16 §3.1: write the moved pool's band ONLY if it differs from the frame currently on the strip.
+   *  Restarts the hold on every real change; a change that would repaint within READOUT_COALESCE_MS of the
+   *  last WRITE is dropped (never queued, same shape as `_pain`'s PAIN_GAP_MS) but still restarts the hold,
+   *  so a flurry of hits holds the last-shown band rather than flickering through several. The hold itself
+   *  is tick()-polled (`_gunReadoutTick`), not `this.delay`, because later changes must be able to restart
+   *  it — a one-shot delayed callback cannot be un-scheduled. */
+  _gunReadoutPaint(pool) {
+    if (this.phase !== 'live' || !this.alive || !this.spawned || !this._gunTaken) return;
+    const g = this.frames.gun, readout = g.readout;
+    const entry = readout.pools.find(p => p.pool === pool); if (!entry || !Array.isArray(entry.bands) || !entry.bands.length) return;
+    const band = this._readoutBand(entry); if (!band) return;
+    this._readoutLastPool = pool;   // A16: which pool a reload should glance -- the one that most recently actually moved, not a fresh "is it below max" guess (shield defaults to 0 and would always look "damaged")
+    const frame = band[1];
+    if (frame === this._readoutFrame) return;   // no visible change — nothing to write, hold left alone
+    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
+    if (this._readoutLastWriteAt != null && now - this._readoutLastWriteAt < READOUT_COALESCE_MS) {
+      this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;   // coalesced: restart the hold, drop the write
+      return;
+    }
+    this._write([frame], `readout ${pool}`);
+    this._readoutFrame = frame; this._readoutLastWriteAt = now;
+    this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;
+  }
+  /** A16 §3.1 reload: paint the CURRENT readout for `reload_glance_s` — recomputed fresh (in case the pool
+   *  has since changed further) for whichever pool most recently actually moved this life, NOT the
+   *  last-shown frame, so a reload glances the real state even after the ordinary hold already reverted to
+   *  rest. Deliberately NOT "whatever pool is below its max": shield spawns at 0 by hardware default
+   *  (bench 2026-08-27) and would always look "damaged" against a configured max, even for a loadout that
+   *  never grants any. A no-op when nothing has moved this life (nothing to glance) or the bundle has no
+   *  readout. */
+  _gunReadoutReloadGlance() {
+    const g = this.frames && this.frames.gun, readout = g && g.readout;
+    if (!readout || !this._gunTaken) return;
+    if (this.phase !== 'live' || !this.alive || !this.spawned) return;
+    const poolName = this._readoutLastPool; if (!poolName) return;
+    const entry = readout.pools.find(p => p.pool === poolName); if (!entry) return;
+    const band = this._readoutBand(entry); if (!band) return;
+    const frame = band[1];
+    this._write([frame], 'readout reload glance');
+    const now = this.now();
+    this._readoutFrame = frame; this._readoutLastWriteAt = now;
+    this._readoutHoldStartAt = now; this._readoutHoldMs = Math.max(0, Math.round((readout.reload_glance_s != null ? readout.reload_glance_s : 2) * 1000)); this._readoutHoldActive = true;
+  }
+  /** A16 §5: reverts the strip to `gun.rest` once the current readout/glance hold has run out. Called from
+   *  tick() (the same pattern as `_downRearm`/`_reassertDeathBlink`) so a later pool change or reload can
+   *  restart the hold before it fires. Gated on alive/spawned/taken/live exactly as the paint call is. */
+  _gunReadoutTick(now) {
+    const g = this.frames && this.frames.gun, readout = g && g.readout;
+    if (!readout || !this._readoutHoldActive || !this._gunTaken) return;
+    if (!this.alive || !this.spawned || this.phase !== 'live') return;
+    if (now - this._readoutHoldStartAt < this._readoutHoldMs) return;
+    this._readoutHoldActive = false;
+    if (g.rest && this._readoutFrame !== g.rest) { this._readoutFrame = g.rest; this._write([g.rest], 'readout rest'); }
   }
   /** The headset's resting frame between events (dark by default, or the team colour). */
   _headsetRest() { const h = this.frames && this.frames.headset; return h && h.rest ? [[h.rest, 0]] : null; }
-  /** Carrier blink: on while this player holds the flag/objective of team `tid`; off returns to rest. */
-  _carrier(on, tid) {
+  /** A16 §3.3: the sequence for one held role. `carrier` is tid-keyed (whose flag/objective); the rest
+   *  (infected/vip/beacon/extracted) are flat. Falls back to the pre-A16 `headset.carrier` table for
+   *  `carrier` when `headset.role` is absent — the only role that ever existed before it. */
+  _roleSeq(name, tid) {
+    const h = this.frames && this.frames.headset; if (!h) return null;
+    if (h.role) {
+      const entry = h.role[name];
+      // A role sequence is either FLAT (carrier is white now — team colours are identity, §3.3 — as are
+      // vip/beacon/extracted) or tid-keyed (infected: solid in the turned-into team's colour, one entry
+      // per possible team). Branch on the actual shape rather than hard-coding it per role name, so a
+      // later bundle reshuffling which roles are flat vs keyed does not silently break the lookup.
+      if (Array.isArray(entry)) return entry;
+      if (entry && typeof entry === 'object') return entry[String(tid)] || null;
+      return null;
+    }
+    // legacy path (headset.role absent): only `carrier` ever existed, and it WAS tid-keyed (the flag's colour)
+    return name === 'carrier' ? ((h.carrier && h.carrier[String(tid)]) || null) : null;
+  }
+  /** A16 §3.3: the headset holds AT MOST ONE role at a time. `on` assigns it (superseding whatever role
+   *  was active — a new one simply overwrites `_activeRole`); `off` ends it and returns to `headset.rest`,
+   *  but only if THAT role is the one currently active (a stale "off" for a role that already ended, e.g.
+   *  a race with a hit re-assert, must not clobber a newer one). The re-assert-after-a-hit call is
+   *  `_roleSeq` + `_headsetFlash` from `_onHp`, not this method — a role is not re-WRITTEN every tick,
+   *  only when something (assignment, end, or a hit) actually changes what should be on the lamp. */
+  _setRole(name, on, tid) {
     const h = this.frames && this.frames.headset; if (!h) return;
-    if (on) { const seq = h.carrier && h.carrier[String(tid)]; if (seq) { this.carrying = tid; this._headset(seq, `carrier ${tid}`); } }
-    else if (this.carrying != null) { this.carrying = null; this._headset(this._headsetRest(), 'carrier off'); }
+    if (on) {
+      const seq = this._roleSeq(name, tid); if (!seq) return;
+      this._activeRole = { name, tid: tid != null ? tid : null };
+      if (name === 'carrier') this.carrying = tid;   // keeps the pre-A16 `carrying` field (read by state()/other callers) in sync
+      this._headset(seq, `role ${name}${tid != null ? ' ' + tid : ''}`);
+    } else if (this._activeRole && this._activeRole.name === name) {
+      this._activeRole = null;
+      if (name === 'carrier') this.carrying = null;
+      this._headset(this._headsetRest(), `role ${name} off`);
+    }
+  }
+  /** Back-compat entry point: flag/objective carrier blink, now routed through the general role mechanism
+   *  (§3.3). Every existing caller (`alert()`'s objective_taken/objective_scored/flag_returned) is unchanged. */
+  _carrier(on, tid) { this._setRole('carrier', on, tid); }
+  /** A16 §C: node-initiated headset FLASH sequences (the hit flash, a role re-assert after a hit) share the
+   *  gun burst's 1 s minimum — a burst weapon plus the firmware's own hit flash could otherwise exceed 3
+   *  flashes/s on one lamp. Dropped, never queued (the `_pain`/PAIN_GAP_MS shape). The down rearm and the
+   *  low-health alert bypass this entirely (they call `_headset`/`_write` directly) and must NEVER be gated. */
+  _headsetFlash(seq, why) {
+    const now = this.now();
+    if (this._lastHeadsetFlashAt != null && now - this._lastHeadsetFlashAt < EVENT_MIN_GAP_MS) return;
+    this._lastHeadsetFlashAt = now;
+    this._headset(seq, why);
+  }
+  /** A16 §D: the white "you're live" flash is scheduled a full second after `$SPAWN` — never inline —
+   *  because `$SPAWN` itself clears the headset and can swallow a flash written any sooner (the old ~50 ms
+   *  offset; +1.0 s is the only measured-good one, led-language.md §3.2 D). Used for `start` and `respawn`. */
+  _headsetDelayed(seq, why, delayMs = 1000) {
+    if (!seq || !seq.length) return;
+    const lg = (this._lightGen = this._lightGen || 0);
+    this.delay(delayMs, () => { if (this._lightGen === lg && this.alive) this._headset(seq, why); });
   }
 
   /** A11 presentation event: the bundle's `leds[kind]` burst (frames with holds) + `cues[kind]` sound.
@@ -549,21 +686,41 @@ export class Engine {
     const id = kind === 'pset_pool' ? (frame.split(',')[10] || '').trim() : '';   // $PSET token 10 = deathScream
     return { frame, tag: pool.length > 1 ? ` ${i + 1}/${pool.length}` : '', id };
   }
+  /** A17: one random take of `frames.sir_pool` -- a LIST of frames (a whole `$SIR` table), not one frame.
+   *  `[]` when the bundle has no pool (pre-A17), so nothing extra is written. Never returns the take we
+   *  wrote last: the point is that the same weapon does not land the same clip twice running. */
+  _pickTable(kind) {
+    const pool = this.frames && this.frames[kind];
+    if (!Array.isArray(pool) || !pool.length) return [];
+    let i = pool.length > 1 ? Math.min(pool.length - 1, Math.max(0, Math.floor(this.rng() * pool.length))) : 0;
+    if (pool.length > 1 && i === this._lastSirTake) i = (i + 1) % pool.length;
+    this._lastSirTake = i;
+    return Array.isArray(pool[i]) ? pool[i] : [];
+  }
   /** A15.3 (Tony 2026-09-06: "The long vs short pain should be used depending on the amount of damage. A big sniper
    *  shot -> long pain. A normal round -> short pain."): the $PSET pain fields ship EMPTY and WE play the grunt on
    *  each registered hit -- `pain_melee` on a melee word (proto 13), `pain_long` when the hit took at least
    *  `voice.pain_long_min` (40: shotgun / snipers / power weapons), else `pain_short`; one random take of that pool.
    *  Gated to one grunt per PAIN_GAP_MS (a burst of rifle hits must not queue six grunts in the gun); never on a
-   *  lethal hit (the native death scream plays). `dmg` is what the pools actually lost (crit included). */
-  _pain(dmg, proto) {
+   *  lethal hit (the native death scream plays). `dmg` is what the pools actually lost (crit included).
+   *
+   *  A17 (Tony 2026-09-07: "only use the character hit sounds when real health is taken down"): the grunt is the
+   *  CHARACTER being hurt, so it only plays when the hit reached HEALTH. `pool` is the innermost pool that moved
+   *  (`_onHp`, mirroring `poolgauge.changed_pool`): a hit absorbed entirely by armour or shield is a hit on
+   *  EQUIPMENT and the player hears the firmware's material sound for that pool ($PSET hitArrmor / hitShield,
+   *  `hitaudio.MATERIAL_POOLS`) instead -- metal, not a voice. Short vs long is still chosen by damage exactly as
+   *  above, from the same pain pools. This matches what `low_health` already does: the hurt loop fires only once
+   *  armour is gone and HP is actually dropping. A bundle from an older MC passes no pool and grunts as before. */
+  _pain(dmg, proto, pool) {
     const f = this.frames; if (!f) return;
+    if (pool && pool !== 'health') return;   // A17: armour/shield took it -- equipment, not the character
     const kind = proto === 13 ? 'pain_melee' : dmg >= ((f.voice && f.voice.pain_long_min) || 40) ? 'pain_long' : 'pain_short';
     if (!((f.cues && f.cues[kind]) || (f.cue_pools && f.cue_pools[kind]))) return;   // pre-A15.3 bundle: the firmware's own pains
     const now = this.now();
     if (this._lastPainAt != null && now - this._lastPainAt < PAIN_GAP_MS) return;   // drop, never queue
     this._lastPainAt = now;
     const pick = this._pickCue(kind);
-    if (pick.frame) this._write([pick.frame], `pain ${kind.slice(5)} (${(pick.frame.split(',')[4] || '').trim()}${pick.tag}) ${dmg} dmg`);
+    if (pick.frame) this._write([pick.frame], `pain ${kind.slice(5)} (${(pick.frame.split(',')[4] || '').trim()}${pick.tag}) ${dmg} dmg into ${pool || 'pools'}`);
   }
   /** The lights of an event without its sound (feedback plays the medal lines itself). */
   _eventLeds(kind) {
@@ -585,7 +742,15 @@ export class Engine {
       t += hold;
     }
     const g = f.gun;
-    if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
+    // A16 §3.1: generalises the old health-band tail restore below — the burst must end on whatever the
+    // readout is CURRENTLY showing (the live band, if its hold is still running) and never on the top band.
+    if (g && g.readout && this._gunTaken) {
+      this.delay(t, () => {
+        if (this._lightGen !== lg || !this.alive) return;
+        if (this._readoutHoldActive && this._readoutFrame && this._readoutFrame !== g.rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
+        else if (g.rest) { this._readoutFrame = g.rest; this._readoutHoldActive = false; this._write([g.rest], `readout rest after ${kind}`); }
+      });
+    } else if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }
   _cue(key) {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
@@ -603,7 +768,6 @@ export class Engine {
     // does not heal, the gun fires). No pset_pool (pre-A15.3): nothing prepended, the head's $PSET stands.
     const ps = this._pickFrame('pset_pool');
     this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
-    if (this.frames.headset) this._headset(this.frames.headset.start, 'start');   // A11.6: white flash marks the start, then dark (or team)
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
@@ -612,6 +776,7 @@ export class Engine {
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._gunTake();   // A11.7
+    if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // A16 §D: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
   }
@@ -665,6 +830,7 @@ export class Engine {
       }
       this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN (colour opt-in only)
       this._downRearm(now);            // §3.2: one $HLOOP rearm after the hands-off window (belt-and-braces; the native flash is already running)
+      this._gunReadoutTick(now);       // A16 §3.1: revert the gun-body readout to rest once its hold has run out
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
@@ -686,7 +852,12 @@ export class Engine {
     this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
     const sp = this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two)
     const ps = this._pickFrame('pset_pool');   // A15.3: a fresh death scream for this life, written before $SPAWN
-    this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
+    // A17: a fresh $SIR table too, so the sound a given WEAPON makes on us changes between lives. It rides the
+    // REVIVE write and not the first spawn deliberately -- the player is already down and waiting here, whereas the
+    // spawn write is on the critical path and the headset needs its settling gap (F13). Re-sending $SIR rows is the
+    // F11 REPAIR path, so this cannot cost us the table; the rows differ only in their sound tokens.
+    const sir = this._pickTable('sir_pool');
+    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
     this.hurtFired = false;
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
@@ -696,7 +867,7 @@ export class Engine {
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
-    if (this.frames.headset) { this.carrying = null; this._headset(this.frames.headset.respawn, 'respawn'); }   // A11.6
+    if (this.frames.headset) { this.carrying = null; this._activeRole = null; this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // A16 §D: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
@@ -973,6 +1144,7 @@ export class Engine {
     const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
     if (rm > 0 && rm !== 1 && this.activeSlot === 0) secs *= rm;   // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods)
     this.reloading = { at: this.now(), ms: Math.max(300, Math.round(secs * 1000)), slot: this.activeSlot };
+    this._gunReadoutReloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this._changed();
   }
   /** Milliseconds into the current reload, or null when none is running (PURE, read by state()). */
@@ -1033,6 +1205,10 @@ export class Engine {
     if (shield === undefined) shield = this.shield;
     const before = this.hp + this.armor + this.shield;
     if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
+    // A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors poolgauge.changed_pool:
+    // BRX depletes shield -> armour -> health, so when a hit spills across two pools the INNER one is the
+    // news). Computed here, BEFORE `_prevHp` etc are overwritten below, and read by `_gunPoolPaint`.
+    const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
     // Victim-side low-health alert. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15 once per life
@@ -1059,8 +1235,12 @@ export class Engine {
       // static frame, one write per hit, never hammered. Empty cue = LEDs off or unknown colour.
       const hs = this.frames && this.frames.headset;
       if (hs && !hurtNow) {
-        if (this.carrying != null && hs.carrier && hs.carrier[String(this.carrying)]) this._headset(hs.carrier[String(this.carrying)], 'carrier after hit');   // the flag blink survives a hit
-        else if (hs.hit && hs.hit.length) this._headset(hs.hit, 'hit');                                     // A11.6: flash, then back to rest
+        // A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the hit — the
+        // rate gate (§C) applies to this re-assert and to the plain hit flash, never to the alert/team-flip
+        // writes that first turned the role on.
+        const role = this._activeRole, roleSeq = role && this._roleSeq(role.name, role.tid);
+        if (roleSeq) this._headsetFlash(roleSeq, `role ${role.name} after hit`);                            // the role blink survives a hit
+        else if (hs.hit && hs.hit.length) this._headsetFlash(hs.hit, 'hit');                                // A11.6: flash, then back to rest
         else if (hs.rest && hs.in_play === 'team') this._write([hs.rest], 'team led');                     // no flash configured: just restore
       } else {
         const tl = this.frames && this.frames.cues && this.frames.cues.team_led;   // pre-A11.6 bundle
@@ -1075,7 +1255,7 @@ export class Engine {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
       this.lastHitAt = this.now();
-      if (this.alive && hp > 0) { this._event('hit_taken'); this._pain(dmg, this.latch.ir_proto); }   // A11: a death is its own event; A15.3: our pain grunt by damage
+      if (this.alive && hp > 0) { this._event('hit_taken'); this._pain(dmg, this.latch.ir_proto, movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH
     }
     // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
@@ -1118,7 +1298,7 @@ export class Engine {
       }
     }
     this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
-    if (hp > 0) this._gunHealthPaint('hp');   // A11.7 (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
+    if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
     const wasResync = !!this.resync || !!this.reconciling;
     if (this.resync) this._resyncEvidence('hp');
     if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync/reconcile is a desync death
@@ -1130,6 +1310,10 @@ export class Engine {
     const shooter_num = fresh ? this.latch.shooter_num : 0;
     const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
     this.alive = false; this.deaths++; this.deadAt = this.now(); this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
+    // A16 §5: death clears the readout — NO gun write here, the strip simply sits wherever the native hit
+    // flash left it until the next `_gunTake` blanks it; a pending hold from this life must not fire later.
+    this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
+    this._activeRole = null;   // A16 §3.3: cleared BEFORE the infection check below, which may assign a fresh 'infected' role in the same call
     this.killedBy = { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
     if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {
@@ -1139,6 +1323,10 @@ export class Engine {
         const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
         this._turned = true;
         this._event('infected');   // A11.4: HUD-driven -- this gun just turned; MC's broadcast only tells the OTHERS
+        // A16 §3.3/finding #4: infection is not a real death (the player "re-takes the body" immediately),
+        // so the turned player's held headset colour is assigned right here, through the role mechanism,
+        // instead of the one-shot events table that a hit later wipes with nothing to restore it.
+        this._setRole('infected', true, tid);
         const tm = ((this.config && this.config.teams) || []).find(x => Number(x.tid) === tid);
         this.team = tm ? { ...tm } : { ...(this.team || {}), tid, team_id: `tid-${tid}`, name: TEAM_NAME[tid] || `TEAM ${tid}` };
       }

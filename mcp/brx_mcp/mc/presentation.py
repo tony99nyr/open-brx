@@ -14,8 +14,13 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
       "gun_flash":    bool,   # $GLED event bursts on the player's own gun
       "headset_team": bool,   # derived mirror of headset.in_play/pregame == "team" (older readers)
       "hud_events": bool, "mc_events": bool, "mc_confidence": bool,   # A11.5 event classes + the confidence gate
-      "headset": {pregame, start_flash, in_play, hit, death, respawn_flash, carrier},   # A11.6 (death: flash|native|colour)
-      "gun": {in_play, pregame},                                     # A11.7 (blank-then-hold, taken 2.5 s after $SPAWN)
+      "blackout":     bool,  # A16/led-language.md §4/§6#2: no light ANYWHERE except `down` (own switch,
+                             # separate from `config.night` -- night dims/shortens, blackout empties)
+      "headset": {pregame, start_flash, in_play, hit, death, respawn_flash, role},   # A11.6/§3.3
+                 # (death: flash|native|colour; `role` was `carrier` -- both accepted, `role` canonical,
+                 # `carrier` still an input alias mapped onto it by `merge()`/`resolve()`)
+      "gun": {in_play, pregame, readout},   # A11.7/§3.1 (blank-then-hold, taken 2.5 s after $SPAWN;
+                                            # readout = {pools, hold_s, reload_glance_s}, [] = off)
       "sight_flash":  bool,   # $SFLASH on a credited kill
       "events": { <event>: { "sound": <id>|"voice:<role>"|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null } }
                  # flash = the small headset LED (A11.8); "voice:<role>" (A15) = the PLAYER's own voice line for that
@@ -29,12 +34,18 @@ colours are the shared 9-colour palette (0 red · 1 blue · 2 yellow · 3 green 
 makes it `custom` (same rule as `loadout_policy`, A10.2).
 
 What consumes it: `compile.py` turns it into the per-player bundle -- `cues[<event>]` (pre-composed
-`$PLAY` frames, A6.3; a V-family id goes in the announcer slot, anything else in the SFX slot) and
-`leds[<event>]` (an optional `$LED` small-LED flash first, then the tuned 3-flash `$GLED` burst ending on the gun's rest frame, hardware-tuned
-2026-09-03, plus an optional static `$HLED`). The node plays them on its own events (hit_taken,
-died, respawned, healed, armour_up, shield_up) and on MC `feedback` pushes (kill + medals,
-victory) and objective pushes. `announcer: false` empties every voice cue (the `$SFLASH` still
-fires); `gun_flash: false` empties `leds`.
+`$PLAY` frames, A6.3; a V-family id goes in the announcer slot, anything else in the SFX slot),
+`leds[<event>]` (an optional `$LED` small-LED flash first, then the tuned 3-flash `$GLED` burst ending
+on the gun's rest frame, hardware-tuned 2026-09-03, plus an optional static `$HLED` that now holds and
+reverts rather than staying lit -- §6 finding #6), `gun.readout` (the transient 3/2/1-segment pool
+readout, §3.1/§5, `gun_readout()`) and `headset.role` (held states -- carrier/infected/vip/beacon/
+extracted, §3.3, `headset_frames()`). `hit_taken`/`healed`/`armour_up`/`shield_up`/`died`/`respawned`
+carry NO default gun burst any more (2026-09-07, led-language.md §6 finding #5): the readout is the
+feedback for a pool change, death is hands-off, and a respawn burst would land inside the 2.5 s the
+body is still blanking off the firmware's own spawn breathing (`led_table()` still honours an explicit
+`events.<ev>.gun_led` override for any of them). `announcer: false` empties every voice cue (the
+`$SFLASH` still fires); `gun_flash: false` empties `leds`; `blackout: true` empties `leds`/`gun` and
+reduces `headset` to just `down`.
 
 Not here: the 3-flash burst timing itself (`poolgauge`; capped at three flashes in a second, never
 a fourth, never a repaint during a flash) and the pool gauge colours. Those are hardware limits,
@@ -55,13 +66,24 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 #   group "player"    fires on the player's own node from its gun's frames
 #   group "announcer" is MC feedback to the shooter (voice); gated by `announcer`
 #   group "objective" is MC-pushed for the mode; the SOUND is gated by `announcer`, the LEDs are not
+# led-language.md §3.1 / §6 finding #5 (2026-09-07 build): hit_taken, healed, armour_up, shield_up,
+# died AND respawned no longer carry a default GUN burst. The transient pool readout (`gun_readout`,
+# built from `poolgauge.readout_bands`) is now the feedback for a pool change, and "died" is inside the
+# 2.5 s hands-off window after $HP,0 where the node writes NOTHING to either surface (the native hit
+# flash and headset out-flash are already the brightest thing we have -- a burst here can only mask
+# them). "respawned" is dropped for a related hardware reason: a burst written at respawn lands INSIDE
+# the first 2.5 s of the new life, before `gun.take` has blanked the body off the firmware's own spawn
+# breathing (A11.7/S4) -- painting there fights that animation and renders wrong, the same failure mode
+# the blank-then-hold scheme exists to avoid. The headset's white double-flash plus the spawn sound
+# already mark a respawn (team-lead correction 2026-09-07: the build message that listed five events
+# predates this reason; the design doc's six-event list is the current authority).
 EVENTS: dict[str, dict] = {
-    "hit_taken":     dict(source="hud", group="player",    desc="you were hit",                      sound=None,   gun_led=pg.RED,    headset=None),
-    "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=pg.RED,    headset=None),
-    "respawned":     dict(source="hud", group="player",    desc="back in: the player's own spawn line (A15.2, one random take)", sound="voice:spawn", gun_led=pg.WHITE, headset=None),
-    "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=pg.GREEN,  headset=None),
-    "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=pg.PURPLE, headset=None),
-    "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=pg.TEAL,   headset=None),
+    "hit_taken":     dict(source="hud", group="player",    desc="you were hit",                      sound=None,   gun_led=None,    headset=None),
+    "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=None,    headset=None),
+    "respawned":     dict(source="hud", group="player",    desc="back in: the player's own spawn line (A15.2, one random take)", sound="voice:spawn", gun_led=None, headset=None),
+    "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=None,  headset=None),
+    "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=None, headset=None),
+    "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=None,   headset=None),
     "low_health":    dict(source="hud", group="player",    desc="armour gone, HP dropping: the player's own hurt loop, once per life", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
@@ -183,12 +205,18 @@ ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid
 #                scheme, A11.8, deleted 2026-09-07) is retired: `merge()` maps it to "native" so a saved
 #                game that picked it keeps loading instead of 500ing at push time.
 #   respawn_flash: bool              back in: a white double-flash, then the in-play state
-#   carrier:     bool                holding the flag / objective: blink the FLAG colour until scored/lost/dead
+#   role:        bool                held role states (`headset_frames()["role"]`, §3.3): carrier,
+#                                    infected, VIP, extraction beacon, extracted -- re-asserted by the
+#                                    node after every registered hit so a hit does not erase them.
+#                                    `carrier` (bool) is still accepted as an input alias for this same
+#                                    field (led-language.md §4 collapse map: `headset.carrier` →
+#                                    `headset.role`) -- `merge()` writes whichever key it is fed onto
+#                                    THIS one, so the stored profile never carries both.
 # hit: None (native) since the 2026-09-04 headset ladder -- the firmware's own hit flash is "like a camera flash"
 # and NO BLE frame ($HLED any effect/level, $BLINK, $LED) comes close; painting over it only dims it. A colour here
 # adds our flash-then-rest ON TOP of the native flash (an opt-in for games that want a colour-coded hit).
 HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": None,
-                   "death": "native", "respawn_flash": True, "carrier": True}
+                   "death": "native", "respawn_flash": True, "role": True}
 # The out-blink is ~0.8 s per cycle; 200 cycles is ~160 s. A scanner-respawn player can be down longer, so
 # the node re-asserts frames.headset.death while it stays down (brx-grenade, engine side); the count itself is
 # kept at 200 because token 6's upper range is unverified on hardware.
@@ -240,7 +268,16 @@ def flash_frame(colour: str) -> str:
 #                        repaints on each band change and after every event burst
 #   pregame: "team" | "off"  the armed, unspawned gun body: team colour (like the headset) or dark. Walkthrough
 #                            2026-09-04, Tony: "the gun led does not get set on arm, its dark" -> default team.
-GUN_DEFAULT = {"in_play": "team", "pregame": "team"}
+#   readout: {pools, hold_s, reload_glance_s}   the transient pool readout (§3.1/§5, `gun_readout()`
+#                            below) -- always built when LEDs are on, independent of `in_play`; a saved
+#                            game that never set it gets GUN_READOUT_DEFAULT.
+# led-language.md §3.1/§6 finding #5 (2026-09-07 build): DEFAULT changed from "team" to "dark" -- the
+# body rests dark and the transient readout (below) is now the feedback, so a static team paint is no
+# longer the standard rest frame. `in_play: "team"` stays a fully-supported explicit choice (a saved
+# game that set it keeps its own team-coloured body); `"health"` (the old whole-strip health hue) is
+# kept for older nodes but its collapse onto the new shape is "dark rest + readout limited to health"
+# (see `gun_readout()`).
+GUN_DEFAULT = {"in_play": "dark", "pregame": "team"}
 # Bench 2026-09-04 (GAMMA, Tony watching, stage `raw` ladder): a blank INSIDE the spawn burst does not take -- the
 # firmware's spawn animation re-enables the breathing. Bare $SPAWN then blank + paint at +1.0 s: breathing;
 # +1.5 s: breathing; +2.0 s: SOLID. So the node takes the body 2.5 s after every $SPAWN (margin over 2.0).
@@ -248,15 +285,36 @@ GUN_AFTER_SPAWN_S = 2.5
 GUN_IN_PLAY = ("native", "team", "dark", "health")
 GUN_BLANK = "$GLED,,,,5,,,*"
 
+# ---- the transient pool readout (led-language.md §3.1/§5, 2026-09-07 build) --------------------------
+# Outermost pool first (shield, armor, health -- the order BRX depletes them, `poolgauge.changed_pool`),
+# each a static per-band $GLED segment frame (poolgauge.readout_bands) MC ships so the node never parses
+# a frame: it just measures its own level/max and picks the first band whose fraction that exceeds.
+READOUT_POOL_ORDER = ("shield", "armor", "health")
+GUN_READOUT_DEFAULT = {"pools": list(READOUT_POOL_ORDER), "hold_s": 4, "reload_glance_s": 2}
+NIGHT_READOUT = {"hold_s": 2, "reload_glance_s": 1}   # §3.4: night halves both holds
+
+# `blackout` (led-language.md §4/§6 finding #2, 2026-09-07): the EXPLICIT "no lights anywhere except
+# the down signal" switch, separate from `config.night` (an overlay: dim + shorter holds, everything
+# still lights) and from the legacy top-level `config.led.mode == "off"` (still honoured by
+# `compile._to_gc` for back-compat -- `leds` is on only when NEITHER says off). Night used to double as
+# a blackout (`leds = ... and not config["night"]`), which silently deleted the down signal along with
+# everything else; the two are independent now, and `down` is unconditional regardless of either.
 _BASE = {"announcer": True, "gun_flash": True, "headset_team": True, "sight_flash": True,
-         "hud_events": True, "mc_events": True, "mc_confidence": True, "headset": dict(HEADSET_DEFAULT),
-         "gun": dict(GUN_DEFAULT)}
-SWITCHES = ("announcer", "gun_flash", "headset_team", "sight_flash", "hud_events", "mc_events", "mc_confidence")
+         "hud_events": True, "mc_events": True, "mc_confidence": True, "blackout": False,
+         "headset": dict(HEADSET_DEFAULT), "gun": dict(GUN_DEFAULT)}
+SWITCHES = ("announcer", "gun_flash", "headset_team", "sight_flash", "hud_events", "mc_events",
+            "mc_confidence", "blackout")
 
 PRESETS: dict[str, dict] = {
     "standard": {**_BASE, "events": {}},
-    # Tony: "silenced snipers cuts out the announcer stuff and extra led flashes"
-    "silenced": {**_BASE, "announcer": False, "gun_flash": False, "events": {}},
+    # Tony: "silenced snipers cuts out the announcer stuff and extra led flashes".
+    # led-language.md §3.5: "bursts off, readout off, hit null" -- `hit null` is already the
+    # HEADSET_DEFAULT (unedited here), but the READOUT half was never implemented (2026-09-07 gap,
+    # caught by the engine lane's fixture work): a silenced bundle still shipped the full three-pool
+    # `gun.readout`, so a "gun stays dark" sniper mode painted a segment bar on every hit anyway.
+    # `readout.pools: []` empties it -- `gun_readout()` returns {} for an empty pool list.
+    "silenced": {**_BASE, "announcer": False, "gun_flash": False,
+                "gun": {**GUN_DEFAULT, "readout": {"pools": []}}, "events": {}},
     # Tony: "for a counter-strike mode we use the bomb armed and bomb defused sounds".
     # X12 is the unambiguous heavy explosion by ear (2026-09-04); X13 "might actually be a sniper".
     "counter_strike": {**_BASE, "events": {
@@ -275,13 +333,15 @@ PRESETS: dict[str, dict] = {
         "last_survivor": {"sound": "V4V"},                                          # "One survivor remains."
         "survivors_win": {"sound": "VB1T"},                                         # "The survivors have held their ground."
     }},
-    # Last man standing: a death is final, and the player's OWN gun knows that -- so the death gets the
-    # heavier treatment. `last_survivor` is deliberately NOT in the preset: MC only learns deaths from
+    # Last man standing: `last_survivor` is deliberately NOT in the preset: MC only learns deaths from
     # HUDs that are connected, so "one survivor remains" is exactly the announcement most likely to be
     # wrong or missing when HUDs drop off mid-game (Tony, 2026-09-04). It stays available as an event.
-    "last_stand": {**_BASE, "events": {
-        "died":          {"gun_led": pg.RED, "headset": pg.RED},                    # out for good: mark the head too
-    }},
+    # `died` used to also paint the gun red and flash the headset here ("out for good: mark the head
+    # too") -- retired 2026-09-07 (led-language.md §3.1 "Death is hands-off"): the node writes NOTHING
+    # to either surface for the 2.5 s after $HP,0, so a died-event colour write can only ever be
+    # dropped or fight the native flash it was meant to sit beside. The dark rest + the down signal
+    # already mark "out for good" on the gun and the headset.
+    "last_stand": {**_BASE, "events": {}},
     # Extraction (game-modes.md): the extractor is LOUD by design, everyone else gets the chopper alert.
     "extraction": {**_BASE, "events": {
         "extraction_called":   {"sound": "VA1C", "gun_led": pg.ORANGE, "headset": pg.ORANGE},
@@ -372,10 +432,18 @@ def merge(current: dict | None, patch: dict) -> dict:
                 if hv not in ("dark", "team"):
                     raise ValueError("presentation.headset.in_play must be dark|team")
                 cur[hk] = hv
-            elif hk in ("start_flash", "respawn_flash", "carrier"):
+            elif hk in ("start_flash", "respawn_flash", "role"):
                 if not isinstance(hv, bool):
                     raise ValueError(f"presentation.headset.{hk} must be true/false")
                 cur[hk] = hv
+            elif hk == "carrier":
+                # led-language.md §4 collapse map: `headset.carrier` -> `headset.role` (§3.3 broadened
+                # the single carrier blink into 5 held role states gated by the same one switch).
+                # Written onto the canonical "role" field so the stored profile never carries both.
+                if not isinstance(hv, bool):
+                    raise ValueError("presentation.headset.carrier must be true/false")
+                cur["role"] = hv
+                cur.pop("carrier", None)
             elif hk == "hit":
                 cur[hk] = _colour(hv)
             elif hk == "death":
@@ -407,6 +475,22 @@ def merge(current: dict | None, patch: dict) -> dict:
                 if gv not in ("team", "off"):
                     raise ValueError("presentation.gun.pregame must be team|off")
                 cur[gk] = gv
+            elif gk == "readout":
+                if not isinstance(gv, dict):
+                    raise ValueError("presentation.gun.readout must be an object")
+                r = dict(cur.get("readout") or GUN_READOUT_DEFAULT)
+                for rk, rv in gv.items():
+                    if rk == "pools":
+                        if not (isinstance(rv, list) and set(rv) <= set(READOUT_POOL_ORDER)):
+                            raise ValueError(f"presentation.gun.readout.pools must be a subset of {READOUT_POOL_ORDER}")
+                        r[rk] = list(rv)
+                    elif rk in ("hold_s", "reload_glance_s"):
+                        if not (isinstance(rv, (int, float)) and not isinstance(rv, bool) and 1 <= rv <= 10):
+                            raise ValueError(f"presentation.gun.readout.{rk} must be 1..10")
+                        r[rk] = rv
+                    else:
+                        raise ValueError(f"presentation.gun.readout.{rk}: unknown field")
+                cur[gk] = r
             else:
                 raise ValueError(f"presentation.gun.{gk}: unknown field")
         if cur != prof.get("gun"):
@@ -443,6 +527,21 @@ def merge(current: dict | None, patch: dict) -> dict:
     return prof
 
 
+def _collapse_headset(raw_headset: dict | None) -> dict:
+    """led-language.md §4 collapse map, applied to ONE layer of a `headset` dict: `carrier` (legacy) ->
+    `role` (canonical) when `role` is not itself present in that same layer, so an unmerged/hand-edited
+    profile that only ever set the old key still resolves correctly. Pure -- called once per layer in
+    `resolve()` so the caller's own precedence (raw overrides base overrides default) is untouched."""
+    if not raw_headset:
+        return {}
+    h = dict(raw_headset)
+    if "carrier" in h and "role" not in h:
+        h["role"] = h.pop("carrier")
+    else:
+        h.pop("carrier", None)
+    return h
+
+
 def resolve(config: dict) -> dict:
     """The FULL profile for a config: preset defaults + overrides, every event filled in."""
     raw = config.get("presentation") or {}
@@ -455,7 +554,7 @@ def resolve(config: dict) -> dict:
             prof[k] = bool(raw[k])
     if raw.get("preset") == "custom":
         prof["preset"] = "custom"
-    prof["headset"] = {**HEADSET_DEFAULT, **(base.get("headset") or {}), **(raw.get("headset") or {})}
+    prof["headset"] = {**HEADSET_DEFAULT, **_collapse_headset(base.get("headset")), **_collapse_headset(raw.get("headset"))}
     prof["gun"] = {**GUN_DEFAULT, **(base.get("gun") or {}), **(raw.get("gun") or {})}
     prof["events"] = {**prof.get("events", {}), **(raw.get("events") or {})}
     events = {}
@@ -534,13 +633,32 @@ def cue_pool_frames(profile: dict, voice) -> dict[str, list[str]]:
     return out
 
 
-def led_table(profile: dict, team: int | None, night: bool, leds_on: bool) -> dict[str, list]:
-    """event -> [[frame, hold_s], ...]: the tuned 3-flash gun burst ending on the team colour, then an
-    optional static `$HLED` for the headset (hold 0 = leave it). Empty when LEDs are off for the game
-    (night / blackout) or the profile turned gun flashes off."""
+# led-language.md §6 finding #6, built 2026-09-07: a one-shot event colour on the headset (`vip_hit`
+# orange, `infected` red, …) used to be written with hold 0.0 -- the convention this module uses
+# elsewhere for "this frame already IS the rest state" -- and so it simply stayed lit for the rest of
+# the life. Every static event `$HLED` now holds for this long, then reverts to the headset's own
+# rest frame. `poolgauge.REVERT_AFTER_S` (the pool-readout hold) is the closest bench-backed duration
+# for "how long does a one-shot status light stay up before it must go back to being unremarkable".
+STATIC_EVENT_HLED_HOLD_S = pg.REVERT_AFTER_S
+
+
+def _hled(colour: int, night: bool = False) -> str:
+    """A static (non-blinking) `$HLED` paint at full or, at night, dim brightness (led-language.md §3.4:
+    pregame / role states / low health dim to tok5=1; the down signal and the native hit flash do not)."""
+    b = pg.BRIGHT_DIM if night else pg.BRIGHT_FULL
+    return f"$HLED,{colour},0,,,{b},,*"
+
+
+def led_table(profile: dict, team: int | None, night: bool, leds_on: bool, ffa: bool = False) -> dict[str, list]:
+    """event -> [[frame, hold_s], ...]: the tuned 3-flash gun burst ending on the gun's rest frame, then
+    an optional static `$HLED` for the headset that HOLDS for `STATIC_EVENT_HLED_HOLD_S` and reverts to
+    the headset's own rest frame (finding #6 above -- a hold of 0.0 used to mean "and never revert").
+    Empty when LEDs are off for the game (night / blackout) or the profile turned gun flashes off."""
     if not leds_on:
         return {}
     out: dict[str, list] = {}
+    gf = gun_frames(profile, team, night, True, ffa)
+    hf = headset_frames(profile, team, True, ffa=ffa)
     for ev, spec in profile["events"].items():
         src = spec.get("source", "mc")
         if (src == "hud" and not profile.get("hud_events", True)) or (src == "mc" and not profile.get("mc_events", True)):
@@ -552,28 +670,52 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool) -> di
             seq.append([flash_frame(spec["flash"]), 0.0])      # the small LED: one clearly visible flash (below native), no hold needed
         c = spec.get("gun_led")
         if c is not None:
-            flash = f"$GLED,{c},{c},{c},0,{pg.BRIGHT_DIM if night else pg.BRIGHT_FULL},,*"
+            b = pg.BRIGHT_DIM if night else pg.BRIGHT_FULL
+            flash = f"$GLED,{c},{c},{c},0,{b},,*"
             # A11.7: the burst ends on the gun's RESTING frame. Native / team: the team colour (the firmware
             # breathing or the held paint). Dark: the dark frame. Health: the full-health hue here, and the
             # node repaints the current band right after (it alone knows the hp).
-            gf = gun_frames(profile, team, night, True)
-            back = gf["rest"] if gf else pg.team_frame(team, night)
+            back = gf["rest"] if gf else pg.team_frame(team, night, ffa)
+            # led-language.md §6 finding #3 (2026-09-07, caught by the LED invariant tests): a burst
+            # ALTERNATES flash-colour and rest-colour, so if they are the SAME colour the strip never
+            # actually changes and the player sees nothing -- e.g. `hit_landed` (WHITE) against an
+            # FFA/no-team rest (also WHITE, Q19), or the older red-on-red-team case the dark-rest
+            # default only happens to hide, not fix. When the two collide, alternate against DARK
+            # instead so every flash is a real transition; the burst still ENDS on the true rest frame
+            # (unchanged) -- `_colour()` never accepts 9 for an event's `gun_led`, so DARK is always a
+            # safe, visibly-different "off" state to alternate against.
+            back_colour = back.split(",")[1] if back.startswith("$GLED,") else None
+            gap = f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{b},,*" if back_colour == str(c) else back
             for i in range(pg.BURST_FLASHES):
+                last = i == pg.BURST_FLASHES - 1
                 seq.append([flash, pg.BURST_FLASH_S])
-                seq.append([back, pg.BURST_GAP_S if i < pg.BURST_FLASHES - 1 else 0.0])
+                seq.append([back if last else gap, pg.BURST_GAP_S if not last else 0.0])
         h = spec.get("headset")
         if h is not None and ev != "low_health":          # low_health keeps Callsign's blink (cues.hurt_led)
-            seq.append([f"$HLED,{h},0,,,10,,*", 0.0])
+            rest = hf["rest"] if hf else HEADSET_DARK
+            seq.append([f"$HLED,{h},0,,,10,,*", STATIC_EVENT_HLED_HOLD_S])
+            seq.append([rest, 0.0])
         if seq:
             out[ev] = seq
     return out
 
 
-def _blink(colour: int, on_ms: int, off_ms: int, count: int) -> str:
-    return f"$HLED,{colour},2,{on_ms},{off_ms},10,{count},*"
+def _blink(colour: int, on_ms: int, off_ms: int, count: int, night: bool = False) -> str:
+    b = pg.BRIGHT_DIM if night else pg.BRIGHT_FULL
+    return f"$HLED,{colour},2,{on_ms},{off_ms},{b},{count},*"
 
 
-def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: dict[int, int] | None = None) -> dict:
+# led-language.md §3.3 (built 2026-09-07): held role states, re-asserted by the NODE after every
+# registered hit so a hit does not erase them (unlike a one-shot event colour, which the hold+rest
+# pattern above already returns from on its own). Carrier is WHITE -- never the flag's team colour,
+# because team colours are identity and a role is a state, not an identity (finding #11). Infected is
+# the only role that still needs a TEAM colour (the SURVIVING team reads "who turned" by colour), so it
+# alone is keyed per-tid like the old carrier table was.
+ROLE_STATES = ("carrier", "infected", "vip", "beacon", "extracted")
+
+
+def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: dict[int, int] | None = None,
+                   ffa: bool = False, night: bool = False) -> dict:
     """The bundle's `headset` table (A11.6): what the NODE writes to the headset at each moment.
 
     Every entry is a list of [frame, hold_s] steps ending on an explicit state frame, because a
@@ -587,35 +729,85 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
     off). At `rearm_after_ms` after `$HP,0` the node sends `rearm` (`$HLOOP,2,750,*`) once, as
     belt-and-braces insurance for any life where a blank slipped through -- harmless when the native
     loop is already running. `stop` (`$HLOOP,0,0,*`) is sent before a revive; `$SPAWN` clears the loop
-    by itself too. Everything else in this table is empty when LEDs are off for the game."""
+    by itself too. Everything else in this table is empty when LEDs are off for the game.
+
+    `role` (§3.3) is the held-state table: `carrier`/`vip`/`beacon`/`extracted` are single [frame, 0.0]
+    sequences (0.0 = "and this IS now the resting state", same convention as `rest` -- these are not
+    one-shot events, so the hold+rest pattern in `led_table()` does not apply to them); `infected` is
+    keyed by tid like the old carrier table because it is the one role whose COLOUR is a team fact.
+    `role` is `{}` when `headset.role` is off, gated the same way `carrier` used to be."""
     down = {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
     if not leds_on:
         return {"down": down}
-    h = {**HEADSET_DEFAULT, **(profile.get("headset") or {})}
-    team_paint = f"$HLED,{tid},0,,,10,,*" if tid is not None and 0 <= int(tid) <= 7 else None
+    h = {**HEADSET_DEFAULT, **_collapse_headset(profile.get("headset"))}
+    # F35/finding #11 (2026-09-07): PAINT colour, never the raw tid (team 3 stays green on the wire
+    # but paints purple -- `pg.display_colour`).
+    colour = pg.FFA_COLOUR if ffa else (pg.display_colour(tid) if tid is not None else None)
+    team_paint = _hled(colour, night) if colour is not None and int(colour) in pg.HEADSET_TIDS else None
     rest = team_paint if (h["in_play"] == "team" and team_paint) else HEADSET_DARK
-    white2 = _blink(pg.WHITE, 120, 120, 2)
+    n_flashes = 1 if night else 2
+    white_start = _blink(pg.WHITE, 120, 120, n_flashes, night)
     out: dict = {"in_play": h["in_play"], "rest": rest, "blank": HEADSET_DARK, "down": down,
                  "pregame": [team_paint] if (h["pregame"] == "team" and team_paint) else [],
-                 "start": [[white2, 0.6], [rest, 0.0]] if h["start_flash"] else [[rest, 0.0]],
+                 "start": [[white_start, 0.6], [rest, 0.0]] if h["start_flash"] else [[rest, 0.0]],
                  "hit": [[_blink(h["hit"], 100, 100, 2), 0.5], [rest, 0.0]] if h["hit"] is not None else [],
                  "death": [] if h["death"] == "native" else [[_blink(int(h["death"]), 400, 400, DEATH_BLINK_COUNT), 0.0]],
-                 "respawn": [[white2, 0.6], [rest, 0.0]] if h["respawn_flash"] else [[rest, 0.0]],
-                 "carrier": {}}
-    if h["carrier"]:
-        for t, c in (team_colours or {}).items():
-            out["carrier"][str(t)] = [[_blink(int(c), 300, 300, 200), 0.0]]
+                 "respawn": [[white_start, 0.6], [rest, 0.0]] if h["respawn_flash"] else [[rest, 0.0]],
+                 "role": {}}
+    if h.get("role", True):
+        out["role"] = {
+            "carrier":   [[_blink(pg.WHITE, 300, 300, 200, night), 0.0]],
+            "vip":       [[_hled(pg.WHITE, night), 0.0]],
+            "beacon":    [[_blink(pg.ORANGE, 300, 300, 200, night), 0.0]],
+            "extracted": [[_hled(pg.WHITE, night), 0.0]],
+            "infected":  {str(t): [[_hled(int(c), night), 0.0]] for t, c in (team_colours or {}).items()},
+        }
+        # TRANSITIONAL (2026-09-07): `stage.py` (mcp/brx_mcp/stage/, a different lane) still reads the
+        # pre-§3.3 shape directly -- `bundle["headset"]["carrier"][<tid>]`, blinking the FLAG's team
+        # colour. That reading is superseded (finding #11: carrier is WHITE, never a team colour) but
+        # not yet migrated, so the OLD per-team dict rides alongside `role` until it is. Once stage.py
+        # reads `role.carrier`/`role.infected` instead, delete this key.
+        out["carrier"] = {str(t): [[_blink(int(c), 300, 300, 200, night), 0.0]] for t, c in (team_colours or {}).items()}
     return out
 
 
-def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool) -> dict:
+def gun_readout(profile: dict, night: bool, hp: int = 45, armor: int = 70, shield: int = 70) -> dict:
+    """The transient pool readout (led-language.md §3.1/§5): 3/2/1 lit segments in the pool's hue,
+    outermost pool first. `max` per pool is shipped so the node never parses a frame -- hp/armor come
+    from the caller (the config, per-player overrides already applied); shield is whatever `$PSET`
+    token 5 carries for this player. `{}` when `gun.readout.pools` is emptied (no readout at all).
+
+    The legacy `gun.in_play == "health"` (the old whole-strip health hue, kept in `gun_frames()`'s
+    `bands` for older nodes) collapses onto "readout limited to health" here UNLESS the profile also
+    set its own `readout.pools` explicitly (led-language.md §4 collapse map)."""
+    g = {**GUN_DEFAULT, **(profile.get("gun") or {})}
+    conf = {**GUN_READOUT_DEFAULT, **(g.get("readout") or {})}
+    if g["in_play"] == "health" and "readout" not in g:
+        conf = {**conf, "pools": ["health"]}
+    pools = [p for p in READOUT_POOL_ORDER if p in (conf.get("pools") or [])]
+    if not pools:
+        return {}
+    hold_s, glance_s = conf.get("hold_s", 4), conf.get("reload_glance_s", 2)
+    if night:
+        hold_s = min(hold_s, NIGHT_READOUT["hold_s"])
+        glance_s = min(glance_s, NIGHT_READOUT["reload_glance_s"])
+    maxima = {"shield": shield, "armor": armor, "health": hp}
+    return {"hold_s": hold_s, "reload_glance_s": glance_s,
+            "pools": [{"pool": p, "max": maxima[p],
+                       "bands": [[thr, f] for thr, f in pg.readout_bands(p, night)]} for p in pools]}
+
+
+def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool, ffa: bool = False,
+              hp: int = 45, armor: int = 70, shield: int = 70) -> dict:
     """The bundle's `gun` table (A11.7): what the NODE paints on the gun body in play.
 
     {} when LEDs are off for the game or `in_play` is "native" (nothing is sent; the firmware breathes).
     Otherwise: `in_play`, `blank` (the frame that suppresses the breathing; sent once after every $SPAWN),
     `rest` (the frame that follows the blank: team colour, dark, or the full-health hue) and, for
     "health", `bands`: [[fraction_above, frame], ...] highest first -- the node paints the first band whose
-    fraction the current hp/max exceeds, on every band change and at the end of every event burst."""
+    fraction the current hp/max exceeds, on every band change and at the end of every event burst
+    (kept for older nodes, led-language.md §4 collapse map). `readout` (§3.1/§5, `gun_readout()`) is the
+    newer, additive transient pool readout -- always built when LEDs are on, independent of `in_play`."""
     g = {**GUN_DEFAULT, **(profile.get("gun") or {})}
     if not leds_on or g["in_play"] == "native":
         return {}
@@ -623,23 +815,26 @@ def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool) -> di
     dark = f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{b},,*"
     out: dict = {"in_play": g["in_play"], "blank": GUN_BLANK, "after_spawn_s": GUN_AFTER_SPAWN_S}
     if g["in_play"] == "team":
-        out["rest"] = pg.team_frame(tid, night)
+        out["rest"] = pg.team_frame(tid, night, ffa)
     elif g["in_play"] == "dark":
         out["rest"] = dark
-    else:   # health
+    else:   # health (legacy whole-strip; superseded by the segmented `readout` below)
         out["bands"] = [[thr, pg.pool_paint_frame("health", int(round(thr * 1000)) + 1, 1000, night)] for thr, _c in pg.HEALTH_BANDS]
         out["rest"] = out["bands"][0][1]          # full health = the top band
     out["take"] = [GUN_BLANK, out["rest"]]        # what the node writes after_spawn_s after every $SPAWN
+    readout = gun_readout(profile, night, hp, armor, shield)
+    if readout:
+        out["readout"] = readout
     return out
 
 
-def gun_pregame(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:
+def gun_pregame(profile: dict, tid: int | None, night: bool, leds_on: bool, ffa: bool = False) -> list[str]:
     """The armed-unspawned gun body: [team frame] when `gun.pregame` is team and LEDs are on. A paint holds on an
     unspawned gun (no breathing loop runs before $SPAWN); the spawn tail then blanks + repaints."""
     g = {**GUN_DEFAULT, **(profile.get("gun") or {})}
     if not leds_on or g.get("pregame", "team") != "team":
         return []
-    return [pg.team_frame(tid, night)]
+    return [pg.team_frame(tid, night, ffa)]
 
 
 def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -> list[str]:
@@ -649,10 +844,15 @@ def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -
 
 
 def summary(profile: dict) -> dict:
-    """What the UI shows: preset + the four switches + which events carry a custom sound."""
+    """What the UI shows: preset + the switches + which events carry a custom sound.
+
+    `headset.role` (led-language.md §3.3) is exposed under BOTH names: `role` (canonical going
+    forward) and `carrier` (kept byte-identical so the existing console, which still reads
+    `headset.carrier`, keeps working unchanged -- §4 "summary() keeps emitting the old switches")."""
+    hs = {**HEADSET_DEFAULT, **_collapse_headset(profile.get("headset"))}
     return {"preset": profile.get("preset", "standard"),
-            **{k: bool(profile.get(k, True)) for k in SWITCHES},
-            "headset": {**HEADSET_DEFAULT, **(profile.get("headset") or {})},
+            **{k: bool(profile.get(k, _BASE[k])) for k in SWITCHES},
+            "headset": {**hs, "carrier": hs["role"]},
             "gun": {**GUN_DEFAULT, **(profile.get("gun") or {})},
             "custom_events": sorted(ev for ev, spec in (profile.get("events") or {}).items()
                                     if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None or spec.get("flash"))}

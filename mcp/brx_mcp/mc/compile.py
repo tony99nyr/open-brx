@@ -14,7 +14,10 @@ import math
 import pathlib
 from typing import Any
 
+import random as _random
+
 from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC
+from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team, Weapon
@@ -67,20 +70,27 @@ DEFAULT_POOL = 115
 # 2026-09-02/03: the headset palette was read off hardware -- indices 0-7 render the same hues as the
 # gun (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink), so a 4-team
 # game's tid 2/3 now has a known colour and is emitted too. ⚠ 3 is GREEN, the headset's own death
-# out-blink colour; a green team's headset is ambiguous while a player is down. Larger tids stay silent.
-_HLED_SEEN_COLOURS = (0, 1, 2, 3)
+# out-blink colour; a green team's headset is ambiguous while a player is down.
+# led-language.md §6 finding #13 (2026-09-07): this used to stop at (0,1,2,3) while `presentation.py`
+# allowed 0-7 -- one shared range, `poolgauge.HEADSET_TIDS`, so the two modules can never disagree again.
+_HLED_SEEN_COLOURS = pg.HEADSET_TIDS
 
 
-def _headset_colour(tid: int, leds: bool) -> list[str]:
-    """The pre-game headset team colour, or nothing.
+def _headset_colour(tid: int, leds: bool, ffa: bool = False) -> list[str]:
+    """The pre-game headset team colour, or nothing (WHITE for every player in FFA -- Q19, no team
+    identity to protect there).
 
     Skipped when the game has LEDs off: `gc._led_frames()` blanks the GUN for night/blackout play, and
     lighting the headset in the same head would mark every player in the lobby — exactly what that
     setting exists to prevent (review 2026-09-01).
+
+    F35/led-language.md §6 finding #11 (2026-09-07): PAINTS `pg.display_colour(tid)`, never the raw
+    tid -- team 3 stays green on the wire (its combat identity, F35) but paints purple.
     """
-    if not leds or tid not in _HLED_SEEN_COLOURS:
+    colour = pg.FFA_COLOUR if ffa else pg.display_colour(tid)
+    if not leds or colour not in _HLED_SEEN_COLOURS:
         return []
-    return [f"$HLED,{tid},0,,,10,,*"]
+    return [f"$HLED,{colour},0,,,10,,*"]
 
 
 def play_volume(environment: str | None) -> int:
@@ -126,6 +136,81 @@ def _sir_index(table) -> dict[tuple[str, str], int]:
             except ValueError:
                 continue
     return out
+
+
+# --------------------------------------------------------------------------- #
+# A17 CLASS LAYER -- the $SIR <soundID> the VICTIM hears, keyed by the shooter's weapon
+# --------------------------------------------------------------------------- #
+# Two levels, because only one of them is safe today (see hitaudio.py):
+#   SOUNDS-ONLY (always on): write a family sound into the sound token of the rows we ALREADY ship.
+#     Nothing moves; the table keeps every stock cell, so a stock gun or a grenade station still
+#     registers exactly as before. This alone takes the arsenal from 3 audible classes to 8, because
+#     the three commonest rows -- <0,0>, <0,1>, <0,3> -- ship their sound token EMPTY today.
+#   RE-KEY (config `hit_audio_rekey`, DEFAULT OFF): additionally move each (family, function) group
+#     onto its own free cell so the AR, the shotgun and the suppressor stop sounding identical.
+#     ⚠ An unmatched cell is SILENTLY IGNORED -- the F11 failure -- so this stays off until the bench
+#     clears F38/F39. `assert_sir_covers_weapons` is the guard that makes it survivable when it is on.
+_SIR_SOUND_TOK = 3          # $SIR,<proto>,<sub>,<soundID>,<fn>,... -- split()[3] over the leading "$SIR"
+# How many rolled `$SIR` tables ship in `FrameBundle.sir_pool`. Four is enough that a player does not
+# hear the same draw twice in a row without making the bundle (which crosses the LAN to every phone)
+# meaningfully bigger -- each take is ~10 short rows.
+_SIR_TAKES = 4
+
+
+def _sir_cells(table) -> list[tuple[str, str]]:
+    """The (proto, subtype) each row of a `$SIR` table keys, in table order."""
+    out = []
+    for row in table:
+        t = row.strip().lstrip("$").rstrip("*").rstrip(",").split(",")
+        out.append((t[1] or "0", t[2] or "0") if len(t) > 2 and t[0] == "SIR" else ("", ""))
+    return out
+
+
+def _sir_with_sound(row: str, sound: str) -> str:
+    """The same `$SIR` row with its sound token replaced. Empty `sound` leaves the row untouched."""
+    if not sound:
+        return row
+    t = row.split(",")
+    if len(t) <= _SIR_SOUND_TOK:
+        return row
+    t[_SIR_SOUND_TOK] = sound
+    return ",".join(t)
+
+
+def _sir_row(cell: tuple[str, str], sound: str, fn: int, template: str | None) -> str:
+    """A new `$SIR` row for `cell`. The TAIL (p5-p8) is copied from the stock row that already carries
+    this function, so a re-keyed weapon lands exactly what it lands today -- damage is a property of
+    the (weapon, table) pair, and re-keying must move the sound, never the effect."""
+    tail = ",0,0,1,,"
+    if template:
+        # rstrip("*") only: the empty token before the trailing "*" is p8 and must survive, so the
+        # copied row keeps the stock TOKEN COUNT. t[-1] is the artifact of that final comma.
+        t = template.strip().rstrip("*").split(",")
+        if len(t) > 6:
+            tail = "," + ",".join(t[5:-1]) + ","
+    return f"$SIR,{cell[0]},{cell[1]},{sound},{fn}{tail}*"
+
+
+def assert_sir_covers_weapons(head: list[str]) -> None:
+    """Every `$WEAP` cell in this head MUST have a matching `$SIR` row. Raises if one does not.
+
+    ⚠ The F11 shape, one layer up. `$CLEAR` wiping the table made a gun ignore EVERY hit; a weapon
+    keyed to a cell with no row makes a gun ignore every hit FROM THAT WEAPON, while both ends report
+    healthy. A17 re-keying is the only thing that can introduce it, so the guard runs on every head."""
+    cells = {c for c in _sir_cells([f for f in head if f.startswith("$SIR")]) if c != ("", "")}
+    missing = []
+    for f in head:
+        if not f.startswith("$WEAP"):
+            continue
+        t = f.split(",")
+        key = ((t[4] if len(t) > 4 else "") or "0", (t[5] if len(t) > 5 else "") or "0")
+        if key not in cells:
+            missing.append((t[1] if len(t) > 1 else "?", key))
+    if missing:
+        raise ValueError(
+            "A17 GUARD: this head arms weapons whose $SIR cell has no row, so every hit from them is "
+            "silently dropped while both guns report healthy (the F11 failure): "
+            + ", ".join(f"slot {s} keys <{k[0]},{k[1]}>" for s, k in missing))
 
 
 # $WEAP full-frame token indices (0-based over the comma-split of "$WEAP,<slot>,<tail>"),
@@ -446,10 +531,17 @@ class Compiler:
         return self.perks.effects(pid) if pid else {}
 
     # -- helpers -----------------------------------------------------------
-    def _to_gc(self, config: GameConfig, player: Player | None = None) -> _GC:
+    def _to_gc(self, config: GameConfig, player: Player | None = None, blackout: bool = False) -> _GC:
         """Map the contracts §3 GameConfig (TypedDict) onto the gameconfig.py dataclass — only the
         fields whose frames we reuse (_gset/_pset/_bmap/_led_frames). Weapons + ammo come from the
-        catalog, not the dataclass, so primary/secondary are left at their defaults."""
+        catalog, not the dataclass, so primary/secondary are left at their defaults.
+
+        led-language.md §6 finding #2 (2026-09-07): `leds` used to go dark on `config.night` too,
+        which silently deleted the down signal along with every other light. Night is an OVERLAY now
+        (dim + shorter holds, applied inside `presentation.py`'s frame builders via their own `night`
+        argument) -- the only things that turn every gun LED off are the legacy `led.mode == "off"`
+        and the explicit `presentation.blackout` switch (`caller passes it in, resolved once from the
+        profile so this stays a pure mapping)."""
         led = config.get("led") or {}
         ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor (modes §1.1)
         fx = self._perk_effects(player)
@@ -461,8 +553,7 @@ class Compiler:
             frag_limit=config["scoring"].get("frag_limit") or 0,
             volume=play_volume(config["environment"]),
             outdoor=config["environment"] == "outdoor",
-            # blackout LED-off on night OR an explicit led.mode=="off" (modes §6)
-            leds=(led.get("mode", "team") != "off") and not config.get("night", False),
+            leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
             hp=int(ov.get("max_hp", config["health"]["max_hp"])),
             # body_armor perk: +N on $PSET armor (loadout.md §2) — capped at the wire's 255
@@ -489,12 +580,89 @@ class Compiler:
         return primary, secondary
 
     # -- Compiler Protocol -------------------------------------------------
-    def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None) -> FrameBundle:
+    # ---- A17 hit audio ------------------------------------------------------ #
+    def _hit_entry(self, weapon_id: str, sir: dict) -> "_ha.Entry | None":
+        """One weapon as `hitaudio` sees it: family, the cell it keys today, and that cell's function."""
+        row = self.catalog._by_id.get(weapon_id)
+        if row is None:
+            return None
+        T = self.catalog._T
+        try:
+            f = self.catalog.resolve(weapon_id, 0).split(",")
+            cell = (f[T["proto"] + 1] or "0", f[T["subtype"] + 1] or "0")
+        except (IndexError, ValueError, KeyError):
+            return None
+        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, sir.get(cell, 0))
+
+    def hit_plan(self, roster, rekey: bool = False) -> "_ha.Plan":
+        """The A17 `$SIR` plan for ONE MATCH, from every weapon on the roster.
+
+        It must be computed once and handed to every player's `compile()`: a plan derived per player
+        would give two guns different tables, and a hit keyed to a cell the victim does not carry is
+        silently dropped. `rekey=False` (the default, and what ships) moves nothing -- see
+        `hitaudio.plan_in_place`."""
+        sir = _sir_index(_SIR_TABLE)
+        ids: list[str] = []
+        for p in roster or []:
+            for w in ((p.get("loadout") or {}).get("weapons") or []):
+                wid = w.get("weapon_id")
+                if wid and wid in self.catalog._by_id and wid not in ids:
+                    ids.append(wid)
+        if "melee" in self.catalog._by_id and "melee" not in ids:
+            ids.append("melee")                      # every player carries it, no loadout names it
+        entries = [e for e in (self._hit_entry(w, sir) for w in ids) if e is not None]
+        if not entries:
+            return _ha.Plan()
+        if not rekey:
+            return _ha.plan_in_place(entries)
+        return _ha.plan(entries, base_cells=_sir_cells(_SIR_TABLE))
+
+    def _cell_cycle_ms(self, plan, cell) -> int | None:
+        """The TIGHTEST fire interval on a cell -- the row's sound has to fit the fastest weapon that
+        keys it, or a burst of hits stutters over itself."""
+        ms = [self.catalog.cycle_ms(w) for w, c in plan.cells.items() if c == cell]
+        return int(min(ms)) if ms else None
+
+    def sir_table(self, plan, rng) -> list[str]:
+        """The `$SIR` table for one head: the stock rows, each given the sound of the family that keys
+        it, plus a row per re-keyed cell. Stock rows are never removed -- a cell we vacate keeps its
+        row, so a stock gun or a grenade station still registers exactly as it does today."""
+        cells = _sir_cells(_SIR_TABLE)
+        rows = list(_SIR_TABLE)
+        by_fn: dict[int, str] = {}
+        for row, cell in zip(_SIR_TABLE, cells):
+            fn = _sir_index([row]).get(cell)
+            if fn is not None:
+                by_fn.setdefault(fn, row)
+        for cell, (cls, fn) in sorted(plan.groups.items()):
+            sound = _ha.class_sound(cls, rng, self._cell_cycle_ms(plan, cell))
+            if cell in cells:
+                i = cells.index(cell)
+                rows[i] = _sir_with_sound(rows[i], sound)
+            else:
+                rows.append(_sir_row(cell, sound, fn, by_fn.get(fn)))
+        return rows
+
+    @staticmethod
+    def _rekey(frame: str, cell) -> str:
+        """`$WEAP` with tok3/tok4 (the IR word's B and U fields) pointed at `cell`. Nothing else moves."""
+        if cell is None:
+            return frame
+        t = frame.split(",")
+        if len(t) > 5:
+            t[4], t[5] = cell[0], cell[1]
+        return ",".join(t)
+
+    def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
+                plan=None) -> FrameBundle:
         """`roll` (A15.1) = a `random.Random`: the `$PSET` voice fields a player did not pick explicitly are
         ROLLED from their pools (voices.roll_pset) -- since A15.3 that is the death scream only, and the node
         re-rolls it per spawn from `pset_pool` anyway. None = the family defaults, deterministic (tests, the
         golden bundle)."""
-        gc = self._to_gc(config, player)
+        prof = _pres.resolve(config)
+        night = bool(config.get("night", False))
+        ffa = config["mode"] == "ffa"          # Q19: FFA paints WHITE on both surfaces, no team identity to protect
+        gc = self._to_gc(config, player, blackout=prof.get("blackout", False))
         pnum = int(player["player_num"])
         if not 1 <= pnum <= MAX_PLAYERS:
             raise ValueError(f"player_num {pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
@@ -512,13 +680,20 @@ class Compiler:
             fixed = _voices.check_slots(picks)
             rolled = {r: i for r, i in full.items() if r not in fixed and len(_voices.roll_pool(voice, r)) > 1}   # the real draws only
         voice_slots = {**rolled, **picks} if rolled else (picks or None)
+        # A17: the hit-audio plan is a MATCH property -- `state._compile_rolled` computes it once from the
+        # whole roster and hands the same object to every player. A caller that passes none (the golden
+        # bundle, tests, `bundle_for`) gets an in-place plan built from THIS player's weapons: sounds only,
+        # nothing re-keyed, so a per-player plan can never disagree about which cells exist.
+        hits_rng = roll if roll is not None else _random.Random(0)     # None = deterministic, for the golden bundle
+        if plan is None:
+            plan = self.hit_plan([player], rekey=False)
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
                 gc._gset(), gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
-                self.catalog.resolve(w0, 0, mods)]
+                self._rekey(self.catalog.resolve(w0, 0, mods), plan.cell_for(w0))]
         if w1:
-            head.append(self.catalog.resolve(w1, 1, swap_mods))   # slot 1 only when a secondary exists (A10)
-        head.append(self.catalog.resolve("melee", 4, swap_mods))
+            head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
+        head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods), plan.cell_for("melee")))
         bmap = list(gc._bmap())
         if not w1 and not gc.alt_reload:
             # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
@@ -543,15 +718,15 @@ class Compiler:
         # Keeping the behaviour deliberately: it is the only way to test it, and it cannot be worse
         # than the dark headsets we shipped. But it is UNVERIFIED — see FOLLOWUPS F10, which is an
         # eyeball test, and do not cite this frame as confirmed until that is done.
-        prof = _pres.resolve(config)
         hs = prof.get("headset") or _pres.HEADSET_DEFAULT
         # A11.6: the lobby team colour is the headset block's `pregame`; the in-play repaint after
         # spawn / revive / hit exists only when `in_play` is "team" (default: dark, native-like).
-        hled = _headset_colour(tid, gc.leds) if hs.get("pregame", "team") == "team" else []
-        play_hled = _headset_colour(tid, gc.leds) if hs.get("in_play") == "team" else []
+        hled = _headset_colour(tid, gc.leds, ffa) if hs.get("pregame", "team") == "team" else []
+        play_hled = _headset_colour(tid, gc.leds, ffa) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
-        gun_pre = _pres.gun_pregame(prof, tid, gc.is_night_mode(), gc.leds)
-        head += list(_SIR_TABLE) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
+        gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
+        head += self.sir_table(plan, hits_rng) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
+        assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
@@ -613,7 +788,19 @@ class Compiler:
         bundle["cue_pools"] = _pres.cue_pool_frames(prof, voice_map)   # A15.1: the node rolls one per event
         # A15.3: one full $PSET per death-scream take (only the deathScream token differs); the node writes ONE at
         # random immediately before every $SPAWN (spawn and revive) so the firmware's scream changes per life.
-        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None)
+        # A17: each take also carries its own draw from the MATERIAL pools (hitHp / hitArrmor /
+        # hitShield / hitCrit), so the one write that re-rolls the death scream re-rolls what a hit on
+        # each pool sounds like. Variety lands BETWEEN hits; nothing is played over BLE during one.
+        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng)
+        # A17: the class layer, rolled the same way -- one full $SIR table per take. The node writes one
+        # before every $SPAWN and again after a lull, so the same weapon does not land the same clip all
+        # match. Re-sending $SIR rows is the F11 REPAIR path, so this write is bench-safe by construction.
+        bundle["sir_pool"] = [self.sir_table(plan, hits_rng) for _ in range(_SIR_TAKES)]
+        bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
+                               "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
+                               "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},
+                               "shared": list(plan.shared),
+                               "material": list(_ha.MATERIAL_ROLES)}
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
         # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
         for role in ("pain_short", "pain_long", "pain_melee"):
@@ -638,17 +825,19 @@ class Compiler:
         # was explicitly reverted to that sound.
         if low is not None and prof["events"]["low_health"].get("sound") != "VA8B":
             bundle["cues"]["hurt"] = low
-        bundle["leds"] = _pres.led_table(prof, tid, gc.is_night_mode(), gc.leds)
+        bundle["leds"] = _pres.led_table(prof, tid, night, gc.leds, ffa)
         if not prof.get("headset_team", True):
             bundle["cues"]["team_led"] = ""
             bundle["spawn"] = [f for f in bundle["spawn"] if not f.startswith("$HLED,")]
             bundle["revive"] = [f for f in bundle["revive"] if not f.startswith("$HLED,")]
         # A11.6: the headset table the node drives (pregame / start / in_play rest / hit / death / respawn /
-        # carrier blink per flag team). Team colours for the carrier blink: tid -> palette index (the gun's
-        # own $TID palette, 0-7 shared with the headset).
-        team_cols = {int(t["tid"]): int(t["tid"]) for t in teams if 0 <= int(t.get("tid", 99)) <= 7}
-        bundle["headset"] = _pres.headset_frames(prof, tid, gc.leds, team_cols)
-        gun_tbl = _pres.gun_frames(prof, tid, gc.is_night_mode(), gc.leds)
+        # role states, §3.3). Team colours for the `infected` role: tid -> the colour PAINTED for that
+        # team (`pg.display_colour`, F35/finding #11 -- not the raw tid; green stays green on the wire
+        # but paints purple). Filtered to valid team tids (F35: 0-3, `pg.TEAM_TIDS`) -- an out-of-range
+        # tid is already rejected earlier (state.py / `validate()`), this is belt-and-braces.
+        team_cols = {int(t["tid"]): pg.display_colour(int(t["tid"])) for t in teams if int(t.get("tid", 99)) in pg.TEAM_TIDS}
+        bundle["headset"] = _pres.headset_frames(prof, tid, gc.leds, team_cols, ffa, night)
+        gun_tbl = _pres.gun_frames(prof, tid, night, gc.leds, ffa, gc.hp, gc.armor, gc.shield)
         if gun_tbl:
             bundle["gun"] = gun_tbl            # A11.7: absent for native (older nodes see nothing new)
         bundle["presentation"] = _pres.summary(config.get("presentation") or _pres.default_for(config.get("mode")))
@@ -755,6 +944,17 @@ class Compiler:
         tids = [t["tid"] for t in config.get("teams", [])]
         if len(tids) != len(set(tids)):
             errors.append("duplicate team tid")
+
+        # F35 (bench 2026-09-07): the IR word's team field is 2 bits, so a gun on $TID 4-7 transmits
+        # tid&3 while the victim compares its own FULL tid -- teammates on 0-3 vs 4-7 damage each
+        # other, and a tid>=4 player's own shots read as a lower team to everyone else. `state.py`'s
+        # config sanitizer already rejects this at PUT time; this is belt-and-braces for any config
+        # that reaches the compiler another way (a hand-built preset, a test, opts.station_source flows).
+        bad_tids = [t for t in tids if not (isinstance(t, int) and not isinstance(t, bool) and t in pg.TEAM_TIDS)]
+        if bad_tids:
+            errors.append(f"team tid(s) {sorted(set(bad_tids))} outside 0-3 (F35): the IR word's team "
+                          f"field is 2 bits -- a $TID of 4 or higher makes teammates damage each other "
+                          f"and can let a gun read its own shots as friendly")
 
         # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
         if mode == "ffa" and len({t["tid"] for t in config.get("teams", [])}) > 1:

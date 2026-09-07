@@ -9,6 +9,13 @@ import { Engine } from '../src/engine.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
+// A16 redesign: `golden.leds` no longer carries hit_taken/died/healed/armour_up/shield_up/respawned (the
+// readout/role systems are the feedback for those now, per led-language.md §3.1) -- but the SHAPE of an
+// event burst (several [$GLED-or-$HLED frame, hold] steps, ending on a fixed frame) is still real and
+// several tests below need a stand-in burst to exercise it, deliberately decoupled from which specific
+// events the compiled bundle still attaches one to.
+const TEST_BURST = [['$GLED,0,0,0,0,10,,*', 0.08], ['$GLED,,,,5,,,*', 0.08], ['$GLED,1,1,1,0,10,,*', 0.0]];
+
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = true } = {}) {
   const writes = []; const facts = []; const reports = []; const delays = [];
@@ -789,13 +796,15 @@ test('A11.6 headset: white flash at the whistle then dark; hit flash then dark; 
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');           // low-health alert wins over the hit flash
   assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1);
   assert.ok(!h.writes.includes(hs.hit[0][0]), 'no hit flash on the alert hit');
-  // carrier: MC says this player took the flag of team 2 -> team-2 blink; a hit keeps it; scoring ends it
+  // carrier: MC says this player took the flag of team 2 -> a WHITE blink (headset.role.carrier is flat now
+  // -- team colours are identity, §3.3; the flag's own tid no longer picks the colour); a hit keeps it; scoring ends it
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_taken', text: 'FLAG TAKEN', player_id: 'p1', carrier: 'p1', flag_tid: 2, t: h.eng.now() }, t: h.eng.now() });
-  assert.ok(h.writes.includes(hs.carrier['2'][0][0]), 'carrier blink in the flag colour');
+  assert.ok(h.writes.includes(hs.role.carrier[0][0]), 'carrier blink, white (identity stays with the team colour elsewhere)');
   h.writes.length = 0;
+  h.adv(1100);   // A16 §C: the role re-assert shares the 1 s headset flash gate with the hit flash above
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,34,0,0,*');
-  assert.ok(h.writes.includes(hs.carrier['2'][0][0]) && !h.writes.includes(hs.hit[0][0]), 'the flag blink survives a hit');
+  assert.ok(h.writes.includes(hs.role.carrier[0][0]) && !h.writes.includes(hs.hit[0][0]), 'the flag blink survives a hit');
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_scored', text: 'FLAG CAPTURED', player_id: 'p1', carrier: 'p1', t: h.eng.now() }, t: h.eng.now() });
   assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), [hs.rest], 'scored -> back to rest');
@@ -906,43 +915,54 @@ test('a swap the gun never confirms is assumed done at the window; a link drop c
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
 });
 
-// ── A11 presentation events: the bundle's LED burst + cue per event ─────────────────────────────
-test('a hit plays the bundle\'s hit_taken burst once per second, a death its died burst, a revive its respawned burst', () => {
+// ── A16 (led-language.md §3.1): a hit paints the readout, not a burst; death/revive gun bursts are ──
+// gone by design (the killing hit's native flash + the hands-off window own death; the readout paint IS
+// the hit feedback; a respawn burst fought the breathing window, §3.1 "Dropped from today's defaults"). ─
+test('a hit paints the gun readout (not a multi-step burst); death writes nothing to the gun; a revive re-takes it, no burst', () => {
   const h = goLive(harness());
-  const burst = golden.leds.hit_taken;
-  assert.ok(burst && burst.length >= 5, 'golden bundle carries an LED burst for hit_taken');
+  const readout = golden.gun.readout;
+  assert.ok(readout && Array.isArray(readout.pools) && readout.pools.length, 'golden bundle carries a gun.readout table');
+  const armorEntry = readout.pools.find(p => p.pool === 'armor');
   h.writes.length = 0;
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
-  const gled = h.writes.filter(f => f.startsWith('$GLED'));
-  assert.equal(gled.length, burst.length, 'every step of the burst is written (harness delays run inline)');
-  assert.equal(gled[gled.length - 1], burst[burst.length - 1][0], 'ends on the team colour');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');             // armour-only hit: 61/70 -> the top armour band
+  const band = armorEntry.bands.find(b => (61 / armorEntry.max) > b[0]) || armorEntry.bands[armorEntry.bands.length - 1];
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [band[1]], 'one readout write for the pool that moved, not a several-step burst');
   h.writes.length = 0;
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,52,0,*');             // 0 ms later: lights suppressed
-  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no second burst inside a second');
-  h.adv(1500); h.writes.length = 0;
+  h.adv(1500);
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');              // death
-  const died = golden.leds.died;
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), died.map(s => s[0]).filter(f => f.startsWith('$GLED')), 'the died burst, not hit_taken');   // A11.8: died also carries a $LED flash first
-  h.adv(9000); h.eng.tick(); h.adv(1000); h.eng.tick();                    // auto respawn (delay 8 s)
-  const resp = golden.leds.respawned;
-  assert.ok(h.writes.filter(f => f === resp[0][0]).length >= 1, 'respawned burst after the revive frames');
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'death writes nothing to the gun (hands-off window; there is no "died" burst to play any more)');
+  h.adv(9000); h.eng.tick();                                              // auto respawn (delay 8 s) -- the take fires inline in this tick
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), golden.gun.take, 'the revive re-takes the gun (blank then rest) -- no separate "respawned" burst');
 });
 
-test('a silenced bundle (no leds, empty announcer cues) plays nothing extra on a hit', () => {
+test('a silenced bundle (no leds, empty announcer cues, no gun readout) plays nothing extra on a hit', () => {
   const h = harness();
   // A real silenced bundle mutes the ANNOUNCER groups: the compiler emits "" for those cues and ships no
   // kill pool at all (verified against Compiler().compile with preset "silenced"), so mirror both here.
+  // led-language.md §3.5: "silenced | bursts off, readout off, hit null" -- readout.pools: [] is spelled
+  // out here explicitly. NOTE (2026-09-07): read presentation.py's "silenced" PRESETS entry directly and
+  // it does NOT yet empty `gun.readout.pools` (only `gun_flash`/`announcer`/`events` are cleared) -- flagged
+  // to the MC lane as a likely gap there; this fixture still mirrors what the spec says a CORRECT compile
+  // must ship, so this test proves the node's own behaviour is right independent of that gap.
   const silenced = { ...h.bundle, leds: {}, cues: { ...h.bundle.cues, kill: '', multi: '', medal: '' },
-    cue_pools: { ...h.bundle.cue_pools, kill: undefined } };
+    cue_pools: { ...h.bundle.cue_pools, kill: undefined },
+    gun: { ...h.bundle.gun, readout: { ...h.bundle.gun.readout, pools: [] } } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: silenced, roster: h.roster } });
   h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0);
-  // A15.3: the 9-damage hit still grunts. `announcer: false` mutes the ANNOUNCER and OBJECTIVE groups, never
-  // the player's own body sounds (the same rule that keeps low_health) — and before A15.3 the FIRMWARE played
-  // this grunt from the $PSET under a silenced preset too, so muting it here would be a regression.
+  // A17 (Tony 2026-09-07): ARMOUR took this one (70 -> 61, HP untouched), so the character does not grunt —
+  // the firmware's own hitArrmor material sound is the feedback. See the dedicated A17 test below.
+  assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 0, 'an armour-absorbed hit does not grunt');
+  // A15.3: a hit that reaches HEALTH still grunts under a silenced bundle. `announcer: false` mutes the
+  // ANNOUNCER and OBJECTIVE groups, never the player's own body sounds (the same rule that keeps low_health)
+  // — and before A15.3 the FIRMWARE played this grunt from the $PSET under a silenced preset too, so muting
+  // it here would be a regression.
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,44,0,0,*');   // strips the armour and trips the once-per-life alert
+  h.writes.length = 0; h.adv(700);                              // past PAIN_GAP_MS, so the next grunt is not rate-dropped
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,36,0,0,*');
   const painTakes = golden.cue_pools.pain_short;
   assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 1, 'the hit grunts');
   assert.ok(painTakes.includes(h.writes.find(f => f.startsWith('$PLAY'))), 'and it is a short-pain take');
@@ -950,6 +970,44 @@ test('a silenced bundle (no leds, empty announcer cues) plays nothing extra on a
   h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now() }, h.eng.now());
   assert.ok(h.writes.includes('$SFLASH,*'), 'the sight flash still fires');
   assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 0, 'no kill line when the announcer is off');
+});
+
+// ── A17 hit audio: the character only grunts when real health went down ──────────────────────
+test('A17: armour and shield absorb in silence; the grunt belongs to HEALTH, still short/long by damage', () => {
+  const h = goLive(harness());
+  const plays = () => h.writes.filter(f => f.startsWith('$PLAY'));
+  const shortTakes = golden.cue_pools.pain_short, longTakes = golden.cue_pools.pain_long;
+
+  // Tony 2026-09-07: "metal/armor hitting sounds when the players have armor and only use the character hit
+  // sounds when real health is taken down." An armour-absorbed hit is a hit on EQUIPMENT — the firmware plays
+  // its own hitArrmor material clip and the character says nothing.
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
+  assert.equal(plays().length, 0, 'armour took it: no character grunt');
+
+  // Same for a shield-absorbed hit (shield drains first of all three).
+  h.frame('$LCD,45,70,0,0,36,216,*'); h.eng._prevShield = 20; h.eng.shield = 20;
+  h.adv(700); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,70,11,*');
+  assert.equal(plays().length, 0, 'shield took it: no character grunt');
+
+  // A hit that SPILLS through the last of the armour into HP is a health hit (`changed_pool` reports the
+  // innermost pool that moved), so it grunts.
+  h.adv(700); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,45,0,0,*'); h.frame('$HP,40,0,0,*');
+  assert.equal(plays().filter(f => shortTakes.includes(f) || longTakes.includes(f)).length, 1, 'the spill into health grunts');
+
+  // ... and the short/long choice is still made by DAMAGE, from the same pain pools (Tony: "it should use the
+  // pain pool for short or pain pool for long"). 45 >= voice.pain_long_min (40) → a long-pain take.
+  assert.ok(plays().some(f => longTakes.includes(f)), 'a 45-damage hit takes a LONG pain');
+  h.adv(700); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,31,0,0,*');
+  assert.ok(plays().some(f => shortTakes.includes(f)), 'a 9-damage hit takes a SHORT pain');
+
+  // A bundle from an older MC passes no pool at all: `_pain` must behave exactly as it did before A17.
+  h.adv(700); h.writes.length = 0;
+  h.eng._pain(9, 0);
+  assert.equal(plays().length, 1, 'no pool given (pre-A17 caller): grunts as before');
 });
 
 // ── A11.4 alerts, medal stacks, clock callouts ───────────────────────────────────────────────
@@ -1213,12 +1271,12 @@ test('polish: a rejoin reconcile on a HEALTHY gun stays alive — no bogus auto-
 test('polish: an event\'s static headset paint is dropped while down — the out-blink owns the headset', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   const RED = '$HLED,0,0,,,10,,*';
-  h.eng.frames.leds = { ...h.eng.frames.leds, died: [...golden.leds.died, [RED, 0.0]] };   // a "last stand" style died event with a headset colour
+  h.eng.frames.leds = { ...h.eng.frames.leds, died: [...TEST_BURST, [RED, 0.0]] };   // a "last stand" style died event with a headset colour (died carries no default burst any more, so this is a deliberate opt-in)
   h.eng.frames.headset = { ...(h.eng.frames.headset || {}), death: [[OUTBLINK, 0.0]] };
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
   assert.deepEqual(h.writes.filter(f => f.startsWith('$HLED')), [OUTBLINK], 'only the out-blink reached the headset');
-  assert.ok(h.writes.includes(golden.leds.died[0][0]), 'the gun burst still played');
+  assert.ok(h.writes.includes(TEST_BURST[0][0]), 'the gun burst still played');
 });
 
 test('polish: the player who turned ignores MC\'s infected alert naming themself; everyone else plays it', () => {
@@ -1234,7 +1292,7 @@ test('polish: the player who turned ignores MC\'s infected alert naming themself
 test('polish: an event headset paint survives an app reload (the generation counter is seeded, not undefined)', () => {
   const h = goLive(harness());
   const TEAL = '$HLED,5,0,,,10,,*';
-  h.eng.frames.leds = { ...h.eng.frames.leds, lead_taken: [...golden.leds.died, [TEAL, 0.0]] };
+  h.eng.frames.leds = { ...h.eng.frames.leds, lead_taken: [...TEST_BURST, [TEAL, 0.0]] };
   h.eng._hsGen = undefined;                                   // what a reload leaves: not persisted, not in the ctor
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
@@ -1256,6 +1314,10 @@ test('polish: _turned is reset by a new start, so last match\'s flip does not sc
 test('A11.7 gun health: no writes when the bundle has no gun table (native breathing); band repaints once per band change', () => {
   const G = '$GLED,3,3,3,0,10,,*', Y = '$GLED,2,2,2,0,10,,*', R = '$GLED,0,0,0,0,10,,*';
   const h = goLive(harness()); h.eng.frames.leds = {};
+  // A16: MC now ships a gun table (dark rest + readout) by DEFAULT (golden bundle), so "no gun table" must
+  // be simulated explicitly -- `gun_frames()` returns `{}` for `in_play: native` / LEDs off (presentation.py).
+  h.eng.frames.gun = {};
+  h.eng._gunTake();   // a native/absent table leaves `_gunTaken` false -- confirms _gunPoolPaint's own guard too
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'native: nothing painted');
@@ -1277,7 +1339,7 @@ test('A11.7 gun health: no writes when the bundle has no gun table (native breat
 test('A11.7 gun health: an event burst ends on the CURRENT band, and a revive resets the band to the painted rest', () => {
   const G = '$GLED,3,3,3,0,10,,*', Y = '$GLED,2,2,2,0,10,,*', R = '$GLED,0,0,0,0,10,,*';
   const h = goLive(harness());
-  h.eng.frames.leds = { lead_taken: golden.leds.died };        // one burst only (red flashes ending on the team frame)
+  h.eng.frames.leds = { lead_taken: TEST_BURST };        // one burst only (red flashes ending on a fixed frame)
   h.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, R]], after_spawn_s: 2.5, take: ['$GLED,,,,5,,,*', G] };
   h.eng._gunTake();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,20,0,0,*');   // yellow band
@@ -1430,7 +1492,7 @@ test('A11.6 default: a hit paints NOTHING on the headset (the native flash is fa
 
 test('A11.8 small-LED flash: kill feedback fires the top medal\'s lights (flash) without re-playing the line; a $LED step also plays while down', () => {
   const h = goLive(harness());
-  h.eng.frames.leds = { ...h.eng.frames.leds, kill: [['$LED,9,1,1,1,*', 0]], first_blood: [['$LED,9,1,1,1,*', 0]], died: [['$LED,9,1,1,1,*', 0], ...golden.leds.died] };   // died given a flash here only to prove $LED is not skipped while down
+  h.eng.frames.leds = { ...h.eng.frames.leds, kill: [['$LED,9,1,1,1,*', 0]], first_blood: [['$LED,9,1,1,1,*', 0]], died: [['$LED,9,1,1,1,*', 0], ...TEST_BURST] };   // died carries no default burst any more; given one here only to prove $LED is not skipped while down
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', medals: ['first_blood'], t: h.eng.now() }, t: h.eng.now() });
   assert.equal(h.writes.filter(f => f === '$LED,9,1,1,1,*').length, 1, 'one green flash for the kill');
@@ -1511,8 +1573,8 @@ test('§3.2 teardown: a pending delayed light step from an event burst cannot la
   const pending = [];
   h.eng.delay = (ms, fn) => pending.push(fn);   // capture instead of firing inline, so we can invoke it AFTER teardown
   h.start(0); h.adv(10); h.eng.tick();
-  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // died: golden.leds.died has $GLED steps with real holds
-  assert.ok(pending.length > 0, 'the died burst queued at least one delayed light step');
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // died (no gun burst of its own any more, but `_gunTake`'s own 2.5 s blank+paint from the T-0 spawn above is still pending)
+  assert.ok(pending.length > 0, 'a delayed light step is queued (the gun take)');
   h.eng._endLocal('test-teardown');
   h.writes.length = 0;
   pending.forEach(fn => fn());
@@ -1634,4 +1696,208 @@ test('spawn writes one take of the spawn pool right after $SFLASH in the same wr
   const c = mk(0.5, { cues: cuesOld, cue_pools: {} });
   const k = c.writes.indexOf('$SFLASH,*');
   assert.ok(k === c.writes.length - 1 || !c.writes[k + 1].startsWith('$PLAY,,4,6,'), 'pre-A15.2: nothing after $SFLASH: ' + c.writes.slice(k).join(' '));
+});
+
+// ==================================================================================================
+// A16 (led-language.md): the transient gun-body pool readout (§3.1/§5), held headset role states that
+// survive hits (§3.3), the shared 1 s headset flash gate (§C), and the +1.0 s start/respawn flash (§D).
+// All of these keys are OPTIONAL on the bundle -- an older MC (the golden fixture, and every test above
+// this section) carries none of them, and every legacy code path (`gun.bands`, `headset.carrier`) must
+// keep behaving exactly as it did before this section was added (proven by the whole suite staying green).
+// ==================================================================================================
+const RO_REST = '$GLED,,,,5,,,*';
+const RO_H3 = '$GLED,0,3,0,0,10,,*', RO_H2 = '$GLED,0,2,0,0,10,,*', RO_H1 = '$GLED,0,1,0,0,10,,*';
+const RO_A3 = '$GLED,3,0,3,0,10,,*', RO_A2 = '$GLED,2,0,2,0,10,,*', RO_A1 = '$GLED,1,0,1,0,10,,*';
+const RO_S3 = '$GLED,3,3,3,0,10,,*', RO_S2 = '$GLED,2,2,2,0,10,,*', RO_S1 = '$GLED,1,1,1,0,10,,*';
+const READOUT = {
+  hold_s: 4, reload_glance_s: 2,
+  pools: [
+    { pool: 'shield', max: 30, bands: [[0.66, RO_S3], [0.33, RO_S2], [0.0, RO_S1]] },
+    { pool: 'armor', max: 70, bands: [[0.66, RO_A3], [0.33, RO_A2], [0.0, RO_A1]] },
+    { pool: 'health', max: 45, bands: [[0.66, RO_H3], [0.33, RO_H2], [0.0, RO_H1]] },
+  ],
+};
+function readoutHarness() {
+  const h = goLive(harness()); h.eng.frames.leds = {};
+  h.eng.frames.gun = { rest: RO_REST, blank: RO_REST, after_spawn_s: 2.5, take: [RO_REST], readout: READOUT };
+  h.eng._gunTake();   // fires inline (harness delays run inline): _gunTaken=true, strip at rest
+  return h;
+}
+
+test('A16 readout: the innermost pool that moved gets a fresh band (health beats armor beats shield), written once', () => {
+  const h = readoutHarness();
+  h.writes.length = 0;
+  // armour-only drop (health unchanged): paints the ARMOR band
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,20,0,*');   // 20/70 = 0.286 -> RO_A1
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_A1], 'armour is the pool that moved');
+  h.writes.length = 0;
+  h.adv(1100);   // outside the 300 ms coalesce window, so this write is not dropped
+  // a hit that drops health too: health is innermost, wins even though armour also moved this same frame
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,15,0,*');   // 25/45 = 0.555 -> RO_H2
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_H2], 'health wins over armor when both moved');
+  h.writes.length = 0;
+  // same band again: no repaint
+  h.adv(1100);
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,20,10,0,*');   // 20/45 = 0.444 -> still RO_H2
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'same band -> no repaint');
+});
+
+test('A16 readout: a change within 300 ms of the last WRITE is coalesced (dropped, never queued) but still restarts the hold', () => {
+  const h = readoutHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2, written, hold_s=4 armed
+  h.writes.length = 0;
+  h.adv(100);   // inside READOUT_COALESCE_MS (300 ms)
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,10,0,0,*');   // -> RO_H1, a real band change, too soon after the last write
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'coalesced: dropped, not queued');
+  // the hold was restarted at the COALESCED event's time (+100 ms), not the original write's — past the
+  // original write's hold_s (4000 ms from t=0) but still inside the restarted one must not revert yet
+  h.adv(3999); h.eng.tick();   // now +4099 ms since the original write, +3999 ms since the restart
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'still held — the coalesced change restarted the timer');
+  h.adv(2); h.eng.tick();      // +4101 ms since the restart
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_REST], 'expires to rest once the RESTARTED hold elapses');
+});
+
+test('A16 readout: the hold expires to rest after hold_s with no further pool changes, then never repeats', () => {
+  const h = readoutHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2
+  h.writes.length = 0;
+  h.adv(3999); h.eng.tick();
+  assert.equal(h.writes.length, 0, 'still held just before hold_s');
+  h.adv(2); h.eng.tick();
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_REST], 'reverts to rest once the hold elapses');
+  h.writes.length = 0;
+  h.adv(5000); h.eng.tick();
+  assert.equal(h.writes.length, 0, 'one rest write, never a repeating pulse');
+});
+
+test('A16 readout: a reload paints the CURRENT readout for reload_glance_s, even after the ordinary hold already went dark', () => {
+  const h = readoutHarness();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }] };
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2 (25/45 = 0.555)
+  h.adv(4000); h.eng.tick(); h.writes.length = 0;              // the ordinary hold already expired to rest
+  h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,2,1,*');    // reload handle pull
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_H2], 'the reload glances the real current band, not the stale "rest" it had faded to');
+  h.writes.length = 0;
+  h.adv(1999); h.eng.tick();
+  assert.equal(h.writes.length, 0, 'still glancing, just before reload_glance_s');
+  h.adv(2); h.eng.tick();
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_REST], 'the glance ends on rest');
+  // nothing has moved yet this life (still at spawn's full health/armour) -> nothing to glance. Deliberately
+  // NOT "is any pool below its configured max": shield spawns at 0 by hardware default and would always
+  // read as "damaged" against a configured shield max, even for a loadout that never grants any.
+  const g = readoutHarness(); g.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }] };
+  g.writes.length = 0;
+  g.frame('$ALCD,10,100,0,384,0,*'); g.frame('$BUT,2,1,*');
+  assert.equal(g.writes.filter(f => f.startsWith('$GLED')).length, 0, 'nothing has moved yet -> nothing to glance');
+});
+
+test('A16 readout: no gun write during the death hands-off window; the strip is simply left as-is until the next take', () => {
+  const h = readoutHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2, hold running
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // death
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'death itself writes nothing to the gun');
+  for (let i = 0; i < 12; i++) { h.adv(250); h.eng.tick(); }   // 3 s down — past the old hold_s and a typical hands-off window
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no stray readout write reaches the gun while down');
+});
+
+test('A16 readout: an event burst ends on the LIVE readout frame while its hold is running, and on rest once the hold has expired', () => {
+  const h = readoutHarness();
+  h.eng.frames.leds = { lead_taken: TEST_BURST };   // a stand-in burst shape (real gun steps with holds)
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2, hold_s=4 running
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.ok(gleds.length > 1, 'the burst played');
+  assert.equal(gleds[gleds.length - 1], RO_H2, 'ends on the live readout frame, not the top band or rest');
+  // let the hold actually expire, then fire the same burst again -- it must end on rest this time
+  h.adv(4001); h.eng.tick(); h.writes.length = 0; h.eng._lastEventLed = null;   // EVENT_MIN_GAP_MS would otherwise swallow a second burst in this test
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'lead_taken', text: 'LEAD', player_id: 'p1', t: h.eng.now() }, t: h.eng.now() });
+  const gleds2 = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.equal(gleds2[gleds2.length - 1], RO_REST, 'ends on rest once the hold has already expired');
+});
+
+test('A16 graceful degradation: gun.bands and headset.carrier keep working exactly as before when readout/role are absent', () => {
+  const G = '$GLED,3,3,3,0,10,,*', Y = '$GLED,2,2,2,0,10,,*';
+  const h = goLive(harness()); h.eng.frames.leds = {};
+  h.eng.frames.gun = { in_play: 'health', blank: '$GLED,,,,5,,,*', rest: G, bands: [[0.66, G], [0.33, Y], [0.0, '$GLED,0,0,0,0,10,,*']], after_spawn_s: 2.5, take: ['$GLED,,,,5,,,*', G] };
+  h.eng._gunTake();
+  // golden ships `headset.role` by default now -- an older MC never would, so strip it explicitly to
+  // exercise the true legacy path (headset.carrier, tid-keyed team colour).
+  h.eng.frames.headset = { ...golden.headset, role: undefined };
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // no `readout` key at all -> legacy health-band path
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [Y], 'legacy gun.bands still paints on a band change');
+  h.writes.length = 0;
+  h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_taken', text: 'FLAG', player_id: 'p1', carrier: 'p1', flag_tid: 2, t: h.eng.now() }, t: h.eng.now() });
+  assert.ok(h.writes.includes(golden.headset.carrier['2'][0][0]), 'legacy headset.carrier (team colour, tid-keyed) still works when headset.role is absent');
+});
+
+// ── A16 §3.3: headset role states ────────────────────────────────────────────────────────────────
+test('A16 role: a role assigned via headset.role survives a hit and is cleared on death', () => {
+  const h = goLive(harness());
+  const VIP = '$HLED,5,0,,,10,,*';   // distinct from rest/hit/carrier
+  h.eng.frames.headset = { ...h.eng.frames.headset, hit: [], role: { vip: [[VIP, 0]] } };
+  h.eng._setRole('vip', true);
+  assert.equal(h.eng._activeRole && h.eng._activeRole.name, 'vip', 'role assigned');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');   // a registered hit wipes the headset natively
+  assert.ok(h.writes.includes(VIP), 'the vip role is re-asserted after the hit');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // death
+  assert.equal(h.eng._activeRole, null, 'the role is cleared on death');
+});
+
+test('A16 role: infection turning assigns the infected role through headset.role at the moment of the flip', () => {
+  const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*'] }, headset: { ...golden.headset, role: { infected: [['$HLED,3,0,,,10,,*', 0]] } } };
+  const writes = []; const facts = []; let clock = 1e6;
+  const eng = new Engine({ writer: f => writes.push(...f), emit: f => facts.push(f), report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(), log: () => {} });
+  const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
+  eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
+  clock += 10; eng.tick();
+  eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
+  assert.ok(writes.includes('$HLED,3,0,,,10,,*'), 'the infected colour is painted through the role mechanism at the turn');
+  assert.equal(eng._activeRole && eng._activeRole.name, 'infected');
+});
+
+// ── A16 §C: node-initiated headset flashes share a 1 s minimum; down rearm and low-health bypass it ─
+test('A16 §C: hit flash + role re-assert share a 1 s minimum; the down rearm is unaffected by it', () => {
+  const h = goLive(harness());
+  h.eng.frames.headset = { ...h.eng.frames.headset, hit: [['$HLED,0,2,100,100,10,2,*', 0.5], [golden.headset.rest, 0.0]], down: DOWN };
+  const hs = h.eng.frames.headset;
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');   // hit #1: flashes
+  assert.ok(h.writes.includes(hs.hit[0][0]), 'first hit flashes');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,52,0,*');   // hit #2, 0 ms later: gated
+  assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0, 'gated: no second flash inside 1 s');
+  h.writes.length = 0;
+  h.adv(1001);
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,43,0,*');   // past the gap: flashes again
+  assert.ok(h.writes.includes(hs.hit[0][0]), 'flashes again once the gap has elapsed');
+  // die immediately after: the down rearm fires on its OWN schedule, unaffected by the flash gate above
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  for (let i = 0; i < 10; i++) { h.adv(250); h.eng.tick(); }   // 2.5 s -- the hands-off window elapses
+  assert.deepEqual(h.writes.filter(f => f === DOWN.rearm), [DOWN.rearm], 'the down rearm is written on schedule, never gated by the headset flash minimum');
+});
+
+// ── A16 §D: the start/respawn flash is scheduled +1.0 s after $SPAWN ────────────────────────────────
+test('A16 §D: the start and respawn headset flash are scheduled 1.0 s after $SPAWN, not written inline', () => {
+  const h = harness().kit().config_().echo();
+  h.writes.length = 0; h.delays.length = 0;
+  h.start(0); h.adv(10); h.eng.tick();   // T-0 spawn
+  assert.ok(h.writes.includes('$SPAWN,,*'), 'spawn wrote $SPAWN');
+  assert.ok(h.delays.includes(1000), 'the start flash is scheduled at +1.0 s, not written inline off $SPAWN');
+  for (const f of h.bundle.headset.start.map(x => x[0])) assert.ok(h.writes.includes(f), 'start frame missing: ' + f);
+  // revive: the same +1.0 s scheduling
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  h.delays.length = 0; h.writes.length = 0;
+  h.adv(9000); h.eng.tick();             // auto respawn (delay 8 s)
+  assert.ok(h.writes.includes('$SPAWN,,*'), 'revive wrote $SPAWN');
+  assert.ok(h.delays.includes(1000), 'the respawn flash is scheduled at +1.0 s too');
+  for (const f of h.bundle.headset.respawn.map(x => x[0])) assert.ok(h.writes.includes(f), 'respawn frame missing: ' + f);
 });

@@ -269,3 +269,20 @@ def test_every_push_rolls_the_unpicked_voice_fields_and_so_does_a_late_joiner():
     tail = demo_armory()[0]["ble"]["tail"]
     net.simulate_hello("late-node", f"GUN-A-{tail}")
     assert s.bundles[a["player_id"]]["voice"]["rolled"]["death_scream"] in ("VA3", "VA4", "VA5")
+
+
+def test_f35_team_tid_must_be_0_to_3():
+    """F35 (bench 2026-09-07): the IR word's team field is only 2 bits, so a gun armed on $TID 4-7
+    transmits tid&3 on the wire while the victim compares its own FULL tid -- teammates on either side
+    of that split damage each other, and a tid>=4 player's own shots can read as a lower, friendly team
+    to everyone else. Only 0-3 are valid team ids; the colour painted for a team (0-7) is unaffected."""
+    s = Session.__new__(Session)
+    ok = s.sanitize_config({"mode": "tdm", "teams": [
+        {"team_id": "a", "tid": 0}, {"team_id": "b", "tid": 3}]})
+    assert [t["tid"] for t in ok["teams"]] == [0, 3]
+    for bad_tid in (4, 5, 7, 8, -1):
+        try:
+            s.sanitize_config({"mode": "tdm", "teams": [{"team_id": "a", "tid": bad_tid}]})
+            raise AssertionError(f"tid {bad_tid} was accepted")
+        except ValueError as e:
+            assert "F35" in str(e)

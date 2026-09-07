@@ -14,6 +14,7 @@ import uuid
 from typing import Any, Callable
 
 from . import presentation as _pres
+from .. import poolgauge as _pg
 from .. import voices as _voices
 from . import policy as _policy
 from .scoring import Scorer
@@ -31,27 +32,36 @@ TEAM_DEFS = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisiona
 }
 
 # Briefing copy verbatim from the Mission Control design export (A2 mode briefing panel).
+# `preset` (led-language.md §4, mode-extensibility G3, 2026-09-07): the presentation preset each
+# catalogued mode resolves to, so `default_config()` reads it straight off the mode row instead of
+# `presentation.MODE_PRESET`'s own internal (and separately-keyed, "cs" not "counter_strike") table --
+# a new mode added HERE picks up a preset the moment it names one, with no second table to update.
 MODES = [
     {"mode": "tdm", "name": "TEAM DEATHMATCH", "abbr": "TDM", "desc": "Teams score per elimination",
      "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.",
      "teams_text": "2–4 TEAMS", "win_text": "SCORE CAP / TIME", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": 25, "respawn": {"type": "auto", "delay_s": 15}},
+     "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": 25, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "standard"},
     {"mode": "ffa", "name": "FREE-FOR-ALL", "abbr": "FFA", "desc": "Every operator for themselves",
      "brief": "No teams — everyone is a target. Each elimination scores a point. First to the frag limit, or the top score when time expires, wins.",
      "teams_text": "NONE · ALL VS ALL", "win_text": "FRAG LIMIT / TIME", "respawn_text": "ON · TIMED",
-     "teams": ["ffa"], "win_by": "kills", "frag_limit": 25, "respawn": {"type": "auto", "delay_s": 15}},
+     "teams": ["ffa"], "win_by": "kills", "frag_limit": 25, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "standard"},
     {"mode": "infection", "name": "INFECTION", "abbr": "INF", "desc": "One infected; survive the spread",
      "brief": "One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.",
      "teams_text": "SURVIVORS VS INFECTED", "win_text": "SURVIVE THE CLOCK", "respawn_text": "INFECTED ONLY",
-     "teams": ["blue", "red"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 10}},
+     "teams": ["blue", "red"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 10},
+     "preset": "infection"},
     {"mode": "lms", "name": "LAST MAN STANDING", "abbr": "LMS", "desc": "Limited lives, last alive wins",
      "brief": "Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.",
      "teams_text": "SOLO OR SQUADS", "win_text": "LAST ALIVE", "respawn_text": "OFF · LIVES",
-     "teams": ["ffa"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "none", "delay_s": 0}},
+     "teams": ["ffa"], "win_by": "survival", "frag_limit": None, "respawn": {"type": "none", "delay_s": 0},
+     "preset": "last_stand"},
     {"mode": "extraction", "name": "EXTRACTION", "abbr": "EXT", "desc": "Loot, reach the extract, survive the channel",
      "brief": "Gather loot, then reach an extraction point and channel the extract. It is loud: everyone hears the chopper coming and converges on you. Survive the timer and your loot is banked. Die and you drop it all for someone else to take.",
      "teams_text": "SOLO OR SQUADS", "win_text": "BANKED LOOT", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15}},
+     "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "extraction"},
 ]
 
 
@@ -70,7 +80,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
             "health": {"max_hp": 45, "max_armor": 70},
             "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]],
             "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
-            "presentation": _pres.default_for(mode)}             # A11: cs → counter_strike, else standard
+            "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
 
 
 class Session:
@@ -796,6 +806,16 @@ class Session:
                 if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t
                                                    and isinstance(t.get("tid"), int) and not isinstance(t.get("tid"), bool) for t in v)):
                     raise ValueError("teams must be a list of team objects with team_id + integer tid")
+                # F35 (bench 2026-09-07): the IR word's team field is 2 bits -- a gun armed on $TID 4-7
+                # transmits tid&3 while the victim compares its own FULL tid, so teammates on either
+                # side of that split damage each other and a tid>=4 player's shots can read as a lower,
+                # friendly team to everyone else. Only 0-3 are valid team ids; the COLOUR painted for a
+                # team (0-7, `poolgauge.display_colour`) is a separate, unaffected lookup.
+                bad = [t["tid"] for t in v if t["tid"] not in _pg.TEAM_TIDS]
+                if bad:
+                    raise ValueError(f"team tid(s) {sorted(set(bad))} outside 0-3 (F35): the IR word's "
+                                     f"team field is 2 bits -- a $TID of 4 or higher makes teammates "
+                                     f"damage each other and can let a gun read its own shots as friendly")
                 cfg[k] = v
             elif k == "led":
                 if v is not None and not isinstance(v, dict):
@@ -1234,9 +1254,25 @@ class Session:
         self._changed()
 
     # ---------- lobby ----------
+    def _hit_plan(self):
+        """A17: ONE hit-audio plan per push, from the whole roster.
+
+        It has to be shared. Every gun must carry a row for every cell any weapon in the match keys --
+        a hit into a cell the victim's table lacks is dropped in silence (the F11 shape) -- so the plan
+        is a property of the MATCH, never of the player being compiled. Re-keying stays off unless the
+        config asks for it; see `hitaudio` and FOLLOWUPS F38/F39."""
+        fn = getattr(self.compiler, "hit_plan", None)      # a test double need not carry the whole compiler
+        if fn is None:
+            return None
+        return fn(self.roster(), rekey=bool(self.config.get("hit_audio_rekey", False)))
+
     def _compile_rolled(self, p: Player):
         """Compile with this push's voice roll (A15.1) and say what was drawn."""
-        bundle = self.compiler.compile(self.config, p, self.teams, roll=self._voice_rng)
+        kw = {"roll": self._voice_rng}
+        plan = self._hit_plan()
+        if plan is not None:
+            kw["plan"] = plan
+        bundle = self.compiler.compile(self.config, p, self.teams, **kw)
         rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
         if rolled:
             import logging

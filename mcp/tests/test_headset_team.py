@@ -43,12 +43,15 @@ def _driver(sent, leds=True, team=1):
 
 # --- the frame itself ------------------------------------------------------- #
 def test_headset_team_frame_is_static_full_bright_and_uses_the_shared_palette():
-    # F33 (2026-09-07 bench): tid IS the palette index (red 0 / blue 1 / yellow 2 / green 3, state.py's
-    # TEAM_DEFS) -- the old TEAM_COLOURS table was offset (tid 2 painted RED instead of YELLOW).
+    # F33 (2026-09-07 bench): tid IS the wire palette index (red 0 / blue 1 / yellow 2 / green 3,
+    # state.py's TEAM_DEFS) -- the old TEAM_COLOURS table was offset (tid 2 painted RED instead of
+    # YELLOW). led-language.md §6 finding #11 (also 2026-09-07): what gets PAINTED is a separate lookup
+    # (`TEAM_DISPLAY_COLOURS`) -- team 3 stays green on the wire ($TID,3, F35) but paints PURPLE, since
+    # a green head reads as the headset's own native out-flash at range.
     assert pg.headset_team_frame(0) == "$HLED,0,0,,,10,,*"       # team 0 = red, index 0
     assert pg.headset_team_frame(1) == "$HLED,1,0,,,10,,*"       # team 1 = blue, index 1
     assert pg.headset_team_frame(2) == "$HLED,2,0,,,10,,*"       # team 2 = yellow, index 2
-    assert pg.headset_team_frame(3) == "$HLED,3,0,,,10,,*"       # team 3 = green, index 3
+    assert pg.headset_team_frame(3) == f"$HLED,{pg.PURPLE},0,,,10,,*"   # team 3 = green on the wire, PAINTED purple
     assert pg.headset_team_frame(None) == f"$HLED,{pg.WHITE},0,,,10,,*"
     # token 2 = 0 is the STATIC form (the blink form is t2=2); token 5 = 10 is already maximum.
     for t in (0, 1, 2, 3, None):
@@ -59,11 +62,16 @@ def test_headset_team_frame_is_static_full_bright_and_uses_the_shared_palette():
 def test_gun_colour_matches_headset_colour_for_every_tid():
     """F33 (2026-09-07 bench, led-language.md §6 #1): the gun-body team table used to be offset from the
     server's tids, so a yellow-team (tid 2) gun painted RED while its headset correctly painted yellow --
-    only tid 1 (blue) ever agreed, and every bench run happened to be blue. Pin the two surfaces together."""
+    only tid 1 (blue) ever agreed, and every bench run happened to be blue. Pin the two surfaces together.
+
+    finding #11 (2026-09-07, same bench day): team 3 stays green on the WIRE (`$TID,3`, F35 -- its
+    combat identity cannot move) but both surfaces now PAINT purple instead (a green head/gun reads as
+    the native hit/out flash at range) -- so the two surfaces must still agree with EACH OTHER, just
+    not with the raw tid any more for that one team."""
     for tid in (0, 1, 2, 3):
         gun_colour = pg.team_frame(tid).split(",")[1]
         headset_colour = pg.headset_team_frame(tid).split(",")[1]
-        assert gun_colour == headset_colour == str(tid), (tid, gun_colour, headset_colour)
+        assert gun_colour == headset_colour == str(pg.display_colour(tid)), (tid, gun_colour, headset_colour)
 
 
 # --- GameDriver: after every $SPAWN and every hit ---------------------------- #
@@ -139,8 +147,10 @@ def test_in_play_team_restores_the_tails_and_the_repaint_cue():
     assert b["headset"]["rest"] == "$HLED,1,0,,,10,,*"
 
 
-def test_leds_off_bundle_has_no_lit_headset_frame_anywhere():
-    """A night game must not light a head: no lobby frame, no spawn/revive frame, empty cue."""
+def test_blackout_bundle_has_no_lit_headset_frame_anywhere_but_night_alone_still_lights_up():
+    """led-language.md §6 finding #2 (2026-09-07 fix): NIGHT used to double as a blackout that also
+    deleted the down signal -- `presentation.blackout` is now the only thing that empties every
+    headset frame; a plain night game still lights the head (dim, not off)."""
     from brx_mcp.mc import compile as C
     config = {
         "config_id": "night-tdm", "mode": "tdm", "environment": "outdoor", "night": True,
@@ -155,8 +165,14 @@ def test_leds_off_bundle_has_no_lit_headset_frame_anywhere():
         "node_id": None, "gun_id": None, "voice": "male", "ready": True,
         "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]},
     }
-    b = C._DEFAULT.compile(config, player, config["teams"])
+    night = C._DEFAULT.compile(config, player, config["teams"])
+    lit = [f for f in night["head"] if f.startswith("$HLED") and not f.startswith("$HLED,,6")]
+    assert lit, "a plain night game is dim, not a blackout -- the head must still light"
+    blackout = C._DEFAULT.compile({**config, "night": False, "presentation": {"blackout": True}},
+                                  player, config["teams"])
     for k in ("head", "spawn", "revive"):
-        lit = [f for f in b[k] if f.startswith("$HLED") and not f.startswith("$HLED,,6")]
+        lit = [f for f in blackout[k] if f.startswith("$HLED") and not f.startswith("$HLED,,6")]
         assert not lit, (k, lit)
-    assert b["cues"]["team_led"] == ""
+    assert blackout["cues"]["team_led"] == ""
+    # the down signal survives blackout unconditionally (it costs no light budget)
+    assert blackout["headset"] == {"down": night["headset"]["down"]}

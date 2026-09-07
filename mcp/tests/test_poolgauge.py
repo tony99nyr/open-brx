@@ -16,7 +16,7 @@ from brx_mcp.modes.driver import GameDriver
 # --- the mapping (pure) ------------------------------------------------------ #
 
 def test_a_full_pool_lights_all_three_segments():
-    assert pg.gauge_frame("shield", 70, 70) == f"$GLED,{pg.TEAL},{pg.TEAL},{pg.TEAL},0,10,,*"
+    assert pg.gauge_frame("shield", 70, 70) == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
 
 
 def test_an_empty_pool_lights_none():
@@ -36,9 +36,48 @@ def test_health_shifts_colour_as_it_falls():
 
 
 def test_shield_and_armour_keep_a_constant_hue():
-    """Hue identifies WHICH pool; only health encodes urgency in colour."""
-    assert pg.pool_colour("shield", 5, 70) == pg.pool_colour("shield", 70, 70) == pg.TEAL
+    """Hue identifies WHICH pool; only health encodes urgency in colour.
+
+    led-language.md §3.1 readout mapping (2026-09-07): shield reads WHITE, not teal -- teal was never
+    bench-validated as the shield hue."""
+    assert pg.pool_colour("shield", 5, 70) == pg.pool_colour("shield", 70, 70) == pg.WHITE == pg.SHIELD_COLOUR
     assert pg.pool_colour("armor", 5, 70) == pg.pool_colour("armor", 70, 70) == pg.PURPLE
+
+
+def test_ffa_paints_white_on_both_surfaces_regardless_of_team():
+    """led-language.md §6 finding #11 / Q19: FFA has no team identity to protect."""
+    for tid in (0, 1, 2, 3, None):
+        assert pg.team_frame(tid, ffa=True) == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
+        assert pg.headset_team_frame(tid, ffa=True) == f"$HLED,{pg.WHITE},0,,,10,,*"
+    # a non-FFA call is unaffected (still the identity map / default fallback)
+    assert pg.team_frame(1, ffa=False) == f"$GLED,{pg.BLUE},{pg.BLUE},{pg.BLUE},0,10,,*"
+
+
+def test_headset_tids_are_shared_0_through_7():
+    """led-language.md §6 finding #13: one range, so `compile.py` and `presentation.py` cannot disagree."""
+    assert pg.HEADSET_TIDS == tuple(range(8))
+
+
+def test_readout_bands_highest_first_with_the_readout_mapping_colours():
+    shield = pg.readout_bands("shield")
+    assert [thr for thr, _f in shield] == [0.66, 0.33, 0.0]
+    assert shield[0][1] == pg.segment_frame(pg.WHITE, 3) and shield[1][1] == pg.segment_frame(pg.WHITE, 2)
+    assert shield[2][1] == pg.segment_frame(pg.WHITE, 1)
+    armor = pg.readout_bands("armor")
+    assert armor[0][1] == pg.segment_frame(pg.PURPLE, 3)
+    health = pg.readout_bands("health")
+    assert health[0][1] == pg.segment_frame(pg.GREEN, 3)
+    assert health[1][1] == pg.segment_frame(pg.YELLOW, 2)
+    assert health[2][1] == pg.segment_frame(pg.RED, 1)
+    # night dims (token 5) without changing which LEDs are lit
+    dim = pg.readout_bands("health", night=True)
+    assert dim[0][1] == f"$GLED,{pg.GREEN},{pg.GREEN},{pg.GREEN},0,{pg.BRIGHT_DIM},,*"
+
+
+def test_segment_frame_lights_only_the_first_n_leds():
+    assert pg.segment_frame(pg.WHITE, 0) == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,10,,*"
+    assert pg.segment_frame(pg.WHITE, 1) == f"$GLED,{pg.WHITE},{pg.DARK},{pg.DARK},0,10,,*"
+    assert pg.segment_frame(pg.WHITE, 3) == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
 
 
 def test_the_apply_gate_is_a_real_apply_and_brightness_is_full():
@@ -49,15 +88,33 @@ def test_the_apply_gate_is_a_real_apply_and_brightness_is_full():
 
 
 def test_team_colours_are_the_identity_map_matching_the_headset():
-    """F33 (2026-09-07 bench, led-language.md §6 #1): tid IS the palette index (red 0 / blue 1 / yellow 2
-    / green 3, state.py TEAM_DEFS) -- the old table (`{1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}`) was offset,
-    so a yellow-team (tid 2) gun painted RED and a red-team (tid 0, not even a key) gun painted WHITE."""
+    """F33 (2026-09-07 bench, led-language.md §6 #1): tid IS the WIRE palette index (red 0 / blue 1 /
+    yellow 2 / green 3, state.py TEAM_DEFS) -- the old table (`{1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}`)
+    was offset, so a yellow-team (tid 2) gun painted RED and a red-team (tid 0, not even a key) gun
+    painted WHITE. `TEAM_COLOURS` (wire identity) still matches tid for every team."""
     assert pg.TEAM_COLOURS == {0: pg.RED, 1: pg.BLUE, 2: pg.YELLOW, 3: pg.GREEN}
-    for tid in (0, 1, 2, 3):
+    for tid in (0, 1, 2):
         assert pg.team_frame(tid).split(",")[1] == str(tid)
     # unknown/None tid (a 5th+ team, or no team yet) still falls back cleanly
     assert pg.team_frame(None).split(",")[1] == str(pg.DEFAULT_TEAM_COLOUR)
     assert pg.team_frame(9).split(",")[1] == str(pg.DEFAULT_TEAM_COLOUR)
+
+
+def test_team_3_paints_purple_but_keeps_its_green_wire_identity():
+    """led-language.md §6 finding #11 (2026-09-07 bench, alongside F35): a green head/gun reads as the
+    headset's own native hit/out flash at range. Team 3 stays GREEN on the wire (`$TID,3` -- its combat
+    identity cannot move, F35) but PAINTS purple on both surfaces; `display_colour()` is the one place
+    that decouples the two, so nothing else may assume colour == tid."""
+    assert pg.TEAM_COLOURS[3] == pg.GREEN                        # wire identity: unchanged
+    assert pg.display_colour(3) == pg.PURPLE == pg.TEAM_DISPLAY_COLOURS[3]
+    assert pg.team_frame(3).split(",")[1] == str(pg.PURPLE)
+    assert pg.headset_team_frame(3) == f"$HLED,{pg.PURPLE},0,,,10,,*"
+    # teams 0-2 are unaffected: the wire identity IS the paint for them
+    for tid in (0, 1, 2):
+        assert pg.display_colour(tid) == pg.TEAM_COLOURS[tid]
+    # an explicit override wins over the default lookup
+    assert pg.display_colour(3, overrides={3: pg.TEAL}) == pg.TEAL
+    assert pg.display_colour(1, overrides={3: pg.TEAL}) == pg.BLUE   # untouched team unaffected
 
 
 def test_changed_pool_reports_the_innermost_pool_that_moved():

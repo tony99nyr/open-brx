@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage, ir_words
@@ -36,7 +37,9 @@ async def settle(st):
 
 def test_profile_drives_the_bundle_and_the_event_buttons():
     st, _ = mk()
-    assert st.profile["gun"] == "team" and st.bundle["gun"]["in_play"] == "team"
+    # 2026-09-07: untouched, the selector shows whatever the "standard" preset's OWN gun.in_play
+    # resolves to (GUN_DEFAULT is "dark") -- not a stage.py literal that can go stale under it.
+    assert st.profile["gun"] == "dark" and st.bundle["gun"]["in_play"] == "dark"
     names = {e["event"] for e in st.event_catalog()}
     assert names == set(P.EVENTS)
     st.set_profile(gun="health", headset="team", preset="silenced", night=False)
@@ -45,7 +48,10 @@ def test_profile_drives_the_bundle_and_the_event_buttons():
     assert st.bundle["presentation"]["announcer"] is False       # silenced preset carried into the summary
     st.set_profile(mode="infection")
     assert st.config["mode"] == "infection" and st.bundle["presentation"]["preset"] == "custom"   # gun/headset edits still applied over the mode preset
-    st.set_profile(gun="team", headset="dark")
+    # infection's own preset gun/headset are both GUN_DEFAULT/HEADSET_DEFAULT ("dark"/"dark") --
+    # explicitly picking those SAME values must still read as "infection", not "custom", because it
+    # is genuinely not a customisation any more, only a touched selector that happens to agree.
+    st.set_profile(gun="dark", headset="dark")
     assert st.bundle["presentation"]["preset"] == "infection"                                     # back on the mode's own preset
     for bad in ({"gun": "breathe"}, {"mode": "cs2"}, {"preset": "loud"}, {"nope": 1}):
         try:
@@ -108,8 +114,10 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
         new = tx(mgr)[n:]
         assert new[0] == "$SFLASH,*" and new[1] == st.bundle["cues"]["double_kill"] and new[2] == st.bundle["cues"]["killing_spree"]
         n = len(tx(mgr))
+        # A16 §3.3: carrier is ONE flat WHITE role now (never the flag's team colour, finding #11) --
+        # `tid` says WHOSE flag for bookkeeping (`st.carrying`), it does not change the frame.
         st.headset("carrier", tid=2); await settle(st)
-        assert tx(mgr)[n] == st.bundle["headset"]["carrier"]["2"][0][0] and st.carrying == 2
+        assert tx(mgr)[n] == st.bundle["headset"]["role"]["carrier"][0][0] and st.carrying == 2
         st.headset("carrier_off"); await settle(st)
         assert tx(mgr)[-1] == st.bundle["headset"]["rest"] and st.carrying is None
     asyncio.run(run())
@@ -124,18 +132,27 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         st.poll()                                                  # the fake's $LCD after $SPAWN
         after_spawn = tx(mgr)[tx(mgr).index("$SPAWN,,*"):]
         assert all(f in after_spawn for f in st.bundle["gun"]["take"]), "the take (blank + full-health paint) followed the spawn"
+        # A16 §3.1/§5: "hit_taken" carries no default gun/headset burst any more -- the transient pool
+        # readout is the feedback for a pool change now (led-language.md §6 finding #5). One throwaway
+        # hit first: the fake tagger's own shield field holds the GameConfig's default max (70,
+        # "inactive until activated", gameconfig.py) the whole time, but the stage forces its OWN
+        # shield tracking to 0 right after spawn (engine.js `_afterSpawn`) -- the FIRST real $HP syncs
+        # it back up to 70, which reads as a pool GAIN masking that hit's own damage (a real node would
+        # see the same first-life blip). The assertions below start from the second hit, past it.
+        await st.ir("shot"); st.poll(); await settle(st)
+        assert st.tele["last_hir"] and st.tele["armor"] == 45
         n = len(tx(mgr))
         await st.ir("shot"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
-        assert st.tele["last_hir"] and st.tele["hp"] == 45 and st.tele["armor"] == 45
-        assert st.bundle["leds"]["hit_taken"][0][0] in new, "hit_taken burst"
+        assert st.tele["hp"] == 45 and st.tele["armor"] == 20
         assert st.bundle["headset"]["hit"][0][0] in new, "headset hit flash"
-        assert not any(f.startswith("$GLED,2,2,2") for f in new), "armour-only hit: still the green band"
-        # three more hits of 25: armour 70 -> 45 -> 20 -> 0 (hp 40, the low-health alert fires) -> hp 15 (red band)
-        for _ in range(3):
+        assert not any(f.startswith("$GLED") for f in new), "armour-only hit: this profile's readout tracks only health, so armour moving alone paints nothing"
+        # two more hits of 25: armour 20 -> 0 (hp 40, the low-health alert fires) -> hp 15 (readout: health's yellow band)
+        for _ in range(2):
             await st.ir("shot"); st.poll(); await settle(st)
         frames = tx(mgr)
-        assert st.hp == 15 and st.bundle["cues"]["hurt"] in frames and "$GLED,0,0,0,0,10,,*" in frames
+        assert st.hp == 15 and st.bundle["cues"]["hurt"] in frames
+        assert "$GLED,2,2,9,0,10,,*" in frames, "the readout painted the health pool's yellow band"
         n = len(frames)
         await st.ir("kill"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
@@ -204,16 +221,21 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
         ids = [s["id"] for s in plan]
         assert ids[:3] == ["arm", "voice", "spawn"] and "hit" in ids and "death" in ids and "revive" in ids and ids[-2:] == ["end", "end_victory"]
         assert plan[-2]["action"] == "game_end"
-        assert "carrier_1" in ids and "carrier_2" in ids and "carrier_off" in ids
+        # A16 §3.3: carrier is now ONE flat WHITE role (never the flag's team colour, finding #11), not
+        # a step per team; infected is still per-team (the one role whose colour is a team fact).
+        assert "carrier" in ids and "carrier_off" in ids and "infected_1" in ids and "infected_2" in ids
         assert "medal_first_blood" in ids and "event_lead_taken" in ids and "event_time_60" in ids
         assert all(s["available"] for s in plan)                     # the fake gun can be shot
-        # a silenced game has no medal / announcer steps, LEDs off has no headset steps
+        # a silenced game has no medal / announcer steps; blackout (the EXPLICIT "no lights" switch --
+        # night is a dim/short-hold overlay now, not a second blackout, led-language.md §4 finding #2)
+        # has no headset steps
         st.set_profile(preset="silenced")
         ids2 = [s["id"] for s in st.walk_plan()]
         assert "medal_first_blood" not in ids2 and "event_lead_taken" not in ids2 and "hit" in ids2
-        st.set_profile(preset=None, night=True)
-        assert not any(i.startswith("carrier") for i in [s["id"] for s in st.walk_plan()])
-        st.set_profile(night=False)
+        st.set_profile(preset=None)
+        st.patch_presentation({"blackout": True})
+        assert not any(i.startswith("carrier") or i.startswith("infected") for i in [s["id"] for s in st.walk_plan()])
+        st.patch_presentation({"blackout": False})
         st.walk_start()
         w = st.state()["walk"]
         assert w["i"] == 0 and w["current"]["id"] == "arm" and w["n"] == len(plan)
@@ -239,14 +261,131 @@ def test_walkthrough_is_built_from_the_config_and_records_verdicts():
 def test_poll_never_replays_frames_it_already_handled():
     async def run():
         st, mgr = mk(gun="native")
+        st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll()
-        await st.ir("shot"); st.poll(); await settle(st)
-        hits = lambda: sum(1 for l in st.log if l["text"].startswith("event hit_taken") or l["why"].startswith("event led hit_taken") or l["why"] == "event cue hit_taken")
+        await st.ir("shot"); st.poll(); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
+        hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
-        assert n >= 1
+        await st.ir("shot"); st.poll(); await settle(st)
+        assert hits() > n, "the hit must have reacted"
+        n = hits()
         st.poll(); st.poll(); await settle(st)
         assert hits() == n, "a second poll must not replay the same $HP"
+    asyncio.run(run())
+
+
+# --- 2026-09-07 (Tony at the bench: "seconds after hit it plays and the led changes ... it looks broken")
+# -- the stage must react to a hit like the real node (app/src/engine.js): the instant a BLE notification
+# decodes the frame, not on its next poll tick. These drive `_on_frame` directly with the fake gun's OWN
+# `BufferedEvent`s (exactly what `ble.ConnectionManager.connect(on_frame=...)` hands it) and use the REAL
+# clock/sleep (no `sleep=_nosleep`, no `mk()`), so the measured latency means something.
+def _hit_via_on_frame(st, mgr, alias="stage"):
+    """Inject one IR hit on the fake tagger and feed its new rx frame(s) straight into `st._on_frame`,
+    exactly as the real BLE notify path would -- bypassing poll() entirely. Returns the new tx frames
+    written by the time this returns (nothing has awaited yet, so this is the SYNCHRONOUS part only)."""
+    s = mgr.sessions[alias]
+    n0 = s.seq
+    mgr.inject_hit(alias, st.enemy_tid())
+    for e in list(s.buffer):
+        if e.seq > n0:
+            st._on_frame(e)
+    return n0
+
+
+def test_a_hit_reacts_the_instant_its_frame_decodes_not_on_the_next_poll_tick():
+    async def run():
+        mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+        st = GunStage(mgr, None, voice_verdict_sink=lambda _r: None)   # the REAL sleep/clock, not the test double
+        st.patch_presentation({"headset": {"hit": "red"}})
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm()
+        st.bundle["cues"]["countdown"] = ""    # this test is about the HIT path, not the spawn countdown wait
+        await st.spawn(); await settle(st)
+        s = mgr.sessions["stage"]
+        t0 = time.monotonic()
+        n0 = _hit_via_on_frame(st, mgr)
+        await asyncio.sleep(0)                 # ONE turn of the loop -- enough for a spawned task to run to its first await
+        dt = time.monotonic() - t0
+        new_tx = [e.raw for e in s.buffer if e.seq > n0 and e.direction == "tx"]
+        assert new_tx, "no reaction was written on the very next loop tick after the hit's frame decoded"
+        assert dt < 0.1, f"{dt * 1000:.1f} ms from the rx frame to the first reaction write -- should be near-instant"
+    asyncio.run(run())
+
+
+def test_latency_does_not_grow_under_rapid_fire_and_an_in_flight_burst_never_delays_the_next_hit():
+    """Regression for the bug itself: fire several hits close together (each still inside the previous
+    one's hardware-tuned LED-burst hold, EVENT_MIN_GAP_S/PAIN_GAP_S), on a stage with real holds, and prove
+    every one still gets an IMMEDIATE reaction write -- a burst in flight (its `await self.sleep(hold)`)
+    must never delay seeing or reacting to the next incoming frame."""
+    async def run():
+        mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+        st = GunStage(mgr, None, voice_verdict_sink=lambda _r: None)
+        st.patch_presentation({"headset": {"hit": "red"}})
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm()
+        st.bundle["cues"]["countdown"] = ""
+        await st.spawn(); await settle(st)
+        s = mgr.sessions["stage"]
+        deltas = []
+        for _ in range(4):
+            t0 = time.monotonic()
+            n0 = _hit_via_on_frame(st, mgr)
+            await asyncio.sleep(0)
+            new_tx = [e.raw for e in s.buffer if e.seq > n0 and e.direction == "tx"]
+            deltas.append(time.monotonic() - t0)
+            assert new_tx, "every hit must write something immediately, even while an earlier burst is still holding"
+            await asyncio.sleep(0.02)          # hits 20 ms apart -- well inside a still-running burst's holds
+        assert max(deltas) < 0.1, f"latency grew under rapid fire: {[round(d * 1000) for d in deltas]} ms"
+        await settle(st)                       # drain the in-flight bursts so the loop is clean for the next test
+    asyncio.run(run())
+
+
+def test_poll_does_not_re_react_to_a_frame_the_instant_callback_already_handled():
+    """`_on_frame` (the instant path) and `poll()` (the fallback/reconciler the fake gun relies on) must
+    never BOTH react to the same rx frame -- `_reacted_seq` is the single gate both paths check."""
+    async def run():
+        st, mgr = mk(gun="native")
+        st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        _hit_via_on_frame(st, mgr); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
+        hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
+        n = hits()
+        _hit_via_on_frame(st, mgr)             # the instant path reacts first; poll() has not run yet
+        await settle(st)
+        assert hits() > n, "the instant callback must have reacted on its own, with no poll() at all"
+        n = hits()
+        st.poll(); st.poll(); await settle(st)  # poll()'s cursor still lags behind these frames -- it WILL see them
+        assert hits() == n, "poll() must not react a second time to a frame _on_frame already handled"
+    asyncio.run(run())
+
+
+def test_spawn_waits_the_countdown_lead_before_the_burst_and_skips_the_wait_with_no_countdown_cue():
+    """start-sequence.md §2 (Tony, bench 2026-09-07: 'the gun announced 3...2... and then was cut off'):
+    `cues.countdown` must finish (COUNTDOWN_LEAD_S) before the spawn burst's own $PLAYX/$PLAY can cut it
+    off -- and a bundle with nothing configured in `cues.countdown` must not wait at all."""
+    async def run():
+        calls: list[float] = []
+        async def spy_sleep(s):
+            calls.append(s)
+        st, mgr = mk()
+        st.sleep = spy_sleep
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm()
+        assert st.bundle["cues"].get("countdown"), "sanity: this profile really has a countdown cue"
+        await st.spawn()
+        assert calls[0] == GunStage.COUNTDOWN_LEAD_S, "the lead wait must happen, and before anything else awaited in spawn()"
+        frames = tx(mgr)
+        i_cd = frames.index(st.bundle["cues"]["countdown"])
+        i_spawn0 = frames.index(st.bundle["spawn"][0])
+        assert i_cd < i_spawn0, "the countdown cue must be written before the spawn burst, not after"
+        await settle(st)
+        calls.clear()
+        st.bundle["cues"]["countdown"] = ""    # a bundle with nothing configured here (e.g. a muted profile)
+        await st.spawn()
+        assert GunStage.COUNTDOWN_LEAD_S not in calls, "no countdown cue: nothing to wait for, so no lead wait either"
+        await settle(st)
     asyncio.run(run())
 
 
@@ -687,7 +826,10 @@ def test_revive_writes_exactly_one_spawn_line_in_the_revive_write():
             assert new.index(plays[0]) == len(st.bundle["revive"]), "the take rides in the revive write, right after its frames"
             why = next(l["why"] for l in reversed(st.log) if l["text"] == plays[0])
             assert "spawn line (" in why, why    # A15.3: "revive + scream Vxx N/3 + spawn line (…)" -- a fresh death scream now rides ahead too
-            assert any(l["why"] == "event led respawned" for l in st.log), "the respawned burst still plays (lights only)"
+            # "respawned" carries no default gun/headset LED burst any more (A16 §6 finding #5: a
+            # burst here would land inside gun.take's own 2.5 s blank-then-hold and render wrong) --
+            # the white double-flash (`headset.respawn`, asserted via `hs.get("respawn")` elsewhere)
+            # and this spawn line are the respawn signal now.
     asyncio.run(run())
     # the walkthrough's voice step plays the first spawn take (the family's boast)
     step = st.walk_plan()[1]
