@@ -762,11 +762,15 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
             "extracted": [[_hled(pg.WHITE, night), 0.0]],
             "infected":  {str(t): [[_hled(int(c), night), 0.0]] for t, c in (team_colours or {}).items()},
         }
-        # TRANSITIONAL (2026-09-07): `stage.py` (mcp/brx_mcp/stage/, a different lane) still reads the
-        # pre-§3.3 shape directly -- `bundle["headset"]["carrier"][<tid>]`, blinking the FLAG's team
-        # colour. That reading is superseded (finding #11: carrier is WHITE, never a team colour) but
-        # not yet migrated, so the OLD per-team dict rides alongside `role` until it is. Once stage.py
-        # reads `role.carrier`/`role.infected` instead, delete this key.
+        # BACK-COMPAT (2026-09-07, retargeted): `stage.py` has now migrated to `role`, but this key is
+        # NOT dead yet -- it is what a PRE-A16 NODE reads. `engine.js` falls back to
+        # `headset.carrier[<tid>]` when `headset.role` is absent, so an APK built before tonight gets its
+        # carrier blink from here and nothing else. Deleting it the moment the stage migrated would have
+        # silently killed the flag blink for every phone still on the old build (they are on 0.1.6/0.1.7;
+        # `role` needs an APK that does not exist yet). The colour is superseded -- this emits the FLAG's
+        # team colour, while §3.3 says carrier is WHITE -- so an old node keeps the old look, which is the
+        # correct compromise: stale, not broken. DELETE THIS once an APK carrying `role` is on every
+        # phone (tracked in FOLLOWUPS S10).
         out["carrier"] = {str(t): [[_blink(int(c), 300, 300, 200, night), 0.0]] for t, c in (team_colours or {}).items()}
     return out
 

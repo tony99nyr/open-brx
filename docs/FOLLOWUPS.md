@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F41 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F42 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -116,6 +116,15 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
+
+- **F41 🟡** the FAKE tagger diverges from real hardware on SHIELD, and it produced a false bug report. Our compiled
+  `$PSET` sets shield 70, and `fake.py` applies it on spawn and reports `$HP,hp,armor,70`. A REAL gun reports
+  **shield 0** there and always has (every `$HP` captured on hardware 2026-09-07 is `…,0`; P16 — the shield pool is
+  IR-only and not BLE-writable). Because the node zeroes its own shield tracking at spawn, the fake's 70 makes the
+  first `$HP` of a life look like a 70-point pool GAIN, which nets out the real damage in the `before − after`
+  total and swallows the first hit's reaction. **On a real gun this cannot happen**, so the stage/fake is a poor
+  simulator for anything shield-shaped. Fix the fake to mirror P16 (accept the `$PSET` shield token but report 0
+  until an IR grant), or the whole class of shield behaviour cannot be trusted at the bench. `build`.
 
 - **F40 🟠** **"absence reports as health" — three instances in one evening (2026-09-07), so treat it as a class, not
   three bugs.** (1) `mcp/run_tests.py` aborted the whole run on one file's import error, so ~30 later files silently
