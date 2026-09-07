@@ -170,7 +170,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   The declared one was safe and the live one was invisible — the allowlist entry is what made the file look
   considered.** Fix: name-based sweep for deliberate sequences, AST code-scan for inline ones, over `brx_mcp/`
   and not just `mcp/tools/`.
-  Add (6): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
+  Add (6) **a new shape — the wrong value was individually VALID**: `FakeCompiler.cues()["game_over"]` was
+  byte-identical to the real compiler's VICTORY frame and the fake had no `victory` key at all, so every `--demo`
+  run (a RUNTIME path — `__main__.build()` falls back to that compiler whenever the real one raises on import)
+  played the win sting to everyone at the whistle. Nothing about `$PLAY,VSF,4,6,JAY,,,,*` looks wrong on its own;
+  only its RELATIONSHIP to the real table was wrong, which is exactly where no assertion was looking. Pinned as an
+  inequality against the real compiler rather than as a literal, so it survives either id being re-picked by ear.
+  Add (7): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
   in `led-language.md` §6 and were never assigned, so a KNOWN bug was indistinguishable from an unknown one until a
   refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
   reports a file that did not run, a compiler asserts its `$SIR` cells cover the weapons (done, A17), a light rule is
