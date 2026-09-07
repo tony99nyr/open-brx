@@ -2055,3 +2055,23 @@ the field."
 
 ---
 - 2026-09-07 **Q19** FFA colour: WHITE (tid 6) on both surfaces — Tony, matches stock FFA; eight teams verified on hardware the same night. **S4 (b)** a held gun paint survives 8 min with no traffic.
+
+
+# S15 — the FrameBundle boundary has no guard
+*closed 2026-09-07 · raised by brx-sound, built the same hour · `mcp/tests/test_bundle_contract.py`*
+
+- **S15 🟡** **Nothing guards the FrameBundle boundary** (raised by brx-sound, 2026-09-07). The UI contract test
+  added 2026-09-07 compares `types.py` against `webapp/mc/src/api/types.ts`, which covers the MC console. The
+  **phone** consumes a different contract, `FrameBundle`, and reads it in **57 places** in `app/src/engine.js`
+  against **zero** mirrored declarations, so a field the compiler renames or drops fails as `undefined` at
+  match time rather than in CI. It is the same class of bug the UI test was written for, on the boundary that
+  actually runs a game. A cheap first cut: assert every key `compile.py` emits is named in `contracts.md` §3,
+  and that each bundle key the engine reads is one the compiler emits. Worth doing before the bundle grows
+  again — S14's `siphon` block crosses exactly this line. `build`.
+
+**Built.** `test_bundle_contract.py`, four steps. Errors: every key `compile.py` emits must be declared in
+`types.py`'s `FrameBundle` **and** named in `contracts.md` §3, and the two declarations may not disagree.
+Warning only: bundle keys `engine.js` reads that the compiler never emits are printed, never failed, because
+the engine tolerates older bundles on purpose (`_pickTable` returns `[]` with no `sir_pool`; an absent
+`pset_pool` means the head's `$PSET` stands) — brx-sound's call, and it is right. Both error directions were
+proven to fire against copies of the sources, not by editing the shared ones.

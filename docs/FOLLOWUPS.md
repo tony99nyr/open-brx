@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F40 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F41 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -117,6 +117,18 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
 
+- **F40 🟠** **"absence reports as health" — three instances in one evening (2026-09-07), so treat it as a class, not
+  three bugs.** (1) `mcp/run_tests.py` aborted the whole run on one file's import error, so ~30 later files silently
+  never executed while the totals still looked plausible; (2) an unmatched `$SIR` cell is silently ignored by the
+  firmware (the F11 shape), so a mis-keyed hit sound is inaudible rather than an error; (3) `$HLED,,6` disabled the
+  firmware's death flash for a whole life with nothing anywhere reporting it — three days of dark downed players.
+  Add (4): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
+  in `led-language.md` §6 and were never assigned, so a KNOWN bug was indistinguishable from an unknown one until a
+  refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
+  reports a file that did not run, a compiler asserts its `$SIR` cells cover the weapons (done, A17), a light rule is
+  pinned by a test that walks the reachable surface (done, `test_led_invariants.py`), and every finding in a review
+  table carries an owner or an id. `decision` + `build`.
+
 - **F35 🔴** `$TID` 4-7 are display-only and BREAK combat (bench 2026-09-07): the IR word's team field is 2 bits so
   the gun transmits `tid & 3`, but the victim compares the FULL tid — teammates on tid ≥ 4 damage each other, their
   shots read as friendly to the tid they alias onto (no damage), and a gun can kill itself off a nearby surface
@@ -213,14 +225,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   own pool, so it computes `min(grant, max - current)` and the stack shows that; a gain of 0 shows nothing at all
   —
   **S14.3** prove it on hardware. `build`.
-- **S15 🟡** **Nothing guards the FrameBundle boundary** (raised by brx-sound, 2026-09-07). The UI contract test
-  added 2026-09-07 compares `types.py` against `webapp/mc/src/api/types.ts`, which covers the MC console. The
-  **phone** consumes a different contract, `FrameBundle`, and reads it in **57 places** in `app/src/engine.js`
-  against **zero** mirrored declarations, so a field the compiler renames or drops fails as `undefined` at
-  match time rather than in CI. It is the same class of bug the UI test was written for, on the boundary that
-  actually runs a game. A cheap first cut: assert every key `compile.py` emits is named in `contracts.md` §3,
-  and that each bundle key the engine reads is one the compiler emits. Worth doing before the bundle grows
-  again — S14's `siphon` block crosses exactly this line. `build`.
+
 - **S13 🟡** **Per-player kit powers beyond the pool** (Tony 2026-09-07). The per-player POOL override
   (`loadout.overrides`, KIT) covers health and armour and shipped 2026-09-07. The same per-player idea could
   carry more: a damage or fire-rate modifier, a respawn-delay handicap, extra lives. Each needs a home on the
