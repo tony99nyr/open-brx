@@ -5,9 +5,25 @@ import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { takesAlt } from './gameSummary';
-import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, onKey, PrimaryButton } from '../ui';
+import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey, PrimaryButton } from '../ui';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
+
+/** The pool THIS player's gun is armed with, and whether the host set it deliberately.
+ *  `loadout.overrides` (modes §1.1) wins over the game's health block per player: the compiler
+ *  reads it in `_to_gc()` and it goes out on that player's `$PSET`. It is the handicap knob -- a
+ *  younger player at double health, the solo side of a 2v1 -- so it must never be silent. */
+export function poolOf(p: Player | undefined, gameHp: number, gameAr: number) {
+  const ov = p?.loadout?.overrides ?? {};
+  const hp = ov.max_hp ?? gameHp, armor = ov.max_armor ?? gameAr;
+  const gamePool = gameHp + gameAr;
+  return {
+    hp, armor, set: ov.max_hp != null || ov.max_armor != null,
+    hpSet: ov.max_hp != null, armorSet: ov.max_armor != null,
+    // vs the pool everyone else is armed with; 2.0 reads as "twice as hard to drop"
+    mult: gamePool > 0 ? (hp + armor) / gamePool : 1,
+  };
+}
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 
 export function Kit() {
@@ -88,6 +104,8 @@ export function Kit() {
   const wById = (id?: string | null) => weapons.find(w => w.weapon_id === id);
   const kById = (id?: string | null) => perks.find(k => k.perk_id === id);
   const lo: Loadout = sp?.loadout ?? { weapons: [] };
+  const gameHp = state.config.health?.max_hp ?? 100, gameAr = state.config.health?.max_armor ?? 0;
+  const playerPool = poolOf(sp, gameHp, gameAr);
   const primary = wById(lo.weapons?.[0]?.weapon_id);
   const secondaryW = wById(lo.weapons?.[1]?.weapon_id);
   const perk = kById(lo.perk);
@@ -127,6 +145,19 @@ export function Kit() {
     await setLoadout({ weapons: drops ? [prim0] : (lo.weapons ?? [prim0]), perk: k.perk_id }, undefined, { slot: 'perk', id: k.perk_id, label: k.name });
     if (drops && sp && trying[sp.player_id] === drops.weapon_id) await run(() => api.endTryout(sp.player_id));   // the dropped secondary was being tried out: quiet the gun (e2e lane finding)
   };
+  // A per-player POOL override. Sent as part of the loadout because that is where the server keeps
+  // it; `weapons` must ride along or the PATCH is rejected as a shape error (state.py _clean_loadout).
+  // Passing `undefined` drops the key from the JSON, which is how the server is told to clear it.
+  const setPool = (next: { max_hp?: number; max_armor?: number } | undefined) => {
+    if (!sp) return;
+    const weapons = lo.weapons?.length ? lo.weapons : [prim0];
+    return setLoadout({ weapons, perk: lo.perk ?? null, overrides: next });
+  };
+  const patchPool = (k: 'max_hp' | 'max_armor', v: number) => {
+    const cur = lo.overrides ?? {};
+    return setPool({ ...cur, [k]: v });
+  };
+
   const clearSecondary = () => setLoadout({ weapons: [prim0], perk: lo.perk ?? null }, undefined, { slot: 'secondary', id: null, label: 'EMPTY' });
   const clearPerk = () => setLoadout({ weapons: lo.weapons ?? [prim0], perk: null }, undefined, { slot: 'perk', id: null, label: 'NO PERK' });
   // did the phone overwrite the host's pick within the hold window?
@@ -195,6 +226,10 @@ export function Kit() {
                         <span style={{ color: T.faint }}> + </span>
                         {p1 ? shortName(p1.name) : <span style={{ color: T.faint }}>NONE</span>}
                         {pk && <span style={{ color: PERK_COLOR }}> ◆ {pk.name.toUpperCase()}</span>}</span>
+                      {(() => { const pp = poolOf(pl, gameHp, gameAr); return pp.set
+                        ? <span data-pool-chip={pl.player_id} title={`Armed at ${pp.hp} HP / ${pp.armor} AR — the game pool is ${gameHp} / ${gameAr}`}
+                            style={{ color: T.warn, whiteSpace: 'nowrap' }}>◆ {pp.hp}/{pp.armor} POOL</span>
+                        : null; })()}
                     </span>
                   </span>
                   {chip}
@@ -283,6 +318,7 @@ export function Kit() {
                   item={perk} kind={perk ? 'perk' : 'none'}
                   overridden={overridden('perk')} onReapply={reapply}
                   onClear={perk && !slotLocked('perk') ? clearPerk : undefined} />
+                <PoolCard hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={() => setPool(undefined)} name={sp.display} />
                 <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
                   {pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
                 </div>
@@ -610,5 +646,46 @@ function StatRow({ label, pct }: { label: string; pct: number }) {
       <span style={{ font: F.mono(500, 9.5), letterSpacing: '.2em', color: T.micro }}>{label}</span>
       <SegBar pct={pct} color={T.ink} height={10} cell={10} style={{ display: 'block' }} />
     </>
+  );
+}
+
+/** The per-player POOL override (modes §1.1). Deliberately loud: a player armed differently from
+ *  everyone else is a rule of the match, not a setting, so it states the game's own numbers beside
+ *  the player's and says whose gun it changes. Clearing it is one tap. */
+function PoolCard({ hp, armor, pool, onSet, onClear, name }: {
+  hp: number; armor: number; name: string;
+  pool: ReturnType<typeof poolOf>;
+  onSet: (k: 'max_hp' | 'max_armor', v: number) => void; onClear: () => void;
+}) {
+  const on = pool.set;
+  const mult = pool.mult.toFixed(pool.mult % 1 === 0 ? 0 : 1);
+  return (
+    <div data-pool-card style={{ border: `1px solid ${on ? T.warn : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? T.warn : T.dim }}>POOL</span>
+        <span data-pool-state style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: on ? T.warn : T.micro }}>
+          {on ? `${mult}\u00d7 GAME POOL` : 'GAME DEFAULT'}
+        </span>
+      </div>
+      {(['max_hp', 'max_armor'] as const).map(k => {
+        const isHp = k === 'max_hp';
+        const val = isHp ? pool.hp : pool.armor, base = isHp ? hp : armor, set = isHp ? pool.hpSet : pool.armorSet;
+        return (
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ font: F.chk(600, 11), letterSpacing: '.14em', color: T.dim, width: 52 }}>{isHp ? 'HEALTH' : 'ARMOR'}</span>
+            <ValueBox value={val} unit={isHp ? 'HP' : 'AR'} min={isHp ? 1 : 0} max={999} label={`${name} ${isHp ? 'health' : 'armor'}`} onChange={v => onSet(k, v)} />
+            <span data-pool-base={k} style={{ font: F.mono(500, 10), letterSpacing: '.06em', color: set ? T.micro : T.faint, whiteSpace: 'nowrap' }}>
+              {set ? `GAME ${base}` : 'SAME AS GAME'}
+            </span>
+          </div>
+        );
+      })}
+      <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: on ? T.warn : T.micro, lineHeight: 1.6 }}>
+        {on
+          ? `\u25b2 ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
+          : '\u25b2 SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2v1).'}
+      </div>
+      {on && <GhostButton onClick={onClear} color={T.warn} border={T.warn} size={10} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
+    </div>
   );
 }

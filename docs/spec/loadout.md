@@ -64,7 +64,7 @@ v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unv
 Loadout {
   weapons: WeaponSel[],            // [primary] or [primary, secondary]; index == gun slot. NEVER empty (primary required).
   perk?: string | null,            // A14: the PERK slot — rides BESIDE a secondary weapon (AR + pistol + Quick Switch is a legal kit)
-  overrides?: { max_hp?, max_armor? }
+  overrides?: { max_hp?: 1..999, max_armor?: 0..999 }   // per-player POOL: the handicap knob
 }
 ```
 **A14 (Tony, 2026-09-04): "non-activated perks should be an extra thing outside of the secondary slot."** The v1 perks
@@ -84,6 +84,18 @@ Compiler (`compile.py`): slot 1 `$WEAP`/`$AMMO,1` emitted **only when a secondar
 `melee` slot 4 unchanged. Perk effects: `max_armor_add` → `$PSET` armor; `ammo_mult` → `$AMMO,0` + primary frame
 t16/t39 (mag) and t17/t40 (reserve; keep t17 == 2×t40 and t39 == t16); `reload_mult` → t18; `alt_reload` → `_bmap()`.
 Tutorial frames are unaffected (a try-out is the raw weapon).
+
+### The per-player pool (the handicap knob)
+
+`loadout.overrides` is the one part of a kit that changes the player rather than the gun. The compiler
+reads it in `_to_gc()` and it goes out on **that player's `$PSET`**, so one player can be armed at a
+different pool from everyone else in the same match: a younger player at double health, or the solo
+side of a 2v1. `max_armor` may be **0** (the game's own health block allows 0 armour, so a handicap
+must be able to take a pool away, not only add one); `max_hp` may not, because 0 HP is not a pool.
+
+It is deliberately loud in the console (KIT, the POOL card): the card states the game's numbers beside
+the player's, names the player in the "on purpose" line, and the roster marks them so a host sees who
+is handicapped without selecting anyone. Screen-truth steps: `webapp/mc/test/kit-pool.test.tsx`.
 
 ## 3. Loadout policy (contracts §3 `GameConfig`, A10)
 ```jsonc

@@ -625,10 +625,13 @@ class Session:
             if not isinstance(ov, dict):
                 raise ValueError("loadout.overrides must be an object")
             clean = {}
-            for k in ("max_hp", "max_armor"):
+            # armour may be 0 (the game config allows it: "0 means one-shot with a sniper"), so a
+            # per-player override must be able to say 0 too, or the handicap can raise a pool but
+            # never strip one. HP 0 is not a pool, it is a corpse.
+            for k, lo_ in (("max_hp", 1), ("max_armor", 0)):
                 if k in ov and ov[k] is not None:
-                    if isinstance(ov[k], bool) or not isinstance(ov[k], int) or not 1 <= ov[k] <= 999:
-                        raise ValueError(f"overrides.{k} must be an integer 1..999")
+                    if isinstance(ov[k], bool) or not isinstance(ov[k], int) or not lo_ <= ov[k] <= 999:
+                        raise ValueError(f"overrides.{k} must be an integer {lo_}..999")
                     clean[k] = ov[k]
             if clean:
                 out["overrides"] = clean
