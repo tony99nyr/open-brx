@@ -35,9 +35,12 @@ The repo is private, MIT-licensed, 0 forks. Nothing below blocks day-to-day work
   clean; `mcp/tests/test_docs_hygiene.py` keeps it that way). Deliberately not purged: they label Tony's own
   four headsets and grant nothing remotely. Revisit only if that judgement changes; it needs `--replace-text`
   plus a `--blob-callback` for binaries (`docs/gotchas.md` has the traps).
-- **⬜ Delete the two dead local branches** `bench/feedback-fork-ir-nrf-2026-08-25` and
-  `worktree-agent-a8593058024df0d96`. Superseded 2026-08-25 forks, local-only, and they still carry the
-  pre-purge tree including the PDF. Do not push them.
+- **✅ DONE 2026-09-07 — dead branches deleted.** `bench/feedback-fork-ir-nrf-2026-08-25` (local and
+  remote) and `worktree-agent-a8593058024df0d96` are gone. They were superseded 2026-08-25 forks and the
+  remote one still pinned the PDF and every old apk, which is why the purge of `main` alone did not shrink
+  anything. Full pre-purge backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle` (48 MB, all refs).
+  Pack went 93 MB → 28 MB. **A release tag can pin purged history too**: `app-v0.1.6` pointed at the old
+  commit and had to be re-pointed through `.git/filter-repo/commit-map` before the objects would drop.
 - **⬜ Release-sign the APK** (B21) and drop `webContentsDebuggingEnabled` before a build leaves the bench.
 - **Standing rules.** Credit LaserTagMods in anything public-facing (CLAUDE.md hard rule). Keep
   `test_docs_hygiene.py` green: no sticker ids (write `Tactix-XXXX`), the Updated stamp above moves with the
