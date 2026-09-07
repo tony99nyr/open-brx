@@ -37,7 +37,10 @@ semantics below cost two sessions to establish and are easy to get subtly wrong.
 `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*`
   * tokens 1-3 are direct palette indices, one per LED
   * token 4 is an APPLY GATE, not an effect: 0/6/7/8/9/10 apply at full brightness, 5 applies at
-    ~1/3, and 1/2/3/4 are NO-OPS that leave whatever was lit before still lit
+    OFF (⚠ RETRACTED 2026-09-07: the earlier "applies at ~1/3" reading was measured while the firmware
+    breathing was still contending; an A/B on a host-owned strip reads gate 5 as dark, "bright then off,
+    no steps in between" -- it is what makes the blank work and must never be sent WITH colour tokens),
+    and 1/2/3/4 are NO-OPS that leave whatever was lit before still lit
   * token 5 is brightness: 0 off, 1 dim, >=2 full
 Encode with COLOUR, not brightness: at the dim setting our colour stops being the dominant hue in
 the frame (measured 2026-09-02), so a dim gauge is not reliably readable.
@@ -326,7 +329,7 @@ def team_frame(team: int | None, night: bool = False, ffa: bool = False) -> str:
     return f"$GLED,{c},{c},{c},0,{b},,*"
 
 
-def headset_team_frame(team: int | None, ffa: bool = False) -> str:
+def headset_team_frame(team: int | None, ffa: bool = False, night: bool = False) -> str:
     """The HEADSET in the team colour, static, full brightness -- what OTHER players see.
 
     Bench 2026-09-03 (`hled_spawned.py`, `hled_bright.py`, gun DELTA-9498, operator watching):
@@ -341,12 +344,19 @@ def headset_team_frame(team: int | None, ffa: bool = False) -> str:
         maximum. 10 (Callsign's value) is already full. The dim team blink seen at spawn is the
         firmware's own and cannot be turned up -- we paint over it instead.
     Colour indices 0-7 are shared with the gun palette (camera rig, 2026-09-02; 4-7 bench-confirmed on
-    the headset itself 2026-09-07). Never dimmed for night mode: callers skip the headset entirely
-    when LEDs are off, because lighting a player's head in a blackout game is the one thing that
-    setting exists to prevent. Paints `display_colour(team)`, not the raw tid (F35/finding #11).
+    the headset itself 2026-09-07). Paints `display_colour(team)`, not the raw tid (F35/finding #11).
+
+    NIGHT vs BLACKOUT are two different answers and this docstring used to conflate them (ruled
+    2026-09-07, led-language.md §3.4):
+      * **blackout** (`leds_on` False) -- the headset is OMITTED entirely. Lighting a player's head in a
+        blackout game is the one thing that setting exists to prevent, so callers skip it; nothing here
+        can express that, and `night=True` is NOT a substitute for it.
+      * **night with lights on** -- the headset is DIMMED, not omitted. Muster still has to work in the
+        dark, and a brightness-1 head is more readable at night than a brightness-10 one is in sun.
+        Token 5 is a real two-level dim on the headset (1 dim, 2/10/255 identical), so pass `night=True`.
     """
     c = FFA_COLOUR if ffa else display_colour(team)
-    return f"$HLED,{c},0,,,{BRIGHT_FULL},,*"
+    return f"$HLED,{c},0,,,{BRIGHT_DIM if night else BRIGHT_FULL},,*"
 
 
 def changed_pool(before: tuple[int, int, int] | None,

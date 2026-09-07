@@ -152,7 +152,7 @@ A `headset.role` state the node re-asserts after every registered hit (the way t
 
 | surface / moment | day | night |
 |---|---|---|
-| gun pregame | team, full | team, dim (**apply-gate 5**: `$GLED,c,c,c,5,10,,*` is the ~1/3 paint; token 5 does not compose with it and its own dim curve is unreliable, log 2026-09-02) |
+| gun pregame | team, full (`$GLED,c,c,c,0,10`) | team, dim (**token 5 = 1**: `$GLED,c,c,c,0,1,,*`) ⚠ NOT apply-gate 5 — that is OFF, not a dimmer (retracted 2026-09-07 by A/B on a host-owned strip; the old "~1/3" reading was taken while the firmware breathing was still contending) |
 | gun rest | dark | dark |
 | gun readout | full, 4 s hold, reload glance 2 s | dim, 2 s hold, glance 1 s |
 | gun bursts | objective, extraction ladder (none at death) | same set, dim; no decorative bursts |
