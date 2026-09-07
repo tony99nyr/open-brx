@@ -129,6 +129,11 @@ two whole two-phone matches outdoors (2026-08-30, 2026-09-01); a dispersed start
 20-minute soak are still owed (`docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of record:
 **`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) (how to build, test, and propose a change) and
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
 ## License
 
 MIT, see `LICENSE`.

@@ -34,6 +34,9 @@ export interface Player {
   loadout: Loadout;
   voice: string;
   ready: boolean;
+  /** A15: {role: sound id} picks for the $PSET voice fields + the kill line -- WHICH death scream /
+   *  pain line / respawn cry of the family the gun plays. Absent = the family defaults. */
+  voice_slots?: Record<string, string>;
 }
 
 export interface Respawn { type: 'auto' | 'scanner' | 'none'; delay_s: number }
@@ -51,6 +54,8 @@ export interface GameConfig {
   health: Health;
   teams: Team[];
   led?: Record<string, unknown>;
+  /** A6.5: disjoint player-number ranges for concurrent games sharing one venue. */
+  player_num_base?: number;
   loadout_policy: LoadoutPolicy;
   /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
   presentation?: Record<string, unknown>;
@@ -242,7 +247,7 @@ export interface Api {
   /** A11: tonight's presentation profile, resolved, for the read-only ADVANCED view. Rejects with status 404 on an older server. */
   getPresentation(): Promise<PresentationView>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
-  addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player>;
+  addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string; voice_slots?: Record<string, string> }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;
   deletePlayer(id: string): Promise<void>;
   evictNode(node_id: string): Promise<void>;   // DELETE /api/nodes/{id} — operator kick (closes 4000, unbinds, rotates key)
@@ -282,5 +287,5 @@ export interface MatchHistoryRow {
  *  confirmed by ear, the rest are inferred from the pack layout (see gameconfig.VOICE_PACKS). */
 export interface VoiceList {
   default: string;
-  voices: { id: string; name: string; family: string; kill_line: string; verified: boolean }[];
+  voices: { id: string; name: string; family: string; speaker?: string; lines?: number; kill_line: string; verified: boolean }[];
 }
