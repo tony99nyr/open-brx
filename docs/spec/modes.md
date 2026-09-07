@@ -104,8 +104,21 @@ Notes that shape the schema:
   exists — the node owns the delay.
 - **Objective modes** (domination/koth/ctf/cs) exist as engines in `modes/` but are **not in the MC catalog**
   and have no wire-carried parameters (E1/E2) — `docs/utility-roadmap.md` §8 is the status per mode.
-- **Health variants** (syphon/regen) are `gameconfig.py` booleans that add **host-driven** `$LIFE` writes at
-  runtime (additive, clamped); they reach a node only via **`apply{frames}`** (A6.4) — coverage-zone only.
+- **Health variants.** *Regen* is still a `gameconfig.py` boolean on the laptop-BLE path only: a host-driven
+  `$LIFE` write that reaches a node via **`apply{frames}`** (A6.4), so it works in a coverage zone and nowhere
+  else. **Syphon is being moved off that route (S14).** It is a **node-side** event, because MC already tells the
+  killer's node it scored in the same `feedback` body that carries medals, so the node writes the heal to its own
+  gun and needs no coverage at the instant of the kill.
+
+  **Shape.** `config.siphon = {hp, armor}` (absent or `{0,0}` = off) is compiled into the bundle with the
+  precompiled `$LIFE` frame, so the node holds everything it needs offline. On a kill the node writes it, plays
+  the profile's existing **`healed`** event (no new cue: a silenced game stays silent) and shows the gain on the
+  KILL CONFIRMED takeover as another entry in the medal stack.
+
+  **Two rules that are easy to get wrong.** `$LIFE` is additive **and clamped at the pool ceiling**, so a kill at
+  full health grants the full amount and gains nothing: the node must report `min(grant, max - current)`, what was
+  *gained*, never what was granted. And there is **no shield**: that pool is IR-only (P16), so a shield number
+  here would be written and silently do nothing.
 
 ## 3. WeaponCatalog
 

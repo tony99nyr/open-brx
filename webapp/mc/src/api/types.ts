@@ -56,6 +56,10 @@ export interface GameConfig {
   led?: Record<string, unknown>;
   /** A6.5: disjoint player-number ranges for concurrent games sharing one venue. */
   player_num_base?: number;
+  /** S14 heal-on-kill. Both are ADDED to the killer's own pool and clamped by the gun, so an
+   *  overheal is silently dropped -- show what was gained, not what was granted. No shield: that
+   *  pool is IR-only (P16). Absent or {0,0} = off. */
+  siphon?: { hp: number; armor: number };
   loadout_policy: LoadoutPolicy;
   /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
   presentation?: Record<string, unknown>;

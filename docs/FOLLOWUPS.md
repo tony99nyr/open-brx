@@ -207,7 +207,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   sound and the health bar animates up** — reuse the profile's existing `healed` event (presentation.py already
   defines its sound and LED per preset) rather than inventing a siphon cue, so a silenced game stays silent. The
   engine puts it on the kill moment as `siphon: {hp, armor}` beside `medals`, which is the same shape the stack
-  already walks, and the health it heals is the node's own pool so the bar has something to animate to —
+  already walks, and the health it heals is the node's own pool so the bar has something to animate to.
+  **Show what was GAINED, not what was granted** (brx-led, 2026-09-07): `$LIFE` is clamped at the pool ceiling,
+  so a kill at full health grants 50 and gains 0, and a screen that claims +50 there is lying. The node knows its
+  own pool, so it computes `min(grant, max - current)` and the stack shows that; a gain of 0 shows nothing at all
+  —
   **S14.3** prove it on hardware. `build`.
 - **S13 🟡** **Per-player kit powers beyond the pool** (Tony 2026-09-07). The per-player POOL override
   (`loadout.overrides`, KIT) covers health and armour and shipped 2026-09-07. The same per-player idea could

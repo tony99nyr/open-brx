@@ -114,6 +114,17 @@ class Health(TypedDict):
     max_armor: int
 
 
+class Siphon(TypedDict):
+    """S14: heal the killer on each kill (Fortnite/CoD "health on kill").
+
+    Both are **added** to the killer's own pool and clamped by the gun ($LIFE is additive-clamped),
+    so they can never overfill. There is deliberately no `shield`: that pool is IR-only (P16), so a
+    number here would be written and silently do nothing.
+    """
+    hp: int
+    armor: int
+
+
 class SlotRule(TypedDict):
     choice: Literal["player", "host", "fixed", "off"]
     kinds: list[str]                      # primary/secondary: "weapon" | "sidearm" (A12); the perk rule is always ["perk"] (A14)
@@ -160,6 +171,7 @@ class GameConfig(TypedDict):
     teams: list[Team]
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
+    siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
     loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
     presentation: NotRequired[dict]              # A11 (mc/presentation.py): sounds + lights per event, preset or custom
 
