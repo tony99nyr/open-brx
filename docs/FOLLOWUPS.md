@@ -153,7 +153,16 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
   reports a file that did not run, a compiler asserts its `$SIR` cells cover the weapons (done, A17), a light rule is
   pinned by a test that walks the reachable surface (done, `test_led_invariants.py`), and every finding in a review
-  table carries an owner or an id. `decision` + `build`.
+  table carries an owner or an id.
+  **The generalisation, and the real lesson of the night: A GUARD MUST STATE ITS OWN BLIND SPOT.** Four guards failed
+  the same way and none was careless — each was correct for the place it looked. A `finally:`-only scan could not see
+  five bench tools tearing down in the body of `main()`; a names-only sweep could not see the diag runner's inline
+  teardown while a DEAD constant sat on that sweep's allowlist making the file look considered; and the new LED harvest
+  walked two modules but not the third, where bundles are assembled, so the highest-value pin (effect 6) had a hole
+  exactly where a real bundle is built. **A green result from a narrow guard is indistinguishable from a green result
+  from a complete one.** So: every guard says in its docstring what it does NOT cover, and prefers asserting an
+  INVARIANT ("one bundle must not carry two brightnesses for the same surface") over a VALUE a later retraction moves.
+  `decision` + `build`.
 
 - **F35 🔴** `$TID` 4-7 are display-only and BREAK combat (bench 2026-09-07): the IR word's team field is 2 bits so
   the gun transmits `tid & 3`, but the victim compares the FULL tid — teammates on tid ≥ 4 damage each other, their
