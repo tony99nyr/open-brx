@@ -16,6 +16,7 @@ makes this a refactor net: reshape the code however you like, but no reachable f
 from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import RESPAWN_SEQUENCE
 from brx_mcp.mc import presentation as P
+from brx_mcp.mc.compile import Compiler, golden_bundle
 
 # --- the emitted-frame surface ---------------------------------------------- #
 
@@ -37,9 +38,49 @@ def _frames(obj, where, out):
     return out
 
 
+_TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+          {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
+
+
+def _cfg(night: bool, led=None):
+    c = {"config_id": "c1", "mode": "tdm", "environment": "indoor", "night": night,
+         "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
+         "scoring": {"frag_limit": 0, "win_by": "kills"},
+         "health": {"max_hp": 45, "max_armor": 70}, "teams": _TEAMS}
+    if led is not None:
+        c["led"] = led
+    return c
+
+
+def _player(team="blue"):
+    return {"player_id": "p7", "player_num": 7, "display": "REAPER", "team_id": team,
+            "node_id": None, "gun_id": None, "voice": "male", "ready": True,
+            "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}
+
+
+def compiled_bundles():
+    """[(tag, bundle), ...] — REAL FrameBundles, which is what actually reaches a gun.
+
+    Added 2026-09-07 after a review found the hole: this file walked `poolgauge` and
+    `mc.presentation` and never imported `mc.compile`, so the whole compiler-side LED surface
+    (`_headset_colour`, `cues.hurt_led`, `gun_pregame` as spliced into `head`) sat OUTSIDE the net.
+    A `$HLED,,6` emitted from the compiler would not have tripped the effect-6 rule below -- the
+    highest-value pin in the file, with a hole exactly where bundles are assembled. Same failure
+    shape as the bench-teardown guard that only scanned `finally:` blocks: a net trusted because it
+    exists, with an assumption about where to look baked into it."""
+    C = Compiler()
+    out = [("golden", golden_bundle())]
+    for night in NIGHTS:
+        for team in ("blue", "yellow"):
+            out.append((f"compiled/night={night}/team={team}", C.compile(_cfg(night), _player(team), _TEAMS)))
+    return out
+
+
 def harvest():
-    """[(origin, frame), ...] for every LED frame the presentation layer can emit."""
+    """[(origin, frame), ...] for every LED frame the presentation layer AND the compiler can emit."""
     out: list[tuple[str, str]] = []
+    for tag, b in compiled_bundles():
+        _frames(b, f"bundle[{tag}]", out)
     for night in NIGHTS:
         for team in TEAMS:
             for ffa in (False, True):
@@ -314,3 +355,46 @@ def test_the_down_signal_survives_a_blackout_game():
         assert "down" in h, f"{name}: the down signal vanished when LEDs were off"
         assert h["down"]["stop"] == "$HLOOP,0,0,*"
         assert h["down"]["rearm"].startswith("$HLOOP,")
+
+
+# --- 8. one bundle, one brightness per surface (D3) -------------------------- #
+
+def _hled_of(frames) -> list[str]:
+    return [f for f in frames if f.startswith("$HLED")]
+
+
+def test_a_bundle_never_carries_two_brightnesses_for_the_same_surface():
+    """The compiler and the presentation layer must agree within a single bundle.
+
+    D3 (found 2026-09-07): a NIGHT bundle shipped a gun body dimmed to token 5 = 1 and, one line
+    away in the same `head`, a headset at full brightness 10 -- because `compile._headset_colour()`
+    hardcoded 10 and took no `night` argument at all, while `presentation._hled()` and
+    `gun_pregame()` both dim. Same player, same moment, two answers.
+
+    This asserts CONSISTENCY rather than a literal value, which is the invariant that was actually
+    broken: whatever the right night brightness is, one bundle must not hold two of them. The ruling
+    behind it (brx-led, 2026-09-07) is that night DIMS the headset and blackout OMITS it -- those are
+    different answers to different questions, and `night=True` is not a substitute for omission."""
+    for tag, b in compiled_bundles():
+        head_hled = _hled_of(b.get("head", []))
+        pregame = _hled_of((b.get("headset") or {}).get("pregame") or [])
+        if not head_hled or not pregame:
+            continue                     # LEDs off, or no team paint in this bundle
+        assert head_hled[-1] == pregame[-1], (
+            f"{tag}: the bundle's head paints the headset {head_hled[-1]!r} while its "
+            f"headset.pregame paints {pregame[-1]!r} — the same surface at the same moment, two "
+            f"brightnesses. compile._headset_colour() needs the same `night` that gun_pregame gets.")
+
+
+def test_the_night_bundle_dims_every_surface_it_lights():
+    """led-language.md §3.4 + the 2026-09-07 ruling: with LEDs ON at night, the gun body and the
+    headset team paint both drop to token 5 = 1. (Blackout is the other case entirely — the caller
+    omits the headset rather than dimming it — and is not what this asserts.)"""
+    C = Compiler()
+    b = C.compile(_cfg(night=True), _player(), _TEAMS)
+    for f in b["head"]:
+        if f.startswith(("$GLED", "$HLED")) and toks(f)[0] not in ("", str(pg.DARK)):
+            bright = toks(f)[4] if f.startswith("$GLED") else toks(f)[4]
+            assert bright == str(pg.BRIGHT_DIM), (
+                f"night bundle lights {f!r} at brightness {bright!r}, expected "
+                f"{pg.BRIGHT_DIM} — night dims every surface it lights")

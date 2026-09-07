@@ -76,7 +76,7 @@ DEFAULT_POOL = 115
 _HLED_SEEN_COLOURS = pg.HEADSET_TIDS
 
 
-def _headset_colour(tid: int, leds: bool, ffa: bool = False) -> list[str]:
+def _headset_colour(tid: int, leds: bool, ffa: bool = False, night: bool = False) -> list[str]:
     """The pre-game headset team colour, or nothing (WHITE for every player in FFA -- Q19, no team
     identity to protect there).
 
@@ -90,7 +90,11 @@ def _headset_colour(tid: int, leds: bool, ffa: bool = False) -> list[str]:
     colour = pg.FFA_COLOUR if ffa else pg.display_colour(tid)
     if not leds or colour not in _HLED_SEEN_COLOURS:
         return []
-    return [f"$HLED,{colour},0,,,10,,*"]
+    # `night` dims to token 5 = 1 (led-language.md §3.4). Until 2026-09-07 this hardcoded 10 and took
+    # no `night` at all, so a night bundle shipped a dimmed GUN BODY one line away from a
+    # full-brightness HEADSET in the same `head` (D3). Blackout is the OTHER case and is handled by
+    # `leds` above -- the caller omits the headset entirely; `night=True` is not a substitute for that.
+    return [pg.headset_team_frame(tid, ffa, night)]
 
 
 def play_volume(environment: str | None) -> int:
@@ -738,8 +742,8 @@ class Compiler:
         hs = prof.get("headset") or _pres.HEADSET_DEFAULT
         # A11.6: the lobby team colour is the headset block's `pregame`; the in-play repaint after
         # spawn / revive / hit exists only when `in_play` is "team" (default: dark, native-like).
-        hled = _headset_colour(tid, gc.leds, ffa) if hs.get("pregame", "team") == "team" else []
-        play_hled = _headset_colour(tid, gc.leds, ffa) if hs.get("in_play") == "team" else []
+        hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("pregame", "team") == "team" else []
+        play_hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
         gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
         head += self.sir_table(plan, hits_rng) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
