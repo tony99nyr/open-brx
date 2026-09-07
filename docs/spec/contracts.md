@@ -224,7 +224,17 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
               pregame: string[],                                          // list of [frame, hold_s] ending on an explicit
               start: [string, number][], hit: [string, number][],         // state frame. `rest` = the in-play frame the node
               death: [string, number][], respawn: [string, number][],     // returns to after every flash ("" never; dark or
-              carrier: { [tid: string]: [string, number][] } },           // team). death [] = the "native" opt-out. {} when LEDs are off.
+              carrier: { [tid: string]: [string, number][] },             // team). death [] = the "native" opt-out.
+              // A16 [2026-09-07, bench]: `rest`/`blank` are DARK BY COLOUR (`$HLED,9,0,,,10,,*`). ⚠ `$HLED,,6`
+              // (effect 6) DISABLES the firmware's own death-flash loop for the rest of that life, so it is a
+              // TEARDOWN frame only and must never be written in play; a colour write does not suppress it.
+              down: { rearm: string, stop: string, rearm_after_ms: number } },
+              // A16: the DOWN indication is the FIRMWARE's own bright flash (~0.75 s on the small LED), which
+              // runs in a hosted game on its own. The node writes NOTHING to the headset at death; at
+              // `rearm_after_ms` (2500) it writes `rearm` ONCE ($HLOOP,2,750) as insurance for any life where a
+              // blank slipped through, and `stop` ($HLOOP,0,0) before a revive ($SPAWN also clears the loop).
+              // Present even when LEDs are off/blackout: it is the one signal other players must read.
+              // This REPLACES A11.8's `death_flash` ($LED pulsed by the node at 750 ms, ≥2× dimmer, ~80 writes/min).
   // hurt/hurt_led = the victim-side low-health alert ($PLAY,VA8B + $HLED), fired ONCE PER LIFE
   // when armour reaches 0 and HP starts dropping. Byte-identical to Callsign
   // (protocol/captures/raw/2026-08-23-two-tagger-combat.btsnoop @340.5s, @361.5s).
@@ -600,6 +610,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 | A8 | 2026-08-25 | A8.1 operator auth, A8.2 node re-claim key, A8.3 input hardening | §5b |
 | A9 | 2026-08-26 | A9.1 `apply.preview` | §5 `apply` |
 | A10 | 2026-08-27 | M-LOADOUT: two slots + perks, `loadout_policy`, `loadout_request`/`browse`/`ack`, ready semantics, saved games (`/api/presets*`) | §2, §5; full text `loadout.md` |
+| A16 | 2026-09-07 | LEDs, bench-driven: `$HLED,,6` disables the firmware death flash for the life ⇒ in-play dark is `$HLED,9,0` and effect 6 is teardown-only; `headset.down` ($HLOOP rearm/stop) REPLACES A11.8 `death_flash`; gun-body team colour uses the tid as the palette index (was an offset table); `respawn.delay_s` floored at 3 s (F13) | §3, §4 |
 | A11 | 2026-09-04 | PRESENTATION: A11.1 profile, A11.2 bundle `cues`+`leds`, A11.3 node plays its own events, A11.4 HUD-driven events + `alert` + medals, A11.5 event classes + `mc_confidence`, A11.6 headset, A11.7 gun body, A11.8 small flash LED | §3, §4, §5 |
 | A12 | 2026-09-04 | SIDEARMS: three pistols; `SlotRule.kinds` gains `"sidearm"` | §2, §3; `loadout.md` §1.1 |
 | A13 | 2026-09-04 | UTILITY: A13.1 `respawn.gate` + `stations[]`, A13.2 `respawn.station`, A13.3 the station/player advert, A13.4 node `state().station`/`respawnGate`/`respawnHint`, A13.5 `station_config` | §3, §4, §5; full text `utility.md` |
