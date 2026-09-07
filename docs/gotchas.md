@@ -261,6 +261,24 @@ indistinguishable through `$HIR`, and a whole session was lost to reading corpse
 Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
 Repro: `mcp/tools/clear_spawn_repro.py`.
 
+**🔴 `$HLED,,6` IN PLAY SILENTLY KILLS THE NATIVE DEATH FLASH (2026-09-07)**
+**Symptom:** downed players' headsets are dark in our games, while native play flashes them brightly. It looks
+like "hosted games don't get the out-blink" — that reading was wrong and cost a whole design.
+
+**Cause:** `$HLED,,6,,,,,*` (effect 6, the blank) **disables the firmware's own death-flash loop for the rest of
+that life.** The same gun killed after a *colour* write flashes normally. Effect 6 was our `in_play: dark` rest
+frame, so every hosted game was switching its own death flash off, once per life, and we then built an `$LED`
+pulser to replace what we had just disabled.
+
+**Rule:** never send `$HLED,,6` while a match is running. **Dark on the headset is `$HLED,9,0,,,10,,*`** (colour
+9). Effect 6 is a teardown frame only. If something did blank it, `$HLOOP,2,750,*` restores the flash on a dead
+gun at native drive or better; `$HLOOP,0,0,*` stops it, and `$SPAWN` clears it by itself.
+
+**The native HIT flash is not affected by any of this** — it fires from the firmware's own IR path even on a
+blanked headset (2026-09-02). Only the death loop is fragile.
+
+---
+
 **🟠 THE GREEN DEATH BLINK STICKS ON if you respawn within ~2 s of the kill (2026-09-02)**
 **Symptom:** a player's headset keeps flashing the out/respawning green after they are back. The gun
 is fine — alive, full pools, registering hits normally (8/8 measured while it was blinking). Only the
