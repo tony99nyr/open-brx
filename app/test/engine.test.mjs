@@ -1441,19 +1441,115 @@ test('A11.8 small-LED flash: kill feedback fires the top medal\'s lights (flash)
 });
 
 
-test('A11.8 death flash: while DOWN the small flash LED pulses every 750 ms and stops on revive', () => {
+// ---------- §3.2 (led-language.md, bench 2026-09-07): the native death flash runs by itself; we write
+// nothing to the headset at death any more, and the old node-driven pulse ($LED,9,1,1,1,* every 750 ms,
+// A11.8 death_flash) is deleted. `frames.headset.down = {rearm, stop, rearm_after_ms}` is belt-and-braces
+// only: one $HLOOP rearm after the hands-off window, and a stop before every $SPAWN. ----------
+const DOWN = { rearm: '$HLOOP,2,750,*', stop: '$HLOOP,0,0,*', rearm_after_ms: 2500 };
+
+test('§3.2 down: nothing is written to the headset for the hands-off window — the native flash is already running', () => {
   const h = goLive(harness());
-  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], death_flash: { frame: '$LED,9,1,1,1,*', period_ms: 750 } };
+  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], down: DOWN };
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
   h.writes.length = 0;
-  for (let i = 0; i < 12; i++) { h.adv(250); h.eng.tick(); }             // 3 s down
-  const n = h.writes.filter(f => f === '$LED,9,1,1,1,*').length;
-  assert.ok(n >= 3 && n <= 5, 'about one pulse per 750 ms, got ' + n);
-  h.adv(6000); h.eng.tick();                                              // auto respawn (8 s)
-  assert.ok(h.eng.alive);
+  for (let i = 0; i < 9; i++) { h.adv(250); h.eng.tick(); }   // 2.25 s down — inside the 2.5 s window
+  assert.equal(h.writes.filter(f => f.startsWith('$HLED') || f.startsWith('$HLOOP')).length, 0, 'no headset write while inside the hands-off window');
+});
+
+test('§3.2 down: past the hands-off window ONE $HLOOP rearm is written, then nothing more while still down', () => {
+  const h = goLive(harness());
+  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], down: DOWN };
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
   h.writes.length = 0;
-  for (let i = 0; i < 8; i++) { h.adv(250); h.eng.tick(); }
-  assert.equal(h.writes.filter(f => f === '$LED,9,1,1,1,*').length, 0, 'alive: no more pulses');
+  for (let i = 0; i < 10; i++) { h.adv(250); h.eng.tick(); }   // 2.5 s — the window has just elapsed
+  assert.deepEqual(h.writes.filter(f => f === DOWN.rearm), [DOWN.rearm], 'exactly one rearm write');
+  h.writes.length = 0;
+  for (let i = 0; i < 20; i++) { h.adv(250); h.eng.tick(); }   // stays down well past the window (auto respawn is 8 s; total elapsed so far is under it)
+  assert.equal(h.writes.filter(f => f === DOWN.rearm).length, 0, 'one write per death, never a repeating pulse');
+});
+
+test('§3.2 down: the rearm is suppressed during a resync (the gun is disarmed/unverified there)', () => {
+  const h = goLive(harness());
+  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], down: DOWN };
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  h.eng.resync = { step: 1, since: h.eng.now(), prompt: 'x', reserve: null, probes: 0 };   // an in-flight resync, same shape _beginResync builds
+  h.writes.length = 0;
+  for (let i = 0; i < 12; i++) { h.adv(250); h.eng.tick(); }   // 3 s down, well past the window, but resyncing throughout
+  assert.equal(h.writes.filter(f => f === DOWN.rearm).length, 0, 'no rearm while resync is open');
+  h.eng.resync = null;
+  h.adv(250); h.eng.tick();
+  assert.deepEqual(h.writes.filter(f => f === DOWN.rearm), [DOWN.rearm], 'the rearm fires once resync clears');
+});
+
+test('§3.2 down: a revive writes the stop BEFORE $SPAWN, and resets the rearm gate for the next life', () => {
+  const h = goLive(harness());   // harness() respawn defaults to auto, delay_s 8
+  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], down: DOWN };
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  h.writes.length = 0;
+  h.adv(8000); h.eng.tick();   // auto respawn delay elapses → revive
+  assert.equal(h.eng.alive, true, 'revived');
+  const stopI = h.writes.indexOf(DOWN.stop), spawnI = h.writes.indexOf('$SPAWN,,*');
+  assert.ok(stopI >= 0 && spawnI >= 0 && stopI < spawnI, 'the stop lands before $SPAWN, got stop@' + stopI + ' spawn@' + spawnI);
+  // die again: the rearm gate was reset by the revive, so the SAME one-write-per-death behaviour holds next life
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  for (let i = 0; i < 10; i++) { h.adv(250); h.eng.tick(); }
+  assert.deepEqual(h.writes.filter(f => f === DOWN.rearm), [DOWN.rearm], 'the second death gets its own rearm write');
+});
+
+test('§3.2 down: nothing is sent when the game has no down table (an older/absent bundle)', () => {
+  const h = goLive(harness());
+  h.eng.frames.headset = { ...h.eng.frames.headset, death: [], down: undefined };   // no `down` key at all (the golden fixture now ships a real one — explicitly override it away)
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  h.writes.length = 0;
+  for (let i = 0; i < 40; i++) { h.adv(250); h.eng.tick(); }   // well past any rearm window
+  assert.equal(h.writes.filter(f => f.startsWith('$HLOOP')).length, 0, 'no rearm write is fabricated when the bundle carries no down table');
+});
+
+test('§3.2 teardown: a pending delayed light step from an event burst cannot land after _endLocal', () => {
+  const h = harness().kit().config_().echo();
+  const pending = [];
+  h.eng.delay = (ms, fn) => pending.push(fn);   // capture instead of firing inline, so we can invoke it AFTER teardown
+  h.start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // died: golden.leds.died has $GLED steps with real holds
+  assert.ok(pending.length > 0, 'the died burst queued at least one delayed light step');
+  h.eng._endLocal('test-teardown');
+  h.writes.length = 0;
+  pending.forEach(fn => fn());
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED') || f.startsWith('$HLED')).length, 0, 'no delayed light step reached the gun/headset after teardown');
+});
+
+test('§3.2 teardown: a panic cuts off a pending delayed light step the same way as _endLocal', () => {
+  const h = harness().kit().config_().echo();
+  const pending = [];
+  h.eng.delay = (ms, fn) => pending.push(fn);
+  h.start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.ok(pending.length > 0, 'a delayed light step is queued');
+  h.eng.control({ cmd: 'panic' });
+  h.writes.length = 0;
+  pending.forEach(fn => fn());
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED') || f.startsWith('$HLED')).length, 0, 'no delayed light step reached the gun/headset after a panic');
+});
+
+test('§3.2 teardown: a queued gun-take blank+paint (_gunTake) writes nothing after a BLE drop', () => {
+  // NOTE: _endLocal and panic both already zero `alive` synchronously, and _gunTake's own `!this.alive`
+  // guard already blocked a stale write in that case (a death before the timer already had its own test,
+  // "A11.7 gun take ... a death before the timer cancels it") — a _lightGen check there is redundant with
+  // that guard and does not change behaviour. The one path _gunTake had NO guard against is a BLE drop:
+  // `onBleDropped()` bumps `_lightGen` but touches neither `alive` nor `_gunLife`, so a queued blank+paint
+  // used to still land on a relinked gun. That is the gap this test (and the _lightGen check) closes.
+  const h = harness().kit().config_().echo();
+  h.eng.frames.gun = { in_play: 'team', blank: '$GLED,,,,5,,,*', rest: '$GLED,1,1,1,0,10,,*', after_spawn_s: 2.5, take: ['$GLED,,,,5,,,*', '$GLED,1,1,1,0,10,,*'] };
+  const pending = [];
+  h.eng.delay = (ms, fn) => pending.push(fn);   // capture instead of firing inline (harness normally runs delays synchronously)
+  h.start(0); h.adv(10); h.eng.tick();   // T-0 spawn calls _gunTake, which queues the blank+paint 2.5 s out
+  assert.ok(pending.length > 0, 'the gun take queued its delayed blank+paint');
+  assert.equal(h.eng.alive, true, 'still alive — the pre-existing !this.alive guard alone would not block this write');
+  h.eng.onBleDropped();
+  h.writes.length = 0;
+  pending.forEach(fn => fn());
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no gun-take write reached the gun after the BLE drop');
 });
 
 // ---- A15: cue pools -- a random take per event (Tony 2026-09-06: "the kill confirm sound and taunts should be

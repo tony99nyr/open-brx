@@ -80,6 +80,8 @@ export class Engine {
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
+    this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
+    this._lightGen = 0;             // bumped on teardown (end/panic/BLE drop) so a stray delayed $GLED/$HLED/cue write can't land after it
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
@@ -215,7 +217,7 @@ export class Engine {
     if (this.start && (this.phase === 'lobby' || this.phase === 'armed')) this.resumeSchedule();
     this._changed();
   }
-  onBleDropped() { this.bleUp = false; this.reloading = null; this.switching = null; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03)
+  onBleDropped() { this.bleUp = false; this.reloading = null; this.switching = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
@@ -457,11 +459,12 @@ export class Engine {
   _headset(seq, why) {
     if (!seq || !seq.length) return;
     const gen = (this._hsGen = (this._hsGen || 0) + 1);
+    const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a delayed step checks this too, alongside `gen`'s supersession check
     let t = 0;
     for (const step of seq) {
       const frame = step[0], hold = Math.max(0, Math.round((step[1] || 0) * 1000));
       if (t === 0) this._write([frame], `headset ${why}`);
-      else this.delay(t, () => { if (this._hsGen === gen) this._write([frame], `headset ${why}`); });
+      else this.delay(t, () => { if (this._hsGen === gen && this._lightGen === lg) this._write([frame], `headset ${why}`); });
       t += hold;
     }
   }
@@ -474,8 +477,9 @@ export class Engine {
     this._gunTaken = false; this._gunBand = null;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
     const life = (this._gunLife = (this._gunLife || 0) + 1);
+    const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
     this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
-      if (life !== this._gunLife || !this.alive) return;
+      if (life !== this._gunLife || this._lightGen !== lg || !this.alive) return;
       this._write(g.take, 'gun take'); this._gunTaken = true; this._gunBand = g.rest;
     });
   }
@@ -571,16 +575,17 @@ export class Engine {
     this._lastEventLed = now;
     let t = 0;
     const gen = (this._hsGen = this._hsGen || 0);   // an event's static $HLED must not land over a later headset sequence (death blink, hit flash); seed the counter so the check is not undefined === 0 after a reload
+    const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: every delayed step below (headset AND gun) checks this
     for (const step of seq) {
       const frame = step[0], hold = Math.max(0, Math.round((step[1] || 0) * 1000));
       if (frame.startsWith('$HLED')) {
         if (!this.alive) { t += hold; continue; }   // down: the out-blink owns the headset (polish 2026-09-04)
-        if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => { if (this._hsGen === gen && this.alive) this._write([frame], `event led ${kind}`); });
-      } else if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => this._write([frame], `event led ${kind}`));
+        if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => { if (this._hsGen === gen && this._lightGen === lg && this.alive) this._write([frame], `event led ${kind}`); });
+      } else if (t === 0) this._write([frame], `event led ${kind}`); else this.delay(t, () => { if (this._lightGen === lg) this._write([frame], `event led ${kind}`); });
       t += hold;
     }
     const g = f.gun;
-    if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
+    if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }
   _cue(key) {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
@@ -658,8 +663,8 @@ export class Engine {
       if (this.respawnType === 'scanner' && this.respawnGate === 'presence') {
         const st = this._stationRevivable(now); if (st) { this._resyncRevive = false; this._revive(false, st.id); }
       }
-      this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN
-      this._deathFlash(now);           // A11.8: the small flash LED pulsed while DOWN (native-style respawn indication)
+      this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN (colour opt-in only)
+      this._downRearm(now);            // §3.2: one $HLOOP rearm after the hands-off window (belt-and-braces; the native flash is already running)
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
@@ -676,6 +681,9 @@ export class Engine {
   _revive(resync, stationId = null) {
     this.reloading = null;                          // a reload that started in the last life does not follow you into this one
     if (!this.frames) return;
+    const down = this.frames.headset && this.frames.headset.down;
+    if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
+    this._downRearmSent = false;   // §3.2: fresh rearm gate for the next life
     const sp = this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two)
     const ps = this._pickFrame('pset_pool');   // A15.3: a fresh death scream for this life, written before $SPAWN
     this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
@@ -695,6 +703,7 @@ export class Engine {
   _endLocal(why) {
     if (this.ended) return;
     this.ended = true; this._panicked = null; this.endAck = false;
+    this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
     try { if (this.onEnd) this.onEnd({ t: this.now(), match_id: this.matchId, kills: this.score ? this.score.kills : null,
       deaths: this.deaths, assists: this.score ? this.score.assists : null,
       accuracy: this.score ? this.score.accuracy : null, shots: this.shots, mode: this.config ? this.config.mode : null }); } catch (_) { /* history is best-effort */ }
@@ -754,6 +763,7 @@ export class Engine {
         else if (this.phase === 'live' && this.start && this.start.seq === seq) this._endLocal('abort_start(live)=recall');
         return;
       case 'panic':
+        this._lightGen = (this._lightGen || 0) + 1;   // same as _endLocal: cut off any pending delayed light/cue step immediately, not just once delivered
         if (this.bleUp) this._writeTeardown('panic', 'control'); else { this.pendingTeardown = 'panic'; this.log('panic owed to the gun — link down', 'le'); }
         this._resyncRevive = false;   // a panic does NOT retire the match_id — a NEWER start (higher seq) is still accepted later
         // …but a WS welcome re-delivering the SAME schedule must not re-arm a gun the operator just cleared.
@@ -778,10 +788,11 @@ export class Engine {
     // "" is deliberately mute (announcer off) and is skipped; a missing one is skipped too.
     const medalCues = (Array.isArray(body.medals) ? body.medals : [])
       .map(m => ({ m, f: this.frames && this.frames.cues && this.frames.cues[m] })).filter(x => x.f);
+    const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: neither a medal line nor the feedback cue may land after the match ended
     if (medalCues.length) {
-      medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => this._write([x.f], `medal ${x.m}`)));
+      medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => { if (this._lightGen === lg) this._write([x.f], `medal ${x.m}`); }));
       this.medals = body.medals.slice();
-    } else if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}${pick.tag}`));   // hardware-proven gap (seed): flash, then the line
+    } else if (cue) this.delay(120, () => { if (this._lightGen === lg) this._write([cue], `feedback cue ${body.kind}${pick.tag}`); });   // hardware-proven gap (seed): flash, then the line
     this._eventLeds(medalCues.length ? medalCues[0].m : body.kind);   // A11.8: the headset's small LED flash (+ any burst) for the top medal
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
@@ -900,16 +911,25 @@ export class Engine {
    *  they reach a station (scanner respawn can be a long walk). No-op when the game has no death frame, and
    *  never within a few seconds of the death/revive writes (F13: the headset is a relay, back-to-back writes
    *  to it stick). Called from tick(). */
-  /** While DOWN, pulse the headset's small flash LED every `death_flash.period_ms` (750 = the native respawn cadence):
-   *  in a hosted game the firmware gives no out-indication of its own. Stops on revive; never during resync. */
-  _deathFlash(now) {
-    const h = this.frames && this.frames.headset; const df = h && h.death_flash;
-    if (!df || this.alive || !this.deadAt || this.resync) return;
-    if (now - (this._deathFlashAt || 0) < (df.period_ms || 750)) return;
-    this._deathFlashAt = now; this._write([df.frame], 'death flash');
+  /** §3.2 (led-language.md, bench 2026-09-07): the firmware runs its OWN bright out-flash on the headset's
+   *  small LED for the whole life, for free — UNLESS an `$HLED,,6` blank was sent during it, which disables
+   *  the loop. We write NOTHING to the headset at death any more (the old node-driven pulse was ≥2x dimmer
+   *  and cost ~80 writes/min). This is belt-and-braces only: `down.rearm` (`$HLOOP,2,750,*`) restores the
+   *  flash at native drive or better for any life where a blank slipped through (an older node, a teardown
+   *  race, a mode that still paints effect 6). One write per death, past the hands-off window, never during
+   *  resync — same gate as the deleted `_deathFlash`. */
+  _downRearm(now) {
+    const down = this.frames && this.frames.headset && this.frames.headset.down;
+    if (!down || !down.rearm || this.alive || !this.deadAt || this.resync || this._downRearmSent) return;
+    if (now - this.deadAt < (down.rearm_after_ms != null ? down.rearm_after_ms : 2500)) return;
+    this._downRearmSent = true;
+    this._write([down.rearm], 'down rearm');
   }
+  /** The `death: <colour>` opt-in ONLY (a big-LED blink held alongside the native flash) re-asserts through
+   *  a long DOWN so a count-limited blink (~160 s) can't die before a scanner-mode walk reaches a station.
+   *  Never during resync (the gun is disarmed/unverified there), and a no-op when the game didn't opt in. */
   _reassertDeathBlink(now) {
-    if (this.alive || !this.deadAt || !this._headsetDeath().length) return;
+    if (this.alive || !this.deadAt || this.resync || !this._headsetDeath().length) return;
     if (now - this.deadAt < 5000) return;                          // the _die write is still fresh
     if (now - this._deathBlinkAt < HEADSET_REBLINK_MS) return;     // not due yet
     this._headset(this._headsetDeath(), 'death (re-assert)');
@@ -1109,7 +1129,7 @@ export class Engine {
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = fresh ? this.latch.shooter_num : 0;
     const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
-    this.alive = false; this.deaths++; this.deadAt = this.now();
+    this.alive = false; this.deaths++; this.deadAt = this.now(); this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
     this.killedBy = { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
     if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {

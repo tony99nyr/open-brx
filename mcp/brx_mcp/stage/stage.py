@@ -585,13 +585,18 @@ class GunStage:
         return self.state()
 
     async def revive(self) -> dict:
+        hs = self.bundle.get("headset") or {}
+        down = hs.get("down")
+        if down and down.get("stop"):
+            # §3.2: belt-and-braces -- $SPAWN clears the $HLOOP on its own, this just gives the relay a
+            # settled frame first (mirrors engine.js `_revive`, written BEFORE the revive frames below).
+            await self.write([down["stop"]], "down stop", gap_ms=0)
         fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
         ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
         await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
         self.event("respawned", sound=False)                     # the lights; the sound went out with the revive write
-        hs = self.bundle.get("headset") or {}
         self.carrying = None
         if hs.get("respawn"):
             self._headset(hs["respawn"], "headset respawn")
@@ -842,12 +847,13 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hp == 0 and self.alive:
             self.alive = False
-            self._log("☠ down -- playing the death overlay", "info")
+            self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset", "info")
             self.event("died")
             if hs.get("death"):
                 self._headset(hs["death"], "headset death")
-            if hs.get("death_flash"):
-                self._spawn_task(self._death_flash_loop(getattr(self, "_life", 0), hs["death_flash"]))
+            down = hs.get("down")
+            if down and down.get("rearm"):
+                self._spawn_task(self._down_rearm(getattr(self, "_life", 0), down))
             self.carrying = None
             return
 
@@ -872,19 +878,18 @@ class GunStage:
                     self._gun_band = r
                     self._spawn_task(self.write([r], "gun health band", gap_ms=0))
 
-    async def _death_flash_loop(self, life: int, df: dict) -> None:
-        """A11.8: pulse the small flash LED every period while DOWN, like the native respawn blink; stops on revive."""
-        period = float(df.get("period_ms", 750)) / 1000
-        last = None
-        for _ in range(400):                                          # ~5 min cap
-            if self.alive or life != getattr(self, "_life", 0):
-                return
-            now = self.now()
-            if last is not None and now - last < period * 0.5:
-                return                                                # the clock did not advance (a broken sleep): never spin
-            last = now
-            await self.write([df["frame"]], "death flash", gap_ms=0)
-            await self.sleep(period)
+    async def _down_rearm(self, life: int, down: dict) -> None:
+        """§3.2 (2026-09-07 bench, led-language.md): the firmware runs its OWN bright out-flash on the
+        headset's small LED for the whole life, for free -- we write NOTHING to the headset at death any
+        more (the old node-driven pulse this replaced was >=2x dimmer and cost ~80 writes/min). This is
+        belt-and-braces ONLY: one `down['rearm']` write ($HLOOP) after the hands-off window, restoring the
+        flash at native drive or better for any life where a blank slipped through (an older node, a
+        teardown race, a mode that still paints effect 6). Gated on the life counter, like `_gun_take`, so
+        a revive before the window elapses cancels it -- `revive()` also writes `down['stop']` directly."""
+        await self.sleep(float(down.get("rearm_after_ms", 2500)) / 1000)
+        if self.alive or life != getattr(self, "_life", 0):
+            return                                                    # revived (or died again) before the window
+        await self.write([down["rearm"]], "down rearm (belt-and-braces -- the native flash is already running)", gap_ms=0)
 
     def _gun_rest(self) -> str | None:
         g = self.bundle.get("gun")
@@ -930,7 +935,10 @@ class GunStage:
                 "sound: the hurt line · headset: Callsign's fast blink · " + ("gun body: YELLOW then RED bands" if g and g.get("in_play") == "health" else "gun: hit burst only"),
                 "ir", {"kind": "shot", "repeat": 1}, needs_ir=True)
             add("death", "DEATH (emitter kills you)",
-                ("headset: " + ("our slow blink while out" if hs.get("death") else "native (dark in a hosted game)") + " · ") if hs else ""
+                # §3.2 (2026-09-07 bench): the FIRMWARE flashes the headset's small LED brightly on its own
+                # while you're down -- we write nothing extra there beyond a belt-and-braces $HLOOP rearm.
+                ("headset: FIRMWARE flash (native, ~0.75s cycle) -- our $HLOOP rearm is insurance only"
+                 + (", plus our slow big-LED blink in the opt-in colour" if hs.get("death") else "") + " · ") if hs else ""
                 + "gun: died burst · sound: died line" if cues.get("died") else "no died sound", "ir", {"kind": "kill"}, needs_ir=True)
         else:
             add("death_overlay", "DEATH OVERLAY (no emitter: the frames only)",

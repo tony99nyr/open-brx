@@ -718,8 +718,13 @@
   },
   "headset": {
     "in_play": "dark",
-    "rest": "$HLED,,6,,,,,*",
-    "blank": "$HLED,,6,,,,,*",
+    "rest": "$HLED,9,0,,,10,,*",
+    "blank": "$HLED,9,0,,,10,,*",
+    "down": {
+      "rearm": "$HLOOP,2,750,*",
+      "stop": "$HLOOP,0,0,*",
+      "rearm_after_ms": 2500
+    },
     "pregame": [
       "$HLED,1,0,,,10,,*"
     ],
@@ -729,7 +734,7 @@
         0.6
       ],
       [
-        "$HLED,,6,,,,,*",
+        "$HLED,9,0,,,10,,*",
         0.0
       ]
     ],
@@ -741,7 +746,7 @@
         0.6
       ],
       [
-        "$HLED,,6,,,,,*",
+        "$HLED,9,0,,,10,,*",
         0.0
       ]
     ],
@@ -758,10 +763,6 @@
           0.0
         ]
       ]
-    },
-    "death_flash": {
-      "frame": "$LED,9,1,1,1,*",
-      "period_ms": 750
     }
   },
   "gun": {
@@ -788,7 +789,7 @@
       "start_flash": true,
       "in_play": "dark",
       "hit": null,
-      "death": "flash",
+      "death": "native",
       "respawn_flash": true,
       "carrier": true
     },

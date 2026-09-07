@@ -11,16 +11,24 @@ ten candidates (`$GSET` t8 gameMods 1/2/4/8/16, `$GSET` t4, `$GSET` t5, `$PSET` 
 three LEDs moving together with no per-segment collapse. See `experiment-log.md` 2026-09-02 (night,
 F1). So we paint it.
 
-⚠️ **A SEGMENTED BAR DOES NOT WORK ON A SPAWNED GUN** (measured 2026-09-02, 7 samples per case).
-While the native animation runs, a MIXED frame does not produce mixed output: setting `$GLED,5,9,9`
-left all three LEDs lit at 194/204/191, indistinguishable from `$GLED,5,5,5` at 199/209/195. What DOES
-work in game is the WHOLE STRIP: a uniform colour holds (our hue dominates), and `$GLED,9,9,9` really
-does blank it (155 against 209 native). So in a live game the strip is a ONE-COLOUR indicator, not a
-three-segment bar. The per-segment mapping below is still correct and still verified on an unspawned
-gun, and is kept for pre-game and lobby use.
+⚠️ **A SEGMENTED BAR DOES NOT WORK ON A GUN THAT IS STILL BREATHING** (measured 2026-09-02, 7 samples
+per case). While the native spawn animation runs, a MIXED frame does not produce mixed output: setting
+`$GLED,5,9,9` left all three LEDs lit at 194/204/191, indistinguishable from `$GLED,5,5,5` at
+199/209/195. What DOES work while breathing is the WHOLE STRIP: a uniform colour holds (our hue
+dominates), and `$GLED,9,9,9` really does blank it (155 against 209 native).
 
-This retracts "F1's three-segment gauge is buildable", which was measured on a UNIFORM colour and
+This retracted "F1's three-segment gauge is buildable", which was measured on a UNIFORM colour and
 generalised to per-segment control without testing that step.
+
+**PARTIALLY RE-RETRACTED 2026-09-04** (`mc.presentation` `GUN_BLANK`, A11.7/S4): `$GLED,,,,5,,,*` takes
+the strip OUT of the breathing loop entirely, and a mixed frame painted after that blank DOES render
+per-segment and HOLDS. So the per-segment mapping below is not just a pregame/lobby fallback -- it is
+buildable in a live game too, provided the gun is blanked first. What is still unverified (see
+`led-language.md` §2): the hold surviving minutes with no traffic, whether `$PLAY`/`$AMMO`/`$HLED`/
+`$LED` disturb a held paint, and a dim (token 5 = 1) paint keeping its hue after a blank. Nothing in
+this module drives the blank itself yet -- that lives in `mc.presentation`/`mc.compile`, and the
+transient in-play readout `gauge_frame` would need to drive is a design (`led-language.md` §3.1), not
+built here (led-language.md §6 finding #5).
 
 Everything here is PURE: frames in, frames out, no I/O and no clock. The driver owns the timer and
 the sending. That keeps the mapping testable without a tagger, which matters because the LED
@@ -40,11 +48,16 @@ from __future__ import annotations
 RED, BLUE, YELLOW, GREEN, PURPLE, TEAL, WHITE, PINK, ORANGE = range(9)
 DARK = 9
 
-# Our choice, not the gun's: nothing on the wire dictates a team colour. Blue/red first because they
-# are the two the taggers already pulse pre-game, so they read as "team" to a player without being
-# taught.
-TEAM_COLOURS = {1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}
-DEFAULT_TEAM_COLOUR = WHITE
+# Our choice, not the gun's: nothing on the wire dictates a team colour, so the tid IS the palette
+# index -- red 0 / blue 1 / yellow 2 / green 3, matching `state.py`'s TEAM_DEFS and the headset's own
+# painting (`$HLED,<tid>,0,...` in `mc.presentation.headset_frames`, tid used directly).
+# F33 (2026-09-07 bench, led-language.md §6 #1): this table used to be OFFSET from the server's tids
+# (`{1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}`), so a yellow-team (tid 2) gun painted RED, a red-team
+# (tid 0, not a key at all) gun fell through to DEFAULT_TEAM_COLOUR (WHITE), and only blue (tid 1, the
+# one colour every bench happened to test) ever agreed with the headset. Identity below fixes both
+# `team_frame` (the gun) and `headset_team_frame` (the direct-BLE `GameDriver` path) in one place.
+TEAM_COLOURS = {0: RED, 1: BLUE, 2: YELLOW, 3: GREEN}
+DEFAULT_TEAM_COLOUR = WHITE   # an unknown/None tid (5th+ team, or no team yet) -- not itself a bug
 
 # Pool identity is carried by HUE so the player can tell at a glance WHICH bar they are looking at.
 SHIELD_COLOUR = TEAL
@@ -102,17 +115,23 @@ BRIGHT_FULL, BRIGHT_DIM = 10, 1
 # dark arena in front of a player's face for a whole match. Hue-dominance per frame is not perceived
 # steadiness, and the measurement that said 93% was answering the wrong question.
 #
-# The headset is the right surface: in native play it is DARK, so a single `$HLED` frame has nothing
-# to fight. Keep `$GLED` for pre-game and lobby, where nothing is animating and it renders cleanly.
+# The headset is the right surface for THIS module's bursts: in native play it is DARK, so a single
+# `$HLED` frame has nothing to fight -- no hammering, no strobe. `$GLED` renders cleanly in pre-game
+# and lobby too, where nothing is animating; whether it can also hold cleanly IN PLAY is not "no"
+# any more -- `mc.presentation`'s `$GLED,,,,5,,,*` blank (2026-09-04) takes the strip out of the
+# breathing loop first, and a paint after that holds uncontested. This module's own bursts
+# (`event_burst`, `gauge_frame`) do not use that blank and still fight the breathing as described below.
 #
 # --- WHICH SURFACE? Split by WHO THE MESSAGE IS FOR ------------------------- #
 # Tony: *"you cant see your own head to confirm a kill or know your health"*. That decides the
 # split, and it is not the one this file first assumed:
 #
 #   GUN STRIP  = what the PLAYER sees. Health / armour / shield, and anything they must act on.
-#                Contested by the firmware's own animation, so a single paint BREATHES our colour in
-#                and out (~18% of frames) rather than holding. That is acceptable for a pulse and is
-#                the ONLY safe option: winning it outright needs ~30 Hz hammering, which strobes.
+#                THIS MODULE's bursts are contested by the firmware's own animation (no blank is sent),
+#                so a single paint BREATHES our colour in and out (~18% of frames) rather than holding --
+#                acceptable for a pulse, and the ONLY safe option without a blank: winning it outright
+#                needs ~30 Hz hammering, which strobes. (A blanked gun does not have this problem --
+#                see above -- but nothing here drives that path.)
 #   HEADSET    = what OTHER PLAYERS see. Hit taken, out, team. Dark in native play, so a single
 #                `$HLED` frame has nothing to fight -- no hammering, no strobe. Nobody needs to read
 #                their own headset, which is exactly why it is the safe surface.
@@ -195,8 +214,10 @@ def pool_colour(pool: str, level: int, maximum: int) -> int:
 def gauge_frame(pool: str, level: int, maximum: int, night: bool = False) -> str:
     """One `$GLED` frame showing `level`/`maximum` as a three-segment bar for `pool`.
 
-    ⚠️ Segments only render on an UNSPAWNED gun (pre-game, lobby). In a live game use
-    `pool_paint_frame`, which carries the same information as a whole-strip colour.
+    ⚠️ Segments only render while the gun's native animation is running if it is UNSPAWNED (pre-game,
+    lobby) or already blanked (`mc.presentation.GUN_BLANK`, 2026-09-04) -- on a SPAWNED, unblanked gun
+    the breathing loop wins and a mixed frame reads as one solid colour. `pool_paint_frame` (below)
+    carries the same information as a whole-strip colour and is always safe on a breathing gun.
     """
     lit = _segments(level, maximum)
     colour = pool_colour(pool, level, maximum)
@@ -208,9 +229,10 @@ def gauge_frame(pool: str, level: int, maximum: int, night: bool = False) -> str
 def pool_paint_frame(pool: str, level: int, maximum: int, night: bool = False) -> str:
     """The IN-GAME form: the whole strip in the pool's colour.
 
-    A live gun cannot show segments, so level is carried by HUE alone -- which is why health shifts
-    green/yellow/red as it falls, and why shield and armour keep a constant hue (their level is not
-    the urgent part; which pool moved is).
+    The safe choice for a BREATHING (unblanked) gun, where segments are not reliable: level is carried
+    by HUE alone -- which is why health shifts green/yellow/red as it falls, and why shield and armour
+    keep a constant hue (their level is not the urgent part; which pool moved is). A blanked gun can
+    show real segments instead (`gauge_frame`); this module does not decide which one a live game uses.
     """
     colour = pool_colour(pool, level, maximum)
     b = BRIGHT_DIM if night else BRIGHT_FULL

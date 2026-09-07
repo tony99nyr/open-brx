@@ -43,13 +43,27 @@ def _driver(sent, leds=True, team=1):
 
 # --- the frame itself ------------------------------------------------------- #
 def test_headset_team_frame_is_static_full_bright_and_uses_the_shared_palette():
+    # F33 (2026-09-07 bench): tid IS the palette index (red 0 / blue 1 / yellow 2 / green 3, state.py's
+    # TEAM_DEFS) -- the old TEAM_COLOURS table was offset (tid 2 painted RED instead of YELLOW).
+    assert pg.headset_team_frame(0) == "$HLED,0,0,,,10,,*"       # team 0 = red, index 0
     assert pg.headset_team_frame(1) == "$HLED,1,0,,,10,,*"       # team 1 = blue, index 1
-    assert pg.headset_team_frame(2) == "$HLED,0,0,,,10,,*"       # team 2 = red, index 0
+    assert pg.headset_team_frame(2) == "$HLED,2,0,,,10,,*"       # team 2 = yellow, index 2
+    assert pg.headset_team_frame(3) == "$HLED,3,0,,,10,,*"       # team 3 = green, index 3
     assert pg.headset_team_frame(None) == f"$HLED,{pg.WHITE},0,,,10,,*"
     # token 2 = 0 is the STATIC form (the blink form is t2=2); token 5 = 10 is already maximum.
-    for t in (1, 2, 3, 4, None):
+    for t in (0, 1, 2, 3, None):
         toks = pg.headset_team_frame(t).split(",")
         assert toks[2] == "0" and toks[5] == "10"
+
+
+def test_gun_colour_matches_headset_colour_for_every_tid():
+    """F33 (2026-09-07 bench, led-language.md §6 #1): the gun-body team table used to be offset from the
+    server's tids, so a yellow-team (tid 2) gun painted RED while its headset correctly painted yellow --
+    only tid 1 (blue) ever agreed, and every bench run happened to be blue. Pin the two surfaces together."""
+    for tid in (0, 1, 2, 3):
+        gun_colour = pg.team_frame(tid).split(",")[1]
+        headset_colour = pg.headset_team_frame(tid).split(",")[1]
+        assert gun_colour == headset_colour == str(tid), (tid, gun_colour, headset_colour)
 
 
 # --- GameDriver: after every $SPAWN and every hit ---------------------------- #
@@ -104,7 +118,9 @@ def test_default_headset_is_team_pregame_and_dark_in_play():
     assert [f for f in b["head"] if f.startswith("$HLED")] == ["$HLED,1,0,,,10,,*"]   # pregame team colour
     assert not any(f.startswith("$HLED") for f in b["spawn"] + b["revive"])              # dark in play
     assert b["cues"]["team_led"] == ""
-    assert b["headset"]["in_play"] == "dark" and b["headset"]["rest"] == "$HLED,,6,,,,,*"
+    # 2026-09-07 (led-language.md §3.2): dark is a COLOUR write, not the $HLED,,6 blank -- the blank
+    # disables the firmware's own death-flash loop for the rest of the life; a colour write does not.
+    assert b["headset"]["in_play"] == "dark" and b["headset"]["rest"] == "$HLED,9,0,,,10,,*"
 
 
 def test_in_play_team_restores_the_tails_and_the_repaint_cue():

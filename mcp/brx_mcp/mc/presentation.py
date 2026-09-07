@@ -164,34 +164,44 @@ ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid
 # flash to mark the start of game, flash on hit, flash during death until spawned, maybe another white
 # flash to indicate respawn and active. maybe holding flag means flashing the flag color").
 # Hardware facts behind the defaults (bench 2026-09-03): a static $HLED holds solid; $SPAWN and every hit
-# wipe it (native flash, then dark); the blink form `$HLED,<c>,2,<on>,<off>,10,<count>` works in game; the
-# firmware blinks the headset GREEN on its own while a player is out (the "out-blink", F13). Whether a
-# count-limited blink ends DARK on its own is unverified, so every flash is followed by an explicit frame.
+# wipe it (native flash, then dark); the blink form `$HLED,<c>,2,<on>,<off>,10,<count>` works in game.
+# ⚠️ RETRACTED 2026-09-07 (led-language.md §3.2): the 2026-09-04 "hosted games do not get the native
+# out-blink" finding named the wrong cause. The firmware DOES run its own bright out-flash on the small
+# LED in a hosted game, exactly like native play -- our own `$HLED,,6` blank (the old `in_play: dark`
+# rest frame, now HEADSET_BLANK) was switching it off for the rest of that life. `in_play: dark` now
+# rests on HEADSET_DARK (a colour write, "$HLED,9,0,..."), which leaves the native flash alone; the down
+# signal itself lives in `headset_frames()["down"]`, not in this block. Whether a count-limited blink
+# ends DARK on its own is still unverified, so every flash below is still followed by an explicit frame.
 #   pregame:     "team" | "off"      lobby: the team colour (the headset organises teams -- Tony)
 #   start_flash: bool                T-0: a white double-flash, then the in-play state
-#   in_play:     "dark" | "team"     between events: dark (native-like) or held on the team colour
+#   in_play:     "dark" | "team"     between events: dark (HEADSET_DARK -- the native flash still runs) or team colour
 #   hit:         colour | null       a short flash of that colour on every hit taken (null = leave native)
-#   death:       "native" | colour   while out: our slow blink in a colour (default GREEN, the native look).
-#                "native" = write nothing -- ⚠ in a HOSTED game the firmware's own out-blink does NOT fire once
-#                the node has taken the headset (Tony, live on the phones, 2026-09-04): the headset just stays
-#                dark, and in scanner-respawn a downed player walking to a station is invisible as "out".
+#   death:       "native" | colour   OUR opt-in on top of the firmware's own out-flash (2026-09-07):
+#                "native" (DEFAULT) = write nothing extra here -- `headset_frames()["down"]` already
+#                re-arms the native flash (`$HLOOP`) if a blank ever slips through; a colour = ALSO
+#                slow-blink the big LED in that colour while out. "flash" (the old small-LED pulse
+#                scheme, A11.8, deleted 2026-09-07) is retired: `merge()` maps it to "native" so a saved
+#                game that picked it keeps loading instead of 500ing at push time.
 #   respawn_flash: bool              back in: a white double-flash, then the in-play state
 #   carrier:     bool                holding the flag / objective: blink the FLAG colour until scored/lost/dead
 # hit: None (native) since the 2026-09-04 headset ladder -- the firmware's own hit flash is "like a camera flash"
 # and NO BLE frame ($HLED any effect/level, $BLINK, $LED) comes close; painting over it only dims it. A colour here
 # adds our flash-then-rest ON TOP of the native flash (an opt-in for games that want a colour-coded hit).
-# death: "flash" (default since 2026-09-04 night, Tony: "we will need the fled for respawn indication though. out of game
-# needing to respawn. in host-game we dont get the native bright green flash for that") = the SMALL flash LED pulsed
-# every DEATH_FLASH_MS while the player is out, like the native respawn blink; a colour = our big-LED slow blink;
-# "native" = nothing (dark in a hosted game).
 HEADSET_DEFAULT = {"pregame": "team", "start_flash": True, "in_play": "dark", "hit": None,
-                   "death": "flash", "respawn_flash": True, "carrier": True}
-DEATH_FLASH_MS = 750
+                   "death": "native", "respawn_flash": True, "carrier": True}
 # The out-blink is ~0.8 s per cycle; 200 cycles is ~160 s. A scanner-respawn player can be down longer, so
 # the node re-asserts frames.headset.death while it stays down (brx-grenade, engine side); the count itself is
 # kept at 200 because token 6's upper range is unverified on hardware.
 DEATH_BLINK_COUNT = 200
-HEADSET_BLANK = "$HLED,,6,,,,,*"
+HEADSET_DARK = "$HLED,9,0,,,10,,*"   # dark BY COLOUR (verified dark by eye, 2026-09-07 bench): the in-play
+                                      # rest frame. Unlike HEADSET_BLANK, a colour write does NOT disable
+                                      # the firmware's own death-flash loop (led-language.md §3.2).
+HEADSET_BLANK = "$HLED,,6,,,,,*"     # TEARDOWN ONLY -- NEVER send this while a match is running: effect 6
+                                      # (the blank) disables the native death-flash loop for the rest of
+                                      # that life (2026-09-07 bench). `gameconfig.END_SEQUENCE` actually
+                                      # tears down with a different literal ("$HLED,0,0,0,0,0,0,*"), not
+                                      # this constant -- the two disagreeing blanks is led-language.md §6
+                                      # finding #13, left alone here (gameconfig.py is not this module).
 
 # ---- the headset's SMALL flash LED (2026-09-04 ladder, GAMMA) -------------------------------------------------
 # The native "camera flash" on a hit is a separate GREEN-ONLY LED next to the big RGB one (the APK's
@@ -200,7 +210,11 @@ HEADSET_BLANK = "$HLED,,6,,,,,*"
 # 2026-09-04; tokens 3/4 made no visible difference at 0-50); token 2 =
 # 0 paints the BIG LED in <colour> instead (0 red -- Tony first read that as a red small-LED flash, corrected on
 # the bench: "that is the hled not fled"). Token 1 also paints the big LED WITH the flash unless it is 9 (dark).
-# `events[ev].flash = green|null` fires the small LED at the event start.
+# `events[ev].flash = green|null` fires the small LED at the event start. This is the ONLY surviving
+# user of `$LED` one-shots on this LED: the A11.8 `death_flash` scheme that used to pulse this same
+# frame every DEATH_FLASH_MS while a player was down was deleted 2026-09-07 (led-language.md §3.2) --
+# the down signal is now the firmware's own loop, driven by `$HLOOP` (`headset_frames()["down"]`), not
+# this one-shot. Kill-family feedback (kill / medal flashes below) is unrelated and stays.
 FLASH_COLOURS = {"green": 1}
 
 
@@ -367,7 +381,11 @@ def merge(current: dict | None, patch: dict) -> dict:
             elif hk == "death":
                 if hv is None:
                     raise ValueError("presentation.headset.death must be \"native\" or a colour (null would fail at push time)")
-                cur[hk] = hv if hv in ("native", "flash") else _colour(hv)
+                if hv == "flash":
+                    # A11.8 death_flash scheme retired 2026-09-07 (led-language.md §3.2, $HLOOP replaces
+                    # it) -- map the old value forward so a saved game does not 500 at push time.
+                    hv = "native"
+                cur[hk] = hv if hv == "native" else _colour(hv)
             else:
                 raise ValueError(f"presentation.headset.{hk}: unknown field")
         if cur != prof.get("headset"):
@@ -560,26 +578,33 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
 
     Every entry is a list of [frame, hold_s] steps ending on an explicit state frame, because a
     count-limited blink ending dark on its own is not yet verified on hardware. `in_play` names the
-    resting state the node returns to after every flash. Empty when LEDs are off for the game."""
+    resting state the node returns to after every flash.
+
+    `down` (2026-09-07, led-language.md §3.2) is present even when LEDs are off/blackout: it costs no
+    light budget and it is the one signal other players must read. The node writes NOTHING to the
+    headset at death -- the firmware's own bright out-flash is already running by itself and is the
+    brightest thing we have (our old `$HLED,,6` blank was the only thing that was ever switching it
+    off). At `rearm_after_ms` after `$HP,0` the node sends `rearm` (`$HLOOP,2,750,*`) once, as
+    belt-and-braces insurance for any life where a blank slipped through -- harmless when the native
+    loop is already running. `stop` (`$HLOOP,0,0,*`) is sent before a revive; `$SPAWN` clears the loop
+    by itself too. Everything else in this table is empty when LEDs are off for the game."""
+    down = {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
     if not leds_on:
-        return {}
+        return {"down": down}
     h = {**HEADSET_DEFAULT, **(profile.get("headset") or {})}
     team_paint = f"$HLED,{tid},0,,,10,,*" if tid is not None and 0 <= int(tid) <= 7 else None
-    rest = team_paint if (h["in_play"] == "team" and team_paint) else HEADSET_BLANK
+    rest = team_paint if (h["in_play"] == "team" and team_paint) else HEADSET_DARK
     white2 = _blink(pg.WHITE, 120, 120, 2)
-    out: dict = {"in_play": h["in_play"], "rest": rest, "blank": HEADSET_BLANK,
+    out: dict = {"in_play": h["in_play"], "rest": rest, "blank": HEADSET_DARK, "down": down,
                  "pregame": [team_paint] if (h["pregame"] == "team" and team_paint) else [],
                  "start": [[white2, 0.6], [rest, 0.0]] if h["start_flash"] else [[rest, 0.0]],
                  "hit": [[_blink(h["hit"], 100, 100, 2), 0.5], [rest, 0.0]] if h["hit"] is not None else [],
-                 "death": [] if h["death"] in ("native", "flash") else [[_blink(int(h["death"]), 400, 400, DEATH_BLINK_COUNT), 0.0]],
+                 "death": [] if h["death"] == "native" else [[_blink(int(h["death"]), 400, 400, DEATH_BLINK_COUNT), 0.0]],
                  "respawn": [[white2, 0.6], [rest, 0.0]] if h["respawn_flash"] else [[rest, 0.0]],
                  "carrier": {}}
     if h["carrier"]:
         for t, c in (team_colours or {}).items():
             out["carrier"][str(t)] = [[_blink(int(c), 300, 300, 200), 0.0]]
-    if h["death"] == "flash":
-        # the node pulses this frame every period_ms while the player is DOWN (and stops on revive)
-        out["death_flash"] = {"frame": flash_frame("green"), "period_ms": DEATH_FLASH_MS}
     return out
 
 

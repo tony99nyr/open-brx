@@ -140,18 +140,25 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         await st.ir("kill"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
         assert not st.alive and st.tele["hp"] == 0
-        assert st.bundle["headset"]["death_flash"]["frame"] in new, "the small-LED pulse while down (default death: flash)"
+        # §3.2 (2026-09-07): the firmware's own out-flash is already running -- the node's only headset
+        # write at death is the belt-and-braces $HLOOP rearm, once, after the hands-off window.
+        assert new.count(st.bundle["headset"]["down"]["rearm"]) == 1, "one down-rearm insurance write"
         # the died burst lands inside a second of the last hit burst, so the one-burst-per-second gate drops it --
         # exactly what engine.js does; the sound (if any) and the headset blink still play
         assert any("event died" in l["text"] or ("died" in l["text"] and "dropped" in l["text"]) for l in st.log)
         n = len(tx(mgr))
         await st.revive(); await settle(st)
         new = tx(mgr)[n:]
-        # A15.3: a fresh death-scream $PSET (one of `pset_pool`) rides first in the revive write, ahead of the revive frames
+        # §3.2: `down.stop` ($HLOOP,0,0,*) is its own write, first, ahead of everything else in revive()
+        off = 0
+        down_stop = st.bundle["headset"]["down"]["stop"]
+        assert new[off] == down_stop, "down stop written before the revive frames"
+        off += 1
+        # A15.3: a fresh death-scream $PSET (one of `pset_pool`) rides next in the revive write, ahead of the revive frames
         pool = st.bundle.get("pset_pool") or []
-        off = 1 if pool else 0
-        if off:
-            assert new[0] in pool
+        if pool:
+            assert new[off] in pool
+            off += 1
         assert new[off:off + len(st.bundle["revive"])] == st.bundle["revive"] and st.alive
         assert all(f in new for f in st.bundle["gun"]["take"]) and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
     asyncio.run(run())
@@ -334,20 +341,28 @@ def test_kill_button_plays_the_top_medals_lights_too():
     asyncio.run(run())
 
 
-def test_death_flash_pulses_the_small_led_while_down_and_stops_on_revive():
+def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revive():
+    """§3.2 (2026-09-07 bench, led-language.md): the A11.8 small-LED pulse scheme is retired -- the
+    firmware's own out-flash runs on its own for the whole life. The node's only headset traffic while
+    down is ONE belt-and-braces `$HLOOP` rearm after the hands-off window, and `$HLOOP,0,0,*` before the
+    next `$SPAWN` (both are insurance: `$SPAWN` clears the loop by itself too)."""
     async def run():
         st, mgr = mk()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll()
-        assert st.bundle["headset"]["death_flash"]["frame"] == "$LED,9,1,1,1,*"
+        down = st.bundle["headset"]["down"]
+        assert down == {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
+        n = len(tx(mgr))
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive
-        # the loop ran to its cap with the no-op sleep: many pulses, all the flash frame
-        pulses = [f for f in tx(mgr) if f == "$LED,9,1,1,1,*"]
-        assert len(pulses) >= 1                                        # the no-op sleep stops the loop after one pulse (clock guard)
-        await st.revive(); await settle(st)
+        new = tx(mgr)[n:]
+        assert new.count(down["rearm"]) == 1, "exactly one rearm write, no repeating pulse"
         n = len(tx(mgr)); await settle(st)
-        assert len(tx(mgr)) == n, "alive again: the pulse loop stopped"
+        assert len(tx(mgr)) == n, "the rearm does not repeat while still down"
+        await st.revive(); await settle(st)
+        assert down["stop"] in tx(mgr)[n:], "down stop written before the revive frames"
+        n = len(tx(mgr)); await settle(st)
+        assert len(tx(mgr)) == n, "alive again: nothing keeps firing"
     asyncio.run(run())
 
 

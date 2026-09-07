@@ -196,6 +196,23 @@ def test_put_config_accepts_a_preset_and_rejects_an_off_gun_sound():
     assert plain["presentation"]["preset"] == "standard"
 
 
+def test_respawn_delay_s_floors_at_3_but_0_stays_valid_for_no_respawn():
+    """F34 (2026-09-07 bench): F13 wedges the headset in the relay's out-blink when $SPAWN lands within
+    ~2 s of death (2.5 s measured clean) -- so MC must not let a host configure 1-2 s. 0 is the sentinel
+    for "unset / no respawn" (respawn.type == "none", e.g. Last Man Standing) and must keep working."""
+    from brx_mcp.mc.state import Session
+    s = Session.__new__(Session)
+    for bad in (1, 2):
+        with raises(ValueError):
+            s.sanitize_config({"mode": "tdm", "respawn": {"type": "auto", "delay_s": bad}})
+    for ok in (0, 3, 15, 600):
+        cfg = s.sanitize_config({"mode": "tdm", "respawn": {"type": "auto", "delay_s": ok}})
+        assert cfg["respawn"]["delay_s"] == ok
+    # the "none" respawn type's own default (0) is unaffected
+    lms = s.sanitize_config({"mode": "lms", "respawn": {"type": "none", "delay_s": 0}})
+    assert lms["respawn"]["type"] == "none" and lms["respawn"]["delay_s"] == 0
+
+
 def test_medal_events_each_have_their_own_verified_line_and_alerts_carry_text():
     b = golden_bundle()
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
@@ -256,23 +273,26 @@ def test_headset_block_defaults_validation_and_frames():
     prof = P.resolve({"mode": "tdm"})
     assert prof["headset"] == P.HEADSET_DEFAULT
     hs = P.headset_frames(prof, 1, True, {1: 1, 2: 2})
-    assert hs["pregame"] == ["$HLED,1,0,,,10,,*"] and hs["rest"] == P.HEADSET_BLANK
-    assert hs["start"][0][0] == "$HLED,6,2,120,120,10,2,*" and hs["start"][-1] == [P.HEADSET_BLANK, 0.0]
+    assert hs["pregame"] == ["$HLED,1,0,,,10,,*"] and hs["rest"] == P.HEADSET_DARK
+    assert hs["start"][0][0] == "$HLED,6,2,120,120,10,2,*" and hs["start"][-1] == [P.HEADSET_DARK, 0.0]
     assert hs["hit"] == []                                                       # default: the NATIVE hit flash (ladder 2026-09-04: nothing over BLE is as bright)
     red = P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"hit": "red"}})}), 1, True)
-    assert red["hit"][0][0].startswith("$HLED,0,2,") and red["hit"][-1][0] == P.HEADSET_BLANK   # opt-in colour: flash then rest
-    # while out: OUR green slow blink. "native" (write nothing) leaves the headset DARK in a hosted game --
-    # the firmware's out-blink does not fire once the node owns the headset (Tony, phones, 2026-09-04).
-    assert hs["death"] == [] and hs["death_flash"] == {"frame": "$LED,9,1,1,1,*", "period_ms": 750}   # default: small-LED pulse while out
+    assert red["hit"][0][0].startswith("$HLED,0,2,") and red["hit"][-1][0] == P.HEADSET_DARK   # opt-in colour: flash then rest
+    # 2026-09-07 (led-language.md §3.2): the down signal is the firmware's OWN out-flash, restored by
+    # $HLOOP if a blank ever suppressed it -- the node writes nothing extra to the headset at death by
+    # default ("native"), and `down` carries the $HLOOP re-arm/stop, present even with LEDs off.
+    assert hs["death"] == [] and hs["down"] == {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
     assert hs["respawn"][0][0] == hs["start"][0][0]
     green = P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "green"}})}), 1, True)
-    assert green["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]] and "death_flash" not in green
+    assert green["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]]
     assert P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "native"}})}), 1, True)["death"] == []
     assert set(hs["carrier"]) == {"1", "2"} and hs["carrier"]["2"][0][0] == "$HLED,2,2,300,300,10,200,*"
-    assert P.headset_frames(prof, 1, False) == {}
+    # LEDs off/blackout: only the down signal survives -- it costs no light budget and is the one
+    # signal other players must read (led-language.md §3.2, §3.4 "blackout: identical").
+    assert P.headset_frames(prof, 1, False) == {"down": hs["down"]}
     # every flash ends on an explicit state frame (count-limited blinks ending dark are unverified)
     for k in ("start", "respawn"):
-        assert hs[k][-1][0] in (P.HEADSET_BLANK, "$HLED,1,0,,,10,,*")
+        assert hs[k][-1][0] in (P.HEADSET_DARK, "$HLED,1,0,,,10,,*")
     # edits
     q = P.merge(None, {"headset": {"in_play": "team", "hit": "orange", "death": "red", "pregame": "off", "start_flash": False}})
     assert q["preset"] == "custom" and q["headset"]["in_play"] == "team" and q["headset"]["hit"] == pg.ORANGE
@@ -291,7 +311,10 @@ def test_headset_death_null_is_rejected_at_merge_not_at_push():
         P.merge(None, {"headset": {"death": None}})
     p = P.merge(None, {"headset": {"death": "native", "hit": None}})     # hit may be off; death must be a colour or native
     assert p["headset"]["death"] == "native" and p["headset"]["hit"] is None
-    assert P.merge(None, {"headset": {"death": "flash"}})["headset"]["death"] == "flash"
+    # A11.8 death_flash retired 2026-09-07 (led-language.md §3.2): "flash" is no longer a real value,
+    # but a saved game that picked it must keep loading rather than 500 at push time -- merge() maps it
+    # forward to "native" (the $HLOOP down signal replaces it, unconditionally, see headset_frames()).
+    assert P.merge(None, {"headset": {"death": "flash"}})["headset"]["death"] == "native"
     assert P.headset_frames(P.resolve({"mode": "tdm", "presentation": p}), 1, True)["death"] == []
 
 

@@ -48,6 +48,18 @@ def test_the_apply_gate_is_a_real_apply_and_brightness_is_full():
     assert int(t[5]) >= 2, "token 5 must be full brightness"
 
 
+def test_team_colours_are_the_identity_map_matching_the_headset():
+    """F33 (2026-09-07 bench, led-language.md §6 #1): tid IS the palette index (red 0 / blue 1 / yellow 2
+    / green 3, state.py TEAM_DEFS) -- the old table (`{1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}`) was offset,
+    so a yellow-team (tid 2) gun painted RED and a red-team (tid 0, not even a key) gun painted WHITE."""
+    assert pg.TEAM_COLOURS == {0: pg.RED, 1: pg.BLUE, 2: pg.YELLOW, 3: pg.GREEN}
+    for tid in (0, 1, 2, 3):
+        assert pg.team_frame(tid).split(",")[1] == str(tid)
+    # unknown/None tid (a 5th+ team, or no team yet) still falls back cleanly
+    assert pg.team_frame(None).split(",")[1] == str(pg.DEFAULT_TEAM_COLOUR)
+    assert pg.team_frame(9).split(",")[1] == str(pg.DEFAULT_TEAM_COLOUR)
+
+
 def test_changed_pool_reports_the_innermost_pool_that_moved():
     # a hit that empties the shield AND bites armour is armour news: that is what is left
     assert pg.changed_pool((45, 70, 5), (45, 60, 0)) == "armor"

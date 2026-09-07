@@ -767,6 +767,15 @@ class Session:
                     d = merged.get("delay_s", 0)
                     if not (isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 600):
                         raise ValueError("respawn.delay_s must be 0..600")
+                    # F34 (2026-09-07): 0 is the sentinel for "unset / no respawn" (respawn.type ==
+                    # "none", e.g. Last Man Standing's default) and stays valid. 1-2 s is the one range
+                    # actually forbidden: F13 (bench) wedges the headset in the relay's out-blink when
+                    # $SPAWN lands within ~2 s of death (2.5 s measured clean) -- so every value strictly
+                    # between "off" and "safe" is rejected rather than silently building a match that
+                    # sticks headsets all night.
+                    if d in (1, 2):
+                        raise ValueError("respawn.delay_s of 1-2s wedges the headset in the relay's "
+                                         "out-blink (F13); use 0 (no respawn) or >= 3")
                 if k == "scoring":
                     fl = merged.get("frag_limit")
                     if fl is not None and not (isinstance(fl, int) and not isinstance(fl, bool) and fl > 0):
