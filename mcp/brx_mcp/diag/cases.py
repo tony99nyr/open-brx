@@ -4,12 +4,13 @@ Grouped by category. Each case declares what it needs (`requires`), what it send
 and how it's verified (auto predicate, or a human prompt/question). BLE cases run
 today; IR cases carry Capability.IR and SKIP until the ESP32 bridge exists.
 
-Frame constants mirror mcp/brx_mcp/__main__.py so the diag game uses the same,
-hardware-proven config/spawn sequences.
+Frame constants are IMPORTED from `gameconfig` so the diag game arms a gun exactly the way a
+real game does. They used to be copied here "kept in sync" by hand, and had drifted.
 """
 
 from __future__ import annotations
 
+from ..gameconfig import _BMAP, _SIR_TABLE
 from .model import (
     Capability as Cap,
     DiagCase,
@@ -20,16 +21,18 @@ from .model import (
     grenade_beacon,
 )
 
-# --- shared frame blocks (kept in sync with __main__.py) --------------------- #
+# --- shared frame blocks (imported from gameconfig, never copied) ----------- #
 VOL = "$VOL,75,0,*"
 CONFIG = (
     "$CLEAR,*", "$START,*", "$GSET,1,0,1,0,1,0,50,1,*",
     "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
     "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
-    "$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*",
-    "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*",
-    "$BMAP,0,0,,,,,*", "$BMAP,1,100,0,1,99,99,*", "$BMAP,2,97,,,,,*",
-    "$BMAP,3,98,,,,,*", "$BMAP,4,98,,,,,*", "$BMAP,5,98,,,,,*", "$BMAP,8,4,,,,,*",
+    # IMPORTED, never copied. These used to be inline and had drifted to FIVE of the ten $SIR rows
+    # (no rocket, no rail gun, no melee), which means a diag gun silently ignored that IR while
+    # reporting alive and healthy -- F11, in the one tool whose job is to answer "can this gun be
+    # hit?". Pinned by tests/test_diag_config_parity.py.
+    *_SIR_TABLE,
+    *_BMAP,
 )
 SPAWN = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*")
 END = ("$STOP,*", "$CLEAR,*")

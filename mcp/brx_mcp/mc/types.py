@@ -345,5 +345,7 @@ class Envelope(TypedDict):
 NODE_KINDS = {"hello", "bind", "event", "event_batch", "status", "ack_config", "time_req",
               "log_offer", "log_data", "ready", "loadout_request", "loadout_browse"}   # A10: loadout_*
 MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "control",
-            "time_res", "pull_log", "ack", "apply", "score", "loadout_ack"}             # A10: loadout_ack
+            "time_res", "pull_log", "ack", "apply", "score", "loadout_ack",             # A10: loadout_ack
+            "alert"}    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected
+                        # by envelope.validate() at the node and silently dropped (contracts.md §MC->node).
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall"}

@@ -58,6 +58,10 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "apply": ("frames",),   # A6: best-effort "write these frames now" (coverage-zone runtime effects)
     "loadout_ack": ("slot", "ok"),   # A10: `reason`/`loadout` optional
     "score": ("player_id",), # A7: MC pushes a player's current ScoreRow to its node (coverage-zone live K/A/ACC)
+    # A11.4: a named game event. `hud`/`player_id_subject`/`carrier`/`flag_tid` are optional (contracts.md
+    # §MC->node). Registered 2026-09-07 alongside the missing MC_KINDS entry -- until then every alert
+    # MC sent was rejected at the node and dropped in silence.
+    "alert": ("kind", "text", "player_id", "t"),
 }
 
 _EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
