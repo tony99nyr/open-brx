@@ -11,10 +11,14 @@ real IR shot from the emitter shows the whole picture, firmware + ours, on the b
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from collections import deque
 from typing import Any, Callable, Awaitable
 
+from .. import sounds as _snd
+from .. import voices as _voices
+from ..gameconfig import VOICE_PACKS
 from ..irbridge import encode_word
 from ..mc import presentation as _pres
 from ..mc.compile import Compiler
@@ -22,6 +26,7 @@ from ..mc.state import default_config
 
 SFLASH = "$SFLASH,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
+PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
@@ -56,13 +61,34 @@ def ir_words(kind: str, team: int, damage: int | None = None) -> list[str]:
     raise ValueError(f"unknown IR kind {kind!r}; known: {IR_KINDS}")
 
 
-def _append_verdict(rec: dict) -> None:
-    """Default verdict sink: one JSON line per verdict in ~/.brx-mcp/stage-verdicts.jsonl."""
+def _append_verdict(rec: dict, name: str = "stage-verdicts.jsonl") -> None:
+    """Default verdict sink: one JSON line per verdict in ~/.brx-mcp/<name>."""
     import json, pathlib
-    p = pathlib.Path.home() / ".brx-mcp" / "stage-verdicts.jsonl"
+    p = pathlib.Path.home() / ".brx-mcp" / name
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
+
+
+def _append_voice_verdict(rec: dict) -> None:
+    _append_verdict(rec, "voice-verdicts.jsonl")
+
+
+def _load_voice_verdicts() -> dict:
+    """{voice: {id: {ok, note}}} from ~/.brx-mcp/voice-verdicts.jsonl (best-effort; the latest line per id wins)."""
+    import json, pathlib
+    out: dict = {}
+    try:
+        p = pathlib.Path.home() / ".brx-mcp" / "voice-verdicts.jsonl"
+        for line in p.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+                out.setdefault(r["voice"], {})[r["id"]] = {"ok": r.get("ok"), "note": r.get("note", "")}
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
 
 
 MEDAL_STACKS = [("kill", []), ("first_blood", ["first_blood"]), ("double_kill", ["double_kill"]),
@@ -73,11 +99,23 @@ def _toks(frame: str) -> list[str]:
     return frame.strip().lstrip("$").rstrip("*").split(",")
 
 
+def _cue_id(frame: str) -> str | None:
+    """The sound id a `$PLAY` cue carries: the announcer slot (token 4) for a voice line, else the SFX slot."""
+    t = _toks(frame or "")
+    if not t or t[0] != "PLAY":
+        return None
+    return (t[4] if len(t) > 4 and t[4] else (t[1] if len(t) > 1 and t[1] else None))
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
-                 verdict_sink: Callable[[dict], None] | None = None):
+                 verdict_sink: Callable[[dict], None] | None = None,
+                 voice_verdict_sink: Callable[[dict], None] | None = None, voice_verdicts: dict | None = None,
+                 rng: random.Random | None = None):
         self.mgr = mgr
+        self.rng = rng or random.Random()      # A15: the $PSET roll on ARM and the per-event cue-pool pick (tests seed it)
+        self.rolled: dict = {}                 # the last roll's {role: id} -- what the gun holds since the last ARM (or REROLL)
         self.bridge = bridge
         self.compiler = compiler or Compiler()
         self.sleep = sleep or asyncio.sleep
@@ -87,7 +125,8 @@ class GunStage:
         self.connected = False
         self.scan_results: list[dict] = []
         self.profile: dict[str, Any] = {"mode": "tdm", "preset": None, "gun": "team", "headset": "dark",
-                                        "night": False, "tid": 1, "environment": "outdoor"}
+                                        "night": False, "tid": 1, "environment": "outdoor",
+                                        "voice": "male", "voice_slots": {}}
         self.auto_react = True
         self.log: deque = deque(maxlen=400)
         self.tele: dict[str, Any] = {"hp": None, "armor": None, "shield": None, "mag": None, "reserve": None,
@@ -105,6 +144,9 @@ class GunStage:
         self._last_event_led: float | None = None
         self._hurt_fired = False
         self._last_seq = 0
+        self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
+        self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
+        self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         self._pending: list[asyncio.Task] = []
         self.config: dict = {}
         self.bundle: dict = {}
@@ -112,13 +154,31 @@ class GunStage:
         self.verdict_sink = verdict_sink or _append_verdict
         self._external: dict | None = None     # a GameConfig pulled from MC (load_config); None = the selectors
         self._local_pres: dict | None = None   # a patched presentation for the selector-built game
+        # the SOUNDBOARD (Tony 2026-09-06: "act as the character selection and let me hear and test all of these"):
+        # a character chosen independently of the game voice, PLAY ALL through its lines, a verdict per line
+        self.board_voice: str = self.profile["voice"]
+        self.board_playing: str | None = None
+        self._board_gen = 0
+        self.voice_verdict_sink = voice_verdict_sink or _append_voice_verdict
+        self.voice_verdicts: dict = voice_verdicts if voice_verdicts is not None else (_load_voice_verdicts() if voice_verdict_sink is None else {})
         self.recompile()
 
     # ---- profile / bundle -------------------------------------------------------------------------
     def set_profile(self, **kw) -> dict:
+        voice_changed = False
         for k, v in kw.items():
             if k not in self.profile:
                 raise ValueError(f"unknown profile key {k!r}")
+            if k == "voice":
+                v = str(v or "").lower()
+                if v not in VOICE_PACKS:
+                    raise ValueError(f"voice must be one of {sorted(VOICE_PACKS)}")
+                if v != self.profile["voice"]:
+                    self.profile["voice_slots"] = {}          # the slots were picked for the OLD family
+                    voice_changed = True
+            if k == "voice_slots":
+                v = _voices.check_slots(v)
+                voice_changed = voice_changed or v != self.profile["voice_slots"]
             if k == "mode" and v not in MODES:
                 raise ValueError(f"mode must be one of {MODES}")
             if k == "gun" and v not in GUN_IN_PLAY:
@@ -140,6 +200,112 @@ class GunStage:
             self.profile[k] = v
         self.recompile()
         self._log(f"profile: {self.profile}", "info")
+        if voice_changed:
+            self.rolled = {}
+            self._log(f"voice: {self.speaker()} -- re-ARM to write the new $PSET", "warn")
+        return self.state()
+
+    def speaker(self) -> str:
+        return _voices.family_name(_voices.family(self.profile["voice"]))
+
+    def set_voice_slot(self, role: str, id: str | None = None) -> dict:
+        """Pick which of the family's lines sits in ONE `$PSET` voice field (or the kill cue); null clears it.
+        The head is only written by ARM, so the page says re-ARM."""
+        if role not in _voices.VOICE_ROLES:
+            raise ValueError(f"voice slot role must be one of {_voices.VOICE_ROLES}")
+        slots = dict(self.profile["voice_slots"])
+        if id in (None, ""):
+            slots.pop(role, None)
+        else:
+            slots.update(_voices.check_slots({role: id}))
+        return self.set_profile(voice_slots=slots)
+
+    # ---- the SOUNDBOARD ------------------------------------------------------------------------------
+    def voice_board(self, voice: str | None = None) -> dict:
+        """Point the board at a character (any of VOICE_PACKS) without touching the game's voice."""
+        v = str(voice or self.profile["voice"]).lower()
+        if v not in VOICE_PACKS:
+            raise ValueError(f"voice must be one of {sorted(VOICE_PACKS)}")
+        if v != self.board_voice:
+            self.voice_board_stop()
+        self.board_voice = v
+        self._log(f"soundboard: {_voices.family_name(_voices.family(v))} ({_voices.family(v)})", "info")
+        return self.state()
+
+    def board_lines(self) -> list[dict]:
+        v = self.board_voice
+        slots = self.profile["voice_slots"] if v == self.profile["voice"] else None
+        return _voices.lines(v, slots)
+
+    def voice_board_play(self, voice: str | None = None, from_slot: str | None = None) -> dict:
+        """PLAY ALL: every line of the board's character in slot order, `duration + 0.5 s` apart, as a background
+        task (the page polls `board.playing`); a second PLAY ALL or STOP cancels the running one."""
+        if voice:
+            self.voice_board(voice)
+        lines = self.board_lines()
+        if from_slot:
+            idx = next((i for i, l in enumerate(lines) if l["slot"] == str(from_slot).upper() or l["id"] == str(from_slot).upper()), 0)
+            lines = lines[idx:]
+        self._board_gen += 1
+        self._log(f"soundboard: playing {len(lines)} lines of {_voices.family_name(_voices.family(self.board_voice))}", "ok")
+        self._spawn_task(self._board_run(self._board_gen, lines))
+        return self.state()
+
+    async def _board_run(self, gen: int, lines: list[dict]) -> None:
+        try:
+            for l in lines:
+                if gen != self._board_gen:
+                    return
+                self.board_playing = l["id"]
+                self._log(f"board {l['id']} {l['role_words']}: {l['words']}", "info")
+                await self.write([_voices.play_line_frame(l["id"])], f"soundboard {l['id']}", gap_ms=0)
+                await self.sleep(float(l.get("duration_s") or 1.0) + 0.5)
+            if gen == self._board_gen:
+                self._log("soundboard: done", "ok")
+        finally:
+            if gen == self._board_gen:
+                self.board_playing = None
+
+    def voice_board_stop(self) -> dict:
+        if self.board_playing is not None:
+            self._log("soundboard: stopped", "info")
+        self._board_gen += 1
+        self.board_playing = None
+        return self.state()
+
+    def voice_verdict(self, voice: str | None, id: str, ok: bool | None, note: str = "") -> dict:
+        """✓ / ✗ for one line of a character, appended to ~/.brx-mcp/voice-verdicts.jsonl and kept in memory."""
+        v = str(voice or self.board_voice).lower()
+        if v not in VOICE_PACKS:
+            raise ValueError(f"voice must be one of {sorted(VOICE_PACKS)}")
+        sid = str(id or "").upper()
+        line = next((l for l in _voices.lines(v) if l["id"] == sid), None)
+        if line is None:
+            raise ValueError(f"{id!r} is not a line of {v}")
+        if ok not in (True, False, None):
+            raise ValueError("ok must be true, false or null")
+        rec = {"t": time.time(), "voice": v, "family": _voices.family(v), "id": sid, "slot": line["slot"], "role": line["role"],
+               "words": line["words"], "ok": ok, "note": note or ""}
+        self.voice_verdicts.setdefault(v, {})
+        if ok is None:
+            self.voice_verdicts[v].pop(sid, None)
+        else:
+            self.voice_verdicts[v][sid] = {"ok": ok, "note": note or ""}
+        try:
+            self.voice_verdict_sink(rec)
+        except Exception as e:
+            self._log(f"voice verdict not saved: {e}", "warn")
+        self._log(f"voice {v} {sid}: {'PASS' if ok else 'cleared' if ok is None else 'FAIL'}{' -- ' + note if note else ''}", "ok" if ok else "warn" if ok is False else "info")
+        return self.state()
+
+    async def voice_line(self, id: str) -> dict:
+        """Play ONE line of the voice (a hit sound or a personality moment) on the announcer slot."""
+        sid = str(id or "").upper()
+        if sid not in _snd.on_gun_ids():
+            raise ValueError(f"{id!r} is not a sound on the gun")
+        line = next((l for l in _voices.lines(self.profile["voice"], self.profile["voice_slots"]) if l["id"] == sid), None)
+        why = f"voice line {sid}" + (f" ({line['role_words']}: {line['words']})" if line else f" ({_snd.describe(sid)})")
+        await self.write([_voices.play_line_frame(sid)], why, gap_ms=0)
         return self.state()
 
     def load_config(self, config: dict, source: str = "mc") -> dict:
@@ -170,7 +336,10 @@ class GunStage:
         self._log(f"presentation patched: {patch}", "ok")
         return self.state()
 
-    def recompile(self) -> None:
+    def recompile(self, roll: bool = False) -> None:
+        """Rebuild the bundle. `roll=True` (ARM / REROLL only) draws the $PSET death scream / short pain
+        from the family's equal takes (A15, Tony 2026-09-06: "they are all equal and should be picked at random to
+        make the sounds more dynamic"); every other recompile is un-rolled so the pickers and the state stay put."""
         p = self.profile
         if getattr(self, "_external", None):
             cfg = dict(self._external)
@@ -193,10 +362,99 @@ class GunStage:
         self.profile["tid"] = int(team["tid"])
         self.max_hp = int(cfg["health"]["max_hp"]); self.max_armor = int(cfg["health"]["max_armor"])
         player = {"player_id": "stage", "player_num": 7, "display": "STAGE", "team_id": team["team_id"],
-                  "node_id": None, "gun_id": None, "voice": "male", "ready": True,
+                  "node_id": None, "gun_id": None, "voice": p["voice"], "voice_slots": dict(p["voice_slots"]), "ready": True,
                   "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}
         self.config = cfg
-        self.bundle = self.compiler.compile(cfg, player, teams)
+        if roll:
+            try:
+                self.bundle = self.compiler.compile(cfg, player, teams, roll=self.rng)
+            except TypeError:                                   # a compiler without the A15 roll: nothing to draw from
+                self.bundle = self.compiler.compile(cfg, player, teams)
+                self._log("this compiler has no $PSET roll (pre-A15): the family defaults are written", "warn")
+            self.rolled = dict((self.bundle.get("voice") or {}).get("rolled") or {})
+        else:
+            self.bundle = self.compiler.compile(cfg, player, teams)
+
+    def roll_text(self) -> str:
+        """`death scream V34 "AHHH", short pain V3H "MMMM"` for the log and the page."""
+        return ", ".join(f"{_voices.ROLE_WORDS.get(r, r) if r in _voices.ROLE_WORDS else r.replace('_', ' ')} {i} \"{_snd.describe(i)}\""
+                         for r, i in self.rolled.items())
+
+    def reroll(self) -> dict:
+        """Draw the $PSET takes again WITHOUT writing: the picks show on the page; ARM writes (and re-rolls)."""
+        self.recompile(roll=True)
+        self._log("rolled: " + (self.roll_text() or "nothing to roll (every field is pinned or has one take)") + " -- written to the gun on ARM", "info")
+        return self.state()
+
+    def _pick_cue(self, kind: str) -> tuple[str | None, str]:
+        """A15: one random take from `cue_pools[kind]` (kill confirms + taunts on a kill, the pains, …), else `cues[kind]`.
+        Returns (frame, ' (V3K: Ooh, bet that hurt.)') so the log names the take."""
+        cues = self.bundle.get("cues", {})
+        if kind in cues and cues[kind] == "":
+            return "", ""                                        # deliberately mute (announcer off): no pool override
+        pool = (self.bundle.get("cue_pools") or {}).get(kind)
+        if isinstance(pool, list) and len(pool) > 1:
+            fr = self.rng.choice(pool)
+            sid = _cue_id(fr)
+            return fr, f" ({sid}: {_snd.describe(sid)})" if sid else ""
+        return self.bundle.get("cues", {}).get(kind), ""
+
+    def _pick_frame(self, kind: str) -> tuple[str | None, str, str]:
+        """A15.3: one random full frame from `bundle[kind]` (a LIST of complete frames -- `pset_pool`: one
+        `$PSET` per death-scream take). `(None, '', '')` when the bundle has no such pool (pre-A15.3
+        compiler), so nothing extra is written. Mirrors engine.js `_pickFrame`."""
+        pool = self.bundle.get(kind)
+        if not isinstance(pool, list) or not pool:
+            return None, "", ""
+        i = self.rng.randrange(len(pool)) if len(pool) > 1 else 0
+        frame = pool[i]
+        tag = f" {i + 1}/{len(pool)}" if len(pool) > 1 else ""
+        toks = _toks(frame)
+        sid = toks[10] if kind == "pset_pool" and len(toks) > 10 else ""   # $PSET token 10 = deathScream
+        return frame, tag, sid
+
+    def _pain(self, dmg: int, proto: int | None) -> None:
+        """A15.3 (Tony 2026-09-06 bench): the three `$PSET` pain fields ship EMPTY and WE play the grunt on
+        each SURVIVED hit -- `pain_melee` on a melee word (ir protocol 13), `pain_long` when the hit took at
+        least `voice.pain_long_min` (shotgun / snipers / power weapons), else `pain_short`; one random take of
+        that pool. Gated to one grunt per PAIN_GAP_S (dropped, never queued). Never called on the lethal hit
+        (the caller returns on death before reaching this). Mirrors engine.js `_pain`."""
+        f = self.bundle
+        long_min = ((f.get("voice") or {}).get("pain_long_min")) or 40
+        kind = "pain_melee" if proto == 13 else ("pain_long" if dmg >= long_min else "pain_short")
+        cues = f.get("cues", {})
+        cue_pools = f.get("cue_pools") or {}
+        if not (cues.get(kind) or cue_pools.get(kind)):
+            return                          # pre-A15.3 bundle: the firmware's own pains play instead
+        now = self.now()
+        if self._last_pain_at is not None and now - self._last_pain_at < PAIN_GAP_S:
+            self._log(f"pain {kind[5:]}: dropped (another inside {int(PAIN_GAP_S * 1000)} ms)", "info")
+            return
+        self._last_pain_at = now
+        fr, tag = self._pick_cue(kind)
+        if fr:
+            self._spawn_task(self.write([fr], f"pain {kind[5:]}{tag} {dmg} dmg", gap_ms=0))
+
+    @staticmethod
+    def _line_tag(frame: str | None, tag: str) -> str:
+        """` + spawn line (VAN: Hoorah!)` for a write reason (the pick's own tag, or the id + words of a single take)."""
+        if not frame:
+            return ""
+        if tag:
+            return " + spawn line" + tag
+        sid = _cue_id(frame)
+        return f" + spawn line ({sid}: {_snd.describe(sid)})" if sid else " + spawn line"
+
+    def spawn_takes(self) -> list[dict]:
+        """A15.2: the spawn pool `[{id, words}]` -- `bundle.voice.spawn` when the compiler says so, else read off the
+        spawn cue / pool frames (a pre-A15.2 bundle: empty, the firmware's cry plays)."""
+        v = self.bundle.get("voice") or {}
+        ids = list(v.get("spawn") or [])
+        if not ids:
+            pool = (self.bundle.get("cue_pools") or {}).get("spawn")
+            frames = pool if isinstance(pool, list) and pool else [self.bundle.get("cues", {}).get("spawn")]
+            ids = [i for i in (_cue_id(f) for f in frames if f) if i]
+        return [{"id": i, "words": _snd.describe(i)} for i in ids]
 
     def enemy_tid(self) -> int:
         mine = int(self.profile["tid"])
@@ -286,17 +544,39 @@ class GunStage:
 
     # ---- game -------------------------------------------------------------------------------------
     async def arm(self) -> dict:
+        self.recompile(roll=True)                                # A15: a fresh draw of the $PSET takes every arm
+        if self.rolled:
+            self._log("rolled: " + self.roll_text(), "info")
         await self.write(self.bundle["head"], "arm (head)")
-        self.spawned = False; self.alive = False
+        self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
             await self.write(hs["pregame"], "headset pregame")
         return self.state()
 
+    def _scream_take(self) -> tuple[str | None, str]:
+        """A15.3: the death scream stays the firmware's but is re-rolled per LIFE -- one of the bundle's
+        pre-composed `$PSET` frames (one per scream take) goes out FIRST, in the same write as $SPAWN (bench
+        2026-09-06: a `$PSET` re-sent in play keeps $SIR, does not heal, the gun fires). No `pset_pool`
+        (pre-A15.3 compiler): nothing prepended, the head's `$PSET` stands. Returns (frame-or-None, write tag)."""
+        ps, ps_tag, ps_id = self._pick_frame("pset_pool")
+        if not ps:
+            return None, ""
+        self.scream_this_life = ps_id
+        if ps_id:
+            self._log(f"scream this life: {ps_id} \"{_snd.describe(ps_id)}\"", "info")
+        return ps, f" + scream {ps_id}{ps_tag}"
+
     async def spawn(self) -> dict:
         cues = self.bundle.get("cues", {})
         await self.write([cues.get("countdown", "")], "countdown cue")
-        await self.write(list(self.bundle["spawn"]) + [SFLASH], "spawn")
+        # A15.2 (Tony 2026-09-06, bench-verified on the bench gun): the $PSET cry field is EMPTY, so the firmware says nothing at
+        # $SPAWN and WE play one take of the spawn pool in the SAME write ($SPAWN then $PLAY plays clean; a $PLAYX in
+        # between clipped the firmware's line). A pre-A15.2 bundle has no cues["spawn"]: nothing is appended.
+        fr, tag = self._pick_cue("spawn")
+        ps, ps_why = self._scream_take()
+        await self.write(([ps] if ps else []) + list(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
+                          "spawn" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):
@@ -305,9 +585,12 @@ class GunStage:
         return self.state()
 
     async def revive(self) -> dict:
-        await self.write(self.bundle["revive"], "revive")
+        fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
+        ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
+        await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
+                          "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
-        self.event("respawned")
+        self.event("respawned", sound=False)                     # the lights; the sound went out with the revive write
         hs = self.bundle.get("headset") or {}
         self.carrying = None
         if hs.get("respawn"):
@@ -352,14 +635,15 @@ class GunStage:
         return self.state()
 
     # ---- events (A11) -------------------------------------------------------------------------------
-    def event(self, kind: str) -> dict:
+    def event(self, kind: str, sound: bool = True) -> dict:
         """Play cues[kind] + leds[kind] like engine.js `_event`: the LED burst is gated to one per second,
-        a static $HLED step is skipped while down and yields to a newer headset sequence."""
+        a static $HLED step is skipped while down and yields to a newer headset sequence. `sound=False` =
+        the lights only (revive already wrote the spawn line, A15.2)."""
         cues = self.bundle.get("cues", {})
-        cue = cues.get(kind)
+        cue, tag = self._pick_cue(kind) if sound else (None, "")
         if cue:
-            self._spawn_task(self.write([cue], f"event cue {kind}", gap_ms=0))
-        elif kind in cues:
+            self._spawn_task(self.write([cue], f"event cue {kind}{tag}", gap_ms=0))
+        elif kind in cues and sound:
             self._log(f"event {kind}: sound muted (\"\")", "info")
         seq = (self.bundle.get("leds") or {}).get(kind) or []
         if not seq:
@@ -389,12 +673,15 @@ class GunStage:
         cues = self.bundle.get("cues", {})
         medals = [m for m in (medals or []) if cues.get(m)]
         frames: list = [[SFLASH, 0.12]]
+        tag = ""
         if medals:
             for i, m in enumerate(medals):
                 frames.append([cues[m], MEDAL_GAP_S if i < len(medals) - 1 else 0])
-        elif cues.get("kill"):
-            frames.append([cues["kill"], 0])
-        self._spawn_task(self._seq(frames, "kill" + (" + " + "+".join(medals) if medals else "")))
+        else:
+            fr, tag = self._pick_cue("kill")                    # A15: one of the kill confirms + taunts, at random
+            if fr:
+                frames.append([fr, 0])
+        self._spawn_task(self._seq(frames, "kill" + (" + " + "+".join(medals) if medals else tag)))
         top = medals[0] if medals else "kill"
         seq = (self.bundle.get("leds") or {}).get(top) or []
         if seq:
@@ -532,6 +819,8 @@ class GunStage:
         try:
             if cmd == "HIR":
                 self.tele["last_hir"] = raw
+                # $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,* -- proto 13 = melee
+                self._last_hir_proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
             elif cmd in ("HP", "LCD") and len(t) > 2:
@@ -570,6 +859,7 @@ class GunStage:
                 self._hs_gen += 1
                 self._spawn_task(self.write(fr, "low health", gap_ms=0))
             self.event("hit_taken")
+            self._pain(dmg, self._last_hir_proto)   # A15.3: our pain grunt by damage -- never on a death (that returned above)
             if hs and not hurt_now:
                 if self.carrying is not None and (hs.get("carrier") or {}).get(str(self.carrying)):
                     self._headset(hs["carrier"][str(self.carrying)], "carrier after hit")
@@ -623,6 +913,11 @@ class GunStage:
                           "available": (not needs_ir) or can_ir})
         add("arm", "PRE-GAME (armed, unspawned)",
             ("headset: TEAM COLOUR held" if hs.get("pregame") else "headset: dark") + (" · gun body: TEAM COLOUR held" if _pres.gun_pregame(prof, self.profile["tid"], self.profile["night"], bool(hs) or bool(g)) else " · gun body: dark") + " · no sound", "arm")
+        takes = self.spawn_takes()                               # A15.2: the spawn line is ours; the first take is the family's boast
+        cry = takes[0]["id"] if takes else _voices.role_id(self.profile["voice"], "boast", self.profile["voice_slots"])
+        add("voice", f"VOICE: {self.speaker().upper()}",
+            f"sound: {self.speaker()} '{_snd.describe(cry)}' -- the voice the gun will use for its death scream / pains / heal",
+            "voice_line", {"id": cry})
         add("spawn", "GAME START",
             (("headset: WHITE double flash, then " + ("TEAM colour" if hs.get("in_play") == "team" else "DARK")) if hs else "headset: nothing (LEDs off)")
             + f" · gun body: {gun_txt} · sounds: countdown{', klaxon' if cues.get('klaxon') else ''}", "spawn")
@@ -723,12 +1018,61 @@ class GunStage:
 
     def event_catalog(self) -> list[dict]:
         prof = _pres.resolve(self.config)
+        voice, slots = self.profile["voice"], self.profile["voice_slots"]
+        pset = _voices.pset_ids(voice, slots)
         out = []
         for ev, spec in prof["events"].items():
-            out.append({"event": ev, "group": spec.get("group"), "source": spec.get("source"),
-                        "desc": spec.get("desc"), "has_sound": bool(spec.get("sound")),
-                        "gun_led": spec.get("gun_led"), "headset": spec.get("headset")})
+            snd = spec.get("sound")
+            row = {"event": ev, "group": spec.get("group"), "source": spec.get("source"),
+                   "desc": spec.get("desc"), "has_sound": bool(snd), "sound": snd,
+                   "gun_led": spec.get("gun_led"), "headset": spec.get("headset")}
+            if isinstance(snd, str) and snd.startswith("voice:"):
+                vid = _voices.role_id(voice, snd[6:], slots)
+                row["voice_id"] = vid
+                row["voice_words"] = _snd.describe(vid) if vid else ""
+            fw = [{"role": r, "field": _voices.PSET_FIELD[r], "id": pset[r], "words": _snd.describe(pset[r])}
+                  for r in _voices.PSET_ROLES if _voices.PSET_PLAYS_ON.get(r) == ev and pset.get(r)]   # an EMPTY field (A15.2 cry) plays nothing
+            if fw:
+                row["firmware"] = fw
+            out.append(row)
         return out
+
+    def board_view(self) -> dict:
+        v = self.board_voice; fam = _voices.family(v)
+        return {"voice": v, "family": fam, "speaker": _voices.family_name(fam), "lines": self.board_lines(),
+                "candidates": _voices.candidates(v), "playing": self.board_playing,
+                "verdicts": self.voice_verdicts.get(v, {}), "is_game_voice": v == self.profile["voice"]}
+
+    def _role_takes(self, role: str) -> list[dict]:
+        """`[{id, words}]` for a role the node plays from a pool, read off the compiled bundle's `cue_pools`
+        (2+ takes) or `cues` (one take) -- what will ACTUALLY play. `[]` for a bundle that carries neither
+        (a pre-A15.3 compiler has no `pain_*` cue)."""
+        pool = (self.bundle.get("cue_pools") or {}).get(role)
+        cue = self.bundle.get("cues", {}).get(role)
+        frames = pool if isinstance(pool, list) and pool else ([cue] if cue else [])
+        ids = [i for i in (_cue_id(f) for f in frames if f) if i]
+        return [{"id": i, "words": _snd.describe(i)} for i in ids]
+
+    def voice_view(self) -> dict:
+        voice, slots = self.profile["voice"], self.profile["voice_slots"]
+        fam = _voices.family(voice)
+        bv = self.bundle.get("voice") or {}
+        return {"id": voice, "family": fam, "speaker": _voices.family_name(fam),
+                "pset": _voices.pset_ids(voice, slots), "kill": _voices.role_id(voice, "kill", slots),
+                "slots": dict(slots), "roles": list(_voices.VOICE_ROLES), "sound_roles": list(_voices.SOUND_ROLES),
+                "fields": dict(_voices.PSET_FIELD), "plays_on": dict(_voices.PSET_PLAYS_ON),
+                "lines": _voices.lines(voice, slots), "candidates": _voices.candidates(voice),
+                # A15: what the last ARM / REROLL drew, the equal takes each field draws from, and the per-event pools
+                "rolled": dict(self.rolled), "pools": dict(bv.get("pools") or {}),
+                "spawn": self.spawn_takes(),                     # A15.2: the takes one of which plays on every spawn / revive
+                "cue_pools": {ev: [{"id": _cue_id(f), "words": _snd.describe(_cue_id(f) or "")} for f in pool]
+                              for ev, pool in (self.bundle.get("cue_pools") or {}).items() if isinstance(pool, list)},
+                # A15.3: the death-scream takes (one $PSET write per life) and the pain pools (one per SURVIVED hit,
+                # chosen by damage) -- both [] for a pre-A15.3 bundle, so the page falls back to the old pickers.
+                "pset_pool": [{"id": i, "words": _snd.describe(i)} for i in (bv.get("pset_pool") or [])],
+                "pain": {"short": self._role_takes("pain_short"), "long": self._role_takes("pain_long"),
+                         "melee": self._role_takes("pain_melee"), "long_min": bv.get("pain_long_min", _voices.PAIN_LONG_MIN_DAMAGE)},
+                "scream_this_life": self.scream_this_life}
 
     def ir_registers(self) -> dict:
         """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`
@@ -762,6 +1106,10 @@ class GunStage:
             "tele": dict(self.tele),
             "headset_seqs": sorted(k for k, v in hs.items() if isinstance(v, list) and v and k != "pregame") + (["carrier"] if hs.get("carrier") else []),
             "events": self.event_catalog(),
+            "voice": self.voice_view(),
+            "voices": _voices.options(),
+            "board": self.board_view(),
+            "voice_verdicts": self.voice_verdicts,
             "ir_kinds": list(IR_KINDS),
             "ir_registers": self.ir_registers(),
             "serial_ports": self.serial_ports(),

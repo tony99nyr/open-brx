@@ -721,12 +721,12 @@ test('the low-health alert fires once per life when armour is gone and HP is dro
   const h = goLive(harness());
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,16,0,*');   // armour still up
-  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 0, 'armour up: no alert');
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'armour up: no alert');
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');    // armour gone, HP taking damage
-  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'alert on the transition');
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'alert on the transition');
   assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1, 'headset lights with it');
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,34,0,0,*');
-  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'once per life, not per hit');
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'once per life, not per hit');
 });
 
 test('a respawn re-arms the low-health alert', () => {
@@ -736,7 +736,7 @@ test('a respawn re-arms the low-health alert', () => {
   h.frame('$HP,0,0,0,*');                                        // dead
   h.eng._spawn(false);                                           // back on your feet
   h.frame('$HP,43,0,0,*');
-  assert.equal(h.writes.filter(f => f.includes('VA8B')).length, 1, 'a new life gets a new alert');
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'a new life gets a new alert');
 });
 
 // ── empty-mag state, replayed at the REAL cadence (capture 2026-08-26-weapons-smg-plus-amr) ──────
@@ -930,13 +930,23 @@ test('a hit plays the bundle\'s hit_taken burst once per second, a death its die
 
 test('a silenced bundle (no leds, empty announcer cues) plays nothing extra on a hit', () => {
   const h = harness();
-  const silenced = { ...h.bundle, leds: {}, cues: { ...h.bundle.cues, kill: '', multi: '', medal: '' } };
+  // A real silenced bundle mutes the ANNOUNCER groups: the compiler emits "" for those cues and ships no
+  // kill pool at all (verified against Compiler().compile with preset "silenced"), so mirror both here.
+  const silenced = { ...h.bundle, leds: {}, cues: { ...h.bundle.cues, kill: '', multi: '', medal: '' },
+    cue_pools: { ...h.bundle.cue_pools, kill: undefined } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: silenced, roster: h.roster } });
   h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0);
+  // A15.3: the 9-damage hit still grunts. `announcer: false` mutes the ANNOUNCER and OBJECTIVE groups, never
+  // the player's own body sounds (the same rule that keeps low_health) — and before A15.3 the FIRMWARE played
+  // this grunt from the $PSET under a silenced preset too, so muting it here would be a regression.
+  const painTakes = golden.cue_pools.pain_short;
+  assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 1, 'the hit grunts');
+  assert.ok(painTakes.includes(h.writes.find(f => f.startsWith('$PLAY'))), 'and it is a short-pain take');
+  h.writes.length = 0;
   h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now() }, h.eng.now());
   assert.ok(h.writes.includes('$SFLASH,*'), 'the sight flash still fires');
   assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 0, 'no kill line when the announcer is off');
@@ -953,7 +963,9 @@ test('a kill feedback with medals plays each medal cue instead of the plain kill
   assert.deepEqual(h.eng.state().moment.data.medals, ['killtacular', 'killing_spree']);
   h.writes.length = 0;
   h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now(), medals: [] }, h.eng.now());
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$PLAY')), [golden.cues.kill], 'no medals: the kill line');
+  const plain = h.writes.filter(f => f.startsWith('$PLAY'));
+  const pool = (golden.cue_pools && golden.cue_pools.kill) || [golden.cues.kill];   // A15: one random take of the kill pool (kill confirms + taunts)
+  assert.ok(plain.length === 1 && pool.includes(plain[0]), 'no medals: one take of the kill pool, got ' + plain.join());
 });
 
 test('an MC alert plays this node\'s cue + burst for the event and raises a HUD alert moment', () => {
@@ -1442,4 +1454,88 @@ test('A11.8 death flash: while DOWN the small flash LED pulses every 750 ms and 
   h.writes.length = 0;
   for (let i = 0; i < 8; i++) { h.adv(250); h.eng.tick(); }
   assert.equal(h.writes.filter(f => f === '$LED,9,1,1,1,*').length, 0, 'alive: no more pulses');
+});
+
+// ---- A15: cue pools -- a random take per event (Tony 2026-09-06: "the kill confirm sound and taunts should be
+// selected on single kill at random") -----------------------------------------------------------------------
+test('cue pools: a seeded rng picks the expected take, no pool falls back to cues[kind], a kill plays one OF the pool', () => {
+  const POOL = ['$PLAY,,4,6,VAA,,,,*', '$PLAY,,4,6,VA8,,,,*', '$PLAY,,4,6,VA9,,,,*', '$PLAY,,4,6,VAK,,,,*', '$PLAY,,4,6,VAL,,,,*'];
+  const mk = (r) => {
+    const writes = [], logs = [];
+    const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => 1_000_000, synced: () => true,
+      storage: mkStorage(), log: l => logs.push(l), delay: (ms, fn) => fn(), rng: () => r });
+    const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+      respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
+      teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+    const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+    const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
+    const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }];
+    const bundle = { ...golden, player_id: 'p1', cues: { ...golden.cues, kill: POOL[0] }, cue_pools: { kill: POOL } };
+    eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+    eng.onMcMessage({ kind: 'assign', body: { player, team, roster } });
+    eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } });
+    eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+    return { eng, writes, logs, bundle };
+  };
+  // rng 0.5 -> index floor(0.5 * 5) = 2 -> VA9; the write reason names the take
+  const a = mk(0.5); a.writes.length = 0;
+  a.eng._event('kill');
+  assert.deepEqual(a.writes.filter(w => w.startsWith('$PLAY')), [POOL[2]], 'seeded pick is pool[2]');
+  assert.ok(a.logs.some(l => l.includes('event cue kill (3/5)')), 'the log says which take: ' + a.logs.slice(-3).join(' | '));
+  // rng just under 1 -> the last take; never out of range
+  const z = mk(0.999999); z.writes.length = 0; z.eng._event('kill');
+  assert.deepEqual(z.writes.filter(w => w.startsWith('$PLAY')), [POOL[4]]);
+  // no pool for this kind -> cues[kind] exactly as before
+  a.writes.length = 0; a.eng._event('game_over');
+  assert.deepEqual(a.writes.filter(w => w.startsWith('$PLAY')), [golden.cues.game_over], 'no pool: the single cue');
+  // an old bundle (no cue_pools at all) plays cues.kill
+  const old = mk(0.5); old.eng.frames = { ...old.bundle, cue_pools: undefined }; old.writes.length = 0; old.eng._event('kill');
+  assert.deepEqual(old.writes.filter(w => w.startsWith('$PLAY')), [POOL[0]], 'pre-A15 bundle: cues.kill');
+  // a plain-kill feedback: $SFLASH first, then ONE frame of the pool (not always cues.kill)
+  const k = mk(0.7); k.eng.onMcMessage({ kind: 'start', body: { t0: k.eng.now(), config_id: golden.config_id } }); k.writes.length = 0;
+  k.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: k.eng.now() } });
+  const plays = k.writes.filter(w => w.startsWith('$PLAY'));
+  assert.ok(k.writes.includes('$SFLASH,*') && plays.length === 1 && POOL.includes(plays[0]) && k.writes.indexOf('$SFLASH,*') < k.writes.indexOf(plays[0]), 'flash, then a pool take: ' + k.writes.join(' '));
+  assert.equal(plays[0], POOL[3], 'rng 0.7 -> pool[3]');
+  // MC's explicit `cue` on the body still wins (older MC / a specific line), and medal stacks are untouched
+  k.writes.length = 0; k.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: k.eng.now(), cue: golden.cues.kill } });
+  assert.deepEqual(k.writes.filter(w => w.startsWith('$PLAY')), [golden.cues.kill]);
+});
+
+// ---- A15.2: the spawn line is OURS (Tony 2026-09-06, bench: an empty $PSET cry field silences the firmware; $SPAWN then
+// $PLAY in the SAME write plays clean; "what if we dont rely on the firmware to make the sound on spawn and we just control it")
+test('spawn writes one take of the spawn pool right after $SFLASH in the same write; revive carries one too; no pool = cues.spawn; pre-A15.2 = nothing', () => {
+  const POOL = ['$PLAY,,4,6,VAI,,,,*', '$PLAY,,4,6,VAN,,,,*', '$PLAY,,4,6,VAO,,,,*'];
+  const mk = (r, frames) => {
+    const h = harness();
+    h.eng.rng = () => r;
+    h.kit().config_();
+    h.eng.frames = { ...h.eng.frames, ...frames };
+    h.echo(); h.writes.length = 0;
+    h.start(0); h.adv(10); h.eng.tick();
+    return h;
+  };
+  const plays = ws => ws.filter(w => w.startsWith('$PLAY,,4,6,'));
+  // a pool: rng 0.5 -> pool[1] (VAN), written in the spawn write right after $SFLASH
+  const a = mk(0.5, { cues: { ...golden.cues, spawn: POOL[0], respawned: POOL[0] }, cue_pools: { ...(golden.cue_pools || {}), spawn: POOL, respawned: POOL } });
+  const i = a.writes.indexOf('$SFLASH,*');
+  assert.ok(i > 0 && a.writes[i + 1] === POOL[1], 'rng 0.5 -> VAN right after $SFLASH: ' + a.writes.slice(i - 1, i + 3).join(' '));
+  assert.equal(plays(a.writes).length, 1, 'exactly one voice line at spawn: ' + plays(a.writes).join(' '));
+  // revive: the take rides in the revive write, once (the respawned event is lights only)
+  a.frame('$HIR,4,0,19,2,45,0,0,*'); a.frame('$HP,0,0,0,*'); a.writes.length = 0;
+  a.adv(9000); a.eng.tick();
+  assert.ok(a.eng.alive, 'auto-respawned');
+  const rv = a.writes.indexOf('$SPAWN,,*');
+  assert.ok(rv >= 0, 'revive wrote $SPAWN');
+  assert.deepEqual(plays(a.writes), [POOL[1]], 'one spawn line on revive, from the respawned pool: ' + a.writes.join(' '));
+  assert.ok(a.writes.indexOf(POOL[1]) > rv, 'after the revive frames');
+  // no pool, one take: cues.spawn plays
+  const b = mk(0.9, { cues: { ...golden.cues, spawn: '$PLAY,,4,6,V3I,,,,*' }, cue_pools: { ...(golden.cue_pools || {}), spawn: undefined } });
+  const j = b.writes.indexOf('$SFLASH,*');
+  assert.equal(b.writes[j + 1], '$PLAY,,4,6,V3I,,,,*', 'the single take');
+  // a pre-A15.2 bundle (no cues.spawn at all): the spawn write ends on $SFLASH, nothing appended
+  const { spawn: _s, respawned: _r, ...cuesOld } = golden.cues;
+  const c = mk(0.5, { cues: cuesOld, cue_pools: {} });
+  const k = c.writes.indexOf('$SFLASH,*');
+  assert.ok(k === c.writes.length - 1 || !c.writes[k + 1].startsWith('$PLAY,,4,6,'), 'pre-A15.2: nothing after $SFLASH: ' + c.writes.slice(k).join(' '));
 });

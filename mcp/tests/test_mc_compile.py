@@ -784,25 +784,38 @@ def test_every_voice_id_exists_in_the_shipped_sound_bank():
     from brx_mcp.mc.compile import kill_line
     bank_path = pathlib.Path(__file__).resolve().parents[2] / "protocol" / "callsign-extract" / "Sounds.json"
     bank = set(json.loads(bank_path.read_text())["SoundsLengthMap"])
-    missing = [(v, i) for v in VOICE_PACKS for i in voice_tail(v) + [kill_line(v)] if i not in bank]
+    missing = [(v, i) for v in VOICE_PACKS for i in voice_tail(v) + [kill_line(v)] if i and i not in bank]   # A15.2: the cry token is empty
     assert not missing, f"voice ids not in the sound bank: {missing}"
 
 
 def test_voice_slot_roles_hold_across_every_family():
-    """The per-family swap rests on the packs sharing a layout. Two independent checks, both from
-    the shipped bank: every family carries all six slot ids, and the DURATIONS agree by role —
-    shortPain is the briefest slot in every family and longPain runs materially longer.
+    """The per-family swap rests on the packs sharing a layout. Two independent checks, both from the shipped
+    bank: every family still carries the ids for the fields that ship in $PSET (death scream, pain relief) plus
+    the node's own pain picks (pain_melee / pain_short / pain_long -- A15.3 emptied these OUT of $PSET, so they
+    are read via `voices.role_id`, not `voice_tail`, but they are the same ids the family used to ship there),
+    and the DURATIONS agree by role -- shortPain is the briefest slot in every family and longPain runs
+    materially longer.
     """
     import json, pathlib
     from brx_mcp.gameconfig import VOICE_PACKS, voice_tail
+    from brx_mcp import voices as V
     bank_path = pathlib.Path(__file__).resolve().parents[2] / "protocol" / "callsign-extract" / "Sounds.json"
     lens = json.loads(bank_path.read_text())["SoundsLengthMap"]
     for v in VOICE_PACKS:
-        ids = voice_tail(v)                       # death, respawnCry, meleeGrunt, shortPain, longPain, painRelief
+        tail = voice_tail(v)                       # death, respawnCry, meleeGrunt, shortPain, longPain, painRelief
+        assert tail[1] == tail[2] == tail[3] == tail[4] == "", v    # A15.3: cry + all three pains ship EMPTY
+        death, relief = tail[0], tail[5]
+        melee, short_id, long_id = V.role_id(v, "pain_melee"), V.role_id(v, "pain_short"), V.role_id(v, "pain_long")
+        ids = [death, melee, short_id, long_id, relief]
         assert all(i in lens for i in ids), v
-        short, long_ = lens[ids[3]], lens[ids[4]]
+        assert lens[death[:2] + "I"] > 0, v            # the family still HAS a spawn line for the node to say
+        short, long_ = lens[short_id], lens[long_id]
         assert short < long_, f"{v}: shortPain {short:.2f}s is not shorter than longPain {long_:.2f}s"
-        assert short <= min(lens[i] for i in ids), f"{v}: shortPain is not the briefest slot"
+        if v not in ("creature", "stalker"):
+            # A15 added creature (V5) and stalker (VF): both keep G < E, but their briefest slot is ANOTHER pain
+            # line (the monster's grunts are all long; stalker's C is 0.45 s to G's 0.46 s), so "briefest" is
+            # not a layout signal for them. The commander packs (VQ/VR/VS) fail G < E outright and are excluded.
+            assert short <= min(lens[i] for i in ids), f"{v}: shortPain is not the briefest slot"
 
 
 def test_the_voice_pack_is_per_player_not_hardcoded():
@@ -810,10 +823,33 @@ def test_the_voice_pack_is_per_player_not_hardcoded():
     hp = next(f for f in C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)["head"] if f.startswith("$PSET,"))
     mp = next(f for f in C.compile(_cfg(), dict(_player(), voice="medic"), _TEAMS)["head"] if f.startswith("$PSET,"))
     assert hp != mp, "the voice pack must follow the player"
-    assert ",V33,V3I,V3C,V3G,V3E,V37," in hp      # unchanged from what we shipped
-    assert ",V83,V8I,V8C,V8G,V8E,V87," in mp
+    assert ",V33,,,,,V37," in hp      # A15.3: the cry AND the three pain fields are EMPTY (the node plays them)
+    assert ",V83,,,,,V87," in mp
     # an unknown name falls back rather than emitting a bad family
     assert next(f for f in C.compile(_cfg(), dict(_player(), voice="nope"), _TEAMS)["head"] if f.startswith("$PSET,"))
+
+
+def test_voice_slots_pick_which_line_of_the_family_the_gun_holds():
+    """A15: `voice_slots` = {role: id} replaces one $PSET voice field (a different death scream) and the kill cue;
+    the bundle reports what the gun holds in `voice`. An off-gun id or an unknown role is refused."""
+    b = C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots={"death_scream": "V34", "kill": "V38"}), _TEAMS)
+    pset = next(f for f in b["head"] if f.startswith("$PSET,"))
+    assert ",V34,,,,,V37," in pset      # A15.3: melee_grunt / short_pain / long_pain still ship EMPTY -- only death_scream was picked
+    assert b["cues"]["kill"] == "$PLAY,,4,6,V38,,,,*"
+    assert {k: b["voice"][k] for k in ("id", "family", "kill", "pset")} == {"id": "heavy", "family": "V3", "kill": "V38",
+                          "pset": {"death_scream": "V34", "respawn_cry": "", "melee_grunt": "", "short_pain": "", "long_pain": "", "pain_relief": "V37"}}
+    assert b["voice"]["rolled"] == {} and b["voice"]["pools"]["death_scream"] == ["V33", "V34", "V35"]   # A15.1: no roll without `roll=`
+    plain = C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)
+    assert plain["voice"]["kill"] == "V3A" and ",V33,,,,,V37," in next(f for f in plain["head"] if f.startswith("$PSET,"))
+    for bad in ({"dance": "V34"}, {"death_scream": "E_J10"}):
+        try:
+            C.compile(_cfg(), dict(_player(), voice="heavy", voice_slots=bad), _TEAMS)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted {bad}")
+    opts = {o["id"]: o for o in C.voice_options()}
+    assert opts["heavy"]["kill_line"] == "V3A" and opts["heavy"]["speaker"] == "Heavy" and opts["heavy"]["lines"] == 22
 
 
 
@@ -860,3 +896,52 @@ def test_every_mode_and_preset_paints_headset_and_gun_body_pregame():
 def _team_colour(tid):
     from brx_mcp import poolgauge as pg
     return pg.TEAM_COLOURS.get(tid, pg.DEFAULT_TEAM_COLOUR)
+
+
+def test_a_roll_draws_the_pset_voice_fields_and_the_kill_cue_is_a_pool():
+    """A15.1 (Tony, 2026-09-06): with `roll=` the un-picked $PSET fields are drawn from the family pools and the
+    bundle says what was drawn; without it the compile is the deterministic default (the golden bundle). A15.3
+    narrows the roll to death_scream alone (the three pain fields ship empty and are never rolled -- the node
+    plays them itself). The kill cue is a POOL of five frames the node rolls from; `cues["kill"]` stays its first."""
+    import random
+    hv = dict(_player(), voice="heavy")
+    screams = set()
+    for seed in range(10):
+        b = C.compile(_cfg(), hv, _TEAMS, roll=random.Random(seed))
+        pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
+        ds, cry, melee, sp, lp = pset[10], pset[11], pset[12], pset[13], pset[14]
+        assert ds in ("V33", "V34", "V35") and cry == melee == sp == lp == "", (ds, cry, melee, sp, lp)
+        assert b["voice"]["rolled"] == {"death_scream": ds}      # A15.3: the only field left to draw
+        assert b["voice"]["pset"]["death_scream"] == ds and b["voice"]["pools"]["death_scream"] == ["V33", "V34", "V35"]
+        screams.add(ds)
+    assert len(screams) > 1
+    plain = C.compile(_cfg(), hv, _TEAMS)
+    assert ",V33,,,,,V37," in next(f for f in plain["head"] if f.startswith("$PSET,")) and plain["voice"]["rolled"] == {}
+    assert plain["cue_pools"]["kill"] == [f"$PLAY,,4,6,{i},,,,*" for i in ("V3A", "V38", "V39", "V3K", "V3L")]
+    assert plain["cues"]["kill"] == plain["cue_pools"]["kill"][0]
+    # an explicit pick is never rolled over, and collapses the kill pool to that line
+    picked = C.compile(_cfg(), dict(hv, voice_slots={"death_scream": "V35", "kill": "V39"}), _TEAMS, roll=random.Random(1))
+    assert ",V35," in next(f for f in picked["head"] if f.startswith("$PSET,")) and "death_scream" not in picked["voice"]["rolled"]
+    assert "kill" not in picked["cue_pools"] and picked["cues"]["kill"] == "$PLAY,,4,6,V39,,,,*"
+
+
+def test_the_spawn_line_is_ours_and_respawned_draws_from_the_same_pool():
+    """A15.2 (bench 2026-09-06, Tony: "what if we dont rely on the firmware to make the sound on spawn and we just
+    control it?"): the head's $PSET ships an EMPTY battleRespawnCry (verified: the firmware then says nothing on
+    $SPAWN), `cues.spawn` is the character's spawn line for the node to write right after the spawn / revive
+    frames, `cue_pools.spawn` is the pool when the family has several (VAI / VAN / VAO for the Male player), and
+    the `respawned` event carries the same pool."""
+    m = C.compile(_cfg(), dict(_player(), voice="male"), _TEAMS)
+    pset = next(f for f in m["head"] if f.startswith("$PSET,")).split(",")
+    assert pset[11] == "" and pset[10] == "VA3"                        # cry EMPTY, scream still the firmware's
+    assert m["cues"]["spawn"] == "$PLAY,,4,6,VAI,,,,*"
+    assert m["cue_pools"]["spawn"] == [f"$PLAY,,4,6,{i},,,,*" for i in ("VAI", "VAN", "VAO")]
+    assert m["cues"]["respawned"] == m["cues"]["spawn"] and m["cue_pools"]["respawned"] == m["cue_pools"]["spawn"]
+    assert m["voice"]["spawn"] == ["VAI", "VAN", "VAO"] and m["voice"]["pset"]["respawn_cry"] == ""
+    h = C.compile(_cfg(), dict(_player(), voice="heavy"), _TEAMS)
+    assert h["cues"]["spawn"] == "$PLAY,,4,6,V3I,,,,*" and "spawn" not in h["cue_pools"] and "respawned" not in h["cue_pools"]
+    # a $PSET pick puts a firmware cry back (the escape hatch); a `spawn` pick collapses the node's pool
+    back = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"respawn_cry": "VAN"}), _TEAMS)
+    assert next(f for f in back["head"] if f.startswith("$PSET,")).split(",")[11] == "VAN"
+    one = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"spawn": "VAO"}), _TEAMS)
+    assert one["cues"]["spawn"] == "$PLAY,,4,6,VAO,,,,*" and "spawn" not in one["cue_pools"]

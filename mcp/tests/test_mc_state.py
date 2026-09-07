@@ -241,3 +241,31 @@ def test_global_state_alerts_are_withheld_when_not_confident_and_sent_when_confi
     net.pushed.clear()
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     assert s._alert("lead_taken", "blue") == 0 and not net.pushed
+
+
+def test_every_push_rolls_the_unpicked_voice_fields_and_so_does_a_late_joiner():
+    """A15.1: MC rolls the death scream per push from the character's pool, so two pushes (or two players on
+    the same character) do not have to share a scream; a late joiner hydrated at hello rolls too; an explicit
+    `voice_slots` pick is never rolled over. A15.3 narrowed the roll to death_scream alone -- the cry and the
+    three pain fields ship empty and are never rolled (the node plays them itself)."""
+    import random
+    from brx_mcp.mc.compile import Compiler
+    net = FakeNet()
+    s = Session(Compiler(), net, FakeArmory(demo_armory()), voice_rng=random.Random(7))
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    a = s.add_player("A", gun_id="GUN-A", voice="male")
+    b = s.add_player("B", gun_id="GUN-B", voice="male", voice_slots={"death_scream": "VA5"})
+    draws = set()
+    for _ in range(8):
+        s.push_config(force=True)
+        ra, rb = s.bundles[a["player_id"]]["voice"]["rolled"], s.bundles[b["player_id"]]["voice"]["rolled"]
+        assert set(ra) == {"death_scream"}                       # A15.3: the only field left to roll
+        assert "death_scream" not in rb and s.bundles[b["player_id"]]["voice"]["pset"]["death_scream"] == "VA5"
+        pset = next(f for f in s.bundles[a["player_id"]]["head"] if f.startswith("$PSET,")).split(",")
+        assert pset[10] == ra["death_scream"] and pset[11] == pset[12] == pset[13] == pset[14] == ""
+        draws.add(tuple(sorted(ra.items())))
+    assert len(draws) > 1, "eight pushes with the same draw: the session is not rolling"
+    del s.bundles[a["player_id"]]                          # a node that says hello after the push is hydrated from a fresh roll
+    tail = demo_armory()[0]["ble"]["tail"]
+    net.simulate_hello("late-node", f"GUN-A-{tail}")
+    assert s.bundles[a["player_id"]]["voice"]["rolled"]["death_scream"] in ("VA3", "VA4", "VA5")

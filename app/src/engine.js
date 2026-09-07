@@ -32,6 +32,7 @@ const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long 
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 const EVENT_MIN_GAP_MS = 1000;
+const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
@@ -59,9 +60,9 @@ export class Engine {
    * @param {(line:string, cls?:string) => void} [o.log]
    */
   constructor({ writer, emit = () => {}, report = () => {}, now = () => Date.now(), synced = () => false,
-                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms) } = {}) {
+                storage = null, log = () => {}, onChange = () => {}, delay = (ms, fn) => setTimeout(fn, ms), rng = Math.random } = {}) {
     this.writer = writer; this.emitFact = emit; this.report = report; this.now = now; this.isSynced = synced;
-    this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay;
+    this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
     this.reset();
     this._load();
   }
@@ -509,9 +510,56 @@ export class Engine {
    *  EVENT_MIN_GAP_MS apart drop their lights (the sound still plays). */
   _event(kind) {
     const f = this.frames; if (!f) return;
-    const cue = f.cues && f.cues[kind];
-    if (cue) this._write([cue], `event cue ${kind}`);
+    const pick = this._pickCue(kind);
+    if (pick.frame) this._write([pick.frame], `event cue ${kind}${pick.tag}`);
     this._eventLeds(kind);
+  }
+  /** A15 (Tony 2026-09-06: "the kill confirm sound and taunts should be selected on single kill at random"):
+   *  an event whose sound is a `voice:<role>` with several takes ships them all in `cue_pools[kind]`;
+   *  pick one at random per event so the gun does not say the same line every time. `cues[kind]` (one
+   *  frame) is the pre-A15 shape and the fallback, so an older bundle plays exactly as before. */
+  _pickCue(kind) {
+    const f = this.frames; if (!f) return { frame: null, tag: '' };
+    const single = f.cues && f.cues[kind];
+    if (single === '') return { frame: null, tag: '' };   // deliberately mute (announcer off): the pool does not override the profile
+    const pool = f.cue_pools && f.cue_pools[kind];
+    if (Array.isArray(pool) && pool.length > 1) {
+      const i = Math.min(pool.length - 1, Math.max(0, Math.floor(this.rng() * pool.length)));
+      return { frame: pool[i], tag: ` (${i + 1}/${pool.length})` };
+    }
+    return { frame: (f.cues && f.cues[kind]) || null, tag: '' };
+  }
+  /** `' + spawn line (VAN 2/3)'` for a write reason: the take's id (token 4 of the $PLAY) and its place in the pool. */
+  _lineTag(pick) {
+    if (!pick || !pick.frame) return '';
+    const id = (pick.frame.split(',')[4] || pick.frame.split(',')[1] || '').trim();
+    return ` + spawn line (${id}${pick.tag ? ' ' + pick.tag.trim().slice(1, -1) : ''})`;
+  }
+  /** A15.3: one random frame of `frames[kind]` (a LIST of full frames -- `pset_pool`: one $PSET per death-scream
+   *  take). `{frame: null}` when the bundle has no such pool (pre-A15.3), so nothing extra is written. */
+  _pickFrame(kind) {
+    const pool = this.frames && this.frames[kind];
+    if (!Array.isArray(pool) || !pool.length) return { frame: null, tag: '', id: '' };
+    const i = pool.length > 1 ? Math.min(pool.length - 1, Math.max(0, Math.floor(this.rng() * pool.length))) : 0;
+    const frame = pool[i];
+    const id = kind === 'pset_pool' ? (frame.split(',')[10] || '').trim() : '';   // $PSET token 10 = deathScream
+    return { frame, tag: pool.length > 1 ? ` ${i + 1}/${pool.length}` : '', id };
+  }
+  /** A15.3 (Tony 2026-09-06: "The long vs short pain should be used depending on the amount of damage. A big sniper
+   *  shot -> long pain. A normal round -> short pain."): the $PSET pain fields ship EMPTY and WE play the grunt on
+   *  each registered hit -- `pain_melee` on a melee word (proto 13), `pain_long` when the hit took at least
+   *  `voice.pain_long_min` (40: shotgun / snipers / power weapons), else `pain_short`; one random take of that pool.
+   *  Gated to one grunt per PAIN_GAP_MS (a burst of rifle hits must not queue six grunts in the gun); never on a
+   *  lethal hit (the native death scream plays). `dmg` is what the pools actually lost (crit included). */
+  _pain(dmg, proto) {
+    const f = this.frames; if (!f) return;
+    const kind = proto === 13 ? 'pain_melee' : dmg >= ((f.voice && f.voice.pain_long_min) || 40) ? 'pain_long' : 'pain_short';
+    if (!((f.cues && f.cues[kind]) || (f.cue_pools && f.cue_pools[kind]))) return;   // pre-A15.3 bundle: the firmware's own pains
+    const now = this.now();
+    if (this._lastPainAt != null && now - this._lastPainAt < PAIN_GAP_MS) return;   // drop, never queue
+    this._lastPainAt = now;
+    const pick = this._pickCue(kind);
+    if (pick.frame) this._write([pick.frame], `pain ${kind.slice(5)} (${(pick.frame.split(',')[4] || '').trim()}${pick.tag}) ${dmg} dmg`);
   }
   /** The lights of an event without its sound (feedback plays the medal lines itself). */
   _eventLeds(kind) {
@@ -541,7 +589,15 @@ export class Engine {
   _spawn(withCountdown) {
     if (!this.frames) return;
     if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
-    this._write([...this.frames.spawn, SFLASH], 'spawn');
+    // A15.2 (Tony 2026-09-06, bench-verified): the $PSET cry field ships EMPTY so the firmware says nothing at $SPAWN,
+    // and WE play one take of the spawn pool in the SAME write ($SPAWN then $PLAY plays clean; a $PLAYX between
+    // them clipped the firmware's line). A pre-A15.2 bundle has no cues.spawn: nothing is appended.
+    const sp = this._pickCue('spawn');
+    // A15.3: the death scream stays NATIVE but is rolled per LIFE -- one of the bundle's pre-composed $PSET frames
+    // (one per scream take) goes out first, in the same write (bench 2026-09-06: a $PSET re-sent in play keeps $SIR,
+    // does not heal, the gun fires). No pset_pool (pre-A15.3): nothing prepended, the head's $PSET stands.
+    const ps = this._pickFrame('pset_pool');
+    this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     if (this.frames.headset) this._headset(this.frames.headset.start, 'start');   // A11.6: white flash marks the start, then dark (or team)
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
@@ -620,7 +676,9 @@ export class Engine {
   _revive(resync, stationId = null) {
     this.reloading = null;                          // a reload that started in the last life does not follow you into this one
     if (!this.frames) return;
-    this._write(this.frames.revive, 'revive');
+    const sp = this._pickCue('respawned');   // A15.2: the spawn line rides in the revive write (one line, never two)
+    const ps = this._pickFrame('pset_pool');   // A15.3: a fresh death scream for this life, written before $SPAWN
+    this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     this.hurtFired = false;
     this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
@@ -629,7 +687,7 @@ export class Engine {
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
-    this._event('respawned');   // A11 (after the revive frames, so the burst ends on the fresh team colour)
+    this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     if (this.frames.headset) { this.carrying = null; this._headset(this.frames.headset.respawn, 'respawn'); }   // A11.6
     this._changed();
   }
@@ -712,7 +770,8 @@ export class Engine {
   feedback(body, envT) {
     const t = body.t != null ? body.t : envT;
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
-    const cue = body.cue || (this.frames && this.frames.cues && this.frames.cues[body.kind]);
+    const pick = body.cue ? { frame: body.cue, tag: '' } : this._pickCue(body.kind);   // A15: a random take from the pool (kill confirms + taunts)
+    const cue = pick.frame;
     this._write([SFLASH], `feedback ${body.kind}`);
     // A11.4 Halo-style medals: a kill can carry several ("killtacular" + "killing_spree"); each plays
     // its cue from THIS node's bundle, back to back, and replaces the plain kill line. A cue that is
@@ -722,7 +781,7 @@ export class Engine {
     if (medalCues.length) {
       medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => this._write([x.f], `medal ${x.m}`)));
       this.medals = body.medals.slice();
-    } else if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}`));   // hardware-proven gap (seed): flash, then the line
+    } else if (cue) this.delay(120, () => this._write([cue], `feedback cue ${body.kind}${pick.tag}`));   // hardware-proven gap (seed): flash, then the line
     this._eventLeds(medalCues.length ? medalCues[0].m : body.kind);   // A11.8: the headset's small LED flash (+ any burst) for the top medal
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
@@ -996,7 +1055,7 @@ export class Engine {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
       this.lastHitAt = this.now();
-      if (this.alive && hp > 0) this._event('hit_taken');   // A11: a death is its own event
+      if (this.alive && hp > 0) { this._event('hit_taken'); this._pain(dmg, this.latch.ir_proto); }   // A11: a death is its own event; A15.3: our pain grunt by damage
     }
     // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries

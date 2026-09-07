@@ -177,6 +177,18 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   and `compile.cues()` `multi`/`medal`; `cues.team_led` + the pre-A11.6 bundle fallback; engine "older MC" defaults
   (`swap_ms` 850, kit-open flag, `feedback.cue`), `restore_snapshot()` pre-A11 normalising; the scorer's "kind stays
   kill" comment. Keep the "server predates this UI" banners. One sweep, regen the golden bundle, cut an APK. `build`.
+- **S12 🟡 Tony's call** the player's OWN voice has no off switch. A15.3 moved the pains, the spawn line and the
+  death scream from the firmware to us, but `compile.py` emits them ungated: `preset: "silenced"`, `announcer: false`
+  and `hud_events: false` all still ship `cues.pain_short`, `cues.spawn` and a 3-frame `pset_pool` (verified
+  2026-09-06). Kept deliberately — `announcer: false` mutes the announcer and objective groups only, and pre-A15.3 the
+  firmware grunted under a silenced game anyway, so gating it would have REMOVED a sound players had. But a silenced
+  sniper grunting on every hit gives away the position, which is the point of that preset. Decide: a
+  `presentation.voice` switch (`on` / `hits_only` / `off`) or leave it. `decision`.
+- **S11 🟡** the gun stage's boot blocks the HTTP server: `--gun <addr>` is awaited INSIDE the lifespan before
+  `yield`, so when the tagger is asleep or the BLE stack is busy the page never starts listening and the process looks
+  hung (hit 2026-09-06 after two forced restarts; two orphan processes, port 8790 dead, no error in the log). Fix: boot
+  the link as a background task and let the page come up LINKED=false, or bound the connect with a timeout that logs.
+  Workaround meanwhile: start without `--gun` and press CONNECT. `build`.
 - **S9 🟠** event sound pass on the gun stage (45-step walkthrough failed several): `extraction_tick` (K01 is a fly-by;
   trial U100, alts U13/U41), `extraction_closing` VX0R and `extraction_complete` VQ8 failed, `unstoppable` had no line
   (trial VX0U), `killing_spree` V125 vs VA7K, `healed`/`armour_up`/`shield_up` have no sound. Then every mode preset.

@@ -86,6 +86,9 @@ class Player(TypedDict):
     loadout: Loadout
     voice: str
     ready: bool
+    # A15 (optional): {role: sound id} picks for the $PSET voice fields + the kill line -- WHICH death scream /
+    # pain line / respawn cry of the family the gun plays (voices.PSET_ROLES + "kill"). Absent = the family defaults.
+    voice_slots: NotRequired[dict[str, str]]
 
 
 class RosterEntry(TypedDict):
@@ -174,11 +177,23 @@ class FrameBundle(TypedDict):
     # game_over?, victory?, tick?, klaxon?, multi?, medal?, runway_*?, and the once-per-life
     # low-health pair hurt?/hurt_led? (hurt_led is an $HLED, not a $PLAY — see compile.cues)
     # A11: plus one key per presentation EVENT that carries a sound (hit_taken … vip_down); "" = deliberately mute.
+    # A15.2: `spawn` = the character's spawn line, written by the node IMMEDIATELY after the spawn / revive frames
+    # (the head's $PSET ships an empty battleRespawnCry, so the firmware itself says nothing on $SPAWN).
+    # A15.3: `pain_short` / `pain_long` / `pain_melee` = the pain the node plays on a $HIR (the $PSET pain fields ship
+    # empty): a melee word -> pain_melee; damage >= voice.pain_long_min -> pain_long; else pain_short. At most one per
+    # 600 ms, none on the lethal hit (the firmware's death scream covers it).
     leds: NotRequired[dict[str, list]]   # A11: event -> [[frame, hold_s], ...] -- the tuned $GLED burst (+ optional $HLED)
     presentation: NotRequired[dict]      # A11: presentation.summary() -- preset + switches, for the UI/HUD
     gun: NotRequired[dict]               # A11.7: {in_play team|dark|health, blank, rest, bands?[[frac,f]]} -- absent for native
     headset: NotRequired[dict]           # A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}}
     swap_ms: NotRequired[int]            # 2026-09-04: the weapon-swap delay the gun enforces (max tok15 of slots 0/1, after perks)
+    cue_pools: NotRequired[dict[str, list[str]]]   # A15.1: event -> frames; the node picks ONE at random per event; `cues[ev]` is the deterministic first
+    voice: NotRequired[dict]             # A15: {id, family, pset{role: id}, kill, rolled{role: id} (A15.1: this push's draws), pools{role: [ids]},
+    #                                        spawn: [ids] (A15.2: the spawn pool; `pset.respawn_cry` is "" unless picked),
+    #                                        pset_pool: [death-scream ids, one per `pset_pool` frame], pain_long_min: int} (A15.3)
+    pset_pool: NotRequired[list[str]]    # A15.3: the node writes ONE of these at random immediately before every `$SPAWN` (spawn and revive),
+    #                                      so the firmware's death scream changes per life. One full $PSET per death-scream take; only the
+    #                                      deathScream token differs. A pinned `death_scream` (or a one-take family) = one frame = head[4].
 
 
 class Weapon(TypedDict):

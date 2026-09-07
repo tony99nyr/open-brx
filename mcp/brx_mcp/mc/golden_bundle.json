@@ -6,7 +6,7 @@
     "$CLEAR,*",
     "$START,*",
     "$GSET,0,0,1,0,1,0,50,1,*",
-    "$PSET,7,0,45,70,70,50,,H44,JAD,VA3,VAI,VAC,VAG,VAE,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*",
+    "$PSET,7,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*",
     "$WEAP,0,,100,0,0,9,0,,,,,,,,140,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
     "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,800,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",
     "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
@@ -60,7 +60,7 @@
     "kill": "$PLAY,,4,6,VAA,,,,*",
     "game_over": "$PLAY,,4,6,VA33,,,,*",
     "victory": "$PLAY,VSF,4,6,JAY,,,,*",
-    "hurt": "$PLAY,VA8B,3,6,,,,,*",
+    "hurt": "$PLAY,,4,6,VA6,,,,*",
     "hurt_led": "$HLED,7,4,90,90,10,15,*",
     "tick": "$PLAY,U16,4,6,,,,,*",
     "klaxon": "$PLAY,U16,4,6,,,,,*",
@@ -70,6 +70,11 @@
     "runway_20": "",
     "runway_10": "$PLAY,,4,6,VA85,,,,*",
     "team_led": "",
+    "pain_short": "$PLAY,,4,6,VAG,,,,*",
+    "pain_long": "$PLAY,,4,6,VAE,,,,*",
+    "pain_melee": "$PLAY,,4,6,VAC,,,,*",
+    "spawn": "$PLAY,,4,6,VAI,,,,*",
+    "respawned": "$PLAY,,4,6,VAI,,,,*",
     "first_blood": "$PLAY,,4,6,VA7H,,,,*",
     "double_kill": "$PLAY,,4,6,VA7E,,,,*",
     "triple_kill": "$PLAY,,4,6,VA7Q,,,,*",
@@ -100,6 +105,79 @@
     "raid_over": "$PLAY,X20,4,6,,,,,*"
   },
   "swap_ms": 850,
+  "voice": {
+    "id": "male",
+    "family": "VA",
+    "pset": {
+      "death_scream": "VA3",
+      "respawn_cry": "",
+      "melee_grunt": "",
+      "short_pain": "",
+      "long_pain": "",
+      "pain_relief": "VA7"
+    },
+    "kill": "VAA",
+    "rolled": {},
+    "pools": {
+      "death_scream": [
+        "VA3",
+        "VA4",
+        "VA5"
+      ],
+      "respawn_cry": [],
+      "melee_grunt": [],
+      "short_pain": [],
+      "long_pain": [],
+      "pain_relief": [
+        "VA7"
+      ]
+    },
+    "spawn": [
+      "VAI",
+      "VAN",
+      "VAO"
+    ],
+    "pset_pool": [
+      "VA3",
+      "VA4",
+      "VA5"
+    ],
+    "pain_long_min": 40
+  },
+  "cue_pools": {
+    "respawned": [
+      "$PLAY,,4,6,VAI,,,,*",
+      "$PLAY,,4,6,VAN,,,,*",
+      "$PLAY,,4,6,VAO,,,,*"
+    ],
+    "kill": [
+      "$PLAY,,4,6,VAA,,,,*",
+      "$PLAY,,4,6,VA8,,,,*",
+      "$PLAY,,4,6,VA9,,,,*",
+      "$PLAY,,4,6,VAK,,,,*",
+      "$PLAY,,4,6,VAL,,,,*"
+    ],
+    "pain_short": [
+      "$PLAY,,4,6,VAG,,,,*",
+      "$PLAY,,4,6,VAH,,,,*",
+      "$PLAY,,4,6,VAD,,,,*",
+      "$PLAY,,4,6,VAC,,,,*"
+    ],
+    "pain_long": [
+      "$PLAY,,4,6,VAE,,,,*",
+      "$PLAY,,4,6,VAF,,,,*"
+    ],
+    "spawn": [
+      "$PLAY,,4,6,VAI,,,,*",
+      "$PLAY,,4,6,VAN,,,,*",
+      "$PLAY,,4,6,VAO,,,,*"
+    ]
+  },
+  "pset_pool": [
+    "$PSET,7,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*",
+    "$PSET,7,0,45,70,70,50,,H44,JAD,VA4,,,,,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*",
+    "$PSET,7,0,45,70,70,50,,H44,JAD,VA5,,,,,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*"
+  ],
   "leds": {
     "hit_taken": [
       [

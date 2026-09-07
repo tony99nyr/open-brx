@@ -67,7 +67,7 @@ def weapon_views() -> list[dict]:
 class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
-    def compile(self, config: GameConfig, player: Player, teams: list[Team]) -> FrameBundle:
+    def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None) -> FrameBundle:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
@@ -96,7 +96,7 @@ class FakeCompiler:
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 
-    def cues(self, voice: str) -> dict[str, str]:
+    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]:   # A15: slots as the real compiler
         # A6.3: cues are pre-composed $PLAY frames the node writes verbatim
         # `hurt`/`hurt_led` are here so the demo and every fake-backed test exercise the same key set
         # the real compiler emits — without them the low-health alert path is unreachable in the

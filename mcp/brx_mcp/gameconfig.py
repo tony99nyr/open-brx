@@ -62,21 +62,27 @@ _PSET_FOOT = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]   # shared
 
 # The six voice slots, as suffixes on the family prefix, in $PSET order.
 # Read off the HEAVY pack, which is decoded BY EAR in protocol/callsign-extract/sound-bank.md:
-# V33 death scream · V3I "Get Some" respawn cry · V3G/V3E gasps.
+# V33 death scream · V3I "Get Some" respawn cry · V3G/V3E gasps. Slot "I" (the cry) is no longer WRITTEN
+# (A15.2: the field ships empty, see voice_tail); it stays here as the family's spawn-pool default.
 _VOICE_SLOTS = ("3", "I", "C", "G", "E", "7")
 
-# Family prefix -> display name (sound-bank.md "Voice (V) prefixes").
-# The pack layout is shared: all 15 families carry all six slot ids, the by-ear doc shows the death
+# Family prefix -> display name (docs/reference/sound-catalog.md "Character voices", read off the gun;
+# sound-bank.md's older "VE clean male" is wrong -- the catalog's transcripts put VE = Soldier, VP = Male (clean)).
+# The pack layout is shared: every family here carries all six slot ids, the by-ear doc shows the death
 # scream at suffix 3/4/5 for Heavy, Medic, Male AND Scout alike, and the durations agree by role
-# across every family (shortPain is the shortest slot everywhere; longPain runs ~2.5x it).
+# across every family (shortPain runs shorter than longPain everywhere; it is the briefest slot in all
+# but creature and stalker). The three COMMANDER packs (VQ / VR / VS) are deliberately absent: they do not
+# share the player layout (their G slot is a 3.3 s line, not a gasp). VK/VL, V0/VN and VD/VM have identical
+# durations slot for slot, so they are probably the same audio under two names.
 # ⚠ Only HEAVY is confirmed by ear. The rest are a well-founded inference from that structure — a
 # wrong id would play a real but wrong sound, which is cosmetic and instantly audible. Confirm by
-# picking a persona and dying once.
+# picking a persona and dying once. The full line list per family: `voices.lines()`.
 VOICE_PACKS = {
     "heavy": "V3", "medic": "V8", "male": "VA", "scout": "VB", "valkyrie": "VH",
-    "clean_male": "VE", "female_sniper": "VD", "female": "VM", "fury": "V0",
+    "clean_male": "VP", "soldier": "VE", "female_sniper": "VD", "female": "VM", "fury": "V0",
     "grenadier": "V1", "guardian": "V2", "hive_queen": "V4", "infiltrator": "V6",
-    "marauder": "V7", "raider": "V9",
+    "marauder": "V7", "raider": "V9", "sentinel": "VC", "stalker": "VF", "technician": "VG",
+    "viper": "VJ", "wraith": "VK", "russian": "VL", "mercenary": "VN", "creature": "V5",
 }
 DEFAULT_VOICE = "male"
 
@@ -88,10 +94,21 @@ DEFAULT_VOICE = "male"
 FALLBACK_VOICE = "heavy"
 
 
-def voice_tail(voice: str | None) -> list[str]:
-    """The six voice-slot ids for a family, or HEAVY's if the name is unknown."""
-    fam = VOICE_PACKS.get((voice or DEFAULT_VOICE).lower(), VOICE_PACKS[FALLBACK_VOICE])
-    return [fam + s for s in _VOICE_SLOTS]
+def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
+    """The six voice-slot tokens for a family, or HEAVY's if the name is unknown. `slots` = `{role: id}`
+    overrides per `$PSET` field (roles in `voices.PSET_ROLES`, ids validated ON THE GUN) -- how a player
+    picks WHICH death scream / pain line of the family the gun plays (A15).
+
+    A15.2 (bench 2026-09-06, Tony): the battleRespawnCry token is EMPTY -- an empty field makes the firmware
+    play NO voice line on `$SPAWN` (verified), and the node says the spawn line itself right after the spawn
+    frames (`cues.spawn` / `cue_pools.spawn`), one random take per spawn. An explicit `respawn_cry` pick
+    puts a firmware cry back. A15.3 (same bench): the meleeGrunt / shortPain / longPain tokens are EMPTY too --
+    a `$PSET` with the voice fields empty still registers hits -- and the node plays the pain by damage
+    (`cues.pain_short` / `pain_long` / `pain_melee`); the death scream stays the firmware's, rolled per spawn
+    through `pset_frames`."""
+    from .voices import pset_ids, PSET_ROLES          # local: voices imports this module
+    ids = pset_ids(voice, slots)
+    return [ids[r] for r in PSET_ROLES]
 
 # $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG
 # (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
@@ -265,7 +282,7 @@ class GameConfig:
             bmap[1] = "$BMAP,1,97,,,,,*"
         return bmap
 
-    def _pset(self, player_id: int = 0, voice: str | None = None) -> str:
+    def _pset(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None) -> str:
         """`$PSET,<playerId>,0,<hp>,<armor>,<shield>,…`
 
         Token 1 is the PLAYER ID (protocol §7p, confirmed by cap10+cap11): 6 bits,
@@ -275,8 +292,20 @@ class GameConfig:
         pid = max(0, min(int(player_id), MAX_PLAYER_ID))
         toks = ["PSET", str(pid), "0",
                 str(self.hp), str(self.armor), str(self.shield)] \
-            + _PSET_HEAD + voice_tail(voice or getattr(self, "voice", None)) + _PSET_FOOT
+            + _PSET_HEAD + voice_tail(voice or getattr(self, "voice", None), slots) + _PSET_FOOT
         return "$" + ",".join(toks) + ",*"
+
+    def pset_frames(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None) -> list[str]:
+        """A15.3: one full `$PSET` frame per death-scream take of the family (`voices.roll_pool`), so the node can
+        write ONE of them at random right before every `$SPAWN` and the firmware screams a different take each
+        life. A pinned `death_scream` (or a family with one take) gives a single frame -- the same as `_pset`.
+        Bench 2026-09-06: a `$PSET` re-sent mid-game keeps `$SIR`, does not heal, and the gun still fires."""
+        from .voices import check_slots, roll_pool
+        fixed = check_slots(slots)
+        if "death_scream" in fixed:
+            return [self._pset(player_id, voice, slots)]
+        takes = roll_pool(voice, "death_scream") or [None]
+        return [self._pset(player_id, voice, {**(slots or {}), "death_scream": t} if t else slots) for t in takes]
 
     def _gset(self) -> str:
         # $GSET,friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,

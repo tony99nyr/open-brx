@@ -32,6 +32,20 @@ def test_player_flow_and_errors():
     p = c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).json()
     assert p["display"] == "REAPER" and p["player_num"] == 1
     assert c.patch(f"/api/players/{p['player_id']}", json={"player_num": 0}).status_code == 400
+    # A15 voice_slots: {role: id} picks for the $PSET voice fields -- bad role / off-gun id 400, good ones stick, {} clears
+    assert c.patch(f"/api/players/{p['player_id']}", json={"voice_slots": {"dance": "V34"}}).status_code == 400
+    assert c.patch(f"/api/players/{p['player_id']}", json={"voice_slots": {"death_scream": "E_J10"}}).status_code == 400
+    # (the FakeCompiler has no voice_options, so this session only knows male/female; the ids are validated on the gun, not the family)
+    r = c.patch(f"/api/players/{p['player_id']}", json={"voice": "male", "voice_slots": {"death_scream": "v34", "kill": "V38"}})
+    assert r.status_code == 200 and r.json()["voice_slots"] == {"death_scream": "V34", "kill": "V38"} and r.json()["voice"] == "male"
+    assert "voice_slots" not in c.patch(f"/api/players/{p['player_id']}", json={"voice_slots": {}}).json()
+    q = c.post("/api/players", json={"display": "two", "voice": "female", "voice_slots": {"respawn_cry": "VB1"}}).json()
+    assert q["voice_slots"] == {"respawn_cry": "VB1"}
+    assert c.post("/api/players", json={"display": "three", "voice_slots": {"nope": "VB1"}}).status_code == 400
+    assert c.delete(f"/api/players/{q['player_id']}").json()["ok"]
+    from brx_mcp.mc.compile import Compiler
+    v = {o["id"]: o for o in Compiler().voice_options()}          # what a REAL server's GET /api/voices lists
+    assert {"speaker", "lines", "kill_line"} <= set(v["heavy"]) and "soldier" in v and v["clean_male"]["family"] == "VP"
     assert c.post("/api/lobby/push").status_code == 400            # no node → red → refused
     assert c.post("/api/control", json={"cmd": "panic"}).status_code == 400
     assert c.get("/api/recap").status_code == 404

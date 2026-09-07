@@ -89,4 +89,5 @@ def test_resetup_reuses_the_same_id():
     again = [f for pid, f in sent if pid == "B" and f.startswith("$PSET,")][0]
     # The voice slots are now the DEFAULT family (male / VA*), not the hardcoded Heavy pack (V3*)
     # every player used to get regardless of their `voice` — see gameconfig.VOICE_PACKS.
-    assert first == again == "$PSET,1,0,45,70,70,50,,H44,JAD,VA3,VAI,VAC,VAG,VAE,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*"
+    # A15.3: the battleRespawnCry token AND the three pain tokens are EMPTY -- the node plays those itself.
+    assert first == again == "$PSET,1,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,H55,H13,H21,H02,U15,W71,A10,*"

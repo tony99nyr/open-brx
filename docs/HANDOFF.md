@@ -21,10 +21,21 @@
   (kill credit, medals, lead changes, last survivor), which MC pushes best-effort. Headset block A11.6
   and gun-body A11.7 (default `team`, body blanked 2.5 s after `$SPAWN`) are in. The MC console shows
   it read-only; the write UI is open (S2).
+- **Voices (A15-A15.3, 2026-09-06):** `voices.py` reads the 22-slot character layout off the on-gun catalog;
+  24 selectable personas. Sounds VARY now, because the Callsign app never varied anything (13 captured kills,
+  one frame): a single kill draws from 5 takes (3 kill confirms + 2 taunts); the pains are OURS, picked by the
+  `$HIR` damage (long at 40+: shotgun / snipers / power; short below; melee grunt on proto 13), one per 600 ms,
+  never on the lethal hit; the spawn line is OURS (an empty `battleRespawnCry` silences the firmware) and draws
+  per spawn; the death scream stays NATIVE but a `$PSET` written before every `$SPAWN` re-rolls it per life.
+  Slot 2 is the tear-gas death in every family, not an idle line; slot 6 (hurt loop) is the critical-health
+  sound; slot J (long death) is retired. **Not yet heard on hardware** - the gun slept before the build landed.
 - **Loadout:** three slots, primary + secondary + perk (A14); sidearms Glock / USP / Deagle (A12);
   `$WEAP` tok15 is the swap delay, so Quick Switch is real (F4/F22 closed 2026-09-04).
 - **Gun stage** (`python -m brx_mcp stage`, `docs/gun-stage.md`): click-to-try page for one real gun
-  plus a walkthrough with PASS/FAIL verdicts. First real-gun run done 2026-09-04.
+  plus a walkthrough with PASS/FAIL verdicts, and since 2026-09-06 the **voice soundboard** (§8): pick any of
+  the 24 characters, hear every line it carries with its role and words, ✓/✗ each one
+  (`~/.brx-mcp/voice-verdicts.jsonl`). Start it WITHOUT `--gun` (S11: that flag blocks the web server until
+  the gun answers) and press CONNECT.
 - **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and
   built on the phone side; **MC arming at muster (S5, A13.5) is not built.** A hosted game ignores the
   grenade's IR station words (B23), so hosted respawn stations are node-defined.
@@ -50,15 +61,22 @@
   night as a dim/sparse overlay (today it is a blackout that also deletes the DOWN pulse), headset role states,
   the down pulse with quiet gaps around `$SPAWN`. Verified bugs: gun team table offset from tids (F33, yellow team
   = red gun), no F13 floor on `respawn.delay_s` (F34). Bench ladder L1–L11 in the flash-control sheet §6.
+- **Voice work shipped (A15-A15.3)**: the soundboard, per-character line map, sound variety, and the two
+  bench probes behind it - a `$PSET` re-sent in play keeps `$SIR`, does not heal and the gun still fires; an
+  empty voice field plays nothing; `$SPAWN` + our `$PLAY` in one write is clean, but `$PLAYX,0` after `$SPAWN`
+  clips the firmware line too late. Open decision: the player's own voice has no off switch (S12).
 - Docs consolidation: sticker ids swept (d748d15); `docs/archive/` created; this file cut to one
   screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10 (the old files sit in `archive/`).
 
-## Next three actions
+## Next actions
 
-1. **Build and ship APK 0.1.7**, rebuild the site, install on both phones.
-2. **Run `docs/bench-flash-control-2026-09-05.md` incl. §6 L1–L11** (L1 = does a DEAD gun fire `$LED`; decisive for the down signal) (about 75 min, one gun, emitter, camera): can BLE
+1. **Hear A15.3 on a gun** (10 min, one tagger + emitter): power the tagger, start the stage without `--gun`,
+   CONNECT, ARM, then spawn/respawn a few times and take rifle and BIG HIT (80) hits. Confirm the scream changes
+   per life, the spawn line varies, short vs long pain match the damage, and a kill draws from the 5 takes.
+2. **Build and ship APK 0.1.7**, rebuild the site, install on both phones.
+3. **Run `docs/bench-flash-control-2026-09-05.md` incl. §6 L1–L11** (L1 = does a DEAD gun fire `$LED`; decisive for the down signal) (about 75 min, one gun, emitter, camera): can BLE
    reach the headset's native flash? Log to `experiment-log.md`, close or re-word FOLLOWUPS S2 6b.
-3. **Build S5** (MC arms utility stations at muster), then run the `$WEAP` blind-token plan in
+4. **Build S5** (MC arms utility stations at muster), then run the `$WEAP` blind-token plan in
    `docs/bench-weap-tokens-discovery-2026-09-04.md` (sensor damage F23 first).
 
 **The bench queue** is the "Needs Tony at the bench" section of `FOLLOWUPS.md` plus one dated run

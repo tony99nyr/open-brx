@@ -2,14 +2,15 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GUN STAGE</title>
 <style>
-  :root { --bg:#0b0f14; --panel:#111821; --line:#233040; --ink:#e8eef5; --dim:#8aa0b4; --micro:#71879c; --acc:#3aa0ff; --ok:#3c5; --warn:#f7b13a; --bad:#e33; }
+  :root { --bg:#0b0f14; --panel:#111821; --line:#233040; --ink:#e8eef5; --dim:#8aa0b4; --micro:#71879c; --acc:#3aa0ff; --ok:#3c5; --warn:#f7b13a; --bad:#e33; --voice:#c48cff; }
   body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 system-ui, sans-serif; }
   header { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
   h1 { font-size:15px; letter-spacing:.2em; margin:0; }
   .pill { font:600 11px/1 monospace; letter-spacing:.12em; padding:6px 9px; border:1px solid var(--line); border-radius:3px; color:var(--dim); }
   .pill.ok { color:var(--ok); border-color:var(--ok); } .pill.warn { color:var(--warn); border-color:var(--warn); } .pill.bad { color:var(--bad); border-color:var(--bad); }
-  main { display:grid; grid-template-columns: 1fr 1fr; gap:14px; padding:14px 16px; }
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  main { display:grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap:14px; padding:14px 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section { min-width:0; }   /* a wide child (a log line, a long row) must wrap, never widen the page (800 px audit 2026-09-06) */
   section { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:12px 14px; }
   section h2 { font:700 11px/1 monospace; letter-spacing:.22em; color:var(--dim); margin:0 0 10px; }
   .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
@@ -17,6 +18,19 @@
   button:hover { border-color:var(--acc); } button:active { transform:translateY(1px); } button:disabled { opacity:.45; cursor:not-allowed; }
   button.big { min-height:48px; font-size:13px; padding:0 18px; } button.acc { background:var(--acc); color:#04111f; border-color:var(--acc); }
   button.bad { border-color:var(--bad); color:var(--bad); } button.mc { border-color:var(--warn); } button.hud { border-color:var(--ok); }
+  button.voice { border-color:var(--voice); } button.voice > .vid { color:var(--voice); }
+  .badge { display:inline-block; font:700 9px/1 monospace; letter-spacing:.1em; padding:3px 5px; border:1px solid var(--voice); border-radius:3px; color:var(--voice); margin:4px 3px 0 0; text-transform:uppercase; }
+  .pill.voice { color:var(--voice); border-color:var(--voice); }
+  .slots { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:8px; margin-bottom:10px; }
+  .slot { border:1px solid var(--line); border-radius:3px; padding:8px 10px; } .slot .takes { font:12px/1.5 monospace; margin:2px 0 4px; } .slot .takes .vid { color:var(--voice); font-weight:700; } .slot b { display:block; font:700 10px monospace; letter-spacing:.16em; color:var(--voice); margin-bottom:4px; } .slot select { width:100%; } .slot .hint { display:block; margin-top:4px; }
+  .lines { display:grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap:8px; }
+  .lines button { text-align:left; min-height:56px; padding:8px 12px; } .lines .vid { font:700 14px monospace; letter-spacing:.06em; }
+  .lines .sub, .slot .takes { overflow-wrap:anywhere; }   /* an unbroken transcript (VAJ "NONONO…") must wrap, never widen the page (800 px audit 2026-09-06) */
+  .line { display:grid; grid-template-columns: 1fr auto; gap:4px; align-items:stretch; }
+  .line > button.voice { min-width:0; } .line.playing > button.voice { background:#2a1f45; border-color:#fff; box-shadow:0 0 0 2px var(--voice) inset; }
+  .line.pass > button.voice { border-color:var(--ok); } .line.fail > button.voice { border-color:var(--bad); }
+  .marks { display:flex; flex-direction:column; gap:4px; } .marks button { min-height:36px; min-width:40px; padding:0 8px; font-size:13px; }   /* 36 px: a thumb target, not a mouse one */
+  .marks button.on-pass { background:var(--ok); color:#031; border-color:var(--ok); } .marks button.on-fail { background:var(--bad); color:#fff; border-color:var(--bad); }
   button .sub { display:block; font:500 10px/1.2 monospace; letter-spacing:.04em; color:var(--micro); margin-top:4px; text-transform:none; }
   select, input { min-height:36px; padding:0 8px; font:600 12px monospace; color:var(--ink); background:#0e141c; border:1px solid var(--line); border-radius:3px; }
   label { font:600 10.5px monospace; letter-spacing:.14em; color:var(--micro); display:flex; flex-direction:column; gap:4px; }
@@ -28,12 +42,18 @@
   .tx { color:#9ad; } .rx { color:#dc9; } .ok { color:var(--ok); } .warn { color:var(--warn); } .ir { color:#e9c; } .info { color:var(--dim); }
   textarea { width:100%; min-height:64px; font:12px monospace; color:var(--ink); background:#0e141c; border:1px solid var(--line); border-radius:3px; padding:6px; box-sizing:border-box; }
   .hint { font:11.5px system-ui; color:var(--micro); }
+  .fw { color:var(--voice); opacity:.85; }
+  .roll { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; border:1px dashed var(--voice); border-radius:3px; padding:8px 10px; margin-bottom:10px; font:12px monospace; }
+  .roll b { font:700 10px monospace; letter-spacing:.16em; color:var(--voice); margin-right:6px; } .roll .vid { color:var(--voice); font-weight:700; }
+  .badge.pool { border-style:dashed; }
   #err { color:var(--bad); font:600 12px monospace; min-height:16px; }
 </style>
 <header>
   <h1>GUN STAGE</h1>
   <span id="link" class="pill">LINK …</span>
   <span id="cfg" class="pill">CONFIG …</span>
+  <span id="rearm" class="pill warn" hidden title="the voice or a $PSET slot changed since the last ARM: the gun still holds the old voice">RE-ARM: VOICE CHANGED</span>
+  <span id="boardpill" class="pill voice" title="soundboard verdicts for the board's character">BOARD …</span>
   <span id="alive" class="pill">—</span>
   <span id="err" role="alert"></span>
   <label style="margin-left:auto; flex-direction:row; align-items:center; gap:8px"><input type="checkbox" id="auto" checked style="min-height:0"> AUTO-REACT LIKE THE PHONE</label>
@@ -77,13 +97,16 @@
       <label>HEADSET IN PLAY<select id="headset"></select></label>
       <label>MY TEAM<select id="tid"></select></label>
       <label>NIGHT<select id="night"><option value="false">off</option><option value="true">on</option></select></label>
+      <label>VOICE<select id="voice"></select></label>
     </div>
+    <div class="hint" id="voicehint">The voice rides in the $PSET line of the head: a change takes effect on the next ARM.</div>
     <div class="row">
       <input id="mcurl" placeholder="http://<mc-ip>:8765" size="22"><input id="mctok" placeholder="operator token" size="12">
       <button data-act="pull_mc">PULL THE MC'S APPLIED CONFIG</button>
     </div>
     <details><summary class="hint">Patch the presentation (same shape as PUT /api/config {"presentation": …})</summary>
-      <textarea id="patch">{"events": {"hit_taken": {"gun_led": "orange"}}}</textarea>
+      <textarea id="patch">{"events": {"respawned": {"sound": "voice:boast"}, "game_over": {"sound": "voice:defeat_taunt"}}}</textarea>
+      <div class="hint" id="soundroles"></div>
       <div class="row"><button data-act="patch_presentation">APPLY PATCH + RECOMPILE</button></div>
     </details>
     <div class="hint" id="summary"></div>
@@ -93,7 +116,7 @@
     <div class="row">
       <button class="big" data-act="arm">ARM<span class="sub">write the head (config, $SIR table, $TID)</span></button>
       <button class="big acc" data-act="spawn">SPAWN<span class="sub">T-0 tail + start flash</span></button>
-      <button class="big" data-act="revive">RESPAWN<span class="sub">revive tail + respawn flash</span></button>
+      <button class="big" data-act="revive">RESPAWN<span class="sub">revive tail + one spawn take</span></button>
       <button class="big" data-act="game_end">GAME END<span class="sub">game_over line, then teardown</span></button>
       <button class="big" data-act="end">TEARDOWN ONLY</button>
       <button class="big bad" data-act="panic">PANIC<span class="sub">$CLEAR + $SP,99 — re-ARM after</span></button>
@@ -108,8 +131,9 @@
     <h2>4 // IR AT THE GUN (the emitter shoots it — the firmware reacts for real)</h2>
     <div class="row">
       <label>SHOOTER TEAM<select id="irteam"></select></label>
-      <button class="big" data-ir="shot">SHOOT ME<span class="sub">plain hit, 25</span></button>
-      <button class="big bad" data-ir="kill">KILL ME<span class="sub">one 200 hit</span></button>
+      <button class="big" data-ir="shot">SHOOT ME<span class="sub">25 dmg -&gt; short pain</span></button>
+      <button class="big" data-ir="shot" data-damage="80">BIG HIT (80)<span class="sub">80 dmg -&gt; long pain</span></button>
+      <button class="big bad" data-ir="kill">KILL ME<span class="sub">200 -&gt; native scream</span></button>
       <button class="big" data-ir="emp">EMP<span class="sub">proto 8, Sentinel</span></button>
       <button class="big" data-ir="medic">MEDIC HEAL<span class="sub">proto 1 pair</span></button>
       <button class="big" data-ir="beacon">RESPAWN BEACON<span class="sub">proto 15, my team</span></button>
@@ -119,13 +143,32 @@
   <section style="grid-column: 1 / -1">
     <h2>5 // GAME EVENTS — from this config's presentation profile (HUD-driven green · MC-driven amber)</h2>
     <div class="row">
-      <button class="big mc" data-kill="">KILL<span class="sub">$SFLASH + kill line</span></button>
+      <button class="big mc" data-kill="" id="killbtn">KILL<span class="sub">$SFLASH + kill line</span></button>
       <button class="big mc" data-kill="first_blood">FIRST BLOOD</button>
       <button class="big mc" data-kill="double_kill">DOUBLE KILL</button>
       <button class="big mc" data-kill="triple_kill,killing_spree">TRIPLE + SPREE<span class="sub">a medal stack</span></button>
       <button class="big mc" data-kill="killtacular,unstoppable">KILLTACULAR + UNSTOPPABLE</button>
     </div>
     <div class="events" id="events"></div>
+  </section>
+  <section style="grid-column: 1 / -1; border-color: var(--voice)">
+    <h2 id="voicetitle">8 // SOUNDBOARD</h2>
+    <div class="row">
+      <label>CHARACTER<select id="board" aria-label="soundboard character"></select></label>
+      <button data-act="board_use" class="voice">USE AS THE GAME VOICE<span class="sub">sets section 2's VOICE (re-ARM after)</span></button>
+      <button data-act="voice_board_play" class="big voice">▶ PLAY ALL<span class="sub">every line, slot order, 0.5 s apart</span></button>
+      <button data-act="voice_board_stop" class="big">■ STOP</button>
+      <span class="hint" id="boardhint"></span>
+    </div>
+    <div class="hint" id="slotshint" style="margin:6px 0">THE GUN'S FIVE (+ KILL + SPAWN LINE) belong to the GAME VOICE (section 2): the $PSET voice fields the firmware plays on its own, the bundle's kill cue, and the spawn line we play ourselves. Pick which of the family's lines sits in each; a change needs a re-ARM.</div>
+    <div class="roll" id="roll"><b>ROLLED THIS ARM</b><span class="hint">nothing rolled yet: ARM draws the death scream / short pain from the family's equal takes</span><button data-act="reroll" class="voice" style="margin-left:auto">REROLL<span class="sub">draw again · written to the gun on ARM</span></button></div>
+    <div class="slots" id="slots"></div>
+    <div class="grp">HIT SOUNDS (the firmware's own reactions)</div>
+    <div class="lines" id="lines-hit"></div>
+    <div class="grp">PERSONALITY MOMENTS (lines we place)</div>
+    <div class="lines" id="lines-personality"></div>
+    <div class="grp" id="grp-extra">EXTRA</div>
+    <div class="lines" id="lines-extra"></div>
   </section>
   <section>
     <h2>6 // HEADSET SEQUENCES (A11.6)</h2>
@@ -138,7 +181,7 @@
 </main>
 <script>
   const $ = s => document.querySelector(s);
-  let st = null, lastLogLen = 0;
+  let st = null, lastLogLen = 0, headStale = false, voiceKey = '', boardKey = '';
   const fill = (sel, items, val, label = x => x) => { const el = $(sel); el.innerHTML = items.map(v => `<option value="${v}">${label(v)}</option>`).join(''); el.value = String(val); };
   async function api(action, args = {}) {
     $('#err').textContent = '';
@@ -156,7 +199,8 @@
     if (document.activeElement.id !== 'ports') { const cur = $('#ports').value; $('#ports').innerHTML = '<option value="">(serial ports)</option>' + (s.serial_ports || []).map(p => `<option value="${p.device}" ${p.device === L.emitter ? 'selected' : ''}>${p.device} · ${p.desc}</option>`).join(''); if (cur && !L.emitter) $('#ports').value = cur; }
     for (const b of document.querySelectorAll('button[data-ir]')) { const r = (s.ir_registers || {})[b.dataset.ir]; if (!r) continue; b.classList.toggle('mc', !r.registers); b.title = r.registers ? '' : `this game's $SIR table has no proto ${r.proto} row: the gun will IGNORE this word (F15 / B23), the emitter still sends it`; const sub = b.querySelector('.sub'); if (sub && !r.registers && !sub.textContent.includes('NO $SIR')) sub.textContent += ' · NO $SIR ROW: IGNORED'; }
     $('#emitter').textContent = L.emitter ? `emitter on ${L.emitter} (answered PING)` : (L.fake ? 'fake mode: SHOOT ME / KILL ME hit the emulated gun directly' : 'NO EMITTER (or it did not answer PING): pick its port and SET EMITTER PORT, or the IR buttons only log the word');
-    $('#cfg').textContent = `${s.profile.mode.toUpperCase()} · ${s.summary ? s.summary.preset.toUpperCase() : ''} · ${s.config_source === 'mc' ? 'FROM MC' : 'SELECTORS'} · ${s.config_id || ''}`;
+    $('#cfg').textContent = `${s.profile.mode.toUpperCase()} · ${s.summary ? s.summary.preset.toUpperCase() : ''} · ${s.config_source === 'mc' ? 'FROM MC' : 'SELECTORS'} · ${s.config_id || ''}${s.voice ? ' · ' + s.voice.speaker.toUpperCase() : ''}`;
+    $('#rearm').hidden = !headStale;
     $('#cfg').className = 'pill ' + (s.config_source === 'mc' ? 'ok' : '');
     const m = s.model; $('#alive').textContent = !m.spawned ? 'UNSPAWNED' : m.alive ? 'ALIVE' : 'DOWN'; $('#alive').className = 'pill ' + (!m.spawned ? '' : m.alive ? 'ok' : 'bad');
     $('#auto').checked = !!m.auto_react;
@@ -166,7 +210,9 @@
       fill('#tid', s.teams.map(t => t.tid), s.profile.tid, v => { const t = s.teams.find(x => x.tid == v); return t ? `${t.name} (tid ${t.tid})` : v; });
       fill('#irteam', [0, 1, 2, 3], s.teams.find(t => t.tid != s.profile.tid)?.tid ?? 2, v => { const t = s.teams.find(x => x.tid == v); return t ? `${t.name} (tid ${v})` : `tid ${v}`; });
       $('#night').value = String(!!s.profile.night);
+      if (s.voices) fill('#voice', s.voices.map(v => v.id), s.profile.voice, v => { const o = s.voices.find(x => x.id === v); return o ? `${o.name} · ${o.speaker}` : v; });
     }
+    renderVoice(s);
     const sm = s.summary || {};
     $('#summary').textContent = sm.preset ? `announcer ${sm.announcer ? 'on' : 'OFF'} · gun flashes ${sm.gun_flash ? 'on' : 'OFF'} · hud events ${sm.hud_events ? 'on' : 'OFF'} · mc events ${sm.mc_events ? 'on' : 'OFF'} · headset ${sm.headset ? sm.headset.in_play : ''} / hit ${sm.headset ? sm.headset.hit : ''} / death ${sm.headset ? sm.headset.death : ''} · gun body ${sm.gun ? sm.gun.in_play : ''} · custom events: ${(sm.custom_events || []).join(', ') || 'none'}` : '';
     const t = s.tele; $('#t-hp').textContent = t.hp ?? '—'; $('#t-armor').textContent = t.armor ?? '—'; $('#t-shield').textContent = t.shield ?? '—';
@@ -177,7 +223,11 @@
     const PAL = ['red', 'blue', 'yellow', 'green', 'purple', 'teal', 'white', 'pink', 'orange'];
     $('#events').innerHTML = Object.entries(groups).map(([g, evs]) => `<div class="grp">${g.toUpperCase()}</div>` + evs.map(e => {
       const has = e.has_sound || e.gun_led != null || e.headset != null;
-      return `<button data-act="event" data-kind="${e.event}" class="${e.source === 'mc' ? 'mc' : e.source === 'hud' ? 'hud' : ''}" ${has ? '' : 'disabled title="nothing configured for this event in this profile"'}>${e.event}<span class="sub">${e.desc || ''}<br>${e.has_sound ? '♪ ' : 'mute '}· gun ${e.gun_led != null ? PAL[e.gun_led] : '—'} · head ${e.headset != null ? PAL[e.headset] : '—'}</span></button>`;
+      const isVoice = typeof e.sound === 'string' && e.sound.startsWith('voice:');
+      const pl = ((s.voice && s.voice.cue_pools) || {})[e.event];
+      const snd = isVoice ? (pl && pl.length > 1 ? `♪ VOICE ${pl.length} takes: ${pl.map(x => x.id).join(' ')} (random per event)` : `♪ VOICE ${e.voice_id || '(no line)'} "${escapeHtml(e.voice_words || '')}"`) : (e.has_sound ? '♪ ' + escapeHtml(e.sound) : 'mute');
+      const fw = (e.firmware || []).map(f => `<br><span class="fw">firmware: ${f.id} "${escapeHtml(f.words)}"</span>`).join('');
+      return `<button data-act="event" data-kind="${e.event}" class="${isVoice ? 'voice' : e.source === 'mc' ? 'mc' : e.source === 'hud' ? 'hud' : ''}" ${has ? '' : 'disabled title="nothing configured for this event in this profile"'}>${e.event}<span class="sub">${e.desc || ''}<br>${snd} · gun ${e.gun_led != null ? PAL[e.gun_led] : '—'} · head ${e.headset != null ? PAL[e.headset] : '—'}${fw}</span></button>`;
     }).join('')).join('');
     $('#headsets').innerHTML = (s.headset_seqs.length ? s.headset_seqs : []).map(k => k === 'carrier'
       ? s.teams.map(tm => `<button data-act="headset" data-name="carrier" data-tid="${tm.tid}">CARRY FLAG ${tm.name}</button>`).join('') + `<button data-act="headset" data-name="carrier_off">FLAG SCORED / LOST</button>`
@@ -196,11 +246,88 @@
       if (atEnd || first) el.scrollTop = el.scrollHeight;
     }
   }
-  const escapeHtml = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const USE = u => u.startsWith('pset:') ? '$PSET ' + ((st && st.voice && st.voice.fields[u.slice(5)]) || u.slice(5)) : u === 'cue:kill' ? 'KILL CUE' : u.startsWith('pool:') ? u.slice(5).replace('_', ' ').toUpperCase() + ' POOL' : u;
+  const POOL_TITLE = { 'pool:spawn': 'one of the spawn takes: we play one at random on every spawn / revive', 'pool:kill': 'one of the kill takes: picked at random on every single kill',
+    'pool:death_scream': 'one of the equal death screams: the node writes one into the $PSET before every $SPAWN (a fresh draw per life)',
+    'pool:pain_short': 'one of the equal short pains: the node plays one on every survived hit under the long-pain threshold',
+    'pool:pain_long': 'one of the equal long pains: the node plays one on every survived hit at or above the long-pain threshold',
+    'pool:pain_melee': 'the melee grunt: the node plays it on every survived melee hit' };
+  function renderVoice(s) {
+    const v = s.voice, bd = s.board;
+    if (!v || !bd) { $('#voicetitle').textContent = '8 // SOUNDBOARD — (the stage server predates this page: restart it)'; $('#boardpill').textContent = 'BOARD: RESTART THE STAGE'; return; }
+    $('#voicetitle').textContent = `8 // SOUNDBOARD — ${bd.speaker.toUpperCase()} (${bd.family}): every line on the gun for this character · ${bd.lines.length} lines`;
+    $('#soundroles').textContent = 'voice:<role> sounds resolve per player to the chosen voice: ' + (v.sound_roles || []).map(r => 'voice:' + r).join(' · ');
+    $('#slotshint').textContent = `THE GUN'S SIX (+ KILL) belong to the GAME VOICE — ${v.speaker.toUpperCase()} (${v.family}, section 2): the $PSET voice fields the firmware plays on its own, and the bundle's kill cue. Pick which of the family's lines sits in each; a change needs a re-ARM.`;
+    $('#boardhint').textContent = bd.is_game_voice ? 'this is the game voice' : `board only — the game voice is ${v.speaker}`;
+    { const kp = (v.cue_pools || {}).kill || []; $('#killbtn .sub').textContent = kp.length > 1 ? `$SFLASH + one of ${kp.length} takes: ${kp.map(x => x.id).join(' ')}` : '$SFLASH + kill line'; }
+    const vd = bd.verdicts || {}; const n = Object.keys(vd).length, m = Object.values(vd).filter(x => x.ok === false).length;
+    $('#boardpill').textContent = `${bd.speaker.toUpperCase()}: ${n} CHECKED · ${m} WRONG`; $('#boardpill').className = 'pill ' + (m ? 'bad' : n ? 'ok' : 'voice');
+    if (document.activeElement.id !== 'board') fill('#board', s.voices.map(x => x.id), bd.voice, x => { const o = s.voices.find(y => y.id === x); return o ? `${o.name} · ${o.speaker}` : x; });
+    const pools = v.pools || {}, rolled = v.rolled || {}, cpools = v.cue_pools || {};
+    const spawn = Array.isArray(v.spawn) ? v.spawn : null;   // A15.2: null = a stale stage (the firmware's cry still plays there)
+    const pset_pool = Array.isArray(v.pset_pool) ? v.pset_pool : null;   // A15.3: null = a stale stage (the old rolled-from-pool picker shows instead)
+    const pain = v.pain && ((v.pain.short || []).length || (v.pain.long || []).length || (v.pain.melee || []).length) ? v.pain : null;   // A15.3: null = a stale stage (the old empty pain pickers show instead)
+    const key = v.id + '|' + JSON.stringify(v.slots) + '|' + JSON.stringify(v.pset) + '|' + v.kill + '|' + JSON.stringify(rolled) + '|' + JSON.stringify(pools) + '|' + JSON.stringify(spawn) + '|' + JSON.stringify(pset_pool) + '|' + JSON.stringify(pain) + '|' + (v.scream_this_life || '');
+    if (key !== voiceKey || !$('#slots').children.length) {
+      voiceKey = key;
+      const cat = {}; for (const l of v.lines) cat[l.id] = l;
+      $('#slots').innerHTML = v.roles.map(r => {
+        if (r === 'respawn_cry' && spawn) {   // A15.2: the spawn line is OURS -- the $PSET cry field is empty, no picker
+          return `<div class="slot" id="spawnline"><b>SPAWN LINE · ${spawn.length} TAKE${spawn.length === 1 ? '' : 'S'}, ONE PER SPAWN</b><div class="takes">${spawn.map(x => `<span class="vid">${x.id}</span> <span class="hint">"${escapeHtml(x.words || '')}"</span>`).join('<br>') || '<span class="hint">(no spawn line for this voice)</span>'}</div><span class="hint">the $PSET cry field is empty: the firmware plays nothing, we play the line right after $SPAWN (spawn and respawn alike)</span></div>`;
+        }
+        if (r === 'death_scream' && pset_pool) {   // A15.3: rolled per LIFE, not per arm -- a card, not a picker
+          return `<div class="slot" id="deathscream"><b>DEATH SCREAM · ${pset_pool.length} TAKE${pset_pool.length === 1 ? '' : 'S'}, ONE PER LIFE</b><div class="takes">${pset_pool.map(x => `<span class="vid">${x.id}</span> <span class="hint">"${escapeHtml(x.words || '')}"</span>`).join('<br>') || '<span class="hint">(no scream for this voice)</span>'}</div>${v.scream_this_life ? `<span class="hint">this life: <span class="vid">${v.scream_this_life}</span></span><br>` : ''}<span class="hint">written into the $PSET immediately before every $SPAWN, so the firmware plays it instantly</span></div>`;
+        }
+        if ((r === 'melee_grunt' || r === 'short_pain' || r === 'long_pain') && pain) {   // A15.3: the three pain fields ship empty -- one combined card, not three pickers
+          if (r !== 'melee_grunt') return '';   // rendered once, at melee_grunt's place in PSET_ROLES order
+          const row = (label, takes) => `<b style="display:block;font:700 10px monospace;letter-spacing:.14em;color:var(--voice);margin:8px 0 3px">${label}</b><div class="takes">${(takes || []).map(x => `<span class="vid">${x.id}</span> <span class="hint">"${escapeHtml(x.words || '')}"</span>`).join('<br>') || '<span class="hint">(none)</span>'}</div>`;
+          return `<div class="slot" id="painbydamage"><b>PAIN · BY DAMAGE</b>${row(`SHORT (under ${pain.long_min ?? 40} dmg)`, pain.short)}${row(`LONG (${pain.long_min ?? 40}+)`, pain.long)}${row('MELEE', pain.melee)}<span class="hint">the node plays one of these on every SURVIVED hit — never on the hit that kills, at most one per 600 ms</span></div>`;
+        }
+        if (r === 'spawn') return '';   // A15.2: the SPAWN LINE card owns this role. It is a pinnable pick but NOT a $PSET field, so the generic row below would read "$PSET undefined · plays on: undefined"
+        const cur = r === 'kill' ? v.kill : (rolled[r] || v.pset[r]);
+        const cands = (v.candidates[r] || []).slice(); if (cur && !cands.includes(cur)) cands.unshift(cur);
+        const opts = cands.map(id => `<option value="${id}" ${id === cur ? 'selected' : ''}>${id} · ${escapeHtml((cat[id] || {}).words || '')}</option>`).join('');
+        const n = r === 'kill' ? ((cpools.kill || []).length) : ((pools[r] || []).length);
+        const how = v.slots[r] ? ' · PICKED' : n > 1 ? (r === 'kill' ? ` · ${n} TAKES, ONE PER KILL` : ` · ROLLED FROM ${n}`) : '';
+        return `<div class="slot"><b>${r.toUpperCase().replace('_', ' ')}${how}</b><select data-slot="${r}" aria-label="voice slot ${r}">${opts}</select><span class="hint">${r === 'kill' ? 'bundle kill cue' + (n > 1 ? ' · a random take of ' + (cpools.kill || []).map(x => x.id).join(' ') + ' on each single kill' : '') : '$PSET ' + v.fields[r] + ' · plays on: ' + v.plays_on[r] + (n > 1 && !v.slots[r] ? ' · rolled from ' + (pools[r] || []).join(' ') + ' on ARM' : '')}</span></div>`;
+      }).join('');
+      // the ROLLED THIS ARM strip: what the gun holds since the last ARM (or the last REROLL, until ARM writes it)
+      const rk = Object.keys(rolled);
+      $('#roll').innerHTML = `<b>ROLLED THIS ARM</b>` + (rk.length
+        ? rk.map(r => `<span><span class="hint">${r.replace('_', ' ')}</span> <span class="vid">${rolled[r]}</span> <span class="hint">"${escapeHtml((cat[rolled[r]] || {}).words || '')}"</span></span>`).join('') + `<span class="hint">· written to the gun on ARM</span>`
+        : `<span class="hint">nothing rolled yet: ARM draws the death scream / short pain from the family's equal takes</span>`)
+        + `<button data-act="reroll" class="voice" style="margin-left:auto">REROLL<span class="sub">draw again · written to the gun on ARM</span></button>`;
+    }
+    // POOL badges come from each line's `uses` (`pool:spawn` / `pool:kill` / `pool:death_scream` / `pool:short_pain`,
+    // voices.lines()); a stage that predates them (no `pool:*` anywhere) falls back to the page's own reading of the pools.
+    const usesPools = bd.lines.some(l => (l.uses || []).some(u => u.startsWith('pool:')));
+    const inPool = new Set(); if (!usesPools && bd.is_game_voice) { for (const ids of Object.values(pools)) if (ids.length > 1) ids.forEach(i => inPool.add(i)); (cpools.kill || []).forEach(x => inPool.add(x.id)); }
+    const bkey = bd.voice + '|' + JSON.stringify(vd) + '|' + (bd.playing || '') + '|' + bd.lines.map(l => l.uses.join()).join(';') + '|' + [...inPool].join();
+    if (bkey !== boardKey) {
+      boardKey = bkey;
+      for (const g of ['hit', 'personality', 'extra']) {
+        const ls = bd.lines.filter(l => l.group === g);
+        $('#lines-' + g).innerHTML = ls.map(l => { const r = vd[l.id]; const cls = 'line' + (bd.playing === l.id ? ' playing' : '') + (r ? (r.ok ? ' pass' : ' fail') : '');
+          return `<div class="${cls}" data-line="${l.id}"><button class="voice" data-voice-line="${l.id}" title="${r && r.note ? escapeHtml(r.note) : ''}"><span class="vid">${l.id}</span><span class="sub">${escapeHtml(l.role_words)} · "${escapeHtml(l.words)}" · ${l.duration_s != null ? l.duration_s.toFixed(1) : '?'}s</span>${l.uses.map(u => u.startsWith('pool:') ? `<span class="badge pool" title="${POOL_TITLE[u] || u}">${USE(u)}</span>` : `<span class="badge">${USE(u)}</span>`).join('')}${inPool.has(l.id) ? '<span class="badge pool" title="one of the equal takes: rolled on ARM ($PSET) or picked at random per kill">POOL</span>' : ''}</button><span class="marks"><button data-verdict="pass" data-id="${l.id}" class="${r && r.ok ? 'on-pass' : ''}" aria-label="${l.id} correct" title="correct for this character">✓</button><button data-verdict="fail" data-id="${l.id}" class="${r && r.ok === false ? 'on-fail' : ''}" aria-label="${l.id} wrong" title="wrong for this character (the note box above is used if filled)">✗</button></span></div>`; }).join('');
+      }
+      $('#grp-extra').hidden = !bd.lines.some(l => l.group === 'extra');
+    }
+  }
+  document.addEventListener('change', ev => {
+    const sel = ev.target.closest('select[data-slot]'); if (!sel) return;
+    headStale = true; api('set_voice_slot', { role: sel.dataset.slot, id: sel.value || null });
+  });
   document.addEventListener('click', async ev => {
     const b = ev.target.closest('button'); if (!b) return;
     const act = b.dataset.act;
-    if (b.dataset.ir) return api('ir', { kind: b.dataset.ir, team: Number($('#irteam').value) });
+    if (b.dataset.ir) return api('ir', { kind: b.dataset.ir, team: Number($('#irteam').value), ...(b.dataset.damage ? { damage: Number(b.dataset.damage) } : {}) });
+    if (b.dataset.voiceLine) return api('voice_line', { id: b.dataset.voiceLine });
+    if (b.dataset.verdict) { const cur = ((st && st.board && st.board.verdicts) || {})[b.dataset.id]; const want = b.dataset.verdict === 'pass'; const ok = cur && cur.ok === want ? null : want; return api('voice_verdict', { voice: $('#board').value, id: b.dataset.id, ok, note: $('#walknote').value }); }
+    if (act === 'board_use') { headStale = true; return api('set_profile', { voice: $('#board').value }); }
+    if (act === 'voice_board_play') return api('voice_board_play', { voice: $('#board').value });
+    if (act === 'arm') headStale = false;
+    if (act === 'reroll') headStale = true;
     if (b.dataset.kill !== undefined) return api('kill', { medals: b.dataset.kill ? b.dataset.kill.split(',') : [] });
     if (b.dataset.walk) { const v = b.dataset.walk === 'pass' ? true : b.dataset.walk === 'fail' ? false : null; const note = $('#walknote').value; $('#walknote').value = ''; const r = await api('walk_verdict', { ok: v, note }); if (r && r.walk && !r.walk.done) await api('walk_play'); return r; }
     if (act === 'walk_start') { const r = await api('walk_start'); if (r) await api('walk_play'); return r; }
@@ -214,10 +341,11 @@
     if (act === 'patch_presentation') { let p; try { p = JSON.parse($('#patch').value); } catch (e) { $('#err').textContent = 'patch is not valid JSON'; return; } return api('patch_presentation', { patch: p }); }
     return api(act);
   });
-  for (const id of ['mode', 'preset', 'gun', 'headset', 'tid', 'night']) $('#' + id).addEventListener('change', e => {
-    const v = id === 'night' ? e.target.value === 'true' : id === 'tid' ? Number(e.target.value) : e.target.value; api('set_profile', { [id]: v });
+  for (const id of ['mode', 'preset', 'gun', 'headset', 'tid', 'night', 'voice']) $('#' + id).addEventListener('change', e => {
+    const v = id === 'night' ? e.target.value === 'true' : id === 'tid' ? Number(e.target.value) : e.target.value; if (id === 'voice') headStale = true; api('set_profile', { [id]: v });
   });
   $('#auto').addEventListener('change', e => api('auto_react', { on: e.target.checked }));
+  $('#board').addEventListener('change', e => api('voice_board', { voice: e.target.value }));
   document.addEventListener('scan-done', () => {});
   setInterval(async () => { if (document.activeElement.tagName === 'TEXTAREA') return; const r = await fetch('/api/state').then(r => r.json()).catch(() => null); if (r) { const sl = $('#scanlist'); if (st && st.link && r.scanResults) {} render(r); } }, 700);
   refresh().then(() => { /* scan list fills from the scan action's result */ });

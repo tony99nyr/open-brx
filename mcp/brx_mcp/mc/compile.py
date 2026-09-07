@@ -20,6 +20,7 @@ from .perks import PerkCatalog
 from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, ScoreRow, Team, Weapon
 from . import presentation as _pres
 from .. import poolgauge as pg
+from .. import voices as _voices
 
 # Field-corrected 2026-08-30 (first live 2-player match on the Mac): $VOL,69 — the value iOS
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
@@ -202,7 +203,7 @@ class WeaponCatalog:
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
-    # perk must scale every slot (docs/bench-weap-tokens-2026-09-04.md).
+    # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
           "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
           "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
@@ -488,7 +489,11 @@ class Compiler:
         return primary, secondary
 
     # -- Compiler Protocol -------------------------------------------------
-    def compile(self, config: GameConfig, player: Player, teams: list[Team]) -> FrameBundle:
+    def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None) -> FrameBundle:
+        """`roll` (A15.1) = a `random.Random`: the `$PSET` voice fields a player did not pick explicitly are
+        ROLLED from their pools (voices.roll_pset) -- since A15.3 that is the death scream only, and the node
+        re-rolls it per spawn from `pset_pool` anyway. None = the family defaults, deterministic (tests, the
+        golden bundle)."""
         gc = self._to_gc(config, player)
         pnum = int(player["player_num"])
         if not 1 <= pnum <= MAX_PLAYERS:
@@ -499,9 +504,17 @@ class Compiler:
         mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
 
+        # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
+        voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
+        rolled: dict[str, str] = {}
+        if roll is not None:
+            full = _voices.roll_pset(voice, picks, roll)
+            fixed = _voices.check_slots(picks)
+            rolled = {r: i for r, i in full.items() if r not in fixed and len(_voices.roll_pool(voice, r)) > 1}   # the real draws only
+        voice_slots = {**rolled, **picks} if rolled else (picks or None)
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
-                gc._gset(), gc._pset(pnum, player.get("voice")),   # the voice pack is per-PLAYER (§PSET)
+                gc._gset(), gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
                 self.catalog.resolve(w0, 0, mods)]
         if w1:
             head.append(self.catalog.resolve(w1, 1, swap_mods))   # slot 1 only when a secondary exists (A10)
@@ -510,7 +523,7 @@ class Compiler:
         if not w1 and not gc.alt_reload:
             # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
             # button-map state on real guns (brx-opus review 2026-08-27). Cycle only to slot 0 instead, so ALT is a
-            # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: bench-tomorrow.md.
+            # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: FOLLOWUPS "Needs Tony at the bench" (A10a).
             bmap = [("$BMAP,1,100,0,0,99,99,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
         # Headset colour. We never sent ANY lit-state $HLED, which is why our headsets sat dark for a
         # whole match (field 2026-08-30) — that part is solid, and this frame is the fix.
@@ -568,7 +581,7 @@ class Compiler:
             "revive": revive,
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
-            "cues": self.cues(player.get("voice", "male")),
+            "cues": self.cues(voice, voice_slots),
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
             "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
@@ -582,11 +595,47 @@ class Compiler:
         # Cues it names override the fixed table above; `announcer: false` mutes the voice groups but
         # keeps the $SFLASH; `gun_flash: false` empties the LED table; `headset_team: false` drops the
         # team-colour repaint frames added above.
-        frames = _pres.cue_frames(prof, kill_line(player.get("voice", "male")))
+        # A15: every `voice:<role>` sound resolves per PLAYER to that role's line (voices.role_id: the family's
+        # slot, or the player's own pick in `voice_slots`) -- the kill line, a boast on respawn, a taunt, …
+        voice_map = self._voice_map(voice, voice_slots)
+        bundle["voice"] = {"id": voice, "family": _voices.family(voice),
+                           "pset": _voices.pset_ids(voice, voice_slots), "kill": (voice_map.get("kill") or [None])[0],
+                           "rolled": rolled,                                                   # A15.1: this push's draws
+                           "pools": {r: _voices.roll_pool(voice, r) for r in _voices.PSET_ROLES},
+                           "spawn": list(voice_map.get("spawn") or []),                       # A15.2: what the node may say at spawn
+                           # A15.3: the death scream stays the firmware's but is re-rolled per SPAWN: the node writes
+                           # one of `pset_pool` before every $SPAWN. `pset_pool` here = the scream id per frame.
+                           "pset_pool": _voices.roll_pool(voice, "death_scream") if "death_scream" not in _voices.check_slots(picks)
+                                        else [_voices.check_slots(picks)["death_scream"]],
+                           # A15.3: the node picks the pain pool by `$HIR` damage -- at or above this = long pain
+                           "pain_long_min": _voices.PAIN_LONG_MIN_DAMAGE}
+        frames = _pres.cue_frames(prof, voice_map)
+        bundle["cue_pools"] = _pres.cue_pool_frames(prof, voice_map)   # A15.1: the node rolls one per event
+        # A15.3: one full $PSET per death-scream take (only the deathScream token differs); the node writes ONE at
+        # random immediately before every $SPAWN (spawn and revive) so the firmware's scream changes per life.
+        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None)
+        # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
+        # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
+        for role in ("pain_short", "pain_long", "pain_melee"):
+            ids = voice_map.get(role) or []
+            if ids:
+                bundle["cues"][role] = _pres.play_frame(f"voice:{role}", voice_map)
+                if len(ids) > 1:
+                    bundle["cue_pools"][role] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
+        # A15.2: the SPAWN LINE is ours. The head's $PSET carries an EMPTY battleRespawnCry (the firmware then says
+        # nothing on $SPAWN -- bench 2026-09-06) and the node writes ONE of these right after the spawn / revive
+        # frames, a fresh draw per spawn. `cues.spawn` = the first take; `cue_pools.spawn` = the pool when 2+.
+        spawn_ids = voice_map.get("spawn") or []
+        if spawn_ids:
+            bundle["cues"]["spawn"] = _pres.play_frame("voice:spawn", voice_map)
+            if len(spawn_ids) > 1:
+                bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
         low = frames.pop("low_health", None)
         bundle["cues"].update(frames)
-        # low_health is the node's existing `hurt` cue. Callsign's byte-identical frame
-        # ($PLAY,VA8B,3,6) stays unless the profile chose a DIFFERENT sound or muted it.
+        # low_health is the node's existing `hurt` cue. The default profile now plays the player's OWN
+        # hurt loop once at critical health (Tony, 2026-09-06 bench: "good for when the player is at
+        # critical health"); Callsign's byte-identical frame ($PLAY,VA8B,3,6) stays only if the profile
+        # was explicitly reverted to that sound.
         if low is not None and prof["events"]["low_health"].get("sound") != "VA8B":
             bundle["cues"]["hurt"] = low
         bundle["leds"] = _pres.led_table(prof, tid, gc.is_night_mode(), gc.leds)
@@ -638,17 +687,27 @@ class Compiler:
 
         `$PSET`'s trailing tokens are a positional voice pack and the sound bank carries one for
         every character family; the roster accepted only male/female, so the other ~13 were
-        unreachable. Only HEAVY is confirmed by ear — see gameconfig.VOICE_PACKS.
+        unreachable. Only HEAVY is confirmed by ear — see gameconfig.VOICE_PACKS. `speaker` is the
+        catalog's label for the family, `lines` how many lines it carries (voices.options()).
         """
-        from ..gameconfig import VOICE_PACKS
-        return [{"id": v, "name": v.replace("_", " ").upper(), "family": fam,
-                 "kill_line": kill_line(v), "verified": v == "heavy"}
-                for v, fam in VOICE_PACKS.items()]
+        return [{**o, "kill_line": kill_line(o["id"])} for o in _voices.options()]
 
-    def cues(self, voice: str) -> dict[str, str]:
+    @staticmethod
+    def _voice_map(voice: str | None, slots: dict | None = None) -> dict[str, list[str]]:
+        """`{role: [ids]}` for every `voice:<role>` a presentation event may name (A15) -- the whole POOL,
+        default first (A15.1); an explicit pick is a one-id pool."""
+        out = {}
+        for role in _voices.SOUND_ROLES:
+            ids = _voices.role_ids(voice, role, slots)
+            if ids:
+                out[role] = ids
+        return out
+
+    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]:
         """A6: pre-composed `$PLAY` frames (node writes verbatim; only $SFLASH/$PLAYX,0 are its own
-        templates). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token1 = SFX, token4 = voice line."""
-        kill = kill_line(voice)
+        templates). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token1 = SFX, token4 = voice line.
+        `slots["kill"]` (A15) replaces the family's kill line."""
+        kill = _voices.role_id(voice, "kill", slots) or kill_line(voice)
         return {
             "countdown": "$PLAY,VA81,4,6,,,,,*",         # confirmed 3-2-1-GO (VA81, slot 1)
             "kill":      f"$PLAY,,4,6,{kill},,,,*",       # confirmed kill line (slot 4, voice-family)

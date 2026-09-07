@@ -21,7 +21,10 @@ PAGE = Path(__file__).with_name("page.html")
 # action -> (is_coroutine, allowed kwargs). Anything else is a 400, so the page cannot call into the manager.
 ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "scan": (True, ("duration_s",)), "connect": (True, ("address",)), "disconnect": (True, ()),
-    "set_profile": (False, ("mode", "preset", "gun", "headset", "night", "tid", "environment")),
+    "set_profile": (False, ("mode", "preset", "gun", "headset", "night", "tid", "environment", "voice", "voice_slots")),
+    "voice_line": (True, ("id",)), "set_voice_slot": (False, ("role", "id")),
+    "voice_board": (False, ("voice",)), "voice_board_play": (False, ("voice", "from_slot")), "voice_board_stop": (False, ()),
+    "voice_verdict": (False, ("voice", "id", "ok", "note")), "reroll": (False, ()),
     "patch_presentation": (False, ("patch",)), "pull_mc": (True, ("url", "token")),
     "arm": (True, ()), "spawn": (True, ()), "revive": (True, ()), "end": (True, ()), "panic": (True, ()), "game_end": (True, ("outcome",)),
     "event": (False, ("kind",)), "kill": (False, ("medals",)), "headset": (False, ("name", "tid")),

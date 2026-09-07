@@ -1,4 +1,4 @@
-"""M-MC Session — the match state machine (docs/spec/mission-control.md, contracts.md §5/§6 A5).
+"""M-MC Session — the match state machine (docs/spec/contracts.md §5/§6, mc/API.md).
 
 Owns: phase, roster (player_num), teams, GameConfig draft, node registry, readiness rollup,
 kit-out/tutorial pushes, lobby push + acks, start/reschedule/abort, controls, hydrate answer,
@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import copy
 import json
+import random
 import time
 import uuid
 from typing import Any, Callable
 
 from . import presentation as _pres
+from .. import voices as _voices
 from . import policy as _policy
 from .scoring import Scorer
 from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OFFLINE_AFTER_MS, STALE_AFTER_MS, SYNC_FRESH_MS, GameConfig, Player,
@@ -73,8 +75,11 @@ def default_config(mode: str = "tdm") -> GameConfig:
 
 class Session:
     def __init__(self, compiler, net, armory, store=None, now_ms: Callable[[], int] | None = None,
-                 lan: dict | None = None):
+                 lan: dict | None = None, voice_rng: random.Random | None = None):
         self.compiler, self.net, self.armory, self.store = compiler, net, armory, store
+        # A15.1: every push rolls the un-picked $PSET voice fields (death scream, short pain, respawn cry) so two
+        # players with the same character do not die with the same scream; inject a seeded Random in tests.
+        self._voice_rng = voice_rng or random.Random()
         self.now_ms = now_ms or (lambda: int(time.time() * 1000))
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
@@ -465,9 +470,10 @@ class Session:
         return team_id
 
     def add_player(self, display: str, team_id: str | None = None, gun_id: str | None = None,
-                   voice: str = "male", loadout: dict | None = None) -> Player:
+                   voice: str = "male", loadout: dict | None = None, voice_slots: dict | None = None) -> Player:
         if len(self.players) >= MAX_PLAYERS:
             raise ValueError("roster full")
+        voice_slots = _voices.check_slots(voice_slots)      # A15: {role: id} $PSET picks; bad role / off-gun id -> ValueError
         if gun_id:
             for q in self.players.values():
                 if (q.get("gun_id") or "").lower() == gun_id.lower():
@@ -485,6 +491,8 @@ class Session:
         p: Player = {"player_id": pid, "player_num": self._next_num(), "display": display.strip().upper() or f"OPERATOR {pid[:4]}",
                      "team_id": team_id, "node_id": None, "gun_id": gun_id,
                      "loadout": lo, "voice": voice, "ready": False}
+        if voice_slots:
+            p["voice_slots"] = voice_slots
         self.players[pid] = p
         if self.scorer:
             self.scorer.register_player(pid, p)      # A5.6 late joiner: scorable in the running match
@@ -495,7 +503,7 @@ class Session:
 
     def patch_player(self, pid: str, **fields) -> Player:
         p = self.players[pid]
-        old_voice, old_display = p.get("voice"), p.get("display")
+        old_voice, old_display, old_slots = p.get("voice"), p.get("display"), dict(p.get("voice_slots") or {})
         if "player_num" in fields and fields["player_num"] is not None:
             if self.lobby_pushed:
                 raise ValueError("player_num is fixed once config has been pushed")
@@ -524,6 +532,8 @@ class Session:
             v = fields["voice"]
             if not isinstance(v, str) or v not in self._voice_ids():
                 raise ValueError("unknown voice")
+        if "voice_slots" in fields:
+            fields["voice_slots"] = _voices.check_slots(fields["voice_slots"])   # A15; {} / null clears the picks
         if "ready" in fields and fields["ready"] is not None and not isinstance(fields["ready"], bool):
             raise ValueError("ready must be a boolean")
         if "display" in fields and fields["display"] is not None:
@@ -538,6 +548,11 @@ class Session:
         for k in ("display", "team_id", "voice", "loadout", "player_num", "gun_id", "ready"):
             if k in fields and fields[k] is not None or (k in fields and k in ("team_id", "gun_id")):
                 p[k] = fields[k]
+        if "voice_slots" in fields:
+            if fields["voice_slots"]:
+                p["voice_slots"] = fields["voice_slots"]
+            else:
+                p.pop("voice_slots", None)
         if "team_id" in fields and self.scorer and pid in self.scorer.stats:
             self.scorer.stats[pid].team_id = p["team_id"]   # team scores + friendly rule follow a mid-match re-team
         if "gun_id" in fields:
@@ -545,7 +560,7 @@ class Session:
         self._after_player_change(p)
         # A9.1 bench voice preview: if VOICE or the gamertag changed and the player has a bound node in a
         # pre-lobby phase, play a one-frame sample of the voice so the pick is audible on the tagger.
-        if (p.get("voice") != old_voice or p.get("display") != old_display) \
+        if (p.get("voice") != old_voice or p.get("display") != old_display or dict(p.get("voice_slots") or {}) != old_slots) \
                 and p.get("node_id") and self.phase in ("muster", "build", "kit"):
             self._push_voice_preview(p)
         return p
@@ -558,7 +573,7 @@ class Session:
         if not nid:
             return
         try:
-            cue = self.compiler.cues(p.get("voice") or "male").get("kill")
+            cue = self.compiler.cues(p.get("voice") or "male", p.get("voice_slots")).get("kill")
         except Exception:
             cue = None
         if cue:
@@ -922,7 +937,7 @@ class Session:
         node = self._assign_body(p)                          # A10: welcome carries catalog + policy too
         if self.lobby_pushed:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
-                self.bundles[p["player_id"]] = self.compiler.compile(self.config, p, self.teams)
+                self.bundles[p["player_id"]] = self._compile_rolled(p)
                 self.acks.pop(p["player_id"], None)
             node["config"] = self.config
             node["frames"] = self.bundles[p["player_id"]]
@@ -1207,8 +1222,17 @@ class Session:
         self._changed()
 
     # ---------- lobby ----------
+    def _compile_rolled(self, p: Player):
+        """Compile with this push's voice roll (A15.1) and say what was drawn."""
+        bundle = self.compiler.compile(self.config, p, self.teams, roll=self._voice_rng)
+        rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
+        if rolled:
+            import logging
+            logging.getLogger("brx.mc").debug("voice roll for %s: %s", p.get("display"), rolled)
+        return bundle
+
     def _push_config_to(self, p: Player):
-        bundle = self.compiler.compile(self.config, p, self.teams)
+        bundle = self._compile_rolled(p)
         self.bundles[p["player_id"]] = bundle
         self.acks.pop(p["player_id"], None)
         if p.get("node_id"):

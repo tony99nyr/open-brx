@@ -276,7 +276,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         b = await body(req)
         try:
             p = s.add_player(str(b.get("display", ""))[:24], b.get("team_id"), b.get("gun_id"),
-                             str(b.get("voice", "male"))[:16], b.get("loadout") if isinstance(b.get("loadout"), dict) else None)
+                             str(b.get("voice", "male"))[:16], b.get("loadout") if isinstance(b.get("loadout"), dict) else None,
+                             voice_slots=b.get("voice_slots") if isinstance(b.get("voice_slots"), dict) else None)
         except (ValueError, TypeError) as e:
             return _err(str(e))
         return JSONResponse(p)
@@ -286,7 +287,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         if pid not in s.players:
             return _err("no such player", 404)
         b = await body(req)
-        allowed = {k: b[k] for k in ("display", "team_id", "voice", "loadout", "player_num", "gun_id", "ready") if k in b}
+        allowed = {k: b[k] for k in ("display", "team_id", "voice", "voice_slots", "loadout", "player_num", "gun_id", "ready") if k in b}
         try:
             return JSONResponse(s.patch_player(pid, **allowed))
         except (ValueError, TypeError, KeyError) as e:

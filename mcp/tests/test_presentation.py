@@ -50,7 +50,9 @@ def test_every_preset_default_sound_is_on_the_gun():
         prof = P.resolve({"presentation": P.profile_from_preset(name)})
         for ev, spec in prof["events"].items():
             s = spec["sound"]
-            if s and s not in ("voice:kill", "VSF+JAY"):
+            # "voice:<role>" (A15, e.g. low_health's "voice:hurt_loop") resolves per player at compile
+            # time -- voices.role_id already checks the resolved id is on the gun, so skip the raw string here.
+            if s and not s.startswith("voice:") and s != "VSF+JAY":
                 assert s in on, (name, ev, s)
 
 
@@ -89,6 +91,40 @@ def test_play_frame_puts_voices_on_the_announcer_slot_and_effects_on_the_sfx_slo
     assert P.play_frame("X12", None) == "$PLAY,X12,4,6,,,,,*"
     assert P.play_frame("voice:kill", "V3A") == "$PLAY,,4,6,V3A,,,,*"
     assert P.play_frame("VSF+JAY", None) == "$PLAY,VSF,4,6,JAY,,,,*"
+    # A15: a {role: id} map resolves any voice role; a role the map cannot fill is no cue
+    assert P.play_frame("voice:boast", {"kill": "V3A", "boast": "V3I"}) == "$PLAY,,4,6,V3I,,,,*"
+    assert P.play_frame("voice:boast", "V3A") is None and P.play_frame("voice:taunt", {}) is None
+
+
+def test_voice_role_sounds_resolve_per_player_through_the_compiler():
+    """A15 personality moments: `sound: "voice:boast"` on respawned plays THAT player's boast; the words in the
+    ADVANCED table say whose line it is; a made-up role is refused like any bad sound."""
+    cfg = {**default_config("tdm"), "presentation": {"events": {"respawned": {"sound": "voice:boast"}, "game_over": {"sound": "voice:defeat_taunt"}}}}
+    teams = cfg["teams"]
+    player = {"player_id": "p1", "player_num": 3, "display": "X", "team_id": teams[0]["team_id"], "node_id": None, "gun_id": None,
+              "voice": "heavy", "ready": True, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+    b = C.Compiler().compile(cfg, player, teams)
+    assert b["cues"]["respawned"] == "$PLAY,,4,6,V3I,,,,*" and b["cues"]["game_over"] == "$PLAY,,4,6,V3B,,,,*"
+    b2 = C.Compiler().compile(cfg, {**player, "voice": "scout"}, teams)
+    assert b2["cues"]["respawned"] == "$PLAY,,4,6,VBI,,,,*"
+    b3 = C.Compiler().compile(cfg, {**player, "voice_slots": {"kill": "V38"}}, teams)
+    assert b3["cues"]["kill"] == "$PLAY,,4,6,V38,,,,*" and b3["cues"]["respawned"] == "$PLAY,,4,6,V3I,,,,*"
+    rows = {r["event"]: r for r in P.table(cfg)}
+    assert rows["respawned"]["words"] == "the player's own voice: boast" and rows["kill"]["words"] == "the player's own voice: kill line"
+    with raises(ValueError):
+        P.merge(None, {"events": {"respawned": {"sound": "voice:dance"}}})
+
+
+def test_low_health_plays_the_players_own_hurt_loop_and_long_death_is_retired():
+    """Tony, 2026-09-06 (bench): the hurt loop plays at critical health; the long death "is ridiculous,
+    probably dont use that one for anything" and can no longer be picked for any presentation event."""
+    config, player = _golden_inputs()
+    b = C._DEFAULT.compile(config, {**player, "voice": "heavy"}, config["teams"])
+    assert b["cues"]["hurt"] == "$PLAY,,4,6,V36,,,,*"
+    b2 = C._DEFAULT.compile(config, {**player, "voice": "scout"}, config["teams"])
+    assert b2["cues"]["hurt"] == "$PLAY,,4,6,VB6,,,,*"          # V36 replaced by the scout family's own line
+    with raises(ValueError):
+        P.merge(None, {"events": {"low_health": {"sound": "voice:long_death"}}})
 
 
 # --- compiled into the bundle ---------------------------------------------------- #
@@ -104,7 +140,7 @@ def test_standard_bundle_carries_led_bursts_and_verified_cues():
     assert b["cues"]["multi"] == "$PLAY,,4,6,VA7E,,,,*"          # "Double Kill", transcript-verified
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
     assert b["cues"]["objective_scored"] == f"$PLAY,,4,6,{snd.OBJECTIVE_SCORED},,,,*"
-    assert b["cues"]["hurt"] == "$PLAY,VA8B,3,6,,,,,*"           # Callsign's byte-identical frame is kept
+    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA6,,,,*"            # the player's own hurt loop (Tony 2026-09-06: good at critical health)
     assert b["cues"]["kill"].startswith("$PLAY,,4,6,")
 
 
@@ -114,7 +150,7 @@ def test_silenced_mutes_the_announcer_and_drops_the_gun_flashes_but_keeps_the_pl
     assert b["leds"] == {}
     for ev in ("kill", "multi", "medal", "first_blood", "objective_scored", "lead_taken", "victory", "game_over"):
         assert b["cues"][ev] == "", ev                  # present and deliberately mute -> $SFLASH only
-    assert b["cues"]["hurt"] == "$PLAY,VA8B,3,6,,,,,*"  # the player's own low-health alert survives
+    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA6,,,,*"  # the player's own low-health alert (hurt loop) survives
     assert b["cues"]["countdown"] == "$PLAY,VA81,4,6,,,,,*"
     assert b["headset"]["pregame"] == ["$HLED,1,0,,,10,,*"]   # the lobby team colour is not "announcer stuff" (A11.6: dark in play)
 
@@ -308,3 +344,21 @@ def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated
             P.merge(None, {"events": {"kill": {"flash": bad}}})
     rows = {x["event"]: x for x in P.table({"mode": "tdm"})}
     assert rows["kill"]["flash"] == "green" and rows["died"]["flash"] is None
+
+
+def test_voice_role_pools_reach_the_bundle_for_multi_take_roles_only():
+    """A15.1: `voice:pain` has six takes -> a six-frame pool the node rolls from; `voice:healed` has one line ->
+    no pool entry (the single cue is enough); a muted event has no pool either. A15.3 always adds the node's own
+    pain pools (pain_short / pain_long -- Heavy's pain_melee and spawn are single-take, so no pool for those),
+    regardless of what `hit_taken`'s own sound is configured to."""
+    cfg = {**default_config("tdm"), "presentation": {"events": {"hit_taken": {"sound": "voice:pain"}, "healed": {"sound": "voice:healed"}}}}
+    teams = cfg["teams"]
+    player = {"player_id": "p1", "player_num": 3, "display": "X", "team_id": teams[0]["team_id"], "node_id": None, "gun_id": None,
+              "voice": "heavy", "ready": True, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+    b = C.Compiler().compile(cfg, player, teams)
+    assert b["cue_pools"]["hit_taken"] == [f"$PLAY,,4,6,V3{s},,,,*" for s in "CDEFGH"] and b["cues"]["hit_taken"] == "$PLAY,,4,6,V3C,,,,*"
+    assert "healed" not in b["cue_pools"] and b["cues"]["healed"] == "$PLAY,,4,6,V37,,,,*"
+    assert set(b["cue_pools"]) == {"hit_taken", "kill", "pain_short", "pain_long"}
+    muted = C.Compiler().compile({**cfg, "presentation": {**cfg["presentation"], "hud_events": False}}, player, teams)
+    assert "hit_taken" not in muted["cue_pools"] and muted["cues"]["hit_taken"] == ""
+    assert P.cue_pool_frames(P.resolve(cfg), "V3A") == {}                # the pre-A15 str form carries no pools

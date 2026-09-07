@@ -54,15 +54,41 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    game voice (**USE AS THE GAME VOICE** copies it to section 2), **PLAY ALL** (every line in slot order, its
    duration + 0.5 s apart, the playing line highlighted; **STOP** cancels) and, per line, **✓ / ✗** verdicts that
    append to `~/.brx-mcp/voice-verdicts.jsonl` (the walkthrough note box is the note) and colour the line; the
-   header pill counts `<n> CHECKED · <m> WRONG` for the board's character. **THE GUN'S SIX (+ KILL)** stay tied to the
-   GAME voice: one picker per `$PSET` voice field (deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain,
-   painRelief) plus the bundle's kill cue, each naming the event the firmware plays it on. The lines are grouped
-   **HIT SOUNDS** (death screams, pains, hurt loop, healed, long death -- the firmware's own reactions) and
-   **PERSONALITY MOMENTS** (intro, idle, boast, kill confirms, taunts, defeat taunt, name -- lines we place with a
+   header pill counts `<n> CHECKED · <m> WRONG` for the board's character. **THE GUN'S ONE (+ KILL + SPAWN LINE)** stays
+   tied to the GAME voice: `painRelief` is now the only `$PSET` voice field still open to a pick (naming the event
+   the firmware plays it on -- `healed`), plus the bundle's kill cue, and a
+   **SPAWN LINE** card (A15.2, Tony 2026-09-06: "what if we dont rely on the firmware to make the sound on spawn and we
+   just control it" -- bench-verified on the bench gun): the `$PSET` battleRespawnCry field is written EMPTY, so the firmware
+   says nothing at `$SPAWN`, and the stage (like the phone) appends one take of the spawn pool to the spawn write and
+   to the revive write -- `$SPAWN` then `$PLAY` in the same write plays clean, a `$PLAYX` between them clipped the
+   firmware's line. The card lists the takes (Male player: VAI "There's nowhere for you to hide." · VAN "Hoorah!" ·
+   VAO "Good to go."; other families their boast, one take) and the log names the draw
+   (`spawn + spawn line (VAN: Hoorah!)`, `revive + spawn line (…)`); RESPAWN plays exactly one line, never two.
+   Two more cards cover A15.3 (Tony, 2026-09-06 bench): a **DEATH SCREAM** card lists the family's takes and, once a
+   life has started, "this life: `<id>`" -- one of `pset_pool` (a full `$PSET` per take) is written immediately before
+   every `$SPAWN` (spawn and revive alike), so the firmware's own scream changes each life without a picker. A
+   **PAIN · BY DAMAGE** card replaces the old meleeGrunt / shortPain / longPain pickers: SHORT (under the long-pain
+   threshold, 40 dmg by default), LONG (at or above it -- shotgun / snipers / power weapons) and MELEE, each listing
+   its takes -- the three `$PSET` pain fields ship empty and the stage plays one of these itself on every hit the
+   player SURVIVES, gated to one grunt per 600 ms (dropped, never queued) and never on the hit that kills (the native
+   scream plays there). Section 4's **SHOOT ME** (25 dmg) exercises the short-pain pool and **BIG HIT** (80 dmg) the
+   long-pain pool; **KILL ME** (200) plays no pain line, only the native death scream. The lines are grouped
+   **HIT SOUNDS** (death screams, gas death, pains, hurt loop, healed -- the firmware's own reactions) and
+   **PERSONALITY MOMENTS** (intro, boast, kill confirms, taunts, defeat taunt, name -- lines we place with a
    `$PLAY`); a badge marks the family's default for each `$PSET` field and the kill cue. In GAME EVENTS a button
    whose sound is `voice:<role>` is drawn in the voice colour with the resolved id and words, and `hit_taken` /
    `died` / `healed` / `respawned` say which `$PSET` line the firmware itself plays there. The patch box takes
    `{"events": {"respawned": {"sound": "voice:boast"}}}` to hang a personality moment on an event.
+   **ROLLED THIS ARM** (A15, Tony 2026-09-06: "they are all equal and should be picked at random to make the sounds
+   more dynamic"; VAI / VAN / VAO "are all good at spawn picked randomly"): every ARM still draws a death scream into
+   the head's `$PSET` and the strip shows the draw, but since A15.3 that draw never actually plays -- the DEATH
+   SCREAM card's own per-life pick overwrites it before the first `$SPAWN` and every one after; **REROLL** draws
+   again without writing (ARM writes, and draws again). A picker shows `ROLLED
+   FROM n` while it is left to the draw and `PICKED` once a line is pinned, which the roll never overrides. The kill
+   cue is a pool (`n TAKES, ONE PER KILL`: the three kill confirms + the two taunts) and every single kill plays one
+   of them at random, on the phone and on the stage alike; the log names the take (`kill (V3K: Ooh, bet that
+   hurt.)`). Lines that belong to a roll pool, the kill pool or the spawn pool carry a dashed **… POOL** badge on the
+   board (from each line's `uses`, so the badge is the compiler's word, not the page's guess).
 
 ## Rules it enforces (so a bench run cannot fake a result)
 - Every button's frames come from `Compiler.compile()` of the chosen config. The one exception is the **RAW** action (used by
@@ -77,10 +103,13 @@ Tests: `mcp/tests/test_stage.py` (engine, fake gun end-to-end), `test_stage_serv
 
 ## Voice
 
-The gun holds ONE line per `$PSET` voice field, so "various hit sounds" is a choice made before ARM, not a rotation:
-pick the death scream (slots 3/4/5), the pains (C-H) and the respawn cry (I, or an intro / taunt) in section 8, re-ARM,
-then get shot. Every family shares the 22-slot layout read off the gun (`docs/reference/sound-catalog.md`,
-`mcp/brx_mcp/voices.py`); the walkthrough's second step plays the respawn cry so the voice is confirmed by ear before
+The gun holds ONE line per `$PSET` voice field, so "various hit sounds" is a draw made at ARM, not a rotation on
+the gun: the death scream (slots 3/4/5) and the short pain (G/H/D/C) are rolled on every ARM (Mission Control does the
+same per player on every push), or pinned in section 8's pickers; re-ARM, then get shot. Kill confirms and taunts are
+`$PLAY` frames we send, so those really are picked at random per kill from `cue_pools` (the same on the phone), and
+since A15.2 the spawn line is ours too: the `$PSET` cry field is empty and one take of the spawn pool (VAI / VAN / VAO
+for the Male player, the boast elsewhere) rides in every spawn and revive write. Every family shares the 22-slot layout read off the gun (`docs/reference/sound-catalog.md`,
+`mcp/brx_mcp/voices.py`); the walkthrough's second step plays the first spawn take so the voice is confirmed by ear before
 the first spawn. The three commander packs are not player voices (their slots do not follow the layout) and are not
 offered.
 

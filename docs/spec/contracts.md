@@ -1,6 +1,6 @@
 # Shared contracts (M-CONTRACTS) — the node↔MC wire and the game data model
 
-- **Status:** Ratified (Wave 0, 2026-08-25) + amendments **A1–A14** (index in §10). Since 2026-09-06 the
+- **Status:** Ratified (Wave 0, 2026-08-25) + amendments **A1–A15** (index in §10). Since 2026-09-06 the
   amendments are **folded into the body** where they apply, each tagged with its id (`A6.8`, `A11.7`, …) so the
   ids stay greppable. Changes are still amendments: add an index row in §10 and fold the text in.
 - **Consumers:** every module (`mcp/brx_mcp/mc/`, `app/src/`, `webapp/mc/`). Bind to *these shapes*, never
@@ -83,6 +83,12 @@ Player {
   gun_id:      string | null,// assigned gun (ArmoryRecord.gun_id)
   loadout:     Loadout,
   voice:       "male" | "female" | string,  // sound-bank voice persona; the full pack is offered (GET /api/voices, compile.voice_options)
+  voice_slots?: { [role]: sound_id },       // [A15] explicit picks for the `$PSET` voice fields (death_scream, respawn_cry, melee_grunt,
+                             //   short_pain, long_pain, pain_relief) + `kill`; every id must be ON the gun (400 otherwise). Made on the
+                             //   gun stage's soundboard. [A15.1] a field without a pick is ROLLED by MC from the family's pool on every push.
+                             //   [A15.2] `respawn_cry` ships EMPTY (the firmware says nothing on $SPAWN); a pick here puts a firmware cry back.
+                             //   [A15.3] so do `melee_grunt` / `short_pain` / `long_pain` (the node plays the pain by damage); a pick puts a
+                             //   firmware pain back. `death_scream` stays the firmware's and is re-rolled per spawn (`pset_pool`) unless picked.
   ready:       boolean
 }
 
@@ -228,6 +234,28 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                        //   A $PLAY needs tokens 2-3 = `4,6` to be audible; the empty-token form is SILENT (bench 2026-08-25), so
                        //   there is no token-1-only SFX form (retracts the A5.10 note).
   swap_ms?: int,                     // 2026-09-04 (additive): the swap delay the gun enforces between slots 0/1 = max $WEAP tok15 after perks (850 stock; quick_switch 425). The HUD's SWITCHING takeover runs for exactly this; older MCs omit it and the node assumes 850 × perk
+  cue_pools?: { [event]: string[] }, // [A15.1] VARIETY: for an event whose sound is `voice:<role>` with several takes (kill = 3 kill confirms + 2 taunts,
+                                     //   pain = 6), every frame it may play. The node picks ONE at random per event; `cues[event]` stays the
+                                     //   deterministic first for a reader without pools. Absent for single-line roles and muted events.
+  pset_pool?: string[],              // [A15.3] one full $PSET per death-scream take (only the deathScream token differs). The node writes ONE of
+                                     //   them at random IMMEDIATELY before every $SPAWN (spawn and revive, same write), so the firmware screams a
+                                     //   different take each life -- the scream stays native because our own $PLAY on the death landed a BLE hop
+                                     //   late ("a little off", Tony, bench 2026-09-06). Re-sending $PSET mid-game keeps $SIR, does not heal, the
+                                     //   gun still fires (all bench-verified). A pinned `death_scream` = one frame = head[4].
+  voice?: { id, family, pset: {role: id}, kill, rolled: {role: id}, pools: {role: string[]}, spawn: string[],
+            pset_pool: string[], pain_long_min: int },
+                                     // [A15] what the head's $PSET holds per voice field and the kill line; [A15.1] `rolled` = the fields MC drew
+                                     //   from `pools` for THIS push (death scream, short pain); explicit `voice_slots` picks never roll.
+                                     // [A15.2] THE SPAWN LINE IS OURS (bench 2026-09-06): `pset.respawn_cry` is "" -- an empty battleRespawnCry
+                                     //   makes the firmware play NO voice line on $SPAWN -- and the node writes `cues.spawn` (one of
+                                     //   `cue_pools.spawn`, a fresh random take per spawn; `voice.spawn` lists the ids) IMMEDIATELY after the
+                                     //   spawn / revive frames, in the same write. `events.respawned.sound` defaults to `voice:spawn`.
+                                     // [A15.3] THE PAINS ARE OURS (bench 2026-09-06): `pset.melee_grunt` / `short_pain` / `long_pain` are "" (a
+                                     //   $PSET with the voice fields empty still registers hits) and the node plays `cues.pain_*` / one of
+                                     //   `cue_pools.pain_*` on each $HIR, the pool chosen by the hit: proto 13 (melee) -> pain_melee; damage
+                                     //   (token 5) >= `voice.pain_long_min` (40: shotgun, snipers, power weapons) -> pain_long (slots E F);
+                                     //   else pain_short (G H D C). At most one pain line per 600 ms; none on the lethal hit. `events.hit_taken`
+                                     //   keeps no sound of its own. `voice.pset_pool` lists the scream id per `pset_pool` frame.
 }
 ```
 - **Volume** is the compiler's: the head carries `$VOL,<compile.play_volume(environment)>` = **80 indoors / 90
@@ -575,6 +603,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 | A11 | 2026-09-04 | PRESENTATION: A11.1 profile, A11.2 bundle `cues`+`leds`, A11.3 node plays its own events, A11.4 HUD-driven events + `alert` + medals, A11.5 event classes + `mc_confidence`, A11.6 headset, A11.7 gun body, A11.8 small flash LED | §3, §4, §5 |
 | A12 | 2026-09-04 | SIDEARMS: three pistols; `SlotRule.kinds` gains `"sidearm"` | §2, §3; `loadout.md` §1.1 |
 | A13 | 2026-09-04 | UTILITY: A13.1 `respawn.gate` + `stations[]`, A13.2 `respawn.station`, A13.3 the station/player advert, A13.4 node `state().station`/`respawnGate`/`respawnHint`, A13.5 `station_config` | §3, §4, §5; full text `utility.md` |
+| A15 | 2026-09-06 | CHARACTER VOICES: `Player.voice_slots` picks for the six `$PSET` voice fields + the kill line (ids on the gun only); `presentation.events[ev].sound = "voice:<role>"` resolves per player to that character's line (kill, boast, taunt, intro, gas_death, death_scream, hurt_loop, healed, kill_confirm, defeat_taunt, pain, name); `low_health` defaults to the player's own hurt loop. **A15.1** VARIETY: `FrameBundle.cue_pools` (the node rolls one frame per event), MC rolls the un-picked `$PSET` fields from curated pools on every push (`FrameBundle.voice.rolled`). **A15.2** THE SPAWN LINE IS OURS: `$PSET` battleRespawnCry ships empty (firmware silent on `$SPAWN`, bench-verified); the node writes `cues.spawn` / one of `cue_pools.spawn` right after the spawn and revive frames; `respawned` = `voice:spawn` (VAI / VAN / VAO for the Male player). **A15.3** THE PAINS ARE OURS, THE SCREAM STAYS NATIVE: the three `$PSET` pain fields ship empty and the node plays `cues.pain_short` / `pain_long` / `pain_melee` (`cue_pools.*`) on each `$HIR`, chosen by damage (`voice.pain_long_min` = 40) or the melee word, one per 600 ms, none on the lethal hit; `FrameBundle.pset_pool` = one `$PSET` per death-scream take, the node writes one at random before every `$SPAWN` so the firmware's scream changes per life. Voice packs extended to 24 characters (`gameconfig.VOICE_PACKS`; VE = Soldier, VP = clean male). | §2 Player, §3 FrameBundle; `mcp/brx_mcp/voices.py`; `docs/gun-stage.md` §8 |
 | A14 | 2026-09-04 | PERK SLOT: a perk is its own slot beside a secondary; the ALT-button exception; `loadout_pool.perks`; `loadout_request.slot:"perk"` (no backwards path, FOLLOWUPS S6) | §2, §5; `loadout.md` §2-§5 |
 
 The verbatim amendment texts as ratified are preserved in git history (`git log -- docs/spec/contracts.md`, up to

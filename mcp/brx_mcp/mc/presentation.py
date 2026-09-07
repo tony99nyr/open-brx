@@ -17,7 +17,10 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
       "headset": {pregame, start_flash, in_play, hit, death, respawn_flash, carrier},   # A11.6 (death: flash|native|colour)
       "gun": {in_play, pregame},                                     # A11.7 (blank-then-hold, taken 2.5 s after $SPAWN)
       "sight_flash":  bool,   # $SFLASH on a credited kill
-      "events": { <event>: { "sound": <id>|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null } }   # flash = the small headset LED (A11.8)
+      "events": { <event>: { "sound": <id>|"voice:<role>"|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null } }
+                 # flash = the small headset LED (A11.8); "voice:<role>" (A15) = the PLAYER's own voice line for that
+                 # role (kill, spawn, boast, taunt, intro, gas_death, death_scream, hurt_loop, healed, kill_confirm, defeat_taunt,
+                 # pain, pain_short / pain_long / pain_melee (A15.3), name -- voices.SOUND_ROLES), resolved per player at compile time
     }
 
 Every sound id must be ON THE GUN (`sounds.on_gun_ids()`, from the catalog read off the hardware);
@@ -55,11 +58,11 @@ PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5,
 EVENTS: dict[str, dict] = {
     "hit_taken":     dict(source="hud", group="player",    desc="you were hit",                      sound=None,   gun_led=pg.RED,    headset=None),
     "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=pg.RED,    headset=None),
-    "respawned":     dict(source="hud", group="player",    desc="back in",                           sound=None,   gun_led=pg.WHITE,  headset=None),
+    "respawned":     dict(source="hud", group="player",    desc="back in: the player's own spawn line (A15.2, one random take)", sound="voice:spawn", gun_led=pg.WHITE, headset=None),
     "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=pg.GREEN,  headset=None),
     "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=pg.PURPLE, headset=None),
     "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=pg.TEAL,   headset=None),
-    "low_health":    dict(source="hud", group="player",    desc="armour gone, HP dropping (once per life)", sound="VA8B", gun_led=None, headset=pg.PINK),
+    "low_health":    dict(source="hud", group="player",    desc="armour gone, HP dropping: the player's own hurt loop, once per life", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
     "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),
@@ -310,7 +313,12 @@ def _sound(v):
         return None
     if not isinstance(v, str):
         raise ValueError("sound must be a bank id string or null")
-    if v in ("voice:kill", "VSF+JAY"):
+    if v == "VSF+JAY":
+        return v
+    if v.startswith("voice:"):
+        from ..voices import SOUND_ROLES
+        if v[6:] not in SOUND_ROLES:
+            raise ValueError(f"sound {v!r}: the voice role must be one of {SOUND_ROLES}")
         return v
     sid = v.upper()
     if sid not in snd.on_gun_ids():
@@ -442,10 +450,16 @@ def resolve(config: dict) -> dict:
     return prof
 
 
-def play_frame(sound: str, voice_kill_line: str | None) -> str | None:
-    """A bank id -> the pre-composed `$PLAY` frame (A6.3). V-family ids speak on the announcer slot."""
-    if sound == "voice:kill":
-        return f"$PLAY,,4,6,{voice_kill_line},,,,*" if voice_kill_line else None
+def play_frame(sound: str, voice) -> str | None:
+    """A bank id -> the pre-composed `$PLAY` frame (A6.3). V-family ids speak on the announcer slot.
+    `voice` = the player's `{role: id}` map (compile._voice_map) for `voice:<role>` sounds; a bare str is
+    the kill-line id (the pre-A15 shape). A role the player's family cannot fill -> None (no cue)."""
+    if sound.startswith("voice:"):
+        role = sound[6:]
+        sid = voice.get(role) if isinstance(voice, dict) else (voice if role == "kill" else None)
+        if isinstance(sid, (list, tuple)):
+            sid = sid[0] if sid else None           # A15.1: a POOL -- the deterministic first; the pool itself is cue_pool_frames()
+        return f"$PLAY,,4,6,{sid},,,,*" if sid else None
     if sound == "VSF+JAY":
         return "$PLAY,VSF,4,6,JAY,,,,*"
     if re.fullmatch(r"V[A-Z0-9]{1,3}", sound):
@@ -453,7 +467,7 @@ def play_frame(sound: str, voice_kill_line: str | None) -> str | None:
     return f"$PLAY,{sound},4,6,,,,,*"
 
 
-def cue_frames(profile: dict, voice_kill_line: str | None) -> dict[str, str]:
+def cue_frames(profile: dict, voice) -> dict[str, str]:
     """event -> `$PLAY` frame for every event with a sound, honouring the announcer switch.
 
     `announcer: false` silences the voice groups (announcer + objective) but keeps the player's own
@@ -471,9 +485,34 @@ def cue_frames(profile: dict, voice_kill_line: str | None) -> dict[str, str]:
         if muted:
             out[ev] = ""
             continue
-        fr = play_frame(s, voice_kill_line)
+        fr = play_frame(s, voice)
         if fr:
             out[ev] = fr
+    return out
+
+
+def _muted(profile: dict, spec: dict) -> bool:
+    src = spec.get("source", "mc")
+    return ((spec["group"] in ("announcer", "objective") and not profile.get("announcer", True))
+            or (src == "hud" and not profile.get("hud_events", True))
+            or (src == "mc" and not profile.get("mc_events", True)))
+
+
+def cue_pool_frames(profile: dict, voice) -> dict[str, list[str]]:
+    """A15.1: event -> EVERY `$PLAY` frame its `voice:<role>` sound may resolve to, for events whose pool has
+    two or more lines (three kill confirms + two taunts on `voice:kill`, six pains on `voice:pain`). The node
+    picks ONE at random per event; `cue_frames()[ev]` stays the deterministic first for readers without pools.
+    Muted events and single-line roles are absent."""
+    out: dict[str, list[str]] = {}
+    if not isinstance(voice, dict):
+        return out
+    for ev, spec in profile["events"].items():
+        s = spec.get("sound")
+        if not s or not s.startswith("voice:") or _muted(profile, spec):
+            continue
+        ids = voice.get(s[6:])
+        if isinstance(ids, (list, tuple)) and len(ids) > 1:
+            out[ev] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
     return out
 
 
@@ -602,10 +641,11 @@ def table(config: dict) -> list[dict]:
     for ev, spec in prof["events"].items():
         s = spec.get("sound")
         words = ""
-        if s and s not in ("voice:kill", "VSF+JAY"):
+        if s and not s.startswith("voice:") and s != "VSF+JAY":
             words = snd.describe(s)
-        elif s == "voice:kill":
-            words = "the player's own voice: kill line"
+        elif s and s.startswith("voice:"):
+            from ..voices import ROLE_WORDS
+            words = "the player's own voice: " + ("kill line" if s == "voice:kill" else ROLE_WORDS.get(s[6:], s[6:]))
         elif s == "VSF+JAY":
             words = "Victory! + sting"
         rows.append({"event": ev, "source": spec.get("source", "mc"), "desc": spec.get("desc", ""),
