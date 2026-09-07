@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F42 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F44 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (F42 taken 2026-09-07 by the Python DRY review; next free F is F43.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -176,7 +176,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   played the win sting to everyone at the whistle. Nothing about `$PLAY,VSF,4,6,JAY,,,,*` looks wrong on its own;
   only its RELATIONSHIP to the real table was wrong, which is exactly where no assertion was looking. Pinned as an
   inequality against the real compiler rather than as a literal, so it survives either id being re-picked by ear.
-  Add (7): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
+  Add (7) **the guard could not see a file that did not exist yet**: `test_no_headset_sticker_id_in_tracked_files`
+  ran `git ls-files`, i.e. TRACKED ONLY. A new bench sheet carrying a sticker id was written, the suite was run
+  and PASSED (the file was still untracked), and the leak entered the next commit — green precisely because the
+  file was new, which is when a leak is most likely. Fixed 2026-09-07: `--cached --others --exclude-standard`, so
+  a file is checked before it is added rather than one commit too late. Add (8): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
   in `led-language.md` §6 and were never assigned, so a KNOWN bug was indistinguishable from an unknown one until a
   refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
   reports a file that did not run, a compiler asserts its `$SIR` cells cover the weapons (done, A17), a light rule is
@@ -406,19 +410,51 @@ the Windows venv (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp
 receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 
 **A17 hit audio** (one gun, our compiled game, an armoured life; `ears` + `trigger`):
-- F37 🟠 **`$PSET` hit-slot ORDER.** hitHp / hitArrmor / hitShield / hitCrit are source-derived from the APK, but
-  `docs/manual/06-developer.md` still marks the wire-slot -> name mapping unknown. Arm with three unmistakably
-  different clips in those slots, take an armour hit then a health hit on one life, and say which played when.
-  Everything in `hitaudio.MATERIAL_POOLS` rides on this; a wrong order plays a real but wrong clip per pool.
-- F38 🟠 **Does a `$SIR` sound LAYER with the `$PSET` pool sound, or REPLACE it?** Put a bell on `$SIR,0,0` and a
-  thud in hitHp, then take one standard hit on health. Two sounds = the ideal (weapon impact + material); one =
-  the class layer wins and the material layer only speaks on the rows we leave silent. Decides which layer we tune.
-- F39 🟡 **The real `$SIR` row ceiling.** "Max 14 distinct IR recognitions per game" is a community figure we have
+- **✅ F37 CLOSED 2026-09-07 — the `$PSET` slot order is the APK's.** hitHp / hitArrmor / hitShield sit exactly
+  where the field list says; a voice line placed in the hitShield position was heard on a shield hit. An
+  intermediate "the slots are SWAPPED" reading was published mid-session and RETRACTED: two different clips both
+  read as "a computer sound" to the ear and the inference chain hung on that ambiguity. What killed it was a
+  CONTROL (move one clip, watch the sound NOT change), not more reasoning.
+- **✅ F38 CLOSED 2026-09-07 — `$SIR`'s sound REPLACES the `$PSET` pool sound; it does not layer.** Single-variable
+  test: with a voice on `$SIR,0,0` only the voice played; silencing that token revealed the pool sound underneath,
+  nothing else changed. CONSEQUENCE: per-weapon and per-pool audio compete for one hit and only one can speak.
+  The class layer therefore ships OFF (`GameConfig.hit_audio_class`, default false) so the ear-confirmed material
+  layer is audible; the stock rows keep the EMPTY sound token Callsign ships, which is what makes that work.
+- **F42 🟠 `energyShieldLoop` needs a low hum.** BENCH 2026-09-07: `$PSET` position 7 is a REAL LOOP that runs while
+  the shield is UP, survives a `$PSET` rewrite, and stops only on `$PLAYX,0,*` or the shield reaching zero.
+  Callsign's stock `A10` is a geiger-ish tick and, because it loops, it played under every shield-band hit and made
+  an hour of shield readings incoherent. It now ships EMPTY. Tony wants "a better low hum ... several halo shield
+  sounds in many variety" — the whole `SW` family was auditioned and rejected (Star-Wars-style: lightsabers), and
+  `C22`/`C23`/`C08`/`C10` are energy WEAPON charge-ups, not shields. Search `fx:scifi_fx` / `fx:retro_fx` on PITCH
+  rather than centroid. Also decide whether we want a hum ON GRANT (this slot, one shot) or WHILE SHIELDED (a node
+  loop with a stop when the pool empties — real work, a live BLE write in play). `ears`.
+- **F39 🟡 The real `$SIR` row ceiling.** "Max 14 distinct IR recognitions per game" is a community figure we have
   never measured; `hitaudio.MAX_SIR_ROWS` treats it as a soft budget. Push a 20-row table and check every row still
-  registers. Gates `hit_audio_rekey`, which is DEFAULT OFF until F38 and this are both in.
-- F37-39 all read off `FrameBundle.hit_audio` (cells, families, material roles) for what the gun was actually armed with.
+  registers. Gates `hit_audio_rekey`, which is DEFAULT OFF. Lower value now that F38 has ruled the class layer off
+  by default — the rekey only matters if we ever choose per-weapon audio over per-pool.
+- **F41 🟡 Audit the four `$PSET` tokens nobody has ever heard.** `missShotHit` (`H06`), `emptyUnboundButtonSound`
+  (`U15`), `ammoOrGearPickUp` (`W71`) and `hitCrit` (`H43`, a shape pick and a placeholder, not a choice) all still
+  ship inherited or unaudited ids. `W71` fires on every ammo/gear pickup in a real game and no one has heard it.
+  `H07`/`H09` were identified as bullet WHIZZ-BYS on 2026-09-07 and are the obvious `missShotHit` candidates. `ears`.
+- **F40b 🟡 Weapon accuracy and near-miss audio** (Tony's question, 2026-09-07: "does our hosted game implement the
+  missed wizz shots? shot accuracy from holding the trigger?"). Answer today: NO. Accuracy exists only as a
+  SCOREBOARD stat (`scoring.py`, hits ÷ shots); nothing degrades accuracy while the trigger is held, and it cannot
+  be done host-side because the gun emits IR autonomously per pull. It would have to be `$WEAP` t21/t22 (APK-named
+  accuracy), both in the protocol doc's UNVERIFIED list. Probe: flip t21/t22 on one weapon and count `$HIR` against
+  `$ALCD` shots. If they gate the gun's own accuracy, the feature is: set the token, let the firmware miss, and the
+  victim hears `H07`/`H09` go past instead of a hit. `trigger`.
+- **F43 🔴 SOUND PICKS BY ACOUSTIC SHAPE ARE NOT TRUSTWORTHY — do not repeat the method.** Every id in the first
+  `hitaudio.py` was chosen from `sound_catalog.json` by envelope / flatness / centroid / duration. NOT ONE survived
+  a listen on 2026-09-07. Signal features separate TONAL from NOISY; they cannot separate METAL from ELECTRONIC
+  (`H14` = a synth tone picked as the armour head), an IMPACT from a NEAR-MISS (`H07`/`H09` = whizz-bys picked into
+  health), a PLAYER from a CREATURE (`H33`, `Z06`, `Z07`; `fx:splat` is a SIGNAL label, not a semantic one), or a
+  clean clip from one with a cough tail (`H03`). Second trap: a RAPID AUDITION HIDES TAILS — `H03` passed a
+  six-clip run as "metal" and failed instantly heard alone, because a sequence gives the ear each clip's onset and
+  a hit sound is mostly tail. Confirm every candidate SOLO. The catalog's `speech_untrusted` transcripts are wrong
+  too (`V116` is catalogued "Can't believe!"; on the gun it says "gained the lead"). This is the S1 ear-audit's
+  real justification: 20-odd `fx:hit` ids now have by-ear meanings and the rest do not.
 
-**Trigger in hand** (one gun, our compiled game, Tony firing):
+**Trigger in hand** (one gun, our compiled game, Tony firing):**Trigger in hand** (one gun, our compiled game, Tony firing):
 - 1.1 **K4** melee swing, watch `$BUT,8` / `$HIR,…,13`.
 - 1.4 **K1** `$WEAP` t19 = 5, pull the trigger on an empty chamber, watch `$ALCD`.
 - 1.5 **U11′** fire enemy 8, 24–28, 35 and ally 31, 32, 34 at a held gun; report what you hear, see, or cannot do.

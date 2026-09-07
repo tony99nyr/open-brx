@@ -288,6 +288,24 @@ indistinguishable through `$HIR`, and a whole session was lost to reading corpse
 Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
 Repro: `mcp/tools/clear_spawn_repro.py`.
 
+**🟠 FOUR SESSIONS SHARE ONE BENCH: two processes on a gun is CONTENTION, not staleness (2026-09-07)**
+**Symptom:** your BLE connects fail, the gun answers nothing, and it looks exactly like a tagger that has
+slept or died. Or `ir-emit` returns `PermissionError(13, 'Access is denied.')` on COM8.
+
+**Cause:** another session holds it. Windows serial ports are exclusive, and a second BLE session to the same
+gun simply will not connect. On 2026-09-07 this produced a wrong diagnosis ("the tagger has slept") and an
+operator was asked to power-cycle a gun that was fine the whole time — `$VOLTS` heartbeats ran unbroken
+throughout. The other session then read two `brx_mcp stage` processes as stale and killed them, which is the
+mirror image of the same mistake.
+
+**Rule: say in the session channel that you are taking the gun and COM8, and say again when you hand back.**
+Two processes on the SAME gun and port is the tell that someone is using it — the FOLLOWUPS preflight line
+about killing stale `brx_mcp` processes predates four sessions sharing one machine and is now actively
+misleading. If the stage is up it owns COM8 exclusively; emit THROUGH it
+(`POST /api/do {"action":"ir","kind":"shot"}`) rather than opening the port from a second shell.
+
+---
+
 **🔴 `$HLED,,6` IN PLAY SILENTLY KILLS THE NATIVE DEATH FLASH (2026-09-07)**
 **Symptom:** downed players' headsets are dark in our games, while native play flashes them brightly. It looks
 like "hosted games don't get the out-blink" — that reading was wrong and cost a whole design.

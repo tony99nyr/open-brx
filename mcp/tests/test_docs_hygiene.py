@@ -39,10 +39,19 @@ def _git(*args: str) -> str | None:
 
 
 def _tracked_files() -> list[pathlib.Path]:
-    listing = _git("ls-files")
+    """Tracked files PLUS untracked-but-not-ignored ones.
+
+    ⚠ This used to be a bare `ls-files`, i.e. TRACKED ONLY, and that hole was walked into on
+    2026-09-07: a new bench sheet carrying a headset sticker id was written, this suite was run and
+    passed (the file was still untracked, so the guard could not see it), and the leak entered the very
+    next commit. The guard was green precisely because the file was new, which is when a leak is most
+    likely. `--others --exclude-standard` adds untracked files while still honouring .gitignore, so a
+    file is checked BEFORE it is added rather than one commit too late.
+    """
+    listing = _git("ls-files", "--cached", "--others", "--exclude-standard")
     if listing is None:
         raise Skipped("git")
-    return [REPO / p for p in listing.split("\n") if p]
+    return [REPO / p for p in dict.fromkeys(listing.split("\n")) if p]
 
 
 def test_no_headset_sticker_id_in_tracked_files():
