@@ -1,6 +1,6 @@
 # Open BRX: The BRX Manual (full text)
 
-Generated 2026-09-06T18:20:13.436Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
+Generated 2026-09-07T16:51:26.603Z. Known facts only; provenance badges: ✅ verified on our bench · 📖 official Battle Company docs · 🔍 decoded from the Callsign app · 👥 community-reported · 🧪 built + software-tested · 📐 specified only · 🚧 under construction.
 
 
 
@@ -1121,7 +1121,7 @@ Source: protocol/brx-protocol.md §"$WEAP t20 - FIRE MODE", docs/weapon-design.m
 
 ## The app's own weapon categories
 (a UI grouping, not a wire field): Rifle · SMG · Sniper · Shotgun · Heavy · Energy · Support · Power · Exotic · Launcher · Stun, plus Ability and Melee. Nothing the gun receives says which category a weapon is in. So the table above uses Open BRX's role grouping instead.
-Source: protocol/callsign-extract/weapon-categories-config.json, protocol/callsign-extract/config-facts.md
+Source: protocol/callsign-extract/config-facts.md
 
 ## No stock weapon has an alt-fire.
 The secondary-fire fields are empty on all 20 captured frames. The orange ALT button cycles perks and abilities in the modes that have them. Every weapon is also just *data*. A host can send its own weapon into any of the gun's 6 slots: damage, rate, clip, reload, burst, overheat and sounds. That is exactly what Open BRX does.
@@ -1395,14 +1395,14 @@ Source: docs/reference/brx-manual-notes.md §Per-mode weapons & perks, docs/refe
 | Chopper | yes |
 | Air Raid (bombing run) | yes |
 | Nuke | yes |
-Source: protocol/callsign-extract/streak-rewards-config.json, protocol/callsign-extract/config-facts.md
+Source: protocol/callsign-extract/config-facts.md
 
 ## Post-game medals (21, from the app's config)
 🔍
 - **MVP**: highest score on their team · **Top Gun**: most kills · **Sharp Shooter**: most accurate · **Trigger Happy**: most shots fired · **Grave Lover**: most deaths · **Highest K/D** · **Survivalist**: fewest deaths · **Top 3**: top three score on your team · **The Assistant**: most assists · **Objective King**: most flags/boxes
 - **First Blood**: first kill of the game · **Double Kill / Triple Kill / Killtacular**: 2/3/4 kills, each within 4 s of the last · **Streaky**: a 5-kill streak · **Streakerten**: a 10-kill streak · **Streakernaut**: highest streak in the game
 - **Ninja**: 3 melee kills in one life · **Assassin**: most melee kills · **Weapons Expert**: 3 kills with 2+ weapons · **Head Shot**: 5 kills by head shots only
-Source: protocol/callsign-extract/game-medals-config.json
+Source: mcp/brx_mcp/data/medals.json
 
 ## Where each fact on this page comes from.
 ✅ On the bench: the character health/armor/shield shapes are real pools the gun tracks; medic heal and shield grant exist as IR effect functions; the gun announces "double kill" by itself in gun-menu games. 📖 From the manuals: the character table, the abilities, the factions and the perk list. 🔍 From the app's config: the 16 streak rewards and the 21 medals.
@@ -1610,7 +1610,7 @@ Source: protocol/callsign-extract/apk-harvest.md, mcp/brx_mcp/mc/API.md
 | `V0` Fury · `V1` Grenadier · `V2` Guardian · `V3` Heavy · `V4` Hive Queen · `V5` … · `V6` Infiltrator · `V7` Marauder · `V8` Medic · `V9` Raider | The Supremacy / class characters | 23 each (V4: 33, V5: 26, V8: 35) |
 | `V100`–`V144` | Gameplay callouts: CTF, Slayer, King of the Hill | 34 |
 Counts computed from the bank file; character names from DK's map.
-Source: protocol/callsign-extract/Sounds.json, protocol/callsign-extract/sound-bank.md
+Source: mcp/brx_mcp/data/sound_ids.json, protocol/callsign-extract/sound-bank.md
 
 ## What one character pack contains
 (the pattern repeats across every `V<n>`/`V<letter>` family) 👥
@@ -1655,14 +1655,14 @@ Source: docs/reference/sound-catalog.md, protocol/callsign-extract/sound-bank.md
 - **~4,700 s** (78 min) of audio across the app's 2,166-id list
 - **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed) · **Shortest:** `N1A` at 0.04 s
-Source: docs/reference/sound-catalog.md, protocol/callsign-extract/Sounds.json (computed)
+Source: docs/reference/sound-catalog.md, mcp/brx_mcp/data/sound_ids.json (computed)
 
 ## How to read an id.
 The first letters are a family prefix (what kind of sound), and the rest is an index. `R02` is the second entry in the R (rifle-shot) family, and `V3A` is line A of the Heavy (V3) voice. An `E_` prefix marks an alternate take of the base id, so `E_VB17` is a variant of `VB17`. The `E_` set covers the VB, VA, J, K, N, X and VS families. Ids are the app's own names, and the protocol has no friendlier label.
 Source: protocol/callsign-extract/sound-bank.md
 
 ## Category map: every family in the app's list
-(prefix meanings restated from David Knox's audio map, counts computed from the app's `Sounds.json`; the on-gun catalog adds the `VX` and `VZ` voice families, `H102` to `H155` and more; 👥🔍)
+(prefix meanings restated from David Knox's audio map, counts computed from the app's sound list, restated as `mcp/brx_mcp/data/sound_ids.json`; the on-gun catalog adds the `VX` and `VZ` voice families, `H102` to `H155` and more; 👥🔍)
 | Family | What it holds | Ids | Typical length |
 |---|---|---|---|
 | `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5–3 s (countdowns up to 11 s) |
@@ -1698,7 +1698,7 @@ Source: protocol/callsign-extract/sound-bank.md
 | `Q` | Silencers | 7 | 0.2–0.9 s |
 | `O` | Big guns / ordnance | 6 | 1.5–2.5 s |
 Sums to 2,166, the app's list; the gun holds 2,477 files.
-Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extract/sound-bank.md (DK prefix legend), docs/reference/sound-catalog.md
+Source: mcp/brx_mcp/data/sound_ids.json (computed), protocol/callsign-extract/sound-bank.md (DK prefix legend), docs/reference/sound-catalog.md
 
 ## Thirty-odd ids worth knowing
 (the confirmed core; ✅ = heard on our bench or in a capture, 👥 = DK map)

@@ -80,7 +80,7 @@ Source: protocol/brx-protocol.md §"$WEAP t20 - FIRE MODE", docs/weapon-design.m
 
 ## The app's own weapon categories
 (a UI grouping, not a wire field): Rifle · SMG · Sniper · Shotgun · Heavy · Energy · Support · Power · Exotic · Launcher · Stun, plus Ability and Melee. Nothing the gun receives says which category a weapon is in. So the table above uses Open BRX's role grouping instead.
-Source: protocol/callsign-extract/weapon-categories-config.json, protocol/callsign-extract/config-facts.md
+Source: protocol/callsign-extract/config-facts.md
 
 ## No stock weapon has an alt-fire.
 The secondary-fire fields are empty on all 20 captured frames. The orange ALT button cycles perks and abilities in the modes that have them. Every weapon is also just *data*. A host can send its own weapon into any of the gun's 6 slots: damage, rate, clip, reload, burst, overheat and sounds. That is exactly what Open BRX does.

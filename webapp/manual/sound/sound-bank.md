@@ -10,14 +10,14 @@ Source: docs/reference/sound-catalog.md, protocol/callsign-extract/sound-bank.md
 - **~4,700 s** (78 min) of audio across the app's 2,166-id list
 - **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed) · **Shortest:** `N1A` at 0.04 s
-Source: docs/reference/sound-catalog.md, protocol/callsign-extract/Sounds.json (computed)
+Source: docs/reference/sound-catalog.md, mcp/brx_mcp/data/sound_ids.json (computed)
 
 ## How to read an id.
 The first letters are a family prefix (what kind of sound), and the rest is an index. `R02` is the second entry in the R (rifle-shot) family, and `V3A` is line A of the Heavy (V3) voice. An `E_` prefix marks an alternate take of the base id, so `E_VB17` is a variant of `VB17`. The `E_` set covers the VB, VA, J, K, N, X and VS families. Ids are the app's own names, and the protocol has no friendlier label.
 Source: protocol/callsign-extract/sound-bank.md
 
 ## Category map: every family in the app's list
-(prefix meanings restated from David Knox's audio map, counts computed from the app's `Sounds.json`; the on-gun catalog adds the `VX` and `VZ` voice families, `H102` to `H155` and more; 👥🔍)
+(prefix meanings restated from David Knox's audio map, counts computed from the app's sound list, restated as `mcp/brx_mcp/data/sound_ids.json`; the on-gun catalog adds the `VX` and `VZ` voice families, `H102` to `H155` and more; 👥🔍)
 | Family | What it holds | Ids | Typical length |
 |---|---|---|---|
 | `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5–3 s (countdowns up to 11 s) |
@@ -53,7 +53,7 @@ Source: protocol/callsign-extract/sound-bank.md
 | `Q` | Silencers | 7 | 0.2–0.9 s |
 | `O` | Big guns / ordnance | 6 | 1.5–2.5 s |
 Sums to 2,166, the app's list; the gun holds 2,477 files.
-Source: protocol/callsign-extract/Sounds.json (computed), protocol/callsign-extract/sound-bank.md (DK prefix legend), docs/reference/sound-catalog.md
+Source: mcp/brx_mcp/data/sound_ids.json (computed), protocol/callsign-extract/sound-bank.md (DK prefix legend), docs/reference/sound-catalog.md
 
 ## Thirty-odd ids worth knowing
 (the confirmed core; ✅ = heard on our bench or in a capture, 👥 = DK map)

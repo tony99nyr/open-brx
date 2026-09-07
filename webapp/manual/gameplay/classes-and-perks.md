@@ -66,14 +66,14 @@ Source: docs/reference/brx-manual-notes.md §Per-mode weapons & perks, docs/refe
 | Chopper | yes |
 | Air Raid (bombing run) | yes |
 | Nuke | yes |
-Source: protocol/callsign-extract/streak-rewards-config.json, protocol/callsign-extract/config-facts.md
+Source: protocol/callsign-extract/config-facts.md
 
 ## Post-game medals (21, from the app's config)
 🔍
 - **MVP**: highest score on their team · **Top Gun**: most kills · **Sharp Shooter**: most accurate · **Trigger Happy**: most shots fired · **Grave Lover**: most deaths · **Highest K/D** · **Survivalist**: fewest deaths · **Top 3**: top three score on your team · **The Assistant**: most assists · **Objective King**: most flags/boxes
 - **First Blood**: first kill of the game · **Double Kill / Triple Kill / Killtacular**: 2/3/4 kills, each within 4 s of the last · **Streaky**: a 5-kill streak · **Streakerten**: a 10-kill streak · **Streakernaut**: highest streak in the game
 - **Ninja**: 3 melee kills in one life · **Assassin**: most melee kills · **Weapons Expert**: 3 kills with 2+ weapons · **Head Shot**: 5 kills by head shots only
-Source: protocol/callsign-extract/game-medals-config.json
+Source: mcp/brx_mcp/data/medals.json
 
 ## Where each fact on this page comes from.
 ✅ On the bench: the character health/armor/shield shapes are real pools the gun tracks; medic heal and shield grant exist as IR effect functions; the gun announces "double kill" by itself in gun-menu games. 📖 From the manuals: the character table, the abilities, the factions and the perk list. 🔍 From the app's config: the 16 streak rewards and the 21 medals.

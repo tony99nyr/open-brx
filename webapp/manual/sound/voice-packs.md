@@ -53,7 +53,7 @@ Source: protocol/callsign-extract/apk-harvest.md, mcp/brx_mcp/mc/API.md
 | `V0` Fury · `V1` Grenadier · `V2` Guardian · `V3` Heavy · `V4` Hive Queen · `V5` … · `V6` Infiltrator · `V7` Marauder · `V8` Medic · `V9` Raider | The Supremacy / class characters | 23 each (V4: 33, V5: 26, V8: 35) |
 | `V100`–`V144` | Gameplay callouts: CTF, Slayer, King of the Hill | 34 |
 Counts computed from the bank file; character names from DK's map.
-Source: protocol/callsign-extract/Sounds.json, protocol/callsign-extract/sound-bank.md
+Source: mcp/brx_mcp/data/sound_ids.json, protocol/callsign-extract/sound-bank.md
 
 ## What one character pack contains
 (the pattern repeats across every `V<n>`/`V<letter>` family) 👥
