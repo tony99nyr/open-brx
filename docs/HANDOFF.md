@@ -84,8 +84,8 @@
   - ⚠ **Phones are on a pre-`role` APK**: `headset_frames()` still ships the legacy `headset.carrier`
     key on purpose (delete only once an APK with `role` is deployed, S10). `test_led_invariants.py`
     pins these facts across every preset x team x night x ffa, and across compiled bundles.
-- **⭐ Python reviewed + deduped, 2026-09-07.** Suite 809 → **1018 passed / 0 failed / 46 skipped / 78 files** under system
-  python (**1064** under the venv, which runs the skips), plus **161** app tests. Real dedupe (CLI wire tables imported from `gameconfig`, one armed-pool
+- **⭐ Python reviewed + deduped, 2026-09-07.** Suite 809 → **1020 passed / 0 failed / 46 skipped / 78 files** under system
+  python (**1066** under the venv, which runs the skips), plus **161** app tests. Real dedupe (CLI wire tables imported from `gameconfig`, one armed-pool
   formula, one `_resend`, a `ScoredEngine` base, one event-loop policy for eleven hand-rolled helpers)
   — but the duplication was NOT the problem. **Seven bugs a green suite was hiding:** five bench tools
   AND the diag runner ending on a bare `$CLEAR`; `diag/cases.py` shipping 5 of 10 `$SIR` rows; `alert`

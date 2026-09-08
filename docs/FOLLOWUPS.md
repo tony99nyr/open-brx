@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F54 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F55 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -118,6 +118,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
 
 - **F52 🟢** the A16.3 readout timings (lead 180 / blink-gap 80 / step 120 / blink 400 ms) exist in THREE places:
+  **Narrowed 2026-09-07:** the fifth timing, `min_gap_ms` (400), was worse than the others — a hidden default in
+  BOTH consumers and emitted by NEITHER, so retuning it at the bench would have changed nothing at all, silently.
+  It is also the one that is a SAFETY knob (it is what holds automatic fire under the 3-light-ups-per-second
+  ceiling). Now compiled by MC and documented in contracts A16.3. **The four below still carry fallback literals.**
   authoritative in `poolgauge.py` (`READOUT_LEAD_MS` etc.), and again as fallback literals in `engine.js` and
   `stage.py`. MC always ships them so the fallbacks are dead today, but if the numbers are ever retuned at the
   bench without touching both consumers, the fallback path silently disagrees — the same shape as the level
@@ -135,6 +139,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   on "FF is irrelevant" (F48) or on any polarity rule until this is explained: diff the two heads frame by frame
   on the wire (`$PSET` player_num differs: 1 vs 7 — the emitted word's player id is 42 in both), and re-run with
   each difference isolated. This cost most of an evening's bench time and produced four wrong diagnoses. `trigger`.
+- **F54 🟠** **the reload glance has no bench instrument.** `engine.js` has `_gunReadoutReloadGlance` (A16 §3.1:
+  a reload repaints the current pool readout for `reload_glance_s`, 2 s day / 1 s night) wired to the reload path;
+  `stage.py` has none, and says so in its own comment ("no reload path on the stage yet"). So the one behaviour a
+  player triggers deliberately, to ask "how am I doing", is the one an operator cannot see on hardware. Everything
+  else in A16.3 can be judged at the stage. It also interacts with the animation (a glance cutting a drop short
+  now records the level, fixed 2026-09-07) and that interaction is exactly what is unobservable. Build a reload
+  action on the stage page, or accept that this ships to players unverified. `build`.
 - **F50 🟠** the A17 pain gate has never run in a REAL node path — only unit tests and grunts hand-played over
   BLE (brx-sound, 2026-09-07). The stage is now the only instrument that can exercise it, and any A17 audio
   judgement taken through the stage before `3388362` used the rejected shape-picked pools. Re-verify: an
