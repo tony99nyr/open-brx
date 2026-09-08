@@ -140,11 +140,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   judgement taken through the stage before `3388362` used the rejected shape-picked pools. Re-verify: an
   armour-absorbed hit stays silent, a hit that reaches HEALTH grunts, a hit that spills armour→health grunts
   (the innermost-moved-pool rule), and a lethal hit never grunts. `ears`.
-- **F51 🟡** the stage's `state()` costs **527-658 ms** (bundle view + walkthrough plan + sound-catalog
-  descriptions). Fixed on the hit path 2026-09-07 (`event()` split into `_event_now()` + the HTTP wrapper,
-  which removed the whole ~600 ms LED lag), but the build itself is still that expensive and the page polls it.
-  Cache the immutable parts (the catalog descriptions and the walkthrough plan change only on recompile) so an
-  operator's browser is not re-parsing 1.16 MB several times a second. `build`.
 
 - **F42 🟡** **the DRY-review backlog** (2026-09-07 Python review, agent team). Six bugs from that pass are FIXED
   and pushed; what is left is real but none of it is blocking. Evidence: every item below was measured, not read.
@@ -220,7 +215,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   file was new, which is when a leak is most likely. Fixed 2026-09-07: `--cached --others --exclude-standard`, so
   a file is checked before it is added rather than one commit too late. Add (8): a known defect with no owner. White-on-white bursts were already written down as finding #3 (red-on-red)
   in `led-language.md` §6 and were never assigned, so a KNOWN bug was indistinguishable from an unknown one until a
-  refactor lane rediscovered it. **Action:** when a probe can return "nothing", make the nothing loud — a runner
+  refactor lane rediscovered it. Add (9) **the clean-worktree re-check does not cover the app**: `origin/main` is
+  re-verified in `/home/tony/brx-stage-head`, which has no `app/node_modules`, so the JS suite there cannot import
+  `@capacitor-community/bluetooth-le`, loses `brxlink.test.mjs` whole, and prints "156 passed, 1 failed" on a commit
+  that is green. The check reports a PYTHON result while reading like a full one. 2026-09-07 that number was briefly
+  mistaken for a regression in the commit just pushed. Fix: `npm ci` in that worktree, or have the check say out loud
+  which suites it ran. **Action:** when a probe can return "nothing", make the nothing loud — a runner
   reports a file that did not run, a compiler asserts its `$SIR` cells cover the weapons (done, A17), a light rule is
   pinned by a test that walks the reachable surface (done, `test_led_invariants.py`), and every finding in a review
   table carries an owner or an id.

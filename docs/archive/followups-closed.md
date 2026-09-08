@@ -2054,7 +2054,7 @@ the field."
 
 
 ---
-- 2026-09-07 **Q19** FFA colour: WHITE (tid 6) on both surfaces — Tony, matches stock FFA; eight teams verified on hardware the same night. **S4 (b)** a held gun paint survives 8 min with no traffic.
+- 2026-09-07 **Q19** FFA colour: WHITE (tid 6) on both surfaces — Tony, matches stock FFA; eight teams verified on hardware the same night. ⚠️ **RETRACTED 2026-09-07 (F35):** only the LED COLOURS were checked; no shot was ever fired on tid 4-7. The IR word's team field is 2 bits, so tid 4-7 emit as tid 0-3 and BREAK combat. `$TID` is 0-3. Colour is now decoupled from tid (`poolgauge.display_colour`). **S4 (b)** a held gun paint survives 8 min with no traffic.
 
 
 # S15 — the FrameBundle boundary has no guard
@@ -2075,3 +2075,23 @@ Warning only: bundle keys `engine.js` reads that the compiler never emits are pr
 the engine tolerates older bundles on purpose (`_pickTable` returns `[]` with no `sir_pool`; an absent
 `pset_pool` means the head's `$PSET` stands) — brx-sound's call, and it is right. Both error directions were
 proven to fire against copies of the sources, not by editing the shared ones.
+
+
+# F51 — the stage's state() cost 527-658 ms and the page polled it
+*closed 2026-09-07 · was `FOLLOWUPS.md` L143-147 · measured, not assumed*
+
+- **F51 🟡** the stage's `state()` costs **527-658 ms** (bundle view + walkthrough plan + sound-catalog
+  descriptions). Fixed on the hit path 2026-09-07 (`event()` split into `_event_now()` + the HTTP wrapper,
+  which removed the whole ~600 ms LED lag), but the build itself is still that expensive and the page polls it.
+  Cache the immutable parts (the catalog descriptions and the walkthrough plan change only on recompile) so an
+  operator's browser is not re-parsing 1.16 MB several times a second. `build`.
+
+**Closed.** Three fixes, and the ROOT CAUSE was not where the row guessed. The row blamed the walkthrough plan
+and the catalog descriptions; profiling found `sounds.on_gun_ids()` rebuilding a set over all ~2477 catalog
+entries on EVERY call, with `voices.options()` calling it once per voice family — only the raw JSON parse had
+ever been mtime-cached, never the derived set. Cached at source (helps every caller, not just the stage), the
+stage's per-recompile views memoised, and `/api/state` given a 0.5 s TTL (it had been set to 1.0 s against a
+700 ms poll — LONGER, while its own comment claimed shorter). Re-measured on 2026-09-07 at the close of the
+session: `state()` **9.1 ms cold, 0.04 ms warm** (30 calls, max 0.11 ms); `on_gun_ids()` **0.014 ms warm** (200
+calls). The separate hit-path fix (`event()` split into `_event_now()`) is what removed the ~600 ms LED lag and
+is logged under its own entry.
