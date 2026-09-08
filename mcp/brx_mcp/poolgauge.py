@@ -341,6 +341,13 @@ READOUT_LEAD_MS = 180        # step 1: hold the level you were AT, solid
 READOUT_BLINK_GAP_MS = 80    # step 2: one all-off blink ("show current health in one blink")
 READOUT_STEP_MS = 120        # step 3: one level per this many ms while stepping down/up
 READOUT_BLINK_MS = 400       # step 4: on/off period once settled on a partial level
+READOUT_MIN_GAP_MS = 400     # a change inside this window skips the lead + all-off blink and steps
+                             # straight down from where the strip is. This is the SAFETY knob: each
+                             # all-off is a dark->lit transition and automatic fire is a burst of
+                             # drops inside one second, which without this exceeds the 3-light-ups-
+                             # per-second photosensitivity ceiling. Shipped (A16.3) because it was a
+                             # hidden default in BOTH consumers and emitted by neither -- retuning it
+                             # here would have silently changed nothing (session close, 2026-09-07).
 
 
 def level_for(value: int, maximum: int) -> int:

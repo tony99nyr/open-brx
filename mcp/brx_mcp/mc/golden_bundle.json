@@ -687,6 +687,7 @@
       "blink_gap_ms": 80,
       "step_ms": 120,
       "blink_ms": 400,
+      "min_gap_ms": 400,
       "pools": [
         {
           "pool": "shield",

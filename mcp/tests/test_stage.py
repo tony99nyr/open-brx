@@ -1021,6 +1021,89 @@ def test_a_change_mid_drop_cancels_the_old_animation_and_retargets_from_the_curr
     asyncio.run(go())
 
 
+def test_a_pool_cut_off_by_ANOTHER_pool_resumes_from_where_it_actually_GOT_TO():
+    """Session-close review, 2026-09-07. `_level_state[pool]` used to be set to the animation's TARGET
+    before the animation ran. One `_level_gen` is shared across pools, so a second pool's change cancels
+    the first pool's in-flight task -- and the cancelled pool was then remembering a level that never
+    reached the strip. `engine.js` records inside its own `paint()` (`_roLevels[pool] = lvl`), so it
+    resumed from where it actually got to and the two surfaces animated different lengths. The stage
+    exists to predict the phone, so this is a divergence, not a preference."""
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        readout = install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
+        readout["pools"].append({"pool": "armor", "max": 6, "levels": LEVELS7})
+        st._level_state = {"health": 6, "armor": 6}
+        real_sleep = st.sleep
+        gate = asyncio.Event()
+        async def gated(sec):
+            if abs(sec - 0.3) < 1e-9:        # the step sleep: stall INSIDE the step-down
+                await gate.wait()
+            else:
+                await real_sleep(sec)
+        st.sleep = gated
+        st.hp = 1                             # 6 -> level 1: a long drop, so it can be caught mid-flight
+        st._readout_paint("health")
+        await asyncio.sleep(0)
+        assert tx(mgr)[-3:] == ["L6", "L0", "L5"], tx(mgr)[-3:]   # got as far as level 5, then stalled
+        st.sleep = real_sleep
+        st.armor = 4
+        st._readout_paint("armor")            # a DIFFERENT pool cancels health's animation outright
+        gate.set()
+        await settle(st)
+        assert st._level_state["health"] == 5, (
+            "health must remember 5, the last level it actually PAINTED -- not 1, the target it never reached")
+        n = len(tx(mgr))
+        st.hp = 0                             # health moves again, long after armour took the strip
+        st._readout_paint("health")
+        await settle(st)
+        new = [f for f in tx(mgr)[n:] if f != "REST"]
+        # This lands inside `min_gap_ms` of armour's own paint, so the rapid guard skips the lead freeze
+        # and the all-off blink and steps straight down from `prev` -- the first write is 5-1 = L4, and the
+        # whole ladder to L0 follows. With the bug, `prev` was health's never-reached target of 1, so the
+        # entire animation was the single frame L0 and the operator saw the bar teleport.
+        assert new == ["L4", "L3", "L2", "L1", "L0"], f"must resume from 5, the last level painted; got {new}"
+    asyncio.run(go())
+
+
+def test_the_all_off_blink_is_not_recorded_as_a_displayed_level():
+    """Session-close review, 2026-09-07. The blank between the lead freeze and the step-down used to set
+    `_level_current = 0`. A same-pool retrigger landing inside that ~80 ms window then read prev=0, saw
+    `target > prev`, and ran the GAIN branch -- stepping UP with no lead and no blink for what was really
+    a continuing drop. `engine.js` writes the blank frame without touching its level bookkeeping at all
+    (the blink is ceremony, not a level), so the stage now does the same."""
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
+        st._level_state["health"] = 6
+        real_sleep = st.sleep
+        gate = asyncio.Event()
+        async def gated(sec):
+            if abs(sec - 0.2) < 1e-9:        # the blink gap: stall with the strip dark
+                await gate.wait()
+            else:
+                await real_sleep(sec)
+        st.sleep = gated
+        st.hp = 5                             # 6 -> 5
+        st._readout_paint("health")
+        await asyncio.sleep(0)
+        assert tx(mgr)[-2:] == ["L6", "L0"], tx(mgr)[-2:]         # lead frame, then all-off, then stalled
+        assert st._level_current == 6, "the dark blink frame is not a level the strip is 'at'"
+        st.sleep = real_sleep
+        n = len(tx(mgr))
+        st.hp = 3                             # the SAME pool moves again while the strip is dark
+        st._readout_paint("health")
+        gate.set()
+        await settle(st)
+        new = [f for f in tx(mgr)[n:] if f != "REST"]
+        assert "L4" in new, f"must keep stepping DOWN 6 -> 3, got {new}"
+        assert new[0] != "L0", f"must not restart upward from the blank, got {new}"
+    asyncio.run(go())
+
+
 def test_death_stops_a_running_level_animation_even_without_a_generation_bump():
     async def go():
         st, mgr = mk()

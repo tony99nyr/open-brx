@@ -806,6 +806,7 @@ def gun_readout(profile: dict, night: bool, hp: int = 45, armor: int = 70, shiel
     return {"hold_s": hold_s, "reload_glance_s": glance_s,
             "lead_ms": pg.READOUT_LEAD_MS, "blink_gap_ms": pg.READOUT_BLINK_GAP_MS,
             "step_ms": pg.READOUT_STEP_MS, "blink_ms": pg.READOUT_BLINK_MS,
+            "min_gap_ms": pg.READOUT_MIN_GAP_MS,
             "pools": [{"pool": p, "max": maxima[p],
                        "bands": [[thr, f] for thr, f in pg.readout_bands(p, night)],
                        "levels": pg.readout_levels(p, night)} for p in pools]}

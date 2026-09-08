@@ -1233,7 +1233,12 @@ class GunStage:
             prev = self._level_current
         else:
             prev = self._level_state.get(pool, target)
-        self._level_state[pool] = target
+        # ⚠ `_level_state[pool]` is written by `paint()` ONLY, i.e. only for a level a step actually put on
+        # the strip. It used to be set to `target` here, before the animation ran, so an animation cut short
+        # by ANOTHER pool's change (one shared `_level_gen` cancels across pools) left this pool remembering
+        # a level it never reached -- and its next drop then animated from there while the phone animated
+        # from where it actually got to. `engine.js` records inside its own paint (`_roLevels[pool] = lvl`),
+        # so this is the phone's rule, not a new one. Found at session close, 2026-09-07.
         if pool == self._readout_last_pool and prev == target:
             return                                   # already showing this pool at this exact level
         self._readout_last_pool = pool
@@ -1270,6 +1275,7 @@ class GunStage:
             frame = levels[l][0]
             self._readout_frame = frame
             self._level_current = l
+            self._level_state[pool] = l          # what this pool has actually SHOWN (see _level_paint)
             await self.write([frame], f"readout {pool} level {l}/6", gap_ms=0)
 
         if not live():
@@ -1284,7 +1290,10 @@ class GunStage:
                     return
                 off = levels[0][0]                   # "all segments off" IS level 0's solid frame (dark)
                 self._readout_frame = off
-                self._level_current = 0
+                # ⚠ deliberately NOT `_level_current = 0`. The all-off blink is ceremony, not a level, and
+                # `engine.js` leaves its own level bookkeeping untouched here. Recording it meant a same-pool
+                # retrigger landing inside the 80 ms gap read prev=0, saw target > prev, and ran the GAIN
+                # branch -- stepping UP, with no lead and no blink, for what was actually a continuing drop.
                 await self.write([off], f"readout {pool} blink", gap_ms=0)
                 await self.sleep(gap_s)
                 if not live():
