@@ -58,14 +58,33 @@ only light up for events".
 | kill credited (MC push) | no burst (the sight already flashes: `$SFLASH`) | nothing | one green flash (`$LED,9,1`) |
 | medals / lead / clock | sound only | nothing | one green flash on the kill family only |
 
-Readout mapping (depletion order shield → armour → HP, the order native Supremacy players already saw):
+Readout mapping (depletion order shield → armour → HP, the order native Supremacy players already saw).
+**A16.3, 2026-09-07:** SEVEN levels, not three. Tony wanted the finer scale he'd seen implied by bright and dim
+segments; per-LED brightness turned out not to exist (the gun's brightness token is GLOBAL — `$GLED,,,4,0,1`
+dimmed all three), so the half-steps are a BLINKING top segment instead, verified on the gun ("blink looked
+good, other 2 were solid"). `level = clamp(round(fraction × 6), 0, 6)`, floored to 1 while the pool is above
+zero so 1 HP never looks like dead.
 
-| pool that moved | segments (ceil of fraction × 3, min 1 while > 0) | hue |
+| level | display | health hue |
 |---|---|---|
-| shield | 3 / 2 / 1 | white |
-| armour | 3 / 2 / 1 | purple |
-| HP | 3 (> 66 %) / 2 (33–66 %) / 1 (≤ 33 %) | green / yellow / red |
-| down | 0 | dark |
+| 6 | 3 solid | green |
+| 5 | 2 solid + 3rd blinking | green |
+| 4 | 2 solid | green |
+| 3 | 1 solid + 2nd blinking | yellow |
+| 2 | 1 solid | yellow |
+| 1 | 1st blinking | red |
+| 0 | dark | — |
+
+Shield is WHITE and armour PURPLE at every level; only health shifts hue as it shortens. A partial level is two
+frames the node alternates at `blink_ms` (400): the solid frame, and the same frame with the top segment DARK.
+Empty colour tokens keep an LED's colour, so the blink half only names the segment that changes.
+
+**The drop animation.** On a pool change: show the level you were on for `lead_ms` (180), all segments off for
+`blink_gap_ms` (80) — Tony's *"show current health in one blink"* — then step down one level per `step_ms` (120),
+settle, and blink the top segment if the level is partial. Hold, then dark. A change mid-animation cancels and
+restarts from the level currently displayed, never queues; a gain animates upward with no leading blink.
+Stepping down is monotonic (segments going out), which is not a flash, so it does not spend the 3-per-second
+ceiling; the sustained partial blink stays at 1.25 Hz.
 
 Dark frames: the rest and every revert are the **blank** `$GLED,,,,5,,,*`, not a `9,9,9` paint, until the blank's idempotency and a dark paint's hold are measured (L12–L14).
 
