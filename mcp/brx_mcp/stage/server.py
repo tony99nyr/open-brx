@@ -93,6 +93,7 @@ def create_app(stage: GunStage, poll_s: float = 0.2) -> Starlette:
                 except Exception:      # never let the poller die
                     log.exception("poll")
                 await asyncio.sleep(poll_s)
+        stage.bind_loop()                 # 2026-09-07: reactions arriving on the BLE notify thread need this
         task = asyncio.get_event_loop().create_task(poller())
         try:
             yield

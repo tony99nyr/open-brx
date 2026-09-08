@@ -36,13 +36,20 @@ from brx_mcp.mc.compile import golden_bundle
 SHOT = encode_word(player=42, team=0, damage=20, proto=0)
 
 
-def head_with_ff(ff: int) -> list[str]:
-    """The golden head with `$GSET` token 1 forced, and INDOOR (token 2 = 0) so the only variable is FF."""
+def head_with_ff(ff: int, field: int = 1) -> list[str]:
+    """The golden head with ONE `$GSET` token forced and the other pinned, so exactly one thing varies.
+
+    `field` 1 = friendlyFire (token 2 pinned INDOOR); `field` 2 = outdoorMode (token 1 pinned FF OFF,
+    which is what a real TDM config ships). Arming is the point: a `$GSET` written mid-life may not be
+    reprocessed, which is why patching it after the fact proved nothing on 2026-09-07.
+    """
+    other = 1 if field == 2 else 2
     out = []
     for f in golden_bundle()["head"]:
         if f.startswith("$GSET,"):
             t = f.split(",")
-            t[1], t[2] = str(ff), "0"
+            t[field] = str(ff)
+            t[other] = "0"
             f = ",".join(t)
         out.append(f)
     return out
@@ -51,8 +58,8 @@ def head_with_ff(ff: int) -> list[str]:
 SPAWN = ["$PLAYX,0,*", "$SPAWN,,*", "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]
 
 
-async def run_leg(mgr, alias: str, bridge: IRBridge, ff: int, shots: int) -> dict:
-    for f in head_with_ff(ff):
+async def run_leg(mgr, alias: str, bridge: IRBridge, ff: int, shots: int, field: int = 1) -> dict:
+    for f in head_with_ff(ff, field):
         await mgr.send(alias, f)
         await asyncio.sleep(0.12)
     for f in SPAWN:
@@ -78,6 +85,8 @@ async def main() -> None:
     ap.add_argument("address")
     ap.add_argument("--port", default="COM8")
     ap.add_argument("--shots", type=int, default=6)
+    ap.add_argument("--vary", choices=("ff", "outdoor"), default="ff",
+                    help="which $GSET token to A/B: friendlyFire (t1) or outdoorMode (t2)")
     a = ap.parse_args()
 
     bridge = IRBridge(a.port)
@@ -88,12 +97,12 @@ async def main() -> None:
     try:
         rows = []
         for ff in (1, 0, 0, 1):                   # alternated: a drifting bench cannot fake this
-            rows.append(await run_leg(mgr, "ffab", bridge, ff, a.shots))
-            print(f"  FF={ff}  {rows[-1]['hir']}/{a.shots} registered ($HIR), {rows[-1]['hp']} $HP")
+            rows.append(await run_leg(mgr, "ffab", bridge, ff, a.shots, 2 if a.vary == "outdoor" else 1))
+            print(f"  {a.vary}={ff}  {rows[-1]['hir']}/{a.shots} registered ($HIR), {rows[-1]['hp']} $HP")
         on = sum(r["hir"] for r in rows if r["ff"] == 1)
         off = sum(r["hir"] for r in rows if r["ff"] == 0)
         n = a.shots * 2
-        print(f"\nFF ON : {on}/{n} registered\nFF OFF: {off}/{n} registered")
+        print(f"\n{a.vary}=1: {on}/{n} registered\n{a.vary}=0: {off}/{n} registered")
         if on and not off:
             print("VERDICT: friendly fire gates registration for this word. Our TDM configs ship FF=0,")
             print("         so this would discard hits in real matches -- file it and re-read the flag.")

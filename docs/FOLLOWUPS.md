@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F49 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F52 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. Next free F is F49.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -116,6 +116,28 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
+
+- **F49 🔴 UNEXPLAINED, and it contradicts our reading of polarity.** Bench 2026-09-07, gun on `$TID,1`, armed by
+  the stage, `$GSET` friendly fire OFF, one emitter, shots seconds apart: a shot claiming **team 1 (the gun's OWN
+  team) REGISTERED** (armour 70 → 20, two hits), and a shot claiming **team 0 (an enemy) did NOT** (armour
+  untouched, no `$HIR`), repeated twice each. That is backwards from protocol §5 — with FF off a same-team shot
+  should be discarded and an enemy shot should land. Meanwhile the SAME team-0 word, fired from
+  `tools/ff_ab.py` (which arms the gun itself), registered 24/24 and then 12/12 and then 4/4. So "team 0 fails"
+  is real and reproducible through the stage's arm, and false through ff_ab's arm, with the gun's `$TID,1`
+  identical in both. **Something other than the team field decides this and we have not found it.** Do not build
+  on "FF is irrelevant" (F48) or on any polarity rule until this is explained: diff the two heads frame by frame
+  on the wire (`$PSET` player_num differs: 1 vs 7 — the emitted word's player id is 42 in both), and re-run with
+  each difference isolated. This cost most of an evening's bench time and produced four wrong diagnoses. `trigger`.
+- **F50 🟠** the A17 pain gate has never run in a REAL node path — only unit tests and grunts hand-played over
+  BLE (brx-sound, 2026-09-07). The stage is now the only instrument that can exercise it, and any A17 audio
+  judgement taken through the stage before `3388362` used the rejected shape-picked pools. Re-verify: an
+  armour-absorbed hit stays silent, a hit that reaches HEALTH grunts, a hit that spills armour→health grunts
+  (the innermost-moved-pool rule), and a lethal hit never grunts. `ears`.
+- **F51 🟡** the stage's `state()` costs **527-658 ms** (bundle view + walkthrough plan + sound-catalog
+  descriptions). Fixed on the hit path 2026-09-07 (`event()` split into `_event_now()` + the HTTP wrapper,
+  which removed the whole ~600 ms LED lag), but the build itself is still that expensive and the page polls it.
+  Cache the immutable parts (the catalog descriptions and the walkthrough plan change only on recompile) so an
+  operator's browser is not re-parsing 1.16 MB several times a second. `build`.
 
 - **F42 🟡** **the DRY-review backlog** (2026-09-07 Python review, agent team). Six bugs from that pass are FIXED
   and pushed; what is left is real but none of it is blocking. Evidence: every item below was measured, not read.

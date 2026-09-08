@@ -27,7 +27,7 @@ from ..mc.state import default_config
 SFLASH = "$SFLASH,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
-LOW_HEALTH_HP = 20             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
+LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
@@ -473,6 +473,10 @@ class GunStage:
         if pool and pool != "health":
             self._log(f"pain: not played -- {pool} absorbed it (A17: the character grunts for HEALTH only)", "info")
             return
+        # A17.3 (Tony, bench 2026-09-07, answered "total"): `dmg` is the TOTAL pools lost, armour and shield
+        # included, NOT the HP portion. A big hit sounds big regardless of what stopped it -- so the hit that
+        # breaks THROUGH armour sums absorbed armour plus HP taken and can trip the long pain for a small HP
+        # loss. Deliberate; the one place the A17 gate and the pain SIZING disagree. Mirrors engine.js.
         long_min = ((f.get("voice") or {}).get("pain_long_min")) or 40
         kind = "pain_melee" if proto == 13 else ("pain_long" if dmg >= long_min else "pain_short")
         cues = f.get("cues", {})
