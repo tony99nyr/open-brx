@@ -2026,6 +2026,23 @@ test('A16.3 levels: a change arriving mid-animation cancels it and restarts from
   assert.equal(h.eng._roLevel, 2, 'settled on the NEW target (2), never on the old target (1)');
 });
 
+test('A16.3 levels: a SECOND life animates from FULL again -- the per-pool map does not survive a revive', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');      // life 1: health down to level 3
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');      // die
+  h.adv(9000); h.eng.tick();                                      // auto respawn -> _gunTake() fires inline
+  h.writes.length = 0; h.adv(2000);
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,10,0,0,*');      // life 2, FIRST health hit: 10/45 -> level 1
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  // It must animate from FULL (6), not from 3 -- the level this pool happened to end the PREVIOUS life on.
+  // The regression this pins: `_gunTake()` cleared `_roLevel` but not the per-pool `_roLevels` map, so from
+  // life 2 onward any pool touched in the prior life resumed from its stale value. stage.py always cleared
+  // and reseeded at spawn, so the bench looked right while the phone did not.
+  assert.equal(gleds[0], LEVELS_H[6][0], 'the freeze frame is FULL, not last life\'s level');
+  assert.ok(gleds.includes(LEVELS_H[0][0]), 'and the all-off blink still plays for a fresh life');
+  assert.equal(h.eng._roLevels.health, 1, 'settled, and the per-pool map now tracks THIS life');
+});
+
 test('A16.3 levels: rapid hits do NOT replay the lead+all-off blink -- the 3-light-ups-per-second ceiling', () => {
   const h = levelHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,40,0,0,*');    // first change of the life

@@ -513,6 +513,13 @@ export class Engine {
     // A16.3: a revive cancels any drop/gain animation from the last life outright (bar-spec: "Cancel
     // everything ... on revive") -- bump `_roGen` so a stray scheduled step from the old life cannot land.
     this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false; this._roBlinkAt = 0; this._roBlinkOn = false;
+    // ⚠ The PER-POOL map must be cleared too, not just `_roLevel`. Missing this made the "a life's first
+    // paint animates from FULL" rule silently apply to the first life only: from life 2 on, any pool hit in
+    // the PREVIOUS life still had an entry here, so its next drop animated from wherever it ended last life.
+    // `stage.py` clears and reseeds at spawn, so the bench would have looked right while the phone did not --
+    // the exact failure this map was added to fix, reintroduced in the other direction. Caught in the polish
+    // loop's final pass, 2026-09-07, by replaying a second life rather than by reading the code.
+    this._roLevels = {}; this._roLastStartAt = null;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
@@ -710,6 +717,10 @@ export class Engine {
       const level = this._readoutLevel(entry); const pair = entry.levels[level]; frame = pair && pair[0];
       if (!frame) return;
       this._roGen = (this._roGen || 0) + 1; this._roAnimating = false; this._roPool = poolName; this._roLevel = level; this._roBlinkAt = 0; this._roBlinkOn = false;
+      // the glance is what is now DISPLAYED for this pool, so record it per pool too -- otherwise a glance
+      // that cuts an animation short leaves the map holding an intermediate step, and the next drop on this
+      // pool (after some other pool has been shown) animates from a level that was never on the strip.
+      (this._roLevels = this._roLevels || {})[poolName] = level;
     } else {
       const band = this._readoutBand(entry); if (!band) return; frame = band[1];
     }
