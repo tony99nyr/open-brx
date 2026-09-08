@@ -56,9 +56,11 @@ def create_app(stage: GunStage, poll_s: float = 0.2) -> Starlette:
     # runs on that SAME loop, so a real hit landing mid-build queues behind it. That is exactly the ~600 ms
     # LED lag the operator reported, and splitting `event()` off the hit path does NOT fix it while the page
     # itself keeps triggering the build. Serve a recent snapshot instead: `poll()` still runs every request
-    # (it is cheap and it is what drains rx), only the SNAPSHOT is reused. STATE_TTL_S is well under the
-    # page's own poll period, so the page still feels live. Proper fix is to make `state()` cheap (F51).
-    STATE_TTL_S = 1.0
+    # (it is cheap and it is what drains rx), only the SNAPSHOT is reused. The TTL must be UNDER the page's
+    # own poll period (700 ms) or roughly every other poll shows stale numbers -- a 1.0 s TTL, which is what
+    # this first said while claiming the opposite, would have lagged the operator's HP readout by close to a
+    # second (caught in polish review 2026-09-07). Proper fix is to make `state()` cheap (F51).
+    STATE_TTL_S = 0.5
     cache: dict = {"at": 0.0, "body": None}
 
     async def state(_: Request):

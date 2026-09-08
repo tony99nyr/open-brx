@@ -46,6 +46,13 @@ class Session:
     rx_partial: str = ""
     log_file: Path | None = None
     log_label: str | None = None
+    # One physical writer at a time. A frame is CHUNKED to the 20-byte ATT payload with a sleep between
+    # chunks, and the tagger reassembles on ',*' -- so if two coroutines write concurrently their chunks
+    # interleave on the wire and the gun silently mis-parses the result. That was theoretical while a
+    # reaction wrote one frame; A16.3 made a single hit fan out to several independent writers at once
+    # (event cue, LED animation, pain grunt, headset role, low-health line), so it is not any more.
+    # Found in polish review 2026-09-07.
+    write_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def t_ms(self) -> int:
         return int((time.monotonic() - self.opened_at) * 1000)
@@ -227,7 +234,7 @@ class ConnectionManager:
     # -- I/O ---------------------------------------------------------------
 
     @staticmethod
-    async def _write(client: BleakClient, payload: bytes) -> None:
+    async def _write(client: BleakClient, payload: bytes, lock: asyncio.Lock | None = None) -> None:
         # ATT write-without-response caps at MTU-3 (20 bytes at the default
         # MTU of 23, which the tagger sticks to). NUS is a byte stream, so
         # long frames are chunked; the tagger reassembles on ',*'.
@@ -235,17 +242,23 @@ class ConnectionManager:
             chunk = max(20, (client.mtu_size or 23) - 3)
         except Exception:  # noqa: BLE001 — backend without mtu_size
             chunk = 20
-        for i in range(0, len(payload), chunk):
-            await client.write_gatt_char(
-                NUS_RX_CHAR_UUID, payload[i:i + chunk], response=False)
-            await asyncio.sleep(0.02)
+        async def _chunks() -> None:
+            for i in range(0, len(payload), chunk):
+                await client.write_gatt_char(
+                    NUS_RX_CHAR_UUID, payload[i:i + chunk], response=False)
+                await asyncio.sleep(0.02)
+        if lock is None:                      # no session (a bare client): unchanged behaviour
+            await _chunks()
+        else:
+            async with lock:                  # hold it for the WHOLE frame, not per chunk
+                await _chunks()
 
     async def send(self, alias: str, command: str,
                    reply_window_ms: int = 500) -> dict[str, Any]:
         session = self._get(alias)
         seq_before = session.seq
         session.record("tx", command)
-        await self._write(session.client, command.encode("utf-8"))
+        await self._write(session.client, command.encode("utf-8"), session.write_lock)
         await asyncio.sleep(reply_window_ms / 1000)
         replies = [e.to_dict() for e in list(session.buffer)
                    if e.seq > seq_before + 1 and e.direction == "rx"]
@@ -257,7 +270,7 @@ class ConnectionManager:
         seq_before = session.seq
         for cmd in commands:
             session.record("tx", cmd)
-            await self._write(session.client, cmd.encode("utf-8"))
+            await self._write(session.client, cmd.encode("utf-8"), session.write_lock)
             await asyncio.sleep(gap_ms / 1000)
         replies = [e.to_dict() for e in list(session.buffer)
                    if e.seq > seq_before and e.direction == "rx"]
