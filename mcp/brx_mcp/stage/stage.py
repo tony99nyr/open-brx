@@ -11,6 +11,7 @@ real IR shot from the emitter shows the whole picture, firmware + ours, on the b
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from collections import deque
@@ -158,6 +159,16 @@ class GunStage:
         self._readout_last_write_at: float | None = None
         self._readout_last_pool: str | None = None
         self._readout_gen = 0
+        # A16.3 (bar-spec.md, 2026-09-07): the 7-level drop-animation readout, per pool -- `_level_state`
+        # keeps each configured pool's own last known level so a pool NOT currently on the strip resumes
+        # from ITS OWN level (Node rules: "animate from the last DISPLAYED level"), not the strip's.
+        # `_level_current`/`_level_partial` describe whatever IS on the strip right now (None: nothing --
+        # reverted to rest, or a bundle with no `levels` at all, in which case the older `bands` path
+        # below is what is actually driving the strip).
+        self._level_state: dict[str, int] = {}
+        self._level_current: int | None = None
+        self._level_partial: bool = False
+        self._level_gen = 0
         self._last_event_led: float | None = None
         self._hurt_fired = False
         self._last_seq = 0
@@ -716,6 +727,18 @@ class GunStage:
         # moment `_gun_taken` drops False (mirrors engine.js `_gunTake`'s reset).
         self._readout_frame = None; self._readout_last_write_at = None; self._readout_last_pool = None
         self._readout_gen += 1
+        # A16.3: seed every configured pool's level from where it ACTUALLY starts this life -- shield
+        # starts at 0 (just above), not max, so defaulting it to "level 6" on its first paint would read
+        # a shield pickup as a DROP from full instead of the GAIN it is. Bumping `_level_gen` here stops
+        # any animation/blink still running from the life that just ended (Node rules: cancel on revive).
+        self._level_current = None; self._level_partial = False
+        self._level_gen += 1
+        readout = (self.bundle.get("gun") or {}).get("readout") or {}
+        self._level_state = {}
+        for p in readout.get("pools") or []:
+            lv = p.get("levels")
+            if isinstance(lv, list) and len(lv) == 7:
+                self._level_state[p["pool"]] = self._level_for(p, p["pool"])
         self._life = getattr(self, "_life", 0) + 1
         g = self.bundle.get("gun")
         if g and g.get("take"):

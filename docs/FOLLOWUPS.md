@@ -481,7 +481,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   `role in fixed` / `v is not None` notes. Fix with `?? 70` (or an explicit undefined check) and then add the
   test that A17.2 could not write: a no-armour loadout must still get its low-health warning. `build`.
 - **F48 🟡 A heartbeat pool for `low_health`** (Tony, bench 2026-09-07: "the heart beat sound could be used as
-  a pool for low health"). Fits A17.2, which moved the alert to an actual threshold (HP under 20) -- a heartbeat
+  a pool for low health"). Fits A17.2, which moved the alert to an actual threshold (HP under 15) -- a heartbeat
   says "you are nearly dead" in a way a hurt-breath loop does not, and `low_health` is once per life so a longer
   clip is affordable. NOT YET AUDITIONED and must not be picked by shape (F43). The catalog has no literal
   "heart" match; the shape candidates are the lowest-centroid pulsing clips in the bank -- `N74` (1.94 s,

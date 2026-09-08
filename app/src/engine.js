@@ -34,11 +34,12 @@ const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850
 const EVENT_MIN_GAP_MS = 1000;
 const READOUT_COALESCE_MS = 300;    // A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again
 const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
-// A17.2: HP at or below which the once-per-life low-health alert fires (Tony, bench 2026-09-07: "when
-// total hp is under 20"). ABSOLUTE, not a fraction of maxHp -- which is right for the 45 HP default and
-// generous on a 75 HP guardian, but fires early on a 35 HP scout. If small-pool loadouts need their own
-// value this wants plumbing through the bundle like `voice.pain_long_min` does.
-const LOW_HEALTH_HP = 20;
+// A17.2: HP below which the once-per-life low-health alert fires (Tony, bench 2026-09-07). ABSOLUTE, not
+// a fraction of maxHp. Set to 15 rather than the first-cut 20 precisely BECAUSE it is absolute: 20 is a
+// third of the 45 HP default but well over half a 35 HP scout, so the smallest pool would have been warned
+// almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
+// ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is.
+const LOW_HEALTH_HP = 15;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
@@ -100,6 +101,14 @@ export class Engine {
     this._readoutHoldMs = 0;
     this._readoutLastWriteAt = null; // last time a readout band was actually WRITTEN (for the 300 ms coalesce window)
     this._readoutLastPool = null;    // which pool most recently moved this life (what a reload glances)
+    // A16.3 (bar-spec 2026-09-07): the seven-level pool bar + drop/gain animation, active only for a
+    // `gun.readout.pools[]` entry that carries `levels` (a `bands` entry is untouched, see `_gunReadoutPaint`).
+    this._roLevel = null;   // level (0-6) CURRENTLY on the strip; null = nothing painted yet this life (no "from" to animate out of)
+    this._roPool = null;    // which pool's `levels` table `_roLevel` belongs to
+    this._roGen = 0;        // bumped on every new/cancelled animation (death/revive/a later change) -- same pattern as `_hsGen`;
+                             // teardown (end/panic/BLE drop) is still `_lightGen`, checked alongside it, not a second teardown flag
+    this._roAnimating = false; // true while the drop/gain animation owns the strip -- suppresses `_gunReadoutTick`'s hold-expiry
+                                // revert until `_readoutSettle` arms the real hold (an in-flight animation must not be cut off mid-step)
     this._lightGen = 0;             // bumped on teardown (end/panic/BLE drop) so a stray delayed $GLED/$HLED/cue write can't land after it
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
@@ -498,6 +507,9 @@ export class Engine {
     // drops false (the tick-poll below is gated on it), but null the frame too so a reload glance before
     // the take completes has nothing stale to show.
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
+    // A16.3: a revive cancels any drop/gain animation from the last life outright (bar-spec: "Cancel
+    // everything ... on revive") -- bump `_roGen` so a stray scheduled step from the old life cannot land.
+    this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
@@ -535,6 +547,16 @@ export class Engine {
     const bands = entry.bands || [];
     return bands.find(b => frac > b[0]) || bands[bands.length - 1] || null;
   }
+  /** A16.3 (bar-spec 2026-09-07): the 7-level (0-6) reading for one `gun.readout.pools[]` entry that
+   *  carries `levels` — `round(fraction * 6)` clamped to [0,6], floor-clamped to 1 while the pool has
+   *  anything left so "1 HP" and "dead" never render the same (poolgauge._segments' rule, extended). */
+  _readoutLevel(entry) {
+    const value = entry.pool === 'health' ? this.hp : entry.pool === 'armor' ? this.armor : this.shield;
+    const frac = entry.max > 0 ? value / entry.max : 0;
+    let level = Math.max(0, Math.min(6, Math.round(frac * 6)));
+    if (level === 0 && value > 0) level = 1;
+    return level;
+  }
   /** A16 §3.1: write the moved pool's band ONLY if it differs from the frame currently on the strip.
    *  Restarts the hold on every real change; a change that would repaint within READOUT_COALESCE_MS of the
    *  last WRITE is dropped (never queued, same shape as `_pain`'s PAIN_GAP_MS) but still restarts the hold,
@@ -544,7 +566,11 @@ export class Engine {
   _gunReadoutPaint(pool) {
     if (this.phase !== 'live' || !this.alive || !this.spawned || !this._gunTaken) return;
     const g = this.frames.gun, readout = g.readout;
-    const entry = readout.pools.find(p => p.pool === pool); if (!entry || !Array.isArray(entry.bands) || !entry.bands.length) return;
+    const entry = readout.pools.find(p => p.pool === pool); if (!entry) return;
+    // A16.3: a `levels` entry (the 7-level bar + drop/gain animation) is a completely separate path; a
+    // `bands` entry (below) is untouched by any of this — the graceful-degradation contract in full.
+    if (Array.isArray(entry.levels) && entry.levels.length === 7) { this._gunReadoutPaintLevels(readout, entry, pool); return; }
+    if (!Array.isArray(entry.bands) || !entry.bands.length) return;
     const band = this._readoutBand(entry); if (!band) return;
     this._readoutLastPool = pool;   // A16: which pool a reload should glance -- the one that most recently actually moved, not a fresh "is it below max" guess (shield defaults to 0 and would always look "damaged")
     const frame = band[1];
@@ -557,6 +583,81 @@ export class Engine {
     this._write([frame], `readout ${pool}`);
     this._readoutFrame = frame; this._readoutLastWriteAt = now;
     this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;
+  }
+  /** A16.3 (bar-spec 2026-09-07): entry point for a `levels`-table pool. Skips a true no-op (same pool,
+   *  same level, already displayed — covers a partial level mid-blink too, since `_roLevel` names the
+   *  level, not the current half of its blink); otherwise (re)starts the drop/gain animation from whatever
+   *  level is CURRENTLY on the strip. A change mid-animation lands here again and restarts it from there —
+   *  never queued, never a second one running (bar-spec: "cancels it and restarts from the currently
+   *  displayed level"). First paint of a life (`_roLevel` still null) has no "from" to drop out of, so it
+   *  settles straight onto the target level with no animation. */
+  _gunReadoutPaintLevels(readout, entry, pool) {
+    const level = this._readoutLevel(entry);
+    this._readoutLastPool = pool;
+    if (this._roPool === pool && this._roLevel === level) return;
+    const from = this._roLevel != null ? this._roLevel : level;
+    this._readoutAnimStart(readout, entry, pool, from, level);
+  }
+  /** A16.3: drive the lead/blink-gap/step-down/settle sequence (or, for a GAIN, straight into stepping
+   *  with no lead/gap) from `from` to `to` on `entry`. Every scheduled step is gated on a fresh `_roGen`
+   *  (bumped here, exactly the `_hsGen` pattern) so a later change, a death or a revive invalidates it —
+   *  see the explicit bumps in `_death`/`_gunTake` — plus `_lightGen`, shared with every other delayed
+   *  light write, for the teardown case (end/panic/BLE drop). Writes only frames the bundle supplied
+   *  (`entry.levels[l][0/1]`); it never composes a `$GLED` itself (A4.2). */
+  _readoutAnimStart(readout, entry, pool, from, to) {
+    const gen = (this._roGen = (this._roGen || 0) + 1);
+    const lg = (this._lightGen = this._lightGen || 0);
+    this._roPool = pool; this._roAnimating = true;
+    const leadMs = Math.max(0, Math.round(readout.lead_ms != null ? readout.lead_ms : 180));
+    const gapMs = Math.max(0, Math.round(readout.blink_gap_ms != null ? readout.blink_gap_ms : 80));
+    const stepMs = Math.max(0, Math.round(readout.step_ms != null ? readout.step_ms : 120));
+    const ok = () => this._roGen === gen && this._lightGen === lg && this.alive;
+    const paint = (lvl, why) => {
+      const f = entry.levels[lvl] && entry.levels[lvl][0];
+      this._roLevel = lvl;
+      if (f) { this._readoutFrame = f; this._write([f], `readout ${pool} anim ${why}`); }
+    };
+    const step = cur => {
+      if (!ok()) return;
+      const next = cur < to ? cur + 1 : cur > to ? cur - 1 : cur;
+      paint(next, `step ${next}`);
+      if (next === to) { this._readoutSettle(gen, lg, readout, entry, pool, to); return; }
+      this.delay(stepMs, () => step(next));
+    };
+    if (to === from) { paint(to, 'settle'); this._readoutSettle(gen, lg, readout, entry, pool, to); return; }
+    if (to > from) { step(from); return; }   // gain: same steps, no initial lead/blink-gap
+    // drop: freeze the level we were AT solid for lead_ms (this is Tony's "show current health in one
+    // blink" -- it also stops a running blink outright, since the from-level may have been blinking), one
+    // all-off blink for blink_gap_ms, then step down.
+    paint(from, 'from');
+    this.delay(leadMs, () => {
+      if (!ok()) return;
+      const off = entry.levels[0] && entry.levels[0][0];
+      if (off) { this._readoutFrame = off; this._write([off], `readout ${pool} anim blank`); }
+      this.delay(gapMs, () => step(from));
+    });
+  }
+  /** A16.3: settle on `level` -- arms the ordinary `hold_s` timer (`_gunReadoutTick` takes over from here,
+   *  exactly as it does for a `bands` paint) and, at a PARTIAL level (`entry.levels[level][1]` present),
+   *  starts the alternating top-segment blink at `blink_ms`. The blink is a self-rescheduling `this.delay`
+   *  chain (the hold must be repeatedly restartable, so it cannot be a fixed-count loop) that stops itself
+   *  the moment the hold expires (`_readoutHoldActive` goes false under it), a new change lands (`_roGen`
+   *  bump), or death/revive (`_roGen` bump + explicit resets). */
+  _readoutSettle(gen, lg, readout, entry, pool, level) {
+    if (!(this._roGen === gen && this._lightGen === lg && this.alive)) return;
+    this._roAnimating = false;
+    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
+    this._readoutLastWriteAt = now; this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;
+    const pair = entry.levels[level];
+    if (!pair || !pair[1]) return;   // whole level (6/4/2/0): no blink
+    const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : 400));
+    const tick = onTop => {   // the solid frame is already on the strip from the settling step -- flip to the top-off half first
+      if (!(this._roGen === gen && this._lightGen === lg && this._readoutHoldActive && this.alive && this._roLevel === level)) return;
+      const f = onTop ? pair[1] : pair[0];
+      if (f) { this._readoutFrame = f; this._write([f], `readout ${pool} blink`); }
+      this.delay(blinkMs, () => tick(!onTop));
+    };
+    this.delay(blinkMs, () => tick(true));
   }
   /** A16 §3.1 reload: paint the CURRENT readout for `reload_glance_s` — recomputed fresh (in case the pool
    *  has since changed further) for whichever pool most recently actually moved this life, NOT the
@@ -571,8 +672,17 @@ export class Engine {
     if (this.phase !== 'live' || !this.alive || !this.spawned) return;
     const poolName = this._readoutLastPool; if (!poolName) return;
     const entry = readout.pools.find(p => p.pool === poolName); if (!entry) return;
-    const band = this._readoutBand(entry); if (!band) return;
-    const frame = band[1];
+    let frame;
+    // A16.3: a `levels` pool glances its current level SOLID -- the glance is a plain peek, not another
+    // animation, so it also cancels any drop/gain/blink in flight (`_roGen` bump) exactly as it already
+    // overrides the ordinary `bands` hold below.
+    if (Array.isArray(entry.levels) && entry.levels.length === 7) {
+      const level = this._readoutLevel(entry); const pair = entry.levels[level]; frame = pair && pair[0];
+      if (!frame) return;
+      this._roGen = (this._roGen || 0) + 1; this._roAnimating = false; this._roPool = poolName; this._roLevel = level;
+    } else {
+      const band = this._readoutBand(entry); if (!band) return; frame = band[1];
+    }
     this._write([frame], 'readout reload glance');
     const now = this.now();
     this._readoutFrame = frame; this._readoutLastWriteAt = now;
@@ -580,10 +690,12 @@ export class Engine {
   }
   /** A16 §5: reverts the strip to `gun.rest` once the current readout/glance hold has run out. Called from
    *  tick() (the same pattern as `_downRearm`/`_reassertDeathBlink`) so a later pool change or reload can
-   *  restart the hold before it fires. Gated on alive/spawned/taken/live exactly as the paint call is. */
+   *  restart the hold before it fires. Gated on alive/spawned/taken/live exactly as the paint call is.
+   *  A16.3: also skipped outright while `_roAnimating` -- the drop/gain animation owns the strip until
+   *  `_readoutSettle` arms the real hold, and an in-flight step must never be cut off by this poll. */
   _gunReadoutTick(now) {
     const g = this.frames && this.frames.gun, readout = g && g.readout;
-    if (!readout || !this._readoutHoldActive || !this._gunTaken) return;
+    if (!readout || !this._readoutHoldActive || !this._gunTaken || this._roAnimating) return;
     if (!this.alive || !this.spawned || this.phase !== 'live') return;
     if (now - this._readoutHoldStartAt < this._readoutHoldMs) return;
     this._readoutHoldActive = false;
@@ -719,6 +831,13 @@ export class Engine {
   _pain(dmg, proto, pool) {
     const f = this.frames; if (!f) return;
     if (pool && pool !== 'health') return;   // A17: armour/shield took it -- equipment, not the character
+    // A17.3 (Tony, bench 2026-09-07, asked explicitly and answered "total"): `dmg` is the TOTAL pools lost,
+    // armour and shield included -- NOT the HP portion. A big hit sounds big regardless of what stopped it.
+    // The consequence is deliberate and looks like a bug: the hit that breaks THROUGH armour sums the armour
+    // absorbed plus the HP taken, so armour 30->0 with HP 45->35 is dmg 40 and trips the long pain for a hit
+    // that cost 10 HP. That is the intended reading -- a round that strips your plating and reaches you IS a
+    // heavy hit -- and it is the one place where the A17 gate ("armour absorbing is equipment, not the
+    // character") and the pain SIZING deliberately disagree. Do not "fix" this to `prevHp - hp`.
     const kind = proto === 13 ? 'pain_melee' : dmg >= ((f.voice && f.voice.pain_long_min) || 40) ? 'pain_long' : 'pain_short';
     if (!((f.cues && f.cues[kind]) || (f.cue_pools && f.cue_pools[kind]))) return;   // pre-A15.3 bundle: the firmware's own pains
     const now = this.now();
@@ -749,10 +868,12 @@ export class Engine {
     const g = f.gun;
     // A16 §3.1: generalises the old health-band tail restore below — the burst must end on whatever the
     // readout is CURRENTLY showing (the live band, if its hold is still running) and never on the top band.
+    // A16.3: `_roAnimating` counts alongside the hold here too -- a burst landing mid drop/gain animation
+    // must restore the frame the animation actually left on the strip, not jump to rest underneath it.
     if (g && g.readout && this._gunTaken) {
       this.delay(t, () => {
         if (this._lightGen !== lg || !this.alive) return;
-        if (this._readoutHoldActive && this._readoutFrame && this._readoutFrame !== g.rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
+        if ((this._readoutHoldActive || this._roAnimating) && this._readoutFrame && this._readoutFrame !== g.rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
         else if (g.rest) { this._readoutFrame = g.rest; this._readoutHoldActive = false; this._write([g.rest], `readout rest after ${kind}`); }
       });
     } else if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
@@ -1325,6 +1446,10 @@ export class Engine {
     // A16 §5: death clears the readout — NO gun write here, the strip simply sits wherever the native hit
     // flash left it until the next `_gunTake` blanks it; a pending hold from this life must not fire later.
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
+    // A16.3: death cancels any drop/gain animation outright (bar-spec: "Cancel everything ... on death") --
+    // the killing hit itself never reaches here (`_gunPoolPaint` is only called `if (hp > 0)`), but a hit
+    // just before it can still be mid-animation when death registers.
+    this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false;
     this._activeRole = null;   // A16 §3.3: cleared BEFORE the infection check below, which may assign a fresh 'infected' role in the same call
     this.killedBy = { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });

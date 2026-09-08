@@ -736,12 +736,12 @@ test('A17.2 the low-health alert fires on an HP THRESHOLD, not when armour runs 
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'armour up: no alert');
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,43,0,0,*');    // armour GONE but 43 HP: still healthy
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'armour gone at 43 HP is NOT low health');
-  h.frame('$HIR,4,0,19,2,25,0,0,*'); h.frame('$HP,21,0,0,*');   // hurt, but not under 20 yet
-  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, '21 HP is not under the threshold');
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,19,0,0,*');    // under 20: NOW it fires
-  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'alert at 19 HP');
+  h.frame('$HIR,4,0,19,2,25,0,0,*'); h.frame('$HP,16,0,0,*');   // hurt, but not under 15 yet
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, '16 HP is not under the threshold');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,14,0,0,*');    // under 15: NOW it fires
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'alert at 14 HP');
   assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1, 'headset lights with it');
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,10,0,0,*');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,8,0,0,*');
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'once per life, not per hit');
 });
 
@@ -751,11 +751,11 @@ test('A17.2 the low-health alert fires on an HP THRESHOLD, not when armour runs 
 // as F47; when that `||` is fixed this test becomes writable and should be added.
 test('a respawn re-arms the low-health alert', () => {
   const h = goLive(harness());
-  h.frame('$HP,15,0,0,*');
+  h.frame('$HP,12,0,0,*');
   h.writes.length = 0;
   h.frame('$HP,0,0,0,*');                                        // dead
   h.eng._spawn(false);                                           // back on your feet
-  h.frame('$HP,15,0,0,*');
+  h.frame('$HP,12,0,0,*');
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'a new life gets a new alert');
 });
 
@@ -806,8 +806,8 @@ test('A11.6 headset: white flash at the whistle then dark; hit flash then dark; 
   h.writes.length = 0;
   h.frame('$HP,45,61,0,*');                                              // no damage: nothing
   assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0);
-  // A17.2: the alert now needs HP UNDER 20, not merely "armour gone" -- 43 HP with no armour is not low.
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,19,0,0,*');           // low-health alert wins over the hit flash
+  // A17.2: the alert now needs HP UNDER 15, not merely "armour gone" -- 43 HP with no armour is not low.
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,14,0,0,*');           // low-health alert wins over the hit flash
   assert.equal(h.writes.filter(f => f.includes('$HLED,7,4')).length, 1);
   assert.ok(!h.writes.includes(hs.hit[0][0]), 'no hit flash on the alert hit');
   // carrier: MC says this player took the flag of team 2 -> a WHITE blink (headset.role.carrier is flat now
@@ -817,7 +817,7 @@ test('A11.6 headset: white flash at the whistle then dark; hit flash then dark; 
   assert.ok(h.writes.includes(hs.role.carrier[0][0]), 'carrier blink, white (identity stays with the team colour elsewhere)');
   h.writes.length = 0;
   h.adv(1100);   // A16 §C: the role re-assert shares the 1 s headset flash gate with the hit flash above
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,15,0,0,*');   // A17.2: HP is 19 here, so this must go DOWN to be a hit
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,10,0,0,*');   // A17.2: HP is 14 here, so this must go DOWN to be a hit
   assert.ok(h.writes.includes(hs.role.carrier[0][0]) && !h.writes.includes(hs.hit[0][0]), 'the flag blink survives a hit');
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'objective_scored', text: 'FLAG CAPTURED', player_id: 'p1', carrier: 'p1', t: h.eng.now() }, t: h.eng.now() });

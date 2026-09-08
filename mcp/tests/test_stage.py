@@ -147,11 +147,14 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         assert st.tele["hp"] == 45 and st.tele["armor"] == 20
         assert st.bundle["headset"]["hit"][0][0] in new, "headset hit flash"
         assert not any(f.startswith("$GLED") for f in new), "armour-only hit: this profile's readout tracks only health, so armour moving alone paints nothing"
-        # two more hits of 25: armour 20 -> 0 (hp 40, the low-health alert fires) -> hp 15 (readout: health's yellow band)
+        # two more hits of 25: armour 20 -> 0 (hp 40) -> hp 15 (readout: health's yellow band).
+        # A17.2: the low-health alert is NOT here any more -- it fires below LOW_HEALTH_HP (15), and 15 is
+        # not under 15. It used to fire on the armour->health transition at hp 40, which is what A17.2
+        # removed: an alert named "low health" that meant "your armour just failed".
         for _ in range(2):
             await st.ir("shot"); st.poll(); await settle(st)
         frames = tx(mgr)
-        assert st.hp == 15 and st.bundle["cues"]["hurt"] in frames
+        assert st.hp == 15 and st.bundle["cues"]["hurt"] not in frames, "15 HP is not UNDER 15"
         assert "$GLED,2,2,9,0,10,,*" in frames, "the readout painted the health pool's yellow band"
         n = len(frames)
         await st.ir("kill"); st.poll(); await settle(st)

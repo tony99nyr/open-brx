@@ -84,7 +84,7 @@ EVENTS: dict[str, dict] = {
     "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=None,  headset=None),
     "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=None, headset=None),
     "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=None,   headset=None),
-    "low_health":    dict(source="hud", group="player",    desc="HP below 20: the player's own hurt loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
+    "low_health":    dict(source="hud", group="player",    desc="HP below 15: the player's own hurt loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
     "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),
@@ -783,7 +783,14 @@ def gun_readout(profile: dict, night: bool, hp: int = 45, armor: int = 70, shiel
 
     The legacy `gun.in_play == "health"` (the old whole-strip health hue, kept in `gun_frames()`'s
     `bands` for older nodes) collapses onto "readout limited to health" here UNLESS the profile also
-    set its own `readout.pools` explicitly (led-language.md §4 collapse map)."""
+    set its own `readout.pools` explicitly (led-language.md §4 collapse map).
+
+    A16.3 (2026-09-07 bench, after the 3-band version): each pool ALSO carries `levels`, the 7-entry
+    drop-animation table (`poolgauge.readout_levels`) alongside the original 3-band `bands` --
+    `bands` stays exactly as before so an older node that has never heard of `levels` keeps working.
+    The 4 drop-animation timings are fixed (not touched by night, same as the rest of the table) and
+    ship once at the top of the readout, not per pool.
+    """
     g = {**GUN_DEFAULT, **(profile.get("gun") or {})}
     conf = {**GUN_READOUT_DEFAULT, **(g.get("readout") or {})}
     if g["in_play"] == "health" and "readout" not in g:
@@ -797,8 +804,11 @@ def gun_readout(profile: dict, night: bool, hp: int = 45, armor: int = 70, shiel
         glance_s = min(glance_s, NIGHT_READOUT["reload_glance_s"])
     maxima = {"shield": shield, "armor": armor, "health": hp}
     return {"hold_s": hold_s, "reload_glance_s": glance_s,
+            "lead_ms": pg.READOUT_LEAD_MS, "blink_gap_ms": pg.READOUT_BLINK_GAP_MS,
+            "step_ms": pg.READOUT_STEP_MS, "blink_ms": pg.READOUT_BLINK_MS,
             "pools": [{"pool": p, "max": maxima[p],
-                       "bands": [[thr, f] for thr, f in pg.readout_bands(p, night)]} for p in pools]}
+                       "bands": [[thr, f] for thr, f in pg.readout_bands(p, night)],
+                       "levels": pg.readout_levels(p, night)} for p in pools]}
 
 
 def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool, ffa: bool = False,
