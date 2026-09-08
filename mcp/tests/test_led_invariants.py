@@ -13,6 +13,8 @@ emitted surface -- every LED frame `poolgauge` and `mc.presentation` can produce
 preset x team x night x ffa x leds_on combination -- and the rules run over all of it. That is what
 makes this a refactor net: reshape the code however you like, but no reachable frame may break a rule.
 """
+import pathlib
+
 from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import RESPAWN_SEQUENCE
 from brx_mcp.mc import presentation as P
@@ -226,6 +228,65 @@ def test_in_play_dark_is_dark_by_colour_and_the_teardown_blank_is_the_only_effec
     assert toks(P.HEADSET_DARK)[0] == str(pg.DARK), "in-play dark must be dark by COLOUR (token 1 = DARK)"
     assert toks(P.HEADSET_DARK)[1] == "0", "in-play dark must use the static effect 0, never 6"
     assert P.HEADSET_BLANK == "$HLED,,6,,,,,*", "the teardown blank is the one legitimate effect-6 frame"
+
+
+def test_no_new_effect_6_literal_appears_anywhere_in_the_shipped_package():
+    """The blind spot of the test above, closed. `harvest()` walks frames the COMPILER produces, so it
+    can only see effect 6 arriving through a preset. It cannot see a literal `$HLED,,6` typed straight
+    into some other path -- which is exactly how this fault shipped in the first place, and exactly the
+    shape F40 keeps recording: a guard that is correct for where it looks and blind everywhere else
+    (`test_bench_teardown` scanning only `finally:` blocks; `test_clear_safety` seeing only NAMED
+    sequences while `diag/runner.py`'s inline teardown was the live fault).
+
+    So this one reads CODE, not compiler output: every string constant in `brx_mcp/` via the AST, so
+    prose in a comment or docstring that merely mentions the frame cannot trip it. Two sites are
+    legitimate and both are teardown, i.e. after the match is over and the life no longer matters.
+
+    Scope, stated deliberately rather than left implicit: `mcp/tools/` is NOT scanned. Fourteen bench
+    probes there send effect 6 on purpose to study the headset LED, and failing them would be the
+    over-firing that gets a guard narrowed and then trusted. The rule being defended is about the
+    SHIPPED game path, and every shipped frame lives in `brx_mcp/`. If a match path is ever added under
+    `tools/`, this scope is what needs revisiting."""
+    import ast
+    pkg = pathlib.Path(P.__file__).resolve().parents[1]
+    allowed = {
+        ("mc/presentation.py", "HEADSET_BLANK -- the named teardown constant, guarded by the test above"),
+        ("__main__.py", "END_SEQUENCE -- the app's own captured end-of-game tail (protocol §3.2/§7)"),
+    }
+    allowed_files = {f for f, _ in allowed}
+    found = []
+    for f in sorted(pkg.rglob("*.py")):
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except SyntaxError:                      # not our problem here; the suite has its own import checks
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+                continue
+            v = node.value.strip()
+            if not v.startswith("$HLED,"):
+                continue
+            # split by hand rather than via `toks()`: that helper asserts a '*' terminator, and the
+            # package legitimately holds PARTIAL $HLED strings (format-string prefixes like
+            # '$HLED,7,4,90,90,'). A guard that crashes on a fragment it was not written for is a
+            # guard that gets deleted, so it must read every constant without judging its shape.
+            t = v.split(",")[1:]
+            if len(t) > 1 and t[1].strip() == "6":
+                found.append((f.relative_to(pkg).as_posix(), node.lineno, node.value))
+    unexpected = [(rel, line, frame) for rel, line, frame in found if rel not in allowed_files]
+    assert not unexpected, (
+        "a NEW $HLED effect-6 literal appeared in the shipped package:\n  "
+        + "\n  ".join(f"{rel}:{line} {frame!r}" for rel, line, frame in unexpected)
+        + "\n\nEffect 6 disables the firmware's own death-flash loop for the REST OF THAT LIFE, silently, and"
+          "\non the bench it looks identical to a dark paint. In play use HEADSET_DARK "
+        + repr(P.HEADSET_DARK)
+        + ".\nIf this really is a teardown frame, add it to `allowed` above WITH its reason.")
+    # and the declared sites must still exist -- an allowlist entry outliving its frame is how a dead
+    # constant ends up legitimising a shape nobody is actually checking any more (F40, instance 5).
+    for rel in allowed_files:
+        assert any(r == rel for r, _, _ in found), (
+            f"{rel} no longer contains an effect-6 literal: drop its entry from `allowed` rather than "
+            f"leaving an allowlist row that makes an unchecked shape look considered")
 
 
 # --- 5. $TID is 0-3; the paint palette is 0-7 ------------------------------- #

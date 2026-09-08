@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F55 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F56 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -139,6 +139,15 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   on "FF is irrelevant" (F48) or on any polarity rule until this is explained: diff the two heads frame by frame
   on the wire (`$PSET` player_num differs: 1 vs 7 — the emitted word's player id is 42 in both), and re-run with
   each difference isolated. This cost most of an evening's bench time and produced four wrong diagnoses. `trigger`.
+- **F55 🟡** `modes/driver.py:306` raises `RuntimeError: no running event loop` into stderr during test runs.
+  `_play_burst`'s `finally` calls `asyncio.current_task()`, which raises once the loop is gone — i.e. when a
+  still-pending burst task is garbage-collected after `asyncio.run()` closed the loop. The cleanup is then
+  skipped (harmless at teardown, nothing left to clean) but **the traceback prints while the suite reports 0
+  failed**, which is the F40 shape from the other side: noise that looks like a failure, in the output an
+  operator uses to decide whether a run was good. It also means a real error in that `finally` would be
+  indistinguishable from this one. Wrap the call: `try: cur = asyncio.current_task() except RuntimeError: cur =
+  None`. Noticed 2026-09-07 while using the suite as a release gate; not fixed here because `modes/` is the
+  game-driver lane's file and this is unrelated to A16. `build`.
 - **F54 🟠** **the reload glance has no bench instrument.** `engine.js` has `_gunReadoutReloadGlance` (A16 §3.1:
   a reload repaints the current pool readout for `reload_glance_s`, 2 s day / 1 s night) wired to the reload path;
   `stage.py` has none, and says so in its own comment ("no reload path on the stage yet"). So the one behaviour a
