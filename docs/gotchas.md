@@ -336,6 +336,12 @@ mirror image of the same mistake.
   stops describing the contents — which is exactly what someone relies on months later. **Before committing a
   shared file, `git diff <path>` and read it**: if there are hunks you did not write, either wait, or say so in
   your commit message and name the symbols so a later `git log -S` lands somewhere that explains itself.
+- ⚠ **NEVER `git stash` in this tree, not even scoped to one path.** It reverts whatever is uncommitted in that
+  path — including your own in-flight work and any other lane's. Done twice on 2026-09-07: once by a subagent
+  (four files of another agent's half-finished migration went back to HEAD) and once by the main session, which
+  stashed the very fix it was trying to test and then read the resulting red suite as the test working. To prove
+  a test fails without its fix: **copy the file to the scratchpad, edit the original, run, copy back.** No stash,
+  no `checkout`, no `restore`, no `reset`. Read-only git only, and put that line in every subagent brief.
 - ⚠ **A red suite here is not evidence of a failure until it reproduces.** A full run reported 2 failures and an
   immediate re-run reported 0, with no change from the runner — another lane's edits landed mid-run. Re-run
   before chasing anything, or you will debug a ghost.
