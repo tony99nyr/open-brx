@@ -35,7 +35,7 @@ only light up for events".
 
 | surface | proven (log entry) | not proven (bench row) |
 |---|---|---|
-| gun body, 3 RGB LEDs | breathes team colour when spawned; `$GLED,,,,5,,,*` takes it out of the loop and any paint then HOLDS through fire, reload, registered hits; mixed frames render per LED (3-segment bar works in play); `$SPAWN` re-enables breathing; blank inside the spawn burst fails, +2.0 s holds (2026-09-04 ×4) | hold with no traffic over minutes (S4 b); whether `$PLAY`/`$AMMO`/`$HLED`/`$LED` disturb a held paint; a dim (tok5 = 1) paint keeping its hue after a blank (the 2026-09-02 "dim loses hue" was measured under the breathing) |
+| gun body, 3 RGB LEDs | breathes team colour when spawned; `$GLED,,,,5,,,*` takes it out of the loop and any paint then HOLDS through fire, reload, registered hits; mixed frames render per LED (3-segment bar works in play); `$SPAWN` re-enables breathing; blank inside the spawn burst fails, +2.0 s holds (2026-09-04 ×4); **a held paint survives `$AMMO`/`$PLAY`/`$HLED`/`$LED` untouched, and a dim (tok5 = 1) paint keeps its hue after a blank** (both 2026-09-07 — the 2026-09-02 "dim loses hue" was measured under the breathing) | hold with no traffic over minutes (S4 b); blink FORMS after a blank (S4 e); the muzzle LED |
 | headset big LED | one lamp, one colour; solid / breathe / blink / fade-blink / blank; brightness 1 dim, ≥ 2 full; `$SPAWN` and every hit clear a paint; **effect 6 (blank) disables the firmware's death-flash loop for the rest of the life, a colour write does not** (2026-09-07, retracts the 2026-09-04 reading) | a count-limited blink ending dark by itself; `$HLED,4..7` on a head |
 | headset small flash LED | green only; the firmware's own hit flash and death loop live here and are far brighter than any `$LED` one-shot; **`$HLOOP,<1\|2>,<ms>` drives this loop over BLE at native drive or better, on a live OR dead gun, with a settable period; `$HLOOP,0,0` and `$SPAWN` both stop it; the big LED is independent** (2026-09-07) | a metered A/B against a native out-blink; the rate's usable range; whether the loop can be pushed brighter than native |
 | relay | `$SPAWN` within ~2 s of death sticks the headset in the out-blink (F13, 2.5 s clean); any headset-executed frame needs a settling gap | how long before `$SPAWN` a `$HLOOP,0,0` must land (moot for safety: `$SPAWN` clears the loop itself) |
@@ -233,7 +233,8 @@ presentation.lights: {
   down:    { rearm: true, period_ms: 750,          // one $HLOOP,2,<period> after the hands-off window; the NATIVE flash
              quiet_after_death_s: 2.5, quiet_before_spawn_s: 1.0 },   // rearm:false = rely on the firmware alone
   night:   {                             // overlay, applied when config.night is true; every key optional (down.period_ms stays 750)
-    brightness: "dim",                   // gun: apply-gate 5 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
+    brightness: "dim",                   // gun: token 5 = 1 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
+                                         // ⚠ NOT apply-gate 5 -- that is an OFF switch, retracted 2026-09-07 (this line said gate 5 until then)
     events: [/* the events that keep their lights at night; others sound only */],
     gun:     { readout: { hold_s: 2, reload_glance_s: 1 } },
     headset: { start_flash: "single", respawn_flash: "single" },
