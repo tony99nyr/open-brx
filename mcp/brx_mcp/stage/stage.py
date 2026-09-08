@@ -169,6 +169,7 @@ class GunStage:
         self._level_current: int | None = None
         self._level_partial: bool = False
         self._level_gen = 0
+        self._level_last_start: float | None = None   # review 2026-09-07: the rapid-retrigger guard's clock
         self._last_event_led: float | None = None
         self._hurt_fired = False
         self._last_seq = 0
@@ -180,6 +181,17 @@ class GunStage:
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         self._pending: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
+        # 2026-09-07 (bench): `state()` measured 527-658 ms on real hardware -- almost entirely
+        # `voices.options()` / `board_view()` / `voice_view()` re-walking the ~2477-id sound catalog
+        # (`sounds.on_gun_ids()` rebuilds its set from scratch every call), and the page polls
+        # `/api/state` every 700 ms. `_cache` memoizes everything below that depends only on the
+        # compiled bundle/profile -- cleared in ONE place, the top of `recompile()`, which is the only
+        # place `self.bundle`/`self.config`/`self.profile["voice"/"voice_slots"]` are ever assigned
+        # (grep confirms it). Genuinely live fields (telemetry, the log, `board_playing`,
+        # `voice_verdicts`, `rolled`, `scream_this_life`) are never put in here -- they are merged back
+        # in fresh on every call, on top of the cached base, so caching can never go stale.
+        self._cache: dict = {}
+        self._voices_options_cache: list[dict] | None = None   # process-static (VOICE_PACKS + the catalog file)
         self.config: dict = {}
         self.bundle: dict = {}
         self.walk: dict | None = None          # the guided walkthrough (walk_start / walk_verdict)
@@ -377,6 +389,7 @@ class GunStage:
         """Rebuild the bundle. `roll=True` (ARM / REROLL only) draws the $PSET death scream / short pain
         from the family's equal takes (A15, Tony 2026-09-06: "they are all equal and should be picked at random to
         make the sounds more dynamic"); every other recompile is un-rolled so the pickers and the state stay put."""
+        self._cache = {}    # every profile/bundle-derived state() cache below is now stale
         p = self.profile
         # 2026-09-07: only re-patch gun/headset onto the presentation when the OPERATOR actually chose
         # one (`_gun_touched`/`_headset_touched`, set by set_profile()) -- re-patching the selector's
@@ -637,8 +650,23 @@ class GunStage:
 
     def _spawn_on_loop(self, coro) -> None:
         t = (self._loop or asyncio.get_event_loop()).create_task(coro)
+        t.add_done_callback(self._task_done)
         self._pending.append(t)
         self._pending = [x for x in self._pending if not x.done()]
+
+    def _task_done(self, t: asyncio.Task) -> None:
+        """Review 2026-09-07: `_spawn_task` fires reactions and forgets them -- nothing ever awaits
+        `_pending`, so an exception inside one (a write, an animation step, `write()`'s second `_send()`
+        after a failed reconnect, ...) used to vanish into Python's default 'Task exception was never
+        retrieved' logging, never reaching `_log()` or the operator's page. That is the exact silent-
+        failure shape the rest of tonight cost us. A cancellation (none of our own generation-counter
+        cancels use `.cancel()` -- they just check-and-return -- but something outside could) is not a
+        failure worth alarming the operator over."""
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            self._log(f"background task failed: {exc!r}", "warn")
 
     def bind_loop(self, loop=None) -> None:
         """Remember the loop reactions must run on. Called once from the server's lifespan (and by
@@ -733,6 +761,7 @@ class GunStage:
         # any animation/blink still running from the life that just ended (Node rules: cancel on revive).
         self._level_current = None; self._level_partial = False
         self._level_gen += 1
+        self._level_last_start = None                  # a fresh life starts its own rapid-retrigger clock
         readout = (self.bundle.get("gun") or {}).get("readout") or {}
         self._level_state = {}
         for p in readout.get("pools") or []:
@@ -1189,7 +1218,15 @@ class GunStage:
         it actually is; otherwise start from this pool's OWN last known level (`_level_state`, seeded at
         spawn from where it actually starts -- shield at 0, not 6, see `_after_spawn`). A change mid-
         animation therefore retargets the one running task rather than queuing a second (never queue,
-        per spec) -- bumping `_level_gen` is enough since `_level_animate` checks it at every step."""
+        per spec) -- bumping `_level_gen` is enough since `_level_animate` checks it at every step.
+
+        RAPID-RETRIGGER GUARD (review 2026-09-07, safety): a change landing within `min_gap_ms` (default
+        400) of the last one is `rapid` -- `_level_animate` skips the lead freeze AND the all-off blink
+        for it and steps straight from wherever the strip already is. Automatic fire is a burst of drops
+        inside one second; without this, EVERY one of them replays its own dark all-off blink, which is a
+        dark->lit transition each time -- `poolgauge.py`'s own docstring already flags that band as a
+        photosensitivity risk ("looks like it's having a seizure"). The steps still carry the damage; the
+        blink was never information, only ceremony."""
         levels = entry["levels"]
         target = self._level_for(entry, pool)
         if pool == self._readout_last_pool and self._level_current is not None:
@@ -1205,21 +1242,27 @@ class GunStage:
         step_s = float(readout.get("step_ms", 120)) / 1000
         blink_s = float(readout.get("blink_ms", 400)) / 1000
         hold_s = float(readout.get("hold_s", 4))
+        min_gap_s = float(readout.get("min_gap_ms", 400)) / 1000
+        now = self.now()
+        rapid = self._level_last_start is not None and (now - self._level_last_start) < min_gap_s
+        self._level_last_start = now
         self._level_gen += 1
         gen = self._level_gen
-        self._spawn_task(self._level_animate(gen, levels, prev, target, pool, lead_s, gap_s, step_s, blink_s, hold_s))
+        self._spawn_task(self._level_animate(gen, levels, prev, target, pool, rapid, lead_s, gap_s, step_s, blink_s, hold_s))
 
-    async def _level_animate(self, gen: int, levels: list, prev: int, target: int, pool: str,
+    async def _level_animate(self, gen: int, levels: list, prev: int, target: int, pool: str, rapid: bool,
                               lead_s: float, gap_s: float, step_s: float, blink_s: float, hold_s: float) -> None:
         """The whole life of one change, ONE task start to finish (never split across concurrent tasks --
         the settle-blink and the hold-then-revert used to race in an earlier draft of this, see git
-        history): show the level you were at (`lead_s`), a drop's one all-off blink (`gap_s`), step
-        one level per `step_s` until the target (no re-lighting -- a gain skips the blink, bar-spec.md),
-        settle, blink the target if it is a partial level for `hold_s` worth of `blink_s` cycles (a plain
-        countdown, not a wall-clock deadline, so it terminates the same way under a test's instant
-        `sleep` stub as it does on real hardware), then revert to the gun's rest frame. `gen` is checked
-        before every write; a newer paint (`_level_paint`) or the life ending bumps `_level_gen` and every
-        checkpoint below sees it and returns -- nothing here is ever cancelled from outside."""
+        history): show the level you were at (`lead_s`) and, for a drop, one all-off blink (`gap_s`) --
+        both skipped when `rapid` (see `_level_paint`) -- step one level per `step_s` until the target (no
+        re-lighting -- a gain has no lead and no blink either way, review 2026-09-07: it steps up
+        immediately, matching engine.js), settle, blink the target if it is a partial level for `hold_s`
+        worth of `blink_s` cycles (a plain countdown, not a wall-clock deadline, so it terminates the
+        same way under a test's instant `sleep` stub as it does on real hardware), then revert to the
+        gun's rest frame. `gen` is checked before every write; a newer paint (`_level_paint`) or the life
+        ending bumps `_level_gen` and every checkpoint below sees it and returns -- nothing here is ever
+        cancelled from outside."""
         def live() -> bool:
             return gen == self._level_gen and self.alive
 
@@ -1231,28 +1274,30 @@ class GunStage:
 
         if not live():
             return
-        await paint(prev)
-        if target < prev:
-            await self.sleep(lead_s)
-            if not live():
-                return
-            off = levels[0][0]                       # "all segments off" IS level 0's solid frame (dark)
-            self._readout_frame = off
-            self._level_current = 0
-            await self.write([off], f"readout {pool} blink", gap_ms=0)
-            await self.sleep(gap_s)
-            if not live():
-                return
+        if target == prev:
+            await paint(prev)                        # a pool switch with no level change: still show it
+        elif target < prev:
+            if not rapid:
+                await paint(prev)
+                await self.sleep(lead_s)
+                if not live():
+                    return
+                off = levels[0][0]                   # "all segments off" IS level 0's solid frame (dark)
+                self._readout_frame = off
+                self._level_current = 0
+                await self.write([off], f"readout {pool} blink", gap_ms=0)
+                await self.sleep(gap_s)
+                if not live():
+                    return
             for l in range(prev - 1, target - 1, -1):
                 await paint(l)
                 if l != target:
                     await self.sleep(step_s)
                     if not live():
                         return
-        elif target > prev:
-            await self.sleep(lead_s)                 # a gain: same steps, no initial blink
-            if not live():
-                return
+        else:                                         # a gain: no lead, no blink, ever -- step up immediately
+            if not rapid:
+                await paint(prev)
             for l in range(prev + 1, target + 1):
                 await paint(l)
                 if l != target:
@@ -1315,8 +1360,15 @@ class GunStage:
         """Every state this CONFIG can put the headset, gun body and sounds in, as ordered steps. Built from
         the compiled bundle, so a profile with the announcer off has no sound steps, night has no LED steps,
         and an event with nothing configured is not a step. Each step names what to look and listen for."""
+        # `can_ir` depends on `set_emitter()` (attach/detach), which does NOT go through `recompile()` --
+        # baked into the cache KEY (not just cleared by recompile) so plugging in the emitter mid-bench
+        # immediately flips every step's `available`, never serving a stale plan from before it was attached.
+        can_ir = self.bridge is not None or hasattr(self.mgr, "inject_hit")
+        return self._memo(("walk_plan", can_ir), lambda: self._build_walk_plan(can_ir))
+
+    def _build_walk_plan(self, can_ir: bool) -> list[dict]:
         b = self.bundle; hs = b.get("headset") or {}; cues = b.get("cues", {}); leds = b.get("leds") or {}
-        prof = _pres.resolve(self.config); g = b.get("gun"); can_ir = self.bridge is not None or hasattr(self.mgr, "inject_hit")
+        prof = _pres.resolve(self.config); g = b.get("gun")
         gun_txt = {"native": "firmware breathing in the team colour", "team": "held SOLID team colour (no breathing)",
                    "dark": "DARK body", "health": "full-health GREEN body"}[self.profile["gun"]]
         steps: list[dict] = []
@@ -1447,7 +1499,28 @@ class GunStage:
     def _log(self, text: str, kind: str = "info", why: str = "") -> None:
         self.log.append({"t": round(self.now(), 2), "kind": kind, "text": text, "why": why})
 
+    def _voices_options(self) -> list[dict]:
+        """`voices.options()` -- the full voice picker -- depends on nothing but `VOICE_PACKS` and the
+        catalog file, never on this instance's profile/bundle, so it is cached ONCE and never
+        invalidated (unlike `_memo`, which is cleared on every `recompile()`). Measured the single
+        biggest cost in `state()`: it calls `voices.lines()` once per family in `VOICE_PACKS`, and each
+        of those walks the ~2477-id catalog rebuilding `sounds.on_gun_ids()` from scratch."""
+        if self._voices_options_cache is None:
+            self._voices_options_cache = _voices.options()
+        return self._voices_options_cache
+
+    def _memo(self, key, builder: Callable[[], Any]):
+        """One entry of the `state()` cache (see `__init__`): built once per `recompile()`, kept until
+        the next one. Never for a field that can change WITHOUT a recompile -- those get merged back in
+        fresh by the caller, on top of whatever this returns."""
+        if key not in self._cache:
+            self._cache[key] = builder()
+        return self._cache[key]
+
     def event_catalog(self) -> list[dict]:
+        return self._memo("event_catalog", self._build_event_catalog)
+
+    def _build_event_catalog(self) -> list[dict]:
         prof = _pres.resolve(self.config)
         voice, slots = self.profile["voice"], self.profile["voice_slots"]
         pset = _voices.pset_ids(voice, slots)
@@ -1469,10 +1542,17 @@ class GunStage:
         return out
 
     def board_view(self) -> dict:
-        v = self.board_voice; fam = _voices.family(v)
+        v = self.board_voice
+        out = dict(self._memo(("board_view", v), lambda: self._build_board_view(v)))
+        # LIVE: changes without a recompile (soundboard playback, a verdict click) -- never cached.
+        out["playing"] = self.board_playing
+        out["verdicts"] = self.voice_verdicts.get(v, {})
+        return out
+
+    def _build_board_view(self, v: str) -> dict:
+        fam = _voices.family(v)
         return {"voice": v, "family": fam, "speaker": _voices.family_name(fam), "lines": self.board_lines(),
-                "candidates": _voices.candidates(v), "playing": self.board_playing,
-                "verdicts": self.voice_verdicts.get(v, {}), "is_game_voice": v == self.profile["voice"]}
+                "candidates": _voices.candidates(v), "is_game_voice": v == self.profile["voice"]}
 
     def _role_takes(self, role: str) -> list[dict]:
         """`[{id, words}]` for a role the node plays from a pool, read off the compiled bundle's `cue_pools`
@@ -1485,6 +1565,14 @@ class GunStage:
         return [{"id": i, "words": _snd.describe(i)} for i in ids]
 
     def voice_view(self) -> dict:
+        out = dict(self._memo("voice_view", self._build_voice_view))
+        # LIVE: change per ARM/REROLL or per life, without necessarily going through a recompile
+        # (`scream_this_life` is set by `_scream_take()` on every spawn/revive) -- never cached.
+        out["rolled"] = dict(self.rolled)
+        out["scream_this_life"] = self.scream_this_life
+        return out
+
+    def _build_voice_view(self) -> dict:
         voice, slots = self.profile["voice"], self.profile["voice_slots"]
         fam = _voices.family(voice)
         bv = self.bundle.get("voice") or {}
@@ -1493,8 +1581,7 @@ class GunStage:
                 "slots": dict(slots), "roles": list(_voices.VOICE_ROLES), "sound_roles": list(_voices.SOUND_ROLES),
                 "fields": dict(_voices.PSET_FIELD), "plays_on": dict(_voices.PSET_PLAYS_ON),
                 "lines": _voices.lines(voice, slots), "candidates": _voices.candidates(voice),
-                # A15: what the last ARM / REROLL drew, the equal takes each field draws from, and the per-event pools
-                "rolled": dict(self.rolled), "pools": dict(bv.get("pools") or {}),
+                "pools": dict(bv.get("pools") or {}),
                 "spawn": self.spawn_takes(),                     # A15.2: the takes one of which plays on every spawn / revive
                 "cue_pools": {ev: [{"id": _cue_id(f), "words": _snd.describe(_cue_id(f) or "")} for f in pool]
                               for ev, pool in (self.bundle.get("cue_pools") or {}).items() if isinstance(pool, list)},
@@ -1502,8 +1589,7 @@ class GunStage:
                 # chosen by damage) -- both [] for a pre-A15.3 bundle, so the page falls back to the old pickers.
                 "pset_pool": [{"id": i, "words": _snd.describe(i)} for i in (bv.get("pset_pool") or [])],
                 "pain": {"short": self._role_takes("pain_short"), "long": self._role_takes("pain_long"),
-                         "melee": self._role_takes("pain_melee"), "long_min": bv.get("pain_long_min", _voices.PAIN_LONG_MIN_DAMAGE)},
-                "scream_this_life": self.scream_this_life}
+                         "melee": self._role_takes("pain_melee"), "long_min": bv.get("pain_long_min", _voices.PAIN_LONG_MIN_DAMAGE)}}
 
     def ir_registers(self) -> dict:
         """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`
@@ -1554,7 +1640,7 @@ class GunStage:
                         "configured": [p.get("pool") for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools", [])]},
             "events": self.event_catalog(),
             "voice": self.voice_view(),
-            "voices": _voices.options(),
+            "voices": self._voices_options(),
             "board": self.board_view(),
             "voice_verdicts": self.voice_verdicts,
             "ir_kinds": list(IR_KINDS),

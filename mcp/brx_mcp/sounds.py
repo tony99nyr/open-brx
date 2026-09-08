@@ -153,11 +153,26 @@ def _catalog() -> dict:
     return _CATALOG[1]
 
 
+_ON_GUN: tuple[float, frozenset[str]] | None = None
+
+
 def on_gun_ids() -> set[str]:
     """Ids physically present on a v4.32 tagger (2026-09-03). The app's own bank (data/sound_ids.json)
     lists 157 ids the gun does not have; those play the fallback, so THIS is the set to validate
-    against."""
-    return {i for i, e in _catalog().items() if e.get("on_gun")}
+    against.
+
+    ⚠ CACHED on the catalog's mtime, like `_catalog()` itself. This used to rebuild the set over all
+    ~2477 entries on EVERY call, and `voices.options()` calls it once per voice family, so the bench
+    page's 700 ms poll was re-deriving it dozens of times a second: profiled as the single biggest cost
+    in `GunStage.state()` (33 ms here, 527-658 ms on the bench machine) -- the "LED lag" the operator
+    reported. Only the raw parse was cached; the derived set was not. Measured 2026-09-07.
+    """
+    global _ON_GUN
+    cat = _catalog()                                   # keeps the mtime check (and the reload) in one place
+    mtime = _CATALOG[0] if _CATALOG else 0.0
+    if _ON_GUN is None or _ON_GUN[0] != mtime:
+        _ON_GUN = (mtime, frozenset(i for i, e in cat.items() if e.get("on_gun")))
+    return set(_ON_GUN[1])                             # a fresh mutable copy: callers must not share state
 
 
 def describe(sound_id: str) -> str:

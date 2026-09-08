@@ -196,6 +196,15 @@
     const colour = colourIdx != null ? PAL[colourIdx] : 'dark';
     return `${'█'.repeat(lit)}${'░'.repeat(3 - lit)} ${colour.toUpperCase()} (${lit}/3)`;
   }
+  // A16.3 (bar-spec.md): the 7-level bar. Each of the 3 physical LEDs is worth 2 levels here -- a
+  // FULL unit (solid, `█`) for every pair of levels already lit, one BLINKING unit (`◐`, a distinct
+  // glyph from solid on purpose -- Tony asked to see the blink as different from a steady segment) for
+  // an odd (partial) level, the rest empty (`░`). level=5 -> "██◐░ LEVEL 5/6" (2 solid + 3rd blinking).
+  function levelView(level, partial) {
+    if (level == null) return null;
+    const full = Math.floor(level / 2), blink = level % 2, empty = 3 - full - blink;
+    return `${'█'.repeat(full)}${blink ? '◐' : ''}${'░'.repeat(empty)} LEVEL ${level}/6${partial ? ' (blinking)' : ''}`;
+  }
   const fill = (sel, items, val, label = x => x) => { const el = $(sel); el.innerHTML = items.map(v => `<option value="${v}">${label(v)}</option>`).join(''); el.value = String(val); };
   async function api(action, args = {}) {
     $('#err').textContent = '';
@@ -234,7 +243,9 @@
     $('#lasthir').textContent = t.last_hir ? 'last $HIR: ' + t.last_hir : '';
     // A16 §3.1/§5: the transient gun-body pool readout -- what Tony would see painted on the strip
     const ro = s.readout || {};
+    const lv = levelView(ro.level, ro.partial);   // null for a `bands`-only bundle/profile: fall back below
     $('#t-readout').textContent = !ro.configured || !ro.configured.length ? 'not configured in this profile'
+      : lv ? `${(ro.pool || '').toUpperCase()}: ${lv}`
       : ro.frame ? `${(ro.pool || '').toUpperCase()}: ${readoutView(ro.frame)}` : `tracks ${ro.configured.join('/')} · no pool has moved yet`;
     // events: grouped, coloured by source, greyed when the profile has nothing for them
     const groups = {}; for (const e of s.events) (groups[e.group || 'other'] ||= []).push(e);

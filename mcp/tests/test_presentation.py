@@ -452,6 +452,29 @@ def test_gun_readout_ships_static_per_band_segment_frames_outermost_pool_first()
     assert P.gun_readout(P.resolve({"presentation": {"gun": {"readout": {"pools": []}}}}), False) == {}
 
 
+def test_gun_readout_also_ships_the_a16_3_seven_level_drop_animation_table():
+    """A16.3 (2026-09-07 bench): `levels` rides ALONGSIDE the original `bands` -- an older node that
+    has never heard of `levels` keeps reading `bands` exactly as before."""
+    b = golden_bundle()
+    ro = b["gun"]["readout"]
+    assert (ro["lead_ms"], ro["blink_gap_ms"], ro["step_ms"], ro["blink_ms"]) == (180, 80, 120, 400)
+    shield, armor, health = ro["pools"]
+    for pool_entry, pool in ((shield, "shield"), (armor, "armor"), (health, "health")):
+        assert pool_entry["levels"] == pg.readout_levels(pool)
+        assert len(pool_entry["levels"]) == 7
+        assert "bands" in pool_entry, "bands must stay for older nodes"
+    # night: the timings are fixed (untouched by night), but every level frame dims
+    night_prof = P.resolve({"presentation": {}})
+    night_ro = P.gun_readout(night_prof, True, hp=45, armor=70, shield=70)
+    assert (night_ro["lead_ms"], night_ro["blink_gap_ms"], night_ro["step_ms"], night_ro["blink_ms"]) \
+        == (180, 80, 120, 400)
+    for pool_entry in night_ro["pools"]:
+        for solid, blink in pool_entry["levels"]:
+            assert solid.split(",")[5] == str(pg.BRIGHT_DIM)
+            if blink is not None:
+                assert blink.split(",")[5] == str(pg.BRIGHT_DIM)
+
+
 def test_small_led_flash_rides_at_the_start_of_an_events_lights_and_is_validated():
     """A11.8 (ladder 2026-09-04): `$LED,0,<0 red|1 green>,1,1,*` fires the headset's small native-bright flash LED."""
     prof = P.resolve({"mode": "tdm"})

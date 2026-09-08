@@ -50,3 +50,25 @@ def test_engines_use_catalog_not_raw_ids():
         src = inspect.getsource(mod)
         assert 'PlaySound("' not in src and "PlaySound('" not in src, \
             f"{mod.__name__} has a raw-literal PlaySound id"
+
+
+def test_on_gun_ids_is_cached_but_reloads_when_the_catalog_changes():
+    """`on_gun_ids()` rebuilt a set over ~2477 catalog entries on EVERY call, and `voices.options()`
+    calls it once per voice family -- profiled 2026-09-07 as the single biggest cost inside the bench
+    page's 700 ms poll (33 ms/call locally, 527-658 ms on the bench machine), i.e. the "LED lag". Only
+    the raw JSON parse was mtime-cached; the derived set was not. Pin both halves: it must be cheap on
+    repeat, it must not hand callers a shared mutable set, and it must still follow the catalog's mtime.
+    """
+    import time as _t
+    from brx_mcp import sounds as S
+    first = S.on_gun_ids()
+    assert first, "the catalog has on-gun ids"
+    t = _t.perf_counter()
+    for _ in range(200):
+        S.on_gun_ids()
+    per_call_ms = (_t.perf_counter() - t) / 200 * 1000
+    assert per_call_ms < 1.0, f"warm on_gun_ids() should be well under a millisecond, got {per_call_ms:.3f} ms"
+    first.add("NOT-A-REAL-ID")
+    assert "NOT-A-REAL-ID" not in S.on_gun_ids(), "a caller mutating the result must not poison the cache"
+    S._ON_GUN = (-1.0, frozenset())          # simulate a stale mtime: the next call must rebuild
+    assert S.on_gun_ids() == set(first) - {"NOT-A-REAL-ID"}, "a changed catalog mtime rebuilds the set"

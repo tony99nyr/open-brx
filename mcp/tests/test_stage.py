@@ -7,6 +7,7 @@ import time
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage, ir_words
 from brx_mcp.mc import presentation as P
+from brx_mcp import poolgauge as PG
 
 
 async def _nosleep(_s):
@@ -837,3 +838,244 @@ def test_revive_writes_exactly_one_spawn_line_in_the_revive_write():
     # the walkthrough's voice step plays the first spawn take (the family's boast)
     step = st.walk_plan()[1]
     assert step["id"] == "voice" and step["args"] == {"id": "VAI"}
+
+
+# ---- A16.3: the 7-level pool bar with a drop animation (bar-spec.md, 2026-09-07) --------------------
+# The MC lane is landing `gun.readout.pools[].levels` separately (in parallel); until it ships for real,
+# these frame strings ("L0".."L6", "L3b" the blink-off variant) stand in for real $GLED syntax so the
+# tests read the ANIMATION'S ORDER, not the LED encoding -- `stage.py` never inspects frame contents,
+# it only ever writes exactly what the bundle hands it (Node rules: "never compose a frame").
+LEVELS7 = [["L0", None], ["L1", "L1b"], ["L2", None], ["L3", "L3b"], ["L4", None], ["L5", "L5b"], ["L6", None]]
+
+
+def install_levels_readout(st, max_=6, **timing):
+    """Patch the stage's already-compiled bundle with a synthetic 7-level `gun.readout` for `health`
+    (and a fixed `rest` frame), so the drop/rise animation can be exercised on the bench harness before
+    a real compiler ships `levels`. Returns the readout dict (mutate `["pools"]` to add more)."""
+    readout = {"pools": [{"pool": "health", "max": max_, "levels": LEVELS7}],
+               "hold_s": timing.get("hold_s", 2), "lead_ms": timing.get("lead_ms", 100),
+               "blink_gap_ms": timing.get("blink_gap_ms", 200), "step_ms": timing.get("step_ms", 300),
+               "blink_ms": timing.get("blink_ms", 400)}
+    st.bundle["gun"]["readout"] = readout
+    st.bundle["gun"]["rest"] = "REST"
+    return readout
+
+
+def test_level_for_delegates_to_the_one_shared_poolgauge_formula():
+    """A16.3's `clamp(round(fraction * 6), 0, 6)` (floored to 1 while anything is left) lives in exactly
+    ONE place, `poolgauge.level_for` -- the node calls it rather than re-deriving it, so its rounding can
+    never quietly drift from what MC's `levels` frame table assumes. This proves the delegation, not the
+    formula itself (that is `poolgauge`'s own tests to own); it also pins the floor-to-1 rule and the
+    exact-zero case since those are the two spots a re-derivation would most likely diverge."""
+    st, _ = mk()
+    cases = [("health", "hp", 45, 45), ("health", "hp", 45, 30), ("health", "hp", 45, 10),
+             ("health", "hp", 45, 1), ("health", "hp", 45, 0), ("armor", "armor", 24, 10),
+             ("armor", "armor", 70, 0), ("shield", "shield", 10, 10), ("shield", "shield", 0, 5)]
+    for pool, attr, maximum, amount in cases:
+        setattr(st, attr, amount)
+        entry = {"pool": pool, "max": maximum}
+        assert st._level_for(entry, pool) == PG.level_for(amount, maximum), (pool, amount, maximum)
+    st.hp = 1
+    assert st._level_for({"pool": "health", "max": 45}, "health") == 1, "floor-to-1 while anything is left"
+    st.hp = 0
+    assert st._level_for({"pool": "health", "max": 45}, "health") == 0
+
+
+def test_drop_animation_lead_blink_gap_step_down_settle_blink_and_revert():
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        st._level_state["health"] = 6                # seed: it was full before this change
+        st.hp = 3                                     # max=6 -> level 3 (partial: 1 solid + 2nd blinking)
+        n = len(tx(mgr))
+        st._readout_paint("health")
+        await settle(st)
+        new = tx(mgr)[n:]
+        assert new[:5] == ["L6", "L0", "L5", "L4", "L3"], new   # lead · blink-gap (all off) · step down
+        blink = new[5:-1]
+        assert blink and blink[0] == "L3b" and all(f in ("L3", "L3b") for f in blink), blink   # settle-blink starts OFF
+        assert new[-1] == "REST"
+        assert st._level_state["health"] == 3
+    asyncio.run(go())
+
+
+def test_gain_animation_skips_the_blink_gap_and_steps_up():
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        st._level_state["health"] = 2
+        st.hp = 6                                      # a heal/shield-style gain, level 2 -> 6
+        n = len(tx(mgr))
+        st._readout_paint("health")
+        await settle(st)
+        new = tx(mgr)[n:]
+        assert new == ["L2", "L3", "L4", "L5", "L6", "REST"], new   # lead, then straight up -- no blink-off, no re-lighting
+        assert "L0" not in new, "a gain never shows the drop's all-off blink"
+    asyncio.run(go())
+
+
+def test_a_pool_at_the_same_level_does_not_repaint_but_a_pool_switch_does():
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        readout = install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        readout["pools"].append({"pool": "armor", "max": 6, "levels": LEVELS7})
+        # explicit seed for BOTH pools -- `_after_spawn` already seeded them from the REAL bundle (this
+        # profile's real armour pool, max 70) before this synthetic readout even existed; overwrite both
+        # so the scenario is exactly "health is active at level 4, armour's own last level was also 4".
+        st._level_state = {"health": 4, "armor": 4}
+        st._readout_last_pool = "health"; st._level_current = 4
+        st.hp = 4                                       # same bucket, health already the active pool
+        n = len(tx(mgr))
+        st._readout_paint("health")
+        await settle(st)
+        assert tx(mgr)[n:] == [], "nothing moved on the strip: no repaint"
+        st.armor = 4                                     # a DIFFERENT pool, the same numeric level
+        st._readout_paint("armor")
+        await settle(st)
+        new = tx(mgr)[n:]
+        assert new == ["L4", "REST"], new                # still switches the strip over to armour
+    asyncio.run(go())
+
+
+def test_a_change_mid_drop_cancels_the_old_animation_and_retargets_from_the_current_level():
+    """bar-spec.md Node rules: "a change arriving mid-animation cancels it and restarts from the
+    CURRENT displayed level (never queue)" -- a real `asyncio.Event` gate stalls the first animation
+    exactly like `test_play_all_walks_every_line_in_slot_order_and_stop_cancels_it` does for the
+    soundboard, so a second change can genuinely land while the first is still running."""
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
+        st._level_state["health"] = 6
+        real_sleep = st.sleep
+        gate = asyncio.Event()
+        async def gated(s):
+            if abs(s - 0.3) < 1e-9:          # the step_ms sleep between step-down writes
+                await gate.wait()
+            else:
+                await real_sleep(s)
+        st.sleep = gated
+        st.hp = 1                            # a big drop (6 -> 1): plenty of steps to interrupt
+        n = len(tx(mgr))
+        st._readout_paint("health")
+        await asyncio.sleep(0)               # let the task run up to its first (gated) step_ms sleep
+        assert tx(mgr)[n:] == ["L6", "L0", "L5"], "stalled after the first step-down write"
+        st.hp = 6                            # a change arrives mid-drop: back up to full
+        st._readout_paint("health")          # bumps _level_gen -- the stalled task must not write again
+        gate.set()
+        await settle(st)
+        new = tx(mgr)[n:]
+        # the stalled task wrote nothing more (no L4/L3/L2/L1); the new one retargets from L5 -- the
+        # CURRENT displayed level, not the stale prev=6 or the abandoned target=1 -- and rises to L6
+        assert new == ["L6", "L0", "L5", "L5", "L6", "REST"], new
+    asyncio.run(go())
+
+
+def test_death_stops_a_running_level_animation_even_without_a_generation_bump():
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, hold_s=2, lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400)
+        st._level_state["health"] = 6
+        real_sleep = st.sleep
+        gate = asyncio.Event()
+        async def gated(s):
+            if abs(s - 0.3) < 1e-9:
+                await gate.wait()
+            else:
+                await real_sleep(s)
+        st.sleep = gated
+        st.hp = 1
+        n = len(tx(mgr))
+        st._readout_paint("health")
+        await asyncio.sleep(0)
+        assert tx(mgr)[n:] == ["L6", "L0", "L5"]
+        st.alive = False                     # the gun goes down mid-drop -- no _level_gen bump at all
+        gate.set()
+        await settle(st)
+        assert tx(mgr)[n:] == ["L6", "L0", "L5"], "nothing written once the gun is down (Node rules: cancel on death)"
+    asyncio.run(go())
+
+
+def test_a_real_hit_drives_the_level_animation_through_gun_pool_paint():
+    """The wiring, not just the isolated logic: a genuine `_on_pools` hit -- the same call a real $HP
+    frame drives -- reaches `_level_animate` through `_gun_pool_paint` -> `_readout_paint` -> `_level_paint`."""
+    async def go():
+        st, mgr = mk(gun="health")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, max_=st.max_hp, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        st._level_state["health"] = 6
+        st._gun_taken = True                 # normally set ~2.5 s after spawn by `_gun_take`; force it
+        n = len(tx(mgr))
+        st._on_pools(30, st.armor, st.shield)   # 45 -> 30: frac 0.667*6 = 4.0 -> level 4 (a drop of 2)
+        await settle(st)
+        new = [f for f in tx(mgr)[n:] if f.startswith("L") or f == "REST"]   # ignore the hit's own cue/burst frames
+        assert new == ["L6", "L0", "L5", "L4", "REST"], new
+        assert st._level_state["health"] == 4
+    asyncio.run(go())
+
+
+# ---- state() cost audit (2026-09-07): cache the bundle/profile-derived pieces, never serve them stale ---
+class _NoIR:
+    """A bare stand-in for `mgr` with no `inject_hit` -- so `walk_plan()`'s `can_ir` starts False, unlike
+    every `mk()` stage (its `FakeConnectionManager` always has `inject_hit`, so `can_ir` there is always
+    True from the first call and can never be observed flipping)."""
+
+
+def test_recompile_invalidates_the_cached_event_catalog_and_voice_view():
+    st, _ = mk(voice="male")
+    first = st.event_catalog()
+    assert st.event_catalog() is first, "a repeat call before any recompile is served from the cache, not rebuilt"
+    assert st.voice_view()["id"] == "male"
+    st.set_profile(voice="heavy")                            # set_profile always ends in recompile()
+    assert st.event_catalog() is not first, "a recompile must rebuild the cached event catalog"
+    v = st.voice_view()
+    assert v["id"] == "heavy" and v["lines"], "the cached voice view must reflect the NEW voice, not the old one"
+    # the genuinely live fields never come from the cache, even on a hit for the SAME key
+    st.rolled = {"death_scream": "V34"}
+    st.scream_this_life = "V34"
+    assert st.voice_view()["rolled"] == {"death_scream": "V34"} and st.voice_view()["scream_this_life"] == "V34"
+
+
+def test_switching_the_soundboard_character_never_serves_the_previous_characters_cache():
+    st, _ = mk()
+    st.voice_board("scout")
+    scout_lines = st.board_view()["lines"]
+    assert st.board_view()["voice"] == "scout" and scout_lines
+    st.voice_board("medic")
+    medic = st.board_view()
+    assert medic["voice"] == "medic" and medic["lines"] and medic["lines"] != scout_lines
+    st.voice_board("scout")                                   # BACK to an already-cached character
+    again = st.board_view()
+    assert again["voice"] == "scout" and again["lines"] == scout_lines, "a revisited character must still be correct, not stale from a different one"
+    # `playing` / `verdicts` are LIVE -- never stuck on whatever they were when this cache entry was built
+    assert st.board_view()["playing"] is None
+    st.board_playing = "SCOUT_TEST_ID"
+    assert st.board_view()["playing"] == "SCOUT_TEST_ID"
+    line_id = scout_lines[0]["id"]
+    st.voice_verdict("scout", line_id, True, "sounds right")
+    assert st.board_view()["verdicts"].get(line_id) == {"ok": True, "note": "sounds right"}
+
+
+def test_attaching_the_emitter_mid_bench_immediately_changes_the_walk_plan():
+    """`can_ir` changes via `set_emitter()`/a direct `bridge` assignment, which does NOT go through
+    `recompile()` -- with no emitter the IR steps (hit/low_health/death) are swapped for a single
+    frames-only overlay step, so the plan must never be served stale from before it was attached."""
+    st = GunStage(_NoIR(), None, sleep=_nosleep, voice_verdict_sink=lambda _r: None)
+    st.walk_start()
+    ids_before = {s["id"] for s in st.walk_plan()}
+    assert "death_overlay" in ids_before and "hit" not in ids_before, "no emitter: IR steps are replaced by the overlay step"
+    st.bridge = type("FakeBridge", (), {"port": "TEST"})()
+    ids_after = {s["id"] for s in st.walk_plan()}
+    assert "hit" in ids_after and "death_overlay" not in ids_after, "attaching the emitter must switch to the IR steps immediately, not serve the stale pre-emitter plan"
+    st.bridge = None
+    assert {s["id"] for s in st.walk_plan()} == ids_before, "detaching it must flip back just as immediately"
