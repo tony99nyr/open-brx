@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F53 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F54 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -495,12 +495,15 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   centroid 186, sustained), `N75` (2.86 s, centroid 201, varying) and `N25` (2.51 s, centroid 315) -- none of
   which any ear has heard. Today the event plays `voice:hurt_loop` (the character's own breathing, `V06`/`V16`/
   …), which could become a two-take pool with a heartbeat rather than being replaced. `ears`.
-- **F49 🟡 `assert_sir_covers_weapons` checks a row EXISTS, never that its FUNCTION is right.**
+- **F53 🟡 `assert_sir_covers_weapons` checks a row EXISTS, never that its FUNCTION is right.**
   `compile._hit_entry` defaults an uncovered cell's `$SIR` function to 0 (`sir.get(cell, 0)`). Inert today
   -- every catalogued weapon's stock cell is in `_SIR_TABLE` -- but a future weapon on an uncovered cell
   with `hit_audio_rekey` ON would get its new row written with fn 0, silently changing its damage class,
   and the guard would pass. Either raise on an uncovered cell in `_hit_entry`, or extend the guard to
   compare each weapon's row function against the one it had before the re-key. `build`.
+  (Filed as F49 first and re-lettered within the minute: another lane had taken F49 while this row was
+  being written. Caught by `test_followups_ids_are_defined_exactly_once` -- the guard rewritten tonight
+  after it was found to be scanning `## ` headings and seeing 1 id out of 89.)
 - **F43 🔴 SOUND PICKS BY ACOUSTIC SHAPE ARE NOT TRUSTWORTHY — do not repeat the method.** Every id in the first
   `hitaudio.py` was chosen from `sound_catalog.json` by envelope / flatness / centroid / duration. NOT ONE survived
   a listen on 2026-09-07. Signal features separate TONAL from NOISY; they cannot separate METAL from ELECTRONIC
