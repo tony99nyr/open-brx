@@ -109,6 +109,9 @@ export class Engine {
                              // teardown (end/panic/BLE drop) is still `_lightGen`, checked alongside it, not a second teardown flag
     this._roAnimating = false; // true while the drop/gain animation owns the strip -- suppresses `_gunReadoutTick`'s hold-expiry
                                 // revert until `_readoutSettle` arms the real hold (an in-flight animation must not be cut off mid-step)
+    this._roBlinkAt = 0;       // A16.3: last time the partial-level top-segment blink toggled (0 = not blinking); tick()-polled,
+                                // same reasoning as the hold itself -- a self-rescheduling `this.delay` chain cannot be restarted
+    this._roBlinkOn = false;   // which half of the blink pair (`levels[l][1]` vs `[0]`) is currently on the strip
     this._lightGen = 0;             // bumped on teardown (end/panic/BLE drop) so a stray delayed $GLED/$HLED/cue write can't land after it
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
@@ -509,7 +512,7 @@ export class Engine {
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
     // A16.3: a revive cancels any drop/gain animation from the last life outright (bar-spec: "Cancel
     // everything ... on revive") -- bump `_roGen` so a stray scheduled step from the old life cannot land.
-    this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false;
+    this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false; this._roBlinkAt = 0; this._roBlinkOn = false;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
@@ -595,8 +598,22 @@ export class Engine {
     const level = this._readoutLevel(entry);
     this._readoutLastPool = pool;
     if (this._roPool === pool && this._roLevel === level) return;
-    const from = this._roLevel != null ? this._roLevel : level;
+    // A16.3 (polish 2026-09-07): on a life's FIRST paint for a pool there is no `_roLevel` yet. Settling
+    // straight in would mean the first hit of EVERY life has no drop animation -- health and armour start
+    // full, so that is the commonest case there is, and it is exactly the moment the animation is for
+    // ("show current health in one blink then show it dropping" -- Tony). It also made the bench stage lie:
+    // stage.py seeds its own per-pool state at spawn and DID animate here, so the operator would have been
+    // shown a sequence the phone never plays. Animate from the pool's FULL level instead (the level it was
+    // sitting at, undisplayed, before this change), which is what the stage does.
+    const from = this._roLevel != null ? this._roLevel : this._readoutFullLevel(entry, pool);
     this._readoutAnimStart(readout, entry, pool, from, level);
+  }
+  /** A16.3: the level a pool sits at when a life starts, used as the "from" for its first animation.
+   *  Health and armour spawn FULL (top level); shield spawns EMPTY on real hardware (it is IR-granted
+   *  only, P16 -- and F41: the fake tagger wrongly reports 70 there, so do not infer this from telemetry). */
+  _readoutFullLevel(entry, pool) {
+    const top = Array.isArray(entry.levels) ? entry.levels.length - 1 : 0;
+    return pool === 'shield' ? 0 : top;
   }
   /** A16.3: drive the lead/blink-gap/step-down/settle sequence (or, for a GAIN, straight into stepping
    *  with no lead/gap) from `from` to `to` on `entry`. Every scheduled step is gated on a fresh `_roGen`
@@ -639,25 +656,18 @@ export class Engine {
   }
   /** A16.3: settle on `level` -- arms the ordinary `hold_s` timer (`_gunReadoutTick` takes over from here,
    *  exactly as it does for a `bands` paint) and, at a PARTIAL level (`entry.levels[level][1]` present),
-   *  starts the alternating top-segment blink at `blink_ms`. The blink is a self-rescheduling `this.delay`
-   *  chain (the hold must be repeatedly restartable, so it cannot be a fixed-count loop) that stops itself
-   *  the moment the hold expires (`_readoutHoldActive` goes false under it), a new change lands (`_roGen`
-   *  bump), or death/revive (`_roGen` bump + explicit resets). */
+   *  arms the alternating top-segment blink. The blink itself is tick()-polled (`_gunReadoutTick`), NOT a
+   *  self-rescheduling `this.delay` chain -- same reasoning as the hold: it must be repeatedly restartable
+   *  by a later settle, and (proven the hard way) a `this.delay` that re-schedules itself recurses forever
+   *  under a test harness whose `delay` runs its callback inline. */
   _readoutSettle(gen, lg, readout, entry, pool, level) {
     if (!(this._roGen === gen && this._lightGen === lg && this.alive)) return;
     this._roAnimating = false;
     const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
     this._readoutLastWriteAt = now; this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;
     const pair = entry.levels[level];
-    if (!pair || !pair[1]) return;   // whole level (6/4/2/0): no blink
-    const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : 400));
-    const tick = onTop => {   // the solid frame is already on the strip from the settling step -- flip to the top-off half first
-      if (!(this._roGen === gen && this._lightGen === lg && this._readoutHoldActive && this.alive && this._roLevel === level)) return;
-      const f = onTop ? pair[1] : pair[0];
-      if (f) { this._readoutFrame = f; this._write([f], `readout ${pool} blink`); }
-      this.delay(blinkMs, () => tick(!onTop));
-    };
-    this.delay(blinkMs, () => tick(true));
+    if (pair && pair[1]) { this._roBlinkOn = false; this._roBlinkAt = now; }   // the solid half is already on the strip from the settling step
+    else this._roBlinkAt = 0;   // whole level (6/4/2/0): no blink
   }
   /** A16 §3.1 reload: paint the CURRENT readout for `reload_glance_s` — recomputed fresh (in case the pool
    *  has since changed further) for whichever pool most recently actually moved this life, NOT the
@@ -679,7 +689,7 @@ export class Engine {
     if (Array.isArray(entry.levels) && entry.levels.length === 7) {
       const level = this._readoutLevel(entry); const pair = entry.levels[level]; frame = pair && pair[0];
       if (!frame) return;
-      this._roGen = (this._roGen || 0) + 1; this._roAnimating = false; this._roPool = poolName; this._roLevel = level;
+      this._roGen = (this._roGen || 0) + 1; this._roAnimating = false; this._roPool = poolName; this._roLevel = level; this._roBlinkAt = 0; this._roBlinkOn = false;
     } else {
       const band = this._readoutBand(entry); if (!band) return; frame = band[1];
     }
@@ -697,9 +707,28 @@ export class Engine {
     const g = this.frames && this.frames.gun, readout = g && g.readout;
     if (!readout || !this._readoutHoldActive || !this._gunTaken || this._roAnimating) return;
     if (!this.alive || !this.spawned || this.phase !== 'live') return;
-    if (now - this._readoutHoldStartAt < this._readoutHoldMs) return;
-    this._readoutHoldActive = false;
-    if (g.rest && this._readoutFrame !== g.rest) { this._readoutFrame = g.rest; this._write([g.rest], 'readout rest'); }
+    // A16.3: the hold-expiry check runs FIRST -- an expiry must win outright over a blink toggle due in
+    // the very same tick (otherwise a blink write and the revert-to-rest write would both land here).
+    if (now - this._readoutHoldStartAt >= this._readoutHoldMs) {
+      this._readoutHoldActive = false; this._roBlinkAt = 0;
+      if (g.rest && this._readoutFrame !== g.rest) { this._readoutFrame = g.rest; this._write([g.rest], 'readout rest'); }
+      return;
+    }
+    // The partial-level blink, tick()-polled (see `_readoutSettle`) -- runs only while `_roBlinkAt` is
+    // armed, and stops on its own the instant the hold above expires.
+    if (this._roBlinkAt && this._roPool != null) {
+      const entry = readout.pools.find(p => p.pool === this._roPool);
+      const pair = entry && Array.isArray(entry.levels) ? entry.levels[this._roLevel] : null;
+      if (pair && pair[1]) {
+        const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : 400));
+        if (now - this._roBlinkAt >= blinkMs) {
+          this._roBlinkOn = !this._roBlinkOn;
+          const f = this._roBlinkOn ? pair[1] : pair[0];
+          if (f) { this._readoutFrame = f; this._write([f], `readout ${this._roPool} blink`); }
+          this._roBlinkAt = now;
+        }
+      } else this._roBlinkAt = 0;
+    }
   }
   /** The headset's resting frame between events (dark by default, or the team colour). */
   _headsetRest() { const h = this.frames && this.frames.headset; return h && h.rest ? [[h.rest, 0]] : null; }
@@ -1357,7 +1386,7 @@ export class Engine {
       const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
       // logged explicitly: after the last field session we could not tell whether the alert had
       // fired at all, because the frame ring only holds 60 frames and had rolled past it.
-      this.log(`low-health alert: armour 0, hp ${this.hp} — ${fr.length} frame(s)`, 'lk');
+      this.log(`low-health alert: hp ${this.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
       if (fr.length) { this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health'); }   // cancels a pending hit-flash rest step (polish 2026-09-04)
     }
     if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial) {
@@ -1449,7 +1478,7 @@ export class Engine {
     // A16.3: death cancels any drop/gain animation outright (bar-spec: "Cancel everything ... on death") --
     // the killing hit itself never reaches here (`_gunPoolPaint` is only called `if (hp > 0)`), but a hit
     // just before it can still be mid-animation when death registers.
-    this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false;
+    this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false; this._roBlinkAt = 0; this._roBlinkOn = false;
     this._activeRole = null;   // A16 §3.3: cleared BEFORE the infection check below, which may assign a fresh 'infected' role in the same call
     this.killedBy = { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });

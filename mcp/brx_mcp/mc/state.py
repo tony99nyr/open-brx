@@ -1272,16 +1272,29 @@ class Session:
 
     # ---------- lobby ----------
     def _hit_plan(self):
-        """A17: ONE hit-audio plan per push, from the whole roster.
+        """A17: ONE hit-audio plan per MATCH, from the whole roster -- PINNED, not recomputed per call.
 
         It has to be shared. Every gun must carry a row for every cell any weapon in the match keys --
         a hit into a cell the victim's table lacks is dropped in silence (the F11 shape) -- so the plan
-        is a property of the MATCH, never of the player being compiled. Re-keying stays off unless the
-        config asks for it; see `hitaudio` and FOLLOWUPS F38/F39."""
+        is a property of the MATCH, never of the player being compiled.
+
+        ⚠️ WHY IT IS CACHED, not just derived from the roster each time. This is called on SINGLE-PLAYER
+        recompiles too: `_push_config_to` via `_resend` (a loadout or policy change after the lobby is
+        pushed, including mid-match) and the late-joiner hydration in the hello path. `hitaudio.plan()`
+        allocates free cells as a pure function of the CURRENT roster's weapon mix, so re-deriving it
+        after that mix has shifted can hand the recompiled player a table keyed differently from the guns
+        already armed. Those guns keep firing on the old cells; the new table has no row for them; every
+        such hit is dropped in silence with both ends reporting healthy. `assert_sir_covers_weapons`
+        cannot catch it -- it checks ONE head's internal consistency, never cross-player agreement.
+        Inert while `hit_audio_rekey` is off (cells never move), and a live landmine the moment it is on.
+
+        `push_config()` clears the pin, so a deliberate full re-push re-derives; nothing else does."""
         fn = getattr(self.compiler, "hit_plan", None)      # a test double need not carry the whole compiler
         if fn is None:
             return None
-        return fn(self.roster(), rekey=bool(self.config.get("hit_audio_rekey", False)))
+        if getattr(self, "_pinned_hit_plan", None) is None:
+            self._pinned_hit_plan = fn(self.roster(), rekey=bool(self.config.get("hit_audio_rekey", False)))
+        return self._pinned_hit_plan
 
     def _compile_rolled(self, p: Player):
         """Compile with this push's voice roll (A15.1) and say what was drawn."""
@@ -1312,6 +1325,7 @@ class Session:
         stranded the session. A forced push still compiles and sends to every BOUND node; a player
         whose gun is not linked simply will not ack, which the lobby already shows.
         """
+        self._pinned_hit_plan = None      # A17: a full re-push is the ONE place the hit-audio plan re-derives
         rd = self.readiness()
         if not self.players:
             raise ValueError("no players — add someone to the roster first")   # force must not bypass this

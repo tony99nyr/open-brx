@@ -272,3 +272,117 @@ def test_the_shipped_frame_matches_what_was_confirmed_on_hardware():
     assert foot[2] in ("H02", "H36", "H37")                # hitArrmor -- "blacksmith hammer on steel"
     assert foot[3] == "H22"                                # hitShield -- "the proper shield hit sound"
     assert foot[0] == "H06"                                # missShotHit -- inherited, never auditioned
+
+
+def test_rekey_end_to_end_through_the_real_compiler_and_every_gun_agrees():
+    """The guard and the plan-forwarding must be exercised through `Compiler.compile()`, not around it.
+
+    Every other test here calls `plan()` / `sir_table()` / `assert_sir_covers_weapons` DIRECTLY or hand-
+    builds a head, so deleting the `plan=plan` forwarding in `state._compile_rolled` or the guard call in
+    `compile()` would leave the whole suite green -- a guard that cannot be shown to fail is the shape
+    this project keeps rediscovering. This drives the real path with re-keying ON.
+
+    The assertion that matters is CROSS-PLAYER: every compiled head must carry a row for every cell ANY
+    weapon in the match keys. A per-player plan would pass `assert_sir_covers_weapons` (which only checks
+    one head against itself) and still drop every hit between two guns that disagree."""
+    c = C.default_compiler()
+    teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+             {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
+    config = {"config_id": "a17-rekey", "mode": "tdm", "environment": "indoor", "night": False,
+              "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
+              "scoring": {"frag_limit": 0, "win_by": "kills"},
+              "health": {"max_hp": 45, "max_armor": 70}, "teams": teams,
+              "hit_audio_rekey": True}
+    roster = [
+        {"player_id": "p1", "player_num": 1, "display": "ONE", "team_id": "blue", "node_id": None,
+         "gun_id": None, "voice": "male", "ready": True,
+         "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}},
+        {"player_id": "p2", "player_num": 2, "display": "TWO", "team_id": "yellow", "node_id": None,
+         "gun_id": None, "voice": "male", "ready": True,
+         "loadout": {"weapons": [{"weapon_id": "sniper_rifle"}, {"weapon_id": "deagle"}]}},
+    ]
+    plan = c.hit_plan(roster, rekey=True)
+    assert plan.cells["assault_rifle"] != plan.cells["shotgun"], "rekey did not separate the families"
+
+    heads = []
+    for p in roster:
+        b = c.compile(config, p, teams, plan=plan)
+        heads.append(b["head"])
+        C.assert_sir_covers_weapons(b["head"])            # each head is self-consistent
+
+    # ...and the heads AGREE. Every cell any head's $WEAP keys must have a row in EVERY head.
+    def weap_cells(head):
+        return {((f.split(",")[4] or "0"), (f.split(",")[5] or "0")) for f in head if f.startswith("$WEAP")}
+    def sir_cells(head):
+        return set(C._sir_cells([f for f in head if f.startswith("$SIR")]))
+    all_weapon_cells = set().union(*(weap_cells(h) for h in heads))
+    for h in heads:
+        missing = all_weapon_cells - sir_cells(h)
+        assert not missing, f"a gun has no row for cells another gun's weapons key: {sorted(missing)}"
+
+
+def test_the_guard_is_actually_WIRED_INTO_compile_not_merely_correct():
+    """`test_the_guard_catches_...` proves the guard WORKS. It does not prove `compile()` CALLS it --
+    delete the call and that test still passes. So this hands `compile()` a plan that keys a weapon to a
+    cell with no row and asserts the compile REFUSES. Verified by sabotage: commenting out the
+    `assert_sir_covers_weapons(head)` call makes this test, and only this test, fail."""
+    c = C.default_compiler()
+    teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}]
+    config = {"config_id": "a17-guard", "mode": "ffa", "environment": "indoor", "night": False,
+              "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
+              "scoring": {"frag_limit": 0, "win_by": "kills"},
+              "health": {"max_hp": 45, "max_armor": 70}, "teams": teams}
+    player = {"player_id": "p1", "player_num": 1, "display": "ONE", "team_id": "blue", "node_id": None,
+              "gun_id": None, "voice": "male", "ready": True,
+              "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+    plan = c.hit_plan([player], rekey=False)
+    plan.cells["assault_rifle"] = ("12", "3")      # a free cell no row covers; groups deliberately NOT updated
+    try:
+        c.compile(config, player, teams, plan=plan)
+    except ValueError as e:
+        assert "A17 GUARD" in str(e), f"refused, but not by the A17 guard: {e}"
+    else:
+        raise AssertionError("compile() armed a weapon keyed to a cell with no $SIR row -- guard not wired in")
+
+
+def test_a_PER_PLAYER_plan_would_break_cross_gun_coverage():
+    """Why `state._hit_plan` pins ONE plan per match instead of deriving it per compile.
+
+    Derive a plan from each player's OWN weapons and the two guns disagree about which cell a family
+    owns. Each head still passes `assert_sir_covers_weapons` -- it only checks a head against ITSELF --
+    so nothing raises, and every hit between those two guns is dropped in silence with both ends
+    reporting healthy. That is the F11 shape, and this test is the record of why the pin exists."""
+    c = C.default_compiler()
+    teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+             {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
+    base = {"config_id": "a17-split", "mode": "tdm", "environment": "indoor", "night": False,
+            "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
+            "scoring": {"frag_limit": 0, "win_by": "kills"},
+            "health": {"max_hp": 45, "max_armor": 70}, "teams": teams, "hit_audio_rekey": True}
+    roster = [
+        {"player_id": "p1", "player_num": 1, "display": "ONE", "team_id": "blue", "node_id": None,
+         "gun_id": None, "voice": "male", "ready": True,
+         "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}},
+        {"player_id": "p2", "player_num": 2, "display": "TWO", "team_id": "yellow", "node_id": None,
+         "gun_id": None, "voice": "male", "ready": True,
+         "loadout": {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "sniper_rifle"}]}},
+    ]
+    per_player = [c.compile(base, p, teams, plan=c.hit_plan([p], rekey=True))["head"] for p in roster]
+    for h in per_player:
+        C.assert_sir_covers_weapons(h)          # each head is individually fine -- that is the whole point
+
+    def weap_cells(head):
+        return {((f.split(",")[4] or "0"), (f.split(",")[5] or "0")) for f in head if f.startswith("$WEAP")}
+    def sir_cells(head):
+        return set(C._sir_cells([f for f in head if f.startswith("$SIR")]))
+    uncovered = set()
+    for shooter in per_player:
+        for victim in per_player:
+            uncovered |= (weap_cells(shooter) - sir_cells(victim))
+    assert uncovered, "per-player plans happened to agree; this test can no longer show why the pin matters"
+
+    shared = c.hit_plan(roster, rekey=True)     # ...and the pinned plan fixes exactly that
+    heads = [c.compile(base, p, teams, plan=shared)["head"] for p in roster]
+    for shooter in heads:
+        for victim in heads:
+            assert not (weap_cells(shooter) - sir_cells(victim)), "one shared plan must cover every gun"

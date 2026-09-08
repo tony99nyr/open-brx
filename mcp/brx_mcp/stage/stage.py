@@ -11,12 +11,12 @@ real IR shot from the emitter shows the whole picture, firmware + ours, on the b
 from __future__ import annotations
 
 import asyncio
-import math
 import random
 import time
 from collections import deque
 from typing import Any, Callable, Awaitable
 
+from .. import poolgauge as _pg
 from .. import sounds as _snd
 from .. import voices as _voices
 from ..gameconfig import VOICE_PACKS
@@ -764,11 +764,13 @@ class GunStage:
     async def end(self) -> dict:
         await self.write(self.bundle["end"], "end")
         self.spawned = False; self.alive = False
+        self._level_gen += 1                       # Node rules: cancel everything on end
         return self.state()
 
     async def panic(self) -> dict:
         await self.write(self.bundle["panic"], "PANIC")
         self.spawned = False; self.alive = False
+        self._level_gen += 1                       # Node rules: cancel everything on panic
         self._log("⚠ the gun now has NO $SIR table: re-ARM before it can be hit (F11)", "warn")
         return self.state()
 
@@ -982,6 +984,7 @@ class GunStage:
         is_up = getattr(self.mgr, "is_connected", None)
         if is_up is not None and not is_up(self.alias):
             self.connected = False
+            self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
             self._log("the gun dropped the BLE link -- press CONNECT (or any write reconnects)", "warn")
             return []
         try:
@@ -1050,6 +1053,7 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hp == 0 and self.alive:
             self.alive = False
+            self._level_gen += 1                   # Node rules: cancel everything on death
             self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset", "info")
             self._event_now("died")
             if hs.get("death"):
@@ -1120,15 +1124,26 @@ class GunStage:
         return bands[-1] if bands else None
 
     def _readout_paint(self, pool: str) -> None:
-        """A16 §3.1: write the moved pool's band if it differs from what is currently believed to be on
-        the strip, and (re)start its hold; a repaint inside READOUT_COALESCE_S of the last WRITE
-        restarts the hold but is not written again (mirrors engine.js `_gunReadoutPaint`; a generation
-        counter stands in for its tick-poll -- it cancels a pending revert instead of needing one)."""
+        """A16 §3.1 (bands) / A16.3 (levels): write the moved pool's readout if it differs from what is
+        currently on the strip. `levels` (bar-spec.md, 2026-09-07: a 7-level scale with a drop/rise
+        animation between the last DISPLAYED level and the new one) takes over when the compiled bundle
+        carries it; falls back to the older single-write per-band behaviour below for a profile/bundle
+        that has not been migrated (defensive -- the MC lane lands `levels` separately, in parallel)."""
         g = self.bundle.get("gun") or {}
         readout = g.get("readout") or {}
         entry = next((p for p in (readout.get("pools") or []) if p.get("pool") == pool), None)
-        if not entry or not entry.get("bands"):
+        if not entry:
             return
+        levels = entry.get("levels")
+        if isinstance(levels, list) and len(levels) == 7:
+            self._level_paint(readout, entry, pool)
+            return
+        if not entry.get("bands"):
+            return
+        # A16 §3.1: write the moved pool's band if it differs from what is currently believed to be on
+        # the strip, and (re)start its hold; a repaint inside READOUT_COALESCE_S of the last WRITE
+        # restarts the hold but is not written again (mirrors engine.js `_gunReadoutPaint`; a generation
+        # counter stands in for its tick-poll -- it cancels a pending revert instead of needing one).
         band = self._readout_band(entry)
         if not band:
             return
@@ -1154,6 +1169,118 @@ class GunStage:
             return                                  # a newer paint (or the life itself) superseded this hold
         g = self.bundle.get("gun") or {}
         rest = g.get("rest")
+        if rest and self._readout_frame != rest:
+            self._readout_frame = rest
+            await self.write([rest], "readout rest", gap_ms=0)
+
+    # ---- A16.3: the 7-level pool bar with a drop animation (bar-spec.md, 2026-09-07) ------------------
+    def _level_for(self, entry: dict, pool: str) -> int:
+        """`poolgauge.level_for` IS the formula (`clamp(round(fraction * 6), 0, 6)`, floored to 1 while
+        the pool holds anything) -- delegate to it rather than re-deriving it, so the node's rounding
+        can never quietly drift from what MC's own `levels` frame table assumes."""
+        amount = self.hp if pool == "health" else self.armor if pool == "armor" else self.shield
+        return _pg.level_for(amount, entry.get("max") or 0)
+
+    def _level_paint(self, readout: dict, entry: dict, pool: str) -> None:
+        """A16.3: (re)target the drop/rise animation at this pool's new level.
+
+        "Animate from the last DISPLAYED level" (bar-spec.md Node rules) means: if the strip is
+        currently showing THIS pool (mid-animation or settled), start from `_level_current` -- wherever
+        it actually is; otherwise start from this pool's OWN last known level (`_level_state`, seeded at
+        spawn from where it actually starts -- shield at 0, not 6, see `_after_spawn`). A change mid-
+        animation therefore retargets the one running task rather than queuing a second (never queue,
+        per spec) -- bumping `_level_gen` is enough since `_level_animate` checks it at every step."""
+        levels = entry["levels"]
+        target = self._level_for(entry, pool)
+        if pool == self._readout_last_pool and self._level_current is not None:
+            prev = self._level_current
+        else:
+            prev = self._level_state.get(pool, target)
+        self._level_state[pool] = target
+        if pool == self._readout_last_pool and prev == target:
+            return                                   # already showing this pool at this exact level
+        self._readout_last_pool = pool
+        lead_s = float(readout.get("lead_ms", 180)) / 1000
+        gap_s = float(readout.get("blink_gap_ms", 80)) / 1000
+        step_s = float(readout.get("step_ms", 120)) / 1000
+        blink_s = float(readout.get("blink_ms", 400)) / 1000
+        hold_s = float(readout.get("hold_s", 4))
+        self._level_gen += 1
+        gen = self._level_gen
+        self._spawn_task(self._level_animate(gen, levels, prev, target, pool, lead_s, gap_s, step_s, blink_s, hold_s))
+
+    async def _level_animate(self, gen: int, levels: list, prev: int, target: int, pool: str,
+                              lead_s: float, gap_s: float, step_s: float, blink_s: float, hold_s: float) -> None:
+        """The whole life of one change, ONE task start to finish (never split across concurrent tasks --
+        the settle-blink and the hold-then-revert used to race in an earlier draft of this, see git
+        history): show the level you were at (`lead_s`), a drop's one all-off blink (`gap_s`), step
+        one level per `step_s` until the target (no re-lighting -- a gain skips the blink, bar-spec.md),
+        settle, blink the target if it is a partial level for `hold_s` worth of `blink_s` cycles (a plain
+        countdown, not a wall-clock deadline, so it terminates the same way under a test's instant
+        `sleep` stub as it does on real hardware), then revert to the gun's rest frame. `gen` is checked
+        before every write; a newer paint (`_level_paint`) or the life ending bumps `_level_gen` and every
+        checkpoint below sees it and returns -- nothing here is ever cancelled from outside."""
+        def live() -> bool:
+            return gen == self._level_gen and self.alive
+
+        async def paint(l: int) -> None:
+            frame = levels[l][0]
+            self._readout_frame = frame
+            self._level_current = l
+            await self.write([frame], f"readout {pool} level {l}/6", gap_ms=0)
+
+        if not live():
+            return
+        await paint(prev)
+        if target < prev:
+            await self.sleep(lead_s)
+            if not live():
+                return
+            off = levels[0][0]                       # "all segments off" IS level 0's solid frame (dark)
+            self._readout_frame = off
+            self._level_current = 0
+            await self.write([off], f"readout {pool} blink", gap_ms=0)
+            await self.sleep(gap_s)
+            if not live():
+                return
+            for l in range(prev - 1, target - 1, -1):
+                await paint(l)
+                if l != target:
+                    await self.sleep(step_s)
+                    if not live():
+                        return
+        elif target > prev:
+            await self.sleep(lead_s)                 # a gain: same steps, no initial blink
+            if not live():
+                return
+            for l in range(prev + 1, target + 1):
+                await paint(l)
+                if l != target:
+                    await self.sleep(step_s)
+                    if not live():
+                        return
+        partial = levels[target][1] is not None
+        self._level_partial = partial
+        if partial:
+            reps = max(1, round(hold_s / blink_s)) if blink_s > 0 else 1
+            on = True
+            for _ in range(reps):
+                await self.sleep(blink_s)
+                if not live():
+                    return
+                on = not on
+                frame = levels[target][0] if on else levels[target][1]
+                self._readout_frame = frame
+                await self.write([frame], f"readout {pool} blink", gap_ms=0)
+        else:
+            await self.sleep(hold_s)
+        if not live():
+            return
+        g = self.bundle.get("gun") or {}
+        rest = g.get("rest")
+        self._readout_last_pool = None
+        self._level_current = None
+        self._level_partial = False
         if rest and self._readout_frame != rest:
             self._readout_frame = rest
             await self.write([rest], "readout rest", gap_ms=0)
@@ -1211,7 +1338,7 @@ class GunStage:
                 "gun: native hit flash, then " + ("the pool readout's band for whatever moved (shield/armour/health)" if g and g.get("readout") else "our hit_taken burst" if g else "no gun feedback") +
                 (" · headset: " + ("flash then rest" if hs.get("hit") else "nothing") if hs else "") + (" · sound: hit_taken" if cues.get("hit_taken") else " · no hit sound"),
                 "ir", {"kind": "shot"}, needs_ir=True)
-            add("low_health", "LOW HEALTH (armour gone, first HP hit)",
+            add("low_health", "LOW HEALTH (HP below 15, armour irrelevant)",
                 "sound: the hurt line · headset: Callsign's fast blink · " + ("gun body: pool readout shows the health band" if g and g.get("readout") else "gun body: YELLOW then RED bands" if g and g.get("in_play") == "health" else "gun: hit flash only"),
                 "ir", {"kind": "shot", "repeat": 1}, needs_ir=True)
             add("death", "DEATH (emitter kills you)",
@@ -1419,7 +1546,11 @@ class GunStage:
             "active_role": {"name": self._active_role[0], "tid": self._active_role[1]} if self._active_role else None,
             # A16 §3.1/§5: the transient gun-body pool readout, for the bench to watch shield/armour/health
             # move live -- `configured` is empty for a profile/older bundle with no readout at all.
+            # A16.3: `level` (0-6) + `partial` (odd level -- currently blinking) are populated only while
+            # a `levels`-bundle pool is actually shown; a `bands`-only bundle (or nothing painted yet)
+            # leaves them null and the page falls back to decoding `frame` as a 3-segment strip.
             "readout": {"pool": self._readout_last_pool, "frame": self._readout_frame,
+                        "level": self._level_current, "level_max": 6, "partial": self._level_partial,
                         "configured": [p.get("pool") for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools", [])]},
             "events": self.event_catalog(),
             "voice": self.voice_view(),
