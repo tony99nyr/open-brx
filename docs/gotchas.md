@@ -288,6 +288,35 @@ indistinguishable through `$HIR`, and a whole session was lost to reading corpse
 Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
 Repro: `mcp/tools/clear_spawn_repro.py`.
 
+**🔴 "THE EMITTER IS FIRING AND NOTHING REGISTERS" — check these IN THIS ORDER (2026-09-07)**
+This cost most of an evening and produced four confident wrong diagnoses (aim, friendly fire, outdoor mode, the
+emitter itself). Each step below DISCRIMINATES; guessing between them does not.
+
+1. **Read registration as `$HIR`, never as damage and never by ear.** No `$HIR` = the word never landed
+   (emitter, aim, or polarity). `$HIR` with unchanged `$HP` = it landed and the row did nothing. Different
+   faults. Drain `mcp__brx__get_events` after each shot; it is two seconds per shot and it keeps you honest.
+2. **Is the gun ALIVE and SPAWNED?** A dead gun accepts no IR at all. Armed-but-never-spawned is a state nobody
+   has characterised. Check `$LCD` pools, do not assume.
+3. **Does the word physically leave?** Capture it on the receiver board (`ir-capture COM7`) while the emitter
+   fires. If the receiver decodes it with `parity=ok`, emission is PROVEN and everything downstream is
+   registration, not transmission. ⚠ `SENT bits=25` from the emitter proves the CALL, not the effect.
+4. **Is something else holding the port or the link?** The stage owns `--ir COM8` exclusively; a second
+   `ir-emit` gets `PermissionError(13)`. ⚠ And never redirect the emit command's output to `/dev/null` — that
+   is how an error becomes an invisible "shot fired" (done twice in one evening).
+5. **Team polarity.** With `$GSET` t1 = 0 (friendly fire OFF) a same-team shot is discarded SILENTLY, with no
+   `$HIR` — which presents exactly as "the emitter is broken". The stage's own IR buttons pick an enemy tid for
+   you; a hand-rolled word does not. **This is the one that got us: every shot was forced to `team 0`.**
+6. ⚠ **F49 is OPEN and it contradicts step 5.** On a `$TID,1` gun with FF off, a team-1 (SAME team) shot
+   REGISTERED and a team-0 (enemy) shot did NOT, twice each — while the same team-0 word fired from
+   `tools/ff_ab.py` registered 40/40. Something other than the team field is involved. Until that is explained,
+   do not conclude anything from polarity alone; use `tools/ff_ab.py`, which arms and fires a known-good
+   combination and prints a verdict.
+Ruled OUT as causes, measured, do not re-chase: friendly fire on/off (12/12 either way), outdoor vs indoor mode
+(6/6 either way), emitter repeat count (1 is fine), and the `$SIR` sound token (empty or filled, irrelevant to
+whether a hit lands).
+
+---
+
 **🟠 FOUR SESSIONS SHARE ONE BENCH: two processes on a gun is CONTENTION, not staleness (2026-09-07)**
 **Symptom:** your BLE connects fail, the gun answers nothing, and it looks exactly like a tagger that has
 slept or died. Or `ir-emit` returns `PermissionError(13, 'Access is denied.')` on COM8.
