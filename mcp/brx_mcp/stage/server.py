@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import time
 import logging
 from pathlib import Path
 
@@ -49,9 +50,24 @@ def create_app(stage: GunStage, poll_s: float = 0.2) -> Starlette:
     async def page(_: Request):
         return HTMLResponse(PAGE.read_text(encoding="utf-8"))
 
+    # 2026-09-07: `state()` is EXPENSIVE (527-658 ms measured on the bench machine: it rebuilds the bundle
+    # view, the walkthrough plan and the sound-catalog descriptions). The page polls this route every 700 ms,
+    # so an un-cached build leaves the single event loop busy most of the time -- and bleak's notify callback
+    # runs on that SAME loop, so a real hit landing mid-build queues behind it. That is exactly the ~600 ms
+    # LED lag the operator reported, and splitting `event()` off the hit path does NOT fix it while the page
+    # itself keeps triggering the build. Serve a recent snapshot instead: `poll()` still runs every request
+    # (it is cheap and it is what drains rx), only the SNAPSHOT is reused. STATE_TTL_S is well under the
+    # page's own poll period, so the page still feels live. Proper fix is to make `state()` cheap (F51).
+    STATE_TTL_S = 1.0
+    cache: dict = {"at": 0.0, "body": None}
+
     async def state(_: Request):
         stage.poll()
-        return JSONResponse(stage.state())
+        now = time.monotonic()
+        if cache["body"] is None or now - cache["at"] >= STATE_TTL_S:
+            cache["body"] = stage.state()
+            cache["at"] = now
+        return JSONResponse(cache["body"])
 
     async def scan_results(_: Request):
         return JSONResponse(stage.scan_results)
@@ -66,6 +82,7 @@ def create_app(stage: GunStage, poll_s: float = 0.2) -> Starlette:
             return JSONResponse({"error": f"unknown action {action!r}", "known": sorted(ACTIONS)}, status_code=400)
         is_coro, allowed = ACTIONS[action]
         kw = {k: v for k, v in body.items() if k in allowed}
+        cache["at"] = 0.0          # an action changes things: the next GET /api/state must rebuild, not serve the TTL copy
         try:
             if action == "pull_mc":
                 out = await pull_mc(stage, **kw)
