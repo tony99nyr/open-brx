@@ -328,6 +328,18 @@ throughout. The other session then read two `brx_mcp stage` processes as stale a
 mirror image of the same mistake.
 
 **Rule: say in the session channel that you are taking the gun and COM8, and say again when you hand back.**
+
+**And two traps that come with a SHARED WORKING TREE, both hit on 2026-09-07:**
+- ⚠ **`git commit --only <path>` does NOT mean "only my changes to that file".** It means "that file, WHOLE,
+  including anyone else's in-flight hunks". Tonight it swept one lane's uncommitted A16.3 LED work into another
+  lane's commit about hit audio (`e5539de`), and earlier the reverse. Nothing is lost, but the commit message
+  stops describing the contents — which is exactly what someone relies on months later. **Before committing a
+  shared file, `git diff <path>` and read it**: if there are hunks you did not write, either wait, or say so in
+  your commit message and name the symbols so a later `git log -S` lands somewhere that explains itself.
+- ⚠ **A red suite here is not evidence of a failure until it reproduces.** A full run reported 2 failures and an
+  immediate re-run reported 0, with no change from the runner — another lane's edits landed mid-run. Re-run
+  before chasing anything, or you will debug a ghost.
+
 Two processes on the SAME gun and port is the tell that someone is using it — the FOLLOWUPS preflight line
 about killing stale `brx_mcp` processes predates four sessions sharing one machine and is now actively
 misleading. If the stage is up it owns COM8 exclusively; emit THROUGH it
