@@ -110,7 +110,14 @@ class Session:
         self.active_preset_id: str | None = None  # A10 §8: the saved game that was APPLIED — GAMES marks it PLAYING (content-matching
                                                   # cannot tell a duplicate from its source: review 2026-08-27 #0)
         self.presets = None                       # A10 §8: PresetStore, attached by __main__/create_app (memory store when absent)
+        # A17: `lobby_pushed` is ALSO the real guard on `_pinned_hit_plan` below. It is set True in exactly
+        # one place (`push_config`, which clears the pin as its first statement), and every path that can
+        # compile (`_resend`, `_bind`, hydrate) is gated on it -- so a pin can never survive into a new
+        # match even though `new_session`/`_finish`/`control` reset this flag without touching it. That
+        # invariant is load-bearing and invisible from `_hit_plan` alone; do not gate a compile path on
+        # anything else without re-checking it.
         self.lobby_pushed = False
+        self._pinned_hit_plan = None      # A17: one hit-audio plan per MATCH -- see `_hit_plan`
         self.acks: dict[str, dict] = {}
         self.bundles: dict[str, dict] = {}
         self.start_info: dict | None = None
@@ -1299,7 +1306,7 @@ class Session:
         fn = getattr(self.compiler, "hit_plan", None)      # a test double need not carry the whole compiler
         if fn is None:
             return None
-        if getattr(self, "_pinned_hit_plan", None) is None:
+        if self._pinned_hit_plan is None:
             self._pinned_hit_plan = fn(self.roster(), rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan
 
