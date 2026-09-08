@@ -855,7 +855,7 @@ def install_levels_readout(st, max_=6, **timing):
     readout = {"pools": [{"pool": "health", "max": max_, "levels": LEVELS7}],
                "hold_s": timing.get("hold_s", 2), "lead_ms": timing.get("lead_ms", 100),
                "blink_gap_ms": timing.get("blink_gap_ms", 200), "step_ms": timing.get("step_ms", 300),
-               "blink_ms": timing.get("blink_ms", 400)}
+               "blink_ms": timing.get("blink_ms", 400), "min_gap_ms": timing.get("min_gap_ms", 400)}
     st.bundle["gun"]["readout"] = readout
     st.bundle["gun"]["rest"] = "REST"
     return readout
@@ -901,20 +901,63 @@ def test_drop_animation_lead_blink_gap_step_down_settle_blink_and_revert():
     asyncio.run(go())
 
 
-def test_gain_animation_skips_the_blink_gap_and_steps_up():
+def test_gain_animation_has_no_lead_and_steps_up_immediately():
+    """Review 2026-09-07: `engine.js`'s gain path is `if (to > from) { step(from); return; }` -- no
+    lead delay before the first paint, ever. A `lead_ms=1` test would hide a reintroduced `sleep(lead_s)`
+    (the ~180 ms default is imperceptible either way under this suite's instant-sleep stub), so this one
+    uses realistic, DISTINCT timings (`install_levels_readout`'s own defaults) and records every duration
+    actually passed to `sleep()`, asserting `lead_s` is never among them -- a future regression that puts
+    the sleep back would fail this even though the test still runs instantly."""
     async def go():
         st, mgr = mk()
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st)
-        install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        readout = install_levels_readout(st)              # lead_ms=100, blink_gap_ms=200, step_ms=300, blink_ms=400, hold_s=2
+        lead_s = readout["lead_ms"] / 1000
         st._level_state["health"] = 2
-        st.hp = 6                                      # a heal/shield-style gain, level 2 -> 6
+        st.hp = 6                                          # a heal/shield-style gain, level 2 -> 6
+        sleeps: list[float] = []
+        real_sleep = st.sleep
+        async def recording(s):
+            sleeps.append(s)
+            await real_sleep(s)
+        st.sleep = recording
         n = len(tx(mgr))
         st._readout_paint("health")
         await settle(st)
         new = tx(mgr)[n:]
-        assert new == ["L2", "L3", "L4", "L5", "L6", "REST"], new   # lead, then straight up -- no blink-off, no re-lighting
+        assert new == ["L2", "L3", "L4", "L5", "L6", "REST"], new   # straight up -- no blink-off, no re-lighting
         assert "L0" not in new, "a gain never shows the drop's all-off blink"
+        assert lead_s not in sleeps, f"a gain must never sleep lead_ms before stepping up -- slept {sleeps}"
+    asyncio.run(go())
+
+
+def test_a16_3_levels_rapid_hits_do_not_replay_the_lead_and_all_off_blink():
+    """Review 2026-09-07 (safety): automatic fire is a burst of drops inside one second. Without a
+    rate limit, EVERY one of them replays its own all-off blink -- a dark->lit transition each time,
+    which `poolgauge.py`'s own docstring already flags as a photosensitivity risk. A change landing
+    inside `min_gap_ms` of the last one must skip the lead freeze AND the all-off blink and step
+    straight from wherever the strip already is; the steps still carry the damage, the blink never
+    carried anything but ceremony."""
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=10, min_gap_ms=400)
+        st._level_state["health"] = 6
+        n = len(tx(mgr))
+        st.hp = 5                                  # the FIRST hit: nothing to rate-limit against yet
+        st._readout_paint("health")
+        await settle(st)
+        first = tx(mgr)[n:]
+        assert first == ["L6", "L0", "L5", "L5b", "REST"], first   # lead + all-off blink + step + settle-blink + revert
+        n2 = len(tx(mgr))
+        st.hp = 4                                  # a SECOND hit landing well inside min_gap_ms (400 ms)
+        st._readout_paint("health")
+        await settle(st)
+        second = tx(mgr)[n2:]
+        assert second == ["L4", "REST"], second     # no lead repaint of L5, no L0 blink -- straight to the new level
+        assert "L0" not in second, "a rapid retrigger must never replay the all-off blink"
     asyncio.run(go())
 
 
@@ -1079,3 +1122,20 @@ def test_attaching_the_emitter_mid_bench_immediately_changes_the_walk_plan():
     assert "hit" in ids_after and "death_overlay" not in ids_after, "attaching the emitter must switch to the IR steps immediately, not serve the stale pre-emitter plan"
     st.bridge = None
     assert {s["id"] for s in st.walk_plan()} == ids_before, "detaching it must flip back just as immediately"
+
+
+def test_a_failed_background_task_logs_a_warning_instead_of_vanishing_silently():
+    """Review 2026-09-07: `_spawn_task` fires reactions and forgets them; nothing ever awaited
+    `_pending`, so an exception inside one used to vanish into Python's default 'Task exception was
+    never retrieved' logging instead of reaching the operator's page -- the exact silent-failure shape
+    the rest of that session cost us."""
+    async def go():
+        st, mgr = mk()
+
+        async def boom():
+            raise RuntimeError("kaboom")
+
+        st._spawn_task(boom())
+        await settle(st)
+        assert any("background task failed" in l["text"] and "kaboom" in l["text"] for l in st.log), st.log
+    asyncio.run(go())

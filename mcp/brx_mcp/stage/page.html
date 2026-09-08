@@ -199,7 +199,8 @@
   // A16.3 (bar-spec.md): the 7-level bar. Each of the 3 physical LEDs is worth 2 levels here -- a
   // FULL unit (solid, `█`) for every pair of levels already lit, one BLINKING unit (`◐`, a distinct
   // glyph from solid on purpose -- Tony asked to see the blink as different from a steady segment) for
-  // an odd (partial) level, the rest empty (`░`). level=5 -> "██◐░ LEVEL 5/6" (2 solid + 3rd blinking).
+  // an odd (partial) level, the rest empty (`░`). level=5 -> "██◐ LEVEL 5/6" (2 solid + 3rd blinking,
+  // no empty units left); level=3 -> "█◐░ LEVEL 3/6" (1 solid + 2nd blinking + 1 empty).
   function levelView(level, partial) {
     if (level == null) return null;
     const full = Math.floor(level / 2), blink = level % 2, empty = 3 - full - blink;

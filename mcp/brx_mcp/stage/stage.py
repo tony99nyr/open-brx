@@ -1296,8 +1296,7 @@ class GunStage:
                     if not live():
                         return
         else:                                         # a gain: no lead, no blink, ever -- step up immediately
-            if not rapid:
-                await paint(prev)
+            await paint(prev)                        # engine.js: `step(from)` unconditionally, rapid or not
             for l in range(prev + 1, target + 1):
                 await paint(l)
                 if l != target:
