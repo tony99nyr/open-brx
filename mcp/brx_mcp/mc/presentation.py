@@ -84,7 +84,7 @@ EVENTS: dict[str, dict] = {
     "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=None,  headset=None),
     "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=None, headset=None),
     "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=None,   headset=None),
-    "low_health":    dict(source="hud", group="player",    desc="armour gone, HP dropping: the player's own hurt loop, once per life", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
+    "low_health":    dict(source="hud", group="player",    desc="HP below 20: the player's own hurt loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
     "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),

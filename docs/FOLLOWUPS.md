@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F47 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. Next free F is F47.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F49 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. Next free F is F49.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -452,6 +452,20 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   accuracy), both in the protocol doc's UNVERIFIED list. Probe: flip t21/t22 on one weapon and count `$HIR` against
   `$ALCD` shots. If they gate the gun's own accuracy, the feature is: set the token, let the firmware miss, and the
   victim hears `H07`/`H09` go past instead of a hit. `trigger`.
+- **F47 🟡 `get maxArmor()` turns an explicit 0 into 70.** `engine.js:195` is
+  `(config.health.max_armor) || 70`, so a loadout that deliberately ships NO armour gets 70 instead. Two
+  consequences: a no-armour class silently has armour, and A17.2's dropped `maxArmor > 0` guard could never
+  have been false, so it was dead code the whole time it was relied on. Same truthiness family as F42.8's
+  `role in fixed` / `v is not None` notes. Fix with `?? 70` (or an explicit undefined check) and then add the
+  test that A17.2 could not write: a no-armour loadout must still get its low-health warning. `build`.
+- **F48 🟡 A heartbeat pool for `low_health`** (Tony, bench 2026-09-07: "the heart beat sound could be used as
+  a pool for low health"). Fits A17.2, which moved the alert to an actual threshold (HP under 20) -- a heartbeat
+  says "you are nearly dead" in a way a hurt-breath loop does not, and `low_health` is once per life so a longer
+  clip is affordable. NOT YET AUDITIONED and must not be picked by shape (F43). The catalog has no literal
+  "heart" match; the shape candidates are the lowest-centroid pulsing clips in the bank -- `N74` (1.94 s,
+  centroid 186, sustained), `N75` (2.86 s, centroid 201, varying) and `N25` (2.51 s, centroid 315) -- none of
+  which any ear has heard. Today the event plays `voice:hurt_loop` (the character's own breathing, `V06`/`V16`/
+  …), which could become a two-take pool with a heartbeat rather than being replaced. `ears`.
 - **F43 🔴 SOUND PICKS BY ACOUSTIC SHAPE ARE NOT TRUSTWORTHY — do not repeat the method.** Every id in the first
   `hitaudio.py` was chosen from `sound_catalog.json` by envelope / flatness / centroid / duration. NOT ONE survived
   a listen on 2026-09-07. Signal features separate TONAL from NOISY; they cannot separate METAL from ELECTRONIC

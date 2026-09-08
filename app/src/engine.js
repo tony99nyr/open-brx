@@ -34,6 +34,11 @@ const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850
 const EVENT_MIN_GAP_MS = 1000;
 const READOUT_COALESCE_MS = 300;    // A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again
 const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
+// A17.2: HP at or below which the once-per-life low-health alert fires (Tony, bench 2026-09-07: "when
+// total hp is under 20"). ABSOLUTE, not a fraction of maxHp -- which is right for the 45 HP default and
+// generous on a 75 HP guardian, but fires early on a 35 HP scout. If small-pool loadouts need their own
+// value this wants plumbing through the bundle like `voice.pain_long_min` does.
+const LOW_HEALTH_HP = 20;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
@@ -1211,14 +1216,21 @@ export class Engine {
     const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
-    // Victim-side low-health alert. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15 once per life
+    // Victim-side low-health alert, once per life. Callsign sends $PLAY,VA8B + $HLED,7,4,90,90,10,15
     // shortly after ARMOUR reaches 0 and HP starts dropping (capture 2026-08-23-two-tagger-combat:
     // 2 deaths, 2 alerts, both at $HP,34,0,0). We sent neither, which is why our headsets stayed dark.
+    //
+    // A17.2 (Tony, bench 2026-09-07: "low_health shouldn't be used there. it should be used when total
+    // hp is under 20"): it now fires on an ACTUAL HEALTH THRESHOLD, not on armour running out. The old
+    // condition (armour 0 AND any HP lost) fired on the FIRST health hit of a life -- at 44/45 HP if
+    // that is where you were -- so an alert named "low health" meant "your armour just failed". A17 made
+    // that impossible to ignore rather than causing it: health hits are now silent from the gun, so this
+    // alert became the ONLY sound on the armour->health transition and read as the hit sound itself.
+    // The `maxArmor > 0` guard is gone with it: a HP threshold is meaningful whether or not the loadout
+    // ever had armour, which is what that guard was working around.
     let hurtNow = false;
     if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
-        // maxArmor 0 means the player never HAD armour, so "armour is gone" is not a state change —
-        // without this the alert fires on the first scratch of such a loadout (review 2026-09-01).
-        && !this.hurtFired && this.maxArmor > 0 && this.armor === 0 && this.hp > 0 && this.hp < this.maxHp) {
+        && !this.hurtFired && this.hp > 0 && this.hp < LOW_HEALTH_HP) {
       this.hurtFired = true; hurtNow = true;
       const c = this.frames && this.frames.cues;
       const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];

@@ -27,6 +27,7 @@ from ..mc.state import default_config
 SFLASH = "$SFLASH,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
+LOW_HEALTH_HP = 20             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
@@ -167,6 +168,7 @@ class GunStage:
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         self._pending: list[asyncio.Task] = []
+        self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
         self.config: dict = {}
         self.bundle: dict = {}
         self.walk: dict | None = None          # the guided walkthrough (walk_start / walk_verdict)
@@ -591,9 +593,45 @@ class GunStage:
                 await self.sleep(hold)
 
     def _spawn_task(self, coro) -> None:
-        t = asyncio.get_event_loop().create_task(coro)
+        """Schedule a reaction, from EITHER the asyncio loop thread or a BLE notification thread.
+
+        ⚠ 2026-09-07, measured on hardware: this used to be a bare
+        `asyncio.get_event_loop().create_task(coro)`. `_on_frame` — the instant path — runs INSIDE the
+        BLE backend's notify callback, which is not the loop thread, and off-thread `get_event_loop()`
+        does not return the running loop (3.12 raises). ble.py wraps the callback in try/except so a
+        callback bug cannot drop the link, so the failure was SILENT: the instant reaction never ran and
+        the frame was only handled later by the 0.2 s fallback poll. Cost: ~600 ms from the gun
+        reporting a hit to the first frame we wrote, against ~150 ms for the gun to report it at all —
+        i.e. our own bench tool was four times slower than the hardware it was measuring, and the
+        'event-driven' rewrite that was supposed to fix it was never actually on the fast path.
+
+        Now the loop is captured once (`bind_loop`) and a call from another thread is handed to it with
+        `call_soon_threadsafe`. Same failure shape as everything else tonight: it reported success (a
+        task object) while doing nothing.
+        """
+        loop = self._loop
+        if loop is not None:
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is not loop:                     # called from the BLE notify thread
+                loop.call_soon_threadsafe(self._spawn_on_loop, coro)
+                return
+        self._spawn_on_loop(coro)
+
+    def _spawn_on_loop(self, coro) -> None:
+        t = (self._loop or asyncio.get_event_loop()).create_task(coro)
         self._pending.append(t)
         self._pending = [x for x in self._pending if not x.done()]
+
+    def bind_loop(self, loop=None) -> None:
+        """Remember the loop reactions must run on. Called once from the server's lifespan (and by
+        `connect()`), so `_spawn_task` can hand work over from the BLE notify thread."""
+        try:
+            self._loop = loop or asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
 
     # ---- game -------------------------------------------------------------------------------------
     async def arm(self) -> dict:
@@ -659,7 +697,7 @@ class GunStage:
         await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
-        self.event("respawned", sound=False)                     # the lights; the sound went out with the revive write
+        self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
         if hs.get("respawn"):
             self._headset(hs["respawn"], "headset respawn")
@@ -692,7 +730,7 @@ class GunStage:
     async def game_end(self, outcome: str = "game_over") -> dict:
         """What the phone does at the whistle: the game_over / victory cue (+ its burst), then the end frames.
         Walkthrough 2026-09-04: the END step wrote only the teardown and was failed for having no sound."""
-        self.event(outcome if outcome in ("game_over", "victory", "survivors_win") else "game_over")
+        self._event_now(outcome if outcome in ("game_over", "victory", "survivors_win") else "game_over")
         await self.sleep(1.2)
         return await self.end()
 
@@ -711,7 +749,21 @@ class GunStage:
     def event(self, kind: str, sound: bool = True) -> dict:
         """Play cues[kind] + leds[kind] like engine.js `_event`: the LED burst is gated to one per second,
         a static $HLED step is skipped while down and yields to a newer headset sequence. `sound=False` =
-        the lights only (revive already wrote the spawn line, A15.2)."""
+        the lights only (revive already wrote the spawn line, A15.2).
+
+        ⚠ Returns `self.state()` because the HTTP layer wants it — and `state()` is EXPENSIVE (measured
+        527-658 ms on hardware 2026-09-07: it rebuilds the bundle view, the walkthrough plan and the
+        sound-catalog descriptions). `_on_pools` calls this synchronously on every hit, so that cost sat
+        directly between the gun reporting a hit and us painting the pool readout — the whole ~600 ms
+        "LED lag" Tony saw at the bench, with nothing to do with BLE, the emitter or the firmware (which
+        reports a hit in ~150 ms). Internal callers must use `_event_now()`, which does the work and
+        returns nothing; only the HTTP action pays for the state build.
+        """
+        self._event_now(kind, sound)
+        return self.state()
+
+    def _event_now(self, kind: str, sound: bool = True) -> None:
+        """`event()` without the state build — the path every in-game reaction uses (see the warning there)."""
         cues = self.bundle.get("cues", {})
         cue, tag = self._pick_cue(kind) if sound else (None, "")
         if cue:
@@ -722,15 +774,14 @@ class GunStage:
         if not seq:
             if not cue and kind not in cues:
                 self._log(f"event {kind}: nothing configured in this profile", "warn")
-            return self.state()
+            return
         t = self.now()
         if self._last_event_led is not None and t - self._last_event_led < EVENT_MIN_GAP_S:
             self._log(f"event {kind}: LED burst dropped (another inside 1 s)", "info")
-            return self.state()
+            return
         self._last_event_led = t
         steps = [s for s in seq if not (str(s[0]).startswith("$HLED") and not self.alive)]
         self._spawn_task(self._event_leds(steps, kind))
-        return self.state()
 
     async def _event_leds(self, steps: list, kind: str) -> None:
         await self._seq(steps, f"event led {kind}")
@@ -973,7 +1024,7 @@ class GunStage:
         if hp == 0 and self.alive:
             self.alive = False
             self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset", "info")
-            self.event("died")
+            self._event_now("died")
             if hs.get("death"):
                 self._headset(hs["death"], "headset death")
             down = hs.get("down")
@@ -984,12 +1035,15 @@ class GunStage:
 
         if dmg > 0 and self.alive:
             hurt_now = False
-            if armor == 0 and hp < self.max_hp and not self._hurt_fired and self.max_armor > 0:
+            # A17.2 (Tony, bench 2026-09-07): an ACTUAL health threshold, not "armour just ran out". The
+            # old condition fired on the FIRST health hit of a life, so an alert named "low health" meant
+            # "your armour failed" -- audible at 44/45 HP. Mirrors engine.js.
+            if hp > 0 and hp < LOW_HEALTH_HP and not self._hurt_fired:
                 self._hurt_fired = True; hurt_now = True
                 fr = [cues.get("hurt", ""), cues.get("hurt_led", "")]
                 self._hs_gen += 1
                 self._spawn_task(self.write(fr, "low health", gap_ms=0))
-            self.event("hit_taken")
+            self._event_now("hit_taken")
             self._pain(dmg, self._last_hir_proto, moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
             if hs and not hurt_now:
                 # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
