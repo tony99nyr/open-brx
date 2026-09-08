@@ -123,8 +123,10 @@ MATERIAL_ROLES = ("hit_hp", "hit_armor", "hit_shield", "hit_crit")
 # firmware gives us no mixing control.
 MATERIAL_POOLS: dict[str, tuple[str, ...]] = {
     # HEALTH IS SILENT, ON PURPOSE (Tony, bench 2026-09-07: "yeah that's way better, lock it in").
-    # An EMPTY `$PSET` field makes the firmware play nothing (the A15.2/A15.3 mechanism), so a hit that
-    # reaches health makes NO firmware sound -- and the only thing the player hears is the node's own pain
+    # An empty `hitHp` makes the firmware play nothing HERE -- not by the A15.2/A15.3 voice-field rule,
+    # which does not hold for the effect slots (see the fallthrough finding above), but because health is
+    # the INNERMOST pool and has nothing further in to fall through to. So a hit that reaches health
+    # makes NO firmware sound -- and the only thing the player hears is the node's own pain
     # grunt, which fires on exactly these hits (A17.1). THE ABSENCE IS THE SIGNAL: armour rings, and real
     # damage is the moment the metal STOPS and a human sound starts. Contrast by subtraction.
     #

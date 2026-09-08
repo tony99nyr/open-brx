@@ -597,7 +597,21 @@ export class Engine {
   _gunReadoutPaintLevels(readout, entry, pool) {
     const level = this._readoutLevel(entry);
     this._readoutLastPool = pool;
+    // A16.3 polish (2026-09-07): the "from" level is tracked PER POOL. It used to be one shared
+    // `_roLevel`, so if the strip had last shown a different pool (shield at 4, say) and a later hit
+    // finally broke into health, health animated from SHIELD's level -- a wrong-sized drop, or none at
+    // all when the numbers happened to match. `stage.py` already kept a per-pool map, so the bench would
+    // have looked right while the phone players actually use did not.
+    this._roLevels = this._roLevels || {};
+    const shown = this._roPool === pool ? this._roLevel : this._roLevels[pool];
     if (this._roPool === pool && this._roLevel === level) return;
+    // Photosensitivity: every retrigger replays a dark->lit transition, and the ceiling is 3 light-ups in
+    // any one second (poolgauge's own "looks like it's having a seizure" warning). Under automatic fire a
+    // level can change several times a second, so coalesce: inside the window, retarget WITHOUT replaying
+    // the lead + all-off blink -- step straight to the new level from where the strip already is.
+    const now = this.now();
+    const rapid = this._roLastStartAt != null && (now - this._roLastStartAt) < (readout.min_gap_ms != null ? readout.min_gap_ms : 400);
+    this._roLastStartAt = now;
     // A16.3 (polish 2026-09-07): on a life's FIRST paint for a pool there is no `_roLevel` yet. Settling
     // straight in would mean the first hit of EVERY life has no drop animation -- health and armour start
     // full, so that is the commonest case there is, and it is exactly the moment the animation is for
@@ -605,8 +619,8 @@ export class Engine {
     // stage.py seeds its own per-pool state at spawn and DID animate here, so the operator would have been
     // shown a sequence the phone never plays. Animate from the pool's FULL level instead (the level it was
     // sitting at, undisplayed, before this change), which is what the stage does.
-    const from = this._roLevel != null ? this._roLevel : this._readoutFullLevel(entry, pool);
-    this._readoutAnimStart(readout, entry, pool, from, level);
+    const from = shown != null ? shown : this._readoutFullLevel(entry, pool);
+    this._readoutAnimStart(readout, entry, pool, from, level, rapid);
   }
   /** A16.3: the level a pool sits at when a life starts, used as the "from" for its first animation.
    *  Health and armour spawn FULL (top level); shield spawns EMPTY on real hardware (it is IR-granted
@@ -621,7 +635,7 @@ export class Engine {
    *  see the explicit bumps in `_death`/`_gunTake` — plus `_lightGen`, shared with every other delayed
    *  light write, for the teardown case (end/panic/BLE drop). Writes only frames the bundle supplied
    *  (`entry.levels[l][0/1]`); it never composes a `$GLED` itself (A4.2). */
-  _readoutAnimStart(readout, entry, pool, from, to) {
+  _readoutAnimStart(readout, entry, pool, from, to, rapid) {
     const gen = (this._roGen = (this._roGen || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);
     this._roPool = pool; this._roAnimating = true;
@@ -632,6 +646,7 @@ export class Engine {
     const paint = (lvl, why) => {
       const f = entry.levels[lvl] && entry.levels[lvl][0];
       this._roLevel = lvl;
+      (this._roLevels = this._roLevels || {})[pool] = lvl;   // per-pool memory: what THIS pool last showed
       if (f) { this._readoutFrame = f; this._write([f], `readout ${pool} anim ${why}`); }
     };
     const step = cur => {
@@ -643,6 +658,11 @@ export class Engine {
     };
     if (to === from) { paint(to, 'settle'); this._readoutSettle(gen, lg, readout, entry, pool, to); return; }
     if (to > from) { step(from); return; }   // gain: same steps, no initial lead/blink-gap
+    // `rapid` = another change inside the min gap. Step straight down from where the strip already is,
+    // skipping the lead freeze and the all-off blink: replaying those under automatic fire is what would
+    // put more than three light-ups in a second (the photosensitivity ceiling), and the information --
+    // the bar getting shorter -- is carried by the steps, not by the blink.
+    if (rapid) { step(from); return; }
     // drop: freeze the level we were AT solid for lead_ms (this is Tony's "show current health in one
     // blink" -- it also stops a running blink outright, since the from-level may have been blinking), one
     // all-off blink for blink_gap_ms, then step down.
@@ -1380,7 +1400,12 @@ export class Engine {
     // ever had armour, which is what that guard was working around.
     let hurtNow = false;
     if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
-        && !this.hurtFired && this.hp > 0 && this.hp < LOW_HEALTH_HP) {
+        // `dmg > 0` mirrors stage.py, which imposes it structurally (its check is nested inside
+        // `if dmg > 0`). Without it a ZERO-damage $HP frame -- a heal or regen tick, or a plain resend --
+        // could trip the alert while merely LEAVING you under the threshold, and a heal is the opposite
+        // of the news this alert exists to carry. A genuinely damaging drop always has dmg > 0, so
+        // nothing real is lost. Found by review 2026-09-07: the two mirrors had diverged here.
+        && !this.hurtFired && dmg > 0 && this.hp > 0 && this.hp < LOW_HEALTH_HP) {
       this.hurtFired = true; hurtNow = true;
       const c = this.frames && this.frames.cues;
       const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];

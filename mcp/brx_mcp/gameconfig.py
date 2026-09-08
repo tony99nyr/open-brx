@@ -69,8 +69,10 @@ _PSET_FOOT = _PSET_FOOT_INHERITED                                               
 def pset_foot(hits: dict | None = None) -> list[str]:
     """The eight shared (non-voice) `$PSET` tail tokens, with the four A17 hit slots overridable.
 
-    `hits` = `{hitaudio.MATERIAL_ROLES role: sound id}`; a role it omits keeps the inherited id, so a
-    caller that passes nothing gets the byte-identical frame we have always sent."""
+    `hits` = `{hitaudio.MATERIAL_ROLES role: sound id}`. A role it omits gets the EAR-CONFIRMED default
+    (`hitaudio.MATERIAL_DEFAULT`), NOT Callsign's inherited id -- A17 deliberately changed the shipped
+    bytes, because three of the four inherited ids were wrong on the bench. Only the tokens outside the
+    four hit slots and `energyShieldLoop` are still inherited untouched."""
     from .hitaudio import MATERIAL_DEFAULT, MATERIAL_ROLES, SHIELD_LOOP, SHIELD_LOOP_INDEX
     foot = list(_PSET_FOOT_INHERITED)
     foot[SHIELD_LOOP_INDEX] = SHIELD_LOOP     # A17: Callsign's A10 LOOPS a geiger tick while shield is up

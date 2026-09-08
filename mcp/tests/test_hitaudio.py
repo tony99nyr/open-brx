@@ -129,6 +129,7 @@ def test_in_place_plan_moves_nobody_and_still_gives_every_used_row_a_sound():
     ids = ["assault_rifle", "shotgun", "sniper_rifle", "rocket_launcher", "melee"]
     entries = _entries(c, ids)
     plan = H.plan_in_place(entries)
+    assert len(entries) >= 4, "fixture lost its weapons; the all() below would pass on an empty list"
     assert all(plan.cells[e.weapon_id] == e.cell for e in entries), "in-place plan must not re-key"
     rows = c.sir_table(plan, random.Random(2), class_sounds=True)
     cells = C._sir_cells(rows)
@@ -227,6 +228,7 @@ def test_rekeying_is_off_unless_the_config_explicitly_asks_for_it():
     roster = [{"loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}]
     sir = C._sir_index(C._SIR_TABLE)
     stock = {e.weapon_id: e.cell for e in _entries(c, ["assault_rifle", "shotgun", "melee"])}
+    assert len(stock) == 3, "fixture lost its weapons; the all() below would pass on an empty dict"
 
     # 1. the config key ABSENT (not False -- absent) must resolve to the safe path
     for cfg in ({}, {"hit_audio_rekey": False}):
@@ -236,10 +238,11 @@ def test_rekeying_is_off_unless_the_config_explicitly_asks_for_it():
     # 2. and a head compiled with no plan at all must arm the stock cells, whatever else changes
     b = C.golden_bundle()
     assert b["hit_audio"]["rekey"] is False
-    for f in b["head"]:
-        if f.startswith("$WEAP"):
-            t = f.split(",")
-            assert (t[4] or "0", t[5] or "0") in sir, "a no-plan head armed a cell the stock table lacks"
+    weap = [f for f in b["head"] if f.startswith("$WEAP")]
+    assert len(weap) >= 2, "no $WEAP frames: the loop below would check nothing"
+    for f in weap:
+        t = f.split(",")
+        assert (t[4] or "0", t[5] or "0") in sir, "a no-plan head armed a cell the stock table lacks"
 
 
 def test_health_is_silent_only_because_nothing_lies_further_inward():
@@ -386,3 +389,43 @@ def test_a_PER_PLAYER_plan_would_break_cross_gun_coverage():
     for shooter in heads:
         for victim in heads:
             assert not (weap_cells(shooter) - sir_cells(victim)), "one shared plan must cover every gun"
+
+
+def test_a_player_whose_weapons_the_pinned_plan_never_saw_falls_back_to_STOCK_cells():
+    """Why pinning the plan (state._hit_plan) is safe for a LATE JOINER, and not merely a smaller window.
+
+    The pin is taken at `push_config()`. A player who joins after it -- hydrated on their first hello, or
+    resent after a loadout change -- may carry a weapon family the pinned plan never allocated a cell for.
+    `Plan.cell_for()` then returns None, `Compiler._rekey` returns the frame UNCHANGED, and that weapon
+    stays on its STOCK cell. Every gun's table always keeps the stock rows (`sir_table` never removes
+    one), so the late joiner's hits still register on everyone and everyone's still register on them.
+
+    That is the whole safety argument for the pin, and it rests on two behaviours that look incidental --
+    a None cell being a no-op, and stock rows never being dropped. Pinned here so neither can be
+    'simplified' into a silent hit-dropping bug."""
+    c = C.default_compiler()
+    teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}]
+    cfg = {"config_id": "a17-late", "mode": "tdm", "environment": "indoor", "night": False,
+           "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
+           "scoring": {"frag_limit": 0, "win_by": "kills"},
+           "health": {"max_hp": 45, "max_armor": 70}, "teams": teams, "hit_audio_rekey": True}
+    early = {"player_id": "p1", "player_num": 1, "display": "A", "team_id": "blue", "node_id": None,
+             "gun_id": None, "voice": "male", "ready": True,
+             "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}
+    late = {**early, "player_id": "p2", "player_num": 2,
+            "loadout": {"weapons": [{"weapon_id": "rocket_launcher"}, {"weapon_id": "plasma_sniper"}]}}
+
+    plan = c.hit_plan([early], rekey=True)                 # pinned BEFORE the late joiner exists
+    assert plan.cell_for("rocket_launcher") is None, "fixture no longer exercises an unknown weapon"
+
+    def cells(head, pfx):
+        return {((f.split(",")[4] or "0"), (f.split(",")[5] or "0")) for f in head if f.startswith(pfx)}
+    heads = {k: c.compile(cfg, p, teams, plan=plan)["head"] for k, p in (("early", early), ("late", late))}
+    for h in heads.values():
+        C.assert_sir_covers_weapons(h)
+
+    late_weap = cells(heads["late"], "$WEAP")
+    assert late_weap, "no $WEAP frames: the checks below would pass on an empty set"
+    for name, h in heads.items():
+        sir = set(C._sir_cells([f for f in h if f.startswith("$SIR")]))
+        assert not (late_weap - sir), f"{name}'s table misses a late joiner's cell: {sorted(late_weap - sir)}"

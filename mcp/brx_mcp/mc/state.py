@@ -1288,7 +1288,14 @@ class Session:
         cannot catch it -- it checks ONE head's internal consistency, never cross-player agreement.
         Inert while `hit_audio_rekey` is off (cells never move), and a live landmine the moment it is on.
 
-        `push_config()` clears the pin, so a deliberate full re-push re-derives; nothing else does."""
+        `push_config()` clears the pin, so a deliberate full re-push re-derives; nothing else does.
+
+        A LATE JOINER whose weapons the pinned plan never saw degrades SAFELY rather than dangerously:
+        `Plan.cell_for()` returns None, `Compiler._rekey` returns the frame unchanged, and that weapon
+        stays on its STOCK cell -- which every gun's table always carries, because `sir_table` never
+        removes a stock row. So their hits still register on everyone and everyone's on them. That rests
+        on two behaviours that look incidental (a None cell being a no-op; stock rows never dropped), so
+        it is pinned by `test_a_player_whose_weapons_the_pinned_plan_never_saw_falls_back_to_STOCK_cells`."""
         fn = getattr(self.compiler, "hit_plan", None)      # a test double need not carry the whole compiler
         if fn is None:
             return None

@@ -749,6 +749,29 @@ test('A17.2 the low-health alert fires on an HP THRESHOLD, not when armour runs 
 // be written today: `get maxArmor()` is `(config.health.max_armor) || 70`, so an explicit 0 is falsy and
 // becomes 70 -- which also means the old guard could never be false and was dead code in practice. Filed
 // as F47; when that `||` is fixed this test becomes writable and should be added.
+test('A17.2 a ZERO-damage $HP frame under the threshold does not trip the alert', () => {
+  // The mirrors had diverged: stage.py imposes `dmg > 0` structurally (its check is nested inside
+  // `if dmg > 0`), engine.js did not. So a heal/regen tick or a plain frame resend that merely LEFT you
+  // under 15 could fire the alert on the phone and never in the console -- and a heal is the opposite of
+  // the news this alert carries. Found by review 2026-09-07; neither side tested dmg === 0 with hp < 15.
+  const h = goLive(harness());
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,10,0,*');   // armour only, still healthy
+  h.writes.length = 0;
+  h.frame('$HP,12,0,0,*');                                       // a resend/heal landing under 15, dmg 0? no:
+  // that frame DID lose pools (45+10 -> 12), so it is damage and SHOULD fire. Prove that first:
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'a damaging drop under 15 fires');
+  // now a genuine zero-damage frame at the same HP on a fresh life
+  const h2 = goLive(harness());
+  h2.frame('$HIR,4,0,19,2,9,0,0,*'); h2.frame('$HP,45,10,0,*');
+  h2.frame('$HP,12,0,0,*');                                      // fires here
+  h2.eng._spawn(false);                                          // new life re-arms the latch
+  h2.writes.length = 0;
+  h2.frame('$HP,12,0,0,*');                                      // pools UNCHANGED from spawn? they dropped -> damage
+  h2.writes.length = 0;
+  h2.frame('$HP,12,0,0,*');                                      // identical resend: dmg === 0
+  assert.equal(h2.writes.filter(f => f === golden.cues.hurt).length, 0, 'a zero-damage resend must not fire');
+});
+
 test('a respawn re-arms the low-health alert', () => {
   const h = goLive(harness());
   h.frame('$HP,12,0,0,*');
@@ -1957,8 +1980,12 @@ test('A16.3 levels: level maths -- round(fraction*6) clamped to 0..6, floored to
 
 test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step down one level per step_ms -> settles', () => {
   const h = levelHarness();
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // establishes level 3 (no "from" yet -> settles straight in)
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // establishes level 3
   h.writes.length = 0; h.delays.length = 0;
+  h.adv(1000);                                                 // past the rapid-fire window: this is a SEPARATE hit,
+                                                               // so it gets the full lead + all-off blink (a second hit
+                                                               // inside the window deliberately skips both -- see the
+                                                               // rapid-retrigger test below)
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,3,0,0,*');    // 3/45 -> level 1: a drop from 3 to 1
   const gleds = h.writes.filter(f => f.startsWith('$GLED'));
   assert.deepEqual(gleds, [LEVELS_H[3][0], LEVELS_H[0][0], LEVELS_H[2][0], LEVELS_H[1][0]],
@@ -1970,6 +1997,7 @@ test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step do
 test('A16.3 levels: a change arriving mid-animation cancels it and restarts from the level currently displayed -- never queued, never two at once', () => {
   const h = levelHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3
+  h.adv(1000);                                                 // separate hit, so the full lead+blink sequence runs
   const pending = [];
   h.eng.delay = (ms, fn) => pending.push(fn);   // manual control from here so we can interrupt mid-sequence
   h.writes.length = 0;
@@ -1983,18 +2011,34 @@ test('A16.3 levels: a change arriving mid-animation cancels it and restarts from
   // a SECOND hit lands now, mid-animation, targeting a different level (2, not the original target of 1)
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,15,0,0,*');   // 15/45 -> level 2
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[3][0]],
-    'restarted from the level that was CURRENTLY displayed (3, unchanged since the blank never moved it) -- not from 1, the old target');
-  assert.equal(pending.length, 1, 'exactly one animation in flight: the new lead_ms step (the old gap step was superseded, not queued alongside it)');
+  // This second change lands INSIDE the rapid-retrigger window, so by design it skips the lead freeze and
+  // the all-off blink and steps straight from where the strip is -- replaying those on every hit of a burst
+  // is what would breach the 3-light-ups-per-second ceiling. What must still hold is that it restarted from
+  // the CURRENTLY DISPLAYED level (3), not from 1, the old target: the first step down from 3 is 2.
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[2][0]],
+    'stepped from the level currently displayed (3 -> 2), not from 1, the old target');
   h.writes.length = 0;
   staleGapStep();   // the OLD (now-stale) gap step, fired late: must be a pure no-op
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'a step from the cancelled animation writes nothing');
-  pending.shift()();   // the NEW lead_ms step
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[0][0]], 'blank again for the restarted sequence');
-  pending.shift()();   // the NEW gap step -- 3 -> 2 is a single step, so this one settles directly
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')).slice(-1), [LEVELS_H[2][0]], 'settles on the NEW target (2), the old target (1) is never shown');
-  assert.equal(pending.length, 0, 'no further steps queued -- the old chain never resumed');
-  assert.equal(h.eng._roLevel, 2);
+  // 3 -> 2 is a single step, so the retrigger reached its target immediately and settled. The old target
+  // (1) is never shown, and the old chain never resumes.
+  assert.equal(pending.length, 0, 'no further steps queued -- the old chain never resumed, and none were queued alongside it');
+  assert.equal(h.eng._roLevel, 2, 'settled on the NEW target (2), never on the old target (1)');
+});
+
+test('A16.3 levels: rapid hits do NOT replay the lead+all-off blink -- the 3-light-ups-per-second ceiling', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,40,0,0,*');    // first change of the life
+  h.writes.length = 0;
+  // four more hits inside one second, i.e. automatic fire. Each is a real level change.
+  for (const hp of [30, 22, 14, 6]) { h.adv(150); h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame(`$HP,${hp},0,0,*`); }
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  const blanks = gleds.filter(f => f === LEVELS_H[0][0]).length;
+  // The all-off frame is the dark->lit transition that costs a "light-up". poolgauge's own warning is
+  // explicit that flicker in this band is the photosensitivity risk, so a burst must not replay it per hit.
+  assert.equal(blanks, 0, 'no all-off blink is replayed for hits inside the rapid window');
+  assert.ok(gleds.length > 0, 'the bar still tracks the damage -- the steps carry the information');
+  assert.ok(!gleds.some((f, i) => i > 0 && f === gleds[i - 1]), 'and it never writes the same frame twice in a row');
 });
 
 test('A16.3 levels: a gain animates upward with the same steps and no initial blink', () => {

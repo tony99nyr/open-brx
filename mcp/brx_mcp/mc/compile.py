@@ -613,6 +613,11 @@ class Compiler:
             cell = (f[T["proto"] + 1] or "0", f[T["subtype"] + 1] or "0")
         except (IndexError, ValueError, KeyError):
             return None
+        # ⚠ `sir.get(cell, 0)` defaults an UNCOVERED cell's function to 0. Inert today -- every catalogued
+        # weapon's stock cell is in `_SIR_TABLE` -- but if a future weapon lands on a cell the table lacks
+        # AND `hit_audio_rekey` is on, the re-key would write its new row with fn 0 and silently change
+        # that weapon's damage class. `assert_sir_covers_weapons` checks a row EXISTS for the cell, never
+        # that the function is right, so nothing would catch it. Review 2026-09-07; see FOLLOWUPS F49.
         return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, sir.get(cell, 0))
 
     def hit_plan(self, roster, rekey: bool = False) -> "_ha.Plan":
