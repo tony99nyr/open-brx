@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F52 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B24 · D5 · E8 · F53 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -116,6 +116,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
+
+- **F52 🟢** the A16.3 readout timings (lead 180 / blink-gap 80 / step 120 / blink 400 ms) exist in THREE places:
+  authoritative in `poolgauge.py` (`READOUT_LEAD_MS` etc.), and again as fallback literals in `engine.js` and
+  `stage.py`. MC always ships them so the fallbacks are dead today, but if the numbers are ever retuned at the
+  bench without touching both consumers, the fallback path silently disagrees — the same shape as the level
+  rounding that DID diverge (Python banker's vs JS half-up, fixed 2026-09-07). Either drop the fallbacks and
+  require the fields, or generate the consumers' copies. `build`.
 
 - **F49 🔴 UNEXPLAINED, and it contradicts our reading of polarity.** Bench 2026-09-07, gun on `$TID,1`, armed by
   the stage, `$GSET` friendly fire OFF, one emitter, shots seconds apart: a shot claiming **team 1 (the gun's OWN

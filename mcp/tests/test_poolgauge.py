@@ -78,6 +78,77 @@ def test_readout_bands_highest_first_with_the_readout_mapping_colours():
     assert dim[0][1] == f"$GLED,{pg.GREEN},{pg.GREEN},{pg.GREEN},0,{pg.BRIGHT_DIM},,*"
 
 
+# --- A16.3: the 7-level bar with a drop animation ---------------------------- #
+
+def test_level_for_never_reports_zero_for_a_nonzero_pool():
+    """A16.3: extends `_segments`' "1 HP must not look like dead" rule to the finer 7-level scale."""
+    assert pg.level_for(1, 45) == 1
+    assert pg.level_for(0, 45) == 0
+    assert pg.level_for(45, 45) == 6
+    assert pg.level_for(0, 0) == 0
+    for hp in range(1, 46):
+        assert pg.level_for(hp, 45) >= 1, hp
+
+
+def test_readout_levels_table_is_exactly_seven_long_per_pool():
+    for pool in ("shield", "armor", "health"):
+        levels = pg.readout_levels(pool)
+        assert len(levels) == 7
+        for entry in levels:
+            assert len(entry) == 2
+
+
+def test_readout_levels_partial_levels_blink_whole_levels_do_not():
+    """Odd levels (5, 3, 1) are the PARTIAL ones and must carry a real blink frame; even levels
+    (6, 4, 2, 0) are WHOLE and must not."""
+    levels = pg.readout_levels("shield")
+    for level in (5, 3, 1):
+        assert levels[level][1] is not None, f"level {level} must blink"
+    for level in (6, 4, 2, 0):
+        assert levels[level][1] is None, f"level {level} must not blink"
+
+
+def test_readout_levels_blink_frame_drops_only_the_top_segment():
+    levels = pg.readout_levels("shield")
+    # level 5: 2 solid + 3rd blinking -- solid lights all 3, blink drops just the 3rd
+    assert levels[5][0] == pg.segment_frame(pg.WHITE, 3)
+    assert levels[5][1] == f"$GLED,,,{pg.DARK},0,10,,*"
+    # level 3: 1 solid + 2nd blinking
+    assert levels[3][0] == pg.segment_frame(pg.WHITE, 2)
+    assert levels[3][1] == f"$GLED,,{pg.DARK},,0,10,,*"
+    # level 1: 1st blinking, down to dark
+    assert levels[1][0] == pg.segment_frame(pg.WHITE, 1)
+    assert levels[1][1] == f"$GLED,{pg.DARK},,,0,10,,*"
+    # level 6/0 are the whole full/empty frames, no blink
+    assert levels[6][0] == pg.segment_frame(pg.WHITE, 3) and levels[6][1] is None
+    assert levels[0][0] == pg.segment_frame(pg.WHITE, 0) and levels[0][1] is None
+
+
+def test_readout_levels_health_hue_shifts_as_the_level_falls():
+    """Health's per-level hue follows the same bands as `HEALTH_BANDS` (green above 2/3, yellow above
+    1/3, else red) as the bar itself shortens, unlike shield/armour's constant hue."""
+    health = pg.readout_levels("health")
+    assert health[6][0] == pg.segment_frame(pg.GREEN, 3)
+    assert health[4][0] == pg.segment_frame(pg.GREEN, 2)
+    assert health[3][0] == pg.segment_frame(pg.YELLOW, 2)
+    assert health[2][0] == pg.segment_frame(pg.YELLOW, 1)
+    assert health[1][0] == pg.segment_frame(pg.RED, 1)
+    armor = pg.readout_levels("armor")
+    assert armor[6][0] == pg.segment_frame(pg.PURPLE, 3) and armor[2][0] == pg.segment_frame(pg.PURPLE, 1)
+
+
+def test_readout_levels_night_dims_every_frame_in_the_table():
+    for pool in ("shield", "armor", "health"):
+        night = pg.readout_levels(pool, night=True)
+        day = pg.readout_levels(pool, night=False)
+        for lvl in range(7):
+            assert night[lvl][0].split(",")[5] == str(pg.BRIGHT_DIM)
+            assert day[lvl][0].split(",")[5] == str(pg.BRIGHT_FULL)
+            if night[lvl][1] is not None:
+                assert night[lvl][1].split(",")[5] == str(pg.BRIGHT_DIM)
+                assert day[lvl][1].split(",")[5] == str(pg.BRIGHT_FULL)
+
+
 def test_segment_frame_lights_only_the_first_n_leds():
     assert pg.segment_frame(pg.WHITE, 0) == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,10,,*"
     assert pg.segment_frame(pg.WHITE, 1) == f"$GLED,{pg.WHITE},{pg.DARK},{pg.DARK},0,10,,*"
@@ -340,3 +411,23 @@ def test_teardown_cancels_a_burst_in_flight():
     # cancel removed until it checked the task itself.
     assert task.cancelled() or task.done(), "teardown emptied the dict but left the burst running"
     assert not d._bursts
+
+
+def test_level_for_rounds_half_UP_like_javascript_not_bankers_like_python():
+    """The node computes its own level in JS (`engine.js _readoutLevel`, `Math.round`), MC compiles the
+    frame table this level indexes, and the bench stage delegates here to PREDICT the phone. Python's
+    round() is round-half-to-EVEN and JS's Math.round is round-half-UP, so a plain round() here puts MC
+    and the stage on a different level from the phone at every exact .5 -- e.g. 3/4 of a pool is 4.5
+    levels: round(4.5) == 4 in Python, 5 in JS. Narrow, but a stage that disagrees with the phone is
+    worse than no stage. Polish round 2026-09-07.
+    """
+    import math
+    for maximum in (44, 45, 70, 24, 6):
+        for value in range(0, maximum + 1):
+            frac = value / maximum
+            js = max(0, min(6, math.floor(frac * 6 + 0.5)))
+            if value > 0:
+                js = max(js, 1)                     # the shared floor-to-1 rule, mirrored in engine.js
+            assert pg.level_for(value, maximum) == js, (value, maximum)
+    # the exact half that banker's rounding gets wrong, spelled out so a regression names itself
+    assert pg.level_for(33, 44) == 5, "3/4 of a pool is level 5 (JS Math.round(4.5)), not 4"

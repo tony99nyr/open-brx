@@ -939,8 +939,14 @@ test('a hit paints the gun readout (not a multi-step burst); death writes nothin
   const armorEntry = readout.pools.find(p => p.pool === 'armor');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');             // armour-only hit: 61/70 -> the top armour band
-  const band = armorEntry.bands.find(b => (61 / armorEntry.max) > b[0]) || armorEntry.bands[armorEntry.bands.length - 1];
-  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [band[1]], 'one readout write for the pool that moved, not a several-step burst');
+  // A16.3 (2026-09-07): a hit now ANIMATES rather than painting once -- this is the life's FIRST armour
+  // change, so it drops from full. What must still hold is that the readout is doing it, with frames the
+  // bundle compiled for THIS pool, and not the old three-flash event burst (which no longer exists here).
+  const gled = h.writes.filter(f => f.startsWith('$GLED'));
+  const armourFrames = new Set(armorEntry.levels.flat().filter(Boolean));
+  assert.ok(gled.length >= 1, 'the hit paints the readout');
+  assert.ok(gled.every(f => armourFrames.has(f)), 'every write is a compiled ARMOUR level frame -- the readout, not an event burst');
+  assert.ok(!gled.some((f, i) => i > 0 && f === gled[i - 1]), 'no frame written twice in a row');
   h.writes.length = 0;
   h.adv(1500);
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');              // death
@@ -954,10 +960,8 @@ test('a silenced bundle (no leds, empty announcer cues, no gun readout) plays no
   // A real silenced bundle mutes the ANNOUNCER groups: the compiler emits "" for those cues and ships no
   // kill pool at all (verified against Compiler().compile with preset "silenced"), so mirror both here.
   // led-language.md §3.5: "silenced | bursts off, readout off, hit null" -- readout.pools: [] is spelled
-  // out here explicitly. NOTE (2026-09-07): read presentation.py's "silenced" PRESETS entry directly and
-  // it does NOT yet empty `gun.readout.pools` (only `gun_flash`/`announcer`/`events` are cleared) -- flagged
-  // to the MC lane as a likely gap there; this fixture still mirrors what the spec says a CORRECT compile
-  // must ship, so this test proves the node's own behaviour is right independent of that gap.
+  // spelled out here explicitly. (The gap this note used to flag -- presentation.py's "silenced" preset not
+  // emptying `gun.readout.pools` -- was FIXED on 2026-09-07; the preset now ships no readout at all.)
   const silenced = { ...h.bundle, leds: {}, cues: { ...h.bundle.cues, kill: '', multi: '', medal: '' },
     cue_pools: { ...h.bundle.cue_pools, kill: undefined },
     gun: { ...h.bundle.gun, readout: { ...h.bundle.gun.readout, pools: [] } } };
@@ -1914,4 +1918,160 @@ test('A16 §D: the start and respawn headset flash are scheduled 1.0 s after $SP
   assert.ok(h.writes.includes('$SPAWN,,*'), 'revive wrote $SPAWN');
   assert.ok(h.delays.includes(1000), 'the respawn flash is scheduled at +1.0 s too');
   for (const f of h.bundle.headset.respawn.map(x => x[0])) assert.ok(h.writes.includes(f), 'respawn frame missing: ' + f);
+});
+
+// ── A16.3 (bar-spec 2026-09-07): the seven-level pool bar + drop/gain animation ──────────────────────
+// A `gun.readout.pools[]` entry with a `levels` table (exactly 7, index 0..6, `[solid, blink|null]`)
+// drives this path instead of the plain `bands` path above -- entirely separate, so every `bands` test
+// above this section is the "graceful fallback" proof: it never once exercises this code.
+const LV = i => `$GLED,H${i},*`;
+const LVB = i => `$GLED,H${i}B,*`;
+const LEVELS_H = [0, 1, 2, 3, 4, 5, 6].map(i => [LV(i), [1, 3, 5].includes(i) ? LVB(i) : null]);
+const READOUT_LV = {
+  hold_s: 4, reload_glance_s: 2, lead_ms: 180, blink_gap_ms: 80, step_ms: 120, blink_ms: 400,
+  pools: [
+    { pool: 'shield', max: 30, levels: [0, 1, 2, 3, 4, 5, 6].map(i => [`$GLED,S${i},*`, [1, 3, 5].includes(i) ? `$GLED,S${i}B,*` : null]) },
+    { pool: 'armor', max: 70, levels: [0, 1, 2, 3, 4, 5, 6].map(i => [`$GLED,A${i},*`, [1, 3, 5].includes(i) ? `$GLED,A${i}B,*` : null]) },
+    { pool: 'health', max: 45, levels: LEVELS_H },
+  ],
+};
+function levelHarness() {
+  const h = goLive(harness()); h.eng.frames.leds = {};
+  h.eng.frames.gun = { rest: RO_REST, blank: RO_REST, after_spawn_s: 2.5, take: [RO_REST], readout: READOUT_LV };
+  h.eng._gunTake();   // fires inline: _gunTaken=true, strip at rest, _roLevel still null (nothing painted this life)
+  return h;
+}
+
+test('A16.3 levels: level maths -- round(fraction*6) clamped to 0..6, floored to 1 while the pool has anything left', () => {
+  const h = levelHarness();
+  const entry = { pool: 'health', max: 45 };
+  const at = hp => { h.eng.hp = hp; return h.eng._readoutLevel(entry); };
+  assert.equal(at(45), 6, 'full -> 6');
+  assert.equal(at(0), 0, 'empty -> 0 (the only way to see "dark")');
+  assert.equal(at(1), 1, '1 hp rounds to 0 but must never render as empty -- floored to 1');
+  assert.equal(at(2), 1, '2/45 also rounds to 0 -- same floor');
+  assert.equal(at(15), 2, '15/45 = 1/3 exactly -> round(2.0) = 2');
+  assert.equal(at(23), 3, '23/45 -> round(3.07) = 3');
+  assert.equal(at(30), 4, '30/45 = 2/3 exactly -> round(4.0) = 4');
+});
+
+test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step down one level per step_ms -> settles', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // establishes level 3 (no "from" yet -> settles straight in)
+  h.writes.length = 0; h.delays.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,3,0,0,*');    // 3/45 -> level 1: a drop from 3 to 1
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.deepEqual(gleds, [LEVELS_H[3][0], LEVELS_H[0][0], LEVELS_H[2][0], LEVELS_H[1][0]],
+    'from(3) solid, one all-off blink, step to 2, step to 1 (settle) -- in that order, no re-lighting');
+  assert.deepEqual(h.delays, [180, 80, 120], 'lead_ms, then blink_gap_ms, then one step_ms (2 -> 1 is the only intermediate step)');
+  assert.equal(h.eng._roLevel, 1, 'settled on the new level');
+});
+
+test('A16.3 levels: a change arriving mid-animation cancels it and restarts from the level currently displayed -- never queued, never two at once', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3
+  const pending = [];
+  h.eng.delay = (ms, fn) => pending.push(fn);   // manual control from here so we can interrupt mid-sequence
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,3,0,0,*');    // starts dropping toward level 1
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[3][0]], 'the from-level freeze is written immediately');
+  assert.equal(pending.length, 1, 'only the lead_ms step is queued so far');
+  pending.shift()();   // fire lead_ms: writes the all-off blink, queues the blink_gap_ms step
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')).slice(-1), [LEVELS_H[0][0]]);
+  assert.equal(pending.length, 1, 'the gap step is queued; still displaying "3" conceptually (blanked, not yet stepped)');
+  const staleGapStep = pending.shift();
+  // a SECOND hit lands now, mid-animation, targeting a different level (2, not the original target of 1)
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,15,0,0,*');   // 15/45 -> level 2
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[3][0]],
+    'restarted from the level that was CURRENTLY displayed (3, unchanged since the blank never moved it) -- not from 1, the old target');
+  assert.equal(pending.length, 1, 'exactly one animation in flight: the new lead_ms step (the old gap step was superseded, not queued alongside it)');
+  h.writes.length = 0;
+  staleGapStep();   // the OLD (now-stale) gap step, fired late: must be a pure no-op
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'a step from the cancelled animation writes nothing');
+  pending.shift()();   // the NEW lead_ms step
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[0][0]], 'blank again for the restarted sequence');
+  pending.shift()();   // the NEW gap step -- 3 -> 2 is a single step, so this one settles directly
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')).slice(-1), [LEVELS_H[2][0]], 'settles on the NEW target (2), the old target (1) is never shown');
+  assert.equal(pending.length, 0, 'no further steps queued -- the old chain never resumed');
+  assert.equal(h.eng._roLevel, 2);
+});
+
+test('A16.3 levels: a gain animates upward with the same steps and no initial blink', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,10,0,0,*');   // 10/45 -> level 1
+  h.writes.length = 0; h.delays.length = 0;
+  h.frame('$ALCD,10,100,0,384,0,*');                            // a heal: HP goes UP (armor/shield untouched)
+  h.frame('$HP,30,0,0,*');                                      // 30/45 -> level 4: a gain from 1 to 4
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.deepEqual(gleds, [LEVELS_H[2][0], LEVELS_H[3][0], LEVELS_H[4][0]], 'straight into stepping up -- no from-freeze, no all-off blink');
+  assert.deepEqual(h.delays, [120, 120], 'only step_ms delays -- no lead_ms, no blink_gap_ms');
+  assert.ok(!gleds.includes(LEVELS_H[0][0]), 'never blanks on the way up');
+  assert.equal(h.eng._roLevel, 4);
+});
+
+test('A16.3 levels: settling on a PARTIAL level blinks its top segment at blink_ms; a WHOLE level never blinks; the blink stops on hold expiry', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3 -- ODD, partial
+  h.writes.length = 0;
+  h.adv(399); h.eng.tick();
+  assert.equal(h.writes.length, 0, 'not yet -- just before blink_ms');
+  h.adv(1); h.eng.tick();
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[3][1]], 'flips to the top-segment-off half at blink_ms');
+  h.writes.length = 0;
+  h.adv(400); h.eng.tick();
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [LEVELS_H[3][0]], 'flips back to solid 400 ms later');
+  h.writes.length = 0;
+  h.adv(3201); h.eng.tick();   // total since settle: 180(lead)+80(gap)+120(step)... no -- since settle at t0, hold_s=4000 from settle; we're now at 400+400+3201=4001ms since settle
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_REST], 'hold_s elapsed -- reverts to rest, blink stops');
+  h.writes.length = 0;
+  h.adv(2000); h.eng.tick();
+  assert.equal(h.writes.length, 0, 'no further blink writes once the hold (and the blink with it) has ended');
+
+  // a WHOLE level (even) settles solid and never blinks, however long it sits there
+  const w = levelHarness();
+  w.frame('$HIR,4,0,19,2,9,0,0,*'); w.frame('$HP,30,0,0,*');   // level 4 -- EVEN, whole
+  w.writes.length = 0;
+  for (let i = 0; i < 8; i++) { w.adv(400); w.eng.tick(); }    // 3.2 s of blink_ms ticks, still inside hold_s
+  assert.equal(w.writes.length, 0, 'a whole level is rock solid -- no blink writes at all before the hold expires');
+});
+
+test('A16.3 levels: death cancels an in-flight animation outright; a stale queued step writes nothing to the gun', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3
+  const pending = [];
+  h.eng.delay = (ms, fn) => pending.push(fn);
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,3,0,0,*');    // starts dropping toward level 1
+  assert.ok(pending.length > 0, 'a step is queued');
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // a lethal hit -- death
+  h.writes.length = 0;
+  pending.forEach(fn => fn());   // every step queued before death, fired late
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no stale animation step reaches the gun after death');
+  assert.equal(h.eng._roLevel, null, 'animation state cleared on death');
+  assert.equal(h.eng._roAnimating, false);
+});
+
+test('A16.3 levels: a revive starts the next life with nothing displayed -- no stale level, no stale blink', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3, settled (odd -- blink armed)
+  assert.equal(h.eng._roLevel, 3);
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // death
+  h.adv(9000); h.eng.tick();                                    // auto respawn (delay 8 s) -> _revive -> _gunTake
+  assert.equal(h.eng._roLevel, null, 'nothing painted yet in the new life');
+  assert.equal(h.eng._roPool, null);
+  assert.equal(h.eng._roAnimating, false);
+  h.writes.length = 0;
+  h.adv(1000); h.eng.tick();   // well past any old blink_ms/hold_s -- proves nothing is still ticking from the old life
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no stray write from the previous life\'s animation');
+});
+
+test('A16.3 graceful fallback: a `bands`-only readout (no `levels` key at all) is untouched by any of the animation machinery', () => {
+  const h = readoutHarness();   // the pre-existing A16 fixture -- `bands`, no `levels`, on every pool
+  h.writes.length = 0; h.delays.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2, same as the legacy test above
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_H2], 'one immediate write, no animation steps');
+  assert.deepEqual(h.delays, [], 'no lead/gap/step delays -- the bands path never touches `this.delay`');
+  assert.equal(h.eng._roAnimating, false, 'the animation flag is never set on the bands path');
+  assert.equal(h.eng._roLevel, null, 'the levels-mode state is never touched on the bands path');
 });

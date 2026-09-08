@@ -47,6 +47,8 @@ the frame (measured 2026-09-02), so a dim gauge is not reliably readable.
 """
 from __future__ import annotations
 
+import math
+
 # The nine-colour palette, read off a gun 2026-09-02. 9 and above are dark.
 RED, BLUE, YELLOW, GREEN, PURPLE, TEAL, WHITE, PINK, ORANGE = range(9)
 DARK = 9
@@ -319,6 +321,105 @@ def readout_bands(pool: str, night: bool = False) -> list[tuple[float, str]]:
         return [(thr, segment_frame(colour, lit, night))
                 for (thr, colour), (_thr2, lit) in zip(HEALTH_BANDS, READOUT_THRESHOLDS)]
     raise ValueError(f"readout_bands: unknown pool {pool!r}")
+
+
+# ---- A16.3: the 7-level bar with a drop animation (bench spec 2026-09-07) --------------------- #
+# Tony, after seeing the 3-band version: "it should blink down like a real health bar would ... 2
+# full and 1 dim indicates a lot more stages than we have." Measured on hardware the same night:
+# brightness (`$GLED` token 5) is GLOBAL -- "2 bright + 1 dim" cannot be a dim segment, it has to be
+# a BLINKING one. 3 LEDs x (solid | blinking) gives 7 distinguishable levels, not 4.
+#
+# level:  6        5           4        3           2        1           0
+# shown:  3 solid  2 solid+    2 solid  1 solid+    1 solid  1st         dark
+#                  3rd blink                        2nd blink           blinking
+READOUT_LEVEL_COUNT = 7   # levels[] is always exactly this long, index 0..6
+
+# The drop-animation timings (bench-tuned 2026-09-07): shipped in `gun.readout` so the node never
+# hand-picks them. Not touched by night mode -- only brightness (token 5) is, same as every other
+# readout frame; see `_blink_frame`/`readout_levels` below.
+READOUT_LEAD_MS = 180        # step 1: hold the level you were AT, solid
+READOUT_BLINK_GAP_MS = 80    # step 2: one all-off blink ("show current health in one blink")
+READOUT_STEP_MS = 120        # step 3: one level per this many ms while stepping down/up
+READOUT_BLINK_MS = 400       # step 4: on/off period once settled on a partial level
+
+
+def level_for(value: int, maximum: int) -> int:
+    """`value`/`maximum` -> one of the 7 bar levels (0..6), A16.3's `clamp(round(fraction * 6), 0, 6)`.
+
+    Extends `_segments`' "1 HP must not look like dead" rule to the finer scale: a pool with anything
+    left never reports level 0 -- floored to 1 while `value > 0`.
+    """
+    if maximum <= 0 or value <= 0:
+        return 0
+    frac = max(0.0, min(1.0, value / maximum))
+    # ⚠ floor(x + 0.5), NOT round(): Python's round() is banker's rounding (round-half-to-EVEN) and
+    # JavaScript's Math.round() is round-half-UP, so they disagree on every exact .5. The node
+    # (`engine.js _readoutLevel`) uses Math.round, so a plain round() here would put the bench stage and
+    # MC on a different level from the phone at exactly 3/4 of a pool: round(4.5)=4 in Python, 5 in JS.
+    # Narrow, but the stage exists to PREDICT the phone, so a divergence there makes it lie (polish
+    # 2026-09-07). Keep these two in step; the formula lives here and stage.py delegates to it.
+    level = max(0, min(READOUT_LEVEL_COUNT - 1, math.floor(frac * (READOUT_LEVEL_COUNT - 1) + 0.5)))
+    return max(level, 1)
+
+
+def _level_lit(level: int) -> tuple[int, int | None]:
+    """(segments lit while solid, segments lit while blinking-off) for one of the 7 levels.
+
+    Odd levels (1, 3, 5) are PARTIAL: solid lights one more segment than the blink phase, which drops
+    just the top one. Even levels (0, 2, 4, 6) are WHOLE and never blink (`None`)."""
+    lit_solid = (level + 1) // 2
+    lit_blink = level // 2 if level % 2 else None
+    return lit_solid, lit_blink
+
+
+def _level_colour(pool: str, level: int) -> int:
+    """Hue for one of the 7 levels. Shield/armour keep their constant hue; health re-runs
+    `health_colour` against the 6-step scale so its band edges line up with `HEALTH_BANDS`
+    (green above 2/3, yellow above 1/3, else red) as the bar itself shortens."""
+    if pool == "shield":
+        return SHIELD_COLOUR
+    if pool == "armor":
+        return ARMOUR_COLOUR
+    if pool == "health":
+        return health_colour(level, READOUT_LEVEL_COUNT - 1)
+    raise ValueError(f"_level_colour: unknown pool {pool!r}")
+
+
+def _blink_frame(lit_solid: int, lit_blink: int, night: bool) -> str:
+    """The blink half of a partial level: turn OFF just the top segment (0-based index `lit_blink`)
+    and leave the other two LEDs as EMPTY tokens (`$GLED` keeps an LED's current colour when its
+    token is blank) instead of repainting them.
+
+    Safe ONLY because this always follows its OWN level's solid frame first -- the node settles on
+    the solid frame, THEN starts alternating with this one (A16.3 step 4) -- so the LEDs left empty
+    here are guaranteed to already hold the right colour from that solid frame. A step-down that
+    passed through this level without pausing on its solid frame would break that guarantee, which
+    is exactly why the node rule is "no re-lighting, step through solid frames only, blink only once
+    settled".
+    """
+    assert lit_blink == lit_solid - 1, "the blink phase must drop exactly the top lit segment"
+    tokens = ["", "", ""]
+    tokens[lit_blink] = str(DARK)
+    b = BRIGHT_DIM if night else BRIGHT_FULL
+    return f"$GLED,{tokens[0]},{tokens[1]},{tokens[2]},0,{b},,*"
+
+
+def readout_levels(pool: str, night: bool = False) -> list[list[str | None]]:
+    """The 7-entry `[solid, blink_or_None]` table for the A16.3 drop-animation bar, index 0..6.
+
+    `levels[l][0]` is always a full frame, built the same way `readout_bands` builds its segment
+    frames. `levels[l][1]` is that same frame with the top segment forced dark -- `None` for the 4
+    WHOLE levels (6, 4, 2, 0), a real (empty-token) frame for the 3 PARTIAL ones (5, 3, 1). The node
+    alternates `[0]`/`[1]` at `READOUT_BLINK_MS` once settled; MC ships every frame so the node never
+    composes one (A4.2)."""
+    out: list[list[str | None]] = []
+    for level in range(READOUT_LEVEL_COUNT):
+        colour = _level_colour(pool, level)
+        lit_solid, lit_blink = _level_lit(level)
+        solid = segment_frame(colour, lit_solid, night)
+        blink = _blink_frame(lit_solid, lit_blink, night) if lit_blink is not None else None
+        out.append([solid, blink])
+    return out
 
 
 def team_frame(team: int | None, night: bool = False, ffa: bool = False) -> str:

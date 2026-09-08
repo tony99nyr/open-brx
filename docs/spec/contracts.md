@@ -228,7 +228,8 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                       // level per step_ms), settle, blink if partial, hold, revert to rest. A change mid-animation
                       // cancels and restarts from what is displayed; never queue two.
                       pools: [{ pool: "shield"|"armor"|"health", max: number,
-                                bands: [fraction_above: number, frame: string][] }] },
+                                bands: [fraction_above: number, frame: string][],
+                                levels: [solid: string, blink: string|null][] }] },   // A16.3: EXACTLY 7, index 0..6
           // A16 [2026-09-07]: outermost pool FIRST (shield, armor, health); bands highest first; frames are 3/2/1 lit
           // segments in the pool's hue (shield WHITE, armour PURPLE, health GREEN/YELLOW/RED). MC ships each `max`
           // so the node never parses a frame. NODE RULE: on every $HP paint the band of the INNERMOST pool that
