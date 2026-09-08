@@ -190,5 +190,6 @@ About 40 min. Write-up: one experiment-log entry, the `$LED` / `$HLOOP` protocol
 - **L13** blank → `$GLED,3,3,3,0,10` → blank → `$GLED,4,4,4,0,10`. Pass: the second blank behaves like the first
   (idempotent mid-life), purple holds.
 - **L14** blank → paint → `$GLED,9,9,9,0,10` → wait 30 s, then blank → `$GLED,3,3,3,5,10` (dim after a blank).
-  Pass: stays dark with no breathing return; then a clean ~1/3 green (the night dim). Add `$GLED,3,3,9,5,10` for a
+  Pass: stays dark with no breathing return. ⚠ The dim half of this rung is ANSWERED 2026-09-07: gate 5 is OFF,
+  not a dimmer, and the night dim is TOKEN 5 = 1 (`$GLED,3,3,3,0,1`), confirmed by eye. Add `$GLED,3,3,9,0,1` for a
   dim 2-of-3 and one dim burst `3 × $GLED,0,0,0,5,10` with blank gaps.

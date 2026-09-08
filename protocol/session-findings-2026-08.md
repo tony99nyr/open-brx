@@ -17,6 +17,7 @@ including claims that were later retracted; the table first says which ones.
 | 2026-08-23 §7i | `$GLED` tokens are r,g,b | Tokens 1–3 are per-LED palette indices 0–8; token 4 is an apply gate; token 5 is brightness (2026-08-30, 2026-09-02) |
 | 2026-08-23 §7i | LED colour comes only from `$TID`; `$GLED` cannot set it | `$TID` sets the default; `$GLED` repaints all three LEDs on command (2026-08-30) |
 | 2026-08-30 | `$GLED` token 4 = 5 is "the off value" | Token 4 = 5 applies the colour tokens at one-third brightness; `$GLED,,,,5,,,*` blanks because its colour tokens are empty (2026-09-02) |
+| 2026-09-02 | `$GLED` token 4 = 5 applies at one-third brightness | **Gate 5 is OFF, not a dimmer** — an A/B on a host-owned strip read it as dark; the ~1/3 reading was taken while the firmware breathing still contended. The dimmer is token 5 (2026-09-07) |
 | 2026-08-23 §7f | Protocol 4 hits drained 9, protocol 0 drained 18 | The varying token was token 1, the sensor, not the protocol (§7r); the 18-vs-9 split is still unexplained |
 | 2026-08-23 §7f | `$SFLASH` is periodic, never near a hit, purpose unknown | The shooter's green-sight kill-confirm flash, one per kill (§7o) |
 | 2026-08-23 §7f/§7k | `$HIR` tokens 2–3 are always `0,0`; per-player id is not supported | Token 3 is the shooter's `$PSET` token-1 id once ids differ (§7p, §7q) |

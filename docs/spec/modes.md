@@ -221,7 +221,10 @@ free-form `led` object for everything but the night blank.
 // 0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange (9/10 dark).
 // $GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>: three independently addressable body LEDs.
 // Token 4 is an APPLY GATE, not an off value (corrected 2026-09-02): 0/6/7/8/9/10 apply the colour tokens at full
-// brightness; 5 applies them at ~1/3; 1/2/3/4 are no-ops. $GLED,,,,5,,,* blanks because its colour tokens are
+// brightness; 1/2/3/4 are no-ops. ⚠ RETRACTED 2026-09-07: gate 5 is OFF, not "~1/3 brightness" — an A/B on a
+// host-owned strip read it as dark ("bright then off, no steps in between"); the earlier reading was taken
+// while the firmware breathing was still contending. The real dimmer is TOKEN 5 (1 dim, >=2 full), which is
+// what night mode uses. $GLED,,,,5,,,* blanks because its colour tokens are
 // EMPTY and t4=5 applies them — and (A11.7, 2026-09-04) that blank also takes the LED OUT of the spawned gun's
 // breathing loop, so any colour painted after it HOLDS until $SPAWN re-enables the breathing.
 // Token 5 (brightness) is three-state: 0 off, 1 dim (~70%), >=2 full.

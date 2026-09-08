@@ -24,7 +24,8 @@ only light up for events".
    hosted games all along, and our `$HLED,,6` blank was disabling it. Swap the blank for colour 9, write nothing at
    death, and re-arm with one `$HLOOP,2,750` as insurance. The whole `$LED` pulsing scheme is deleted.
 4. Night must become an overlay (dim, sparse, slower) over the per-mode block, with the DOWN signal exempt.
-5. The gun body becomes **dark at rest** with a **transient 3-segment pool readout** (now viable after the blank)
+5. The gun body becomes **dark at rest** with a **transient pool readout** — three segments at first, SEVEN
+   levels since A16.3 (now viable after the blank)
    and event bursts; the headset stays native on hits, gets **held role states** (carrier, infected, VIP,
    extraction beacon) that survive hits, and the brightest down pulse we can make.
 6. One config block, `presentation.lights`, replaces the four overlapping switches (`led`, `night`-as-blackout,

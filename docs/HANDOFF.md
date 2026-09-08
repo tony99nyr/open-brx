@@ -45,7 +45,10 @@
   noisy, never metal from electronic). ⚠ **An empty slot is not silence** — it falls through to a
   neighbouring pool; health can ship empty only as the innermost one. `$SIR` REPLACES the `$PSET` pool
   sound rather than layering (F38), so the class layer ships OFF and the stock rows' empty sound tokens
-  are what make the pool sounds audible.
+  are what make the pool sounds audible. **A17.2:** `low_health` now fires below **15 HP**, not when
+  armour reaches 0 — the old rule fired on the first health hit of a life (44/45 HP), and A17's silence
+  made that the only sound on the transition. **A17.3:** the pain grunt is still sized on TOTAL pools
+  lost, not the HP portion, on purpose — a round that strips your plating and reaches you is a heavy hit.
 - **IR rig:** emitter (board B, COM8) registers 6/6 at 3 ft, 10/10 at 6 ft, cliff at 10 ft; work at
   6 ft or less. Receiver (board A, COM7) fragments frames but `native_capture.py` stitches them (F12
   worked around). Never end a run on a bare `$CLEAR`: it wipes the `$SIR` table (F11).
@@ -70,11 +73,11 @@
     In-play dark is now `$HLED,9,0,,,10,,*`; effect 6 is teardown-only. Deletes the A11.8 `death_flash`
     scheme. `$HLOOP,<1|2>,<ms>` drives the loop over BLE, `$HLOOP,0,0` stops it, `$SPAWN` clears it; the
     node writes NOTHING at death and re-arms once.
-  - **Gun body rests DARK** with a transient 3-segment pool readout (shield WHITE, armour PURPLE,
-    health GREEN/YELLOW/RED, innermost moved pool wins, 4 s hold). The blank is mandatory before any
-    paint, once per life. **Night is a DIM overlay, not a blackout** (token 5 = 1; ⚠ apply-gate 5 is
-    OFF, not the "~1/3" believed since 2026-09-02 — retracted); `blackout` empties the tables and the
-    DOWN signal survives both.
+  - **Gun body rests DARK** with a transient pool readout — **A16.3: SEVEN levels** + a drop animation
+    (shield WHITE, armour PURPLE, health GREEN/YELLOW/RED, innermost moved pool wins, 4 s hold). Half-steps
+    BLINK: per-LED brightness does not exist, the token is global. The blank is mandatory before any paint,
+    once per life. **Night is a DIM overlay, not a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the
+    "~1/3" believed since 2026-09-02 — retracted); `blackout` empties the tables, DOWN survives both.
   - **`$TID` is 0-3 only (F35).** The IR team field is 2 bits so a gun sends `tid & 3` while the victim
     compares the FULL tid: on tid >= 4 teammates damage each other, their shots do nothing to the tid they
     alias onto, and a gun can kill itself off a surface (observed). Guarded in `state.py` + `compile.validate()`.
