@@ -60,7 +60,7 @@ a { color: var(--accent); }
 .brand:hover .logo { color: var(--ink); }
 /* visually hidden but read aloud */
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.topnav { display: flex; gap: 14px; flex-wrap: wrap; margin-right: auto; }
+.topnav { display: flex; gap: 14px; flex-wrap: wrap; }
 .topnav a { color: var(--muted); text-decoration: none; padding: 6px 2px; min-height: 36px; display: inline-flex; align-items: center; }
 .topnav a:hover, .topnav a[aria-current="page"] { color: var(--ink); }
 .topnav a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -83,6 +83,35 @@ a { color: var(--accent); }
 :root[data-theme="dark"] .theme .i-moon { display: none; }
 :root[data-theme="light"] .theme .i-sun { display: none; }
 :root[data-theme="light"] .theme .i-moon { display: block; }
+/* ---- search ----------------------------------------------------------------------------------
+   A visible field, not a hidden shortcut: on a reference site the lookup IS the primary action,
+   and a palette you can only reach by knowing a chord is invisible to the person who needs it most. */
+.find { position: relative; flex: 0 1 300px; margin-left: auto; }
+.find input {
+  width: 100%; padding: 8px 12px; min-height: 38px; font: inherit; font-size: 15px;
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--bg); color: var(--ink);
+}
+.find input::placeholder { color: var(--muted); }
+.results {
+  position: absolute; top: calc(100% + 6px); right: 0; width: min(30rem, 92vw);
+  max-height: min(70vh, 520px); overflow-y: auto; z-index: 30;
+  background: var(--bg); border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+}
+.results a {
+  display: block; padding: 10px 14px; text-decoration: none; color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.results a:last-child { border-bottom: 0; }
+.results a.on, .results a:hover { background: var(--panel); }
+.results a.on { box-shadow: inset 3px 0 0 var(--accent); }
+.r-h { display: block; font-weight: 650; }
+.r-p { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
+.r-t { display: block; font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+.results mark { background: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; border-radius: 2px; }
+.r-none { margin: 0; padding: 14px; color: var(--muted); font-size: 14px; }
+
 main { max-width: 62rem; margin: 0 auto; padding: 24px 20px 64px; }
 /* tables, code and the ToC keep the full column; running prose gets a readable measure */
 article > p, article > ul, article > ol, article > blockquote { max-width: 44rem; }
@@ -220,6 +249,8 @@ tbody tr:hover { background: var(--panel); }
      because a burger that opens a drawer is more machinery than this site needs */
   .top { padding: 8px 14px; gap: 8px 12px; }
   .topnav { gap: 4px 12px; font-size: 14px; order: 3; width: 100%; }
+  .find { flex: 1 1 auto; margin-left: 0; order: 2; }
+  .results { width: 100%; right: auto; left: 0; }
   .topnav a { min-height: 32px; }
   .theme { width: 34px; height: 34px; }
 }

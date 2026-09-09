@@ -208,6 +208,47 @@ it('6 · a data table that cannot load says so instead of sitting empty', async 
   await expect(page.locator('.dt[data-table="weapons"] tbody')).toContainText('/data/weapons.json');
 });
 
+it('6b · search finds a symbol and lands on the section that defines it', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/manual/hardware/', { waitUntil: 'networkidle' });
+  // the index is lazy: nobody pays for search until they use it
+  expect(await page.evaluate(() =>
+    performance.getEntriesByType('resource').filter(r => r.name.includes('search.json')).length),
+    'search index loaded before anyone searched').toBe(0);
+
+  await page.keyboard.press('/');                       // the convention on a reference site
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('q');
+  await page.keyboard.type('$SIR');
+  await expect(page.locator('#results a').first()).toBeVisible();
+
+  // a symbol must rank its DEFINING section first, not a page that mentions it in passing
+  const top = page.locator('#results a').first();
+  await expect(top.locator('.r-h')).toContainText('$SIR');
+  const href = await top.getAttribute('href');
+  expect(href, 'result should point at a heading anchor').toMatch(/^\/manual\/dev\/#/);
+
+  await Promise.all([page.waitForURL(u => u.pathname === '/manual/dev/'), page.keyboard.press('Enter')]);
+  // the anchor must exist AND clear the sticky header
+  const y = await page.evaluate(() => {
+    const el = document.querySelector(decodeURIComponent(location.hash));
+    return el ? Math.round(el.getBoundingClientRect().top) : null;
+  });
+  expect(y, 'the anchor a result points at does not exist').not.toBeNull();
+  expect(y, 'the anchor lands under the sticky header').toBeGreaterThanOrEqual(0);
+  expect(errors).toEqual([]);
+});
+
+it('6c · search says so when nothing matches and when the index will not load', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#q').fill('zzzznotathing');
+  await expect(page.locator('#results')).toContainText('Nothing matches');
+
+  await page.route('**/data/search.json', r => r.fulfill({ status: 500, body: 'no' }));
+  await page.reload();
+  await page.locator('#q').fill('teal');
+  await expect(page.locator('#results')).toContainText('could not load');
+});
+
 it('7 · the theme toggle changes the page and survives navigation', async ({ page }) => {
   await page.goto('/');
   const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

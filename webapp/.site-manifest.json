@@ -18,10 +18,11 @@
  "files": [
   "404.html",
   "_redirects",
-  "assets/site.f8de2b904b.css",
-  "assets/site.ffc8a72479.js",
+  "assets/site.32f97e845e.css",
+  "assets/site.d6db7f6b78.js",
   "credits.md",
   "credits/index.html",
+  "data/search.json",
   "data/sounds.json",
   "data/weapons.json",
   "index.html",

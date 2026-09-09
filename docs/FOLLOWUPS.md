@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F59 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F61 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -164,7 +164,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   on "FF is irrelevant" (F48) or on any polarity rule until this is explained: diff the two heads frame by frame
   on the wire (`$PSET` player_num differs: 1 vs 7 — the emitted word's player id is 42 in both), and re-run with
   each difference isolated. This cost most of an evening's bench time and produced four wrong diagnoses. `trigger`.
-- **F56 🔴 A TEAM-COLOURED REST COLLIDES WITH THE POOL HUES — three of the four teams.** A16.4 (2026-09-09) made
+- **F56 🟠 HALF CLOSED 2026-09-09 ON THE GUN — the DAY half is fixed and verified, the NIGHT half stands.**
+  Fix shipped: the in-play rest is the team colour at brightness 1 while the readout paints at full, so
+  brightness separates them. Tony, watching purple armour over the dim blue rest: *"way brighter, reads as an
+  event"*. ⚠ **At NIGHT both rest and readout are dim**, so that separation does not exist and the hue
+  collision below is live on a SETTLED bar. A drop still reads at night (it opens with an all-off blink and
+  the steps carry the change); a bar that has already settled does not. Night was verified as READABLE on
+  blue team, which is the easy case — **the untested bad case is team 3, whose colour IS armour purple.**
+  The collision itself, unchanged and still true at night: A16.4 (2026-09-09) made
   the gun body rest on the team colour. `TEAM_DISPLAY_COLOURS` is `{0: RED, 1: BLUE, 2: YELLOW, 3: PURPLE}` and the
   readout paints **armour PURPLE** and **health GREEN/YELLOW/RED**, so: **team 3's armour bar is the same hue as its
   own rest frame**, **team 2's mid-health band is**, and worst, **team 0's CRITICAL red is** — a red-team player's
@@ -178,6 +185,20 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   immersion brief and his own "the team color doesn't need to be static bright"), and it costs nothing — brightness
   is already a token on every compiled frame. Alternatives: move team 3 off purple and team 0 off red, or force a
   dark beat before every readout paint. `build`, then one bench look.
+- **F59 🟠 ON-GUN AUDIO LAGS THE LED BY ABOUT A SECOND, AND IT IS NOT OUR SCHEDULING.** Tony, bench
+  2026-09-09: *"the leds update on the gun and then a second later there is the hit sound ... the delay is
+  weird"*. Measured on one hit, stage enqueue timestamps: `$HIR` and `$HP` at +0.000s, **`$PLAY` at +0.000s
+  (FIRST)**, then the first `$GLED` also at +0.000s, the rest of the animation following. So the node sends the
+  SOUND BEFORE the light; the gun renders the light immediately and starts the clip ~1 s later. **Reordering on
+  our side cannot fix this** — that was the obvious first theory and the measurement kills it.
+  Two candidates left, and they want different fixes: firmware audio latency after `$PLAY` (nothing we can do
+  except stop pretending the two surfaces are simultaneous), or LEAD-IN SILENCE in the clips themselves (fixable
+  by picking or trimming ids). A17 already knows the bank has tail problems -- `H03` passed a rapid audition and
+  failed heard solo because a hit sound is mostly tail (F43) -- so a lead-in is entirely plausible and has never
+  been checked. **Measure it before theorising**: play one clip with the receiver capturing, and time the gap
+  between the `$PLAY` write and the first audio. If it is the clips, the fix is id selection; if it is the
+  firmware, the LED language should stop assuming light and sound land together.
+  Owner: the audio lane (A17). Found by the LED lane, and the LED side is not at fault. `ears`.
 - **F58 🟠 HEALING HAS NO FEEDBACK ON ANY SURFACE, and the two consumers disagree about it.** Tony, bench
   2026-09-09, after a real `$LIFE` heal took hp 6 → 25: *"it made a health hit sound. the sound wasn't heal"*.
   Three separate holes, found together:
@@ -189,7 +210,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   path AT ALL, which is why this went unnoticed: the surface built to predict the phone is missing the branch.
   That is the eighth stage-vs-phone divergence in a week (see [[stage-must-mirror-the-phone]] reasoning in
   `experiment-log`), and the first one where the STAGE is the side missing a feature rather than mis-copying it.
-  **(c)** the LED gain animation did not step on the gun in this run — one write straight to the settled level,
+  **(c) ✅ RESOLVED the same evening, and it was NOT a bug — recorded so nobody re-opens it.** The LED gain
+  animation DOES step correctly on the gun: a `$LIFE,20` heal at hp 4 gave `$HP,24` and the strip wrote
+  `RED · ·` (L1) → `yel · ·` (L2) → `yel yel ·` (L3), stepping up with the hue warming red → yellow as it rose.
+  It reads exactly as intended. The earlier run that appeared to SNAP had both `$HP` frames land on the SAME
+  timestamp (the heal readback and the 1-damage shot used to force it), so the second change cancelled the
+  animation and retargeted from current, collapsing it to one write at the endpoint — which is the correct
+  cancel-and-retarget rule, not a fault. The original observation is left below for provenance:
+  the LED gain animation did not step on the gun in the FIRST run — one write straight to the settled level,
   where the drop animates properly. The gain path is CORRECT in isolation (driven offline it writes L1, L2, L3),
   so the live difference is unexplained. Two `$HP` frames arrived back to back (`$HP,26` from the heal readback
   then `$HP,25` from the 1-damage shot used to force it), and the interaction of a gain immediately followed by
@@ -197,9 +225,26 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   back-to-back opposite-direction changes, NOT another bench evening of guessing.
   Tony's brief, 2026-09-09: *"healing should also animate intuitively without distraction"*. Today it does not
   animate, does not sound, and cannot be rehearsed on the bench. `build` + `ears`.
+  **(d) `$LIFE` is INCONSISTENT on hardware and S14 depends on it.** `$LIFE,20,0,0` healed twice (hp 6 → 26,
+  and hp 4 → 24). `$LIFE,25,0,0` from hp 5 did NOTHING — the frame was confirmed sent (the stage logs
+  "UNKNOWN command sent on explicit confirm" then the tx), the pool never moved, and a readback showed the
+  value unchanged. Both were additive and far under the 45 max, so this is not clamping. A per-grant cap
+  somewhere between 20 and 25 is the obvious guess and is UNTESTED. **S14's whole design is MC composing
+  `$LIFE` for a remote gun**, so a grant size that silently does nothing is a real risk to that feature and
+  wants a proper sweep (walk the value 1..45 and record which land) before S14 is built on it.
   ⚠ Method note for whoever picks this up: `$LIFE` is NOT on the known-safe list, so `raw` refuses it unless you
   pass `confirm=true`. Two silent refusals cost 20 minutes tonight and nearly produced a false finding that
   `$LIFE` does not heal — which would have undermined S14, whose whole design is MC composing `$LIFE`.
+- **F60 🟡 NO COMPILED GAME CAN RECEIVE A HEAL OR A SHIELD.** Checked all five modes on the gun 2026-09-09:
+  `medic` reports `registers: False` in tdm, ffa, infection, lms AND extraction, i.e. no compiled `$SIR` table
+  carries a proto-1 row, so a medic word is discarded by the firmware with no error (the F40 "absence reports
+  as health" shape). Fired at a live gun it produced no `$HIR` and no pool change at all. `fn 10` is a KNOWN
+  heal and `compile._SIR_GRANT` is fns 9-22, so the row is buildable — nothing ships one. Consequences: the
+  shield pool (IR-only, P16) can never be filled in one of our games, so the TEAL shield bar and A16.5's
+  shield → armour handover are unverifiable on hardware; and the `healed`/`armour_up` events (F58) can never
+  fire from IR either. Decide whether a heal/grant row belongs in the compiled table at all — it may be that
+  we simply do not want medic words in a hosted game, in which case say so and mark shield permanently
+  node-granted — but today the gap is silent and looks like a bug from the bench. `build`.
 - **F57 🟠 THE LOW-HEALTH WARNING AND THE PAIN GRUNT FIRE IN THE SAME MILLISECOND.** Bench 2026-09-09, Tony:
   *"the critical sounds are a bit bugged when it was at 1 red"*. Captured on the wire, one `$HP` tick:
   `rx $HP,8,0,0` → `tx $PLAY,,4,6,VA6` (low health) and `tx $PLAY,,4,6,VAG` (pain short, 10 dmg) at the SAME
@@ -644,7 +689,12 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **A10c** Extended Mags HUD max matches the `$AMMO,0` we write (64/768).
 - **B20**, **S4** (b)/(e)/muzzle LED, **S8** two-Pixel confirm, **F13** (2) headset state across the arming burst,
   **F21** on both Pixels, **F28/F29** in a match, **S2 6b** flash-LED ladder with an ND filter.
-- **S10** L-ladder: **L1–L9 and L12–L14 ANSWERED 2026-09-07** (the `$LED` pulsing scheme is deleted, `$HLOOP` is
+- **S10** **VERIFIED ON THE GUN 2026-09-09** — the A16 language was walked state by state and passed: dim team rest,
+  readout contrast, the seven-level ladder down AND up, the gain having no lead/blink, rapid retrigger holding
+  the 3-per-second ceiling (5 hits in 290 ms, no replayed blinks), critical red pulsing to dark, death
+  hands-off then `$HLOOP`, night mode, and the 3-flash event burst against the new rest. Evidence:
+  `experiment-log/2026-09.md`, 2026-09-09 late. What is still open:
+  L-ladder: **L1–L9 and L12–L14 ANSWERED 2026-09-07** (the `$LED` pulsing scheme is deleted, `$HLOOP` is
   the down signal; a dark paint with NO prior blank does not suppress the breathing, the blank IS idempotent, and a
   dim paint keeps its hue after a blank). ⚠ L14's frame as written in the ladder, `$GLED,3,3,3,5,10`, is now known
   to BLANK the gun — gate 5 is off, not a dimmer — so the dim rung is token 5 = 1 and it passed. **Left: (a)** a

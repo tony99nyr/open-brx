@@ -172,6 +172,13 @@ function shell(page, content) {
 <header class="top">
 <a class="brand" href="/">${LOGO}<span>Open BRX</span></a>
 <nav class="topnav" aria-label="Sections">${nav}</nav>
+<form class="find" role="search" onsubmit="return false">
+  <label class="vh" for="q">Search the manual</label>
+  <input id="q" type="search" autocomplete="off" placeholder="Search, or a command like $WEAP"
+         aria-expanded="false" aria-controls="results" aria-describedby="find-hint">
+  <span class="vh" id="find-hint">Press slash to jump here. Results appear as you type.</span>
+  <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
+</form>
 <button class="theme" type="button" aria-label="Switch theme">${SUN}${MOON}<span class="vh">Switch theme</span></button>
 </header>
 <main id="main"><article>
@@ -263,6 +270,43 @@ write('404.html', shell({ slug: '/404', title: 'Page not found', body: 'That pag
   '<p>That page does not exist. Try the <a href="/">front page</a>.</p>', ''));
 // _redirects keeps the 65 URLs the 2026-09-09 cut removed pointing at the page that absorbed them.
 // Cloudflare parses this natively for static assets; it is frozen history, not a maintained map.
+// ---- search index -----------------------------------------------------------------------------
+// Indexed per HEADING, not per page, so a hit lands on the exact anchor: these pages run to 800+
+// lines and "it is somewhere on /manual/dev" is not an answer. Identifiers are pulled out
+// separately because what people look up here is a symbol, not a phrase: $WEAP, t14, VA33, R01.
+const IDENT = /(\$[A-Z][A-Z0-9]*|\b[A-Z]{1,2}\d{2,3}[A-Z]?\b|\bt\d{1,2}\b)/g;
+const index = [];
+for (const p of pages) {
+  const lines = p.body.split('\n');
+  let head = null, anchor = '', buf = [];
+  const flush = () => {
+    if (!head && !buf.length) return;
+    const text = buf.join(' ').replace(/[|`*>#\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const ids = [...new Set((buf.join(' ').match(IDENT) || []))].join(' ');
+    if (head || text) {
+      index.push({
+        u: p.slug + (p.slug === '/' ? '' : '/') + (anchor ? '#' + anchor : ''),
+        p: p.title, h: head || p.title,
+        // Identifiers are the primary key on this site and are already deduped, so they are NOT
+        // capped: truncating at 400 chars dropped t14 out of the $WEAP section that defines it.
+        x: ids,
+        // One field, original case, uncapped. The client lowercases once on load for matching and
+        // slices around the hit for display, so a result shows the sentence you searched for
+        // rather than whatever the section happens to open with.
+        b: text,
+      });
+    }
+    buf = [];
+  };
+  for (const l of lines) {
+    const m = l.match(/^(#{2,3})\s+(.+?)\s*$/);
+    if (m) { flush(); head = m[2].replace(/[`*]/g, ''); anchor = slugify(head); }
+    else buf.push(l);
+  }
+  flush();
+}
+write('data/search.json', JSON.stringify(index));
+
 write('_redirects', fs.readFileSync(path.join(HERE, 'public/_redirects')));
 write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${built.map(p => `<url><loc>${SITE}${p.slug === '/' ? '/' : p.slug + '/'}</loc>${p.lastVerified ? `<lastmod>${p.lastVerified}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>\n`);
