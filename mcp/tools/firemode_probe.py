@@ -1,8 +1,18 @@
 """Fire-mode probe: push ONE weapon with token overrides, leave the gun live.
 
 Usage: python firemode_probe.py <address> <weapon_id> [idx=val ...]
-e.g.   python firemode_probe.py FE:.. sniper_rifle 20=2
-Token idx is the raw comma-split index of the $WEAP frame.
+e.g.   python firemode_probe.py FE:.. sniper_rifle 21=0     # doc t20 fire mode -> full auto
+
+`idx` is the RAW comma-split index of the frame, and `toks[0]` is the command word `$WEAP`, so
+**raw = doc token + 1** (protocol/brx-protocol.md: "the bench tool prints raw 1-indexed positions").
+Doc t20 (fire mode) is raw 21; t21/t22 (accuracy) are raw 22/23; t6 (crit chance) is raw 7; the
+secondary-fire block t7-t11 is raw 8-12. The old example here said `20=2`, which is doc t19 -- one
+token low, and t19 is a token we cannot even name. This is the off-by-one that once wrote the rate
+of fire into the swap-delay token and shipped every weapon at 10 shots/s.
+
+The frame is PRINTED before it is sent: read it against the reference row in
+docs/reference/weapons.md and confirm the value moved where you meant it to, BEFORE pulling the
+trigger. A probe aimed at the wrong token reads exactly like an inert token.
 """
 import asyncio, sys
 
