@@ -40,7 +40,7 @@ Four numbers that sum up the BRX:
 The system, in three objects:
 
 - **Tagger**: the rifle. It fires the IR beam and carries a hit sensor on its body. Inside sit the speaker, the sound bank, the battery, the Bluetooth radio and all the logic for a stock game.
-- **Headset**: the sensor band you wear. It catches most incoming tags because it is the bigger target. It lights up for feedback, links to its own tagger without wires, and decides whether that tagger may fire.
+- **Headset**: the sensor band you wear. It catches most incoming tags because it is the bigger target. It lights up for feedback, links to its own tagger without wires, and its link is what lets that tagger take part in a hosted game.
 - **Smart Grenade**: an extra device that sends out IR, with a button and a status light. Throw it as a blast weapon, or drop it as an objective (respawn point, hill, flag).
 
 > **What the BRX is not.** This shapes everything else in the manual.
@@ -50,7 +50,7 @@ The system, in three objects:
 > - No headset cable. The headset is wireless. There is no headset jack on the tagger.
 > - No firmware backup. You can write firmware over USB, but you can never read it back (the bootloader is write-only).
 
-> A gun whose headset is off, unpaired or flat just refuses to join. No error, no voice line. That is the number one cause of a wasted game start.
+> A gun whose headset is off, unpaired or flat just refuses to join a hosted or app game. No error, no voice line. That is the number one cause of a wasted game start.
 
 ## The tagger, part by part
 
@@ -160,7 +160,9 @@ Headset LEDs:
 
 ## The headset
 
-The headset is a wireless sensor band that decides whether your tagger is allowed to shoot. It is not an accessory: it is half of the system. It catches most tags and shows the shooter that they hit you. The tagger also refuses to fire when its headset drops mid-game.
+The headset is a wireless sensor band, and it is not an accessory: it is half of the system. It catches most tags and shows the shooter that they hit you. Its link also gates play. A gun whose headset is off, unpaired or flat will not join a hosted or app game, and a headset that drops after a game has started locks the tagger's trigger until it reconnects (anti-cheat).
+
+> **One case is unsettled.** Whether a gun booted with no headset at all can still fire a local, on-gun game is not resolved. Battle Company's V7 manual says it can. Operators report guns that will not fire without a headset, which is what the anti-cheat lockout looks like from the outside. Nobody has run the test cleanly: one gun, headset removed before power-on, a local game. Until that is done, treat a headset-less gun as unplayable.
 
 What's on the headset:
 
@@ -176,7 +178,7 @@ Headset facts:
 | Item | Detail |
 |---|---|
 | Link to tagger | Wireless, and it pairs by itself after power-on. It can take up to 3 minutes with many taggers and BT devices around. |
-| Anti-cheat lockout | If the headset drops after game start, the tagger locks until it reconnects. |
+| Anti-cheat lockout | If the headset drops after game start, the tagger locks until it reconnects. Whether a gun that never had a headset can fire a local game is unresolved (see above). |
 | Apps need it | The official phone app quietly disconnects a tagger with no headset linked. A game hosted from outside cannot hold a link to a headset-less gun either. |
 | Battery | One 18650 lithium cell in v2 headsets. It charges from any USB 5 V source. The v1 headset has a slide compartment. |
 | Firmware | Reported by the tagger as `hds.59` on the units checked. |
@@ -710,7 +712,7 @@ this section covers building a game and the gotchas that catch new users.
 - A hosted game typically takes about 1 minute to show up as joinable on a second phone. It
   round-trips through the cloud.
 - On connect the Android app sets the gun's internal volume to 100 out of 100. iOS sets it to
-  69. That matters here, because the app is effectively Android-only.
+  69. Whichever phone you host from, that is the volume your gun ends up at.
 - Owners report the app only works on Android 10 or earlier. iOS is fine.
 
 **Building and starting a game:**
@@ -927,7 +929,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
+> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number on its own does nothing, because the two tokens that switch the overheat system on are set only on the Charge Rifle, so it is the only stock weapon whose gauge actually climbs. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
@@ -959,7 +961,7 @@ Assault, single shot, 13 dmg, 225 ms, 18/180, 2.0 s. The rifle with the biggest 
 
 ### SMG
 
-CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. Big clip, long reload. It empties a health pool faster than any other automatic, in 15 hits.
+CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. 8 damage is the lowest in the arsenal, so the SMG is the slowest automatic to empty a health pool: 15 hits and 1.26 s, against the Stinger's 8 hits in 0.84 s, the Suppressor's 15 in 1.05 s, the Energy Rifle's 13 in 1.08 s and the Assault Rifle's 13 in 1.2 s. What you buy for that is staying power. 72 rounds is the biggest magazine of any automatic bar the Energy Rifle, nearly five kills without reloading, and the price is the longest reload in the game at 2.5 s (tied with the Charge Rifle). Its heat token reads 5, but the overheat gate is not set, so it never overheats.
 
 ### Shotgun
 
@@ -975,7 +977,7 @@ Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/24, 1.7 s. Two hits to kill
 
 ### Plasma Sniper
 
-Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot.
+Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot. Its heat token reads 30, the highest number in the arsenal, but the two gate tokens are empty in its captured frame, so as Callsign sends it there is no heat lockout. What limits you is the 10-round magazine and the 2 s reload.
 
 ### AMR
 
@@ -987,11 +989,11 @@ Support, full auto, 8 dmg, 75 ms, 48/288, 2.0 s. Quiet (not silent) and no muzzl
 
 ### Energy Rifle
 
-Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. You can fire a long time without reloading. Heat is what stops you.
+Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. 300 rounds is the biggest magazine in the arsenal by a wide margin, and 13 hits kill, so that is roughly 23 kills before you reload. Its heat token reads 6, but like the SMG and the Plasma Sniper it ships without the gate tokens, so nothing stops the burst except the magazine.
 
 ### Charge Rifle
 
-Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound.
+Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.
 
 ### Rocket Launcher
 
@@ -1093,13 +1095,13 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
 3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped, which is the documented rule that one unexplained bench result contradicts (see *Health, armor and damage*). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
-5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
+5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
 > **Why misses still make noise.** Battle Company's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
 
 | Event | Victim | Shooter |
 |---|---|---|
-| Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (no radio path for a plain hit) |
+| Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (a plain hit is never confirmed back to the shooter) |
 | Kill | headset sustained green blink (the out state), death alarm, gun stops firing | green sight flash + "kill" callout; in gun-menu games also "double kill" and other streak lines |
 | Same team, FF off | nothing (the gun drops the shot, by the documented rule one bench result contradicts) | nothing |
 | Miss (accuracy roll) | headset lights + zip, 0 damage | (none) |
@@ -1370,9 +1372,9 @@ Score a kill in a game the app hosts, and your gun gets three things from the ho
 
 `$SFLASH` is bare, with no arguments. It works on an idle unspawned gun and needs no companion frame.
 
-In a phoneless game started from the gun menu, the gun says "double kill" and other streak lines on its own: it computes that audio over its radio mesh, with no phone involved. Once a Bluetooth host is driving the gun, those native multikill lines go silent and the host has to play them.
+In a phoneless game started from the gun menu, the gun says "double kill" and other streak lines on its own, with no phone involved. How a gun learns enough about the other players to call a streak has not been established. Once a Bluetooth host is driving the gun, those native multikill lines go silent and the host has to play them.
 
-> **A native "silence" weapon.** One of the IR hit functions (function 23 in the `$SIR` table) does not touch health, ammo or the trigger. It mutes the victim's gun audio, which comes back over roughly 6-8 s. No fire sound, no reload chain, no overheat cue. It is stock firmware behavior, so any host can use it today.
+> **The one hit function that changes something without touching a pool.** Function 23 in the `$SIR` table leaves health, armor, ammo and the trigger alone: the victim keeps firing normally. What it does move is `$ALCD` token 2, which reads 100 in normal play, drops to 0 on a fn 23 hit and climbs back over roughly 6 to 8 s. A `$SPAWN,,*` resets it to 100 at once. What token 2 stands for is not known, and the guess that it is an audio mute has not been tested by taking a fn 23 hit and listening. Treat it as a timed state a host can trigger and read, not as a silence weapon.
 
 ### Why does the gun play music when I die?
 
@@ -1384,11 +1386,11 @@ Mostly no. Your gun sees the grenade's IR signal and plays those sounds from its
 
 ## Voice packs and announcers
 
-A voice pack is seventeen slots. The BRX does not ship "a male voice" and "a female voice" as one big pack. A player profile lists one sound id per game event: death alarm, pain, respawn cry, kill line. The characters you pick in the app are just pre-filled sets of those ids.
+A voice pack is the run of sound ids at the tail of `$PSET`, one per game event: death alarm, pain, respawn cry, kill line. The BRX does not ship "a male voice" and "a female voice" as one big pack. The characters you pick in the app are just pre-filled sets of those ids.
 
-This is decoded from the app: the trailing tokens of a captured `$PSET` (e.g. `...,H44,JAD,V33,...,A10`) fill these slots in order.
+**How many slots there are is an open question.** The app's own metadata declares **seventeen** voice-pack field names, listed below in declaration order. A captured `$PSET` carries **sixteen** ids on the wire (`...,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*`). So at least one declared name has no wire slot of its own, and which name that is, and therefore where the run shifts by one, has not been established. Treat the table as the app's list of events, not as a proven token-by-token map.
 
-| Slot | Event it fires on |
+| Declared field | Event it fires on |
 |---|---|
 | deathAlarm | You died (the loud beep/alarm) |
 | stealthDeathScream | Death while stealthed / quiet death |
@@ -1410,7 +1412,7 @@ This is decoded from the app: the trailing tokens of a captured `$PSET` (e.g. `.
 
 The "Get some" respawn line was traced to this block on the bench.
 
-> **Design choice: pool sounds, not health sounds.** Open BRX uses the pool slots on purpose. Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player what it went through. Open BRX rings metal for armor and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately silent: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The slot order above was confirmed on hardware 2026-09-07, and every sound was chosen by ear rather than from the catalog.
+> **Design choice: pool sounds, not health sounds.** Open BRX uses the pool slots on purpose. Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player what it went through. Open BRX rings metal for armor and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately silent: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The pool slots behave as described on hardware, and every sound was chosen by ear rather than from the catalog.
 
 > **An empty slot is not silence.** Clearing one of these fields makes the gun fall through to a neighboring pool's sound, not go quiet: an empty hitShield plays the armor clip. Health can ship empty only because it is the innermost pool, with nothing further in to fall through to. This differs from the voice fields, where an empty value really does mean the gun says nothing. Confirmed on hardware 2026-09-07.
 
@@ -1463,10 +1465,10 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 
 ## The sound bank
 
-2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 145 of those have since been confirmed by ear; the rest are machine guesses, and an unconfirmed transcript can be wrong. `V116` is catalogued as "Can't believe!" and the gun actually says "gained the lead". Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 146 of those have since been confirmed by ear. The rest are machine guesses: an unconfirmed transcript is a machine guess and can be wrong. Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
 
 - **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
-- **~4,700 s** (78 min) of audio across the app's 2,166-id list
+- **~4,800 s** (80 min) of audio across the app's 2,166-id list
 - **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed). **Shortest:** `N1A` at 0.04 s
 
@@ -1681,9 +1683,11 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 ### "Won't fire"
 
 1. **Is the headset slow-blinking a rainbow?** → yes → It is disconnected. The gun will not join a
-   game or fire until the headset links. Power the headset on and wait for it to settle to team
-   colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles, re-pair
-   (see "Headset, pairing & Bluetooth").
+   hosted or app game until the headset links. Power the headset on and wait for it to settle to
+   team colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles,
+   re-pair (see "Headset, pairing & Bluetooth"). Whether a gun booted with no headset at all can
+   still fire a local, on-gun game is unresolved: Battle Company's V7 manual says it can, operators
+   report it cannot, and the clean test has not been run. Link the headset either way.
 2. **Did the headset drop after the game started?** (it was fine, then the gun "charges its energy
    weapon but nothing happens on the trigger") → yes → That is the anti-cheat lockout. Re-link the
    headset. If it will not link, power-cycle both and restart the round.
@@ -1741,15 +1745,15 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 
 ## Headset, pairing & Bluetooth
 
-The headset controls everything: firing, joining a game, and whether a phone can hold a
-connection.
+The headset gates almost everything: joining a game, staying live once one has started, and
+whether a phone can hold a connection.
 
 Rainbow means disconnected. Learn to read the headset LEDs. Re-pair when you have to. And learn
 about "screamers", the after-an-hour failure that ends hosted games.
 
 | Headset shows | Meaning |
 |---|---|
-| Slow rainbow blink, or LEDs cycling colours at power-on | Disconnected or not paired. It is waiting to pair, and the gun will not join a game or fire |
+| Slow rainbow blink, or LEDs cycling colours at power-on | Disconnected or not paired. It is waiting to pair, and the gun will not join a hosted or app game |
 | Solid team colour (red/blue) | Paired, pre-game only |
 | Dark | Normal during play. Not a fault |
 
@@ -2539,7 +2543,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | `S16` | Sniper | single shot, bolt action (t28/t29 = D20/D19) |
 | `S07` | AMR | single shot, same bolt pair |
 | `E07` | Ion Sniper | single shot, 2-round clip (D32/D31) |
-| `E17` | Plasma Sniper | single shot, overheat (t24=30), shell reload |
+| `E17` | Plasma Sniper | single shot, overheat (t24=30) |
 | `T01` | Shotgun | single shot (t20=7), t19=2, extra-headset block, magnitude 45 |
 | `J15` | Energy Launcher | clip 1, `t40` 3 (the published Reserve column shows `t17`, which is 2 × t40) |
 | `C03` | Rail Gun | charges on hold, auto-fires ~1.2 s (t20=2, t28=C08) |
@@ -3310,7 +3314,7 @@ a mode that has never met a gun can still surprise you.
 |---|---|---|
 | Infection | One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock. | Rules engine and Mission Control support are both in. No live run. |
 | Last Man Standing | Every player carries a fixed number of lives. Spend them all and you are out. Last player or squad standing wins. | Rules engine and Mission Control support are both in. No live run. |
-| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | Runs from the laptop command line only. The phone carries none of it, so play stays inside Bluetooth range. |
+| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | The mode is in Mission Control's list and compiles a gun head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware. |
 | Counter-Strike (plant and defuse) | Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out. | Needs a station to report plant and defuse. Not in the Mission Control mode list. |
 | Domination | Teams hold capture points. Score accrues per second held. | Needs a station per point. Not in the Mission Control mode list. |
 | King of the Hill | Domination with one point: hold the hill for time. | Same as Domination. |
@@ -3379,8 +3383,8 @@ future perk that claims a button joins the same rule.
 Open BRX defines weapons on the wire. Each one is a frame the gun is sent at arming time, so a
 weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
 
-The roster is 22 entries: the 19 weapons captured from the Callsign app, three pistols we added
-(Glock-18, USP-S, Desert Eagle) and melee, which is always loaded and never shown in the picker.
+The roster is 22 entries: the 19 captured Callsign weapons, melee among them, and three pistols we
+added (Glock-18, USP-S, Desert Eagle). Melee is always loaded and never shown in the picker.
 Every captured weapon starts from the real frame Battle Company sent. Only the balance numbers are
 overwritten: damage, fire interval, magazine, reserve, reload time and swap delay. Sounds, fire
 mode, burst behaviour and overheat come through from the capture untouched.
@@ -3396,7 +3400,7 @@ the reload without it counting for anything.
 ## What is not built yet
 
 - The objective modes (Domination, King of the Hill, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet.
-- Extraction runs from the laptop command line only. The phone knows nothing about loot, zones or the channel timer.
+- Extraction's objective rules (the zone, the loot, the channel timer) run only on the laptop command line. The phone knows nothing about them.
 - Syphon and regenerating health are laptop-only for the same reason.
 - Mission Control does not arm respawn or objective stations at muster. A station is set up by hand.
 - Per-player handicaps stop at the health and armor pool. Damage, fire rate, respawn delay and lives are not adjustable per player.

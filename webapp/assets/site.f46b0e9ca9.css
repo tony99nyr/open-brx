@@ -30,7 +30,7 @@
 }
 
 * { box-sizing: border-box; }
-:where(a, button, input, summary):focus-visible {
+:where(a, button, input, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
 }
 body {
@@ -41,7 +41,12 @@ body {
 }
 a { color: var(--accent); }
 .skip { position: absolute; left: -9999px; }
-.skip:focus { left: 8px; top: 8px; background: var(--bg); padding: 8px; z-index: 10; }
+/* above the sticky header (z-index 20). At 10 it rendered behind it, so the first tab stop on
+   every page was invisible and keyboard users had no bypass at all. */
+.skip:focus {
+  left: 8px; top: 8px; background: var(--bg); color: var(--ink);
+  padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: 8px; z-index: 100;
+}
 
 /* ---- chrome ---- */
 .top {
@@ -109,7 +114,8 @@ a { color: var(--accent); }
 .r-h { display: block; font-weight: 650; }
 .r-p { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
 .r-t { display: block; font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
-.results mark { background: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; border-radius: 2px; }
+/* inherit made the mark 3.9:1 against its own highlight, below the 6:1 of the text around it */
+.results mark { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--ink); border-radius: 2px; }
 .r-none { margin: 0; padding: 14px; color: var(--muted); font-size: 14px; }
 
 main { max-width: 62rem; margin: 0 auto; padding: 24px 20px 64px; }
@@ -145,7 +151,9 @@ h3 {
   margin: 38px 0 8px; color: var(--ink);
 }
 h4 { font-size: 1rem; font-weight: 650; margin: 22px 0 4px; color: var(--muted); }
-h2, h3, h4 { scroll-margin-top: 72px; }
+/* clears the sticky header. It is ~60px on a desktop but ~184px at 390px wide, where the nav
+   wraps under the search field, so a flat 72px dropped every in-page jump behind it. */
+h2, h3, h4 { scroll-margin-top: calc(var(--header-h, 72px) + 12px); }
 h2 + p, h3 + p { margin-top: 6px; }
 p, ul, ol { margin: 14px 0; }
 li { margin: 10px 0; padding-left: 2px; }

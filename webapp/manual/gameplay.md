@@ -25,7 +25,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
+> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number on its own does nothing, because the two tokens that switch the overheat system on are set only on the Charge Rifle, so it is the only stock weapon whose gauge actually climbs. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
@@ -57,7 +57,7 @@ Assault, single shot, 13 dmg, 225 ms, 18/180, 2.0 s. The rifle with the biggest 
 
 ### SMG
 
-CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. Big clip, long reload. It empties a health pool faster than any other automatic, in 15 hits.
+CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. 8 damage is the lowest in the arsenal, so the SMG is the slowest automatic to empty a health pool: 15 hits and 1.26 s, against the Stinger's 8 hits in 0.84 s, the Suppressor's 15 in 1.05 s, the Energy Rifle's 13 in 1.08 s and the Assault Rifle's 13 in 1.2 s. What you buy for that is staying power. 72 rounds is the biggest magazine of any automatic bar the Energy Rifle, nearly five kills without reloading, and the price is the longest reload in the game at 2.5 s (tied with the Charge Rifle). Its heat token reads 5, but the overheat gate is not set, so it never overheats.
 
 ### Shotgun
 
@@ -73,7 +73,7 @@ Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/24, 1.7 s. Two hits to kill
 
 ### Plasma Sniper
 
-Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot.
+Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot. Its heat token reads 30, the highest number in the arsenal, but the two gate tokens are empty in its captured frame, so as Callsign sends it there is no heat lockout. What limits you is the 10-round magazine and the 2 s reload.
 
 ### AMR
 
@@ -85,11 +85,11 @@ Support, full auto, 8 dmg, 75 ms, 48/288, 2.0 s. Quiet (not silent) and no muzzl
 
 ### Energy Rifle
 
-Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. You can fire a long time without reloading. Heat is what stops you.
+Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. 300 rounds is the biggest magazine in the arsenal by a wide margin, and 13 hits kill, so that is roughly 23 kills before you reload. Its heat token reads 6, but like the SMG and the Plasma Sniper it ships without the gate tokens, so nothing stops the burst except the magazine.
 
 ### Charge Rifle
 
-Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound.
+Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.
 
 ### Rocket Launcher
 
@@ -191,13 +191,13 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
 3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped, which is the documented rule that one unexplained bench result contradicts (see *Health, armor and damage*). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
-5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
+5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
 > **Why misses still make noise.** Battle Company's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
 
 | Event | Victim | Shooter |
 |---|---|---|
-| Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (no radio path for a plain hit) |
+| Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (a plain hit is never confirmed back to the shooter) |
 | Kill | headset sustained green blink (the out state), death alarm, gun stops firing | green sight flash + "kill" callout; in gun-menu games also "double kill" and other streak lines |
 | Same team, FF off | nothing (the gun drops the shot, by the documented rule one bench result contradicts) | nothing |
 | Miss (accuracy roll) | headset lights + zip, 0 damage | (none) |

@@ -21,9 +21,11 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 ### "Won't fire"
 
 1. **Is the headset slow-blinking a rainbow?** → yes → It is disconnected. The gun will not join a
-   game or fire until the headset links. Power the headset on and wait for it to settle to team
-   colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles, re-pair
-   (see "Headset, pairing & Bluetooth").
+   hosted or app game until the headset links. Power the headset on and wait for it to settle to
+   team colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles,
+   re-pair (see "Headset, pairing & Bluetooth"). Whether a gun booted with no headset at all can
+   still fire a local, on-gun game is unresolved: Battle Company's V7 manual says it can, operators
+   report it cannot, and the clean test has not been run. Link the headset either way.
 2. **Did the headset drop after the game started?** (it was fine, then the gun "charges its energy
    weapon but nothing happens on the trigger") → yes → That is the anti-cheat lockout. Re-link the
    headset. If it will not link, power-cycle both and restart the round.
@@ -81,15 +83,15 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 
 ## Headset, pairing & Bluetooth
 
-The headset controls everything: firing, joining a game, and whether a phone can hold a
-connection.
+The headset gates almost everything: joining a game, staying live once one has started, and
+whether a phone can hold a connection.
 
 Rainbow means disconnected. Learn to read the headset LEDs. Re-pair when you have to. And learn
 about "screamers", the after-an-hour failure that ends hosted games.
 
 | Headset shows | Meaning |
 |---|---|
-| Slow rainbow blink, or LEDs cycling colours at power-on | Disconnected or not paired. It is waiting to pair, and the gun will not join a game or fire |
+| Slow rainbow blink, or LEDs cycling colours at power-on | Disconnected or not paired. It is waiting to pair, and the gun will not join a hosted or app game |
 | Solid team colour (red/blue) | Paired, pre-game only |
 | Dark | Normal during play. Not a fault |
 

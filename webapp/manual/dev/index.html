@@ -5,7 +5,7 @@
 <meta name="description" content="This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the $WEAP / $GSET / $PSET / $SIR tables, the">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/">
 <link rel="alternate" type="text/markdown" href="/manual/dev.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.32f97e845e.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -13,8 +13,10 @@
 <nav class="topnav" aria-label="Sections"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/" aria-current="page">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
 <form class="find" role="search" onsubmit="return false">
   <label class="vh" for="q">Search the manual</label>
-  <input id="q" type="search" autocomplete="off" placeholder="Search, or a command like $WEAP"
+  <input id="q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list"
+         placeholder="Search, or a command like $WEAP"
          aria-expanded="false" aria-controls="results" aria-describedby="find-hint">
+  <span class="vh" id="find-live" role="status" aria-live="polite"></span>
   <span class="vh" id="find-hint">Press slash to jump here. Results appear as you type.</span>
   <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
 </form>
@@ -293,7 +295,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <tr><td><code>S16</code></td><td>Sniper</td><td>single shot, bolt action (t28/t29 = D20/D19)</td></tr>
 <tr><td><code>S07</code></td><td>AMR</td><td>single shot, same bolt pair</td></tr>
 <tr><td><code>E07</code></td><td>Ion Sniper</td><td>single shot, 2-round clip (D32/D31)</td></tr>
-<tr><td><code>E17</code></td><td>Plasma Sniper</td><td>single shot, overheat (t24=30), shell reload</td></tr>
+<tr><td><code>E17</code></td><td>Plasma Sniper</td><td>single shot, overheat (t24=30)</td></tr>
 <tr><td><code>T01</code></td><td>Shotgun</td><td>single shot (t20=7), t19=2, extra-headset block, magnitude 45</td></tr>
 <tr><td><code>J15</code></td><td>Energy Launcher</td><td>clip 1, <code>t40</code> 3 (the published Reserve column shows <code>t17</code>, which is 2 × t40)</td></tr>
 <tr><td><code>C03</code></td><td>Rail Gun</td><td>charges on hold, auto-fires ~1.2 s (t20=2, t28=C08)</td></tr>
@@ -677,5 +679,5 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a></p></footer>
-<script src="/assets/site.a5f4a6c703.js"></script>
+<script src="/assets/site.5dfbac6b14.js"></script>
 </body></html>

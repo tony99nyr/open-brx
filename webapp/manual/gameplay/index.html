@@ -5,7 +5,7 @@
 <meta name="description" content="This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Gr">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/gameplay/">
 <link rel="alternate" type="text/markdown" href="/manual/gameplay.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.32f97e845e.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -13,8 +13,10 @@
 <nav class="topnav" aria-label="Sections"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/" aria-current="page">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
 <form class="find" role="search" onsubmit="return false">
   <label class="vh" for="q">Search the manual</label>
-  <input id="q" type="search" autocomplete="off" placeholder="Search, or a command like $WEAP"
+  <input id="q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list"
+         placeholder="Search, or a command like $WEAP"
          aria-expanded="false" aria-controls="results" aria-describedby="find-hint">
+  <span class="vh" id="find-live" role="status" aria-live="polite"></span>
   <span class="vh" id="find-hint">Press slash to jump here. Results appear as you type.</span>
   <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
 </form>
@@ -57,7 +59,7 @@
 </blockquote>
 <h2 id="the-complete-callsign-arsenal">The complete Callsign arsenal</h2>
 <blockquote>
-<p><strong>How to read the numbers.</strong> The table&#39;s columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target&#39;s gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target&#39;s effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame&#39;s <code>t17</code> token, which is exactly twice its other spare-ammo token (<code>t40</code>), so which of the two is a player&#39;s true spare-round count is unsettled.</p>
+<p><strong>How to read the numbers.</strong> The table&#39;s columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target&#39;s gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is the value the frame&#39;s heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number on its own does nothing, because the two tokens that switch the overheat system on are set only on the Charge Rifle, so it is the only stock weapon whose gauge actually climbs. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target&#39;s effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame&#39;s <code>t17</code> token, which is exactly twice its other spare-ammo token (<code>t40</code>), so which of the two is a player&#39;s true spare-round count is unsettled.</p>
 </blockquote>
 <p>The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.</p>
 <section class="dt" data-table="weapons">
@@ -80,7 +82,7 @@
 <h3 id="bolt-rifle">Bolt Rifle</h3>
 <p>Assault, single shot, 13 dmg, 225 ms, 18/180, 2.0 s. The rifle with the biggest damage number.</p>
 <h3 id="smg">SMG</h3>
-<p>CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. Big clip, long reload. It empties a health pool faster than any other automatic, in 15 hits.</p>
+<p>CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. 8 damage is the lowest in the arsenal, so the SMG is the slowest automatic to empty a health pool: 15 hits and 1.26 s, against the Stinger&#39;s 8 hits in 0.84 s, the Suppressor&#39;s 15 in 1.05 s, the Energy Rifle&#39;s 13 in 1.08 s and the Assault Rifle&#39;s 13 in 1.2 s. What you buy for that is staying power. 72 rounds is the biggest magazine of any automatic bar the Energy Rifle, nearly five kills without reloading, and the price is the longest reload in the game at 2.5 s (tied with the Charge Rifle). Its heat token reads 5, but the overheat gate is not set, so it never overheats.</p>
 <h3 id="shotgun">Shotgun</h3>
 <p>CQB, single shot, 45 dmg, 900 ms, 6/24, shell-by-shell reload at 0.4 s per shell. Three hits to kill. It is the only weapon with the &quot;Shells&quot; reload type.</p>
 <h3 id="stinger">Stinger</h3>
@@ -88,15 +90,15 @@
 <h3 id="sniper-rifle">Sniper Rifle</h3>
 <p>Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/24, 1.7 s. Two hits to kill.</p>
 <h3 id="plasma-sniper">Plasma Sniper</h3>
-<p>Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot.</p>
+<p>Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot. Its heat token reads 30, the highest number in the arsenal, but the two gate tokens are empty in its captured frame, so as Callsign sends it there is no heat lockout. What limits you is the 10-round magazine and the 2 s reload.</p>
 <h3 id="amr">AMR</h3>
 <p>Support, single shot only, 18 dmg, 360 ms, 14/56, 1.4 s. A slow, deliberate pace.</p>
 <h3 id="suppressor">Suppressor</h3>
 <p>Support, full auto, 8 dmg, 75 ms, 48/288, 2.0 s. Quiet (not silent) and no muzzle flash. It is the only weapon with the stealth fields set.</p>
 <h3 id="energy-rifle">Energy Rifle</h3>
-<p>Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. You can fire a long time without reloading. Heat is what stops you.</p>
+<p>Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. 300 rounds is the biggest magazine in the arsenal by a wide margin, and 13 hits kill, so that is roughly 23 kills before you reload. Its heat token reads 6, but like the SMG and the Plasma Sniper it ships without the gate tokens, so nothing stops the burst except the magazine.</p>
 <h3 id="charge-rifle">Charge Rifle</h3>
-<p>Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound.</p>
+<p>Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.</p>
 <h3 id="rocket-launcher">Rocket Launcher</h3>
 <p>Power, single shot, 115 dmg (explosive damage type), 1.0 s, 2/8, 1.2 s. A one-shot kill.</p>
 <h3 id="rail-gun">Rail Gun</h3>
@@ -172,12 +174,12 @@
 <li><strong>Catch.</strong> Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.</li>
 <li><strong>Resolve.</strong> The target&#39;s gun checks the team bits first. Same team with friendly fire off means the shot is dropped, which is the documented rule that one unexplained bench result contradicts (see <em>Health, armor and damage</em>). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.</li>
 <li><strong>Feedback.</strong> The target&#39;s headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.</li>
-<li><strong>Confirm.</strong> On a kill the shooter&#39;s sight flashes green and the announcer says &quot;kill&quot;. In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.</li>
+<li><strong>Confirm.</strong> On a kill the shooter&#39;s sight flashes green and the announcer says &quot;kill&quot;. In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.</li>
 </ol>
 <blockquote>
 <p><strong>Why misses still make noise.</strong> Battle Company&#39;s &quot;simulated recoil&quot; accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone&#39;s headset keeps flashing and they are not dying, you are missing. Fire in bursts.</p>
 </blockquote>
-<div class="table-wrap"><table><thead><tr><th>Event</th><th>Victim</th><th>Shooter</th></tr></thead><tbody><tr><td>Hit (non-lethal)</td><td>one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs</td><td>nothing (no radio path for a plain hit)</td></tr>
+<div class="table-wrap"><table><thead><tr><th>Event</th><th>Victim</th><th>Shooter</th></tr></thead><tbody><tr><td>Hit (non-lethal)</td><td>one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs</td><td>nothing (a plain hit is never confirmed back to the shooter)</td></tr>
 <tr><td>Kill</td><td>headset sustained green blink (the out state), death alarm, gun stops firing</td><td>green sight flash + &quot;kill&quot; callout; in gun-menu games also &quot;double kill&quot; and other streak lines</td></tr>
 <tr><td>Same team, FF off</td><td>nothing (the gun drops the shot, by the documented rule one bench result contradicts)</td><td>nothing</td></tr>
 <tr><td>Miss (accuracy roll)</td><td>headset lights + zip, 0 damage</td><td>(none)</td></tr></tbody></table></div>
@@ -360,5 +362,5 @@
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a></p></footer>
-<script src="/assets/site.a5f4a6c703.js"></script>
+<script src="/assets/site.5dfbac6b14.js"></script>
 </body></html>

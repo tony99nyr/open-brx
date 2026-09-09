@@ -17,7 +17,7 @@ Four numbers that sum up the BRX:
 The system, in three objects:
 
 - **Tagger**: the rifle. It fires the IR beam and carries a hit sensor on its body. Inside sit the speaker, the sound bank, the battery, the Bluetooth radio and all the logic for a stock game.
-- **Headset**: the sensor band you wear. It catches most incoming tags because it is the bigger target. It lights up for feedback, links to its own tagger without wires, and decides whether that tagger may fire.
+- **Headset**: the sensor band you wear. It catches most incoming tags because it is the bigger target. It lights up for feedback, links to its own tagger without wires, and its link is what lets that tagger take part in a hosted game.
 - **Smart Grenade**: an extra device that sends out IR, with a button and a status light. Throw it as a blast weapon, or drop it as an objective (respawn point, hill, flag).
 
 > **What the BRX is not.** This shapes everything else in the manual.
@@ -27,7 +27,7 @@ The system, in three objects:
 > - No headset cable. The headset is wireless. There is no headset jack on the tagger.
 > - No firmware backup. You can write firmware over USB, but you can never read it back (the bootloader is write-only).
 
-> A gun whose headset is off, unpaired or flat just refuses to join. No error, no voice line. That is the number one cause of a wasted game start.
+> A gun whose headset is off, unpaired or flat just refuses to join a hosted or app game. No error, no voice line. That is the number one cause of a wasted game start.
 
 ## The tagger, part by part
 
@@ -137,7 +137,9 @@ Headset LEDs:
 
 ## The headset
 
-The headset is a wireless sensor band that decides whether your tagger is allowed to shoot. It is not an accessory: it is half of the system. It catches most tags and shows the shooter that they hit you. The tagger also refuses to fire when its headset drops mid-game.
+The headset is a wireless sensor band, and it is not an accessory: it is half of the system. It catches most tags and shows the shooter that they hit you. Its link also gates play. A gun whose headset is off, unpaired or flat will not join a hosted or app game, and a headset that drops after a game has started locks the tagger's trigger until it reconnects (anti-cheat).
+
+> **One case is unsettled.** Whether a gun booted with no headset at all can still fire a local, on-gun game is not resolved. Battle Company's V7 manual says it can. Operators report guns that will not fire without a headset, which is what the anti-cheat lockout looks like from the outside. Nobody has run the test cleanly: one gun, headset removed before power-on, a local game. Until that is done, treat a headset-less gun as unplayable.
 
 What's on the headset:
 
@@ -153,7 +155,7 @@ Headset facts:
 | Item | Detail |
 |---|---|
 | Link to tagger | Wireless, and it pairs by itself after power-on. It can take up to 3 minutes with many taggers and BT devices around. |
-| Anti-cheat lockout | If the headset drops after game start, the tagger locks until it reconnects. |
+| Anti-cheat lockout | If the headset drops after game start, the tagger locks until it reconnects. Whether a gun that never had a headset can fire a local game is unresolved (see above). |
 | Apps need it | The official phone app quietly disconnects a tagger with no headset linked. A game hosted from outside cannot hold a link to a headset-less gun either. |
 | Battery | One 18650 lithium cell in v2 headsets. It charges from any USB 5 V source. The v1 headset has a slide compartment. |
 | Firmware | Reported by the tagger as `hds.59` on the units checked. |

@@ -178,8 +178,10 @@ function shell(page, content) {
 <nav class="topnav" aria-label="Sections">${nav}</nav>
 <form class="find" role="search" onsubmit="return false">
   <label class="vh" for="q">Search the manual</label>
-  <input id="q" type="search" autocomplete="off" placeholder="Search, or a command like $WEAP"
+  <input id="q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list"
+         placeholder="Search, or a command like $WEAP"
          aria-expanded="false" aria-controls="results" aria-describedby="find-hint">
+  <span class="vh" id="find-live" role="status" aria-live="polite"></span>
   <span class="vh" id="find-hint">Press slash to jump here. Results appear as you type.</span>
   <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
 </form>
@@ -227,8 +229,25 @@ for (const p of pages) {
     const palette = ledPalette(REPO);
     for (const { name, value } of ledFacts(REPO)) {
       const pool = name.startsWith('shield') ? 'Shield' : name.startsWith('armour') ? 'Armour' : null;
-      if (!pool) { // gun body rest: a prose fact, so just require the word
-        if (!p.source.toLowerCase().includes(value)) problems.push(`${p.file}: ${name} is "${value}" in the source, and the page never says it`);
+      if (!pool) {
+        // The gun body's rest is prose, so scope the check to the paragraph that states it. Asking
+        // whether the word appears ANYWHERE on the page was no check at all: "dark", "purple" and
+        // "orange" are all already on this page for other reasons, so flipping GUN_DEFAULT to any
+        // of them left the build green while the page still said "team".
+        const para = p.source.match(/^\*\*Rest\.\*\*[\s\S]*?(?=\n\n)/m);
+        if (!para) {
+          problems.push(`${p.file}: no "**Rest.**" paragraph to check the gun body rest against`);
+          continue;
+        }
+        const said = para[0].toLowerCase();
+        if (!said.includes(value)) {
+          problems.push(`${p.file}: the gun body rests on "${value}" in the source, and the Rest paragraph does not say so`);
+        }
+        for (const other of ['team', 'dark', 'health'].filter(v => v !== value)) {
+          if (new RegExp(`\\brests?\\b[^.]{0,40}\\b${other}\\b`).test(said)) {
+            problems.push(`${p.file}: the Rest paragraph says the body rests "${other}", but the source says "${value}"`);
+          }
+        }
         continue;
       }
       const cell = row(pool);

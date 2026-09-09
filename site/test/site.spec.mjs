@@ -67,6 +67,9 @@ it('1b · a page opens with its title, not with a second nav bar', async ({ page
     expect(await first.evaluate(e => e.tagName), `${u} does not open with its title`).toBe('H1');
     // and any section-sibling nav must come after the content
     const more = page.locator('article > nav.more');
+    // the platform section HAS siblings, so its pages must carry the block; a bare `if (count())`
+    // meant renaming the class silently disabled this check
+    if (/^\/platform\/.+/.test(u)) expect(await more.count(), `${u} lost its section-siblings block`).toBe(1);
     if (await more.count()) {
       const pos = await more.evaluate(e => {
         const kids = [...e.parentElement.children];
@@ -262,7 +265,8 @@ it('6b · search finds a symbol and lands on the section that defines it', async
     return el ? Math.round(el.getBoundingClientRect().top) : null;
   });
   expect(y, 'the anchor a result points at does not exist').not.toBeNull();
-  expect(y, 'the anchor lands under the sticky header').toBeGreaterThanOrEqual(0);
+  const headerH = await page.evaluate(() => document.querySelector('.top').offsetHeight);
+  expect(y, `the anchor lands under the ${headerH}px sticky header`).toBeGreaterThanOrEqual(headerH);
   expect(errors).toEqual([]);
 });
 

@@ -23,7 +23,7 @@ a mode that has never met a gun can still surprise you.
 |---|---|---|
 | Infection | One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock. | Rules engine and Mission Control support are both in. No live run. |
 | Last Man Standing | Every player carries a fixed number of lives. Spend them all and you are out. Last player or squad standing wins. | Rules engine and Mission Control support are both in. No live run. |
-| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | Runs from the laptop command line only. The phone carries none of it, so play stays inside Bluetooth range. |
+| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | The mode is in Mission Control's list and compiles a gun head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware. |
 | Counter-Strike (plant and defuse) | Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out. | Needs a station to report plant and defuse. Not in the Mission Control mode list. |
 | Domination | Teams hold capture points. Score accrues per second held. | Needs a station per point. Not in the Mission Control mode list. |
 | King of the Hill | Domination with one point: hold the hill for time. | Same as Domination. |
@@ -92,8 +92,8 @@ future perk that claims a button joins the same rule.
 Open BRX defines weapons on the wire. Each one is a frame the gun is sent at arming time, so a
 weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
 
-The roster is 22 entries: the 19 weapons captured from the Callsign app, three pistols we added
-(Glock-18, USP-S, Desert Eagle) and melee, which is always loaded and never shown in the picker.
+The roster is 22 entries: the 19 captured Callsign weapons, melee among them, and three pistols we
+added (Glock-18, USP-S, Desert Eagle). Melee is always loaded and never shown in the picker.
 Every captured weapon starts from the real frame Battle Company sent. Only the balance numbers are
 overwritten: damage, fire interval, magazine, reserve, reload time and swap delay. Sounds, fire
 mode, burst behaviour and overheat come through from the capture untouched.
@@ -109,7 +109,7 @@ the reload without it counting for anything.
 ## What is not built yet
 
 - The objective modes (Domination, King of the Hill, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet.
-- Extraction runs from the laptop command line only. The phone knows nothing about loot, zones or the channel timer.
+- Extraction's objective rules (the zone, the loot, the channel timer) run only on the laptop command line. The phone knows nothing about them.
 - Syphon and regenerating health are laptop-only for the same reason.
 - Mission Control does not arm respawn or objective stations at muster. A station is set up by hand.
 - Per-player handicaps stop at the health and armor pool. Damage, fire rate, respawn delay and lives are not adjustable per player.

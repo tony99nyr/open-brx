@@ -5,7 +5,7 @@
 <meta name="description" content="This page names every part of the BRX tagger, headset and grenade. It explains what each button, port and light does, and it lists the specs for anyone building their own gear.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/hardware/">
 <link rel="alternate" type="text/markdown" href="/manual/hardware.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.32f97e845e.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -13,8 +13,10 @@
 <nav class="topnav" aria-label="Sections"><a href="/manual/hardware/" aria-current="page">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
 <form class="find" role="search" onsubmit="return false">
   <label class="vh" for="q">Search the manual</label>
-  <input id="q" type="search" autocomplete="off" placeholder="Search, or a command like $WEAP"
+  <input id="q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list"
+         placeholder="Search, or a command like $WEAP"
          aria-expanded="false" aria-controls="results" aria-describedby="find-hint">
+  <span class="vh" id="find-live" role="status" aria-live="polite"></span>
   <span class="vh" id="find-hint">Press slash to jump here. Results appear as you type.</span>
   <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
 </form>
@@ -36,7 +38,7 @@
 <p>The system, in three objects:</p>
 <ul>
 <li><strong>Tagger</strong>: the rifle. It fires the IR beam and carries a hit sensor on its body. Inside sit the speaker, the sound bank, the battery, the Bluetooth radio and all the logic for a stock game.</li>
-<li><strong>Headset</strong>: the sensor band you wear. It catches most incoming tags because it is the bigger target. It lights up for feedback, links to its own tagger without wires, and decides whether that tagger may fire.</li>
+<li><strong>Headset</strong>: the sensor band you wear. It catches most incoming tags because it is the bigger target. It lights up for feedback, links to its own tagger without wires, and its link is what lets that tagger take part in a hosted game.</li>
 <li><strong>Smart Grenade</strong>: an extra device that sends out IR, with a button and a status light. Throw it as a blast weapon, or drop it as an objective (respawn point, hill, flag).</li>
 </ul>
 <blockquote>
@@ -50,7 +52,7 @@
 </ul>
 </blockquote>
 <blockquote>
-<p>A gun whose headset is off, unpaired or flat just refuses to join. No error, no voice line. That is the number one cause of a wasted game start.</p>
+<p>A gun whose headset is off, unpaired or flat just refuses to join a hosted or app game. No error, no voice line. That is the number one cause of a wasted game start.</p>
 </blockquote>
 <h2 id="the-tagger-part-by-part">The tagger, part by part</h2>
 <p>This section covers every button, port, emitter and light on the rifle, and what each one is really for.</p>
@@ -139,7 +141,10 @@
 <li>Indoor mode dims the green hit LEDs and switches the RGB LEDs on. That is Battle Company&#39;s wording for the setting itself. How it interacts with the ring going dark at game start is unverified: nobody has watched an indoor-mode headset through a running game.</li>
 </ul>
 <h2 id="the-headset">The headset</h2>
-<p>The headset is a wireless sensor band that decides whether your tagger is allowed to shoot. It is not an accessory: it is half of the system. It catches most tags and shows the shooter that they hit you. The tagger also refuses to fire when its headset drops mid-game.</p>
+<p>The headset is a wireless sensor band, and it is not an accessory: it is half of the system. It catches most tags and shows the shooter that they hit you. Its link also gates play. A gun whose headset is off, unpaired or flat will not join a hosted or app game, and a headset that drops after a game has started locks the tagger&#39;s trigger until it reconnects (anti-cheat).</p>
+<blockquote>
+<p><strong>One case is unsettled.</strong> Whether a gun booted with no headset at all can still fire a local, on-gun game is not resolved. Battle Company&#39;s V7 manual says it can. Operators report guns that will not fire without a headset, which is what the anti-cheat lockout looks like from the outside. Nobody has run the test cleanly: one gun, headset removed before power-on, a local game. Until that is done, treat a headset-less gun as unplayable.</p>
+</blockquote>
 <p>What&#39;s on the headset:</p>
 <ul>
 <li><strong>Sensor domes</strong>: IR receivers around the band. The wire reports front dome hits and back dome hits separately.</li>
@@ -151,7 +156,7 @@
 </ul>
 <p>Headset facts:</p>
 <div class="table-wrap"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody><tr><td>Link to tagger</td><td>Wireless, and it pairs by itself after power-on. It can take up to 3 minutes with many taggers and BT devices around.</td></tr>
-<tr><td>Anti-cheat lockout</td><td>If the headset drops after game start, the tagger locks until it reconnects.</td></tr>
+<tr><td>Anti-cheat lockout</td><td>If the headset drops after game start, the tagger locks until it reconnects. Whether a gun that never had a headset can fire a local game is unresolved (see above).</td></tr>
 <tr><td>Apps need it</td><td>The official phone app quietly disconnects a tagger with no headset linked. A game hosted from outside cannot hold a link to a headset-less gun either.</td></tr>
 <tr><td>Battery</td><td>One 18650 lithium cell in v2 headsets. It charges from any USB 5 V source. The v1 headset has a slide compartment.</td></tr>
 <tr><td>Firmware</td><td>Reported by the tagger as <code>hds.59</code> on the units checked.</td></tr>
@@ -279,5 +284,5 @@ not host a copy of either.</p>
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a></p></footer>
-<script src="/assets/site.a5f4a6c703.js"></script>
+<script src="/assets/site.5dfbac6b14.js"></script>
 </body></html>

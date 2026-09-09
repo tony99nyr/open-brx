@@ -330,7 +330,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | `S16` | Sniper | single shot, bolt action (t28/t29 = D20/D19) |
 | `S07` | AMR | single shot, same bolt pair |
 | `E07` | Ion Sniper | single shot, 2-round clip (D32/D31) |
-| `E17` | Plasma Sniper | single shot, overheat (t24=30), shell reload |
+| `E17` | Plasma Sniper | single shot, overheat (t24=30) |
 | `T01` | Shotgun | single shot (t20=7), t19=2, extra-headset block, magnitude 45 |
 | `J15` | Energy Launcher | clip 1, `t40` 3 (the published Reserve column shows `t17`, which is 2 × t40) |
 | `C03` | Rail Gun | charges on hold, auto-fires ~1.2 s (t20=2, t28=C08) |

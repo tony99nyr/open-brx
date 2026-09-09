@@ -369,7 +369,7 @@ this section covers building a game and the gotchas that catch new users.
 - A hosted game typically takes about 1 minute to show up as joinable on a second phone. It
   round-trips through the cloud.
 - On connect the Android app sets the gun's internal volume to 100 out of 100. iOS sets it to
-  69. That matters here, because the app is effectively Android-only.
+  69. Whichever phone you host from, that is the volume your gun ends up at.
 - Owners report the app only works on Android 10 or earlier. iOS is fine.
 
 **Building and starting a game:**

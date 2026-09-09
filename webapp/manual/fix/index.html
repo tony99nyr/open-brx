@@ -5,7 +5,7 @@
 <meta name="description" content="Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/fix/">
 <link rel="alternate" type="text/markdown" href="/manual/fix.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.32f97e845e.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -13,8 +13,10 @@
 <nav class="topnav" aria-label="Sections"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/" aria-current="page">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
 <form class="find" role="search" onsubmit="return false">
   <label class="vh" for="q">Search the manual</label>
-  <input id="q" type="search" autocomplete="off" placeholder="Search, or a command like $WEAP"
+  <input id="q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list"
+         placeholder="Search, or a command like $WEAP"
          aria-expanded="false" aria-controls="results" aria-describedby="find-hint">
+  <span class="vh" id="find-live" role="status" aria-live="polite"></span>
   <span class="vh" id="find-hint">Press slash to jump here. Results appear as you type.</span>
   <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
 </form>
@@ -41,9 +43,11 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 <h3 id="quot-won-39-t-fire-quot">&quot;Won&#39;t fire&quot;</h3>
 <ol>
 <li><strong>Is the headset slow-blinking a rainbow?</strong><b class="br br-yes">yes</b>It is disconnected. The gun will not join a
-game or fire until the headset links. Power the headset on and wait for it to settle to team
-colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles, re-pair
-(see &quot;Headset, pairing &amp; Bluetooth&quot;).</li>
+hosted or app game until the headset links. Power the headset on and wait for it to settle to
+team colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles,
+re-pair (see &quot;Headset, pairing &amp; Bluetooth&quot;). Whether a gun booted with no headset at all can
+still fire a local, on-gun game is unresolved: Battle Company&#39;s V7 manual says it can, operators
+report it cannot, and the clean test has not been run. Link the headset either way.</li>
 <li><strong>Did the headset drop after the game started?</strong> (it was fine, then the gun &quot;charges its energy
 weapon but nothing happens on the trigger&quot;)<b class="br br-yes">yes</b>That is the anti-cheat lockout. Re-link the
 headset. If it will not link, power-cycle both and restart the round.</li>
@@ -102,11 +106,11 @@ out. Dry the gun fully before any power attempt.</li>
 fix</li>
 </ul>
 <h2 id="headset-pairing-amp-bluetooth">Headset, pairing &amp; Bluetooth</h2>
-<p>The headset controls everything: firing, joining a game, and whether a phone can hold a
-connection.</p>
+<p>The headset gates almost everything: joining a game, staying live once one has started, and
+whether a phone can hold a connection.</p>
 <p>Rainbow means disconnected. Learn to read the headset LEDs. Re-pair when you have to. And learn
 about &quot;screamers&quot;, the after-an-hour failure that ends hosted games.</p>
-<div class="table-wrap"><table><thead><tr><th>Headset shows</th><th>Meaning</th></tr></thead><tbody><tr><td>Slow rainbow blink, or LEDs cycling colours at power-on</td><td>Disconnected or not paired. It is waiting to pair, and the gun will not join a game or fire</td></tr>
+<div class="table-wrap"><table><thead><tr><th>Headset shows</th><th>Meaning</th></tr></thead><tbody><tr><td>Slow rainbow blink, or LEDs cycling colours at power-on</td><td>Disconnected or not paired. It is waiting to pair, and the gun will not join a hosted or app game</td></tr>
 <tr><td>Solid team colour (red/blue)</td><td>Paired, pre-game only</td></tr>
 <tr><td>Dark</td><td>Normal during play. Not a fault</td></tr></tbody></table></div>
 <h3 id="quot-headset-not-detected-quot-quot-keeps-dropping-quot">&quot;Headset not detected&quot; / &quot;keeps dropping&quot;</h3>
@@ -522,5 +526,5 @@ BRX is building an open, versioned one.</p>
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a></p></footer>
-<script src="/assets/site.a5f4a6c703.js"></script>
+<script src="/assets/site.5dfbac6b14.js"></script>
 </body></html>

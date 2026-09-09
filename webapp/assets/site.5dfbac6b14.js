@@ -2,6 +2,16 @@
 (() => {
   'use strict';
 
+  // The sticky header is ~60px wide-screen and ~184px at 390px, where the nav wraps. Publish the
+  // measured height so heading anchors clear it instead of guessing a single number.
+  const top = document.querySelector('.top');
+  if (top) {
+    const setH = () => document.documentElement.style.setProperty('--header-h', top.offsetHeight + 'px');
+    setH();
+    if (window.ResizeObserver) new ResizeObserver(setH).observe(top);
+    else addEventListener('resize', setH);
+  }
+
   // ---- theme ----
   const root = document.documentElement;
   try { const t = localStorage.getItem('brx-theme'); if (t) root.dataset.theme = t; } catch {}
@@ -102,14 +112,21 @@
     const panel = form.querySelector('#results');
     let rows = null, active = -1, items = [];
 
-    const load = () => rows ? Promise.resolve(rows) : fetch('/data/search.json')
+    // memoise the PROMISE, not the rows: typing "$WEAP" fired four concurrent fetches of the whole
+    // index, and whichever landed last won.
+    let loading = null;
+    const load = () => rows ? Promise.resolve(rows) : (loading ||= fetch('/data/search.json')
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(d => (rows = d.map(r => ({ ...r, lb: flat(r.b || '') }))))
-      .catch(err => { rows = []; panel.innerHTML = `<p class="r-none">Search could not load (${esc(err.message)}).</p>`; return rows; });
+      .catch(err => { rows = []; panel.innerHTML = `<p class="r-none">Search could not load (${esc(err.message)}).</p>`; return rows; }));
 
     const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Offsets must come from a string the SAME LENGTH as the one being sliced. Stripping
+    // apostrophes to find the index shifted every highlight left by one character per apostrophe
+    // before it, so "the gun's headset" highlighted " headse".
+    const soft = t => String(t).toLowerCase().replace(/['\u2019]/g, '\u0000');
     const mark = (t, q) => {
-      const i = t.toLowerCase().replace(/['\u2019]/g, '').indexOf(q);
+      const i = soft(t).indexOf(q.replace(/['\u2019]/g, '\u0000'));
       if (i < 0) return esc(t);
       return `${esc(t.slice(0, i))}<mark>${esc(t.slice(i, i + q.length))}</mark>${esc(t.slice(i + q.length))}`;
     };
@@ -121,7 +138,7 @@
     const snippet = (r, q) => {
       const body = r.b || '';
       if (!body) return '';
-      const i = r.lb.indexOf(q);
+      const i = soft(body).indexOf(q);
       if (i < 0) return `<span class="r-t">${esc(body.slice(0, 110))}</span>`;
       const from = Math.max(0, i - 42);
       const cut = body.slice(from, from + 150);
@@ -166,12 +183,14 @@
         panel.innerHTML = `<p class="r-none">Nothing matches ${esc(JSON.stringify(input.value.trim()))}.</p>`;
       } else {
         const q = input.value.trim().toLowerCase();
-        panel.innerHTML = hits.map((r, i) => `<a role="option" href="${r.u}" id="r${i}"${i === 0 ? ' aria-selected="true" class="on"' : ' aria-selected="false"'}>
+        panel.innerHTML = hits.map((r, i) => `<a role="option" href="${esc(r.u)}" id="r${i}"${i === 0 ? ' aria-selected="true" class="on"' : ' aria-selected="false"'}>
           <span class="r-h">${mark(r.h, q)}</span><span class="r-p">${esc(r.p)}</span>
           ${snippet(r, q)}</a>`).join('');
       }
       panel.hidden = false;
       input.setAttribute('aria-expanded', 'true');
+      const live = document.getElementById('find-live');
+      if (live) live.textContent = hits.length ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'No results';
     };
 
     const close = () => {
@@ -196,6 +215,8 @@
       const q = input.value.trim().toLowerCase().replace(/['\u2019]/g, '');
       if (q.length < 2) return close();
       const data = await load();
+      // the box may have been cleared or retyped while the index was loading
+      if (flat(input.value.trim()) !== q) return;
       if (!data.length) return;
       const hits = data.map(r => [scoreQuery(r, q), weight(r, q.split(/\s+/)[0]), r]).filter(([s]) => s < 99)
         .sort((a, b) => a[0] - b[0] || a[1] - b[1]).slice(0, 12).map(([, , r]) => r);
@@ -206,7 +227,13 @@
       if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
       else if (e.key === 'Enter' && items[active]) { e.preventDefault(); location.href = items[active].u; }
-      else if (e.key === 'Escape') { close(); input.blur(); }
+      else if (e.key === 'Escape') {
+        // preventDefault stops Chromium's native type=search clear, which wiped the query on the
+        // FIRST Escape no matter what this handler decided.
+        e.preventDefault();
+        // first Escape closes the list and keeps the query and the focus; a second clears
+        if (!panel.hidden) { close(); } else { input.value = ''; input.blur(); }
+      }
     });
 
     document.addEventListener('click', e => { if (!form.contains(e.target)) close(); });

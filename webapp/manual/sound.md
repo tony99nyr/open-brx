@@ -42,9 +42,9 @@ Score a kill in a game the app hosts, and your gun gets three things from the ho
 
 `$SFLASH` is bare, with no arguments. It works on an idle unspawned gun and needs no companion frame.
 
-In a phoneless game started from the gun menu, the gun says "double kill" and other streak lines on its own: it computes that audio over its radio mesh, with no phone involved. Once a Bluetooth host is driving the gun, those native multikill lines go silent and the host has to play them.
+In a phoneless game started from the gun menu, the gun says "double kill" and other streak lines on its own, with no phone involved. How a gun learns enough about the other players to call a streak has not been established. Once a Bluetooth host is driving the gun, those native multikill lines go silent and the host has to play them.
 
-> **A native "silence" weapon.** One of the IR hit functions (function 23 in the `$SIR` table) does not touch health, ammo or the trigger. It mutes the victim's gun audio, which comes back over roughly 6-8 s. No fire sound, no reload chain, no overheat cue. It is stock firmware behavior, so any host can use it today.
+> **The one hit function that changes something without touching a pool.** Function 23 in the `$SIR` table leaves health, armor, ammo and the trigger alone: the victim keeps firing normally. What it does move is `$ALCD` token 2, which reads 100 in normal play, drops to 0 on a fn 23 hit and climbs back over roughly 6 to 8 s. A `$SPAWN,,*` resets it to 100 at once. What token 2 stands for is not known, and the guess that it is an audio mute has not been tested by taking a fn 23 hit and listening. Treat it as a timed state a host can trigger and read, not as a silence weapon.
 
 ### Why does the gun play music when I die?
 
@@ -56,11 +56,11 @@ Mostly no. Your gun sees the grenade's IR signal and plays those sounds from its
 
 ## Voice packs and announcers
 
-A voice pack is seventeen slots. The BRX does not ship "a male voice" and "a female voice" as one big pack. A player profile lists one sound id per game event: death alarm, pain, respawn cry, kill line. The characters you pick in the app are just pre-filled sets of those ids.
+A voice pack is the run of sound ids at the tail of `$PSET`, one per game event: death alarm, pain, respawn cry, kill line. The BRX does not ship "a male voice" and "a female voice" as one big pack. The characters you pick in the app are just pre-filled sets of those ids.
 
-This is decoded from the app: the trailing tokens of a captured `$PSET` (e.g. `...,H44,JAD,V33,...,A10`) fill these slots in order.
+**How many slots there are is an open question.** The app's own metadata declares **seventeen** voice-pack field names, listed below in declaration order. A captured `$PSET` carries **sixteen** ids on the wire (`...,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*`). So at least one declared name has no wire slot of its own, and which name that is, and therefore where the run shifts by one, has not been established. Treat the table as the app's list of events, not as a proven token-by-token map.
 
-| Slot | Event it fires on |
+| Declared field | Event it fires on |
 |---|---|
 | deathAlarm | You died (the loud beep/alarm) |
 | stealthDeathScream | Death while stealthed / quiet death |
@@ -82,7 +82,7 @@ This is decoded from the app: the trailing tokens of a captured `$PSET` (e.g. `.
 
 The "Get some" respawn line was traced to this block on the bench.
 
-> **Design choice: pool sounds, not health sounds.** Open BRX uses the pool slots on purpose. Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player what it went through. Open BRX rings metal for armor and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately silent: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The slot order above was confirmed on hardware 2026-09-07, and every sound was chosen by ear rather than from the catalog.
+> **Design choice: pool sounds, not health sounds.** Open BRX uses the pool slots on purpose. Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player what it went through. Open BRX rings metal for armor and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately silent: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The pool slots behave as described on hardware, and every sound was chosen by ear rather than from the catalog.
 
 > **An empty slot is not silence.** Clearing one of these fields makes the gun fall through to a neighboring pool's sound, not go quiet: an empty hitShield plays the armor clip. Health can ship empty only because it is the innermost pool, with nothing further in to fall through to. This differs from the voice fields, where an empty value really does mean the gun says nothing. Confirmed on hardware 2026-09-07.
 
@@ -135,10 +135,10 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 
 ## The sound bank
 
-2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 145 of those have since been confirmed by ear; the rest are machine guesses, and an unconfirmed transcript can be wrong. `V116` is catalogued as "Can't believe!" and the gun actually says "gained the lead". Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 146 of those have since been confirmed by ear. The rest are machine guesses: an unconfirmed transcript is a machine guess and can be wrong. Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
 
 - **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
-- **~4,700 s** (78 min) of audio across the app's 2,166-id list
+- **~4,800 s** (80 min) of audio across the app's 2,166-id list
 - **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed). **Shortest:** `N1A` at 0.04 s
 
