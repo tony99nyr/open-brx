@@ -15,8 +15,7 @@ Last verified: 2026-09-09
 Facts come from Battle Company's own documents, from the Callsign app, from the owner community,
 and from testing on our own taggers. Anything unconfirmed, or contradicted between sources, is not
 published. Where an official document has a public address we link it, and we never host a copy.
-The working notes behind this manual are
-public in the repository.
+Every fact here is restated in our own words from those sources.
 
 ## Policy
 

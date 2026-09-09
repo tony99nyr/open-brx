@@ -101,7 +101,13 @@ it('2b · the official documents we say we link are actually reachable', async (
   const urls = new Set();
   for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md')) {
     for (const u of fs.readFileSync(path.join(dir, f), 'utf8').match(/https?:\/\/[^\s)"'<]+/g) || []) {
-      if (!u.includes('github.com/tony99nyr')) urls.add(u);
+      urls.add(u);   // including our own repo: excluding it is how a 404 on all 12 pages survived
+    }
+  }
+  // the footer link is in the template, not in any manual file, so read the built pages as well
+  for (const f of fs.readdirSync(WEB).filter(f => f.endsWith('.html'))) {
+    for (const u of (fs.readFileSync(path.join(WEB, f), 'utf8').match(/href="(https?:\/\/[^"]+)"/g) || [])) {
+      urls.add(u.slice(6, -1));
     }
   }
   expect(urls.size, 'the manual publishes no external link at all').toBeGreaterThan(0);

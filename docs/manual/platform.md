@@ -39,8 +39,8 @@ week to week. Four things have never been run: a dispersed timed start with play
 before T-0, a store-and-forward recovery after real coverage loss, more than two phones, and a
 20-minute soak.
 
-Android debug builds are published for sideloading on the
-[releases page](https://github.com/tony99nyr/open-brx/releases/latest). They are test builds, not
+Android debug builds exist for sideloading, but they are not publicly downloadable yet: they live
+on the project's releases page and the repository is still private. They are test builds, not
 releases, and a given build can be behind the current game rules. Two things follow from "debug".
 The build is **debuggable**: anything attached over USB debugging can inspect it and read its data.
 That is fine on your own phone, and it is a reason not to hand the build to a stranger. It is also

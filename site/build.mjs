@@ -17,6 +17,10 @@ const MANUAL = path.resolve(arg('manual') || path.join(REPO, 'docs/manual'));
 const OUT = path.resolve(arg('out') || path.join(REPO, 'webapp'));
 const SITE = arg('site') || 'https://open-brx.iamrossi.workers.dev';
 const GITHUB = 'https://github.com/tony99nyr/open-brx';
+// The repository is PRIVATE, so every one of these links 404s for a visitor. The site published
+// them anyway on all twelve pages. Flip this to true the moment the repo goes public
+// (docs/FOLLOWUPS.md section 1) and the links come back everywhere at once.
+const REPO_PUBLIC = false;
 
 // One file, one page. Adding a page = adding a file and a row. (docs/site/FORMAT.md)
 const PAGES = [
@@ -187,7 +191,7 @@ ${page.lastVerified ? `<p class="meta">Last verified <time datetime="${page.last
 ${content}
 ${more}
 </article></main>
-<footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="${GITHUB}">Source on GitHub</a></p></footer>
+<footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a>${REPO_PUBLIC ? ` &middot; <a href="${GITHUB}">Source on GitHub</a>` : ''}</p></footer>
 <script src="${assetHref('site.js')}"></script>
 </body></html>
 `;
@@ -244,6 +248,11 @@ for (const p of pages) {
     const links = p.source.match(/https?:\/\/[^\s)"'<]+/g) || [];
     const external = links.filter(u => !u.includes('github.com/tony99nyr'));
     if (!external.length) problems.push(`${p.file}: says an official document is linked, but links none`);
+  }
+  // Do not publish a link a visitor cannot open. While the repo is private every one of these is
+  // a 404, and the site had them on all twelve pages plus an APK download people were told to fetch.
+  if (!REPO_PUBLIC && p.source.includes('github.com/tony99nyr')) {
+    problems.push(`${p.file}: links the repository, which is private (set REPO_PUBLIC when it is not)`);
   }
   // the manual states what is true now, it does not narrate its own corrections
   const hist = p.source.match(/\b(an? earlier (note|draft|reading|version)|we (got|were) (this )?wrong|predates the|this page said|the mistake shipped|until then,|we (previously|used to) (said|say|thought|believed))\b/i);
