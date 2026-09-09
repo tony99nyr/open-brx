@@ -80,6 +80,21 @@ Shield is TEAL and armour PURPLE at every level; only health shifts hue as it sh
 from the 2026-09-07 review until 2026-09-09, when Tony chose teal: the `shield_up` burst was already teal, so
 the two disagreed about one fact, and white already carries FFA, carrier and extracted.) A partial level is two
 frames the node alternates at `blink_ms` (400): the solid frame, and the same frame with the top segment DARK.
+**DRAIN DIRECTION — measured against STOCK, 2026-09-09, and verified on our own bar the same evening.**
+Tony, running native Supremacy next to ours: *"the health actually flows the opposite direction. led 3 is the
+last one to be lost. led 1 turns off first."* So a partial bar lights the **LAST** `lit` LEDs and empties
+LED 1 first; the colour shift rides the **survivor**, so the final segment is the one that goes green →
+yellow → red and then pulses. Confirmed on the gun after the fix, both pools: armour
+`purple purple purple → · purple purple → · · purple`, health `green green green → · green green →
+· · yellow → · · RED`. Tony: *"direction matches native"*.
+
+We had it backwards, and **nothing in the repo could have caught it**: the test was named
+`test_segment_frame_lights_only_the_first_n_leds`, so the code and the test encoded the same assumption and
+agreed with each other. The only authority on which way a BRX bar empties is a BRX, and the check that found
+it was running the stock mode alongside ours — which no tooling here does. Second wrong-direction belief of
+the same night (see the empty-colour-token retraction below); both were beliefs mirrored into the simulator
+and the tests until they looked like facts. `poolgauge._lit_leds` is now the ONE place the order is decided.
+
 **DECIDED 2026-09-09 (Tony, at the bench, after watching the whole ladder on a gun) — do not re-open either:**
 
 - **A partial level KEEPS looping its blink while settled.** *"the loop blinking is ok in between stages"*.
