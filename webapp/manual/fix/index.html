@@ -5,7 +5,7 @@
 <meta name="description" content="Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/fix/">
 <link rel="alternate" type="text/markdown" href="/manual/fix.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.d2f22ad2c6.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f3a9d7d141.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/" aria-current="page">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
@@ -43,9 +43,11 @@ the &quot;go&quot; signal, not the trigger. Hosted play: wait for the host to st
 Once a tagger has been armed to a respawn station, its self-respawn is off. A dead player&#39;s
 trigger only makes the empty click.</li>
 <li><strong>Can you cycle weapons with the trigger before a game starts?</strong><b class="br br-no">no</b>The controls are
-locked. Check the admin lock. The primary lock is LEFT+RIGHT held 3 s in the root menu. The
-secondary is LEFT+RIGHT+SELECT for 3 s, and it also blocks indoor/outdoor, weapon, team and
-perk changes. Unlock the same way (v4.30: also hold SELECT).</li>
+locked, and this symptom is the stronger lock: LEFT+RIGHT+SELECT held 3 s in the root menu,
+which freezes indoor/outdoor, weapon, team and perk changes. The primary lock, LEFT+RIGHT held
+3 s, blocks mode changes and reset but leaves weapon cycling alone, so it is not what you are
+looking at here. Unlock with the same hold that set it (on v4.30 the unlock hold also needs
+SELECT).</li>
 <li><strong>Does the reload handle click home?</strong><b class="br br-no">no</b>The handle drives a mechanical switch under two
 screws. Press that switch with a pen. If the pen works and the handle does not, the handle is
 the problem (see &quot;Repairs&quot;).</li>
@@ -56,10 +58,10 @@ the connectors (see &quot;Repairs&quot;).</li>
 Company for repair.</li>
 </ol>
 <blockquote>
-<p><strong>Running the gun from a third-party host or your own code?</strong> We hit three silent fire-killers
-on the bench. Send the button map, or the firmware reports the trigger as disabled. Send a game
-head with no start command, and the gun spawns with a trigger that only reloads. Load a magazine
-after the spawn, or the gun goes live with no ammunition.</p>
+<p><strong>Running the gun from a third-party host or your own code?</strong> Three silent fire-killers, all
+found on the bench: send the button map, or the firmware reports the trigger as disabled. Send
+a game head with no start command, and the gun spawns with a trigger that only reloads. Load a
+magazine after the spawn, or the gun goes live with no ammunition.</p>
 </blockquote>
 <h3 id="quot-won-39-t-power-on-quot-quot-powers-off-by-itself-quot">&quot;Won&#39;t power on&quot; / &quot;powers off by itself&quot;</h3>
 <ol>
@@ -185,7 +187,10 @@ greeted (the phone&#39;s handshake). So &quot;it&#39;s not answering&quot; right
 <p>When the gun fires but nothing lands, nothing is heard, or nothing lasts.</p>
 <h3 id="quot-ir-isn-39-t-registering-hits-quot">&quot;IR isn&#39;t registering hits&quot;</h3>
 <ol>
-<li><strong>Same team, friendly fire off?</strong><b class="br br-yes">yes</b>Zero damage is correct. The firmware enforces it.</li>
+<li><strong>Same team, friendly fire off?</strong><b class="br br-yes">yes</b>Zero damage is the documented rule, and the firmware
+is meant to enforce it in both directions. One bench run on 2026-09-07 came out backwards: a
+shot claiming the gun&#39;s own team registered and an enemy shot did not, each reproduced twice.
+That result is unexplained, so do not treat team polarity as settled while you are chasing it.</li>
 <li><strong>Is the target alive and in a started game?</strong><b class="br br-no">no</b>A dead tagger accepts no IR at all. A
 tagger that is set up but not started ignores it too. Silence from a corpse proves nothing.</li>
 <li><strong>Bright sunlight?</strong><span class="br-then" aria-hidden="true">→</span> The gun&#39;s hit radius shrinks by about half in full sun, because of IR
@@ -217,7 +222,8 @@ speakers.</li>
 <li><strong>Volume set to 1?</strong><span class="br-then" aria-hidden="true">→</span> On-gun volume is 1-5 in the SELECT menu, and it is remembered per game
 mode.</li>
 <li><strong>Driven from an app or host?</strong><span class="br-then" aria-hidden="true">→</span> The wire-level volume command has a much wider range. The
-official app sends 69. At a &quot;safe&quot; 30 you cannot hear weapon audio outdoors at all.</li>
+Android Callsign app sends 100, and iOS sends 69. At a &quot;safe&quot; 30 you cannot hear weapon audio
+outdoors at all.</li>
 <li><strong>Booted into USB disk mode by accident?</strong><span class="br-then" aria-hidden="true">→</span> SELECT-at-boot turns the startup sound off
 completely. Reboot with nothing held.</li>
 <li><strong>Just updated to v4.30+?</strong><span class="br-then" aria-hidden="true">→</span> That release needs a complete new audio file set in the <code>AUDIO</code>
@@ -258,8 +264,9 @@ first, every time.</p>
 <ul>
 <li>Unplug the battery. A live pack during work inside the shell is how owners have fried
 mainboards.</li>
-<li>The emitter is a Class 1 IR laser (980 nm, 38 kHz, ~17 mW measured on our unit). Do not change
-its drive circuit, and do not stare into it while you probe.</li>
+<li>The emitter is a Class 1 IR laser (980 nm, 38 kHz, 16.9 mW in the factory record the gun
+prints in its own USB <code>QUERY</code> output). Do not change its drive circuit, and do not stare into
+it while you probe.</li>
 <li>There is no public mainboard schematic (only partial community mapping). Do not expect to
 trace faults past the switches and connectors.</li>
 <li>Never modify stock firmware. Battle Company&#39;s official USB updater is the factory-restore
@@ -504,5 +511,5 @@ BRX is building an open, versioned one.</p>
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="https://github.com/tony99nyr/open-brx">Source on GitHub</a></p></footer>
-<script src="/assets/site.4fc2271c04.js"></script>
+<script src="/assets/site.ffc8a72479.js"></script>
 </body></html>

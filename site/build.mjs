@@ -71,7 +71,7 @@ function readPage(p) {
 // ---- render ----------------------------------------------------------------------------------
 const DATA_TABLES = {
   weapons: { title: 'Weapons', note: 'Every weapon on the wire, from mcp/brx_mcp/mc/weapons.json.' },
-  sounds: { title: 'Sound bank', note: 'Every sound id on the gun, from mcp/brx_mcp/data/sound_catalog.json.' },
+  sounds: { title: 'Sound bank', note: 'Every sound id on the gun. A meaning in italics is machine transcription that nobody has confirmed by ear yet, so it can be wrong.' },
 };
 
 const renderer = new marked.Renderer();

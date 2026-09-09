@@ -5,7 +5,7 @@
 <meta name="description" content="How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/sound/">
 <link rel="alternate" type="text/markdown" href="/manual/sound.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.d2f22ad2c6.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f3a9d7d141.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/" aria-current="page">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
@@ -115,7 +115,7 @@
 <p><strong>Killstreak audio is not free under a phone or host.</strong> &quot;Double kill&quot; and its friends are announced natively only in a game started from the gun&#39;s own menu. As soon as a host drives the gun over Bluetooth, the host must play them itself (<code>$PLAY</code> on the announcer slot). Open BRX&#39;s Mission Control does this. A bare Bluetooth script gets silence.</p>
 </blockquote>
 <h2 id="the-sound-bank">The sound bank</h2>
-<p>2,477 sounds on the gun. One list. We read every file off a v4.32 tagger&#39;s <code>AUDIO</code> folder on 2026-09-03 and transcribed the voice lines. The official app&#39;s own configuration file, <code>Sounds.json</code>, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of <code>$PLAY</code> arguments, and of the file names you would replace over USB.</p>
+<p>2,477 sounds on the gun. One list. We read every file off a v4.32 tagger&#39;s <code>AUDIO</code> folder on 2026-09-03 and ran the voice lines through machine transcription. About 145 of those have since been confirmed by ear; the rest are machine guesses, and an unconfirmed transcript can be wrong. <code>V116</code> is catalogued as &quot;Can&#39;t believe!&quot; and the gun actually says &quot;gained the lead&quot;. Treat any transcript below as a label to check, not a quote. The official app&#39;s own configuration file, <code>Sounds.json</code>, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of <code>$PLAY</code> arguments, and of the file names you would replace over USB.</p>
 <ul>
 <li><strong>2,477</strong> sound files on the gun (2,166 in the app&#39;s list; 157 app ids missing from the gun; 468 gun files the app does not know)</li>
 <li><strong>~4,700 s</strong> (78 min) of audio across the app&#39;s 2,166-id list</li>
@@ -129,7 +129,7 @@
 <p>Prefix meanings are restated from David Knox&#39;s audio map; counts are computed from the app&#39;s sound list. The on-gun catalog adds the <code>VX</code> and <code>VZ</code> voice families, <code>H102</code> to <code>H155</code> and more.</p>
 <div class="table-wrap tall"><table><thead><tr><th>Family</th><th>What it holds</th><th>Ids</th><th>Typical length</th></tr></thead><tbody><tr><td><code>VA</code> + <code>E_VA</code></td><td>Male voice: announcer, system lines, weapon callouts, countdowns</td><td>321 + 23</td><td>0.5-3 s (countdowns up to 11 s)</td></tr>
 <tr><td><code>VB</code> + <code>E_VB</code></td><td>Scout / female-clean voice: score &amp; lead lines</td><td>90 + 64</td><td>1-2 s</td></tr>
-<tr><td><code>V0</code>-<code>V9</code></td><td>Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider)</td><td>23 each (255 total)</td><td>0.4-6 s</td></tr>
+<tr><td><code>V0</code>-<code>V9</code></td><td>Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider)</td><td>23 each except V4 (33), V5 (26) and V8 (35); 255 total</td><td>0.4-6 s</td></tr>
 <tr><td><code>V100</code>-<code>V144</code></td><td>CTF / Slayer / King-of-the-Hill callouts</td><td>34</td><td>1-2.4 s; three at 12-13 s</td></tr>
 <tr><td><code>VC</code>...<code>VS</code> (15 families)</td><td>Sentinel, Female sniper, Clean male, Creature, Female creature, Valkyrie, Viper, Wraith, Russian clean, Clean female, Mercenary, Clean male (alt), Nexus &amp; Vanguard commanders, Clean commander</td><td>9 base + 9-22 extra lines each (329 total, incl. 5 <code>E_VS</code> takes)</td><td>1-6 s</td></tr>
 <tr><td><code>N</code> + <code>E_N</code></td><td>Miscellaneous cues: the &quot;kerchung&quot;, swish, revive ping, ultra-short ticks</td><td>108 + 10</td><td>0.04-6.7 s</td></tr>
@@ -163,20 +163,20 @@
 <p><strong>Thirty-odd ids worth knowing</strong></p>
 <div class="table-wrap tall"><table><thead><tr><th>Id</th><th>Family</th><th>Meaning</th><th>Length</th></tr></thead><tbody><tr><td><code>VA20</code></td><td>VA</td><td>&quot;Connection established&quot;: plays on every phone connect</td><td>1.27 s</td></tr>
 <tr><td><code>U16</code></td><td>U</td><td>Connect tone (paired with VA20)</td><td>0.43 s</td></tr>
-<tr><td><code>VA81</code></td><td>VA</td><td>3-2-1 spawn countdown (arena)</td><td>2.97 s</td></tr>
-<tr><td><code>VA33</code></td><td>VA</td><td>&quot;Game over&quot; + music</td><td>2.26 s</td></tr>
-<tr><td><code>VA85</code></td><td>VA</td><td>Countdown to game over, no music</td><td>9.66 s</td></tr>
-<tr><td><code>VSB</code></td><td>VS</td><td>Countdown to game over + music</td><td>10.39 s</td></tr>
-<tr><td><code>VS6</code></td><td>VS</td><td>Game-end line (solo game close)</td><td>2.26 s</td></tr>
+<tr><td><code>VA81</code></td><td>VA</td><td>3-2-1 spawn countdown (arena)</td><td>3.03 s</td></tr>
+<tr><td><code>VA33</code></td><td>VA</td><td>&quot;Game over&quot; + music</td><td>1.88 s</td></tr>
+<tr><td><code>VA85</code></td><td>VA</td><td>Countdown to game over, no music</td><td>10.01 s</td></tr>
+<tr><td><code>VSB</code></td><td>VS</td><td>Countdown to game over + music</td><td>10.46 s</td></tr>
+<tr><td><code>VS6</code></td><td>VS</td><td>Game-end line (solo game close)</td><td>2.42 s</td></tr>
 <tr><td><code>VSF</code> + <code>JAY</code></td><td>VS / JA</td><td>Victory sting + &quot;Victory&quot;: the winner&#39;s end-of-game pair</td><td>1.86 s + 5.69 s</td></tr>
 <tr><td><code>VA46</code></td><td>VA</td><td>Lives depleted / multi-kill</td><td>1.47 s</td></tr>
 <tr><td><code>V3A</code></td><td>V3</td><td>&quot;Kill&quot;: the app&#39;s per-kill announcer line</td><td>0.79 s</td></tr>
-<tr><td><code>VB17</code></td><td>VB</td><td>Score / lead-change line</td><td>1.77 s</td></tr>
+<tr><td><code>VB17</code></td><td>VB</td><td>Score / lead-change line</td><td>1.94 s</td></tr>
 <tr><td><code>N41</code></td><td>N</td><td>Revive-countdown ping</td><td>0.73 s</td></tr>
 <tr><td><code>NA0</code></td><td>NA</td><td>Death beep (also the file swapped to change the death cue)</td><td>4.00 s</td></tr>
 <tr><td><code>N03</code></td><td>N</td><td>&quot;Kerchung&quot;</td><td>0.82 s</td></tr>
 <tr><td><code>N04</code></td><td>N</td><td>Swish</td><td>1.43 s</td></tr>
-<tr><td><code>JA9</code></td><td>JA</td><td>Startup music</td><td>5.74 s</td></tr>
+<tr><td><code>JA9</code></td><td>JA</td><td>Startup music</td><td>5.75 s</td></tr>
 <tr><td><code>JAD</code></td><td>JA</td><td>Death music (the musicMixOnDeath slot)</td><td>3.50 s</td></tr>
 <tr><td><code>H29</code></td><td>H</td><td>Respawn / add-HP: a quiet, sustained &quot;stim-pack&quot; medical sound</td><td>1.20 s</td></tr>
 <tr><td><code>VA16</code></td><td>VA</td><td>&quot;Armor suit&quot;: add armor</td><td>0.94 s</td></tr>
@@ -198,7 +198,7 @@
 <section class="dt" data-table="sounds">
 <div class="dt-bar"><input type="search" data-search placeholder="Search sound bank" aria-label="Search sound bank"><span class="dt-count" data-count aria-live="polite">loading</span></div>
 <div class="table-wrap"><table><thead data-head></thead><tbody data-body></tbody></table></div>
-<p class="dt-note">Every sound id on the gun, from mcp/brx_mcp/data/sound_catalog.json.</p></section>
+<p class="dt-note">Every sound id on the gun. A meaning in italics is machine transcription that nobody has confirmed by ear yet, so it can be wrong.</p></section>
 <h2 id="custom-sounds-over-usb">Custom sounds over USB</h2>
 <p>The <code>AUDIO</code> folder. Hold SELECT while you power on with a USB cable attached, and the tagger becomes a disk drive. You get a firmware file at the root and an <code>AUDIO</code> folder of per-sound files: replace a file, replace a sound. This is Battle Company&#39;s own update path, confirmed in their Extended User Guide, and the community has used it for Star Wars packs for years.</p>
 <blockquote>
@@ -267,7 +267,7 @@
 <ul>
 <li>Android Callsign: <code>$VOL,100</code></li>
 <li>iOS Callsign: <code>$VOL,69</code></li>
-<li>Open BRX game default: 80 indoors / 90 outdoors (<code>compile.play_volume()</code> sets it from the venue; 69 measured as roughly on-gun level 2 and was inaudible on a field, 2026-08-30)</li>
+<li>Open BRX game default: 80 indoors / 90 outdoors (<code>compile.play_volume()</code> sets it from the venue; 69 is estimated at roughly on-gun level 2, and it was inaudible on a field, 2026-08-30)</li>
 <li>Open BRX try-out default: 69 (fired at arm&#39;s length)</li>
 <li>Open BRX probing default: 30 (deliberately quiet, and deliberately not for games)</li>
 </ul>
@@ -276,7 +276,8 @@
 </blockquote>
 <p><strong>Practical levels</strong></p>
 <ul>
-<li><strong>Play:</strong> 69, the value the official iOS app sets on connect. The Android app sends 100.</li>
+<li><strong>Play:</strong> 80 indoors, 90 outdoors. That is what Open BRX sets from the venue, and an unknown venue gets the quieter of the two. The official iOS app&#39;s 69 is too quiet for game audio on a field; the Android app sends 100.</li>
+<li><strong>Try-outs:</strong> 69. A try-out is fired at arm&#39;s length from the player&#39;s own head, so it stays quiet.</li>
 <li><strong>Bench / diagnostics:</strong> 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won&#39;t hear it).</li>
 </ul>
 <blockquote>
@@ -285,5 +286,5 @@
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="https://github.com/tony99nyr/open-brx">Source on GitHub</a></p></footer>
-<script src="/assets/site.4fc2271c04.js"></script>
+<script src="/assets/site.ffc8a72479.js"></script>
 </body></html>

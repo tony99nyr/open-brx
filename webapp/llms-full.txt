@@ -28,14 +28,14 @@ This page names every part of the BRX tagger, headset and grenade. It explains w
 
 ## The BRX at a glance
 
-The Battle Company BRX is a laser tagger shaped like a rifle. It comes with a wireless sensor headset and can pair with a smart grenade. It shoots a coded beam of invisible light at 980 nm and 38 kHz. It plays 2,000+ sounds through its own speaker, and a small bank of lights shows what it is doing. There is no screen, no WiFi, and no memory of the game you just played.
+The Battle Company BRX is a laser tagger shaped like a rifle. It comes with a wireless sensor headset and can pair with a smart grenade. It shoots a coded beam of invisible light at 980 nm and 38 kHz. It plays 2,477 sounds through its own speaker, and a small bank of lights shows what it is doing. There is no screen, no WiFi, and no memory of the game you just played.
 
 Four numbers that sum up the BRX:
 
 - **980 nm / 38 kHz**: the IR beam every shot rides on.
 - **~600 ft**: how far a shot usually reaches. Shade and night are better, and bright sun cuts it about in half.
 - **~8 h**: play time on one charge.
-- **2,477**: sound files on the tagger, every one catalogued.
+- **2,477**: sound files on the tagger, every one indexed.
 
 The system, in three objects:
 
@@ -65,7 +65,7 @@ Controls at a glance:
 - **LEFT / RIGHT** (the direction pad): flip through game modes and teams. Hold LEFT at power-on for target (sighting) mode. Hold RIGHT at power-on for accessory and headset pairing mode. Hold LEFT+RIGHT for 5 s in a game to return to the menu.
 - **Power switch**: a slide switch by the barrel. A tagger that turns itself on and off usually has a worn one.
 
-> **There is no fire-mode selector.** Fire mode belongs to the weapon you pick, not to a switch on the gun. The modes are full-auto, single-shot, 3-round burst, hold-to-charge and melee. Each one is stored inside the weapon definition.
+> **There is no fire-mode selector.** Fire mode belongs to the weapon you pick, not to a switch on the gun. There are seven: full-auto, single-shot (bolt), 3-round burst, charge with auto-release, hold-to-charge with auto-fire, charge and fire on release, and melee. Each one is stored inside the weapon definition.
 
 | Port | Where | What it is |
 |---|---|---|
@@ -78,7 +78,7 @@ Controls at a glance:
 
 - **Microcontroller**: a PJRC Teensy (ARM). Plug in USB and it shows up as "Teensyduino USB Serial".
 - **Radio**: a Bluetooth module wired to the microcontroller's serial port. That is why BLE and a wired serial cable send the exact same frames. Board label on the units checked: `PCB-5`, `BTchip-4`.
-- **Sound storage**: an SD card on the mainboard. You never take it out to change sounds, because sound updates go over USB.
+- **Sound storage**: an SD card on the mainboard. Sound updates go over USB, so there is no reason to take it out. Whether the card can be removed at all has not been checked, and doing so would mean a teardown.
 - **Speaker**: a "pop" from the speaker when the gun boots means the speaker has power.
 - **Warning**: always unplug the battery before any work inside. A live pack during a mod is the classic way to kill a mainboard.
 
@@ -119,7 +119,7 @@ Where you can be tagged:
 
 ### The sight
 
-- The tagger's sight has a green kill-confirm flash. Score a kill and the sight glows green for a few seconds.
+- The tagger's sight has a green kill-confirm flash. Score a kill and the sight goes green. In a hosted game the flash is one `$SFLASH` frame per kill, which arrives about 0.4 s after the trigger burst ends. That figure is the delay before the flash, not how long it lasts; the length of the flash is not documented anywhere.
 - Sighting a scope happens in Target Mode (hold LEFT while powering on). Shots do zero damage, ammo is unlimited, and a direct hit flashes the target's headset green. Owners sight snipers long (300-400 ft) and shotguns or SMGs close (50-100 ft).
 
 ## Lights and what they mean
@@ -132,10 +132,10 @@ Gun LEDs:
 |---|---|
 | Colour while in the menu | The game mode you picked: Free For All white, Death Match red, Generals yellow, Supremacy blue, Commander pink, Survival green, The Swarm orange. |
 | Colour during a game | Your team or faction colour (on the bench, team 1 is blue and team 2 is yellow). The colour comes from your team. You cannot set any colour you like. |
-| Colour palette available | 9 colours reported by the community: red, blue, yellow, green, purple, cyan, white, pink, orange. |
+| Colour palette available | Nine colours, measured on our own bench with a camera rig on 2026-09-02 (three trials per index, normalised R/G/B signatures): 0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange. Indices 9 and 10 are dark. |
 | Segments going out | Your health bar: the three LEDs work like a bar that drains as you take damage. |
 | Manual's description | "LED indicator shows ammo & health." |
-| Slow blink in team colour | A game run from an outside app that has not switched the health bar on. |
+| Slow pulse in team colour | The firmware's own breathing loop. The firmware owns the gun strip and breathes it until a host sends the `$GLED` blank, which hands the strip over for the rest of that life. |
 
 Headset LEDs:
 
@@ -143,7 +143,7 @@ Headset LEDs:
 |---|---|
 | Slow rainbow cycling | Not connected, not paired to a tagger. You can spot it across a room, so check every headset before a game starts. |
 | Solid or pulsing team colour (red, blue...) | Paired and synced to the tagger. You see this before the game only. |
-| Dark | This is normal in play. The band goes dark once the game starts, and dark is not a fault. |
+| Dark | The RGB ring, once the game starts. It drops the team colour at game start, and dark is not a fault. This is what our own units do. Battle Company describes indoor mode as switching the RGB LEDs on, and whether an indoor-mode headset stays lit through play instead is unverified. |
 | One green flash | A hit registered on this headset. The flash fires on its own, with no command from a phone or host. |
 | Sustained bright green blink | This player is out (dead). It stops at respawn. |
 | Green flash in Target Mode | A direct hit on the sighting target. |
@@ -156,7 +156,7 @@ Headset LEDs:
 ### For modders: what the headset LEDs are
 
 - The addressable RGB LEDs are WS2812B 5050 (NeoPixel-compatible). On the BRX headset they are wired as a series string (parallel on the SwapTX variant). One data line, 5 V and ground.
-- Indoor mode dims the green hit LEDs and switches the RGB LEDs on.
+- Indoor mode dims the green hit LEDs and switches the RGB LEDs on. That is Battle Company's wording for the setting itself. How it interacts with the ring going dark at game start is unverified: nobody has watched an indoor-mode headset through a running game.
 
 ## The headset
 
@@ -290,7 +290,7 @@ BRX tagger:
 | Range | up to ~600 ft; best in shade/night |
 | Sensors | hit sensor on the body + wireless headset |
 | Indicators | LED bank (mode / team / life gauge) + green kill-confirm in the sight |
-| Audio | on-board speaker; 2,000+ SFX and voice lines; sound pack replaceable over USB |
+| Audio | on-board speaker; 2,477 SFX and voice lines; sound pack replaceable over USB |
 | Radio | Bluetooth Classic (Gen1) / BLE Nordic UART (Gen2/3) |
 | Ports | charging port, micro-USB programming port |
 | MCU | PJRC Teensy |
@@ -375,8 +375,8 @@ Charge it, pair it, sight it, play.
 **The controls, in one glance:**
 
 - **Trigger**: fire. In menus it selects, and it cycles weapons or characters.
-- **ALT (orange)**: alt-fire or perk. Hold 3 s to toggle indoor/outdoor. In the menu it cycles
-  perks.
+- **ALT (orange)**: cycles perks and abilities in the modes that have them, in the menu and in
+  play. No stock weapon has an alt-fire. Hold 3 s to toggle indoor/outdoor.
 - **SELECT**: steps through settings. Hold it at power-on for USB disk mode (firmware and
   sounds).
 - **LEFT / RIGHT (D-pad)**: cycle modes and teams. Hold LEFT at power-on for target mode. Hold
@@ -465,9 +465,12 @@ Everything you can set without a phone, and what the gun remembers.
   friends).
 - **SELECT at power-on**: USB disk mode. No startup sound.
 - **LEFT + RIGHT, hold 5 s in a game**: soft reset back to the menu.
-- **LEFT + RIGHT, hold 3 s at the root menu**: admin lock. It blocks mode changes and reset. Add
-  SELECT for the stronger lock, which also freezes indoor/outdoor, weapon, team and perk. A
-  locked gun cannot host.
+- **LEFT + RIGHT, hold 3 s at the root menu**: the primary admin lock. It blocks mode changes
+  and reset, and nothing else. Weapon, team and perk cycling still work under it.
+- **LEFT + RIGHT + SELECT, hold 3 s at the root menu**: the stronger lock. On top of mode changes
+  and reset it also freezes indoor/outdoor, weapon, team and perk. A gun that will not cycle
+  weapons is under this lock, not the primary one. Either lock stops the gun hosting. Unlock with
+  the same hold that set it.
 - **Swing your elbow (gesture-enabled "logo" guns)**: melee from the headset's front emitter.
   Other guns use RIGHT.
 
@@ -492,8 +495,10 @@ One three-second hold changes your range, your LEDs and your blast radius.
 1. Hold ALT for 3 seconds at any time. The gun announces the new mode.
 2. Leave it. The setting persists across power cycles, so you set it once per venue.
 3. Host from the Callsign app instead? Its per-game Outdoor mode toggle sets the same thing.
-4. Driving a gun from your own code? It is `$GSET` token 2, `outdoorMode`. A second field, token
-   3 `gunLaserRegion`, carries the IR power limit. Both are in the developer reference.
+4. Driving a gun from your own code? The field looks like `$GSET` token 2, `outdoorMode`, with
+   token 3 `gunLaserRegion` carrying the IR power limit. Both names and mappings come from
+   decoding the app: setting either over Bluetooth and watching the gun change is untested. Both
+   are in the developer reference.
 
 **What changes:**
 
@@ -506,8 +511,8 @@ One three-second hold changes your range, your LEDs and your blast radius.
 | Gun hit radius | n/a | bright sunlight cuts it roughly in half (IR noise filtering) |
 
 > **Tip.** Use indoor mode indoors, even in a big room. Full-power IR in a small space bounces
-> off walls, and a bounce can land on your own headset. We have watched a gun drain its own
-> armor by firing at a wall a few feet away.
+> off walls, and a bounce can land on your own headset. A gun can drain its own armor by firing at
+> a wall a few feet away.
 
 ## Sighting the Laser
 
@@ -700,7 +705,8 @@ this section covers building a game and the gotchas that catch new users.
 - Keep the phone within about 1 m of its gun for the whole match. It is the game engine.
 - A hosted game typically takes about 1 minute to show up as joinable on a second phone. It
   round-trips through the cloud.
-- The app sets the gun's internal volume to 69 out of 100 when it connects.
+- On connect the Android app sets the gun's internal volume to 100 out of 100. iOS sets it to
+  69. That matters here, because the app is effectively Android-only.
 - Owners report the app only works on Android 10 or earlier. iOS is fine.
 
 **Building and starting a game:**
@@ -722,7 +728,7 @@ this section covers building a game and the gotchas that catch new users.
 
 | Setting | Choices |
 |---|---|
-| Primary / Secondary weapon | ~18-weapon roster (Assault Rifle, Sniper, Shotgun, SMG, Rail Gun, Rocket Launcher...); secondary removable |
+| Primary / Secondary weapon | 19-weapon roster (Assault Rifle, Sniper, Shotgun, SMG, Rail Gun, Rocket Launcher...); secondary removable |
 | Weapon respawn | 30 s, 60 s, 90 s, 3 min |
 | Weapon pick-up | Scan, Player, Both |
 | Weapon selection | on / off |
@@ -738,10 +744,11 @@ this section covers building a game and the gotchas that catch new users.
 > **Field objectives in Callsign are printed QR codes.** Respawn points, weapon pickups, control
 > points and supply drops are all paper you scan or fire at, not boxes.
 
-> **Volume.** The app's whole global settings screen is one Sound slider. On connect it sets the
-> gun to about 69 on its internal 0-100 scale. That is loud enough for weapon audio indoors and
-> out. Anything much below 50 makes weapon sounds effectively silent; 30 measures as inaudible
-> over room noise.
+> **Volume.** The app's whole global settings screen is one Sound slider. On connect the Android
+> app sets the gun to 100 on its internal 0-100 scale, and iOS sets it to 69. 69 is quieter than
+> the number suggests: measured on 2026-08-30 it lands at roughly on-gun level 2, and it was
+> inaudible outdoors. Anything much below 50 makes weapon sounds effectively silent, and 30
+> measures as inaudible over room noise. Open BRX plays at 80 indoors and 90 outdoors instead.
 
 > **Gotcha 1: the app renames your gun.** Every session Callsign writes the name "Tactix2" to
 > the gun. Gave a gun a custom Bluetooth name with Open BRX tools? Opening Callsign on it
@@ -808,9 +815,9 @@ while it runs.
 
 > **Warning: the "screamer".** Owners widely report this in hosted or online play. After about
 > an hour some guns fail with a loud buzz and need a reboot. They also report that a low battery
-> stops Bluetooth re-pairing entirely. A game can cascade down to half its players. We reproduced
-> the Bluetooth half on a gun left powered all day. Power guns off between rounds, keep packs
-> topped up, and reboot a buzzing gun instead of fighting it.
+> stops Bluetooth re-pairing entirely. A game can cascade down to half its players. A gun left
+> powered all day still advertises normally but refuses connections. Power guns off between
+> rounds, keep packs topped up, and reboot a buzzing gun instead of fighting it.
 
 **Owner-invented rulesets that need no extra gear:**
 
@@ -827,7 +834,8 @@ What the numbers on the box mean once the sun comes out.
 
 **Range at a glance:**
 
-- The IR beam's rated maximum reach in daylight is about 600 ft (Battle Company).
+- Battle Company rates the IR beam's typical maximum reach at about 600 ft in good conditions.
+  Shade and night are the good conditions.
 - Bright direct sunlight shrinks the gun's hit radius by about 50%.
 - The IR wavelength and carrier are 980 nm / 38 kHz. It is a Class 1 device, safe for eyes.
 - A respawn station "hears" a headset-and-trigger request from about 18-20 ft outdoors.
@@ -911,11 +919,11 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
 - The grenade's game modes: Frag, Assault, Hill, Respawn, CTF, and how each one really behaves.
 
-> **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. They fill the same 6 weapon slots with different numbers. This section covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from the manual.
+> **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. They fill the same 6 weapon slots with different numbers. This section covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual.
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table.
+> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
@@ -925,13 +933,13 @@ weapons
 
 19 weapons come out of 20 captured frames. The 20th frame is the app's unnamed default secondary (`T01`, 45 dmg, 6-round clip, 4 mags, 0.4 s shell reload). That is the Shotgun itself, slotted as your sidearm before you pick one.
 
-> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value of 30 shows up on the Rocket, Shotgun and Plasma Sniper.
+> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value shows up on three weapons: 30 on the Shotgun and the Rocket Launcher, 40 on the Plasma Sniper.
 
 > **Stock Callsign hits soft and fast.** The standard-damage automatics deal 8 to 15 per hit every 75 to 120 ms. They need 8 to 15 hits, which is about a second of landed fire. The Rocket Launcher, Rail Gun, Laser Cannon and Ion Sniper deal 115: that drops a full-health player in one shot. The two snipers deal 80 every 225 to 300 ms and kill in two hits, in 0.23 to 0.30 s.
 
 ### Assault Rifle
 
-Assault, full auto, 9 dmg, 100 ms, 32/384, reload 1.4 s. This is the baseline gun. It takes 13 hits to kill, and 1.2 s if every shot lands. (The gun-menu M-4 is printed at 24 damage in the manual. The app's Assault Rifle sends 9.)
+Assault, full auto, 9 dmg, 100 ms, 32/384, reload 1.4 s. This is the baseline gun. It takes 13 hits to kill, and 1.2 s if every shot lands. (The gun-menu M-4 is printed at 24 damage in Battle Company's manual. The app's Assault Rifle sends 9.)
 
 ### Burst Rifle
 
@@ -963,7 +971,7 @@ Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/24, 1.7 s. Two hits to kill
 
 ### Plasma Sniper
 
-Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. Fastest time-to-kill in the arsenal at 0.23 s.
+Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot.
 
 ### AMR
 
@@ -987,7 +995,7 @@ Power, single shot, 115 dmg (explosive damage type), 1.0 s, 2/8, 1.2 s. A one-sh
 
 ### Rail Gun
 
-Power, charges and fires itself after about 1 s (a tap also fires), 115 dmg (armor-piercing type), 1/6, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
+Power, charges and fires itself after about 1.2 s (a tap also fires), 115 dmg (armor-piercing type), 1/6, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
 
 ### Laser Cannon
 
@@ -995,7 +1003,7 @@ Power, you must hold it to charge, and a tap does nothing. 115 dmg, 1.5 s charge
 
 ### Energy Launcher
 
-Power, single shot from a 1-round clip, 115 magnitude, 360 ms, 1/6, 1.4 s. Six spare rounds.
+Power, full auto on the wire, but with a 1-round clip every shot is followed by a reload. 115 magnitude, 360 ms, 1/6, 1.4 s. Six spare rounds.
 
 ### Ion Sniper
 
@@ -1012,7 +1020,7 @@ The firmware has seven fire-mode behaviours, all confirmed on the trigger. Every
 | Full auto | hold it down to keep firing at the cycle rate | Assault Rifle, SMG, Suppressor, Energy Rifle, Stinger, Energy Launcher |
 | Single shot / bolt | one round per pull | AMR, Bolt Rifle, Sniper, Plasma Sniper, Ion Sniper, Rocket Launcher, Shotgun |
 | 3-round burst | one pull sends three rounds, then a burst gap | Burst Rifle, Force Rifle |
-| Charge, auto-release | starts charging on the pull, then fires by itself (about 1 s); a tap also fires | Rail Gun |
+| Charge, auto-release | starts charging on the pull, then fires by itself (about 1.2 s); a tap also fires | Rail Gun |
 | Hold-to-charge | you must hold it through the whole charge; a tap is sound only | Laser Cannon |
 | Charge, fire on release | charge while you hold, fire when you let go | Charge Rifle |
 | Melee | a swing the gyro picks up | Melee |
@@ -1021,7 +1029,7 @@ The firmware has seven fire-mode behaviours, all confirmed on the trigger. Every
 
 > **No stock weapon has an alt-fire.** The secondary-fire fields are empty on all 20 captured frames. The orange ALT button cycles perks and abilities in the modes that have them. Every weapon is also just data: a host can send its own weapon into any of the gun's 6 slots, with its own damage, rate, clip, reload, burst, overheat and sounds. That is exactly what Open BRX does.
 
-The manual's stock presets below are for phoneless play. The damage scale here is not the Callsign scale above: the manual's M-4 says 24, and the app's Assault Rifle sends 9.
+Battle Company's stock presets below are for phoneless play. The damage scale here is not the Callsign scale above: the printed M-4 says 24, and the app's Assault Rifle sends 9.
 
 | Weapon | Damage | Rate of fire | Accuracy | Mag | Character |
 |---|---:|---:|---|---:|---|
@@ -1031,7 +1039,7 @@ The manual's stock presets below are for phoneless play. The damage scale here i
 | SR-100 | 140 | 44 | 100-90 | 4 | bolt, high damage, small mag |
 | TAC-87 | 120-40 | 150 | 95-80 | 8 | semi shotgun; hold reload to load shells; full damage only at melee range |
 
-Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are the manual's simulated-recoil model: fire fast and your accuracy drifts toward the lower number. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts.
+Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are Battle Company's simulated-recoil model: fire fast and your accuracy drifts toward the lower number. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts.
 
 ## Health, armor and damage
 
@@ -1049,12 +1057,14 @@ Every player is a pool of points: 45 health and 70 armor by default, which is 11
 |---|---|
 | Default pool? | 45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health. |
 | Does armor reduce damage? | No. It is extra hit points, and it drains first. Armor never makes a hit weaker. |
-| Do I heal over time? | No. On the bench we set the pools to 99/99 and shot armor down to 18. It sat there through 18 s, then another 12 s, with nothing happening. Any healing you see comes from a class ability, a medic, or a host that refills you. |
+| Do I heal over time? | No. Armor shot down to 18 stayed at 18 for 30 s. Any healing you see comes from a class ability, a medic, or a host that refills you. |
 | What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event. A phone cannot just set it. |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal shot, and the community confirms it heals by shooting teammates. A host can also grant health directly. |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: x1.5 at the shipped t7=50, and t7=0 turns crits off. |
-| Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. |
+| Can friendly fire hurt me? | Only if the game turns it on. The documented rule: with friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). One bench result contradicts that rule (see the note below). FFA is one team with friendly fire on. |
+
+> **Friendly-fire polarity is not settled.** The rule above is the documented one: with friendly fire off, a gun drops a shot that names the gun's own team. One bench run on 2026-09-07 came out backwards. With friendly fire off, a shot claiming the gun's own team registered and a shot claiming an enemy team did not, each reproduced twice. Nothing has explained it yet, so treat same-team behaviour as unproven until something does.
 
 > **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is added to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way: a host watches your pool and tops it up.
 
@@ -1077,17 +1087,17 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits), player id (6 bits, 0-63), team (2 bits, 4 teams), damage (8 bits, up to 255), crit flag, effect subtype, 2 check bits.
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
-3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped. Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
+3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped, which is the documented rule that one unexplained bench result contradicts (see *Health, armor and damage*). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
-> **Why misses still make noise.** The manual's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
+> **Why misses still make noise.** Battle Company's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
 
 | Event | Victim | Shooter |
 |---|---|---|
 | Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (no radio path for a plain hit) |
 | Kill | headset sustained green blink (the out state), death alarm, gun stops firing | green sight flash + "kill" callout; in gun-menu games also "double kill" and other streak lines |
-| Same team, FF off | nothing (the gun drops the shot) | nothing |
+| Same team, FF off | nothing (the gun drops the shot, by the documented rule one bench result contradicts) | nothing |
 | Miss (accuracy roll) | headset lights + zip, 0 damage | (none) |
 
 > **Every shot names its shooter.** The 6-bit player id in the word is why a host can credit the exact killer, run free-for-all scoring, and build health-on-kill. All of it comes from what the target's gun reports. Stock BRX uses it too: that is how the kill-confirm and streak callouts find the right gun. The full bit layout, the timings and the effect-table mechanism are in the developer reference.
@@ -1101,16 +1111,16 @@ The mode LED colour shows what you picked. Modes marked with a star are Callsign
 | Mode | LED | Teams | How it plays | Weapons / perks |
 |---|---|---|---|---|
 | Free For All | white | none (everyone is one team with friendly fire on) | most kills wins | M-4, SMG-X3, MG-7, SR-100, no perks |
-| Death Match / Team Death Match (*) | red | Alpha vs Bravo | team kills | M-4, SMG-X3, MG-7, SR-100, TAC-87, the only stock mode with the perk row |
+| Death Match / Team Death Match | red | Alpha vs Bravo | team kills | M-4, SMG-X3, MG-7, SR-100, TAC-87, the only stock mode with the perk row |
 | Generals (*) | yellow | two teams, each with a General | the General is your team's mobile respawn point, so pull the trigger at them to revive; it can be lives-limited for seek-and-destroy | TDM loadouts + perks |
-| Supremacy (*) | blue | 3 factions: Resistance (red), Vanguard (green), Nexus (blue) | class-based; 9 characters are the loadout | no weapon picker, because the character is the loadout; abilities on ALT |
+| Supremacy | blue | 3 factions: Resistance (red), Vanguard (green), Nexus (blue) | class-based; 9 characters are the loadout | no weapon picker, because the character is the loadout; abilities on ALT |
 | Commander (*) | pink | faction wars | Supremacy plus a Commander respawn character | class loadouts |
 | Survival (Infection) | green | Human vs Infected | a killed human turns infected; the last human wins | M-4, SMG-X3, MG-7, SR-100, TAC-87, no perks |
 | The Swarm (*) | orange | Human vs Infected + a Hive Queen | infection where the Queen is the infected respawn point | class loadouts |
 
 (*) = Callsign-Live unlock on the gun.
 
-> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
+> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection (subject to the polarity caveat under *Health, armor and damage*) and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
 
 **Starting a gun-menu game:**
 
@@ -1297,11 +1307,13 @@ The gun keeps no game state, so any rule you can write over hits, teams, health 
 | Tier 1: plus props (objective stations, flags, QR codes, or the grenade) | contested places | Domination, King of the Hill / Territory, Capture the Flag (standard, one-sided, centre-flag), Assault, Team Arena, VIP escort, Hostage rescue, a real Extraction point |
 | Tier 2: plus broadcast (a live field-wide downlink; location on each node) | live global awareness | Battle Royale, live scoreboards and "flag taken!" callouts on a big no-WiFi field, hidden multi-extracts |
 
+Two Tier 0 entries carry a caveat. Syphon (health on kill) and small-scale Extraction exist only in the laptop's `brx-mcp` CLI path. Neither has run on hardware, and neither the phone node nor the node/MC bundle knows anything about them, so neither is playable in a real match yet.
+
 Three modes stock BRX does not ship:
 
-- **Extraction**: drop in, loot, then reach an extraction point and channel it. That takes 30 to 60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets, and a rules engine already exists.
+- **Extraction**: drop in, loot, then reach an extraction point and channel it. That takes 30 to 60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets. A rules engine exists, but only on the laptop CLI path, and it has not run on hardware.
 - **Counter-Strike (plant / defuse)**: the grenade or a phone is the bomb. Attackers arm it (by dwell, IR, or an on-screen code) and defenders defuse it (by IR or a puzzle). The round ends on detonate, defuse or elimination.
-- **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are pure host rules on top of the "heals add, never set" write.
+- **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are host rules on top of the "heals add, never set" write. Syphon is written for the laptop CLI path and has never run on hardware, so today it is a design rather than a mode you can play.
 
 > **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier.
 
@@ -1447,7 +1459,7 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 
 ## The sound bank
 
-2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and transcribed the voice lines. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 145 of those have since been confirmed by ear; the rest are machine guesses, and an unconfirmed transcript can be wrong. `V116` is catalogued as "Can't believe!" and the gun actually says "gained the lead". Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
 
 - **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
 - **~4,700 s** (78 min) of audio across the app's 2,166-id list
@@ -1464,7 +1476,7 @@ Prefix meanings are restated from David Knox's audio map; counts are computed fr
 |---|---|---|---|
 | `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5-3 s (countdowns up to 11 s) |
 | `VB` + `E_VB` | Scout / female-clean voice: score & lead lines | 90 + 64 | 1-2 s |
-| `V0`-`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider) | 23 each (255 total) | 0.4-6 s |
+| `V0`-`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider) | 23 each except V4 (33), V5 (26) and V8 (35); 255 total | 0.4-6 s |
 | `V100`-`V144` | CTF / Slayer / King-of-the-Hill callouts | 34 | 1-2.4 s; three at 12-13 s |
 | `VC`...`VS` (15 families) | Sentinel, Female sniper, Clean male, Creature, Female creature, Valkyrie, Viper, Wraith, Russian clean, Clean female, Mercenary, Clean male (alt), Nexus & Vanguard commanders, Clean commander | 9 base + 9-22 extra lines each (329 total, incl. 5 `E_VS` takes) | 1-6 s |
 | `N` + `E_N` | Miscellaneous cues: the "kerchung", swish, revive ping, ultra-short ticks | 108 + 10 | 0.04-6.7 s |
@@ -1503,20 +1515,20 @@ Sums to 2,166, the app's list; the gun holds 2,477 files.
 |---|---|---|---|
 | `VA20` | VA | "Connection established": plays on every phone connect | 1.27 s |
 | `U16` | U | Connect tone (paired with VA20) | 0.43 s |
-| `VA81` | VA | 3-2-1 spawn countdown (arena) | 2.97 s |
-| `VA33` | VA | "Game over" + music | 2.26 s |
-| `VA85` | VA | Countdown to game over, no music | 9.66 s |
-| `VSB` | VS | Countdown to game over + music | 10.39 s |
-| `VS6` | VS | Game-end line (solo game close) | 2.26 s |
+| `VA81` | VA | 3-2-1 spawn countdown (arena) | 3.03 s |
+| `VA33` | VA | "Game over" + music | 1.88 s |
+| `VA85` | VA | Countdown to game over, no music | 10.01 s |
+| `VSB` | VS | Countdown to game over + music | 10.46 s |
+| `VS6` | VS | Game-end line (solo game close) | 2.42 s |
 | `VSF` + `JAY` | VS / JA | Victory sting + "Victory": the winner's end-of-game pair | 1.86 s + 5.69 s |
 | `VA46` | VA | Lives depleted / multi-kill | 1.47 s |
 | `V3A` | V3 | "Kill": the app's per-kill announcer line | 0.79 s |
-| `VB17` | VB | Score / lead-change line | 1.77 s |
+| `VB17` | VB | Score / lead-change line | 1.94 s |
 | `N41` | N | Revive-countdown ping | 0.73 s |
 | `NA0` | NA | Death beep (also the file swapped to change the death cue) | 4.00 s |
 | `N03` | N | "Kerchung" | 0.82 s |
 | `N04` | N | Swish | 1.43 s |
-| `JA9` | JA | Startup music | 5.74 s |
+| `JA9` | JA | Startup music | 5.75 s |
 | `JAD` | JA | Death music (the musicMixOnDeath slot) | 3.50 s |
 | `H29` | H | Respawn / add-HP: a quiet, sustained "stim-pack" medical sound | 1.20 s |
 | `VA16` | VA | "Armor suit": add armor | 0.94 s |
@@ -1623,7 +1635,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 - Android Callsign: `$VOL,100`
 - iOS Callsign: `$VOL,69`
-- Open BRX game default: 80 indoors / 90 outdoors (`compile.play_volume()` sets it from the venue; 69 measured as roughly on-gun level 2 and was inaudible on a field, 2026-08-30)
+- Open BRX game default: 80 indoors / 90 outdoors (`compile.play_volume()` sets it from the venue; 69 is estimated at roughly on-gun level 2, and it was inaudible on a field, 2026-08-30)
 - Open BRX try-out default: 69 (fired at arm's length)
 - Open BRX probing default: 30 (deliberately quiet, and deliberately not for games)
 
@@ -1631,7 +1643,8 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 **Practical levels**
 
-- **Play:** 69, the value the official iOS app sets on connect. The Android app sends 100.
+- **Play:** 80 indoors, 90 outdoors. That is what Open BRX sets from the venue, and an unknown venue gets the quieter of the two. The official iOS app's 69 is too quiet for game audio on a field; the Android app sends 100.
+- **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
 - **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 
 > **Safety.** The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.
@@ -1676,9 +1689,11 @@ and the locks. Work the ladder in order and stop at the first check that says ye
    Once a tagger has been armed to a respawn station, its self-respawn is off. A dead player's
    trigger only makes the empty click.
 5. **Can you cycle weapons with the trigger before a game starts?** → no → The controls are
-   locked. Check the admin lock. The primary lock is LEFT+RIGHT held 3 s in the root menu. The
-   secondary is LEFT+RIGHT+SELECT for 3 s, and it also blocks indoor/outdoor, weapon, team and
-   perk changes. Unlock the same way (v4.30: also hold SELECT).
+   locked, and this symptom is the stronger lock: LEFT+RIGHT+SELECT held 3 s in the root menu,
+   which freezes indoor/outdoor, weapon, team and perk changes. The primary lock, LEFT+RIGHT held
+   3 s, blocks mode changes and reset but leaves weapon cycling alone, so it is not what you are
+   looking at here. Unlock with the same hold that set it (on v4.30 the unlock hold also needs
+   SELECT).
 6. **Does the reload handle click home?** → no → The handle drives a mechanical switch under two
    screws. Press that switch with a pen. If the pen works and the handle does not, the handle is
    the problem (see "Repairs").
@@ -1688,10 +1703,10 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 8. **Still nothing?** → It is the mainboard. That is not community-serviceable. Contact Battle
    Company for repair.
 
-> **Running the gun from a third-party host or your own code?** We hit three silent fire-killers
-> on the bench. Send the button map, or the firmware reports the trigger as disabled. Send a game
-> head with no start command, and the gun spawns with a trigger that only reloads. Load a magazine
-> after the spawn, or the gun goes live with no ammunition.
+> **Running the gun from a third-party host or your own code?** Three silent fire-killers, all
+> found on the bench: send the button map, or the firmware reports the trigger as disabled. Send
+> a game head with no start command, and the gun spawns with a trigger that only reloads. Load a
+> magazine after the spawn, or the gun goes live with no ammunition.
 
 ### "Won't power on" / "powers off by itself"
 
@@ -1825,7 +1840,10 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 
 ### "IR isn't registering hits"
 
-1. **Same team, friendly fire off?** → yes → Zero damage is correct. The firmware enforces it.
+1. **Same team, friendly fire off?** → yes → Zero damage is the documented rule, and the firmware
+   is meant to enforce it in both directions. One bench run on 2026-09-07 came out backwards: a
+   shot claiming the gun's own team registered and an enemy shot did not, each reproduced twice.
+   That result is unexplained, so do not treat team polarity as settled while you are chasing it.
 2. **Is the target alive and in a started game?** → no → A dead tagger accepts no IR at all. A
    tagger that is set up but not started ignores it too. Silence from a corpse proves nothing.
 3. **Bright sunlight?** → The gun's hit radius shrinks by about half in full sun, because of IR
@@ -1856,7 +1874,8 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 2. **Volume set to 1?** → On-gun volume is 1-5 in the SELECT menu, and it is remembered per game
    mode.
 3. **Driven from an app or host?** → The wire-level volume command has a much wider range. The
-   official app sends 69. At a "safe" 30 you cannot hear weapon audio outdoors at all.
+   Android Callsign app sends 100, and iOS sends 69. At a "safe" 30 you cannot hear weapon audio
+   outdoors at all.
 4. **Booted into USB disk mode by accident?** → SELECT-at-boot turns the startup sound off
    completely. Reboot with nothing held.
 5. **Just updated to v4.30+?** → That release needs a complete new audio file set in the `AUDIO`
@@ -1897,8 +1916,9 @@ first, every time.
 > **Before you open anything.**
 > - Unplug the battery. A live pack during work inside the shell is how owners have fried
 >   mainboards.
-> - The emitter is a Class 1 IR laser (980 nm, 38 kHz, ~17 mW measured on our unit). Do not change
->   its drive circuit, and do not stare into it while you probe.
+> - The emitter is a Class 1 IR laser (980 nm, 38 kHz, 16.9 mW in the factory record the gun
+>   prints in its own USB `QUERY` output). Do not change its drive circuit, and do not stare into
+>   it while you probe.
 > - There is no public mainboard schematic (only partial community mapping). Do not expect to
 >   trace faults past the switches and connectors.
 > - Never modify stock firmware. Battle Company's official USB updater is the factory-restore
@@ -2279,9 +2299,9 @@ Nothing in the protocol writes firmware. Every state written over BLE is wiped b
 
 ## Command reference
 
-Every command we know of, with args and meaning: host to tagger, tagger to host, and headset. Copy the frames exactly as written.
+Every known command, with args and meaning: host to tagger, tagger to host, and headset. Copy the frames exactly as written.
 
-> **How to read the tables.** "Direction" is host to gun (`>>`) or gun to host (`<<`). Some commands were sent and received on hardware; others carry field names taken from the Callsign app's IL2CPP metadata (names certain, wire position = declaration order) or come from LaserTagMods sources and community captures without being reproduced by us. Each row says which. Commands the app knows but we have never sent sit in their own table at the end of this section. Where a command's field map has its own section (`$WEAP`, `$GSET`/`$PSET`, `$SIR`), the row says so.
+> **How to read the tables.** "Direction" is host to gun (`>>`) or gun to host (`<<`). Some commands were sent and received on hardware; others carry field names taken from the Callsign app's IL2CPP metadata (names certain, wire position = declaration order) or come from LaserTagMods sources and community captures, unreproduced on hardware. Each row says which. Commands the app knows that are untested on hardware sit in their own table at the end of this section. Where a command's field map has its own section (`$WEAP`, `$GSET`/`$PSET`, `$SIR`), the row says so.
 
 **Host to tagger: lifecycle and configuration**
 
@@ -2298,7 +2318,7 @@ Every command we know of, with args and meaning: host to tagger, tagger to host,
 | `$WEAP,<slot>,…,*` | >> | slot 0-5 + ~43 tokens | Define a weapon in a slot: damage, fire interval, fire mode, clip/reserve, reload, sounds, IR type. See the `$WEAP` section. |
 | `$SIR,<proto>,<subtype>,<sound>,<fn>,p5,p6,p7,p8,*` | >> | 8 tokens | Incoming-IR effects matrix: what an IR word with protocol B / subtype U does to this gun. **Unmatched cells are silently ignored.** See the `$SIR` section. |
 | `$BMAP,<button>,<function>,<swap0..3>,*` | >> | button id, function, 4 swap slots | Remap physical controls. Buttons: 0 trigger, 1 alt-fire, 2 reload handle, 3 select, 4 left, 5 right, 8 gyro. Functions seen: 0 fire, 97 reload, 98 (select/left/right), 100 weapon-cycle, 4 melee (gyro). **Mandatory**: without it the trigger only chirps "disabled". |
-| `$TID,<team>,*` | >> | team | Team id. **Masked to 2 bits** (`team & 3`), giving four native teams 0-3. Drives the gun LED colour at `$SPAWN` (1 = blue, 2 = yellow observed) and is echoed as `$HIR` token 4 on the victim. A live write changes hit resolution immediately but does not repaint LEDs. |
+| `$TID,<team>,*` | >> | team | Team id. **Use only 0-3.** The gun masks the team into the 2 bits the IR word carries (`team & 3`), but **the victim compares the full `$TID` value**, so 4-7 are not harmless aliases: two teammates on tid 4 each transmit team 0 and each reads 0 against its own 4 as an enemy, so they damage each other and friendly fire cannot be turned off for them; their shots read as friendly to a real tid-0 player and take nothing off; and a gun can kill itself off a nearby reflective surface (bench 2026-09-07: a gun on tid 5 shot its own headset down through armor and HP, with `$HIR` naming the shooter's own player id). Values 4-7 are accepted and breathe the matching palette colour, which is why they look like extra teams. Drives the gun LED colour at `$SPAWN` (1 = blue, 2 = yellow observed) and is echoed as `$HIR` token 4 on the victim. A live write changes hit resolution immediately but does not repaint LEDs. |
 | `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. |
@@ -2321,7 +2341,7 @@ Every command we know of, with args and meaning: host to tagger, tagger to host,
 | `$IRTX,…,*` | >> | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). |
 | `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. |
 | `$STUN,*` | >> | n/a | Listed in the APK. **Proven no-op over BLE.** |
-| `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index. The palette is nine colours: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange**; 9 and 10 are dark. **Token 4 is an apply gate**, not an effect enum and not an off switch: it decides whether the colour tokens in the same frame take effect at all. Values **0, 6, 7, 8, 9 and 10 apply** the colours at full brightness. Value **5 turns the LEDs OFF**, whatever the colour tokens say. Values **1, 2, 3 and 4 are no-ops**: the colour tokens are ignored and the gun keeps whatever it was already showing, which is why a sweep of this token reads differently depending on whether it blanks between rows. No token-4 value animates. `$GLED,,,,5,,,*`, the frame Callsign itself sends on death, blanks the gun because **token 4 = 5 is the off value**. Token 4 = 5 is therefore the one gate value never to send with real colour tokens: it discards them. Sending the blank once takes the strip out of the firmware's breathing loop for the rest of the life, and it is **mandatory before any paint holds**: a dark paint sent without a prior blank is simply overwritten by the breathing. It is idempotent, and after it every revert should be a dark PAINT (`$GLED,9,9,9,0,10,,*`) rather than another blank. Empty colour tokens under an applying gate leave each LED showing whatever it already had, so one segment can be repainted without redrawing the others. Token 5 is brightness and is the ONLY brightness control: 0 off, 1 dim, 2 and above full, saturating at 2 so that 2 through 255 are indistinguishable. It is **global**, applying to all three LEDs at once, so a bar of two bright segments and one dim one is not possible; a partial step has to be a blinking segment instead. Token 5 = 1 is what night mode uses. A held paint survives ordinary game traffic (`$AMMO`, `$PLAY`, `$HLED`, `$LED`) untouched, and keeps its hue at the dim setting. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. Palette completed on 2026-09-02 with a camera rig, and token 4 re-measured the same day from a known lit start, three trials per value; normalised R/G/B signatures, all three LEDs agreeing on every row: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. The camera separates the indices from each other; it does not name absolute hues, so the reading rests on relative separation measured back to back under identical conditions, on three LEDs agreeing, and on a match with an independent community source. **Corrected 2026-09-07:** that 2026-09-02 pass read token 4 = 5 as "about one third brightness", which was wrong. It was measured while the firmware's own breathing was still contending for the strip. Re-run on a blanked, host-owned strip, alternating `$GLED,3,3,3,0,10` against `$GLED,3,3,3,5,10` four times, it is bright then off with no step in between. Token 5 was A/B tested the same way and is the real dimmer. **Do NOT repaint this at speed to hold a colour against the gun's own animation**: it takes roughly 30 writes a second to win, and the result strobes. Flicker in the 10 to 25 Hz band is the photosensitive epilepsy trigger range. Signal an event with a short burst of three flashes instead. |
+| `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index. The palette is nine colours: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange**; 9 and 10 are dark. **Token 4 is an apply gate**, not an effect enum and not an off switch: it decides whether the colour tokens in the same frame take effect at all. Values **0, 6, 7, 8, 9 and 10 apply** the colours at full brightness. Value **5 turns the LEDs OFF**, whatever the colour tokens say. Values **1, 2, 3 and 4 are no-ops**: the colour tokens are ignored and the gun keeps whatever it was already showing, which is why a sweep of this token reads differently depending on whether it blanks between rows. No token-4 value animates. `$GLED,,,,5,,,*`, the frame Callsign itself sends on death, blanks the gun because **token 4 = 5 is the off value**. Token 4 = 5 is therefore the one gate value never to send with real colour tokens: it discards them. Sending the blank once takes the strip out of the firmware's breathing loop for the rest of the life, and it is **mandatory before any paint holds**: a dark paint sent without a prior blank is simply overwritten by the breathing. It is idempotent, and after it every revert should be a dark PAINT (`$GLED,9,9,9,0,10,,*`) rather than another blank. **An EMPTY colour token is RED, not "leave this LED alone".** A blank field parses as 0, and 0 is red. Measured on the gun 2026-09-09 by a controlled test: with the strip held at three solid purple, `$GLED,,9,,0,10,,*` produced red, dark, red. This page said the opposite from 2026-09-07 until then, and the mistake shipped: a partial level's blink frame used empty tokens to change one segment and painted red into the other two. **Always write all three colour tokens.** There is no way to move one segment without restating the others. Token 5 is brightness and is the ONLY brightness control: 0 off, 1 dim, 2 and above full, saturating at 2 so that 2 through 255 are indistinguishable. It is **global**, applying to all three LEDs at once, so a bar of two bright segments and one dim one is not possible; a partial step has to be a blinking segment instead. Token 5 = 1 is what night mode uses. A held paint survives ordinary game traffic (`$AMMO`, `$PLAY`, `$HLED`, `$LED`) untouched, and keeps its hue at the dim setting. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. Palette completed on 2026-09-02 with a camera rig, and token 4 re-measured the same day from a known lit start, three trials per value; normalised R/G/B signatures, all three LEDs agreeing on every row: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. The camera separates the indices from each other; it does not name absolute hues, so the reading rests on relative separation measured back to back under identical conditions, on three LEDs agreeing, and on a match with an independent community source. Token 4 = 5 is OFF, not dim: measured on a blanked, host-owned strip, alternating `$GLED,3,3,3,0,10` against `$GLED,3,3,3,5,10` four times, it is bright then off with no step in between. Token 5, A/B tested the same way, is the only control that dims. **Do NOT repaint this at speed to hold a colour against the gun's own animation**: it takes roughly 30 writes a second to win, and the result strobes. Flicker in the 10 to 25 Hz band is the photosensitive epilepsy trigger range. Signal an event with a short burst of three flashes instead. |
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA, `$PBWEAP,0` = M4 AUTO, `$PBPERK,2` = Body Armor, `$PBLIVES,2` = 5 lives, `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. (Community.) |
 | `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host to host | n/a | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. (Community.) |
@@ -2353,12 +2373,12 @@ Every command we know of, with args and meaning: host to tagger, tagger to host,
 
 | Command | Direction | APK fields / enums | Note |
 |---|---|---|---|
-| `$VIB` | >> | `isEnableVibration` | Never sent by us. |
-| `$ZOOM` | >> | n/a | Never sent by us. |
-| `$FSET` | >> | ~38 event to sound slots: ActionKey, DeathAlarm, TickTock, HitHp, HitArmor, HitShield, HitCrit, EmpStart/Loop/End, IncendiaryStart/…, TearGasHit, … | Never sent by us. |
-| `$ASSIST` | >> | `soundName` (+ SetVolume) | Never sent by us. |
-| `$DLC` / `$ASKDLC` to `$GOTDLC` | >> / << | `hiddenFeatures` | The app's premium-content (BattleCoins) handshake. The metadata names three premium modes: Generals, Commanders, Swarm. Never sent by us. |
-| `$BLINK` · `$CHASE` · `$LED` | >> (headset) | n/a | Listed with the headset commands. Never sent by us. |
+| `$VIB` | >> | `isEnableVibration` | Untested. |
+| `$ZOOM` | >> | n/a | Untested. |
+| `$FSET` | >> | ~38 event to sound slots: ActionKey, DeathAlarm, TickTock, HitHp, HitArmor, HitShield, HitCrit, EmpStart/Loop/End, IncendiaryStart/…, TearGasHit, … | Untested. |
+| `$ASSIST` | >> | `soundName` (+ SetVolume) | Untested. |
+| `$DLC` / `$ASKDLC` to `$GOTDLC` | >> / << | `hiddenFeatures` | The app's premium-content (BattleCoins) handshake. The metadata names three premium modes: Generals, Commanders, Swarm. Untested. |
+| `$BLINK` · `$CHASE` · `$LED` | >> (headset) | n/a | Listed with the headset commands. Untested. |
 | `$TIME` | << | n/a | Listed as a notification. Never observed on the wire. |
 
 > **Complete vocabulary from the app's own request namespace.** AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. `$PING`, `$TID`, `$SP`, and the `$RV`/`$RP`/`$UR`/`$KK`/`$DD` family are **not** in it. They come from LaserTagMods and our bench. Absence from the app does not mean non-existent.
@@ -2369,7 +2389,7 @@ The exact frame order that takes a tagger live, respawns it, and ends the game. 
 
 > **The headset is a second device and it needs time.** A command that the tagger must relay to the headset is received, processed and executed there, not instantly. Send `$SPAWN` within about 2 seconds of a death and the headset never executes it: it stays stuck flashing the green out-blink while the gun is alive and registering hits normally, so the player looks dead while playing normally. Measured 2026-09-02: gaps of 1.0 s and 2.0 s stick, and 2.5 s, 3.0 s and 6.0 s are clean. **Leave at least 3 seconds.** The same applies to anything else with a headset side effect, such as `$HLOOP` and `$HLED`. Note the gun queues commands and drains them one at a time, so a frame echoing back proves the gun received it, not that the headset executed it.
 
-> **`$CLEAR` wipes the `$SIR` table and the gun then ignores every hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all. Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5, and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the table SIZE does not matter, only its absence: a one-row table and the full ten-row table both registered 24/24 in an interleaved A/B.
+> **`$CLEAR` wipes the `$SIR` table and the gun then ignores every hit.** This is the most confusing failure mode the gun has: the gun arms, spawns, reports full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all. Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5, and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the table SIZE does not matter, only its absence: a one-row table and the full ten-row table both registered 24/24 in an interleaved A/B.
 
 > This sequence is the official iOS app driving a live game on firmware v4.32, reproduced byte-for-byte on real taggers. Three pieces are easy to leave out, and the gun spawns wrong without them: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
 
@@ -2460,7 +2480,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 2 | n/a | 100 | 100 | (unknown) |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard, 1 MedicHeal, 2 ActivateShield, 3 RallyPulse, 4 Radiation, 5 Cryogenic, 6 ArmorPiercing, 7 EMP, 8 Shrapnel, 9 StickyBomb, 10 StandardLethalExplosive, 11 NonLethalExplosive, 12 ShottyPellets, 13 MeleeDamage, 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. The wire position is bench-proven; the enum names come from the APK. |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. |
-| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR actually emits 9; the sample's 24 is the manual's stale anchor (protocol/brx-protocol.md §6). |
+| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR emits 9. The 24 in the sample frame is the figure printed in Battle Company's manual. |
 | 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (applies `$GSET` t7, ×1.5 at the shipped t7=50). |
 | 7-11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | n/a | n/a | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. |
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. |
@@ -2517,7 +2537,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | `E07` | Ion Sniper | single shot, 2-round clip (D32/D31) |
 | `E17` | Plasma Sniper | single shot, overheat (t24=30), shell reload |
 | `T01` | Shotgun | single shot (t20=7), t19=2, extra-headset block, magnitude 45 |
-| `J15` | Energy Launcher | clip 1 / reserve 3 |
+| `J15` | Energy Launcher | clip 1, `t40` 3 (the published Reserve column shows `t17`, which is 2 × t40) |
 | `C03` | Rail Gun | charges on hold, auto-fires ~1.2 s (t20=2, t28=C08) |
 | `C03` | Rocket Launcher | single shot, protocol 10, magnitude 115 |
 | `C06` | Laser Cannon | must be held (t20=3, t28=C11) |
@@ -2617,7 +2637,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | Add shield | 11, 18 | 0 to 20 to 40 | ally only |
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100 to 0 and recovers over about 6-8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy |
 | Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions are identical on protocols 0/5/7/9/10, `fn 28` on protocol 5 included. The ally functions are not protocol tested. **The reading is scoped, not general.** The victim is at full health for these trials (HP 45, armour 70), and a heal or armour grant into a full pool is clamped, so it reads as no change: `fn 10` is respawn plus add HP and belongs in that class, not this one. The seven enemy functions here moved no pool with 150 shield available, so for them the reading is real. `fn 3` drains shield exactly as plain damage does and is classed as damage. | n/a |
-| No registration | 0, 39-45 | n/a. 0/39/40 re-measured 2026-08-27; 41-45 not re-tested. | n/a |
+| No registration | 0, 39-45 | n/a. 0/39/40 measured 2026-08-27; 41-45 untested. | n/a |
 
 > **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.
 
@@ -2629,7 +2649,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 
 ### Is there a stun?
 
-None found. `$STUN` over BLE is a no-op, and fn 23 (the only function that visibly changes anything without touching a pool) leaves the gun firing.
+Not over the documented BLE protocol. `$STUN` is a no-op there, and fn 23 (the only `$SIR` function that visibly changes anything without touching a pool) leaves the gun firing. The Callsign app's own abilities are a separate matter: it ships stun content of its own, such as the Sentinel's EMP blast and the Concussion Grenade, driven by app-side logic this page does not cover.
 
 ### Can I read a native game's `$SIR` table?
 
@@ -2706,7 +2726,7 @@ A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods
 
 | Item | Value |
 |---|---|
-| Carrier | **38 kHz**, **940/980 nm**. A standard VS1838B/TSOP demodulating receiver recovers it. Laser rated 16.9 mW on the gun's USB record. |
+| Carrier | **38 kHz**, **980 nm** (the wavelength on the gun's Class 1 IEC 60825-1 laser label; we have not measured it ourselves). Many hobby IR parts are centred on 940 nm, so pick 980 nm-capable receivers. A standard VS1838B/TSOP demodulating receiver recovers this carrier. Laser rated 16.9 mW on the gun's USB record. |
 | Sync | One ~2 ms LOW pulse before the frame, measured **1988-1991 µs**. |
 | Bits | Each bit is a LOW pulse; **long ≈ 1000 µs = 1** (measured 990-994), **short ≈ 500 µs = 0** (489-512), spaces 489-512 µs; decision threshold ~750 µs. |
 | End of frame | A trailing short pulse (< 250 µs in node1's test). |
@@ -2753,7 +2773,7 @@ def decode_word(bits: str) -> dict:
 
 | Source | Word | Note |
 |---|---|---|
-| Assault Rifle | proto 0, magnitude 9 | The stock AR emits 9, not the manual's 24 |
+| Assault Rifle | proto 0, magnitude 9 | The stock AR emits 9, not the printed 24 |
 | Shotgun | proto 0, magnitude 45 | |
 | Sniper | proto 0, subtype 1, magnitude 80 | |
 | Rocket Launcher | proto 10, magnitude 115 | |
@@ -2921,7 +2941,7 @@ claude mcp add brx -- python.exe -m brx_mcp
 | Command | What it does |
 |---|---|
 | `scan` · `identify <addr>` · `listen <addr>` · `probe <addr>` | Discover, check, watch, probe a single gun |
-| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Earlier single-purpose game drivers (the arm sequence) |
+| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Single-purpose game drivers (the arm sequence) |
 | `play <mode> <addr…> [volume=69]` | Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction |
 | `game-sim <mode>` · `extraction-sim` | Hardware-free narrated simulations |
 | `diag <addr>` · `diagnose <addr>` · `diag-game <addr>` · `fleet` | Diagnostics, fleet battery/reachability sweep |
@@ -2985,7 +3005,7 @@ python -m brx_mcp.gsetdiff cap5.btsnoop cap6.btsnoop # byte-diff the $GSET/$PSET
 python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table from operator-annotated captures
 ```
 
-> **Decoder gotchas we hit.** Apple's btsnoop export uses datalink 1001 (no HCI type byte; the type is in the record flags), which decoded to zero frames until handled. With two guns in one trace, streams must be keyed on the **ACL connection handle** or they merge into garbage silently.
+> **Decoder gotchas.** Apple's btsnoop export uses datalink 1001 (no HCI type byte; the type is in the record flags), which decoded to zero frames until handled. With two guns in one trace, streams must be keyed on the **ACL connection handle** or they merge into garbage silently.
 
 **Published transcripts** (decoded frames only; raw btsnoop files contain all of a phone's Bluetooth traffic and are not published)
 
@@ -3088,7 +3108,7 @@ The limits that follow from this, measured on hardware except for the logical-te
 
 | Thing | Limit |
 |---|---|
-| Players in one game | 63 (the gun takes ids 0-63; id 0 is reserved) |
+| Players in one game | 64 (the gun's player id runs 0-63; the app shows 1-64 and writes the id one lower) |
 | Native hardware teams | 4 (the team field in each shot is 2 bits) |
 | Teams beyond 4 | unlimited logical teams, scored by Mission Control's roster; no on-gun friendly-fire protection in that mode |
 | Guns per node | exactly 1 |

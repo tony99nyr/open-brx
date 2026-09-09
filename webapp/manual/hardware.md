@@ -5,14 +5,14 @@ This page names every part of the BRX tagger, headset and grenade. It explains w
 
 ## The BRX at a glance
 
-The Battle Company BRX is a laser tagger shaped like a rifle. It comes with a wireless sensor headset and can pair with a smart grenade. It shoots a coded beam of invisible light at 980 nm and 38 kHz. It plays 2,000+ sounds through its own speaker, and a small bank of lights shows what it is doing. There is no screen, no WiFi, and no memory of the game you just played.
+The Battle Company BRX is a laser tagger shaped like a rifle. It comes with a wireless sensor headset and can pair with a smart grenade. It shoots a coded beam of invisible light at 980 nm and 38 kHz. It plays 2,477 sounds through its own speaker, and a small bank of lights shows what it is doing. There is no screen, no WiFi, and no memory of the game you just played.
 
 Four numbers that sum up the BRX:
 
 - **980 nm / 38 kHz**: the IR beam every shot rides on.
 - **~600 ft**: how far a shot usually reaches. Shade and night are better, and bright sun cuts it about in half.
 - **~8 h**: play time on one charge.
-- **2,477**: sound files on the tagger, every one catalogued.
+- **2,477**: sound files on the tagger, every one indexed.
 
 The system, in three objects:
 
@@ -42,7 +42,7 @@ Controls at a glance:
 - **LEFT / RIGHT** (the direction pad): flip through game modes and teams. Hold LEFT at power-on for target (sighting) mode. Hold RIGHT at power-on for accessory and headset pairing mode. Hold LEFT+RIGHT for 5 s in a game to return to the menu.
 - **Power switch**: a slide switch by the barrel. A tagger that turns itself on and off usually has a worn one.
 
-> **There is no fire-mode selector.** Fire mode belongs to the weapon you pick, not to a switch on the gun. The modes are full-auto, single-shot, 3-round burst, hold-to-charge and melee. Each one is stored inside the weapon definition.
+> **There is no fire-mode selector.** Fire mode belongs to the weapon you pick, not to a switch on the gun. There are seven: full-auto, single-shot (bolt), 3-round burst, charge with auto-release, hold-to-charge with auto-fire, charge and fire on release, and melee. Each one is stored inside the weapon definition.
 
 | Port | Where | What it is |
 |---|---|---|
@@ -55,7 +55,7 @@ Controls at a glance:
 
 - **Microcontroller**: a PJRC Teensy (ARM). Plug in USB and it shows up as "Teensyduino USB Serial".
 - **Radio**: a Bluetooth module wired to the microcontroller's serial port. That is why BLE and a wired serial cable send the exact same frames. Board label on the units checked: `PCB-5`, `BTchip-4`.
-- **Sound storage**: an SD card on the mainboard. You never take it out to change sounds, because sound updates go over USB.
+- **Sound storage**: an SD card on the mainboard. Sound updates go over USB, so there is no reason to take it out. Whether the card can be removed at all has not been checked, and doing so would mean a teardown.
 - **Speaker**: a "pop" from the speaker when the gun boots means the speaker has power.
 - **Warning**: always unplug the battery before any work inside. A live pack during a mod is the classic way to kill a mainboard.
 
@@ -96,7 +96,7 @@ Where you can be tagged:
 
 ### The sight
 
-- The tagger's sight has a green kill-confirm flash. Score a kill and the sight glows green for a few seconds.
+- The tagger's sight has a green kill-confirm flash. Score a kill and the sight goes green. In a hosted game the flash is one `$SFLASH` frame per kill, which arrives about 0.4 s after the trigger burst ends. That figure is the delay before the flash, not how long it lasts; the length of the flash is not documented anywhere.
 - Sighting a scope happens in Target Mode (hold LEFT while powering on). Shots do zero damage, ammo is unlimited, and a direct hit flashes the target's headset green. Owners sight snipers long (300-400 ft) and shotguns or SMGs close (50-100 ft).
 
 ## Lights and what they mean
@@ -109,10 +109,10 @@ Gun LEDs:
 |---|---|
 | Colour while in the menu | The game mode you picked: Free For All white, Death Match red, Generals yellow, Supremacy blue, Commander pink, Survival green, The Swarm orange. |
 | Colour during a game | Your team or faction colour (on the bench, team 1 is blue and team 2 is yellow). The colour comes from your team. You cannot set any colour you like. |
-| Colour palette available | 9 colours reported by the community: red, blue, yellow, green, purple, cyan, white, pink, orange. |
+| Colour palette available | Nine colours, measured on our own bench with a camera rig on 2026-09-02 (three trials per index, normalised R/G/B signatures): 0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange. Indices 9 and 10 are dark. |
 | Segments going out | Your health bar: the three LEDs work like a bar that drains as you take damage. |
 | Manual's description | "LED indicator shows ammo & health." |
-| Slow blink in team colour | A game run from an outside app that has not switched the health bar on. |
+| Slow pulse in team colour | The firmware's own breathing loop. The firmware owns the gun strip and breathes it until a host sends the `$GLED` blank, which hands the strip over for the rest of that life. |
 
 Headset LEDs:
 
@@ -120,7 +120,7 @@ Headset LEDs:
 |---|---|
 | Slow rainbow cycling | Not connected, not paired to a tagger. You can spot it across a room, so check every headset before a game starts. |
 | Solid or pulsing team colour (red, blue...) | Paired and synced to the tagger. You see this before the game only. |
-| Dark | This is normal in play. The band goes dark once the game starts, and dark is not a fault. |
+| Dark | The RGB ring, once the game starts. It drops the team colour at game start, and dark is not a fault. This is what our own units do. Battle Company describes indoor mode as switching the RGB LEDs on, and whether an indoor-mode headset stays lit through play instead is unverified. |
 | One green flash | A hit registered on this headset. The flash fires on its own, with no command from a phone or host. |
 | Sustained bright green blink | This player is out (dead). It stops at respawn. |
 | Green flash in Target Mode | A direct hit on the sighting target. |
@@ -133,7 +133,7 @@ Headset LEDs:
 ### For modders: what the headset LEDs are
 
 - The addressable RGB LEDs are WS2812B 5050 (NeoPixel-compatible). On the BRX headset they are wired as a series string (parallel on the SwapTX variant). One data line, 5 V and ground.
-- Indoor mode dims the green hit LEDs and switches the RGB LEDs on.
+- Indoor mode dims the green hit LEDs and switches the RGB LEDs on. That is Battle Company's wording for the setting itself. How it interacts with the ring going dark at game start is unverified: nobody has watched an indoor-mode headset through a running game.
 
 ## The headset
 
@@ -267,7 +267,7 @@ BRX tagger:
 | Range | up to ~600 ft; best in shade/night |
 | Sensors | hit sensor on the body + wireless headset |
 | Indicators | LED bank (mode / team / life gauge) + green kill-confirm in the sight |
-| Audio | on-board speaker; 2,000+ SFX and voice lines; sound pack replaceable over USB |
+| Audio | on-board speaker; 2,477 SFX and voice lines; sound pack replaceable over USB |
 | Radio | Bluetooth Classic (Gen1) / BLE Nordic UART (Gen2/3) |
 | Ports | charging port, micro-USB programming port |
 | MCU | PJRC Teensy |

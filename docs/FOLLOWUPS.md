@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B26 · D5 · E8 · F57 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F57 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -80,6 +80,20 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   table both show t17 (AR 384 = 2 x t40's 192). Not a falsehood, and it matches the app's mags x clip
   presentation, but which token a player's "spare rounds" actually is has never been settled. One
   capture read with the operator counting real reloads would close it. `build`.
+- **B26 🔴 Needs Tony at the bench** does a gun with NO headset fire in local (on-gun) play? `dev.md` says yes,
+  citing Battle Company's V7 manual. `fix.md`'s ladder step 1, `hardware.md` and `operate.md` all say a gun whose
+  headset is off, unpaired or flat refuses to join or fire at all, citing operators. Both are load-bearing and
+  they cannot both be right. One gun, headset removed, try a local game. `trigger`.
+- **B27 🟡 Needs Tony at the bench** is `$SIR` function 23 an audio-silence weapon? `sound.md` states it mutes the
+  victim's gun audio for 6 to 8 s. `dev.md` records only that `$ALCD` token 2 drops 100 to 0 and recovers over
+  6 to 8 s while the gun keeps firing, and marks token 2's meaning unknown. Take a fn 23 hit and LISTEN. `ears`.
+- **B28 🟡** do guns talk gun-to-gun in phoneless games? `sound.md` and `gameplay.md` explain phoneless multikill
+  lines as the guns sorting it out "over their radio mesh"; `dev.md` says flatly "nothing propagates gun-to-gun".
+  The dev sentence is scoped to what a BLE host can observe. Either the mesh claim needs evidence or the dev
+  sentence needs its scope written in. `capture`.
+- **B29 🟡** voice pack: 16 slots or 17? `sound.md` gives a 17-row slot table confirmed on hardware 2026-09-07;
+  `dev.md` says sixteen ids on the wire with the slot mapping unknown, and its own sample frame carries 16.
+  17 declared field names against 16 wire ids is a real gap, not a typo. `capture`.
 - **B24 🟡 Needs Tony** finish the deploy change: set the Cloudflare build command (Workers & Pages -> open-brx ->
   Settings -> Build -> Build command: `npm run build`), push once, confirm the deploy renders, then stop committing
   the generated files in `webapp/`. Until that setting exists, push-to-deploy serves what is committed, so the built

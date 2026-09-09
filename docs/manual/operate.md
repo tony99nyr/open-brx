@@ -38,8 +38,8 @@ Charge it, pair it, sight it, play.
 **The controls, in one glance:**
 
 - **Trigger**: fire. In menus it selects, and it cycles weapons or characters.
-- **ALT (orange)**: alt-fire or perk. Hold 3 s to toggle indoor/outdoor. In the menu it cycles
-  perks.
+- **ALT (orange)**: cycles perks and abilities in the modes that have them, in the menu and in
+  play. No stock weapon has an alt-fire. Hold 3 s to toggle indoor/outdoor.
 - **SELECT**: steps through settings. Hold it at power-on for USB disk mode (firmware and
   sounds).
 - **LEFT / RIGHT (D-pad)**: cycle modes and teams. Hold LEFT at power-on for target mode. Hold
@@ -128,9 +128,12 @@ Everything you can set without a phone, and what the gun remembers.
   friends).
 - **SELECT at power-on**: USB disk mode. No startup sound.
 - **LEFT + RIGHT, hold 5 s in a game**: soft reset back to the menu.
-- **LEFT + RIGHT, hold 3 s at the root menu**: admin lock. It blocks mode changes and reset. Add
-  SELECT for the stronger lock, which also freezes indoor/outdoor, weapon, team and perk. A
-  locked gun cannot host.
+- **LEFT + RIGHT, hold 3 s at the root menu**: the primary admin lock. It blocks mode changes
+  and reset, and nothing else. Weapon, team and perk cycling still work under it.
+- **LEFT + RIGHT + SELECT, hold 3 s at the root menu**: the stronger lock. On top of mode changes
+  and reset it also freezes indoor/outdoor, weapon, team and perk. A gun that will not cycle
+  weapons is under this lock, not the primary one. Either lock stops the gun hosting. Unlock with
+  the same hold that set it.
 - **Swing your elbow (gesture-enabled "logo" guns)**: melee from the headset's front emitter.
   Other guns use RIGHT.
 
@@ -155,8 +158,10 @@ One three-second hold changes your range, your LEDs and your blast radius.
 1. Hold ALT for 3 seconds at any time. The gun announces the new mode.
 2. Leave it. The setting persists across power cycles, so you set it once per venue.
 3. Host from the Callsign app instead? Its per-game Outdoor mode toggle sets the same thing.
-4. Driving a gun from your own code? It is `$GSET` token 2, `outdoorMode`. A second field, token
-   3 `gunLaserRegion`, carries the IR power limit. Both are in the developer reference.
+4. Driving a gun from your own code? The field looks like `$GSET` token 2, `outdoorMode`, with
+   token 3 `gunLaserRegion` carrying the IR power limit. Both names and mappings come from
+   decoding the app: setting either over Bluetooth and watching the gun change is untested. Both
+   are in the developer reference.
 
 **What changes:**
 
@@ -169,8 +174,8 @@ One three-second hold changes your range, your LEDs and your blast radius.
 | Gun hit radius | n/a | bright sunlight cuts it roughly in half (IR noise filtering) |
 
 > **Tip.** Use indoor mode indoors, even in a big room. Full-power IR in a small space bounces
-> off walls, and a bounce can land on your own headset. We have watched a gun drain its own
-> armor by firing at a wall a few feet away.
+> off walls, and a bounce can land on your own headset. A gun can drain its own armor by firing at
+> a wall a few feet away.
 
 ## Sighting the Laser
 
@@ -363,7 +368,8 @@ this section covers building a game and the gotchas that catch new users.
 - Keep the phone within about 1 m of its gun for the whole match. It is the game engine.
 - A hosted game typically takes about 1 minute to show up as joinable on a second phone. It
   round-trips through the cloud.
-- The app sets the gun's internal volume to 69 out of 100 when it connects.
+- On connect the Android app sets the gun's internal volume to 100 out of 100. iOS sets it to
+  69. That matters here, because the app is effectively Android-only.
 - Owners report the app only works on Android 10 or earlier. iOS is fine.
 
 **Building and starting a game:**
@@ -385,7 +391,7 @@ this section covers building a game and the gotchas that catch new users.
 
 | Setting | Choices |
 |---|---|
-| Primary / Secondary weapon | ~18-weapon roster (Assault Rifle, Sniper, Shotgun, SMG, Rail Gun, Rocket Launcher...); secondary removable |
+| Primary / Secondary weapon | 19-weapon roster (Assault Rifle, Sniper, Shotgun, SMG, Rail Gun, Rocket Launcher...); secondary removable |
 | Weapon respawn | 30 s, 60 s, 90 s, 3 min |
 | Weapon pick-up | Scan, Player, Both |
 | Weapon selection | on / off |
@@ -401,10 +407,11 @@ this section covers building a game and the gotchas that catch new users.
 > **Field objectives in Callsign are printed QR codes.** Respawn points, weapon pickups, control
 > points and supply drops are all paper you scan or fire at, not boxes.
 
-> **Volume.** The app's whole global settings screen is one Sound slider. On connect it sets the
-> gun to about 69 on its internal 0-100 scale. That is loud enough for weapon audio indoors and
-> out. Anything much below 50 makes weapon sounds effectively silent; 30 measures as inaudible
-> over room noise.
+> **Volume.** The app's whole global settings screen is one Sound slider. On connect the Android
+> app sets the gun to 100 on its internal 0-100 scale, and iOS sets it to 69. 69 is quieter than
+> the number suggests: measured on 2026-08-30 it lands at roughly on-gun level 2, and it was
+> inaudible outdoors. Anything much below 50 makes weapon sounds effectively silent, and 30
+> measures as inaudible over room noise. Open BRX plays at 80 indoors and 90 outdoors instead.
 
 > **Gotcha 1: the app renames your gun.** Every session Callsign writes the name "Tactix2" to
 > the gun. Gave a gun a custom Bluetooth name with Open BRX tools? Opening Callsign on it
@@ -471,9 +478,9 @@ while it runs.
 
 > **Warning: the "screamer".** Owners widely report this in hosted or online play. After about
 > an hour some guns fail with a loud buzz and need a reboot. They also report that a low battery
-> stops Bluetooth re-pairing entirely. A game can cascade down to half its players. We reproduced
-> the Bluetooth half on a gun left powered all day. Power guns off between rounds, keep packs
-> topped up, and reboot a buzzing gun instead of fighting it.
+> stops Bluetooth re-pairing entirely. A game can cascade down to half its players. A gun left
+> powered all day still advertises normally but refuses connections. Power guns off between
+> rounds, keep packs topped up, and reboot a buzzing gun instead of fighting it.
 
 **Owner-invented rulesets that need no extra gear:**
 
@@ -490,7 +497,8 @@ What the numbers on the box mean once the sun comes out.
 
 **Range at a glance:**
 
-- The IR beam's rated maximum reach in daylight is about 600 ft (Battle Company).
+- Battle Company rates the IR beam's typical maximum reach at about 600 ft in good conditions.
+  Shade and night are the good conditions.
 - Bright direct sunlight shrinks the gun's hit radius by about 50%.
 - The IR wavelength and carrier are 980 nm / 38 kHz. It is a Class 1 device, safe for eyes.
 - A respawn station "hears" a headset-and-trigger request from about 18-20 ft outdoors.

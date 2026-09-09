@@ -21,11 +21,11 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
 - The grenade's game modes: Frag, Assault, Hill, Respawn, CTF, and how each one really behaves.
 
-> **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. They fill the same 6 weapon slots with different numbers. This section covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from the manual.
+> **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. They fill the same 6 weapon slots with different numbers. This section covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual.
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table.
+> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
@@ -35,13 +35,13 @@ weapons
 
 19 weapons come out of 20 captured frames. The 20th frame is the app's unnamed default secondary (`T01`, 45 dmg, 6-round clip, 4 mags, 0.4 s shell reload). That is the Shotgun itself, slotted as your sidearm before you pick one.
 
-> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value of 30 shows up on the Rocket, Shotgun and Plasma Sniper.
+> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value shows up on three weapons: 30 on the Shotgun and the Rocket Launcher, 40 on the Plasma Sniper.
 
 > **Stock Callsign hits soft and fast.** The standard-damage automatics deal 8 to 15 per hit every 75 to 120 ms. They need 8 to 15 hits, which is about a second of landed fire. The Rocket Launcher, Rail Gun, Laser Cannon and Ion Sniper deal 115: that drops a full-health player in one shot. The two snipers deal 80 every 225 to 300 ms and kill in two hits, in 0.23 to 0.30 s.
 
 ### Assault Rifle
 
-Assault, full auto, 9 dmg, 100 ms, 32/384, reload 1.4 s. This is the baseline gun. It takes 13 hits to kill, and 1.2 s if every shot lands. (The gun-menu M-4 is printed at 24 damage in the manual. The app's Assault Rifle sends 9.)
+Assault, full auto, 9 dmg, 100 ms, 32/384, reload 1.4 s. This is the baseline gun. It takes 13 hits to kill, and 1.2 s if every shot lands. (The gun-menu M-4 is printed at 24 damage in Battle Company's manual. The app's Assault Rifle sends 9.)
 
 ### Burst Rifle
 
@@ -73,7 +73,7 @@ Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/24, 1.7 s. Two hits to kill
 
 ### Plasma Sniper
 
-Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. Fastest time-to-kill in the arsenal at 0.23 s.
+Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. Spam it and it overheats. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot.
 
 ### AMR
 
@@ -97,7 +97,7 @@ Power, single shot, 115 dmg (explosive damage type), 1.0 s, 2/8, 1.2 s. A one-sh
 
 ### Rail Gun
 
-Power, charges and fires itself after about 1 s (a tap also fires), 115 dmg (armor-piercing type), 1/6, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
+Power, charges and fires itself after about 1.2 s (a tap also fires), 115 dmg (armor-piercing type), 1/6, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
 
 ### Laser Cannon
 
@@ -105,7 +105,7 @@ Power, you must hold it to charge, and a tap does nothing. 115 dmg, 1.5 s charge
 
 ### Energy Launcher
 
-Power, single shot from a 1-round clip, 115 magnitude, 360 ms, 1/6, 1.4 s. Six spare rounds.
+Power, full auto on the wire, but with a 1-round clip every shot is followed by a reload. 115 magnitude, 360 ms, 1/6, 1.4 s. Six spare rounds.
 
 ### Ion Sniper
 
@@ -122,7 +122,7 @@ The firmware has seven fire-mode behaviours, all confirmed on the trigger. Every
 | Full auto | hold it down to keep firing at the cycle rate | Assault Rifle, SMG, Suppressor, Energy Rifle, Stinger, Energy Launcher |
 | Single shot / bolt | one round per pull | AMR, Bolt Rifle, Sniper, Plasma Sniper, Ion Sniper, Rocket Launcher, Shotgun |
 | 3-round burst | one pull sends three rounds, then a burst gap | Burst Rifle, Force Rifle |
-| Charge, auto-release | starts charging on the pull, then fires by itself (about 1 s); a tap also fires | Rail Gun |
+| Charge, auto-release | starts charging on the pull, then fires by itself (about 1.2 s); a tap also fires | Rail Gun |
 | Hold-to-charge | you must hold it through the whole charge; a tap is sound only | Laser Cannon |
 | Charge, fire on release | charge while you hold, fire when you let go | Charge Rifle |
 | Melee | a swing the gyro picks up | Melee |
@@ -131,7 +131,7 @@ The firmware has seven fire-mode behaviours, all confirmed on the trigger. Every
 
 > **No stock weapon has an alt-fire.** The secondary-fire fields are empty on all 20 captured frames. The orange ALT button cycles perks and abilities in the modes that have them. Every weapon is also just data: a host can send its own weapon into any of the gun's 6 slots, with its own damage, rate, clip, reload, burst, overheat and sounds. That is exactly what Open BRX does.
 
-The manual's stock presets below are for phoneless play. The damage scale here is not the Callsign scale above: the manual's M-4 says 24, and the app's Assault Rifle sends 9.
+Battle Company's stock presets below are for phoneless play. The damage scale here is not the Callsign scale above: the printed M-4 says 24, and the app's Assault Rifle sends 9.
 
 | Weapon | Damage | Rate of fire | Accuracy | Mag | Character |
 |---|---:|---:|---|---:|---|
@@ -141,7 +141,7 @@ The manual's stock presets below are for phoneless play. The damage scale here i
 | SR-100 | 140 | 44 | 100-90 | 4 | bolt, high damage, small mag |
 | TAC-87 | 120-40 | 150 | 95-80 | 8 | semi shotgun; hold reload to load shells; full damage only at melee range |
 
-Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are the manual's simulated-recoil model: fire fast and your accuracy drifts toward the lower number. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts.
+Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are Battle Company's simulated-recoil model: fire fast and your accuracy drifts toward the lower number. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts.
 
 ## Health, armor and damage
 
@@ -159,12 +159,14 @@ Every player is a pool of points: 45 health and 70 armor by default, which is 11
 |---|---|
 | Default pool? | 45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health. |
 | Does armor reduce damage? | No. It is extra hit points, and it drains first. Armor never makes a hit weaker. |
-| Do I heal over time? | No. On the bench we set the pools to 99/99 and shot armor down to 18. It sat there through 18 s, then another 12 s, with nothing happening. Any healing you see comes from a class ability, a medic, or a host that refills you. |
+| Do I heal over time? | No. Armor shot down to 18 stayed at 18 for 30 s. Any healing you see comes from a class ability, a medic, or a host that refills you. |
 | What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event. A phone cannot just set it. |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal shot, and the community confirms it heals by shooting teammates. A host can also grant health directly. |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: x1.5 at the shipped t7=50, and t7=0 turns crits off. |
-| Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). FFA is one team with friendly fire on. |
+| Can friendly fire hurt me? | Only if the game turns it on. The documented rule: with friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). One bench result contradicts that rule (see the note below). FFA is one team with friendly fire on. |
+
+> **Friendly-fire polarity is not settled.** The rule above is the documented one: with friendly fire off, a gun drops a shot that names the gun's own team. One bench run on 2026-09-07 came out backwards. With friendly fire off, a shot claiming the gun's own team registered and a shot claiming an enemy team did not, each reproduced twice. Nothing has explained it yet, so treat same-team behaviour as unproven until something does.
 
 > **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is added to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way: a host watches your pool and tops it up.
 
@@ -187,17 +189,17 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits), player id (6 bits, 0-63), team (2 bits, 4 teams), damage (8 bits, up to 255), crit flag, effect subtype, 2 check bits.
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
-3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped. Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
+3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped, which is the documented rule that one unexplained bench result contradicts (see *Health, armor and damage*). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game, the guns sort this out between themselves over their short-range radio. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
-> **Why misses still make noise.** The manual's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
+> **Why misses still make noise.** Battle Company's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
 
 | Event | Victim | Shooter |
 |---|---|---|
 | Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (no radio path for a plain hit) |
 | Kill | headset sustained green blink (the out state), death alarm, gun stops firing | green sight flash + "kill" callout; in gun-menu games also "double kill" and other streak lines |
-| Same team, FF off | nothing (the gun drops the shot) | nothing |
+| Same team, FF off | nothing (the gun drops the shot, by the documented rule one bench result contradicts) | nothing |
 | Miss (accuracy roll) | headset lights + zip, 0 damage | (none) |
 
 > **Every shot names its shooter.** The 6-bit player id in the word is why a host can credit the exact killer, run free-for-all scoring, and build health-on-kill. All of it comes from what the target's gun reports. Stock BRX uses it too: that is how the kill-confirm and streak callouts find the right gun. The full bit layout, the timings and the effect-table mechanism are in the developer reference.
@@ -211,16 +213,16 @@ The mode LED colour shows what you picked. Modes marked with a star are Callsign
 | Mode | LED | Teams | How it plays | Weapons / perks |
 |---|---|---|---|---|
 | Free For All | white | none (everyone is one team with friendly fire on) | most kills wins | M-4, SMG-X3, MG-7, SR-100, no perks |
-| Death Match / Team Death Match (*) | red | Alpha vs Bravo | team kills | M-4, SMG-X3, MG-7, SR-100, TAC-87, the only stock mode with the perk row |
+| Death Match / Team Death Match | red | Alpha vs Bravo | team kills | M-4, SMG-X3, MG-7, SR-100, TAC-87, the only stock mode with the perk row |
 | Generals (*) | yellow | two teams, each with a General | the General is your team's mobile respawn point, so pull the trigger at them to revive; it can be lives-limited for seek-and-destroy | TDM loadouts + perks |
-| Supremacy (*) | blue | 3 factions: Resistance (red), Vanguard (green), Nexus (blue) | class-based; 9 characters are the loadout | no weapon picker, because the character is the loadout; abilities on ALT |
+| Supremacy | blue | 3 factions: Resistance (red), Vanguard (green), Nexus (blue) | class-based; 9 characters are the loadout | no weapon picker, because the character is the loadout; abilities on ALT |
 | Commander (*) | pink | faction wars | Supremacy plus a Commander respawn character | class loadouts |
 | Survival (Infection) | green | Human vs Infected | a killed human turns infected; the last human wins | M-4, SMG-X3, MG-7, SR-100, TAC-87, no perks |
 | The Swarm (*) | orange | Human vs Infected + a Hive Queen | infection where the Queen is the infected respawn point | class loadouts |
 
 (*) = Callsign-Live unlock on the gun.
 
-> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
+> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection (subject to the polarity caveat under *Health, armor and damage*) and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
 
 **Starting a gun-menu game:**
 
@@ -407,10 +409,12 @@ The gun keeps no game state, so any rule you can write over hits, teams, health 
 | Tier 1: plus props (objective stations, flags, QR codes, or the grenade) | contested places | Domination, King of the Hill / Territory, Capture the Flag (standard, one-sided, centre-flag), Assault, Team Arena, VIP escort, Hostage rescue, a real Extraction point |
 | Tier 2: plus broadcast (a live field-wide downlink; location on each node) | live global awareness | Battle Royale, live scoreboards and "flag taken!" callouts on a big no-WiFi field, hidden multi-extracts |
 
+Two Tier 0 entries carry a caveat. Syphon (health on kill) and small-scale Extraction exist only in the laptop's `brx-mcp` CLI path. Neither has run on hardware, and neither the phone node nor the node/MC bundle knows anything about them, so neither is playable in a real match yet.
+
 Three modes stock BRX does not ship:
 
-- **Extraction**: drop in, loot, then reach an extraction point and channel it. That takes 30 to 60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets, and a rules engine already exists.
+- **Extraction**: drop in, loot, then reach an extraction point and channel it. That takes 30 to 60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets. A rules engine exists, but only on the laptop CLI path, and it has not run on hardware.
 - **Counter-Strike (plant / defuse)**: the grenade or a phone is the bomb. Attackers arm it (by dwell, IR, or an on-screen code) and defenders defuse it (by IR or a puzzle). The round ends on detonate, defuse or elimination.
-- **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are pure host rules on top of the "heals add, never set" write.
+- **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are host rules on top of the "heals add, never set" write. Syphon is written for the laptop CLI path and has never run on hardware, so today it is a design rather than a mode you can play.
 
 > **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier.

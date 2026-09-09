@@ -38,15 +38,25 @@ export function buildWeapons(repo) {
   });
 }
 
+// Most transcripts in the catalog are MACHINE transcription, and they are known to be wrong: the
+// catalog had V116 as "Can't believe!" where the gun says "gained the lead". Only ~146 of 1,244 have
+// been confirmed by ear. Publishing all of them as plain "meaning" states guesses as facts, so the
+// page marks the unconfirmed ones instead of hiding the distinction.
 export function buildSounds(repo) {
   const catalog = JSON.parse(fs.readFileSync(path.join(repo, 'mcp/brx_mcp/data/sound_catalog.json'), 'utf8'));
-  return catalog.sounds.map(s => ({
-    id: s.id,
-    family: s.family || ((s.id.match(/^([A-Z]+)/) || [])[1] || s.id[0]),
-    len: Math.round((s.duration_s ?? 0) * 100) / 100,
-    meaning: !s.on_gun ? 'listed by the app, not on the gun'
-      : s.known_use || (s.kind === 'voice' && s.transcript ? `"${s.transcript}"${s.speaker ? ` (${s.speaker})` : ''}` : ''),
-    on_gun: Boolean(s.on_gun),
-    play: s.on_gun ? `$PLAY,${s.id},*` : '',
-  })).sort((a, b) => a.id.localeCompare(b.id));
+  return catalog.sounds.map(s => {
+    const quoted = s.kind === 'voice' && s.transcript
+      ? `"${s.transcript}"${s.speaker ? ` (${s.speaker})` : ''}` : '';
+    const meaning = !s.on_gun ? 'listed by the app, not on the gun' : (s.known_use || quoted);
+    return {
+      id: s.id,
+      family: s.family || ((s.id.match(/^([A-Z]+)/) || [])[1] || s.id[0]),
+      len: Math.round((s.duration_s ?? 0) * 100) / 100,
+      meaning,
+      // true when this row is something we know: a confirmed use, or a transcript heard on the gun
+      heard: Boolean(s.known_use || s.verified_by_ear || !s.on_gun),
+      on_gun: Boolean(s.on_gun),
+      play: s.on_gun ? `$PLAY,${s.id},*` : '',
+    };
+  }).sort((a, b) => a.id.localeCompare(b.id));
 }

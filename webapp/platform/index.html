@@ -5,7 +5,7 @@
 <meta name="description" content="Open BRX is open-source software  for stock Battle Company BRX taggers. It ties the guns you">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/">
 <link rel="alternate" type="text/markdown" href="/platform.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.d2f22ad2c6.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f3a9d7d141.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/" aria-current="page">Platform</a><a href="/credits/">Credits</a></nav>
@@ -70,7 +70,7 @@ practice that means you always know you died straight away, but you may not lear
 until you walk back into range. A scoreboard can be late. The final result is not wrong.</li>
 </ol>
 <p>The limits that follow from this, measured on hardware except for the logical-teams row:</p>
-<div class="table-wrap"><table><thead><tr><th>Thing</th><th>Limit</th></tr></thead><tbody><tr><td>Players in one game</td><td>63 (the gun takes ids 0-63; id 0 is reserved)</td></tr>
+<div class="table-wrap"><table><thead><tr><th>Thing</th><th>Limit</th></tr></thead><tbody><tr><td>Players in one game</td><td>64 (the gun&#39;s player id runs 0-63; the app shows 1-64 and writes the id one lower)</td></tr>
 <tr><td>Native hardware teams</td><td>4 (the team field in each shot is 2 bits)</td></tr>
 <tr><td>Teams beyond 4</td><td>unlimited logical teams, scored by Mission Control&#39;s roster; no on-gun friendly-fire protection in that mode</td></tr>
 <tr><td>Guns per node</td><td>exactly 1</td></tr>
@@ -78,5 +78,5 @@ until you walk back into range. A scoreboard can be late. The final result is no
 
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="https://github.com/tony99nyr/open-brx">Source on GitHub</a></p></footer>
-<script src="/assets/site.4fc2271c04.js"></script>
+<script src="/assets/site.ffc8a72479.js"></script>
 </body></html>

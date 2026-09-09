@@ -167,6 +167,7 @@ tbody tr:hover { background: var(--panel); }
 }
 .dt-count { color: var(--muted); font-size: 14px; }
 .dt-note { color: var(--muted); font-size: 13px; }
+.unheard { color: var(--muted); }
 .dt [data-more] {
   background: var(--bg); border: 1px solid var(--line-strong); color: var(--ink);
   border-radius: 6px; padding: 8px 14px; min-height: 36px; font: inherit; cursor: pointer;

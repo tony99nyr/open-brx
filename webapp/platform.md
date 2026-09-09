@@ -75,7 +75,7 @@ The limits that follow from this, measured on hardware except for the logical-te
 
 | Thing | Limit |
 |---|---|
-| Players in one game | 63 (the gun takes ids 0-63; id 0 is reserved) |
+| Players in one game | 64 (the gun's player id runs 0-63; the app shows 1-64 and writes the id one lower) |
 | Native hardware teams | 4 (the team field in each shot is 2 bits) |
 | Teams beyond 4 | unlimited logical teams, scored by Mission Control's roster; no on-gun friendly-fire protection in that mode |
 | Guns per node | exactly 1 |

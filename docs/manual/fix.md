@@ -33,9 +33,11 @@ and the locks. Work the ladder in order and stop at the first check that says ye
    Once a tagger has been armed to a respawn station, its self-respawn is off. A dead player's
    trigger only makes the empty click.
 5. **Can you cycle weapons with the trigger before a game starts?** → no → The controls are
-   locked. Check the admin lock. The primary lock is LEFT+RIGHT held 3 s in the root menu. The
-   secondary is LEFT+RIGHT+SELECT for 3 s, and it also blocks indoor/outdoor, weapon, team and
-   perk changes. Unlock the same way (v4.30: also hold SELECT).
+   locked, and this symptom is the stronger lock: LEFT+RIGHT+SELECT held 3 s in the root menu,
+   which freezes indoor/outdoor, weapon, team and perk changes. The primary lock, LEFT+RIGHT held
+   3 s, blocks mode changes and reset but leaves weapon cycling alone, so it is not what you are
+   looking at here. Unlock with the same hold that set it (on v4.30 the unlock hold also needs
+   SELECT).
 6. **Does the reload handle click home?** → no → The handle drives a mechanical switch under two
    screws. Press that switch with a pen. If the pen works and the handle does not, the handle is
    the problem (see "Repairs").
@@ -45,10 +47,10 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 8. **Still nothing?** → It is the mainboard. That is not community-serviceable. Contact Battle
    Company for repair.
 
-> **Running the gun from a third-party host or your own code?** We hit three silent fire-killers
-> on the bench. Send the button map, or the firmware reports the trigger as disabled. Send a game
-> head with no start command, and the gun spawns with a trigger that only reloads. Load a magazine
-> after the spawn, or the gun goes live with no ammunition.
+> **Running the gun from a third-party host or your own code?** Three silent fire-killers, all
+> found on the bench: send the button map, or the firmware reports the trigger as disabled. Send
+> a game head with no start command, and the gun spawns with a trigger that only reloads. Load a
+> magazine after the spawn, or the gun goes live with no ammunition.
 
 ### "Won't power on" / "powers off by itself"
 
@@ -182,7 +184,10 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 
 ### "IR isn't registering hits"
 
-1. **Same team, friendly fire off?** → yes → Zero damage is correct. The firmware enforces it.
+1. **Same team, friendly fire off?** → yes → Zero damage is the documented rule, and the firmware
+   is meant to enforce it in both directions. One bench run on 2026-09-07 came out backwards: a
+   shot claiming the gun's own team registered and an enemy shot did not, each reproduced twice.
+   That result is unexplained, so do not treat team polarity as settled while you are chasing it.
 2. **Is the target alive and in a started game?** → no → A dead tagger accepts no IR at all. A
    tagger that is set up but not started ignores it too. Silence from a corpse proves nothing.
 3. **Bright sunlight?** → The gun's hit radius shrinks by about half in full sun, because of IR
@@ -213,7 +218,8 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 2. **Volume set to 1?** → On-gun volume is 1-5 in the SELECT menu, and it is remembered per game
    mode.
 3. **Driven from an app or host?** → The wire-level volume command has a much wider range. The
-   official app sends 69. At a "safe" 30 you cannot hear weapon audio outdoors at all.
+   Android Callsign app sends 100, and iOS sends 69. At a "safe" 30 you cannot hear weapon audio
+   outdoors at all.
 4. **Booted into USB disk mode by accident?** → SELECT-at-boot turns the startup sound off
    completely. Reboot with nothing held.
 5. **Just updated to v4.30+?** → That release needs a complete new audio file set in the `AUDIO`
@@ -254,8 +260,9 @@ first, every time.
 > **Before you open anything.**
 > - Unplug the battery. A live pack during work inside the shell is how owners have fried
 >   mainboards.
-> - The emitter is a Class 1 IR laser (980 nm, 38 kHz, ~17 mW measured on our unit). Do not change
->   its drive circuit, and do not stare into it while you probe.
+> - The emitter is a Class 1 IR laser (980 nm, 38 kHz, 16.9 mW in the factory record the gun
+>   prints in its own USB `QUERY` output). Do not change its drive circuit, and do not stare into
+>   it while you probe.
 > - There is no public mainboard schematic (only partial community mapping). Do not expect to
 >   trace faults past the switches and connectors.
 > - Never modify stock firmware. Battle Company's official USB updater is the factory-restore

@@ -135,7 +135,7 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 
 ## The sound bank
 
-2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and transcribed the voice lines. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 145 of those have since been confirmed by ear; the rest are machine guesses, and an unconfirmed transcript can be wrong. `V116` is catalogued as "Can't believe!" and the gun actually says "gained the lead". Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
 
 - **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
 - **~4,700 s** (78 min) of audio across the app's 2,166-id list
@@ -152,7 +152,7 @@ Prefix meanings are restated from David Knox's audio map; counts are computed fr
 |---|---|---|---|
 | `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5-3 s (countdowns up to 11 s) |
 | `VB` + `E_VB` | Scout / female-clean voice: score & lead lines | 90 + 64 | 1-2 s |
-| `V0`-`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider) | 23 each (255 total) | 0.4-6 s |
+| `V0`-`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider) | 23 each except V4 (33), V5 (26) and V8 (35); 255 total | 0.4-6 s |
 | `V100`-`V144` | CTF / Slayer / King-of-the-Hill callouts | 34 | 1-2.4 s; three at 12-13 s |
 | `VC`...`VS` (15 families) | Sentinel, Female sniper, Clean male, Creature, Female creature, Valkyrie, Viper, Wraith, Russian clean, Clean female, Mercenary, Clean male (alt), Nexus & Vanguard commanders, Clean commander | 9 base + 9-22 extra lines each (329 total, incl. 5 `E_VS` takes) | 1-6 s |
 | `N` + `E_N` | Miscellaneous cues: the "kerchung", swish, revive ping, ultra-short ticks | 108 + 10 | 0.04-6.7 s |
@@ -191,20 +191,20 @@ Sums to 2,166, the app's list; the gun holds 2,477 files.
 |---|---|---|---|
 | `VA20` | VA | "Connection established": plays on every phone connect | 1.27 s |
 | `U16` | U | Connect tone (paired with VA20) | 0.43 s |
-| `VA81` | VA | 3-2-1 spawn countdown (arena) | 2.97 s |
-| `VA33` | VA | "Game over" + music | 2.26 s |
-| `VA85` | VA | Countdown to game over, no music | 9.66 s |
-| `VSB` | VS | Countdown to game over + music | 10.39 s |
-| `VS6` | VS | Game-end line (solo game close) | 2.26 s |
+| `VA81` | VA | 3-2-1 spawn countdown (arena) | 3.03 s |
+| `VA33` | VA | "Game over" + music | 1.88 s |
+| `VA85` | VA | Countdown to game over, no music | 10.01 s |
+| `VSB` | VS | Countdown to game over + music | 10.46 s |
+| `VS6` | VS | Game-end line (solo game close) | 2.42 s |
 | `VSF` + `JAY` | VS / JA | Victory sting + "Victory": the winner's end-of-game pair | 1.86 s + 5.69 s |
 | `VA46` | VA | Lives depleted / multi-kill | 1.47 s |
 | `V3A` | V3 | "Kill": the app's per-kill announcer line | 0.79 s |
-| `VB17` | VB | Score / lead-change line | 1.77 s |
+| `VB17` | VB | Score / lead-change line | 1.94 s |
 | `N41` | N | Revive-countdown ping | 0.73 s |
 | `NA0` | NA | Death beep (also the file swapped to change the death cue) | 4.00 s |
 | `N03` | N | "Kerchung" | 0.82 s |
 | `N04` | N | Swish | 1.43 s |
-| `JA9` | JA | Startup music | 5.74 s |
+| `JA9` | JA | Startup music | 5.75 s |
 | `JAD` | JA | Death music (the musicMixOnDeath slot) | 3.50 s |
 | `H29` | H | Respawn / add-HP: a quiet, sustained "stim-pack" medical sound | 1.20 s |
 | `VA16` | VA | "Armor suit": add armor | 0.94 s |
@@ -311,7 +311,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 - Android Callsign: `$VOL,100`
 - iOS Callsign: `$VOL,69`
-- Open BRX game default: 80 indoors / 90 outdoors (`compile.play_volume()` sets it from the venue; 69 measured as roughly on-gun level 2 and was inaudible on a field, 2026-08-30)
+- Open BRX game default: 80 indoors / 90 outdoors (`compile.play_volume()` sets it from the venue; 69 is estimated at roughly on-gun level 2, and it was inaudible on a field, 2026-08-30)
 - Open BRX try-out default: 69 (fired at arm's length)
 - Open BRX probing default: 30 (deliberately quiet, and deliberately not for games)
 
@@ -319,7 +319,8 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 **Practical levels**
 
-- **Play:** 69, the value the official iOS app sets on connect. The Android app sends 100.
+- **Play:** 80 indoors, 90 outdoors. That is what Open BRX sets from the venue, and an unknown venue gets the quieter of the two. The official iOS app's 69 is too quiet for game audio on a field; the Android app sends 100.
+- **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
 - **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 
 > **Safety.** The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.

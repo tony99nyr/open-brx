@@ -21448,8 +21448,8 @@
    "kind": "voice",
    "category": "voice:line",
    "speaker": "Announcer (game callouts)",
-   "description": "Can't believe!",
-   "transcript": "Can't believe!",
+   "description": "gained the lead",
+   "transcript": "gained the lead",
    "shape": {
     "envelope": "decaying",
     "flatness": 0.016,
@@ -21458,7 +21458,8 @@
     "pitch_hz": 116,
     "rms_db": -23.3,
     "attack_s": 0.544
-   }
+   },
+   "verified_by_ear": true
   },
   {
    "id": "V117",

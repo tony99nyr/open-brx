@@ -3,6 +3,7 @@
 :root {
   --bg: #ffffff; --panel: #f6f7f9; --ink: #1a1d21; --muted: #5b6470;
   --line: #d9dde3; --line-strong: #6b7684; --accent: #0b6bcb; --code-bg: #f2f4f7;
+  --quote-bg: #f4f7fb; --yes-bg: #0b6bcb; --yes-ink: #ffffff; --no-ink: #5b6470;
   color-scheme: light;
 }
 /* no data-theme = follow the reader's system setting */
@@ -10,6 +11,7 @@
   :root:not([data-theme="light"]) {
     --bg: #0e1116; --panel: #161b22; --ink: #e6edf3; --muted: #9aa4b2;
     --line: #2a313b; --line-strong: #7d8899; --accent: #58a6ff; --code-bg: #161b22;
+    --quote-bg: #131c27; --yes-bg: #1f6feb; --yes-ink: #ffffff; --no-ink: #9aa4b2;
     color-scheme: dark;
   }
 }
@@ -17,11 +19,13 @@
 :root[data-theme="dark"] {
   --bg: #0e1116; --panel: #161b22; --ink: #e6edf3; --muted: #9aa4b2;
   --line: #2a313b; --line-strong: #7d8899; --accent: #58a6ff; --code-bg: #161b22;
+  --quote-bg: #131c27; --yes-bg: #1f6feb; --yes-ink: #ffffff; --no-ink: #9aa4b2;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
   --bg: #ffffff; --panel: #f6f7f9; --ink: #1a1d21; --muted: #5b6470;
   --line: #d9dde3; --line-strong: #6b7684; --accent: #0b6bcb; --code-bg: #f2f4f7;
+  --quote-bg: #f4f7fb; --yes-bg: #0b6bcb; --yes-ink: #ffffff; --no-ink: #5b6470;
   color-scheme: light;
 }
 
@@ -31,7 +35,8 @@
 }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
-  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* 17px, not 16: this is read at arm's length on a phone, outdoors, in a hurry */
+  font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-text-size-adjust: 100%;
 }
 a { color: var(--accent); }
@@ -61,32 +66,71 @@ footer {
 }
 
 /* ---- text ---- */
-h1 { font-size: 2rem; line-height: 1.2; margin: 8px 0 4px; }
-h2 { font-size: 1.4rem; margin: 40px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
-h3 { font-size: 1.1rem; margin: 24px 0 4px; }
-h2, h3 { scroll-margin-top: 16px; }
-p, ul, ol { margin: 12px 0; }
-li { margin: 4px 0; }
-.meta { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+h1 { font-size: 2.15rem; line-height: 1.15; letter-spacing: -0.02em; margin: 8px 0 4px; }
+/* a section break should read as one: a rule, real air, and a heavier face */
+h2 {
+  font-size: 1.5rem; line-height: 1.25; letter-spacing: -0.01em; font-weight: 700;
+  margin: 56px 0 12px; padding-top: 20px; border-top: 2px solid var(--line);
+}
+/* a subsection is a step down in weight, not a rule: it groups, it does not divide */
+h3 {
+  font-size: 1.28rem; line-height: 1.3; font-weight: 700; letter-spacing: -0.005em;
+  margin: 38px 0 8px; color: var(--ink);
+}
+h4 { font-size: 1rem; font-weight: 650; margin: 22px 0 4px; color: var(--muted); }
+h2, h3, h4 { scroll-margin-top: 16px; }
+h2 + p, h3 + p { margin-top: 6px; }
+p, ul, ol { margin: 14px 0; }
+li { margin: 10px 0; padding-left: 2px; }
+li > p { margin: 6px 0; }
+/* the bold lead-in of a list item is the thing people scan for, so let it carry */
+li > strong:first-child { color: var(--ink); font-weight: 680; }
+ol { padding-left: 1.6em; }
+ol > li::marker { color: var(--muted); font-weight: 700; }
+.meta { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+/* the opening sentence orients the reader, so give it a little more voice than body copy */
+.lead { font-size: 1.13rem; line-height: 1.55; color: var(--ink); margin: 0 0 24px; max-width: 42rem; }
 blockquote {
-  margin: 16px 0; padding: 2px 0 2px 16px;
-  border-left: 3px solid var(--accent); color: var(--ink);
+  margin: 22px 0; padding: 14px 18px; background: var(--quote-bg);
+  border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; color: var(--ink);
 }
 blockquote p { margin: 8px 0; }
+blockquote > p:first-child { margin-top: 0; }
+blockquote > p:last-child { margin-bottom: 0; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
 
 /* ---- toc ---- */
 .toc {
   background: var(--panel); border: 1px solid var(--line);
-  border-radius: 8px; padding: 12px 16px; margin: 16px 0 24px;
+  border-radius: 8px; padding: 12px 18px 14px; margin: 0 0 34px;
 }
-.toc p { margin: 0 0 6px; font-weight: 600; font-size: 14px; color: var(--muted); }
+.toc p { margin: 0 0 8px; font-weight: 600; font-size: 13px; color: var(--muted); }
+.toc li { margin: 3px 0; }
 .toc ul { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
 .toc li { break-inside: avoid; }
 
+/* ---- diagnostic branches ------------------------------------------------------------------
+   The site's most useful content is a symptom ladder. "yes" is the answer (act here) and "no" is
+   "not this, next rung", so yes is filled and no is quiet. Lowercase on purpose: these are words
+   in a sentence, not labels bolted above it. */
+.br {
+  display: inline-block; font-size: 0.82em; font-weight: 700; line-height: 1;
+  padding: 3px 7px; border-radius: 4px; margin: 0 5px; vertical-align: 1px;
+  font-variant-numeric: normal;
+}
+.br-yes { background: var(--yes-bg); color: var(--yes-ink); }
+.br-no { color: var(--no-ink); border: 1px solid var(--line-strong); }
+/* an unconditional rung: a quiet pivot, not a chip */
+.br-then { color: var(--muted); margin: 0 5px 0 6px; font-weight: 400; }
+
 /* ---- code ---- */
 /* a long wire frame in inline code has no spaces, so let it break rather than push the page wide */
-code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; overflow-wrap: anywhere; }
+/* tight horizontal padding: 5px left a visible gap before a following comma or paren, which read
+   as a typo in frames like `$PING,*` sitting inside prose */
+code {
+  background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 4px;
+  font-size: 0.88em; overflow-wrap: anywhere;
+}
 p, li, td, th, dd { overflow-wrap: break-word; }
 pre {
   /* padding-top clears the Copy button, which is absolutely positioned and opaque: at phone width
@@ -109,8 +153,9 @@ pre .copy {
 .table-wrap.tall { overflow: auto; max-height: 80vh; }
 /* a sticky header only has a scrollport inside .tall; elsewhere it is inert, so do not pretend */
 .table-wrap.tall th { position: sticky; top: 0; }
-table { border-collapse: collapse; width: 100%; font-size: 15px; }
-th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table { border-collapse: collapse; width: 100%; font-size: 15.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { border-bottom: 2px solid var(--line-strong); }
 th { background: var(--panel); font-weight: 600; }
 tbody tr:hover { background: var(--panel); }
 
@@ -122,6 +167,7 @@ tbody tr:hover { background: var(--panel); }
 }
 .dt-count { color: var(--muted); font-size: 14px; }
 .dt-note { color: var(--muted); font-size: 13px; }
+.unheard { color: var(--muted); }
 .dt [data-more] {
   background: var(--bg); border: 1px solid var(--line-strong); color: var(--ink);
   border-radius: 6px; padding: 8px 14px; min-height: 36px; font: inherit; cursor: pointer;
