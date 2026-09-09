@@ -153,7 +153,14 @@ def event_burst(event: str, team: int | None, night: bool = False) -> list[tuple
     frame = event_frame(event, night)
     if frame is None:
         return []
-    back = team_frame(team, night)
+    # A16.4 (fixed 2026-09-09 by the polish review): the burst alternates against, and ENDS on, the
+    # IN-PLAY REST -- which is dim. This is the only caller that was missed when the rest went dim, and
+    # it is the one that matters most: `driver._paint_event` deliberately DROPS the gauge-revert deadline
+    # ("the burst ends on the team colour itself, so a later revert would repaint a colour that is already
+    # showing"), so nothing repaints afterwards. Ending on the FULL frame therefore left the body at full
+    # brightness for the rest of the hold cycle after every event -- exactly the beacon A16.4 removed,
+    # surviving on the one path a real match runs through. Reproduced before fixing.
+    back = team_frame(team, night, dim=True)
     out: list[tuple[str, float]] = []
     for i in range(BURST_FLASHES):
         out.append((frame, BURST_FLASH_S))
@@ -267,6 +274,17 @@ def pool_colour(pool: str, level: int, maximum: int) -> int:
     return health_colour(level, maximum)
 
 
+# ⚠️ DRAIN DIRECTION — measured against STOCK BRX, 2026-09-09. Tony, testing native Supremacy:
+# "the health actually flows the opposite direction. led 3 is the last one to be lost. led 1 turns off
+# first." So a partial bar lights the LAST `lit` LEDs, not the first: lit=2 is (dark, colour, colour) and
+# the segment that goes next is always LED 1. We had it backwards until then, which meant our bar emptied
+# in the opposite direction to every stock game on the same hardware -- the exact thing a player already
+# knows how to read, so getting it wrong is worse than having no bar. `_lit_leds` is the ONE place this
+# is decided; both frame builders and every test go through it rather than re-deriving the order.
+def _lit_leds(colour: int, lit: int) -> list[int]:
+    return [colour if i >= 3 - lit else DARK for i in range(3)]
+
+
 def gauge_frame(pool: str, level: int, maximum: int, night: bool = False) -> str:
     """One `$GLED` frame showing `level`/`maximum` as a three-segment bar for `pool`.
 
@@ -277,7 +295,7 @@ def gauge_frame(pool: str, level: int, maximum: int, night: bool = False) -> str
     """
     lit = _segments(level, maximum)
     colour = pool_colour(pool, level, maximum)
-    leds = [colour if i < lit else DARK for i in range(3)]
+    leds = _lit_leds(colour, lit)
     b = BRIGHT_DIM if night else BRIGHT_FULL
     return f"$GLED,{leds[0]},{leds[1]},{leds[2]},0,{b},,*"
 
@@ -296,14 +314,16 @@ def pool_paint_frame(pool: str, level: int, maximum: int, night: bool = False) -
 
 
 def segment_frame(colour: int, lit: int, night: bool = False) -> str:
-    """A `$GLED` frame with the first `lit` (0-3) of the three LEDs in `colour`, the rest dark.
+    """A `$GLED` frame with the LAST `lit` (0-3) of the three LEDs in `colour`, the rest dark.
+
+    Last, not first: stock BRX drains LED 1 first and keeps LED 3 longest (see `_lit_leds`).
 
     The BLANKED-gun form of a pool reading (led-language.md §3.1/§5): unlike `pool_paint_frame`
     (whole strip, safe on a still-breathing gun), this is only meaningful once the strip has been
     taken out of the native animation (`mc.presentation.GUN_BLANK`) -- callers that paint a live,
     unblanked gun should use `pool_paint_frame` instead.
     """
-    leds = [colour if i < lit else DARK for i in range(3)]
+    leds = _lit_leds(colour, lit)
     b = BRIGHT_DIM if night else BRIGHT_FULL
     return f"$GLED,{leds[0]},{leds[1]},{leds[2]},0,{b},,*"
 
@@ -522,7 +542,11 @@ def handover_pool(pool: str, values: dict[str, int], configured=None) -> str:
         start = READOUT_POOL_INWARD.index(pool)
     except ValueError:
         return pool
-    allowed = set(configured) if configured else None
+    # `configured is not None`, not truthiness: an EXPLICITLY empty list means "no pools configured", so
+    # nothing may be handed over to. Treating [] as "no restriction" made this disagree with engine.js's
+    # port, which builds a Set and is maximally restrictive on []. Unreachable today (the moved pool is
+    # always itself configured when the handover branch is reached) but the two must not drift.
+    allowed = set(configured) if configured is not None else None
     for inner in READOUT_POOL_INWARD[start + 1:]:
         if vals.get(inner, 0) > 0 and (allowed is None or inner in allowed):
             return inner

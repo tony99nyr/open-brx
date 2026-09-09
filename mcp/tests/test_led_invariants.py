@@ -400,8 +400,11 @@ def test_no_event_burst_exceeds_three_flashes():
                 lights = sum(1 for f, _ in seq if f == paint and f != pg.team_frame(team, night))
                 assert lights <= 3, f"event_burst({ev},{team},{night}) has {lights} flashes; the ceiling is 3"
                 # and the burst must return to the rest colour rather than leaving the event colour up
-                assert seq[-1][0] == pg.team_frame(team, night), (
-                    f"event_burst({ev},{team},{night}) ends on {seq[-1][0]!r}, not the rest frame")
+                # A16.4: the burst ends on the IN-PLAY rest, which is DIM. This asserted the full-brightness
+                # frame until 2026-09-09 and so defended the bug rather than catching it -- `driver` drops
+                # its gauge-revert because it trusts this end frame, so a full one left the body lit.
+                assert seq[-1][0] == pg.team_frame(team, night, dim=True), (
+                    f"event_burst({ev},{team},{night}) ends on {seq[-1][0]!r}, not the DIM in-play rest")
 
 
 def test_no_compiled_burst_puts_more_than_three_flashes_in_a_one_second_window():

@@ -30,7 +30,8 @@ def test_an_empty_pool_lights_none():
 def test_one_hp_still_lights_a_segment():
     """A player on 1 HP must not look identical to a player who is out."""
     f = pg.gauge_frame("health", 1, 45)
-    assert f.split(",")[1] != str(pg.DARK)
+    # LED 3 is the last segment standing (stock drain order, 2026-09-09) -- token 3, not token 1.
+    assert f.split(",")[3] != str(pg.DARK), f
 
 
 def test_health_shifts_colour_as_it_falls():
@@ -163,10 +164,22 @@ def test_readout_levels_night_dims_every_frame_in_the_table():
                 assert day[lvl][1].split(",")[5] == str(pg.BRIGHT_FULL)
 
 
-def test_segment_frame_lights_only_the_first_n_leds():
+def test_segment_frame_lights_the_LAST_n_leds_because_stock_drains_led_1_first():
+    """DRAIN DIRECTION, measured against stock BRX 2026-09-09 (native Supremacy): "led 3 is the last one
+    to be lost. led 1 turns off first". A partial bar therefore lights the LAST `lit` LEDs.
+
+    This test asserted the OPPOSITE until then, so it was pinning our bar to drain backwards from every
+    stock game on the same hardware. Nothing in the repo could have caught that: both the code and the
+    test encoded the same assumption, and the only authority on which way a BRX bar empties is a BRX.
+    The one that got it right was an operator running the stock mode next to ours."""
     assert pg.segment_frame(pg.WHITE, 0) == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,10,,*"
-    assert pg.segment_frame(pg.WHITE, 1) == f"$GLED,{pg.WHITE},{pg.DARK},{pg.DARK},0,10,,*"
+    assert pg.segment_frame(pg.WHITE, 1) == f"$GLED,{pg.DARK},{pg.DARK},{pg.WHITE},0,10,,*"
+    assert pg.segment_frame(pg.WHITE, 2) == f"$GLED,{pg.DARK},{pg.WHITE},{pg.WHITE},0,10,,*"
     assert pg.segment_frame(pg.WHITE, 3) == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
+    # and the segment that goes NEXT is always LED 1, at every level
+    for lit in (1, 2, 3):
+        t = pg.segment_frame(pg.WHITE, lit).split(",")[1:4]
+        assert t[:3 - lit] == [str(pg.DARK)] * (3 - lit), (lit, t)
 
 
 def test_the_apply_gate_is_a_real_apply_and_brightness_is_full():
@@ -300,7 +313,14 @@ def _drain(d, pid="p1"):
         _run(t)
 
 
-def test_a_respawn_plays_the_burst_and_ends_on_the_team_colour():
+def test_a_respawn_plays_the_burst_and_ends_on_the_DIM_in_play_rest():
+    """A16.4: the burst hands back to the in-play rest, and that rest is DIM (brightness 1).
+
+    This asserted `pg.team_frame(1)` -- FULL brightness -- until 2026-09-09, which made it defend the
+    bug the polish review found rather than catch it: `driver._paint_event` deliberately drops its
+    gauge-revert deadline because it trusts the burst's own last frame to be the resting one, so ending
+    full left the gun body at full brightness after every event for the rest of the hold cycle. That is
+    the beacon A16.4 exists to remove, surviving on the one path a real match runs through."""
     sent = []
 
     async def sender(pid, frame):
@@ -311,7 +331,7 @@ def test_a_respawn_plays_the_burst_and_ends_on_the_team_colour():
     _drain(d)
     gled = [f for f in sent if f.startswith("$GLED")]
     assert gled.count(pg.event_frame("respawned")) == pg.BURST_FLASHES, gled
-    assert gled[-1] == pg.team_frame(1), f"burst must END on the team colour, got {gled[-1]}"
+    assert gled[-1] == pg.team_frame(1, dim=True), f"burst must END on the DIM in-play rest, got {gled[-1]}"
 
 
 def test_the_burst_is_exactly_three_flashes():

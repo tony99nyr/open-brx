@@ -1346,7 +1346,6 @@ class GunStage:
                         return
                     pool, levels = nxt, inner["levels"]
                     target = self._level_for(inner, nxt)
-                    self._level_state[pool] = target
                     # The handed-over pool is now what a RELOAD would glance. The stage has no reload
                     # path yet (F54), so this line changes nothing here today -- it is written to match
                     # `engine.js`, which does have one and where omitting it makes a glance straight

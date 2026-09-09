@@ -157,7 +157,9 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
             await st.ir("shot"); st.poll(); await settle(st)
         frames = tx(mgr)
         assert st.hp == 15 and st.bundle["cues"]["hurt"] not in frames, "15 HP is not UNDER 15"
-        assert "$GLED,2,2,9,0,10,,*" in frames, "the readout painted the health pool's yellow band"
+        # Built, never hard-coded: a literal here pinned the DRAIN DIRECTION, and when stock BRX turned
+        # out to empty LED 1 first (2026-09-09) this test defended the wrong order rather than catching it.
+        assert PG.segment_frame(PG.YELLOW, 2) in frames, "the readout painted the health pool's yellow band"
         n = len(frames)
         await st.ir("kill"); st.poll(); await settle(st)
         new = tx(mgr)[n:]
