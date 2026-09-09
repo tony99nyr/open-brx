@@ -28,7 +28,11 @@ export function buildWeapons(repo) {
     return {
       id: w.weapon_id, name: w.name, role: w.role,
       dmg: num(TOK.damage), cycle_ms: num(TOK.cycle), mag: num(TOK.mag),
-      reserve: num(TOK.reserve), reload_ms: num(TOK.reload),
+      // t17 carries 32768 as an "unlimited" flag rather than a round count (dev.md's $WEAP map).
+      // No captured stock weapon uses it today, but printing "32768" as spare rounds would be a
+      // published falsehood the moment one did.
+      reserve: num(TOK.reserve) === 32768 ? 'unlimited' : num(TOK.reserve),
+      reload_ms: num(TOK.reload),
       heat: num(TOK.heat), sound: tok(f, TOK.sound),
     };
   });

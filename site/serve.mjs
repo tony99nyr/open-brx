@@ -15,7 +15,12 @@ const readRedirects = () => {
   if (!fs.existsSync(f)) return [];
   return fs.readFileSync(f, 'utf8').split('\n').map(l => l.trim())
     .filter(l => l && !l.startsWith('#'))
-    .map(l => { const [from, to, code] = l.split(/\s+/); return { from, to, code: Number(code) || 302 }; });
+    .map(l => { const [from, to, code] = l.split(/\s+/); return { from, to, code: Number(code) || 302 }; })
+    // Cloudflare ignores a malformed line; emitting `Location: undefined` would be worse than none.
+    // NB: this mirror handles only literal paths and a trailing /*. No :placeholders, no :splat
+    // substitution, no 200-rewrites. _redirects here is a frozen all-static file, but a rule using
+    // any of those would silently never match rather than fail loudly.
+    .filter(r => r.from && r.to && r.from.startsWith('/') && r.to.startsWith('/'));
 };
 const redirectFor = p => {
   for (const r of readRedirects()) {

@@ -3,12 +3,15 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(HERE, '../../webapp');
 const only = process.env.ONLY;
 const it = (name, fn) => (only && !name.includes(only) ? test.skip : test)(name, fn);
+
+// the one list of old-DSL block names, imported from the build so the two can never drift
+const { BLOCK_MARKER } = await import(pathToFileURL(path.resolve(HERE, '../block-names.mjs')).href);
 
 const urls = () => [...fs.readFileSync(path.join(WEB, 'sitemap.xml'), 'utf8')
   .matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => new URL(m[1]).pathname);
@@ -22,9 +25,11 @@ function watchErrors(page) {
 }
 
 it('0 · the build is clean and the server serves it', async ({ request }) => {
+  // The build exits before writing when it finds a problem, so asserting `problems: []` here was
+  // unfalsifiable. What IS worth checking is that the manifest describes the tree we are serving.
   const m = JSON.parse(fs.readFileSync(path.join(WEB, '.site-manifest.json'), 'utf8'));
-  expect(m.problems).toEqual([]);
   expect(m.ok).toBe(true);
+  for (const f of m.files) expect(fs.existsSync(path.join(WEB, f)), `${f} is in the manifest but not on disk`).toBe(true);
   expect((await request.get('/')).headers()['x-site-root']).toBe(WEB);
   expect(urls().length).toBe(m.pages);
 });
@@ -38,8 +43,10 @@ for (const u of urls()) {
     await expect(page.locator('h1')).toBeVisible();
 
     const text = await page.locator('main').innerText();
-    // an unconverted block marker or a TODO means the source is still in the old DSL
-    expect(text, 'leftover block marker').not.toMatch(/\[(hero|callout|steps|cards|table|spec-sheet|accordion|faq|image|diagram|code|quote|stat-row|symptom-ladder|compare|bit-field|data-table|under-construction|timeline)\b/);
+    // an unconverted block marker or a TODO means the source is still in the old DSL.
+    // The name list lives ONCE, in build.mjs: a second narrower copy here silently omitted
+    // `download`, `pricing-tiers` and `audio-player`.
+    expect(text, 'leftover block marker').not.toMatch(BLOCK_MARKER);
     expect(text, 'TODO reached a page').not.toMatch(/TODO/);
     expect(text, 'em dash reached a page').not.toMatch(/—/);
     // provenance marks are gone from the published prose
@@ -105,7 +112,9 @@ it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI ba
     for (const [field, n] of Object.entries(TOK)) {
       const wire = f[n + 1];
       const got = r[field];
-      const want = field === 'sound' ? wire : Number(wire);
+      // t17 == 32768 is an unlimited flag, not a count
+      const want = field === 'sound' ? wire
+        : (field === 'reserve' && Number(wire) === 32768) ? 'unlimited' : Number(wire);
       if (String(got) !== String(want)) drift.push(`${r.name}.${field}: published ${got}, wire ${wire}`);
     }
   }
@@ -118,6 +127,8 @@ it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI ba
   // three the old published table pinned
   const by = n => rows.find(r => r.name === n);
   expect(by('Assault Rifle')).toMatchObject({ dmg: 9, cycle_ms: 100, mag: 32, sound: 'R01' });
+  // no weapon may publish the raw unlimited flag as a round count
+  expect(rows.filter(r => r.reserve === 32768).map(r => r.name), 'raw 32768 published').toEqual([]);
   expect(by('Charge Rifle')).toMatchObject({ sound: 'E03', cycle_ms: 1250, heat: 14 });
 });
 

@@ -1,6 +1,5 @@
 {
  "ok": true,
- "problems": [],
  "pages": 9,
  "twins": {
   "/index.md": "index.md",
@@ -16,7 +15,7 @@
  "files": [
   "404.html",
   "_redirects",
-  "assets/site.3f60af3f82.js",
+  "assets/site.4fc2271c04.js",
   "assets/site.cd57c66481.css",
   "credits.md",
   "credits/index.html",

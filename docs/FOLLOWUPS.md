@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B25 · D5 · E8 · F57 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B26 · D5 · E8 · F57 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -74,6 +74,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **B8 🟡** grenade STATE app: a live Hill/Respawn display from the passthrough row (`$SIR,15,*,,24` + FF on → `$HIR,0,15,…`).
   Objective modes are button-locked on the grenade (G8), so this is display only. `build`.
 - ~~**B9**~~ the manual website. Rebuilt 2026-09-09: plain-markdown source, 9 pages, 233-line generator, 18-step gate. Closed.
+- **B25 🟢** the manual names one quantity two ways: `dev.md`'s `$WEAP` map calls **t17** `maxAmmo`
+  ("always 2 x t40, or 32768 as an unlimited flag, not an independent knob") and **t40** `ammoReserv`
+  ("reserve; 9999999 = unlimited"), while the published arsenal's "Reserve" column and the retired
+  table both show t17 (AR 384 = 2 x t40's 192). Not a falsehood, and it matches the app's mags x clip
+  presentation, but which token a player's "spare rounds" actually is has never been settled. One
+  capture read with the operator counting real reloads would close it. `build`.
 - **B24 🟡 Needs Tony** finish the deploy change: set the Cloudflare build command (Workers & Pages -> open-brx ->
   Settings -> Build -> Build command: `npm run build`), push once, confirm the deploy renders, then stop committing
   the generated files in `webapp/`. Until that setting exists, push-to-deploy serves what is committed, so the built
