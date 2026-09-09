@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F58 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F59 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -178,6 +178,28 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   immersion brief and his own "the team color doesn't need to be static bright"), and it costs nothing — brightness
   is already a token on every compiled frame. Alternatives: move team 3 off purple and team 0 off red, or force a
   dark beat before every readout paint. `build`, then one bench look.
+- **F58 🟠 HEALING HAS NO FEEDBACK ON ANY SURFACE, and the two consumers disagree about it.** Tony, bench
+  2026-09-09, after a real `$LIFE` heal took hp 6 → 25: *"it made a health hit sound. the sound wasn't heal"*.
+  Three separate holes, found together:
+  **(a)** `presentation.py:84` ships `healed` with `sound=None, gun_led=None, headset=None`. It is a registered
+  event with NOTHING attached, so even where it fires it is silent and unlit. Same for `armour_up`; `shield_up`
+  at least has a paint. So being healed is, by configuration, indistinguishable from nothing happening.
+  **(b) DIVERGENCE:** `engine.js:1560` fires `healed`/`armour_up`/`shield_up` on a pool RISE. `stage.py` fires
+  none of them — zero occurrences of `healed` in the file. So the bench instrument cannot exercise the heal
+  path AT ALL, which is why this went unnoticed: the surface built to predict the phone is missing the branch.
+  That is the eighth stage-vs-phone divergence in a week (see [[stage-must-mirror-the-phone]] reasoning in
+  `experiment-log`), and the first one where the STAGE is the side missing a feature rather than mis-copying it.
+  **(c)** the LED gain animation did not step on the gun in this run — one write straight to the settled level,
+  where the drop animates properly. The gain path is CORRECT in isolation (driven offline it writes L1, L2, L3),
+  so the live difference is unexplained. Two `$HP` frames arrived back to back (`$HP,26` from the heal readback
+  then `$HP,25` from the 1-damage shot used to force it), and the interaction of a gain immediately followed by
+  a small drop is the obvious suspect — but that is a hypothesis, not a finding. Needs an instrumented test of
+  back-to-back opposite-direction changes, NOT another bench evening of guessing.
+  Tony's brief, 2026-09-09: *"healing should also animate intuitively without distraction"*. Today it does not
+  animate, does not sound, and cannot be rehearsed on the bench. `build` + `ears`.
+  ⚠ Method note for whoever picks this up: `$LIFE` is NOT on the known-safe list, so `raw` refuses it unless you
+  pass `confirm=true`. Two silent refusals cost 20 minutes tonight and nearly produced a false finding that
+  `$LIFE` does not heal — which would have undermined S14, whose whole design is MC composing `$LIFE`.
 - **F57 🟠 THE LOW-HEALTH WARNING AND THE PAIN GRUNT FIRE IN THE SAME MILLISECOND.** Bench 2026-09-09, Tony:
   *"the critical sounds are a bit bugged when it was at 1 red"*. Captured on the wire, one `$HP` tick:
   `rx $HP,8,0,0` → `tx $PLAY,,4,6,VA6` (low health) and `tx $PLAY,,4,6,VAG` (pain short, 10 dmg) at the SAME
