@@ -117,9 +117,11 @@
    registers a medic word, so the teal bar and A16.5's shield→armour handover are unverifiable as things
    stand. Decide whether a grant row belongs in the compiled `$SIR` table at all.
 
-**The bench queue** is the "Needs Tony at the bench" section of `FOLLOWUPS.md` plus one dated run
-sheet at a time (today: `bench-super-indoor-2026-09-07.md` on the Mac, the gun-body rungs above, then
-weap-tokens-discovery, then `bench-grenade.md`). Read `gotchas.md` first; its "Before a bench session" block is the pre-flight.
+**The bench queue is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — every open item in
+eight SETUP blocks (setup costs minutes, readings cost seconds) with the command, the reading and the
+control per rung, the rungs that are blocked on code, and the five traps that fake a result. Items 4-6
+above are its blocks E, D1 and "blocked on code". `FOLLOWUPS.md` §9 stays the register: ids there, order
+there. Read `gotchas.md` first; its "Before a bench session" block is the pre-flight.
 
 ## Machine roles
 
