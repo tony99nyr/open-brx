@@ -34,6 +34,32 @@
   button .sub { display:block; font:500 10px/1.2 monospace; letter-spacing:.04em; color:var(--micro); margin-top:4px; text-transform:none; }
   select, input { min-height:36px; padding:0 8px; font:600 12px monospace; color:var(--ink); background:#0e141c; border:1px solid var(--line); border-radius:3px; }
   label { font:600 10.5px monospace; letter-spacing:.14em; color:var(--micro); display:flex; flex-direction:column; gap:4px; }
+  /* ---- A16.3 gun-body LED simulator ------------------------------------------------------------
+     Three forward-leaning bars, the shape of the real BRX body LEDs. An UNLIT led is a visible dark
+     lens, never nothing: "3 dark segments" and "no strip at all" are different states and the whole
+     point of a dark-rest design is being able to tell them apart. Brightness is GLOBAL (token 5) so
+     it is a property of .gled, never of one bar -- encoding it per bar would let this picture show a
+     "2 bright + 1 dim" bar that the hardware cannot produce. */
+  .gledwrap { border:1px solid var(--line); border-radius:3px; padding:10px 12px; grid-column:1/-1; }
+  .gledwrap > b { display:block; font:600 10px monospace; letter-spacing:.16em; color:var(--micro); margin-bottom:8px; }
+  .gled { display:flex; gap:13px; align-items:center; justify-content:center; padding:16px 22px; border-radius:4px;
+          background:linear-gradient(180deg,#0a0e13,#05080b); border:1px solid #1b242f; }
+  .gled .seg { width:20px; height:66px; border-radius:2px; transform:skewX(24deg); position:relative;
+               background:#0d1117; border:1px solid #222c38; transition:background .05s linear, box-shadow .05s linear; }
+  .gled .seg::after { content:''; position:absolute; inset:3px 3px 55% 3px; border-radius:2px 2px 6px 6px;
+                      background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0)); pointer-events:none; }
+  .gled.off .seg { background:#0d1117; box-shadow:none; }
+  .gledmeta { font:11px/1.5 monospace; color:var(--dim); margin-top:8px; overflow-wrap:anywhere; }
+  .gledmeta .fr { color:var(--ink); font-size:12px; }
+  .gledlive { font:10.5px/1.5 monospace; color:var(--micro); margin-top:4px; }
+  .gledmeta .fr { color:var(--ink); }
+  .gledbar { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
+  .gledbar button { min-height:36px; padding:0 10px; font-size:11px; }
+  .gledbar .now { font:700 11px monospace; letter-spacing:.1em; color:var(--acc); }
+  .scenegrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+  .scenegrid .cell { border:1px solid var(--line); border-radius:3px; padding:8px 10px; }
+  .scenegrid .cell > b { display:block; font:700 10px monospace; letter-spacing:.14em; color:var(--acc); margin-bottom:6px; }
+  .scenegrid .cap { font:11px/1.4 monospace; color:var(--micro); margin-top:6px; overflow-wrap:anywhere; }
   .tele { display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:8px; }
   .tele div { border:1px solid var(--line); padding:8px 10px; border-radius:3px; } .tele b { display:block; font:600 10px monospace; letter-spacing:.16em; color:var(--micro); } .tele span { font:700 18px monospace; }
   .events { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:8px; }
@@ -124,7 +150,12 @@
     <div class="tele">
       <div><b>HP</b><span id="t-hp">—</span></div><div><b>ARMOR</b><span id="t-armor">—</span></div><div><b>SHIELD</b><span id="t-shield">—</span></div>
       <div><b>MAG / RES</b><span id="t-ammo">—</span></div><div><b>MODEL</b><span id="t-model">—</span></div>
-      <div><b>GUN BODY READOUT</b><span id="t-readout" style="font-size:14px">—</span></div>
+      <div class="gledwrap"><b>GUN BODY READOUT — LIVE $GLED SIMULATOR</b>
+        <div class="gled" id="gled"><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>
+        <div class="gledmeta" id="gledmeta">—</div>
+        <div class="gledlive" id="t-readout">—</div>
+        <div class="gledbar" id="gledbar"></div>
+      </div>
     </div>
     <div class="hint" id="lasthir"></div>
   </section>
@@ -196,6 +227,84 @@
     const colour = colourIdx != null ? PAL[colourIdx] : 'dark';
     return `${'█'.repeat(lit)}${'░'.repeat(3 - lit)} ${colour.toUpperCase()} (${lit}/3)`;
   }
+  // ---- A16.3 GUN-BODY LED SIMULATOR ------------------------------------------------------------
+  // A picture of the real strip, driven by the $GLED frames the stage actually wrote. It models the
+  // HARDWARE rules proven at the bench 2026-09-07, so it cannot draw a strip the gun cannot produce:
+  //   * token 4 (the apply gate): 0/6/7/8/9/10 APPLY the colour tokens · 5 is OFF (not a dimmer, and
+  //     not "apply an empty colour" -- that reading was retracted) · 1/2/3/4 are NO-OPS, the strip
+  //     keeps whatever it was showing.
+  //   * an EMPTY colour token keeps that LED's existing colour, so one segment can move alone.
+  //   * token 5 is brightness and is GLOBAL: 0 off, 1 dim, >=2 full. It is a property of the strip,
+  //     never of one bar -- which is exactly why a half-step has to BLINK and cannot be a dim segment.
+  const GLED_HEX = ['#ff2a1f','#2a6bff','#ffd21f','#23e05a','#a04cff','#17e0d0','#ffffff','#ff4fb0','#ff8a1f'];
+  const DARK_IDX = c => !(c >= 0 && c <= 8);
+  function newStrip() { return { c: [9, 9, 9], b: 10, lit: false }; }
+  function applyGled(strip, frame) {
+    if (!frame || !/^\$GLED,/.test(frame)) return strip;
+    const t = frame.replace(/^\$GLED,/, '').replace(/\*$/, '').split(',');
+    const gate = t[3] === '' || t[3] == null ? 0 : Number(t[3]);
+    if ([1, 2, 3, 4].includes(gate)) return strip;              // no-op: colours ignored, strip unchanged
+    if (gate === 5) { strip.lit = false; return strip; }        // the blank: OFF
+    for (let i = 0; i < 3; i++) if (t[i] !== '' && t[i] != null) strip.c[i] = Number(t[i]);
+    if (t[4] !== '' && t[4] != null) strip.b = Number(t[4]);
+    strip.lit = true;
+    return strip;
+  }
+  function paintStrip(el, strip) {
+    const dim = strip.b === 1, off = !strip.lit || strip.b === 0;
+    el.classList.toggle('off', off);
+    [...el.children].forEach((seg, i) => {
+      const idx = strip.c[i];
+      if (off || DARK_IDX(idx)) { seg.style.background = '#0d1117'; seg.style.boxShadow = 'none'; return; }
+      const hex = GLED_HEX[idx];
+      // dim is drawn as the same HUE at lower luminance, never as a different colour: hue is the
+      // message and brightness is comfort (poolgauge.event_frame's rule, made visible).
+      // Deliberately restrained. The brief for this readout is immersion, not attention, so the
+      // simulator must not flatter it with a glow the gun does not have -- a picture that looks more
+      // dramatic than the hardware is how a design gets approved and then disappoints on the bench.
+      seg.style.background = dim ? `color-mix(in srgb, ${hex} 38%, #05080b)` : `color-mix(in srgb, ${hex} 88%, #0b0f14)`;
+      seg.style.boxShadow = dim ? `0 0 4px -1px ${hex}` : `0 0 8px -3px ${hex}`;
+    });
+  }
+  function describeStrip(strip) {
+    if (!strip.lit || strip.b === 0) return 'OFF (blank / brightness 0)';
+    const names = ['red','blue','yellow','green','purple','teal','white','pink','orange'];
+    const seg = strip.c.map(c => DARK_IDX(c) ? '·' : (names[c] || '?')[0].toUpperCase()).join(' ');
+    const litN = strip.c.filter(c => !DARK_IDX(c)).length;
+    return `${seg}  ·  ${litN}/3 lit  ·  ${strip.b === 1 ? 'DIM' : 'FULL'} (token 5 = ${strip.b})`;
+  }
+  // The strip the LIVE view is showing, plus the replay queue that feeds it.
+  const liveStrip = newStrip();
+  let gledSeen = -1, replayQ = [], replayTimer = null;
+  function drainReplay() {
+    replayTimer = null;
+    if (!replayQ.length) return;
+    const item = replayQ.shift();
+    applyGled(liveStrip, item.frame);
+    paintStrip($('#gled'), liveStrip);
+    $('#gledmeta').innerHTML = `<span class="fr">${item.frame}</span> — ${describeStrip(liveStrip)}` +
+      (item.why ? `<br><span style="color:var(--micro)">${item.why}</span>` : '');
+    if (replayQ.length) {
+      const gap = Math.max(0, Math.min(2000, (replayQ[0].t - item.t) * 1000));
+      replayTimer = setTimeout(drainReplay, gap);
+    }
+  }
+  // Replay every $GLED the stage wrote, at the SPACING it wrote them. A 700 ms poll that only showed
+  // the newest frame would render the whole drop animation as a single jump to its last step -- the
+  // lead freeze, the all-off blink and every intermediate level would be invisible, which is most of
+  // what there is to judge. The queue is what makes the animation watchable at all.
+  function pumpGled(log) {
+    const fresh = [];
+    for (const l of (log || [])) {
+      if (l.kind !== 'tx' || !/^\$GLED,/.test(l.text || '')) continue;
+      if (l.t <= gledSeen) continue;
+      fresh.push({ t: l.t, frame: l.text, why: l.why || '' });
+    }
+    if (!fresh.length) return;
+    gledSeen = fresh[fresh.length - 1].t;
+    replayQ.push(...fresh);
+    if (!replayTimer) drainReplay();
+  }
   // A16.3 (bar-spec.md): the 7-level bar. Each of the 3 physical LEDs is worth 2 levels here -- a
   // FULL unit (solid, `█`) for every pair of levels already lit, one BLINKING unit (`◐`, a distinct
   // glyph from solid on purpose -- Tony asked to see the blink as different from a steady segment) for
@@ -215,6 +324,163 @@
     render(j); return j;
   }
   async function refresh() { try { const r = await fetch('/api/state'); render(await r.json()); } catch (e) { $('#link').textContent = 'STAGE SERVER UNREACHABLE'; $('#link').className = 'pill bad'; } }
+  // ---- SCENES: every stage of the A16.3 animation, drivable with no gun -------------------------
+  // This is the verification tool. Each scene is a list of {frame, ms} taken from the COMPILED level
+  // table the server publishes (`readout.levels`), falling back to frames derived by the same rule
+  // only when no bundle is loaded -- a simulator fed its own literals would happily animate frames the
+  // gun never receives, which is the F52 "fallback literal" trap pointed at a display.
+  //   ?ledgrid=1   renders every stage as a static grid (one screenshot proves the whole ladder)
+  //   ?led=<id>    plays one scene on load, for a deterministic per-stage screenshot
+  let sceneBarBuilt = false, sceneBarCompiled = null, scenePlaying = null, sceneTimer = null;
+  // Is the simulator showing the frames MC COMPILED, or frames this page derived? Never let that be
+  // invisible: a simulator quietly falling back to its own literals would animate beautifully while
+  // proving nothing about the bundle, and the fallback is silent precisely when the server is old.
+  function levelsAreCompiled() { return !!(st && st.readout && st.readout.levels && Object.keys(st.readout.levels).length); }
+  function levelTable(pool) {
+    const live = st && st.readout && st.readout.levels && st.readout.levels[pool];
+    if (live && live.length === 7) return live;
+    const hue = { health: 3, armor: 4, shield: 6 }[pool] ?? 3;   // green / purple / white
+    const f = (n, b) => `$GLED,${[0,1,2].map(i => i < n ? hue : 9).join(',')},0,${b == null ? 10 : b},,*`;
+    return [0,1,2,3,4,5,6].map(l => {
+      const solid = Math.ceil(l / 2), blink = l % 2 ? Math.floor(l / 2) : null;
+      return [f(solid), blink == null ? null : f(blink)];
+    });
+  }
+  function T() { return (st && st.readout && st.readout.timings) || {}; }
+  function restFrame() { return (st && st.readout && st.readout.rest) || '$GLED,9,9,9,0,10,,*'; }
+  // The named stages. `steps` is what the strip is fed; `note` is what a human should be judging.
+  function scenes(pool) {
+    const L = levelTable(pool), t = T();
+    const lead = t.lead_ms ?? 180, gap = t.blink_gap_ms ?? 80, step = t.step_ms ?? 120, blink = t.blink_ms ?? 400;
+    const S = (l) => L[l][0], B = (l) => L[l][1];
+    return [
+      { id: 'rest',    name: 'REST (dark)',            note: 'the body between events: dark, not team colour',
+        steps: [[restFrame(), 1200]] },
+      { id: 'blank',   note: 'the once-per-life blank that takes the strip off the firmware breathing',
+        name: 'BLANK $GLED,,,,5', steps: [['$GLED,,,,5,,,*', 1200]] },
+      { id: 'take',    name: 'SPAWN TAKE (blank + rest)', note: 'what the node writes 2.5 s after every $SPAWN',
+        steps: [['$GLED,,,,5,,,*', 500], [restFrame(), 900]] },
+      { id: 'full',    name: 'LEVEL 6 (full)',         note: '3 solid: the pool is untouched', steps: [[S(6), 1200]] },
+      { id: 'lead',    name: 'DROP 1 · lead freeze',   note: 'holds the level you WERE at, solid, before anything moves',
+        steps: [[S(6), lead + 700]] },
+      { id: 'blink',   name: 'DROP 2 · all-off blink', note: 'one dark beat — Tony’s "show it in one blink"',
+        steps: [[S(6), lead], [S(0), gap + 700]] },
+      { id: 'stepdown',name: 'DROP 3 · step down',     note: 'one level per step_ms, monotonic, never re-lighting',
+        steps: [[S(6), lead], [S(0), gap], [S(5), step], [S(4), step], [S(3), 900]] },
+      { id: 'settle',  name: 'DROP 4 · settle (whole)',note: 'a whole level (6/4/2/0) settles solid, no blink',
+        steps: [[S(4), 1200]] },
+      { id: 'partial', name: 'DROP 5 · settle (partial blink)', note: 'an ODD level blinks its top segment: the half-step. Brightness is global, so this can never be a dim segment',
+        steps: [[S(3), blink], [B(3), blink], [S(3), blink], [B(3), blink], [S(3), blink]] },
+      { id: 'revert',  name: 'DROP 6 · hold then dark',note: 'after hold_s the strip reverts to the rest frame',
+        steps: [[S(3), 900], [restFrame(), 900]] },
+      { id: 'rapid',   name: 'RAPID retrigger',        note: 'SAFETY: inside min_gap_ms there is NO lead and NO all-off blink — it steps straight from where the strip is. Replaying the blink under automatic fire would break the 3-light-ups-per-second ceiling',
+        steps: [[S(6), step], [S(5), step], [S(4), step], [S(3), step], [S(2), 900]] },
+      { id: 'gain',    name: 'GAIN (pickup)',          note: 'a gain steps UP immediately: no lead, no blink, ever',
+        steps: [[S(2), step], [S(3), step], [S(4), step], [S(5), 900]] },
+      { id: 'empty',   name: 'LEVEL 0 (empty)',        note: 'dark — but a pool with anything left never shows 0',
+        steps: [[S(0), 1200]] },
+      { id: 'death',   name: 'DEATH (hands off)',      note: 'nothing is written for 2.5 s: the firmware’s own flash owns the gun',
+        steps: [[restFrame(), 1400]] },
+      // ---- PROPOSED (Tony, 2026-09-09): immersion, not attention -------------------------------
+      // The rules: a glance must read without a tutorial · looped blinking ONLY when critical ·
+      // red ONLY when critical · the FALL is animated subtly, the RESTING state is steady.
+      // Today every ODD level settles into a sustained blink, so 3 of the 7 levels blink for the
+      // whole 4 s hold. These scenes show the alternative so the two can be compared by eye.
+      { id: 'p-settle', name: 'PROPOSED · partial settles SOLID', note: 'A partial level holds STEADY instead of looping. The half-step is carried by the FALL you just watched, not by a blink that keeps pulling the eye for 4 s.',
+        steps: [[S(6), lead], [S(0), gap], [S(5), step], [S(4), step], [S(3), 2000]] },
+      { id: 'p-crit',   name: 'PROPOSED · CRITICAL (the only loop)', note: 'Red AND a slow loop, both reserved for the critical band (under 1/3 of the pool — the same threshold A17.2 uses for the low-health line). Because it is the only looping state in the language, blinking means one thing.',
+        steps: [[S(2), 700], [S(1), 700], [S(0), 700], [S(1), 700], [S(0), 700], [S(1), 700]] },
+      { id: 'p-heal',   name: 'PROPOSED · HEALING', note: 'Healing steps up with no lead and no all-off blink, so a gain never reads like a hit. It ends steady on the new level — the only difference from a fall is the DIRECTION, which is what makes it intuitive with no explanation.',
+        steps: [[S(1), step], [S(2), step], [S(3), step], [S(4), step], [S(5), 1400]] },
+    ];
+  }
+  function stopScene() { if (sceneTimer) clearTimeout(sceneTimer); sceneTimer = null; scenePlaying = null; }
+  function playScene(id, pool) {
+    stopScene();
+    const sc = scenes(pool || currentPool()).find(x => x.id === id);
+    if (!sc) return;
+    scenePlaying = id;
+    const strip = newStrip();
+    let i = 0;
+    const el = $('#gled');
+    const tick = () => {
+      if (i >= sc.steps.length) { sceneTimer = null; scenePlaying = null; markSceneBar(); return; }
+      const [frame, ms] = sc.steps[i++];
+      applyGled(strip, frame);
+      paintStrip(el, strip);
+      $('#gledmeta').innerHTML = `<span class="fr">${frame}</span> — ${describeStrip(strip)}<br>` +
+        `<span style="color:var(--micro)">SCENE ${sc.name} · step ${i}/${sc.steps.length} · ${sc.note}</span>`;
+      sceneTimer = setTimeout(tick, ms);
+    };
+    markSceneBar(); tick();
+  }
+  function currentPool() { return $('#gledpool') ? $('#gledpool').value : 'health'; }
+  function markSceneBar() {
+    document.querySelectorAll('#gledbar button[data-scene]').forEach(b =>
+      b.classList.toggle('acc', b.dataset.scene === scenePlaying));
+    const n = $('#glednow'); if (n) n.textContent = scenePlaying ? 'PLAYING ' + scenePlaying.toUpperCase() : 'LIVE';
+  }
+  function buildSceneBar() {
+    sceneBarBuilt = true; sceneBarCompiled = levelsAreCompiled();
+    const pools = (st && st.readout && st.readout.configured && st.readout.configured.length)
+      ? st.readout.configured : ['shield', 'armor', 'health'];
+    const bar = $('#gledbar');
+    const skew = levelsAreCompiled() ? '' :
+      `<span class="now" style="color:var(--warn)">DERIVED FRAMES — THE STAGE SERVER PREDATES THIS PAGE. ` +
+      `Restart it (python -m brx_mcp stage) to simulate the frames MC actually compiles.</span>`;
+    bar.innerHTML = skew + `<span class="now" id="glednow">LIVE</span>` +
+      `<select id="gledpool">${pools.map(p => `<option value="${p}"${p === 'health' ? ' selected' : ''}>${p.toUpperCase()}</option>`).join('')}</select>` +
+      scenes('health').map(sc => `<button data-scene="${sc.id}" title="${sc.note.replace(/"/g, '&quot;')}">${sc.name}</button>`).join('') +
+      `<button data-scene-stop="1">BACK TO LIVE</button>`;
+    bar.onclick = e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.sceneStop) { stopScene(); markSceneBar(); paintStrip($('#gled'), liveStrip); return; }
+      if (b.dataset.scene) playScene(b.dataset.scene, currentPool());
+    };
+    const want = new URLSearchParams(location.search).get('led');
+    if (want) playScene(want, new URLSearchParams(location.search).get('pool') || 'health');
+  }
+  // ?ledgrid=1 -- every stage, frozen, in one screenshot. Each cell runs the scene's frames through a
+  // FRESH strip and shows the state it ends on, so the grid is generated by the same simulator the
+  // live view uses rather than by a second hand-maintained description of what each stage looks like.
+  function renderSceneGrid(pool) {
+    const host = document.createElement('section');
+    host.innerHTML = `<h2>A16.3 // EVERY ANIMATION STAGE (pool: ${pool.toUpperCase()})</h2><div class="scenegrid"></div>`;
+    const grid = host.querySelector('.scenegrid');
+    for (const sc of scenes(pool)) {
+      // A still cannot show a blink. Replaying every step and drawing the LAST one made the ONE stage
+      // whose whole point is the blink look identical to a steady level -- the grid was quietly lying
+      // about the only thing it was built to show. Any scene that alternates frames is drawn as BOTH
+      // halves, side by side and labelled, so what a still can't animate it states instead.
+      const halves = [], seen = new Set();
+      const strip = newStrip();
+      for (const [frame] of sc.steps) { applyGled(strip, frame); }
+      const alternates = sc.steps.length > 2 &&
+        sc.steps.slice(-4).map(x => x[0]).filter((f, i, a) => a.indexOf(f) !== i).length > 0;
+      if (alternates) {
+        for (const [frame] of sc.steps.slice(-2)) {
+          if (seen.has(frame)) continue; seen.add(frame);
+          const h = newStrip();
+          for (const [f] of sc.steps) { applyGled(h, f); if (f === frame) break; }
+          halves.push({ strip: h, frame });
+        }
+      }
+      // Order by how many segments are lit, never by step order: "on" is the brighter half by
+      // definition, and the last step written happens to be whichever half the sequence ended on.
+      if (halves.length > 1) halves.sort((a, b) =>
+        b.strip.c.filter(c => !DARK_IDX(c)).length - a.strip.c.filter(c => !DARK_IDX(c)).length);
+      const shown = halves.length > 1 ? halves : [{ strip, frame: sc.steps[sc.steps.length - 1][0] }];
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.innerHTML = `<b>${sc.name}</b>` +
+        shown.map((h, i) => `<div class="gled" data-h="${i}"><div class="seg"></div><div class="seg"></div><div class="seg"></div></div>` +
+          `<div class="cap">${shown.length > 1 ? (i ? 'BLINK — off half · ' : 'BLINK — on half · ') : ''}${describeStrip(h.strip)}<br>${h.frame}</div>`).join('') +
+        `<div class="cap" style="color:var(--micro)">${sc.note}</div>`;
+      shown.forEach((h, i) => paintStrip(cell.querySelector(`.gled[data-h="${i}"]`), h.strip));
+      grid.appendChild(cell);
+    }
+    document.querySelector('main').prepend(host);
+  }
   function render(s) {
     const first = !st; st = s;
     const L = s.link;
@@ -243,11 +509,17 @@
     $('#t-ammo').textContent = t.mag != null ? `${t.mag} / ${t.reserve}` : '—'; $('#t-model').textContent = `${m.hp}/${m.max_hp} · ${m.armor}/${m.max_armor}${m.carrying != null ? ' · FLAG ' + m.carrying : ''}`;
     $('#lasthir').textContent = t.last_hir ? 'last $HIR: ' + t.last_hir : '';
     // A16 §3.1/§5: the transient gun-body pool readout -- what Tony would see painted on the strip
+    pumpGled(s.log);                       // live: replay every $GLED at the spacing it was written
+    if (!sceneBarBuilt || sceneBarCompiled !== levelsAreCompiled()) buildSceneBar();
     const ro = s.readout || {};
     const lv = levelView(ro.level, ro.partial);   // null for a `bands`-only bundle/profile: fall back below
-    $('#t-readout').textContent = !ro.configured || !ro.configured.length ? 'not configured in this profile'
+    // Say WHOSE state this line is. While a scene is playing, the picture above is a canned ladder and
+    // this line is the real gun -- two different things one above the other, and an unlabelled pair of
+    // contradictory readouts ("3 green" over "DARK 0/3") is worse than either alone.
+    const roTxt = !ro.configured || !ro.configured.length ? 'not configured in this profile'
       : lv ? `${(ro.pool || '').toUpperCase()}: ${lv}`
       : ro.frame ? `${(ro.pool || '').toUpperCase()}: ${readoutView(ro.frame)}` : `tracks ${ro.configured.join('/')} · no pool has moved yet`;
+    $('#t-readout').textContent = (scenePlaying ? 'LIVE GUN (the strip above is a scene) — ' : 'LIVE GUN — ') + roTxt;
     // events: grouped, coloured by source, greyed when the profile has nothing for them
     const groups = {}; for (const e of s.events) (groups[e.group || 'other'] ||= []).push(e);
     $('#events').innerHTML = Object.entries(groups).map(([g, evs]) => `<div class="grp">${g.toUpperCase()}</div>` + evs.map(e => {
@@ -389,6 +661,9 @@
   document.addEventListener('scan-done', () => {});
   setInterval(async () => { if (document.activeElement.tagName === 'TEXTAREA') return; const r = await fetch('/api/state').then(r => r.json()).catch(() => null); if (r) { const sl = $('#scanlist'); if (st && st.link && r.scanResults) {} render(r); } }, 700);
   refresh().then(() => { /* scan list fills from the scan action's result */ });
+  // ?ledgrid=1 -- the whole animation ladder frozen in one screenshot, for review without a gun.
+  const _lq = new URLSearchParams(location.search);
+  if (_lq.get('ledgrid')) refresh().then(() => { if (!sceneBarBuilt) buildSceneBar(); renderSceneGrid(_lq.get('pool') || 'health'); });
   // the scan action returns the device list inside the state's log; also fill the dropdown from a dedicated fetch
   const origApi = api;
   api = async (action, args) => { const j = await origApi(action, args); if (action === 'scan' && j) { const r = await fetch('/api/scan').then(r => r.ok ? r.json() : []).catch(() => []); $('#scanlist').innerHTML = '<option value="">(pick a gun)</option>' + r.map(d => `<option value="${d.address}">${d.name || '?'} · ${d.address} · ${d.rssi} dBm</option>`).join(''); } return j; };

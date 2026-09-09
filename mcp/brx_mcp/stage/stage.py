@@ -110,6 +110,11 @@ def _cue_id(frame: str) -> str | None:
     return (t[4] if len(t) > 4 and t[4] else (t[1] if len(t) > 1 and t[1] else None))
 
 
+def _ro_pools(bundle: dict) -> list:
+    """The compiled `gun.readout.pools`, or [] -- used by `state()` to publish the real level table."""
+    return ((bundle.get("gun") or {}).get("readout") or {}).get("pools") or []
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
@@ -1645,7 +1650,17 @@ class GunStage:
             # leaves them null and the page falls back to decoding `frame` as a 3-segment strip.
             "readout": {"pool": self._readout_last_pool, "frame": self._readout_frame,
                         "level": self._level_current, "level_max": 6, "partial": self._level_partial,
-                        "configured": [p.get("pool") for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools", [])]},
+                        "configured": [p.get("pool") for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools", [])],
+                        # A16.3: the COMPILED level table and timings, so the page's LED simulator replays the
+                        # frames MC actually ships rather than a hand-typed copy of them. A simulator fed its own
+                        # literals proves nothing about the bundle -- that is the F52 "fallback literal" shape
+                        # applied to a display, and it would happily show a beautiful animation of frames the gun
+                        # never receives. 3 pools x 7 levels x 2 frames is ~42 short strings; measured negligible.
+                        "levels": {p["pool"]: p.get("levels") for p in _ro_pools(self.bundle) if p.get("levels")},
+                        "rest": (self.bundle.get("gun") or {}).get("rest"),
+                        "timings": {k: v for k, v in ((self.bundle.get("gun") or {}).get("readout") or {}).items()
+                                    if k in ("lead_ms", "blink_gap_ms", "step_ms", "blink_ms", "min_gap_ms",
+                                             "hold_s", "reload_glance_s")}},
             "events": self.event_catalog(),
             "voice": self.voice_view(),
             "voices": self._voices_options(),
