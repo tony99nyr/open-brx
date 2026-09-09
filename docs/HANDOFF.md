@@ -71,8 +71,8 @@
   went from 528 lines of positioning to a 74-line page; the architecture tables it used to carry moved
   into `docs/architecture-topology.md`, which is internal. Every published `$` command in the developer
   reference survived (checked by set-diff; the 16 that vanished were all in the unpublished backlog).
-  ⚠ The first `platform.md` said MC and the HUD had never run a full field game, which is false
-  (2026-08-30, 2026-09-01). Fixed: "don't overclaim" produced a false claim the other way.
+  ⚠ Two shipped bugs, both fixed: `platform.md` denied field games that happened (2026-08-30,
+  2026-09-01), and `_redirects` splats swallowed their own pages and looped 7 of 9 live URLs.
 
 - **Repo hygiene, 2026-09-07: ONE repo, decided on evidence.** Raw Callsign JSONs restated as our own data;
   CONTRIBUTING + code of conduct; apks publish to a GitHub Release. The PDF and ten stale apk blobs are
