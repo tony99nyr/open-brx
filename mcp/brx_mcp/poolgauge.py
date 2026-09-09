@@ -396,23 +396,30 @@ def _level_colour(pool: str, level: int) -> int:
     raise ValueError(f"_level_colour: unknown pool {pool!r}")
 
 
-def _blink_frame(lit_solid: int, lit_blink: int, night: bool) -> str:
-    """The blink half of a partial level: turn OFF just the top segment (0-based index `lit_blink`)
-    and leave the other two LEDs as EMPTY tokens (`$GLED` keeps an LED's current colour when its
-    token is blank) instead of repainting them.
+def _blink_frame(colour: int, lit_solid: int, lit_blink: int, night: bool) -> str:
+    """The blink half of a partial level: the SAME frame as the level's solid half with one fewer
+    segment lit, every colour token written out explicitly.
 
-    Safe ONLY because this always follows its OWN level's solid frame first -- the node settles on
-    the solid frame, THEN starts alternating with this one (A16.3 step 4) -- so the LEDs left empty
-    here are guaranteed to already hold the right colour from that solid frame. A step-down that
-    passed through this level without pausing on its solid frame would break that guarantee, which
-    is exactly why the node rule is "no re-lighting, step through solid frames only, blink only once
-    settled".
+    ⚠️ RETRACTED 2026-09-09, ON THE GUN. This used to emit EMPTY colour tokens for the two LEDs it
+    was not changing (`$GLED,,9,,0,10`), on the belief -- recorded 2026-09-07 and promoted into the
+    manual -- that `$GLED` KEEPS an LED's colour when its token is blank. It does not. A blank token
+    parses as **0, which is RED**. Controlled test, one variable, on a strip held at three solid
+    purple: `$GLED,,9,,0,10,,*` produced **red · dark · red**, not purple · dark · purple. So every
+    partial level's blink half was painting red segments into an armour, shield or health bar, and
+    the higher the pool the more of the strip went red -- the operator's words were "it started
+    animating red purple red".
+
+    Two things made it survive to hardware. The stage's LED SIMULATOR implemented the same wrong rule,
+    so it drew the blink correctly and hid the fault: a tool built to predict the gun reproduced the
+    assumption back at us instead. And no test could catch it, because every test compared our frames
+    against our own belief about the firmware. `test_led_invariants` now forbids an empty colour token
+    under an applying gate outright, which is the shape of the rule rather than one instance of it.
+
+    Writing the colours out costs a few bytes per frame and removes a dependency on firmware behaviour
+    we plainly did not understand. Nothing about the animation needs the optimisation.
     """
     assert lit_blink == lit_solid - 1, "the blink phase must drop exactly the top lit segment"
-    tokens = ["", "", ""]
-    tokens[lit_blink] = str(DARK)
-    b = BRIGHT_DIM if night else BRIGHT_FULL
-    return f"$GLED,{tokens[0]},{tokens[1]},{tokens[2]},0,{b},,*"
+    return segment_frame(colour, lit_blink, night)
 
 
 def readout_levels(pool: str, night: bool = False) -> list[list[str | None]]:
@@ -428,7 +435,7 @@ def readout_levels(pool: str, night: bool = False) -> list[list[str | None]]:
         colour = _level_colour(pool, level)
         lit_solid, lit_blink = _level_lit(level)
         solid = segment_frame(colour, lit_solid, night)
-        blink = _blink_frame(lit_solid, lit_blink, night) if lit_blink is not None else None
+        blink = _blink_frame(colour, lit_solid, lit_blink, night) if lit_blink is not None else None
         out.append([solid, blink])
     return out
 
@@ -484,6 +491,42 @@ def headset_team_frame(team: int | None, ffa: bool = False, night: bool = False)
     """
     c = FFA_COLOUR if ffa else display_colour(team)
     return f"$HLED,{c},0,,,{BRIGHT_DIM if night else BRIGHT_FULL},,*"
+
+
+# Outermost -> innermost, the order BRX depletes: your shield goes, then your plating, then you.
+READOUT_POOL_INWARD = ("shield", "armor", "health")
+
+
+def handover_pool(pool: str, values: dict[str, int], configured=None) -> str:
+    """Which pool the readout should actually SHOW, given that `pool` is the one that moved.
+
+    Normally that is `pool` itself. But when `pool` has just been emptied, showing it paints an
+    all-dark strip -- and a dark strip is the one reading a player will take as "I have nothing left".
+    On the gun, 2026-09-09, a shot took armour 35 -> 0 while health was still 45 of 45, and the body
+    went dark for the full four-second hold. **The display said empty while the player was at 100%
+    health.** That is not an unhelpful reading, it is a false one, and it is the exact moment a player
+    most needs the truth.
+
+    So an emptied pool hands over INWARD to the next pool that still has something: shield -> armour ->
+    health. The drain still animates all the way down to zero first, so the fact you lost it is not
+    hidden; the handover is what replaces the dead four seconds afterwards. Armour breaking now reads
+    "plating gone, and here is what is left of you", which needs no explanation.
+
+    Health emptying hands over to nothing: that is death, and death is deliberately hands-off (the
+    firmware's own flash owns the gun for 2.5 s, A16).
+    """
+    vals = {k: int(values.get(k, 0) or 0) for k in READOUT_POOL_INWARD}
+    if vals.get(pool, 0) > 0:
+        return pool
+    try:
+        start = READOUT_POOL_INWARD.index(pool)
+    except ValueError:
+        return pool
+    allowed = set(configured) if configured else None
+    for inner in READOUT_POOL_INWARD[start + 1:]:
+        if vals.get(inner, 0) > 0 and (allowed is None or inner in allowed):
+            return inner
+    return pool
 
 
 def changed_pool(before: tuple[int, int, int] | None,

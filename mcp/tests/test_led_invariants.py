@@ -306,6 +306,39 @@ def test_no_new_effect_6_literal_appears_anywhere_in_the_shipped_package():
             f"leaving an allowlist row that makes an unchecked shape look considered")
 
 
+def test_no_compiled_gled_leaves_a_colour_token_EMPTY_under_an_applying_gate():
+    """RETRACTED BELIEF, PROVEN ON THE GUN 2026-09-09: a blank `$GLED` colour token does NOT keep that
+    LED's colour. It parses as **0, which is RED**. Controlled test on a strip held at three solid
+    purple: `$GLED,,9,,0,10,,*` gave **red · dark · red**.
+
+    We had it the other way round from 2026-09-07 until tonight, and built A16.3's partial-level blink
+    on it, so every half-step painted red into an armour/shield/health bar. It reached hardware because
+    the stage's LED simulator implemented the same wrong rule and drew it correctly -- and because every
+    other test compared our frames to our own belief about the firmware rather than to the firmware.
+
+    So this asserts the SHAPE of the rule, not the one instance we were burned by: no compiled `$GLED`
+    that APPLIES its colours (gate 0/6/7/8/9/10) may leave any of the three colour tokens empty. Write
+    the colour you mean. The BLANK (`$GLED,,,,5,,,*`) is the one legitimate empty-colour frame and is
+    exempt, because gate 5 switches the strip off and the colour tokens are not read at all."""
+    for night in NIGHTS:
+        for where, frame in harvest_gled_paints(night):
+            t = toks(frame)
+            if t[3] == "5":                       # the blank: gate 5 is OFF, colours are not read
+                continue
+            for i in range(3):
+                assert t[i] != "", (
+                    f"{where}: {frame!r} leaves colour token {i + 1} EMPTY under apply-gate {t[3]!r}. "
+                    f"An empty token is RED (0) on the gun, not 'keep' -- paint the colour explicitly.")
+    # and the level tables specifically, since that is where the fault actually shipped
+    for pool in ("shield", "armor", "health"):
+        for level, (solid, blink) in enumerate(pg.readout_levels(pool)):
+            for frame in (solid, blink):
+                if frame is None:
+                    continue
+                assert "" not in toks(frame)[:3], (
+                    f"readout_levels({pool})[{level}] = {frame!r} has an empty colour token")
+
+
 # --- 5. $TID is 0-3; the paint palette is 0-7 ------------------------------- #
 
 def test_wire_team_ids_stop_at_3_but_the_paint_palette_runs_to_7():

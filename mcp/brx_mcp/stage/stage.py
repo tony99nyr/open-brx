@@ -1157,6 +1157,19 @@ class GunStage:
                 return [thr, frame]
         return bands[-1] if bands else None
 
+    def _pool_values(self) -> dict:
+        """The node's own view of its pools, keyed the way `poolgauge.handover_pool` expects."""
+        return {"shield": self.shield, "armor": self.armor, "health": self.hp}
+
+    def _readout_configured(self) -> list:
+        return [p.get("pool") for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools") or []]
+
+    def _readout_entry(self, pool: str):
+        entry = next((p for p in ((self.bundle.get("gun") or {}).get("readout") or {}).get("pools") or []
+                      if p.get("pool") == pool), None)
+        lv = (entry or {}).get("levels")
+        return entry if isinstance(lv, list) and len(lv) == 7 else None
+
     def _readout_paint(self, pool: str) -> None:
         """A16 §3.1 (bands) / A16.3 (levels): write the moved pool's readout if it differs from what is
         currently on the strip. `levels` (bar-spec.md, 2026-09-07: a 7-level scale with a drop/rise
@@ -1317,6 +1330,24 @@ class GunStage:
                     await self.sleep(step_s)
                     if not live():
                         return
+        # A16.5 (2026-09-09, found on the gun): the drain has finished. If THIS pool is now empty and
+        # something inward still has value, hand over and show that instead of holding an all-dark
+        # strip for `hold_s`. Dark is the reading a player takes as "nothing left", and the shot that
+        # exposed this took armour 35 -> 0 while health was untouched at 45/45 -- the body went dark
+        # while the player was at full health. The drain still played in full, so nothing is hidden;
+        # the handover only replaces the dead hold that followed it. Mirrors `engine.js`.
+        if target == 0:
+            nxt = _pg.handover_pool(pool, self._pool_values(), self._readout_configured())
+            if nxt != pool:
+                inner = self._readout_entry(nxt)
+                if inner:
+                    await self.sleep(step_s)                 # a beat, so "it is gone" registers first
+                    if not live():
+                        return
+                    pool, levels = nxt, inner["levels"]
+                    target = self._level_for(inner, nxt)
+                    self._level_state[pool] = target
+                    await paint(target)
         partial = levels[target][1] is not None
         self._level_partial = partial
         if partial:

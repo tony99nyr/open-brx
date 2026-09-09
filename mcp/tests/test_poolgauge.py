@@ -114,16 +114,25 @@ def test_readout_levels_partial_levels_blink_whole_levels_do_not():
 
 
 def test_readout_levels_blink_frame_drops_only_the_top_segment():
+    """The blink half is the level's solid frame with ONE fewer segment, every colour written out.
+
+    ⚠️ This test asserted EMPTY colour tokens (`$GLED,,{DARK},,0,10,,*`) until 2026-09-09, on the
+    belief that a blank token keeps that LED's colour. On the gun it paints RED: with the strip held
+    at three solid purple, `$GLED,,9,,0,10,,*` gave red, dark, red. So every partial level of every
+    bar was painting red segments, and this test was pinning the bug in place rather than catching it
+    -- it compared our frames against our own reading of the firmware, which is the one thing a unit
+    test cannot check. It now asserts against `segment_frame`, so the blink half can only ever be the
+    solid half one segment shorter."""
     levels = pg.readout_levels("shield")
     # level 5: 2 solid + 3rd blinking -- solid lights all 3, blink drops just the 3rd
     assert levels[5][0] == pg.segment_frame(pg.SHIELD_COLOUR, 3)
-    assert levels[5][1] == f"$GLED,,,{pg.DARK},0,10,,*"
+    assert levels[5][1] == pg.segment_frame(pg.SHIELD_COLOUR, 2)
     # level 3: 1 solid + 2nd blinking
     assert levels[3][0] == pg.segment_frame(pg.SHIELD_COLOUR, 2)
-    assert levels[3][1] == f"$GLED,,{pg.DARK},,0,10,,*"
+    assert levels[3][1] == pg.segment_frame(pg.SHIELD_COLOUR, 1)
     # level 1: 1st blinking, down to dark
     assert levels[1][0] == pg.segment_frame(pg.SHIELD_COLOUR, 1)
-    assert levels[1][1] == f"$GLED,{pg.DARK},,,0,10,,*"
+    assert levels[1][1] == pg.segment_frame(pg.SHIELD_COLOUR, 0)
     # level 6/0 are the whole full/empty frames, no blink
     assert levels[6][0] == pg.segment_frame(pg.SHIELD_COLOUR, 3) and levels[6][1] is None
     assert levels[0][0] == pg.segment_frame(pg.SHIELD_COLOUR, 0) and levels[0][1] is None

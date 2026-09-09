@@ -233,7 +233,12 @@
   //   * token 4 (the apply gate): 0/6/7/8/9/10 APPLY the colour tokens · 5 is OFF (not a dimmer, and
   //     not "apply an empty colour" -- that reading was retracted) · 1/2/3/4 are NO-OPS, the strip
   //     keeps whatever it was showing.
-  //   * an EMPTY colour token keeps that LED's existing colour, so one segment can move alone.
+  //   * an EMPTY colour token is **RED (0)**, NOT "keep this LED". Proven on the gun 2026-09-09 by a
+  //     controlled test: `$GLED,,9,,0,10,,*` onto a strip held at three solid purple gave RED . dark .
+  //     RED. This simulator asserted the opposite until then, which is how A16.3's partial-level blink
+  //     shipped painting red into an armour bar and reached hardware looking clean HERE. A simulator
+  //     that encodes an assumption instead of a measurement does not predict the gun, it launders the
+  //     assumption -- so this rule is now the measured one and `test_led_invariants` forbids the shape.
   //   * token 5 is brightness and is GLOBAL: 0 off, 1 dim, >=2 full. It is a property of the strip,
   //     never of one bar -- which is exactly why a half-step has to BLINK and cannot be a dim segment.
   const GLED_HEX = ['#ff2a1f','#2a6bff','#ffd21f','#23e05a','#a04cff','#17e0d0','#ffffff','#ff4fb0','#ff8a1f'];
@@ -245,7 +250,8 @@
     const gate = t[3] === '' || t[3] == null ? 0 : Number(t[3]);
     if ([1, 2, 3, 4].includes(gate)) return strip;              // no-op: colours ignored, strip unchanged
     if (gate === 5) { strip.lit = false; return strip; }        // the blank: OFF
-    for (let i = 0; i < 3; i++) if (t[i] !== '' && t[i] != null) strip.c[i] = Number(t[i]);
+    // Every colour token is applied, empty included: an empty field parses as 0 = RED on the gun.
+    for (let i = 0; i < 3; i++) strip.c[i] = (t[i] === '' || t[i] == null) ? 0 : Number(t[i]);
     if (t[4] !== '' && t[4] != null) strip.b = Number(t[4]);
     strip.lit = true;
     return strip;
