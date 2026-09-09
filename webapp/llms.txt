@@ -16,4 +16,7 @@ Protocol discovery credit: LaserTagMods (JEDGE / JBOX). Open BRX is independent 
 - [Fix, mod and accessorise](https://open-brx.iamrossi.workers.dev/manual/fix.md)
 - [Developer reference](https://open-brx.iamrossi.workers.dev/manual/dev.md)
 - [The Open BRX platform](https://open-brx.iamrossi.workers.dev/platform.md)
+- [What the lights mean in a game](https://open-brx.iamrossi.workers.dev/platform/leds.md)
+- [Modes and game setup](https://open-brx.iamrossi.workers.dev/platform/modes.md)
+- [Running a match](https://open-brx.iamrossi.workers.dev/platform/run-a-game.md)
 - [Credits and sources](https://open-brx.iamrossi.workers.dev/credits.md)

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { marked } from 'marked';
 import { buildWeapons, buildSounds } from './lib/data.mjs';
+import { ledFacts, ledPalette } from './lib/led-facts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -27,6 +28,9 @@ const PAGES = [
   { file: 'fix.md', slug: '/manual/fix', nav: 'Fix' },
   { file: 'dev.md', slug: '/manual/dev', nav: 'Developer' },
   { file: 'platform.md', slug: '/platform', nav: 'Platform' },
+  { file: 'platform-leds.md', slug: '/platform/leds', nav: null },
+  { file: 'platform-modes.md', slug: '/platform/modes', nav: null },
+  { file: 'platform-run.md', slug: '/platform/run-a-game', nav: null },
   { file: 'credits.md', slug: '/credits', nav: 'Credits' },
 ];
 // webapp/ holds two hand-committed trees the generator must never touch.
@@ -127,9 +131,25 @@ const LOGO = `<svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-
 const SUN = `<svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1.5 12h3M19.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 const MOON = `<svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
 
+// Sub-pages of a section, so a reader inside /platform can reach its siblings without going up.
+const SUBNAV = {
+  '/platform': [
+    ['/platform', 'Overview'],
+    ['/platform/leds', 'What the lights mean'],
+    ['/platform/modes', 'Modes and setup'],
+    ['/platform/run-a-game', 'Running a match'],
+  ],
+};
+const sectionOf = slug => Object.keys(SUBNAV).find(k => slug === k || slug.startsWith(k + '/'));
+
 function shell(page, content) {
-  const nav = PAGES.filter(p => p.nav).map(p =>
-    `<a href="${p.slug}/"${p.slug === page.slug ? ' aria-current="page"' : ''}>${p.nav}</a>`).join('');
+  const nav = PAGES.filter(p => p.nav).map(p => {
+    const here = p.slug === page.slug || sectionOf(page.slug) === p.slug;
+    return `<a href="${p.slug}/"${here ? ' aria-current="page"' : ''}>${p.nav}</a>`;
+  }).join('');
+  const sec = sectionOf(page.slug);
+  const subnav = sec ? `<nav class="subnav" aria-label="In this section">${SUBNAV[sec]
+    .map(([u, t]) => `<a href="${u}/"${u === page.slug ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>` : '';
   const title = page.slug === '/' ? 'Open BRX: the BRX manual' : `${page.title} | Open BRX`;
   const desc = page.body.split('\n').find(l => l.trim() && !l.startsWith('#') && !l.startsWith('|'))
     ?.replace(/[*`\[\]]/g, '').replace(/\(([^)]*)\)/g, '').slice(0, 180) || 'The BRX manual.';
@@ -149,6 +169,7 @@ function shell(page, content) {
 <button class="theme" type="button" aria-label="Switch theme">${SUN}${MOON}<span class="vh">Switch theme</span></button>
 </header>
 <main id="main"><article>
+${subnav}
 <h1>${esc(page.title)}</h1>
 ${page.lastVerified ? `<p class="meta">Last verified <time datetime="${page.lastVerified}">${page.lastVerified}</time></p>` : ''}
 ${content}
@@ -176,8 +197,33 @@ for (const p of pages) {
   if (/^src:/m.test(p.source)) problems.push(`${p.file}: src: citation`);
   // A visitor does not care which repo file a fact came from; the footer links the repository.
   if (/^##+ Sources\s*$/m.test(p.source)) problems.push(`${p.file}: per-page Sources section`);
+  // A page that describes an LED decision must agree with the code that makes it. Prose does not
+  // follow a constant when it changes, and on 2026-09-09 two of these changed in one morning.
+  if (/^platform-leds\.md$/.test(p.file)) {
+    // Read the page's own Pool/Colour table rather than guessing by proximity: a first attempt
+    // matched "shield" against every colour word within 40 characters and flagged the neighbouring
+    // table rows. A guard that cries wolf gets switched off.
+    const row = pool => {
+      const m = p.source.match(new RegExp(`^\\|\\s*${pool}\\s*\\|([^|]*)\\|`, 'im'));
+      return m ? m[1].toLowerCase() : null;
+    };
+    const palette = ledPalette(REPO);
+    for (const { name, value } of ledFacts(REPO)) {
+      const pool = name.startsWith('shield') ? 'Shield' : name.startsWith('armour') ? 'Armour' : null;
+      if (!pool) { // gun body rest: a prose fact, so just require the word
+        if (!p.source.toLowerCase().includes(value)) problems.push(`${p.file}: ${name} is "${value}" in the source, and the page never says it`);
+        continue;
+      }
+      const cell = row(pool);
+      if (cell === null) { problems.push(`${p.file}: no "| ${pool} |" row to check ${name} against`); continue; }
+      if (!cell.includes(value)) problems.push(`${p.file}: the ${pool} row says "${cell.trim()}" but the source says ${value}`);
+      for (const c of palette.filter(c => c !== value && new RegExp(`\\b${c}\\b`).test(cell))) {
+        problems.push(`${p.file}: the ${pool} row still names "${c}"; the source says ${value}`);
+      }
+    }
+  }
   // the manual states what is true now, it does not narrate its own corrections
-  const hist = p.source.match(/\b(an? earlier (note|draft|reading|version)|we (got|were) (this )?wrong|predates the)\b/i);
+  const hist = p.source.match(/\b(an? earlier (note|draft|reading|version)|we (got|were) (this )?wrong|predates the|this page said|the mistake shipped|until then,|we (previously|used to) (said|say|thought|believed))\b/i);
   if (hist) problems.push(`${p.file}: narrates its own history ("${hist[0]}")`);
 }
 if (problems.length) {

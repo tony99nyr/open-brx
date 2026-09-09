@@ -2341,7 +2341,7 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$IRTX,…,*` | >> | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). |
 | `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. |
 | `$STUN,*` | >> | n/a | Listed in the APK. **Proven no-op over BLE.** |
-| `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index. The palette is nine colours: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange**; 9 and 10 are dark. **Token 4 is an apply gate**, not an effect enum and not an off switch: it decides whether the colour tokens in the same frame take effect at all. Values **0, 6, 7, 8, 9 and 10 apply** the colours at full brightness. Value **5 turns the LEDs OFF**, whatever the colour tokens say. Values **1, 2, 3 and 4 are no-ops**: the colour tokens are ignored and the gun keeps whatever it was already showing, which is why a sweep of this token reads differently depending on whether it blanks between rows. No token-4 value animates. `$GLED,,,,5,,,*`, the frame Callsign itself sends on death, blanks the gun because **token 4 = 5 is the off value**. Token 4 = 5 is therefore the one gate value never to send with real colour tokens: it discards them. Sending the blank once takes the strip out of the firmware's breathing loop for the rest of the life, and it is **mandatory before any paint holds**: a dark paint sent without a prior blank is simply overwritten by the breathing. It is idempotent, and after it every revert should be a dark PAINT (`$GLED,9,9,9,0,10,,*`) rather than another blank. **An EMPTY colour token is RED, not "leave this LED alone".** A blank field parses as 0, and 0 is red. Measured on the gun 2026-09-09 by a controlled test: with the strip held at three solid purple, `$GLED,,9,,0,10,,*` produced red, dark, red. This page said the opposite from 2026-09-07 until then, and the mistake shipped: a partial level's blink frame used empty tokens to change one segment and painted red into the other two. **Always write all three colour tokens.** There is no way to move one segment without restating the others. Token 5 is brightness and is the ONLY brightness control: 0 off, 1 dim, 2 and above full, saturating at 2 so that 2 through 255 are indistinguishable. It is **global**, applying to all three LEDs at once, so a bar of two bright segments and one dim one is not possible; a partial step has to be a blinking segment instead. Token 5 = 1 is what night mode uses. A held paint survives ordinary game traffic (`$AMMO`, `$PLAY`, `$HLED`, `$LED`) untouched, and keeps its hue at the dim setting. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. Palette completed on 2026-09-02 with a camera rig, and token 4 re-measured the same day from a known lit start, three trials per value; normalised R/G/B signatures, all three LEDs agreeing on every row: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. The camera separates the indices from each other; it does not name absolute hues, so the reading rests on relative separation measured back to back under identical conditions, on three LEDs agreeing, and on a match with an independent community source. Token 4 = 5 is OFF, not dim: measured on a blanked, host-owned strip, alternating `$GLED,3,3,3,0,10` against `$GLED,3,3,3,5,10` four times, it is bright then off with no step in between. Token 5, A/B tested the same way, is the only control that dims. **Do NOT repaint this at speed to hold a colour against the gun's own animation**: it takes roughly 30 writes a second to win, and the result strobes. Flicker in the 10 to 25 Hz band is the photosensitive epilepsy trigger range. Signal an event with a short burst of three flashes instead. |
+| `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index. The palette is nine colours: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange**; 9 and 10 are dark. **Token 4 is an apply gate**, not an effect enum and not an off switch: it decides whether the colour tokens in the same frame take effect at all. Values **0, 6, 7, 8, 9 and 10 apply** the colours at full brightness. Value **5 turns the LEDs OFF**, whatever the colour tokens say. Values **1, 2, 3 and 4 are no-ops**: the colour tokens are ignored and the gun keeps whatever it was already showing, which is why a sweep of this token reads differently depending on whether it blanks between rows. No token-4 value animates. `$GLED,,,,5,,,*`, the frame Callsign itself sends on death, blanks the gun because **token 4 = 5 is the off value**. Token 4 = 5 is therefore the one gate value never to send with real colour tokens: it discards them. Sending the blank once takes the strip out of the firmware's breathing loop for the rest of the life, and it is **mandatory before any paint holds**: a dark paint sent without a prior blank is simply overwritten by the breathing. It is idempotent, and after it every revert should be a dark PAINT (`$GLED,9,9,9,0,10,,*`) rather than another blank. **An EMPTY colour token is RED, not "leave this LED alone".** A blank field parses as 0, and 0 is red. Measured on the gun 2026-09-09 by a controlled test: with the strip held at three solid purple, `$GLED,,9,,0,10,,*` produced red, dark, red. **Always write all three colour tokens**, or the ones you leave empty turn red. There is no way to move one segment without restating the others. Token 5 is brightness and is the ONLY brightness control: 0 off, 1 dim, 2 and above full, saturating at 2 so that 2 through 255 are indistinguishable. It is **global**, applying to all three LEDs at once, so a bar of two bright segments and one dim one is not possible; a partial step has to be a blinking segment instead. Token 5 = 1 is what night mode uses. A held paint survives ordinary game traffic (`$AMMO`, `$PLAY`, `$HLED`, `$LED`) untouched, and keeps its hue at the dim setting. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. Palette completed on 2026-09-02 with a camera rig, and token 4 re-measured the same day from a known lit start, three trials per value; normalised R/G/B signatures, all three LEDs agreeing on every row: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. The camera separates the indices from each other; it does not name absolute hues, so the reading rests on relative separation measured back to back under identical conditions, on three LEDs agreeing, and on a match with an independent community source. Token 4 = 5 is OFF, not dim: measured on a blanked, host-owned strip, alternating `$GLED,3,3,3,0,10` against `$GLED,3,3,3,5,10` four times, it is bright then off with no step in between. Token 5, A/B tested the same way, is the only control that dims. **Do NOT repaint this at speed to hold a colour against the gun's own animation**: it takes roughly 30 writes a second to win, and the result strobes. Flicker in the 10 to 25 Hz band is the photosensitive epilepsy trigger range. Signal an event with a short burst of three flashes instead. |
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA, `$PBWEAP,0` = M4 AUTO, `$PBPERK,2` = Body Armor, `$PBLIVES,2` = 5 lives, `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. (Community.) |
 | `$DD,<killerId>,<killerTeam>,<victimId>,<nonce>,*` | host to host | n/a | JEDGE's **device-to-device** kill notification. A host-side convention, not a tagger command. (Community.) |
@@ -3113,6 +3113,449 @@ The limits that follow from this, measured on hardware except for the logical-te
 | Teams beyond 4 | unlimited logical teams, scored by Mission Control's roster; no on-gun friendly-fire protection in that mode |
 | Guns per node | exactly 1 |
 | Guns on one laptop Bluetooth radio | 3 proven for a synced start; the maximum is untested |
+
+
+---
+
+<!-- https://open-brx.iamrossi.workers.dev/platform/leds/ -->
+
+# What the lights mean in a game
+Last verified: 2026-09-09
+
+In an Open BRX game the host takes over the gun body LEDs and the headset ring, so what you see is
+ours. For the stock behaviour of a tagger nobody is hosting, see [Meet the BRX](/manual/hardware).
+
+## The gun body
+
+Three LEDs run along the body. In a game they do two jobs: they rest on your team colour, and they
+briefly become a bar showing the pool that just moved.
+
+**Rest.** The body holds your team's paint colour, dimmed. In free-for-all every player rests on
+white. An armed gun that has not spawned holds the same colour at full brightness, so a dim body means
+the match is live.
+
+**The readout.** Whenever a pool changes (damage, a heal, a shield or armour grant) the three LEDs
+become a bar in that pool's colour, then hand back to the rest colour 4 seconds after the last
+change. A reload repaints the pool that last moved for 2 seconds.
+
+Which pool you are looking at:
+
+- The innermost pool that moved wins. A hit that strips the last of your shield and bites into armour
+  shows armour, because armour is what you have left.
+- If that pool is now empty, the bar hands over inward to the next pool that still has something
+  (shield to armour, armour to health). The drain animates to zero first, so you see the loss, but
+  the strip never sits dark while you are alive.
+- Health emptying hands over to nothing. That is death.
+
+The bar has seven levels, because half steps blink:
+
+| Level | What you see | Health hue |
+|---|---|---|
+| 6 | 3 solid | green |
+| 5 | 2 solid, 3rd blinking | green |
+| 4 | 2 solid | green |
+| 3 | 1 solid, 2nd blinking | yellow |
+| 2 | 1 solid | yellow |
+| 1 | 1st blinking | red |
+| 0 | dark | (empty) |
+
+A pool with anything left in it never shows level 0, so 1 HP never looks like dead.
+
+Seven levels is a promise the hardware keeps for **health alone**, because only health shifts hue as
+it falls. Shield and armour hold one colour, so their adjacent levels differ only by whether the top
+segment blinks: 1 and 2 are both one lit segment, 3 and 4 are both two, 5 and 6 are both three. Catch
+the blink and you read seven. Glance and you read four.
+
+**How you tell a resting gun from a readout.** Brightness, not colour. The rest paint is dim and the
+readout paints at full, which matters because three of the four team colours share a hue with a pool:
+team 3 purple against armour, team 2 yellow against mid health, team 0 red against critical health.
+Without the brightness gap a settled bar and a resting gun are the same picture. **At night both are
+dim, so that separation is gone**: read the bar by its length instead.
+
+**Why a half step blinks instead of dimming.** Brightness on this hardware is one setting for the
+whole strip, not one per LED, so two bright segments and one dim one does not exist. The top segment
+of a half step blinks (on and off every 400 ms) instead.
+
+**The drop.** A change plays as an animation: the level you were on holds for 180 ms, the whole strip
+goes off for 80 ms, then it steps down one level every 120 ms, settles, and blinks the top segment if
+it landed on a half step. A gain animates upward with no leading blink. A second change inside
+400 ms skips the freeze and the all-off blink and steps straight down from what is showing, so
+automatic fire does not turn the strip into a strobe.
+
+**The blank comes first.** After every spawn the firmware breathes the body colour on its own, and a
+colour written on top of that only alternates with it. Open BRX sends a blank frame 2.5 seconds after
+every spawn, which lifts the strip out of that loop, and paints after that. For those first 2.5
+seconds you see the tagger's own breathing. The same hands-off rule applies at death: nothing is
+written to the body for 2.5 seconds after you go down.
+
+## The headset
+
+The ring is what everyone else reads. You cannot see your own head, so nothing on it is for you.
+
+| Moment | Headset |
+|---|---|
+| Pregame, in the muster | your team colour, solid |
+| Match start | white double flash, then the resting state |
+| In play, resting | dark (a mode can choose to hold the team colour instead) |
+| Hit taken | the tagger's own flash, which is brighter than anything we can write |
+| Down | the tagger's own bright flash on the small LED, every 750 ms, for as long as you stay down |
+| Respawn | white double flash, then the resting state |
+
+Some modes hold a role on your head until it ends. The carrier blink and the infected colour are the
+two in play today.
+
+| Role | Headset |
+|---|---|
+| Flag, bomb or objective carrier | white blink, 300 ms on and off |
+| Infected | solid, in the infected team's colour |
+| VIP | solid white |
+| Extraction beacon | orange blink, 300 ms on and off |
+| Extracted | solid white |
+
+A carrier blinks white and never the flag's colour: a team colour is an identity, a role is a state.
+
+## Colours
+
+Both surfaces share one nine colour palette.
+
+| Index | Colour |
+|---|---|
+| 0 | red |
+| 1 | blue |
+| 2 | yellow |
+| 3 | green |
+| 4 | purple |
+| 5 | teal |
+| 6 | white |
+| 7 | pink |
+| 8 | orange |
+
+Index 9 and above are dark, which is how a segment is switched off. Pools read like this:
+
+| Pool | Colour |
+|---|---|
+| Shield | teal at every level |
+| Armour | purple at every level |
+| Health | green above two thirds, yellow above one third, red below that |
+
+Only health changes hue as it falls. Shield and armour keep one colour and let the bar length carry
+the level.
+
+Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
+on the wire and paints purple, because green is what a headset flashes on a hit and out. Free-for-all
+paints white for everyone.
+
+## Night games
+
+Night dims the lights, it does not switch them off:
+
+- every gun and headset paint drops to the low brightness setting
+- the readout holds 2 seconds instead of 4, and a reload glance 1 second instead of 2
+- the white start and respawn flashes are single, not double
+- the down flash is unchanged and stays at full brightness, because a downed player has nothing to
+  hide and is the one most likely to be shot again or walked into
+
+Blackout is a separate switch and is the one that empties the lights. With blackout on, nothing is
+written to either surface anywhere in the game except the down flash, which survives every setting.
+
+## What a player actually sees
+
+- **A dim body in your team colour**: the match is running and nothing has happened to you lately.
+- **A bright body in your team colour**: you are armed but the game has not started.
+- **The body drops to a short bar**: something just changed. Teal is your shield, purple your armour,
+  and green, yellow or red is your health.
+- **A blinking top segment**: you are half a step above the level below.
+- **The bar goes to one red segment**: the next hit is likely to be the one that ends you.
+- **Someone's head is dark**: they are alive and playing.
+- **Someone's head flashes small and fast**: they are down.
+- **Someone's head blinks white**: they are carrying the objective.
+
+
+---
+
+<!-- https://open-brx.iamrossi.workers.dev/platform/modes/ -->
+
+# Modes and game setup
+Last verified: 2026-09-09
+
+This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
+The stock on-gun and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
+
+## What you can run
+
+Two of the modes have been played on real taggers, start to finish, with a scoreboard at the end.
+The rest are written and covered by tests, but have never been fired at a person. That gap is real:
+a mode that has never met a gun can still surprise you.
+
+**Played on hardware:**
+
+| Mode | The rule | Proven by |
+|---|---|---|
+| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | A two-gun laptop match on 2026-08-25 (frag limit, correct winner) and an outdoor two-phone match on 2026-09-01. |
+| Free-for-all | No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock. | A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits. |
+
+**Written, never played on guns:**
+
+| Mode | The rule | What is missing |
+|---|---|---|
+| Infection | One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock. | Rules engine and Mission Control support are both in. No live run. |
+| Last Man Standing | Every player carries a fixed number of lives. Spend them all and you are out. Last player or squad standing wins. | Rules engine and Mission Control support are both in. No live run. |
+| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | Runs from the laptop command line only. The phone carries none of it, so play stays inside Bluetooth range. |
+| Counter-Strike (plant and defuse) | Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out. | Needs a station to report plant and defuse. Not in the Mission Control mode list. |
+| Domination | Teams hold capture points. Score accrues per second held. | Needs a station per point. Not in the Mission Control mode list. |
+| King of the Hill | Domination with one point: hold the hill for time. | Same as Domination. |
+| Capture the Flag | Grab the enemy flag, carry it home. Tag the carrier to send it back. | Needs a station to report grab, capture and drop. Not in the Mission Control mode list. |
+
+Two rule variants sit in the same "written, not played" bucket. **Syphon** heals the killer on every
+kill, and **regenerating health** refills a player who has gone a few seconds without damage. Both
+exist only in the laptop command-line path, so neither reaches a player carrying a phone.
+
+## How a game is put together
+
+A game is one config object. Everything the guns are told is derived from it, so a game you like is
+a game you can save and run again.
+
+| Piece | What it does |
+|---|---|
+| Mode | Picks the rules and, with them, sensible defaults for the rest of this table. |
+| Teams | Up to 4 native teams. The team id is 2 bits in every shot, which is what makes friendly fire work on the gun itself. Beyond 4, run free-for-all and let Mission Control keep logical teams; there is no on-gun friendly-fire protection in that mode. |
+| Time limit | The clock. It is the only ending every player sees, because each phone counts it down locally and stops on its own even with nothing in range. |
+| Frag or score limit | An early end. Mission Control decides it from the events it has and tells the phones. Players in range stop; players out of range keep playing until the clock runs out. |
+| Respawn | Timed (the phone counts a delay and re-arms the gun), station (walk back to a respawn station and it re-arms you), or none (Last Man Standing lives). |
+| Health pool | 45 health and 70 armor by default. Armor soaks first. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
+| Loadout policy | Who picks the weapons: the operator, the players, or nobody (see below). |
+| Venue | Indoor or outdoor sets the gun's IR range profile and the game volume (80 indoors, 90 outdoors). Night dims the LEDs instead of lighting the field up. |
+| Friendly fire and critical hits | Both are gun settings, both are per game. Free-for-all forces friendly fire on, since everyone is an enemy. |
+
+Because the clock is the only ending that reaches everyone, a game with no time limit is refused
+unless you assert that every player will stay in range for the whole match.
+
+## Loadouts
+
+Every player carries three slots.
+
+| Slot | Holds | Notes |
+|---|---|---|
+| Primary | Any weapon | Required. Never empty. |
+| Secondary | Any weapon, including the three pistols | Optional. |
+| Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
+
+Five perks are offered: Body Armor (50 extra armor), Extended Mags (double the primary's magazine
+and reserve), Quick Hands (half the reload time), Quick Switch (half the weapon-swap delay, 0.85 s
+down to 0.43 s) and Easy Reload (the orange ALT button reloads, for anyone who finds the pump hard
+to work).
+
+Who picks is set per slot, per game:
+
+| Policy | Primary | Secondary | Perk |
+|---|---|---|---|
+| Open | player picks, whole catalog | player picks, whole catalog | player picks |
+| No heavies | player picks, heavy weapons excluded | player picks, heavy weapons excluded | player picks |
+| Snipers | fixed to the Sniper Rifle | off | off |
+| Custom | whatever you set, slot by slot | | |
+
+Free-for-all defaults to No heavies. Every other mode defaults to Open. A slot can also be set to
+"host", which means the operator picks for the player, or "off", which disables it for everyone. If
+you tighten the policy after players have already kitted, every loadout is re-fixed to the new rules
+and the affected players are told.
+
+**The one exception.** Easy Reload maps the ALT button to reload, and ALT is also the button that
+switches weapons. So Easy Reload cannot ride with a second weapon. Picking one drops the other, and
+both the operator console and the phone warn you with a two-tap confirm before it happens. Any
+future perk that claims a button joins the same rule.
+
+## Weapons
+
+Open BRX defines weapons on the wire. Each one is a frame the gun is sent at arming time, so a
+weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
+
+The roster is 22 entries: the 19 weapons captured from the Callsign app, three pistols we added
+(Glock-18, USP-S, Desert Eagle) and melee, which is always loaded and never shown in the picker.
+Every captured weapon starts from the real frame Battle Company sent. Only the balance numbers are
+overwritten: damage, fire interval, magazine, reserve, reload time and swap delay. Sounds, fire
+mode, burst behaviour and overheat come through from the capture untouched.
+
+The full stat table for the Callsign 19 is on the [gameplay page](/manual/gameplay), with the
+numbers the app itself sends. Open BRX ships its own tuning on top of those rows, so treat the
+gameplay page as the arsenal and this page as what the platform does with it.
+
+A player can also try a weapon before the game starts. The gun is armed with that one weapon,
+privately, at a lower volume, with no team and no identity, so they can pull the trigger and feel
+the reload without it counting for anything.
+
+## What is not built yet
+
+- The objective modes (Domination, King of the Hill, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet.
+- Extraction runs from the laptop command line only. The phone knows nothing about loot, zones or the channel timer.
+- Syphon and regenerating health are laptop-only for the same reason.
+- Mission Control does not arm respawn or objective stations at muster. A station is set up by hand.
+- Per-player handicaps stop at the health and armor pool. Damage, fire rate, respawn delay and lives are not adjustable per player.
+- No mode has been run with more than two phones.
+
+
+---
+
+<!-- https://open-brx.iamrossi.workers.dev/platform/run-a-game/ -->
+
+# Running a match
+Last verified: 2026-09-09
+
+How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
+one, and the simpler way needs nothing but a laptop.
+
+## The two ways to run a game
+
+**A laptop on its own.** Your laptop holds a Bluetooth link to every gun and runs the whole game.
+Everyone has to stay within Bluetooth range of it, which is a room or a small yard. This is the
+simplest thing that works and it is proven on hardware: on 2026-08-25 one command ran a full scored
+Team Deathmatch on two real taggers, with spawn, hits, deaths, host-driven respawn, a frag limit and
+the correct winner. A three-gun synced start is proven too. The command is:
+
+```
+python -m brx_mcp play tdm <addr1> <addr2>
+```
+
+Get the addresses from `python -m brx_mcp scan`. Add `outdoor=1 volume=90` outdoors: the default
+volume of 80 is set for indoors, and anything near 69 is roughly on-gun level 2 and is inaudible in
+the open.
+
+**Mission Control plus a phone on every gun.** Each player carries a phone running the BRX Combat
+HUD, which holds the Bluetooth link to that player's gun and runs that player's game. Mission
+Control on a laptop writes the game, starts it and adds up the results over the field Wi-Fi. This
+is what scales to a real field, because the Bluetooth link rides the player instead of sitting on
+the laptop. It has run whole matches: a 300 second free-for-all on 2026-08-30 with two iPhones and
+a MacBook host, and an outdoor Team Deathmatch on 2026-09-01 with two Android phones. It is also
+unfinished and changes week to week, and the published Android build can be behind the current game
+rules. Four things have never been run: a dispersed start with players out of Wi-Fi range before
+T-0, a recovery after real coverage loss, more than two phones, and a 20 minute soak.
+
+## What you need
+
+For the laptop-only way:
+
+- A laptop with a Bluetooth radio (Windows, macOS or Linux) and Python 3.11 or later.
+- The software: `pip install -e ./mcp` from a clone of the repository.
+- Your taggers, each with a charged headset **switched on**.
+
+For Mission Control plus phones, all of the above, and:
+
+- A Wi-Fi router for the field. It needs no internet. A battery travel router is the recommended
+  option and is what both live matches used. The laptop's own hotspot works for a small game.
+- One phone per player, with the BRX Combat HUD installed and paired to that player's tagger
+  **before** match day. Install it at home, where there is internet.
+- The armory map for your guns (`~/.brx-mcp/armory.json`) on the machine that will host.
+
+## Before the players arrive
+
+**Once per gun (the armory).** Do this at home, once, and again only if you re-pair a headset or
+rename a gun. Stock taggers are identical and unlabelled, so this is what makes each one
+self-identifying.
+
+1. Power on **exactly one** tagger and switch every other one off. With a single tagger visible on
+   Bluetooth, the advert you see is certainly the gun in your hand.
+2. Cable it to the machine over USB (the "Programing Port") and run
+   `python -m brx_mcp enroll <GunName>`. That reads the device record, saves a backup, binds the
+   serial number to the Bluetooth address and writes the gun's name.
+3. Name the gun its **headset sticker code**, not a player's nickname. The gun then announces itself
+   on every scan, and nicknames stay a display layer in Mission Control.
+4. Print that same code on a label and stick it on the tagger, so anyone can grab a gun and its
+   correct headset without guessing.
+5. Power-cycle the gun and run `python -m brx_mcp armory` to confirm the row.
+
+`~/.brx-mcp/armory.json` holds headset PINs. Keep it out of any repository, and copy it to the
+match-day machine: a fresh laptop has an empty one and will show no guns.
+
+**Every match.** Charge everything. Use guns that have been powered off since the last session,
+because a tagger left powered all day starts refusing links. Put the router up, join the laptop to
+it, and start Mission Control so its output is saved rather than scrolled away:
+
+```
+python3 -m brx_mcp.mc -v 2>&1 | tee ~/mc-$(date +%Y%m%d-%H%M).log
+```
+
+Open the exact link it prints, including the `#tok=` part. That is the operator token, and it is
+new every launch. On each phone: join the game Wi-Fi and set it to auto-join, turn **mobile data
+off** on Android, and turn Do Not Disturb on.
+
+## Muster
+
+This is the per-game arming, and it is where a bad start gets caught.
+
+1. **Eyeball every headset first.** A headset slow-blinks rainbow when it is disconnected or
+   unpaired, and a gun with a dark or unpaired headset **silently refuses to join**, with no error
+   and no voice line. This is the single most common cause of "only two of the three guns started".
+   A settled headset shows its team colour before the game and goes dark once play begins, which is
+   normal.
+2. **Get each player onto a gun.** Add the player in Mission Control and assign their gun; the
+   player opens the HUD and taps Set My Gun. The player's row goes from "no node" to linked.
+3. **Kit them out.** Set display name, team, weapon and voice. A weapon change can push a silent
+   try-out so the player fires and reloads to feel it. A configured but unspawned gun ignores
+   incoming shots, so try-outs are safe in a crowd. Point the gun away from people anyway.
+4. **Ready up and push.** Players ready up on their phones, then you push the configuration to every
+   gun. Each gun answers with an echo. A gun that does not echo is almost always a headset problem,
+   and it blocks the start. Add every player **before** the push: a player added afterwards is not
+   sent a game and needs a re-push.
+5. **Check the board has no reds.** Amber never blocks a start. Reds do, and each one names its own
+   fix.
+6. **Start with a runway.** The default is 120 seconds, which is walk-to-your-base time. Every phone
+   counts its own gun down and spawns it at zero, so no signal is needed at the moment of start.
+   Confirm every player shows armed and counting. If you need to abort, do it **before** players
+   scatter: a phone already out of range never hears the cancel.
+
+On the laptop-only way, muster is the same eyeball check plus the one `play` command, which
+configures every gun first and then spawns them together.
+
+## During the match
+
+Mission Control is setup, start and recap only. It is **not** Bluetooth-connected to any gun while
+you play. Each phone runs its own gun's game loop and reports over the Wi-Fi when it can.
+
+You can watch the live board, end the match early, recall a running game, and (with an explicit
+confirmation) panic-stop the reachable guns. A panic leaves a gun unable to register hits until it
+is re-armed or power-cycled, so it is a stop, not a pause. You cannot change loadouts, add players
+or re-push a game once it is live.
+
+A player who walks out of Wi-Fi range is **stale, not gone**. Their row shows the last known values
+and how old they are, their events queue on their own phone, and everything flushes and is credited
+exactly once when they walk back into coverage. So a scoreboard can be behind while the final result
+is still correct. Tell players not to press the power button and not to take calls: a locked or
+backgrounded phone pauses the HUD's timers until it is back in front.
+
+## After
+
+At the time limit, or when you end the match, Mission Control works out the winner, per-player
+kills, deaths, accuracy and medals. The recap stays **provisional** until every player's phone has
+flushed its events, so a player still walking back can still change a number.
+
+Before anyone closes the app, have each player hit **Share log**. The HUD keeps its log and the last
+60 raw Bluetooth frames in memory only, and closing the app loses them. Then copy off the session
+database (`~/.brx-mcp/mc/session-<id>.sqlite`) and the log you saved above. Results export as CSV,
+and every finished match of the session stays available. Starting the next game is one action, and
+you can keep or clear the roster. Power the guns off between sessions.
+
+## When something goes wrong
+
+**Only some of the guns joined.** A headset that is off, unpaired or flat makes its gun refuse to
+join, silently. Look for the rainbow blink, fix the headset, power-cycle that tagger and push again.
+
+**A phone shows as on the wrong Wi-Fi, or Mission Control unreachable.** The field router has no
+internet, so Android decides the network is dead and moves the phone onto mobile data. The link then
+leaves over cellular and never arrives. Turn mobile data off on that phone, and check auto-join is
+on for the game network.
+
+**A gun will not connect, or connects and drops straight away.** A tagger left powered all day
+starts doing this: power-rest the guns between sessions. Establishing a Bluetooth link succeeds
+roughly one attempt in three anyway, and the automatic retry is the fix, so give it a moment. If a
+gun never appears at all, a forgotten `brx_mcp` process from an earlier session may still be holding
+it: a held gun stops advertising and looks broken. Kill the old process and it comes straight back.
+
+**A gun is called Tactix2 again.** Someone opened the Callsign app on it, which wipes the name you
+enrolled. Re-stamp it with `python -m brx_mcp rename <address> <name>`, and do not open Callsign on
+an enrolled gun.
+
+**The console says the operator token is required, or shows Mission Control offline while the server
+is plainly running.** That is nearly always a stale token: a bookmark without the `#tok=` part, or a
+restart, which mints a new one. Open the link the server printed this time.
 
 
 ---

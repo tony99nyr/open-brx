@@ -1,6 +1,6 @@
 {
  "ok": true,
- "pages": 9,
+ "pages": 12,
  "twins": {
   "/index.md": "index.md",
   "/manual/hardware.md": "hardware.md",
@@ -10,12 +10,15 @@
   "/manual/fix.md": "fix.md",
   "/manual/dev.md": "dev.md",
   "/platform.md": "platform.md",
+  "/platform/leds.md": "platform-leds.md",
+  "/platform/modes.md": "platform-modes.md",
+  "/platform/run-a-game.md": "platform-run.md",
   "/credits.md": "credits.md"
  },
  "files": [
   "404.html",
   "_redirects",
-  "assets/site.d0e361314b.css",
+  "assets/site.90a095e368.css",
   "assets/site.ffc8a72479.js",
   "credits.md",
   "credits/index.html",
@@ -39,6 +42,12 @@
   "manual/sound/index.html",
   "platform.md",
   "platform/index.html",
+  "platform/leds.md",
+  "platform/leds/index.html",
+  "platform/modes.md",
+  "platform/modes/index.html",
+  "platform/run-a-game.md",
+  "platform/run-a-game/index.html",
   "robots.txt",
   "sitemap.xml"
  ]

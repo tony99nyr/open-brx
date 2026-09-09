@@ -1,6 +1,6 @@
-# The site went from 74 pages to 9 on 2026-09-09. These keep the 65 removed URLs working.
-# EXPLICIT, not splats: a splat like `/manual/dev/*` also matches `/manual/dev/` itself and
-# sent the live page into an infinite redirect loop. Frozen history; never needs editing.
+# The site went from 74 pages to 9 on 2026-09-09. These keep the removed URLs working.
+# EXPLICIT, not splats: a splat like `/platform/*` also matches `/platform/` itself and looped
+# the live page. A URL that later comes BACK as a real page is dropped from this list.
 /changelog/                          /  301
 /manual/                             /manual/hardware/  301
 /manual/dev/arm-sequence/            /manual/dev/  301
@@ -62,7 +62,6 @@
 /platform/build-tiers/               /platform/  301
 /platform/faq/                       /platform/  301
 /platform/get-involved/              /platform/  301
-/platform/modes/                     /platform/  301
 /platform/pieces/                    /platform/  301
 /platform/status/                    /platform/  301
 /platform/vs-edge/                   /platform/  301
