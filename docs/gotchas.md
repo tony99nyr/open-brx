@@ -336,6 +336,14 @@ mirror image of the same mistake.
   stops describing the contents — which is exactly what someone relies on months later. **Before committing a
   shared file, `git diff <path>` and read it**: if there are hunks you did not write, either wait, or say so in
   your commit message and name the symbols so a later `git log -S` lands somewhere that explains itself.
+- ⚠ **A one-character revert can leave Python running the OLD bytecode.** `.pyc` invalidation is
+  (source mtime, source SIZE). Flipping `BURST_FLASHES = 3` to `4` to prove a guard fires, then copying
+  the good file back within the same second, changes NEITHER: same size, same mtime second, so the
+  interpreter keeps serving the sabotaged `.pyc` from a source that greps correctly. It cost half an
+  hour on 2026-09-09 — the file said 3, `import` said 4, and `git diff` was empty. **The dangerous
+  direction is the other one**: the same trap can make a test PASS against code you already reverted.
+  After any copy-back proof, `find . -name __pycache__ -type d -exec rm -rf {} +` before believing the
+  result, or check `python -c "import m; print(m.THING)"` rather than grepping the file.
 - ⚠ **NEVER `git stash` in this tree, not even scoped to one path.** It reverts whatever is uncommitted in that
   path — including your own in-flight work and any other lane's. Done twice on 2026-09-07: once by a subagent
   (four files of another agent's half-finished migration went back to HEAD) and once by the main session, which

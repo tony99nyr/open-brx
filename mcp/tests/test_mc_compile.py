@@ -4,6 +4,7 @@ Run: python3 run_tests.py mc_compile
 Asserts the bundle STRUCTURE (head silent + ends $TID + carries $PSET,<1..63>; spawn/revive/end/panic
 shapes), the catalog, validate() {ok,errors,warnings}, tutorial, cues-as-frames, and medals.
 """
+from brx_mcp import poolgauge as pg
 from brx_mcp.mc.compile import Compiler, WeaponCatalog, golden_bundle
 from brx_mcp.mc.types import MAX_PLAYERS
 
@@ -854,18 +855,21 @@ def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn()
     config, since they are now the same path."""
     base = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "native"}}}, _player(), _TEAMS)
     assert "gun" not in base and not any(f.startswith("$GLED,,,,5") for f in base["spawn"] + base["revive"])
+    # A16.4 (2026-09-09): the in-play rest is DIM -- brightness is what separates the resting body from
+    # the (full-brightness) readout bar. Pregame's own paint (below, `head`) is untouched and stays full.
+    rest = pg.team_frame(1, False, dim=True)
     dflt = C.compile(_cfg(), _player(), _TEAMS)         # the default rests on the TEAM colour, no readout event bursts by default
-    assert dflt["gun"]["in_play"] == "team" and dflt["gun"]["rest"] == "$GLED,1,1,1,0,10,,*"
+    assert dflt["gun"]["in_play"] == "team" and dflt["gun"]["rest"] == rest
     b = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
     assert not any(f.startswith("$GLED") for f in b["spawn"] + b["revive"]), "a blank inside the spawn burst does not take (bench 2026-09-04)"
-    assert b["gun"]["in_play"] == "team" and b["gun"]["blank"] == "$GLED,,,,5,,,*" and b["gun"]["rest"] == "$GLED,1,1,1,0,10,,*"
-    assert b["gun"]["after_spawn_s"] == 2.5 and b["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    assert b["gun"]["in_play"] == "team" and b["gun"]["blank"] == "$GLED,,,,5,,,*" and b["gun"]["rest"] == rest
+    assert b["gun"]["after_spawn_s"] == 2.5 and b["gun"]["take"] == ["$GLED,,,,5,,,*", rest]
     assert b["head"][-2:] == ["$GLED,1,1,1,0,10,,*", "$TID,1,*"]         # pregame: armed body in the team colour, head still ends with $TID
     off = C.compile({**_cfg(), "presentation": {"gun": {"pregame": "off"}}}, _player(), _TEAMS)["head"]
     assert off[-1] == "$TID,1,*" and not off[-2].startswith("$GLED,1,1,1")
     # "extraction_failed" (default RED) stands in for the old hit_taken check -- hit_taken carries no
     # default gun burst any more (finding #5).
-    assert b["leds"]["extraction_failed"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    assert b["leds"]["extraction_failed"][-1][0] == rest
     h = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "health"}}}, _player(), _TEAMS)
     assert h["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,3,3,3,0,10,,*"] and len(h["gun"]["bands"]) == 3
     off = C.compile({**_cfg(led={"mode": "off"}), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)

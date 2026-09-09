@@ -139,7 +139,9 @@ def test_standard_bundle_carries_led_bursts_and_verified_cues():
     for ev in ("hit_taken", "died", "healed", "armour_up", "shield_up", "respawned"):
         assert ev not in b["leds"], ev
     # GUN_DEFAULT is "team" (Tony, 2026-09-09) -- the golden player is on "blue" (tid 1 -> BLUE).
-    assert b["gun"]["rest"] == f"$GLED,{pg.BLUE},{pg.BLUE},{pg.BLUE},0,10,,*", "team colour by default"
+    # A16.4 (2026-09-09): the rest is DIM -- brightness is what separates the resting body from the
+    # (full-brightness) readout bar, and pregame's full-brightness paint stays elsewhere in the bundle.
+    assert b["gun"]["rest"] == pg.team_frame(1, False, dim=True), "team colour by default, dim in play"
     # a burst still ends on the gun's rest frame for any event that DOES carry one -- "extraction_failed"
     # (default RED) stands in, since none of the player-status events keep a default burst any more.
     seq = b["leds"]["extraction_failed"]
@@ -365,7 +367,8 @@ def test_ffa_paints_white_headset_and_gun_body():
     assert hs["pregame"] == [f"$HLED,{pg.WHITE},0,,,10,,*"]
     assert P.gun_pregame(prof, 1, False, True, ffa=True) == [f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"]
     team = P.resolve({"presentation": {"gun": {"in_play": "team"}}})
-    assert P.gun_frames(team, 1, False, True, ffa=True)["rest"] == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
+    # A16.4 (2026-09-09): the in-play rest is DIM, unlike the full-brightness pregame paint above.
+    assert P.gun_frames(team, 1, False, True, ffa=True)["rest"] == pg.team_frame(1, False, ffa=True, dim=True)
 
 
 def test_headset_night_dims_and_single_flashes_the_start_and_respawn():
@@ -407,11 +410,15 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
     assert P.gun_frames(native, 1, False, True) == {} and P.gun_spawn_tail(native, 1, False, True) == []
     team = prof   # the default profile now RESTS on the team colour
     gf = P.gun_frames(team, 1, False, True)
-    assert gf["in_play"] == "team" and gf["blank"] == "$GLED,,,,5,,,*" and gf["rest"] == "$GLED,1,1,1,0,10,,*"
-    assert gf["after_spawn_s"] == 2.5 and gf["take"] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
+    # A16.4 (2026-09-09): the in-play rest is DIM even in day -- brightness is what separates the
+    # resting body from the (full-brightness) readout bar, so this is `team_frame(dim=True)`, not the
+    # full-brightness pregame paint.
+    assert gf["in_play"] == "team" and gf["blank"] == "$GLED,,,,5,,,*" and gf["rest"] == pg.team_frame(1, False, dim=True)
+    assert gf["after_spawn_s"] == 2.5 and gf["take"] == ["$GLED,,,,5,,,*", pg.team_frame(1, False, dim=True)]
     assert "bands" not in gf, "the legacy whole-strip health bands are only built for in_play=='health'"
     assert P.gun_spawn_tail(team, 1, False, True) == []          # retired: the node takes the body on a timer
-    assert P.gun_frames(team, 1, True, True)["rest"] == "$GLED,1,1,1,0,1,,*"        # night dims
+    # night and day now paint the SAME dim rest (A16.4) -- night no longer has anything left to dim here.
+    assert P.gun_frames(team, 1, True, True)["rest"] == pg.team_frame(1, True, dim=True)
     assert P.gun_frames(team, 1, False, False) == {}                                  # LEDs off for the game
     dark = P.resolve({"presentation": {"gun": {"in_play": "dark"}}})
     assert P.gun_frames(dark, 1, False, True)["rest"] == "$GLED,9,9,9,0,10,,*"    # explicit "dark" still fully supported
@@ -426,7 +433,8 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
     assert [p["pool"] for p in hf["readout"]["pools"]] == ["health"]
     # event bursts end on the gun's resting frame; "extraction_failed" (default RED) stands in for the
     # old hit_taken/died check -- those two carry no default gun burst any more (finding #5).
-    assert P.led_table(team, 1, False, True)["extraction_failed"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    # team's rest is DIM (A16.4); dark's is not team-coloured at all, so it is untouched by that change.
+    assert P.led_table(team, 1, False, True)["extraction_failed"][-1][0] == pg.team_frame(1, False, dim=True)
     assert P.led_table(dark, 1, False, True)["extraction_failed"][-1][0] == "$GLED,9,9,9,0,10,,*"
     assert P.led_table(native, 1, False, True)["extraction_failed"][-1][0] == pg.team_frame(1, False)
     for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}, {"gun": {"pregame": "blue"}},

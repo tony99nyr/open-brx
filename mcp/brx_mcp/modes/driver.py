@@ -444,8 +444,11 @@ class GameDriver:
         for pid, until in list(self._gauge_until.items()):
             if now >= until:
                 del self._gauge_until[pid]
+                # A16.4: reverting from a gauge paint lands on the IN-PLAY rest, which is dim -- the
+                # same frame `presentation.gun_frames()` ships as `gun.rest`. Full brightness here
+                # would make the revert brighter than the reading that preceded it.
                 actions.append(SendFrame(pid, pg.team_frame(self.players.get(pid),
-                                                          night=self.config.is_night_mode())))
+                                                          night=self.config.is_night_mode(), dim=True)))
         return actions
 
     @property

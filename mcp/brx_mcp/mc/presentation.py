@@ -836,7 +836,7 @@ def gun_frames(profile: dict, tid: int | None, night: bool, leds_on: bool, ffa: 
     dark = f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{b},,*"
     out: dict = {"in_play": g["in_play"], "blank": GUN_BLANK, "after_spawn_s": GUN_AFTER_SPAWN_S}
     if g["in_play"] == "team":
-        out["rest"] = pg.team_frame(tid, night, ffa)
+        out["rest"] = pg.team_frame(tid, night, ffa, dim=True)   # A16.4: the in-play rest is DIM (see team_frame)
     elif g["in_play"] == "dark":
         out["rest"] = dark
     else:   # health (legacy whole-strip; superseded by the segmented `readout` below)

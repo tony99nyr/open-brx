@@ -178,18 +178,35 @@ def test_no_emitted_gled_ever_pairs_colour_tokens_with_apply_gate_5():
 
 # --- 3. token 5 is the brightness / night dimmer ---------------------------- #
 
+# Every legitimate dim-in-day paint: the in-play REST, for each team and for FFA (A16.4).
+DIM_REST_FRAMES = frozenset(
+    [pg.team_frame(t, night=False, ffa=False, dim=True) for t in (None, 0, 1, 2, 3)]
+    + [pg.team_frame(t, night=False, ffa=True, dim=True) for t in (None, 0, 1, 2, 3)])
+
+
 def test_night_dims_the_gun_strip_with_token_5_and_never_with_the_apply_gate():
     """led-language.md §3.4. Night must express itself as gate 0 + token5=1; day is token5=10.
-    Expressing "dimmer" as gate 5 would switch the strip OFF instead (rule 2)."""
+    Expressing "dimmer" as gate 5 would switch the strip OFF instead (rule 2).
+
+    ONE deliberate exception since A16.4 (2026-09-09): the IN-PLAY REST is dim in day too. It is not a
+    loosening -- the exception is pinned to the `.rest` key alone, so a burst flash or a pregame paint
+    that quietly went dim in daylight still fails here. The rest is dim because brightness is the only
+    axis left to separate the resting body from the readout painted over it (F56: three of the four
+    team colours share a hue with a pool), and because a body at full brightness for a whole match is
+    a beacon. At NIGHT everything is dim, exception included, so the night rule is unweakened."""
     assert (pg.BRIGHT_FULL, pg.BRIGHT_DIM) == (10, 1)
     for night in NIGHTS:
-        want = str(pg.BRIGHT_DIM if night else pg.BRIGHT_FULL)
         for where, frame in harvest_gled_paints(night):
             t = toks(frame)
             assert t[3] == "0", f"{where}: paint {frame!r} uses apply-gate {t[3]!r}; a paint gates on 0"
+            # Keyed to the FRAME, not to a label: the rest paint also ships inside `take` (blank +
+            # rest) and as a burst's hand-back, so a name-based exemption missed copies of the very
+            # same frame. The exempt set is exactly "a dim team/FFA rest paint" and nothing else.
+            rest_exempt = (not night) and frame in DIM_REST_FRAMES
+            want = str(pg.BRIGHT_DIM) if (night or rest_exempt) else str(pg.BRIGHT_FULL)
             assert t[4] == want, (
                 f"{where}: paint {frame!r} has brightness token {t[4]!r}, expected {want!r} "
-                f"for night={night}")
+                f"for night={night}" + (" (the in-play rest is dim by design, A16.4)" if rest_exempt else ""))
 
 
 def harvest_gled_paints(night: bool):
@@ -365,7 +382,16 @@ def test_no_compiled_burst_puts_more_than_three_flashes_in_a_one_second_window()
                     if not gled:
                         continue
                     rest = gled[-1][0]                       # the burst ends on the resting frame
-                    flashes = {f for f, _ in gled if f != rest}
+                    # A light-up is a transition into a LIT frame. The old rule was "any frame that is
+                    # not the rest frame", which was only ever right because the rest frame WAS dark:
+                    # once the rest became a dim team colour (A16.4) the burst's dark GAP stopped
+                    # matching it and started being counted as a flash, so a normal 3-flash burst
+                    # scored 5. Counting a light-DOWN as a light-up does not make the guard safer, it
+                    # makes it wrong in a direction that would have forced someone to weaken it. The
+                    # ceiling is unchanged and `onsets()` still counts transitions, so a burst that
+                    # really does light up four times in a second still fails.
+                    lit = lambda f: any(c not in ("", str(pg.DARK), "10") for c in toks(f)[:3])
+                    flashes = {f for f, _ in gled if f != rest and lit(f)}
                     starts = sorted(t for fl in flashes for t in onsets(gled, fl))
                     for s in starts:
                         n = sum(1 for o in starts if s <= o < s + 1.0)

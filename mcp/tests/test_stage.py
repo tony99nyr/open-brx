@@ -70,7 +70,8 @@ def test_a_full_mc_config_and_a_presentation_patch_reshape_the_stage():
     st.load_config(cfg, source="test")
     s = st.state()
     assert s["config_source"] == "mc" and s["config_id"] == "from-mc" and st.profile["gun"] == "team"
-    assert st.bundle["gun"]["take"] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"] and not any(f.startswith("$GLED") for f in st.bundle["spawn"])
+    # A16.4 (2026-09-09): the in-play rest is DIM (`PG.BRIGHT_DIM`), not the full-brightness pregame paint.
+    assert st.bundle["gun"]["take"] == ["$GLED,,,,5,,,*", f"$GLED,1,1,1,0,{PG.BRIGHT_DIM},,*"] and not any(f.startswith("$GLED") for f in st.bundle["spawn"])
     st.patch_presentation({"events": {"hit_taken": {"gun_led": "orange"}}})
     assert st.bundle["leds"]["hit_taken"][0][0].startswith("$GLED,8,8,8")
     try:

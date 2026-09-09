@@ -433,11 +433,26 @@ def readout_levels(pool: str, night: bool = False) -> list[list[str | None]]:
     return out
 
 
-def team_frame(team: int | None, night: bool = False, ffa: bool = False) -> str:
+def team_frame(team: int | None, night: bool = False, ffa: bool = False, dim: bool = False) -> str:
     """Revert frame: all three LEDs to the team's PAINT colour (`display_colour`, e.g. purple for the
-    green team, F35/finding #11), or WHITE for every player in FFA (Q19)."""
+    green team, F35/finding #11), or WHITE for every player in FFA (Q19).
+
+    `dim` forces the low brightness independently of night (A16.4, 2026-09-09). The IN-PLAY rest uses
+    it; pregame does not. Two reasons, and the second is the load-bearing one:
+      * a body sitting at full brightness for a whole match is a beacon and the opposite of the
+        "immersion, not attention" brief -- Tony's first instruction on this readout was that the team
+        colour "doesn't need to be static bright";
+      * it is what separates the RESTING body from the READOUT. Brightness is global, so it is useless
+        for the level bar (it can never dim one segment) and free for exactly this. Without it, three
+        of the four team colours collide with a pool hue -- team 3 purple vs armour, team 2 yellow vs
+        mid health, and team 0 red vs CRITICAL health -- and a settled bar would be the same picture as
+        the resting gun (F56). Only blue is clean, which is the team the bench happens to run on.
+    ⚠ At NIGHT both rest and readout are already dim, so brightness cannot separate them there and F56
+    is only half closed; what is left at night is the hue collision on a SETTLED bar (the drop opens
+    with an all-off blink, so the fall itself still reads).
+    """
     c = FFA_COLOUR if ffa else display_colour(team)
-    b = BRIGHT_DIM if night else BRIGHT_FULL
+    b = BRIGHT_DIM if (night or dim) else BRIGHT_FULL
     return f"$GLED,{c},{c},{c},0,{b},,*"
 
 

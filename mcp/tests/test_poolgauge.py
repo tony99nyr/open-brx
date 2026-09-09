@@ -235,12 +235,14 @@ def test_a_pool_change_emits_a_gauge_frame():
 
 
 def test_the_gauge_reverts_to_the_team_colour_after_the_window():
+    # DIM, not full (A16.4, 2026-09-09): the in-play rest is the team colour at low brightness --
+    # brightness is what separates the resting body from the readout bar, which stays full in day.
     d = _driver()
     d.feed("p1", _hp(45, 70, 70), 0.0)
     d.feed("p1", _hp(45, 70, 60), 1.0)
     assert not _frames(d.tick(1.5)), "reverted too early"
     out = _frames(d.tick(1.0 + pg.REVERT_AFTER_S + 0.1))
-    assert out == [pg.team_frame(1)], out
+    assert out == [pg.team_frame(1, dim=True)], out
 
 
 def test_a_new_change_RESTARTS_the_window_rather_than_queuing():
@@ -249,7 +251,7 @@ def test_a_new_change_RESTARTS_the_window_rather_than_queuing():
     d.feed("p1", _hp(45, 70, 60), 1.0)
     d.feed("p1", _hp(45, 70, 50), 3.0)                 # inside the window
     assert not _frames(d.tick(1.0 + pg.REVERT_AFTER_S + 0.1)), "old deadline still fired"
-    assert _frames(d.tick(3.0 + pg.REVERT_AFTER_S + 0.1)) == [pg.team_frame(1)]
+    assert _frames(d.tick(3.0 + pg.REVERT_AFTER_S + 0.1)) == [pg.team_frame(1, dim=True)]
 
 
 def test_it_reverts_only_once():
