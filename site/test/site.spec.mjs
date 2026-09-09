@@ -8,7 +8,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(HERE, '../../webapp');
 const only = process.env.ONLY;
-const it = (name, fn) => (only && !name.includes(only) ? test.skip : test)(name, fn);
+let matched = 0;
+const it = (name, fn) => {
+  const run = !only || name.includes(only);
+  if (run && only) matched++;
+  return (run ? test : test.skip)(name, fn);
+};
 
 // the one list of old-DSL block names, imported from the build so the two can never drift
 const { BLOCK_MARKER } = await import(pathToFileURL(path.resolve(HERE, '../block-names.mjs')).href);
@@ -370,4 +375,10 @@ it('11 · every old URL really resolves over HTTP, in one hop, with no loop', as
     const r = await request.get(u, { maxRedirects: 0 });
     expect(r.status(), `${u} redirects instead of serving`).toBe(200);
   }
+});
+
+// A typo in ONLY= skipped all 30 steps and exited 0, which reads exactly like a green run.
+// Registered with bare `test` so it cannot be filtered out by the very thing it is checking.
+if (only) test('ONLY= matched at least one step', () => {
+  expect(matched, `ONLY="${only}" matched no step, so nothing ran`).toBeGreaterThan(0);
 });

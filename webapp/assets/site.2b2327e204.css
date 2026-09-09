@@ -207,14 +207,14 @@ code {
   font-size: 0.88em; overflow-wrap: anywhere;
 }
 p, li, td, th, dd { overflow-wrap: break-word; }
+.code { position: relative; }
 pre {
-  /* padding-top clears the Copy button, which is absolutely positioned and opaque: at phone width
-     it was sitting on the first line of 9 of the 12 code blocks on /manual/dev/ and hiding it. */
-  position: relative; background: var(--code-bg); border: 1px solid var(--line);
-  border-radius: 8px; padding: 40px 16px 14px; overflow-x: auto;
+  /* padding-top clears the Copy button, which is absolutely positioned and opaque */
+  background: var(--code-bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 40px 16px 14px; overflow-x: auto; margin: 16px 0;
 }
 pre code { background: none; padding: 0; }
-pre .copy {
+.code .copy {
   position: absolute; top: 8px; right: 8px; background: var(--bg); color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 10px;
   min-height: 32px; font: inherit; font-size: 12px; cursor: pointer;
@@ -225,6 +225,12 @@ pre .copy {
    scrollport, which is also what makes its sticky header work: capping every wrapper trapped the
    wheel over 2-row tables on a phone. */
 .table-wrap { overflow-x: auto; margin: 16px 0; }
+/* a hint that a clipped table can be swiped: without it the last column just stops mid-word */
+.table-wrap { background:
+  linear-gradient(to right, var(--bg) 30%, transparent) left / 32px 100% no-repeat local,
+  linear-gradient(to left, var(--bg) 30%, transparent) right / 32px 100% no-repeat local,
+  radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 14%), transparent) left / 14px 100% no-repeat scroll,
+  radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 14%), transparent) right / 14px 100% no-repeat scroll; }
 .table-wrap.tall { overflow: auto; max-height: 80vh; }
 /* a sticky header only has a scrollport inside .tall; elsewhere it is inert, so do not pretend */
 .table-wrap.tall th { position: sticky; top: 0; }

@@ -5,7 +5,8 @@
 <meta name="description" content="How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/sound/">
 <link rel="alternate" type="text/markdown" href="/manual/sound.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -38,13 +39,13 @@
 <li><strong>Native reflexes.</strong> The boot chime, &quot;connection established&quot; on phone attach, the disabled &quot;can&#39;t do that&quot; chirp, and low battery. The firmware fires these on its own schedule. You can swap the clip, but you cannot stop it.</li>
 </ul>
 <p><strong>Cut 2: how much you can change each sound</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Tier</th><th>Examples</th><th>What you control</th></tr></thead><tbody><tr><td>Forced (native, unstoppable)</td><td>Power-on boot sound. It plays before any host connects, which is why a tagger is loud at startup</td><td>Nothing: can&#39;t suppress or trigger</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Tier table, scrollable"><table><thead><tr><th>Tier</th><th>Examples</th><th>What you control</th></tr></thead><tbody><tr><td>Forced (native, unstoppable)</td><td>Power-on boot sound. It plays before any host connects, which is why a tagger is loud at startup</td><td>Nothing: can&#39;t suppress or trigger</td></tr>
 <tr><td>Native reflex, re-skinnable</td><td>&quot;Phone connected&quot; on BLE attach, disabled chirp, reload / empty, low battery</td><td>You can&#39;t stop it firing, but you can replace the clip in the USB <code>AUDIO</code> folder (see Custom sounds over USB)</td></tr>
 <tr><td>Config-driven, then automatic</td><td>Hit / pain / death / armor / shield / weapon sounds</td><td>Any bank id via the loadout (<code>$SIR</code> / <code>$PSET</code> / <code>$WEAP</code>), or replace the file</td></tr>
 <tr><td>Host-triggered, fully yours</td><td>Objective callouts, timers, custom announcers</td><td>Any of the 2,477 ids on the gun, on any rule, via <code>$PLAY</code></td></tr></tbody></table></div>
 <p>Only one sound is truly stuck: the boot chime.</p>
 <p><strong>The <code>$PLAY</code> command (developer detail)</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Shape</td><td><code>$PLAY,&lt;soundID&gt;,&lt;volume&gt;,&lt;priority&gt;,&lt;announcerID&gt;,,,,*</code>. Token 1 is the local effect sound; token 4 is a second, independent announcer/voice slot.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Shape</td><td><code>$PLAY,&lt;soundID&gt;,&lt;volume&gt;,&lt;priority&gt;,&lt;announcerID&gt;,,,,*</code>. Token 1 is the local effect sound; token 4 is a second, independent announcer/voice slot.</td></tr>
 <tr><td>Two slots at once</td><td><code>$PLAY,,4,6,V3A,,,,*</code> leaves the effect slot empty and says &quot;kill&quot;. Both slots can carry an id at once: the app&#39;s game-end frame is <code>$PLAY,VSF,4,6,JAY,,,,*</code> (victory sting plus &quot;victory&quot;).</td></tr>
 <tr><td>Required tokens</td><td>Volume and priority are required. <code>$PLAY,VA33,,,,,,,*</code> was silent on the bench; <code>$PLAY,VA33,4,6,,,,,*</code> spoke &quot;game over&quot;. The official apps use <code>3,9</code> (Android) and <code>3,6</code> / <code>4,6</code> (iOS Callsign): app conventions, not protocol constants.</td></tr>
 <tr><td>Stop playback</td><td><code>$PLAYX,0,*</code> stops playback right away. The app sends it just after <code>$STOP</code> on connect, and it also silences a spawn voice line if sent right after <code>$SPAWN</code>.</td></tr>
@@ -63,7 +64,7 @@
 <h2 id="voice-packs-and-announcers">Voice packs and announcers</h2>
 <p>A voice pack is the run of sound ids at the tail of <code>$PSET</code>, one per game event: death alarm, pain, respawn cry, kill line. The BRX does not ship &quot;a male voice&quot; and &quot;a female voice&quot; as one big pack. The characters you pick in the app are just pre-filled sets of those ids.</p>
 <p><strong>How many slots there are is an open question.</strong> The app&#39;s own metadata declares <strong>seventeen</strong> voice-pack field names, listed below in declaration order. A captured <code>$PSET</code> carries <strong>sixteen</strong> ids on the wire (<code>...,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*</code>). So at least one declared name has no wire slot of its own, and which name that is, and therefore where the run shifts by one, has not been established. Treat the table as the app&#39;s list of events, not as a proven token-by-token map.</p>
-<div class="table-wrap tall"><table><thead><tr><th>Declared field</th><th>Event it fires on</th></tr></thead><tbody><tr><td>deathAlarm</td><td>You died (the loud beep/alarm)</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="Declared field table, scrollable"><table><thead><tr><th>Declared field</th><th>Event it fires on</th></tr></thead><tbody><tr><td>deathAlarm</td><td>You died (the loud beep/alarm)</td></tr>
 <tr><td>stealthDeathScream</td><td>Death while stealthed / quiet death</td></tr>
 <tr><td>musicMixOnDeath</td><td>Death music sting (e.g. <code>JAD</code>)</td></tr>
 <tr><td>deathScream</td><td>The character&#39;s death cry</td></tr>
@@ -92,7 +93,7 @@
 </blockquote>
 <p><strong>Voice families in the bank</strong></p>
 <p>Prefixes and character names are restated from David Knox&#39;s audio map; counts come from the bank file.</p>
-<div class="table-wrap tall"><table><thead><tr><th>Prefix</th><th>Character / voice</th><th>Ids</th></tr></thead><tbody><tr><td><code>VA</code></td><td>Male (the default announcer; also the connect/countdown/game-over lines)</td><td>321</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="Prefix table, scrollable"><table><thead><tr><th>Prefix</th><th>Character / voice</th><th>Ids</th></tr></thead><tbody><tr><td><code>VA</code></td><td>Male (the default announcer; also the connect/countdown/game-over lines)</td><td>321</td></tr>
 <tr><td><code>VB</code></td><td>Scout / clean female (score &amp; lead lines such as <code>VB17</code> live here)</td><td>90</td></tr>
 <tr><td><code>VE</code></td><td>Clean male</td><td>9 (+13 <code>VEx</code> lines)</td></tr>
 <tr><td><code>VM</code></td><td>Clean female</td><td>9 (+12)</td></tr>
@@ -117,7 +118,7 @@
 <li><strong>A flavor line</strong>: Medic <code>V8W</code> &quot;One shot, one kill&quot;.</li>
 </ul>
 <p><strong>Weapon callouts (announcer says the weapon name)</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Weapon</th><th>Callout id</th><th>Fire sound id</th></tr></thead><tbody><tr><td>M4</td><td><code>VA4B</code></td><td><code>R02</code></td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Weapon table, scrollable"><table><thead><tr><th>Weapon</th><th>Callout id</th><th>Fire sound id</th></tr></thead><tbody><tr><td>M4</td><td><code>VA4B</code></td><td><code>R02</code></td></tr>
 <tr><td>TAC-87 shotgun</td><td><code>VA6A</code></td><td><code>T14</code></td></tr>
 <tr><td>SR-100 sniper</td><td><code>VA5Y</code></td><td><code>S16</code></td></tr>
 <tr><td>MG7</td><td><code>VA4F</code></td><td><code>J07</code></td></tr>
@@ -139,7 +140,7 @@
 </blockquote>
 <p><strong>Category map: every family in the app&#39;s list</strong></p>
 <p>Prefix meanings are restated from David Knox&#39;s audio map; counts are computed from the app&#39;s sound list. The on-gun catalog adds the <code>VX</code> and <code>VZ</code> voice families, <code>H102</code> to <code>H155</code> and more.</p>
-<div class="table-wrap tall"><table><thead><tr><th>Family</th><th>What it holds</th><th>Ids</th><th>Typical length</th></tr></thead><tbody><tr><td><code>VA</code> + <code>E_VA</code></td><td>Male voice: announcer, system lines, weapon callouts, countdowns</td><td>321 + 23</td><td>0.5-3 s (countdowns up to 11 s)</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="Family table, scrollable"><table><thead><tr><th>Family</th><th>What it holds</th><th>Ids</th><th>Typical length</th></tr></thead><tbody><tr><td><code>VA</code> + <code>E_VA</code></td><td>Male voice: announcer, system lines, weapon callouts, countdowns</td><td>321 + 23</td><td>0.5-3 s (countdowns up to 11 s)</td></tr>
 <tr><td><code>VB</code> + <code>E_VB</code></td><td>Scout / female-clean voice: score &amp; lead lines</td><td>90 + 64</td><td>1-2 s</td></tr>
 <tr><td><code>V0</code>-<code>V9</code></td><td>Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider)</td><td>23 each except V4 (33), V5 (26) and V8 (35); 255 total</td><td>0.4-6 s</td></tr>
 <tr><td><code>V100</code>-<code>V144</code></td><td>CTF / Slayer / King-of-the-Hill callouts</td><td>34</td><td>1-2.4 s; three at 12-13 s</td></tr>
@@ -173,7 +174,7 @@
 <tr><td><code>O</code></td><td>Big guns / ordnance</td><td>6</td><td>1.5-2.5 s</td></tr></tbody></table></div>
 <p>Sums to 2,166, the app&#39;s list; the gun holds 2,477 files.</p>
 <p><strong>Thirty-odd ids worth knowing</strong></p>
-<div class="table-wrap tall"><table><thead><tr><th>Id</th><th>Family</th><th>Meaning</th><th>Length</th></tr></thead><tbody><tr><td><code>VA20</code></td><td>VA</td><td>&quot;Connection established&quot;: plays on every phone connect</td><td>1.27 s</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="Id table, scrollable"><table><thead><tr><th>Id</th><th>Family</th><th>Meaning</th><th>Length</th></tr></thead><tbody><tr><td><code>VA20</code></td><td>VA</td><td>&quot;Connection established&quot;: plays on every phone connect</td><td>1.27 s</td></tr>
 <tr><td><code>U16</code></td><td>U</td><td>Connect tone (paired with VA20)</td><td>0.43 s</td></tr>
 <tr><td><code>VA81</code></td><td>VA</td><td>3-2-1 spawn countdown (arena)</td><td>3.03 s</td></tr>
 <tr><td><code>VA33</code></td><td>VA</td><td>&quot;Game over&quot; + music</td><td>1.88 s</td></tr>
@@ -227,7 +228,7 @@
 <li>Eject the disk, power-cycle, and test with the on-gun menu (or <code>$PLAY,&lt;id&gt;,4,6,,,,,*</code> over Bluetooth).</li>
 </ol>
 <p><strong>File facts</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Naming</td><td><code>&lt;ID&gt;.LTP</code>, one file per bank id. Known community swaps: <code>NA0.ltp</code> death loud-beep, <code>VA3.ltp</code> scream, <code>VA5.ltp</code> yell (copy or rename one over another to change the death cue).</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Naming</td><td><code>&lt;ID&gt;.LTP</code>, one file per bank id. Known community swaps: <code>NA0.ltp</code> death loud-beep, <code>VA3.ltp</code> scream, <code>VA5.ltp</code> yell (copy or rename one over another to change the death cue).</td></tr>
 <tr><td>Which files are which weapon</td><td>The Callsign-app gun sounds use different file names from the default (on-gun menu) weapon files. Replacing one set won&#39;t change the other. Default guns to target for the menu game: SR-100, TAC-87, SMG-x3, MG7.</td></tr>
 <tr><td>Firmware v4.30+</td><td>Needs a complete new audio-file set in <code>AUDIO</code>. After that update, old packs don&#39;t line up.</td></tr></tbody></table></div>
 <p><strong>What people build with this</strong></p>
@@ -265,7 +266,7 @@
 <li><strong>Version you&#39;re on:</strong> the serial console&#39;s <code>QUERY</code> reports it. The guns on the bench run v4.32.</li>
 </ul>
 <p><strong>Factory restore</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Restore package</td><td>Battle Company&#39;s USB updater package is the reference firmware <code>.BIN</code> plus the matching <code>AUDIO</code> set. Restore both from that package and a tagger returns to stock, whatever packs were installed.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Restore package</td><td>Battle Company&#39;s USB updater package is the reference firmware <code>.BIN</code> plus the matching <code>AUDIO</code> set. Restore both from that package and a tagger returns to stock, whatever packs were installed.</td></tr>
 <tr><td>Your own backup</td><td>Keep your own backup of <code>AUDIO</code> from before any change. It is faster than a full restore, and it preserves the exact set your firmware version expects.</td></tr></tbody></table></div>
 <blockquote>
 <p><strong>Open BRX never modifies stock firmware.</strong> All of its control runs over the Bluetooth serial protocol. So a tagger running Open BRX is always on Battle Company&#39;s firmware, and always restorable with Battle Company&#39;s updater.</p>
@@ -273,7 +274,7 @@
 <h2 id="volume">Volume</h2>
 <p>30 is silence. The gun menu offers volume 1-5. Over Bluetooth the same control is a 0-100 scale. On that scale, the gap between &quot;quiet&quot; and &quot;you hear nothing&quot; is smaller than you would think.</p>
 <p><strong>The scales, side by side</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Control</th><th>Range</th><th>Notes</th></tr></thead><tbody><tr><td>On-gun menu (SELECT to settings)</td><td>1-5</td><td>Remembered per game mode as the new default</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Control table, scrollable"><table><thead><tr><th>Control</th><th>Range</th><th>Notes</th></tr></thead><tbody><tr><td>On-gun menu (SELECT to settings)</td><td>1-5</td><td>Remembered per game mode as the new default</td></tr>
 <tr><td>Bluetooth <code>$VOL,&lt;0-100&gt;,0,*</code></td><td>0-100 (<code>MaxMusicVolume</code> = 100)</td><td>Sent by every app on connect and again at game end</td></tr></tbody></table></div>
 <p><strong>What the official apps send</strong></p>
 <ul>

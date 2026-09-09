@@ -15,6 +15,9 @@ If something is not on this page, it is not a feature. Adopted 2026-09-09 (see `
 | `docs/manual/fix.md` | `/manual/fix` | Fix, mod and accessorise |
 | `docs/manual/dev.md` | `/manual/dev` | Developer reference |
 | `docs/manual/platform.md` | `/platform` | The Open BRX platform |
+| `docs/manual/platform-leds.md` | `/platform/leds` | What the lights mean in a game |
+| `docs/manual/platform-modes.md` | `/platform/modes` | Modes and game setup |
+| `docs/manual/platform-run.md` | `/platform/run-a-game` | Running a match |
 | `docs/manual/credits.md` | `/credits` | Credits and sources |
 
 The map lives in `site/build.mjs` and nowhere else. Adding a page means adding a file and a row.
@@ -79,11 +82,11 @@ garbage.
 
 For each file: `<slug>/index.html` and `<slug>.md` (a byte-for-byte copy of the source). Plus
 `sitemap.xml`, `robots.txt`, `llms.txt`, `llms-full.txt`, `data/weapons.json`, `data/sounds.json`,
-`_redirects`, `404.html`, `.site-manifest.json`, and the hashed CSS/JS. Nothing else.
+`_redirects`, `404.html`, `.site-manifest.json`, `data/search.json`, and the hashed CSS/JS. Nothing else.
 
 ## Old URLs
 
-The site published 74 URLs before 2026-09-09. The 65 that went away are absorbed by splat rules in
+The site published 74 URLs before 2026-09-09. The ones that went away are absorbed by explicit rules (not splats: a splat also matches the live page and loops it) in
 `site/public/_redirects`, copied into the build verbatim and parsed natively by Cloudflare. That
 file is frozen history: the old URL set cannot grow, so it never needs editing. `site/test/old-urls.txt`
 is the frozen list, and a test step fails if any entry would 404 or if a rule points at a page that

@@ -5,7 +5,8 @@
 <meta name="description" content="How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/run-a-game/">
 <link rel="alternate" type="text/markdown" href="/platform/run-a-game.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -33,7 +34,7 @@ Everyone has to stay within Bluetooth range of it, which is a room or a small ya
 simplest thing that works and it is proven on hardware: on 2026-08-25 one command ran a full scored
 Team Deathmatch on two real taggers, with spawn, hits, deaths, host-driven respawn, a frag limit and
 the correct winner. A three-gun synced start is proven too. The command is:</p>
-<pre><button class="copy" type="button">Copy</button><code>python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt;</code></pre>
+<div class="code"><button class="copy" type="button">Copy</button><pre><code>python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt;</code></pre></div>
 <p>Get the addresses from <code>python -m brx_mcp scan</code>. Add <code>outdoor=1 volume=90</code> outdoors: the default
 volume of 80 is set for indoors, and anything near 69 is roughly on-gun level 2 and is inaudible in
 the open.</p>
@@ -82,7 +83,7 @@ match-day machine: a fresh laptop has an empty one and will show no guns.</p>
 <p><strong>Every match.</strong> Charge everything. Use guns that have been powered off since the last session,
 because a tagger left powered all day starts refusing links. Put the router up, join the laptop to
 it, and start Mission Control so its output is saved rather than scrolled away:</p>
-<pre><button class="copy" type="button">Copy</button><code>python3 -m brx_mcp.mc -v 2&gt;&amp;1 | tee ~/mc-$(date +%Y%m%d-%H%M).log</code></pre>
+<div class="code"><button class="copy" type="button">Copy</button><pre><code>python3 -m brx_mcp.mc -v 2&gt;&amp;1 | tee ~/mc-$(date +%Y%m%d-%H%M).log</code></pre></div>
 <p>Open the exact link it prints, including the <code>#tok=</code> part. That is the operator token, and it is
 new every launch. On each phone: join the game Wi-Fi and set it to auto-join, turn <strong>mobile data
 off</strong> on Android, and turn Do Not Disturb on.</p>

@@ -5,7 +5,8 @@
 <meta name="description" content="This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the $WEAP / $GSET / $PSET / $SIR tables, the">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/">
 <link rel="alternate" type="text/markdown" href="/manual/dev.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -38,12 +39,12 @@
 <p><strong>Who found this.</strong> Protocol discovery for the BRX platform is the work of <strong>LaserTagMods</strong> (JEDGE / JBOX). This page restates their findings independently, with our own bench verification.</p>
 </blockquote>
 <p><strong>Transport by generation</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Generation</th><th>Link</th><th>Speed</th><th>How you connect</th></tr></thead><tbody><tr><td>Gen1</td><td>Bluetooth Classic (SPP)</td><td>57600 baud</td><td>Pair an HC-05 module (PIN <code>0001</code>, master role). The headset must be connected for Bluetooth to function.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Generation table, scrollable"><table><thead><tr><th>Generation</th><th>Link</th><th>Speed</th><th>How you connect</th></tr></thead><tbody><tr><td>Gen1</td><td>Bluetooth Classic (SPP)</td><td>57600 baud</td><td>Pair an HC-05 module (PIN <code>0001</code>, master role). The headset must be connected for Bluetooth to function.</td></tr>
 <tr><td>Gen2/3</td><td>BLE (Nordic UART Service, NUS)</td><td>UART bridge at 115200 behind the radio</td><td>Connect from any BLE central: laptop (bleak), ESP32, phone. No pairing/PIN.</td></tr>
 <tr><td>Any</td><td>Hardware UART inside the gun</td><td>115200</td><td>What JEDGE drives directly (<code>Serial1</code>). No external accessory port exists on the BRX. A wired tap means opening the gun. Untested by us.</td></tr>
 <tr><td>Any</td><td>Micro-USB &quot;Programing Port&quot;</td><td>USB CDC (baud ignored)</td><td><strong>Not</strong> the <code>$</code> protocol. It is a separate <code>QUERY</code>/<code>SETUP</code> console. See the USB serial console section.</td></tr></tbody></table></div>
 <p><strong>BLE: Nordic UART Service UUIDs</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Service</td><td><code>6E400001-B5A3-F393-E0A9-E50E24DCCA9E</code></td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Service</td><td><code>6E400001-B5A3-F393-E0A9-E50E24DCCA9E</code></td></tr>
 <tr><td>RX characteristic (<strong>write</strong> to tagger)</td><td><code>6E400002-B5A3-F393-E0A9-E50E24DCCA9E</code></td></tr>
 <tr><td>TX characteristic (<strong>notify</strong> from tagger)</td><td><code>6E400003-B5A3-F393-E0A9-E50E24DCCA9E</code></td></tr>
 <tr><td>Advertised name</td><td><code>Tactix-XXXX</code> (the last two bytes of the BLE MAC). The NUS service UUID <strong>is</strong> present in the advertisement, so scan-time generation detection works.</td></tr>
@@ -53,7 +54,7 @@
 <p><strong>Generation detection heuristic.</strong> Power on the tagger and run a BLE scan. If it advertises the UART service it is Gen2/3. If nothing appears on BLE but the device pairs over Bluetooth Classic it is Gen1.</p>
 </blockquote>
 <p><strong>Frame anatomy</strong></p>
-<pre><button class="copy" type="button">Copy</button><code class="language-text">$ + COMMAND + (, + token)* + ,*</code></pre>
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-text">$ + COMMAND + (, + token)* + ,*</code></pre></div>
 <ul>
 <li>ASCII, comma-delimited tokens. Starts with <code>$COMMAND</code>, ends with <code>,*</code>.</li>
 <li><strong>Empty tokens are legal and meaningful</strong>: consecutive commas mean &quot;leave unchanged / not applicable&quot;. <code>$SPAWN,,*</code> (one empty token) is a different command from <code>$SPAWN,*</code>.</li>
@@ -79,7 +80,7 @@
 </ol>
 <p>The panic sequence leaves the gun with <strong>no <code>$SIR</code> table, so it cannot be hit</strong> until it is re-armed or power cycled. That is intended for a panic stop and must not be mistaken for a playable state. Battle Company&#39;s official USB updater is the factory-restore path.</p>
 </blockquote>
-<pre><button class="copy" type="button">Copy</button><code class="language-python"># The known-safe list enforced by brx-mcp (mcp/brx_mcp/protocol.py).
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-python"># The known-safe list enforced by brx-mcp (mcp/brx_mcp/protocol.py).
 # Everything else needs confirm=True. That is the host's safety rail, not a tagger limit.
 KNOWN_SAFE_COMMANDS = {
     &quot;PING&quot;, &quot;CLEAR&quot;, &quot;START&quot;, &quot;SPAWN&quot;, &quot;CONNECT&quot;, &quot;INIT&quot;, &quot;PHONE&quot;,
@@ -89,7 +90,7 @@ KNOWN_SAFE_COMMANDS = {
     &quot;AMMO&quot;, &quot;STOP&quot;, &quot;PLAYX&quot;, &quot;VOL&quot;, &quot;HLED&quot;, &quot;NAME&quot;, &quot;VERSION&quot;, &quot;HLOOP&quot;,
     &quot;SFLASH&quot;,
 }
-PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
+PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre></div>
 <blockquote>
 <p><strong>Volume.</strong> <code>$VOL,30</code> is kind to ears on a bench but <strong>measurably inaudible for weapon and game audio</strong>; <code>$VOL,45</code> is barely audible. Open BRX plays at <strong>80 indoors / 90 outdoors</strong> (<code>compile.play_volume()</code>). The iOS app&#39;s 69 measures as roughly on-gun level 2 and was inaudible on a field (2026-08-30). Try-outs stay at 69.</p>
 </blockquote>
@@ -105,7 +106,7 @@ PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
 <p><strong>How to read the tables.</strong> &quot;Direction&quot; is host to gun (<code>&gt;&gt;</code>) or gun to host (<code>&lt;&lt;</code>). Some commands were sent and received on hardware; others carry field names taken from the Callsign app&#39;s IL2CPP metadata (names certain, wire position = declaration order) or come from LaserTagMods sources and community captures, unreproduced on hardware. Each row says which. Commands the app knows that are untested on hardware sit in their own table at the end of this section. Where a command&#39;s field map has its own section (<code>$WEAP</code>, <code>$GSET</code>/<code>$PSET</code>, <code>$SIR</code>), the row says so.</p>
 </blockquote>
 <p><strong>Host to tagger: lifecycle and configuration</strong></p>
-<div class="table-wrap tall"><table><thead><tr><th>Command</th><th>Dir</th><th>Args</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$PING,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Connectivity check. Reply <code>$PONG,*</code>.</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="Command table, scrollable"><table><thead><tr><th>Command</th><th>Dir</th><th>Args</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$PING,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Connectivity check. Reply <code>$PONG,*</code>.</td></tr>
 <tr><td><code>$STOP,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail.</td></tr>
 <tr><td><code>$PHONE,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>App-controlled mode: opens the live event tap (buttons, <code>$VOLTS</code>), locks the on-gun menu. Reply <code>$BUT,3,0,*</code>.</td></tr>
 <tr><td><code>$CONNECT,*</code> / <code>$INIT,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>On the known-safe list. Sent on v4.32: <strong>no observable reply</strong>.</td></tr>
@@ -127,7 +128,7 @@ PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
 <tr><td><code>$SP,&lt;n&gt;,*</code></td><td>&gt;&gt;</td><td>n</td><td>End-of-game / stop. <code>$SP,99,*</code> is the second half of the panic sequence. Do not probe it mid-game hoping for a score. The gun keeps none. (LaserTagMods / community.)</td></tr>
 <tr><td><code>$QUERY,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Over BLE returns a <code>$</code>-framed status array (<code>$QUERY,0,0,0,0,0,,1,0,,0,…</code>) plus a <code>$LCD</code>. <strong>Not</strong> the USB device record (that is USB-only; see the USB serial console section).</td></tr></tbody></table></div>
 <p><strong>Host to tagger: in-game effects, feedback and pools</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Dir</th><th>Args</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$SFLASH,*</code></td><td>&gt;&gt;</td><td>n/a</td><td><strong>The shooter&#39;s green-sight kill-confirm flash.</strong> The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Command table, scrollable"><table><thead><tr><th>Command</th><th>Dir</th><th>Args</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$SFLASH,*</code></td><td>&gt;&gt;</td><td>n/a</td><td><strong>The shooter&#39;s green-sight kill-confirm flash.</strong> The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.)</td></tr>
 <tr><td><code>$LIFE,&lt;hp&gt;,&lt;armor&gt;,&lt;shields&gt;,*</code></td><td>&gt;&gt;</td><td>addedHP, addedArmor, addedShields</td><td>Grant health. <strong>Additive, clamped at the pool max</strong>, not an absolute set. Writes do not self-emit <code>$HP</code>; the new value shows on the next hit/HUD refresh.</td></tr>
 <tr><td><code>$BUMP,&lt;hp&gt;,&lt;armor&gt;,&lt;shields&gt;,*</code></td><td>&gt;&gt;</td><td>hP, armor, shields</td><td>Adjust current pools. Same additive/clamped behaviour as <code>$LIFE</code>.</td></tr>
 <tr><td><code>$BHIT,&lt;damage&gt;,&lt;isCrit&gt;,&lt;powerLevel&gt;,*</code></td><td>&gt;&gt;</td><td>damage, isCriticalShot, powerLevel</td><td>Four shapes sent on v4.32: each was echoed and <strong>applied no damage</strong>.</td></tr>
@@ -140,10 +141,10 @@ PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
 <tr><td><code>$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART</code></td><td>&gt;&gt;</td><td>enum index</td><td>The <strong>&quot;playbook&quot;</strong> pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw <strong>v4.30</strong> (<code>$PBGAME,0</code> = FFA, <code>$PBWEAP,0</code> = M4 AUTO, <code>$PBPERK,2</code> = Body Armor, <code>$PBLIVES,2</code> = 5 lives, <code>$PBTIME,5</code> = infinite). <code>$PBWEAP,0,*</code> produced a &quot;game starting&quot; reload sound on our v4.32. (Community.)</td></tr>
 <tr><td><code>$DD,&lt;killerId&gt;,&lt;killerTeam&gt;,&lt;victimId&gt;,&lt;nonce&gt;,*</code></td><td>host to host</td><td>n/a</td><td>JEDGE&#39;s <strong>device-to-device</strong> kill notification. A host-side convention, not a tagger command. (Community.)</td></tr></tbody></table></div>
 <p><strong>Headset commands (host to gun to headset)</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Args (APK)</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$HLED,&lt;colour&gt;,&lt;effect&gt;,,,,,*</code></td><td>LedColorType (White, Pink, Orange; plus green via <code>isUsedGreenLed</code>), BlinkLoopType (Once, ThreeTimes, Infinite), LedEffectType (incl. Heartbeat)</td><td>Headset LED. <code>$HLED,,6,,,,,*</code> is sent in the app&#39;s end-of-game tail and in the lobby. <strong>Effect 6 is the blank, and sending it disables the firmware&#39;s own death-flash loop for the rest of that life</strong> (bench 2026-09-07). A colour write does not. Never send it during play: the flash it removes is the brightest signal a downed player has, and nothing reports that it is gone. Use colour index 9 for a dark headset in play instead. Token 1 is a colour index sharing the gun&#39;s palette for 0 to 7 (0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink); the two devices diverge at 8, which reads red on the headset and orange on the gun. 9 and 10 are dark. Measured 2026-09-02 with the camera rig, all visible headset modules agreeing.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Command table, scrollable"><table><thead><tr><th>Command</th><th>Args (APK)</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$HLED,&lt;colour&gt;,&lt;effect&gt;,,,,,*</code></td><td>LedColorType (White, Pink, Orange; plus green via <code>isUsedGreenLed</code>), BlinkLoopType (Once, ThreeTimes, Infinite), LedEffectType (incl. Heartbeat)</td><td>Headset LED. <code>$HLED,,6,,,,,*</code> is sent in the app&#39;s end-of-game tail and in the lobby. <strong>Effect 6 is the blank, and sending it disables the firmware&#39;s own death-flash loop for the rest of that life</strong> (bench 2026-09-07). A colour write does not. Never send it during play: the flash it removes is the brightest signal a downed player has, and nothing reports that it is gone. Use colour index 9 for a dark headset in play instead. Token 1 is a colour index sharing the gun&#39;s palette for 0 to 7 (0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink); the two devices diverge at 8, which reads red on the headset and orange on the gun. 9 and 10 are dark. Measured 2026-09-02 with the camera rig, all visible headset modules agreeing.</td></tr>
 <tr><td><code>$HLOOP,&lt;mode&gt;,&lt;period_ms&gt;,*</code></td><td>a, b</td><td>Drives the headset&#39;s small flash LED as a repeating loop, at the firmware&#39;s own drive level. <code>$HLOOP,2,750,*</code> on a downed player flashes it at about the rate the stock down signal uses, and an operator judged it at least as bright as native. <code>$HLOOP,0,0,*</code> stops the loop and is what the app sends about 1.7 s after every death. <code>$SPAWN</code> also clears it. It restores the flash even on a life where an <code>$HLED</code> blank had suppressed it. Rates of 750 and 2000 ms both work; the usable ends of the range are not measured.</td></tr></tbody></table></div>
 <p><strong>Tagger to host: events and echoes</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Message</th><th>Fields</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$PONG,*</code></td><td>n/a</td><td>Reply to <code>$PING</code>.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Message table, scrollable"><table><thead><tr><th>Message</th><th>Fields</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$PONG,*</code></td><td>n/a</td><td>Reply to <code>$PING</code>.</td></tr>
 <tr><td><code>$VERSION,&lt;gun fw&gt;,&lt;headset fw&gt;,&lt;n&gt;,,&lt;host image&gt;,*</code></td><td>e.g. <code>v4.32,?,4,,devhost.03</code></td><td>Version reply; token 2 reads <code>hds.59</code> with a headset linked, <code>?</code> otherwise. <code>devhost.*</code> = developer/host image.</td></tr>
 <tr><td><code>$DISCONNECT,*</code></td><td>n/a</td><td>Gun-initiated disconnect notice (e.g. the moment its headset is switched off).</td></tr>
 <tr><td><code>$VOLTS,&lt;pack_mV&gt;,&lt;cell_mV&gt;,&lt;t3&gt;,&lt;t4&gt;,*</code></td><td>e.g. <code>7662,3921,55,70</code></td><td>Battery telemetry, about every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3-4: (unknown).</td></tr>
@@ -155,7 +156,7 @@ PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
 <tr><td><code>$QUERY,…</code></td><td>~11 <code>value,,</code> pairs</td><td>Status array in reply to BLE <code>$QUERY,*</code>.</td></tr>
 <tr><td><code>$WEAP</code> / <code>$PERK</code> / <code>$HS</code></td><td>n/a</td><td>Selection echoes from the on-gun menus (LaserTagMods).</td></tr></tbody></table></div>
 <p><strong>Seen in the app&#39;s vocabulary, not exercised by us.</strong> These are facts about the Callsign app&#39;s request namespace only. On-tagger behaviour has not been observed.</p>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Direction</th><th>APK fields / enums</th><th>Note</th></tr></thead><tbody><tr><td><code>$VIB</code></td><td>&gt;&gt;</td><td><code>isEnableVibration</code></td><td>Untested.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Command table, scrollable"><table><thead><tr><th>Command</th><th>Direction</th><th>APK fields / enums</th><th>Note</th></tr></thead><tbody><tr><td><code>$VIB</code></td><td>&gt;&gt;</td><td><code>isEnableVibration</code></td><td>Untested.</td></tr>
 <tr><td><code>$ZOOM</code></td><td>&gt;&gt;</td><td>n/a</td><td>Untested.</td></tr>
 <tr><td><code>$FSET</code></td><td>&gt;&gt;</td><td>~38 event to sound slots: ActionKey, DeathAlarm, TickTock, HitHp, HitArmor, HitShield, HitCrit, EmpStart/Loop/End, IncendiaryStart/…, TearGasHit, …</td><td>Untested.</td></tr>
 <tr><td><code>$ASSIST</code></td><td>&gt;&gt;</td><td><code>soundName</code> (+ SetVolume)</td><td>Untested.</td></tr>
@@ -176,7 +177,7 @@ PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
 <blockquote>
 <p>This sequence is the official iOS app driving a live game on firmware v4.32, reproduced byte-for-byte on real taggers. Three pieces are easy to leave out, and the gun spawns wrong without them: <strong><code>$AMMO</code> after spawn</strong>, <strong><code>$BMAP</code> before <em>and</em> after spawn</strong>, and the <strong>empty token in <code>$SPAWN,,*</code></strong>.</p>
 </blockquote>
-<pre><button class="copy" type="button">Copy</button><code class="language-text">$CLEAR,*
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-text">$CLEAR,*
 $START,*
 $GSET,1,0,1,0,1,0,50,1,*
 $PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*
@@ -193,9 +194,9 @@ $PLAY,VA81,4,6,,,,,*       (go-live voice cue)
 $SPAWN,,*                  &lt;-- go-live (note the empty token)
 $AMMO,0,36,108,1,*         &lt;-- load magazines
 $AMMO,1,6,12,1,*
-$BMAP,0,0,,,,,*            &lt;-- trigger re-mapped AFTER spawn</code></pre>
+$BMAP,0,0,,,,,*            &lt;-- trigger re-mapped AFTER spawn</code></pre></div>
 <p><strong>What the gun echoes back</strong></p>
-<div class="table-wrap"><table><thead><tr><th>After</th><th>Echo</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$START,*</code></td><td><code>$LCD,0,0,0,0,0,0,*</code></td><td>Cleared state</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="After table, scrollable"><table><thead><tr><th>After</th><th>Echo</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$START,*</code></td><td><code>$LCD,0,0,0,0,0,0,*</code></td><td>Cleared state</td></tr>
 <tr><td><code>$SPAWN,,*</code></td><td><code>$LCD,45,70,0,0,36,216,*</code></td><td>Live: HP 45, armor 70, mag 36, reserve 216 (this config)</td></tr>
 <tr><td>each shot</td><td><code>$ALCD,35,100,0,108,0,*</code> …</td><td>Mag decrementing, slot 0, reserve, heat</td></tr>
 <tr><td>each trigger</td><td><code>$BUT,0,1,*</code> / <code>$BUT,0,0,*</code></td><td>Press / release</td></tr>
@@ -214,12 +215,12 @@ $BMAP,0,0,,,,,*            &lt;-- trigger re-mapped AFTER spawn</code></pre>
 <blockquote>
 <p><strong>After a BLE drop, re-send the whole head.</strong> Re-sending the full sequence (<code>$CLEAR</code>, <code>$START</code>, …, <code>$SPAWN,,*</code>, <code>$AMMO</code>) on a fresh link brought a gun back in every bench case.</p>
 </blockquote>
-<pre><button class="copy" type="button">Copy</button><code class="language-text"># Clean end-of-game, as the official app does it (note the ~3.9 s settle before the last $PLAY):
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-text"># Clean end-of-game, as the official app does it (note the ~3.9 s settle before the last $PLAY):
 $VOL,69,0,*
 $HLED,,6,,,,,*
 $STOP,*
 $CLEAR,*
-$PLAY,VSF,4,6,JAY,,,,*     # victory sting (slot 1) + &quot;victory&quot; announcer (slot 4); solo game: $PLAY,VS6,4,6,,,,,*</code></pre>
+$PLAY,VSF,4,6,JAY,,,,*     # victory sting (slot 1) + &quot;victory&quot; announcer (slot 4); solo game: $PLAY,VS6,4,6,,,,,*</code></pre></div>
 <h3 id="do-i-need-the-reload-handle-pull">Do I need the reload-handle pull?</h3>
 <p>No. The manual&#39;s reload-handle pull is the <em>local</em> start; <code>$SPAWN,,*</code> is the <em>remote</em> one. Both exist.</p>
 <h3 id="where-do-respawn-time-game-time-lives-and-score-to-win-go">Where do respawn time, game time, lives and score-to-win go?</h3>
@@ -231,13 +232,13 @@ $PLAY,VSF,4,6,JAY,,,,*     # victory sting (slot 1) + &quot;victory&quot; announ
 <blockquote>
 <p><strong>A weapon is data, not firmware.</strong> The gun has no weapons baked in; the host sends a full <code>$WEAP</code> frame into one of <strong>six slots (0-5)</strong>. The field <em>names</em> come from the Callsign app&#39;s metadata (declaration order = wire order); the <em>positions and meanings</em> below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.</p>
 </blockquote>
-<pre><button class="copy" type="button">Copy</button><code class="language-text"># Two known-good frames (slot 0 Assault Rifle, slot 1 Charge Rifle):
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-text"># Two known-good frames (slot 0 Assault Rifle, slot 1 Charge Rifle):
 $WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*
 $WEAP,1,,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*
 # A captured Shotgun (slot 1): the only stock weapon with the extra-headset block populated:
-$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*</code></pre>
+$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*</code></pre></div>
 <p><strong>Token map</strong> (0-indexed: <code>$WEAP,&lt;t0&gt;,&lt;t1&gt;,…,*</code>; the slot is t0)</p>
-<div class="table-wrap tall"><table><thead><tr><th>tok</th><th>Field</th><th>AR</th><th>Charge Rifle</th><th>Meaning</th></tr></thead><tbody><tr><td>0</td><td>slot</td><td>0</td><td>1</td><td>Weapon slot 0-5. Slot 4 = melee by convention (gyro swing, <code>$BMAP,8,4</code>).</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="tok table, scrollable"><table><thead><tr><th>tok</th><th>Field</th><th>AR</th><th>Charge Rifle</th><th>Meaning</th></tr></thead><tbody><tr><td>0</td><td>slot</td><td>0</td><td>1</td><td>Weapon slot 0-5. Slot 4 = melee by convention (gyro swing, <code>$BMAP,8,4</code>).</td></tr>
 <tr><td>1</td><td>slotType / mode flag</td><td>n/a</td><td>n/a</td><td><code>2</code> on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); <code>1</code> on melee; <code>0</code> rail gun; empty otherwise. Not fire mode.</td></tr>
 <tr><td>2</td><td>n/a</td><td>100</td><td>100</td><td>(unknown)</td></tr>
 <tr><td>3</td><td>primaryDamageType</td><td>0</td><td>8</td><td><strong>The IR word&#39;s B field / <code>$SIR</code> protocol key.</strong> Writing a type here is echoed by the victim in <code>$HIR</code> token 2 and selects its <code>$SIR</code> row. DamageType enum: 0 Standard, 1 MedicHeal, 2 ActivateShield, 3 RallyPulse, 4 Radiation, 5 Cryogenic, 6 ArmorPiercing, 7 EMP, 8 Shrapnel, 9 StickyBomb, 10 StandardLethalExplosive, 11 NonLethalExplosive, 12 ShottyPellets, 13 MeleeDamage, 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. The wire position is bench-proven; the enum names come from the APK.</td></tr>
@@ -284,7 +285,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 </ol>
 </blockquote>
 <p><strong>Stock weapon signatures</strong> (fire sound to weapon to behaviour, as named by the operator at capture)</p>
-<div class="table-wrap tall"><table><thead><tr><th>t27</th><th>Weapon</th><th>Fire mode / notes</th></tr></thead><tbody><tr><td><code>R01</code></td><td>Assault Rifle</td><td>full auto</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="t27 table, scrollable"><table><thead><tr><th>t27</th><th>Weapon</th><th>Fire mode / notes</th></tr></thead><tbody><tr><td><code>R01</code></td><td>Assault Rifle</td><td>full auto</td></tr>
 <tr><td><code>R18</code></td><td>Burst Rifle</td><td>3-round burst (t20=9, t23=275)</td></tr>
 <tr><td><code>R23</code></td><td>Force Rifle</td><td>3-round burst (t23=250), five-part reload</td></tr>
 <tr><td><code>R12</code></td><td>Bolt Rifle</td><td>single shot; carries no t28/t29</td></tr>
@@ -316,7 +317,7 @@ ship that way.</p>
 <h2 id="gset-and-pset-game-and-player-settings"><code>$GSET</code> and <code>$PSET</code>: game and player settings</h2>
 <p>These two frames set the on-gun rules and the player&#39;s pools, identity and voice pack.</p>
 <p><strong><code>$GSET,&lt;t1&gt;,…,&lt;t8&gt;,*</code></strong>, validated against the captured <code>$GSET,0,0,1,0,1,0,50,1,*</code></p>
-<div class="table-wrap"><table><thead><tr><th>#</th><th>Field</th><th>Captured</th><th>Meaning</th></tr></thead><tbody><tr><td>1</td><td>friendlyFire</td><td>0 / 1</td><td><strong>Firmware-enforced, both directions.</strong> 0 blocks same-team damage <em>and</em> heals from enemies; 1 opens the gate. Replicated twice with alternating values plus control.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="# table, scrollable"><table><thead><tr><th>#</th><th>Field</th><th>Captured</th><th>Meaning</th></tr></thead><tbody><tr><td>1</td><td>friendlyFire</td><td>0 / 1</td><td><strong>Firmware-enforced, both directions.</strong> 0 blocks same-team damage <em>and</em> heals from enemies; 1 opens the gate. Replicated twice with alternating values plus control.</td></tr>
 <tr><td>2</td><td>outdoorMode</td><td>0</td><td>The <strong>indoor/outdoor</strong> setting, the same one the gun toggles natively on a 3 second ALT hold. Outdoor raises IR range, hit-LED brightness and blast radius; indoor shrinks them. See <a href="/manual/operate">Operating the BRX</a>. Field name and mapping are APK-decoded; <strong>setting it over BLE and observing the change is untested</strong>.</td></tr>
 <tr><td>3</td><td>gunLaserRegion</td><td>1</td><td><strong>IR transmit power, as a regional legal limit</strong> (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; <strong>untested on the bench</strong>, and whether it is two coarse levels or finer is unmapped.</td></tr>
 <tr><td>4</td><td>autoAmbientLight</td><td>0</td><td>APK field name. The user guide describes a sunlight IR-noise filter; whether this field is that control is unmapped. Not exercised on the bench.</td></tr>
@@ -328,7 +329,7 @@ ship that way.</p>
 <p><strong>There is no respawn, time, lives or score token.</strong> Three captures at respawn 5/15/30 s and different clocks produced byte-identical <code>$GSET</code> and <code>$PSET</code>, and the 8-field map from the app metadata contains none of them. Those live in the host. Stop looking.</p>
 </blockquote>
 <p><strong><code>$PSET,&lt;t1&gt;,…,*</code></strong>, sample <code>$PSET,6,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*</code></p>
-<div class="table-wrap"><table><thead><tr><th>tok</th><th>Field</th><th>Sample</th><th>Meaning</th></tr></thead><tbody><tr><td>1</td><td><strong>player id</strong></td><td>6</td><td><strong>0-based, 0-63 (6 bits)</strong>. The app&#39;s UI shows 1-64 and writes id−1 (app 7 gives wire 6, app 64 gives 63, an out-of-range 69 clamps to 63). Ends up in every IR shot&#39;s P field and comes back as <code>$HIR</code> token 3 on whoever you hit.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="tok table, scrollable"><table><thead><tr><th>tok</th><th>Field</th><th>Sample</th><th>Meaning</th></tr></thead><tbody><tr><td>1</td><td><strong>player id</strong></td><td>6</td><td><strong>0-based, 0-63 (6 bits)</strong>. The app&#39;s UI shows 1-64 and writes id−1 (app 7 gives wire 6, app 64 gives 63, an out-of-range 69 clamps to 63). Ends up in every IR shot&#39;s P field and comes back as <code>$HIR</code> token 3 on whoever you hit.</td></tr>
 <tr><td>2</td><td>n/a</td><td>0</td><td>0 in every capture; 0/1/7 gave byte-identical behaviour. Inert.</td></tr>
 <tr><td>3</td><td>HP</td><td>45</td><td>Starting/max HP. Echoed as <code>$LCD</code> token 1 after <code>$SPAWN</code>.</td></tr>
 <tr><td>4</td><td>armor</td><td>70</td><td>Armor pool (<code>$LCD</code> token 2, <code>$HP</code> token 2).</td></tr>
@@ -344,11 +345,11 @@ ship that way.</p>
 <blockquote>
 <p><strong>The key idea.</strong> An incoming IR word carries a 4-bit protocol (B) and a 2-bit subtype (U). The victim looks up the <code>$SIR</code> row with that <code>&lt;protocol, subtype&gt;</code> key; the row&#39;s <strong>function</strong> decides what the word&#39;s 8-bit magnitude is applied to: damage, heal, armor, shield, or a status. <strong>No matching row means the hit is silently ignored.</strong> The same is true of a <strong>wrongly-teamed</strong> shot: damage applies only from an enemy team and support only from your own, and a rejected frame emits <strong>no <code>$HIR</code> at all</strong>. It never reaches BLE. 16 × 4 = 64 addressable cells, all writable per game over BLE.</p>
 </blockquote>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Format</td><td><code>$SIR,&lt;irProtocol&gt;,&lt;subtype&gt;,&lt;soundID&gt;,&lt;function&gt;,&lt;p5&gt;,&lt;p6&gt;,&lt;p7&gt;,&lt;p8&gt;,*</code></td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Format</td><td><code>$SIR,&lt;irProtocol&gt;,&lt;subtype&gt;,&lt;soundID&gt;,&lt;function&gt;,&lt;p5&gt;,&lt;p6&gt;,&lt;p7&gt;,&lt;p8&gt;,*</code></td></tr>
 <tr><td><code>&lt;soundID&gt;</code></td><td>Plays <strong>on the victim</strong> when the row fires (<code>VA16</code> &quot;armor suit&quot;, <code>VA8C</code> &quot;shields online&quot;, <code>H29</code> stim-pack).</td></tr>
 <tr><td><code>&lt;p5&gt;</code> to <code>&lt;p8&gt;</code></td><td>Do <strong>not</strong> scale damage (<code>0,0,1</code>, <code>0,50,1</code>, <code>0,100,2,60</code>, <code>0,200,2,60</code>, <code>50,100,2,60</code> all landed exactly the magnitude).</td></tr>
 <tr><td>Max distinct IR recognitions per game</td><td>14 (community figure).</td></tr></tbody></table></div>
-<pre><button class="copy" type="button">Copy</button><code class="language-text"># The stock 10-row table the official app sends (Team Arena):
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-text"># The stock 10-row table the official app sends (Team Arena):
 $SIR,0,0,,1,0,0,1,,*        standard weapons (AR, SMG, snipers, shotgun…): plain damage
 $SIR,0,1,,36,0,0,1,,*       Force Rifle / Sniper Rifle: fn 36 (floor of magnitude ×1.25)
 $SIR,0,3,,37,0,0,1,,*       AMR / Bolt Rifle / Burst Rifle: fn 37 (magnitude ×2)
@@ -360,9 +361,9 @@ $SIR,8,0,,38,0,0,1,,*       Charge Rifle
 $SIR,9,3,,24,10,0,,,*       Energy Launcher (fn 24 is a no-pool status; deals zero damage as shipped)
 $SIR,10,0,X13,1,0,100,2,60,* Rocket Launcher
 $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
-$SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)</code></pre>
+$SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)</code></pre></div>
 <p><strong>Function map.</strong> Measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, <strong>at the gun-body sensor (<code>$HIR</code> tok1 = 4) from about 40 cm</strong>. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a <strong>headset-dome</strong> hit behaves the same is <strong>untested</strong>. The two multiplier functions, 36 and 37, were measured again on 2026-09-02 across magnitudes 20, 40, 9 and 7 and across 8 different <code>$SIR</code> row-tail shapes, 16 trials, each with an fn 1 control that had to read the magnitude exactly. The row tail does not change the multiplier.</p>
-<div class="table-wrap"><table><thead><tr><th>Class</th><th>Function ids</th><th>Measured behaviour</th><th>Polarity</th></tr></thead><tbody><tr><td>Standard damage</td><td>1, <strong>3</strong>, 4, 5, 7, 29, 30, 33, 38</td><td>−20 per hit, drains shields, then armor, then HP</td><td>enemy only</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Class table, scrollable"><table><thead><tr><th>Class</th><th>Function ids</th><th>Measured behaviour</th><th>Polarity</th></tr></thead><tbody><tr><td>Standard damage</td><td>1, <strong>3</strong>, 4, 5, 7, 29, 30, 33, 38</td><td>−20 per hit, drains shields, then armor, then HP</td><td>enemy only</td></tr>
 <tr><td><strong>Armor-piercing</strong></td><td>2, 6 (+17, 21 enemy-side)</td><td>HP 45 to 25 to 5 with armor <strong>and shields</strong> untouched</td><td>enemy only</td></tr>
 <tr><td><strong>×1.25 damage (truncated)</strong></td><td>36</td><td>magnitude 20 lands as <strong>25</strong>, 40 as <strong>50</strong>, 9 as <strong>11</strong>, 7 as <strong>8</strong>. The result is the <strong>floor</strong>: 7 × 1.25 = 8.75 lands as 8, not 9</td><td>enemy only</td></tr>
 <tr><td><strong>×2 damage</strong></td><td>37</td><td>magnitude 20 lands as <strong>40</strong>, 40 as <strong>80</strong>, 9 as <strong>18</strong>, 7 as <strong>14</strong></td><td>enemy only</td></tr>
@@ -393,7 +394,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <h2 id="events-what-the-gun-tells-you">Events: what the gun tells you</h2>
 <p>Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun keeps no game state.</p>
 <p><strong><code>$HIR,&lt;sensor&gt;,&lt;irProto&gt;,&lt;shooterId&gt;,&lt;shooterTeam&gt;,&lt;magnitude&gt;,&lt;crit&gt;,&lt;subtype&gt;,*</code></strong></p>
-<div class="table-wrap"><table><thead><tr><th>tok</th><th>Field</th><th>Values</th><th>Notes</th></tr></thead><tbody><tr><td>1</td><td>sensor that caught the IR</td><td>0 headset <strong>front</strong> dome · 1 headset <strong>back</strong> dome · 4 gun body</td><td>Isolated with every other sensor covered. Trust for directional logic <strong>only at field distance</strong>. Point-blank floods every receiver, and the first to decode reports.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="tok table, scrollable"><table><thead><tr><th>tok</th><th>Field</th><th>Values</th><th>Notes</th></tr></thead><tbody><tr><td>1</td><td>sensor that caught the IR</td><td>0 headset <strong>front</strong> dome · 1 headset <strong>back</strong> dome · 4 gun body</td><td>Isolated with every other sensor covered. Trust for directional logic <strong>only at field distance</strong>. Point-blank floods every receiver, and the first to decode reports.</td></tr>
 <tr><td>2</td><td>shooter&#39;s IR protocol</td><td>0 standard · 10 rocket · 13 melee …</td><td>= the shooter&#39;s <code>$WEAP</code> t3 / IR word B field.</td></tr>
 <tr><td>3</td><td><strong>shooter player id</strong></td><td>0-63</td><td>= the shooter&#39;s <code>$PSET</code> token 1. 32/32 hits both directions on two guns with distinct ids.</td></tr>
 <tr><td>4</td><td><strong>shooter team</strong></td><td>0-3</td><td>= the shooter&#39;s effective <code>$TID &amp; 3</code>.</td></tr>
@@ -404,7 +405,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <p><strong>Not every <code>$HIR</code> is damage.</strong> Pickups, heals and status effects arrive on the same message type. The protocol/subtype tells you which row fired.</p>
 </blockquote>
 <p><strong>The other events</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Message</th><th>Decode</th></tr></thead><tbody><tr><td><code>$HP,&lt;hp&gt;,&lt;armor&gt;,&lt;shield&gt;,*</code></td><td>Pools after the hit; same millisecond as its <code>$HIR</code>. <code>$HP,0,0,0</code> = death. Example run at 9/hit: armor 70 to 61 down to 0, then HP 45 to 43 to 34 down to 0. Writes (<code>$LIFE</code>/<code>$BUMP</code>) do not self-emit <code>$HP</code>.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Message table, scrollable"><table><thead><tr><th>Message</th><th>Decode</th></tr></thead><tbody><tr><td><code>$HP,&lt;hp&gt;,&lt;armor&gt;,&lt;shield&gt;,*</code></td><td>Pools after the hit; same millisecond as its <code>$HIR</code>. <code>$HP,0,0,0</code> = death. Example run at 9/hit: armor 70 to 61 down to 0, then HP 45 to 43 to 34 down to 0. Writes (<code>$LIFE</code>/<code>$BUMP</code>) do not self-emit <code>$HP</code>.</td></tr>
 <tr><td><code>$LCD,&lt;hp&gt;,&lt;armor&gt;,&lt;t3&gt;,&lt;t4&gt;,&lt;mag&gt;,&lt;reserve&gt;,*</code></td><td>Health/armor HUD echo on <code>$START</code>/<code>$SPAWN</code>/death. Tokens 3-4: (unknown).</td></tr>
 <tr><td><code>$ALCD,&lt;mag&gt;,&lt;t2&gt;,&lt;slot&gt;,&lt;reserve&gt;,&lt;heat&gt;,*</code></td><td>Ammo/weapon HUD (token 2: (unknown)): one frame per round fired <em>and</em> per round reloaded; slot changes on alt-fire cycle (0 to 1 and back); melee (slot 4) appears as an isolated frame. Heat is a raw level that exceeds 100.</td></tr>
 <tr><td><code>$BUT,&lt;id&gt;,&lt;state&gt;,*</code></td><td>0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire.</td></tr>
@@ -439,7 +440,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <p><strong>Credit.</strong> The layout was decoded from <strong>LaserTagMods&#39; NRFL-Bases</strong> <code>node1.ino</code> (a referee-free domination base that receives BRX shots), then bench-verified: timings, bit count, field offsets and the parity rule were all confirmed by pushing known <code>$WEAP</code> frames over BLE and watching only the expected bits move. A stock tagger then <strong>accepted a fully synthetic word</strong> from our emitter (invented player 42 / team 2 / damage 33 landed as a real <code>$HIR</code> and killed the player).</p>
 </blockquote>
 <p><strong>Physical layer</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Carrier</td><td><strong>38 kHz</strong>, <strong>980 nm</strong> (the wavelength on the gun&#39;s Class 1 IEC 60825-1 laser label; we have not measured it ourselves). Many hobby IR parts are centred on 940 nm, so pick 980 nm-capable receivers. A standard VS1838B/TSOP demodulating receiver recovers this carrier. Laser rated 16.9 mW on the gun&#39;s USB record.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Carrier</td><td><strong>38 kHz</strong>, <strong>980 nm</strong> (the wavelength on the gun&#39;s Class 1 IEC 60825-1 laser label; we have not measured it ourselves). Many hobby IR parts are centred on 940 nm, so pick 980 nm-capable receivers. A standard VS1838B/TSOP demodulating receiver recovers this carrier. Laser rated 16.9 mW on the gun&#39;s USB record.</td></tr>
 <tr><td>Sync</td><td>One ~2 ms LOW pulse before the frame, measured <strong>1988-1991 µs</strong>.</td></tr>
 <tr><td>Bits</td><td>Each bit is a LOW pulse; <strong>long ≈ 1000 µs = 1</strong> (measured 990-994), <strong>short ≈ 500 µs = 0</strong> (489-512), spaces 489-512 µs; decision threshold ~750 µs.</td></tr>
 <tr><td>End of frame</td><td>A trailing short pulse (&lt; 250 µs in node1&#39;s test).</td></tr></tbody></table></div>
@@ -447,7 +448,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <p><strong>Sync gating.</strong> A <code>&gt; 1500 µs</code> sync gate is not BRX-unique (a Sony SIRC remote&#39;s 2390 µs header passes it). Bound sync to about 1800-2200 µs and require 25 bits plus the parity rule.</p>
 </blockquote>
 <p><strong>Word layout</strong> (transmit order after sync; 25 bits)</p>
-<div class="table-wrap"><table><thead><tr><th>Field</th><th style="text-align:right">Bits</th><th>Offset</th><th>Meaning</th><th>Bench evidence</th></tr></thead><tbody><tr><td><strong>B</strong></td><td style="text-align:right">4</td><td>0-3</td><td>IR protocol / damage type = <code>$WEAP</code> t3 = <code>$HIR</code> tok2 = <code>$SIR</code> protocol key</td><td>AR read 0; rocket (t3=10) read 10; native melee read 13</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Field table, scrollable"><table><thead><tr><th>Field</th><th style="text-align:right">Bits</th><th>Offset</th><th>Meaning</th><th>Bench evidence</th></tr></thead><tbody><tr><td><strong>B</strong></td><td style="text-align:right">4</td><td>0-3</td><td>IR protocol / damage type = <code>$WEAP</code> t3 = <code>$HIR</code> tok2 = <code>$SIR</code> protocol key</td><td>AR read 0; rocket (t3=10) read 10; native melee read 13</td></tr>
 <tr><td><strong>P</strong></td><td style="text-align:right">6</td><td>4-9</td><td>player id 0-63 = <code>$PSET</code> token 1 = <code>$HIR</code> tok3</td><td>matched the registry</td></tr>
 <tr><td><strong>T</strong></td><td style="text-align:right">2</td><td>10-11</td><td>team id 0-3 = <code>$TID &amp; 3</code> = <code>$HIR</code> tok4</td><td>matched</td></tr>
 <tr><td><strong>D</strong></td><td style="text-align:right">8</td><td>12-19</td><td>magnitude = <code>$WEAP</code> t5 = <code>$HIR</code> tok5</td><td>pushed 22, then 9, then 115; only these bits moved</td></tr>
@@ -458,7 +459,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 <blockquote>
 <p><strong>Parity: what genuine frames emit vs what the gun checks.</strong> Real BRX frames set Z by parity over bits 0-22: <strong>odd number of ones gives <code>01</code>, even gives <code>10</code></strong> (4/4 captured frames). But the gun&#39;s acceptance test is only <strong><code>Z0 ≠ Z1</code></strong>: <code>01</code> and <code>10</code> both land 8/8, <code>00</code> and <code>11</code> are rejected 0/8. Compute the true parity for fidelity; use the mismatch to tell your own traffic from a real gun&#39;s.</p>
 </blockquote>
-<pre><button class="copy" type="button">Copy</button><code class="language-python">def encode_word(proto: int, player: int, team: int, magnitude: int, crit: int, subtype: int) -&gt; str:
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-python">def encode_word(proto: int, player: int, team: int, magnitude: int, crit: int, subtype: int) -&gt; str:
     &quot;&quot;&quot;25-bit BRX IR word as a bit string (MSB of each field first), Z = genuine-frame parity.&quot;&quot;&quot;
     bits = (f&quot;{proto &amp; 0xF:04b}{player &amp; 0x3F:06b}{team &amp; 0x3:02b}&quot;
             f&quot;{magnitude &amp; 0xFF:08b}{crit &amp; 1:01b}{subtype &amp; 0x3:02b}&quot;)
@@ -474,9 +475,9 @@ def decode_word(bits: str) -&gt; dict:
         &quot;crit&quot;: int(payload[20]), &quot;subtype&quot;: int(payload[21:23], 2),
         &quot;accepted&quot;: z[0] != z[1],
         &quot;parity_matches&quot;: z == (&quot;01&quot; if payload.count(&quot;1&quot;) % 2 else &quot;10&quot;),
-    }</code></pre>
+    }</code></pre></div>
 <p><strong>Native emissions captured off the air</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Source</th><th>Word</th><th>Note</th></tr></thead><tbody><tr><td>Assault Rifle</td><td>proto 0, magnitude 9</td><td>The stock AR emits 9, not the printed 24</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Source table, scrollable"><table><thead><tr><th>Source</th><th>Word</th><th>Note</th></tr></thead><tbody><tr><td>Assault Rifle</td><td>proto 0, magnitude 9</td><td>The stock AR emits 9, not the printed 24</td></tr>
 <tr><td>Shotgun</td><td>proto 0, magnitude 45</td><td></td></tr>
 <tr><td>Sniper</td><td>proto 0, subtype 1, magnitude 80</td><td></td></tr>
 <tr><td>Rocket Launcher</td><td>proto 10, magnitude 115</td><td></td></tr>
@@ -500,12 +501,12 @@ def decode_word(bits: str) -&gt; dict:
 <p>The BRX has two ports: charging, and a separate micro-USB <strong>&quot;Programing Port&quot;</strong>. Plugged into a computer it enumerates as a <strong>Teensyduino USB Serial</strong> CDC device (Windows <code>COMx</code>, macOS <code>/dev/tty.usbmodem*</code>, Linux <code>/dev/ttyACM*</code>, VID <code>16C0</code>). Baud is ignored. This is what the community means by &quot;PuTTY into the tagger&quot;. The command set came from LaserTagMods&#39; headset-pairing note.</p>
 </blockquote>
 <p><strong>What the port does and does not do</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Sent</th><th>Result</th></tr></thead><tbody><tr><td><code>$PING,*</code>, <code>$VERSION,*</code>, any <code>$</code> frame</td><td><strong>Echoed back</strong> (local echo is on, which is easy to mistake for a reply); with CR: <code>ERROR</code></td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Sent table, scrollable"><table><thead><tr><th>Sent</th><th>Result</th></tr></thead><tbody><tr><td><code>$PING,*</code>, <code>$VERSION,*</code>, any <code>$</code> frame</td><td><strong>Echoed back</strong> (local echo is on, which is easy to mistake for a reply); with CR: <code>ERROR</code></td></tr>
 <tr><td><code>?</code>, <code>help</code>, <code>AT</code>, <code>status</code>, …</td><td><code>ERROR</code></td></tr>
 <tr><td><code>QUERY</code> + CR</td><td>Dumps the device record (below). Case-insensitive.</td></tr>
 <tr><td><code>SETUP</code> + CR</td><td>Enters factory provisioning; prompts (EN/中文) for the <strong>headset&#39;s</strong> serial number</td></tr>
 <tr><td>Hold SELECT while powering on with USB connected</td><td>Mass-storage mode exposing the on-board sound storage (the sound-pack update path). This is a different mode from the console (community)</td></tr></tbody></table></div>
-<pre><button class="copy" type="button">Copy</button><code class="language-text">QUERY
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-text">QUERY
 Gun Info
 Gun Version: v4.32
 Serial Number/Head PIN: &lt;SERIAL&gt;      &lt;- matches the sticker on the paired headset
@@ -525,7 +526,7 @@ Grenade Pin: &lt;PIN&gt;
 Laser: 16.9 mW
 PCB-5
 BTchip- 4
-BT central V: devhost.03</code></pre>
+BT central V: devhost.03</code></pre></div>
 <blockquote>
 <p><strong>Real-format quirks</strong> the parser has to survive: <code>Gun Name</code> is NUL-padded, lines end <code>\r\r\n</code>, <code>Laser</code> can read <code>UNTESTED</code> instead of a number, <code>Grenade Pin</code> is a real non-zero value. <code>brx-mcp</code> ships <code>parse_query()</code> and <code>python -m brx_mcp usb-query [port]</code>, which saves a backup to <code>~/.brx-mcp/device-backups/</code>.</p>
 </blockquote>
@@ -547,7 +548,7 @@ BT central V: devhost.03</code></pre>
 <h2 id="headset-link-and-what-survives">Headset, link and what survives</h2>
 <p>Which state lives where, and what a BLE drop, a headset switch-off, or a power-cycle each wipe. Read this before you write code that reconnects to a gun.</p>
 <p><strong>State survival matrix</strong></p>
-<div class="table-wrap"><table><thead><tr><th>State</th><th>BLE drop / reconnect</th><th>Headset switched off</th><th>Power-cycle</th></tr></thead><tbody><tr><td>Game config (<code>$GSET</code>/<code>$PSET</code>/<code>$WEAP</code>/<code>$SIR</code>/<code>$BMAP</code>)</td><td>(unknown). Re-send the full head after a reconnect</td><td>Gun sends <code>$DISCONNECT,*</code> and drops the link; config: (unknown)</td><td><strong>Wiped</strong>. <code>$SPAWN</code> then echoes <code>$LCD,0,0,0,0,0,0</code> + <code>$ALCD,0,0,0,0,0</code></td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="State table, scrollable"><table><thead><tr><th>State</th><th>BLE drop / reconnect</th><th>Headset switched off</th><th>Power-cycle</th></tr></thead><tbody><tr><td>Game config (<code>$GSET</code>/<code>$PSET</code>/<code>$WEAP</code>/<code>$SIR</code>/<code>$BMAP</code>)</td><td>(unknown). Re-send the full head after a reconnect</td><td>Gun sends <code>$DISCONNECT,*</code> and drops the link; config: (unknown)</td><td><strong>Wiped</strong>. <code>$SPAWN</code> then echoes <code>$LCD,0,0,0,0,0,0</code> + <code>$ALCD,0,0,0,0,0</code></td></tr>
 <tr><td>Alive/dead + pools</td><td>Survives (a dead gun stays dead)</td><td>n/a</td><td>Reset</td></tr>
 <tr><td>Ammo</td><td>Survives</td><td>n/a</td><td>Wiped</td></tr>
 <tr><td><code>$TID</code> team / LED colour</td><td>Survives; colour is painted at <code>$SPAWN</code></td><td>n/a</td><td>Reset</td></tr>
@@ -559,11 +560,11 @@ BT central V: devhost.03</code></pre>
 <p><strong>Headset off means no BLE.</strong> Switching a linked headset off makes the gun send <code>$DISCONNECT,*</code> and drop. A headset-less gun &quot;connects&quot;, answers a quick <code>$PING</code>, then dies within seconds and echoes <strong>nothing</strong> to a config head. A power-cycled gun needs its headset re-linked before BLE holds. <strong>A held link plus <code>$ALCD</code> echoes <em>is</em> the headset check.</strong> There is no dedicated probe. The official app silently drops a headset-less gun within about 1.2 s.</p>
 </blockquote>
 <p><strong>Headset behaviours</strong> (native and autonomous: they work under any host&#39;s game head)</p>
-<div class="table-wrap"><table><thead><tr><th>Headset LED</th><th>When</th><th>Evidence</th></tr></thead><tbody><tr><td>Slow <strong>rainbow</strong> blink</td><td>Disconnected / not paired. The pre-game tell for &quot;this gun will not join&quot;</td><td>operator, repeatable</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Headset LED table, scrollable"><table><thead><tr><th>Headset LED</th><th>When</th><th>Evidence</th></tr></thead><tbody><tr><td>Slow <strong>rainbow</strong> blink</td><td>Disconnected / not paired. The pre-game tell for &quot;this gun will not join&quot;</td><td>operator, repeatable</td></tr>
 <tr><td>Team colour (red/blue…)</td><td><strong>Pre-game only</strong>; goes dark once the game starts</td><td>operator</td></tr>
 <tr><td>Dark</td><td>During play (normal)</td><td>operator</td></tr></tbody></table></div>
 <p><strong>Other headset facts</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Fact</th><th>Source</th></tr></thead><tbody><tr><td>The headset syncs team colour from the tagger</td><td>bench observation</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Fact table, scrollable"><table><thead><tr><th>Fact</th><th>Source</th></tr></thead><tbody><tr><td>The headset syncs team colour from the tagger</td><td>bench observation</td></tr>
 <tr><td><code>$VERSION</code> token 2 = headset firmware (<code>hds.59</code>); USB <code>QUERY</code> shows headset version and battery</td><td>captures / USB</td></tr>
 <tr><td>Headset disconnecting <strong>mid-game</strong> locks the gun until it reconnects (anti-cheat); a gun booted with <strong>no</strong> headset shoots normally in local play</td><td>Battle Company manual V7</td></tr>
 <tr><td>Headset pairing can take up to 3 minutes with many BT devices nearby</td><td>manual V7</td></tr>
@@ -578,15 +579,15 @@ BT central V: devhost.03</code></pre>
 <blockquote>
 <p><code>brx-mcp</code> is the project&#39;s lab instrument: a pure-Python (<code>bleak</code> + <code>mcp</code>) CLI and MCP server that runs on <strong>whichever machine owns the Bluetooth radio</strong>: Windows, macOS or Linux. It enforces the known-safe list, refuses malformed frames, records every session, and has a <code>panic</code> tool.</p>
 </blockquote>
-<pre><button class="copy" type="button">Copy</button><code class="language-bash"># on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-bash"># on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
 python -m venv .venv &amp;&amp; . .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -e ./mcp
 
 # first contact, no MCP client needed:
 python -m brx_mcp scan             # find taggers (Gen2/3 advertise the Nordic UART service)
 python -m brx_mcp identify &lt;addr&gt;  # $PING → generation check, firmware, host image
-python -m brx_mcp listen &lt;addr&gt;    # read-only live console: pull the trigger, watch $BUT/$HIR/$HP</code></pre>
-<pre><button class="copy" type="button">Copy</button><code class="language-bash"># ...and now actually play. Your laptop drives the guns directly over BLE,
+python -m brx_mcp listen &lt;addr&gt;    # read-only live console: pull the trigger, watch $BUT/$HIR/$HP</code></pre></div>
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-bash"># ...and now actually play. Your laptop drives the guns directly over BLE,
 # so everyone stays within BLE range of it (a room or a yard).
 python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt;             # a real Team Deathmatch with live scoring
 python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt; outdoor=1 volume=90   # outdoors: louder, longer range
@@ -597,13 +598,13 @@ python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt; outdoor=1 volume=90   # o
 python -m brx_mcp game-sim tdm                         # narrated demo match in your terminal
 
 # read the USB device record (tagger on the Programing Port):
-python -m brx_mcp usb-query                            # QUERY over the Teensy serial console</code></pre>
-<pre><button class="copy" type="button">Copy</button><code class="language-bash"># register with Claude Code as an MCP server:
+python -m brx_mcp usb-query                            # QUERY over the Teensy serial console</code></pre></div>
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-bash"># register with Claude Code as an MCP server:
 claude mcp add brx -- python -m brx_mcp
 # WSL2 has no Bluetooth: develop in WSL, run the server with Windows Python:
-claude mcp add brx -- python.exe -m brx_mcp</code></pre>
+claude mcp add brx -- python.exe -m brx_mcp</code></pre></div>
 <p><strong>CLI commands</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody><tr><td><code>scan</code> · <code>identify &lt;addr&gt;</code> · <code>listen &lt;addr&gt;</code> · <code>probe &lt;addr&gt;</code></td><td>Discover, check, watch, probe a single gun</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Command table, scrollable"><table><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody><tr><td><code>scan</code> · <code>identify &lt;addr&gt;</code> · <code>listen &lt;addr&gt;</code> · <code>probe &lt;addr&gt;</code></td><td>Discover, check, watch, probe a single gun</td></tr>
 <tr><td><code>startgame &lt;addr&gt;</code> · <code>deathmatch &lt;addr&gt;</code> · <code>arena &lt;addr1&gt; &lt;addr2&gt;</code> · <code>fieldstart …</code></td><td>Single-purpose game drivers (the arm sequence)</td></tr>
 <tr><td><code>play &lt;mode&gt; &lt;addr…&gt; [volume=N]</code></td><td>Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction. Volume defaults to 80, the indoor play level; pass <code>outdoor=1 volume=90</code> outdoors</td></tr>
 <tr><td><code>game-sim &lt;mode&gt;</code> · <code>extraction-sim</code></td><td>Hardware-free narrated simulations</td></tr>
@@ -611,12 +612,12 @@ claude mcp add brx -- python.exe -m brx_mcp</code></pre>
 <tr><td><code>usb-query [port]</code> · <code>enroll</code> · <code>armory</code> · <code>rename</code> · <code>reset</code></td><td>USB device record, armory enrolment, persistent <code>$NAME</code>, reset</td></tr>
 <tr><td><code>ir-capture</code> · <code>ir-emit</code> · <code>ir-range</code></td><td>Drive the ESP32 IR transceiver rig</td></tr></tbody></table></div>
 <p><strong><code>diag-game</code>: the repeatable diagnostic game</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>What</td><td>A structured pass/fail scorecard of every BLE capability on one tagger: connectivity (ping, firmware, battery), config + spawn echoes, trigger and button events, audio (a sound by id, volume audible at 75), team LEDs, and with a second gun as shooter, damage (armor absorbs, <code>$LIFE</code> heals) and <code>$HIR</code> shooter attribution, plus the grenade Hill/Respawn beacon (<code>$HIR</code> token 2 = 15).</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>What</td><td>A structured pass/fail scorecard of every BLE capability on one tagger: connectivity (ping, firmware, battery), config + spawn echoes, trigger and button events, audio (a sound by id, volume audible at 75), team LEDs, and with a second gun as shooter, damage (armor absorbs, <code>$LIFE</code> heals) and <code>$HIR</code> shooter attribution, plus the grenade Hill/Respawn beacon (<code>$HIR</code> token 2 = 15).</td></tr>
 <tr><td>Run it</td><td><code>python -m brx_mcp diag-game &lt;addr&gt;</code> · <code>… 2guns</code> adds the shooter · <code>… 2guns ir</code> adds the ESP32 IR bridge. Cases a rig cannot serve <strong>skip</strong>, they do not fail; a run is <strong>CLEAN</strong> when nothing failed or errored.</td></tr>
 <tr><td>How it judges</td><td>Declarative cases (<code>diag/cases.py</code>) with pure predicates over the parsed receive stream (<code>diag/model.py</code>, unit-tested with no BLE); a human answers y/N where the wire cannot judge (&quot;did you hear it?&quot;, &quot;are the LEDs blue?&quot;). Reports save as JSON under <code>~/.brx-mcp/diag-reports/</code>.</td></tr>
 <tr><td>Why</td><td>A regression baseline. A firmware update or a new tagger? Re-run and diff the scorecard instead of re-deriving &quot;does health-write work?&quot; each session.</td></tr></tbody></table></div>
 <p><strong>MCP tools (what an agent can call)</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Tool</th><th>Purpose</th></tr></thead><tbody><tr><td><code>scan(duration_s)</code> · <code>identify(address)</code> · <code>diagnostics(address)</code> · <code>fleet_status(addresses)</code></td><td>Discovery and health</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Tool table, scrollable"><table><thead><tr><th>Tool</th><th>Purpose</th></tr></thead><tbody><tr><td><code>scan(duration_s)</code> · <code>identify(address)</code> · <code>diagnostics(address)</code> · <code>fleet_status(addresses)</code></td><td>Discovery and health</td></tr>
 <tr><td><code>connect(address, alias)</code> · <code>disconnect(alias)</code> · <code>list_connections()</code></td><td>Session management</td></tr>
 <tr><td><code>send(alias, command, confirm=False)</code> · <code>send_batch(alias, commands, gap_ms=100)</code></td><td>Write frames; anything outside the known-safe list needs <code>confirm=True</code></td></tr>
 <tr><td><code>get_events(alias, since_seq)</code> · <code>wait_for(alias, prefix, timeout_s)</code></td><td>Read the buffered event stream / block on a message</td></tr>
@@ -653,14 +654,14 @@ claude mcp add brx -- python.exe -m brx_mcp</code></pre>
 <li>Run the app; then <code>adb bugreport</code> (5-10 min; keep the phone still). The btsnoop log rides inside.</li>
 <li>Decode with <code>python -m brx_mcp.btsnoop</code>. This route yielded the connect ritual and the version exchange, never a game.</li>
 </ol>
-<pre><button class="copy" type="button">Copy</button><code class="language-bash">python -m brx_mcp.btsnoop capture.btsnoop            # → '&gt;&gt; $CLEAR,*' / '&lt;&lt; $LCD,…' transcript with timestamps
+<div class="code"><button class="copy" type="button">Copy</button><pre><code class="language-bash">python -m brx_mcp.btsnoop capture.btsnoop            # → '&gt;&gt; $CLEAR,*' / '&lt;&lt; $LCD,…' transcript with timestamps
 python -m brx_mcp.gsetdiff cap5.btsnoop cap6.btsnoop # byte-diff the $GSET/$PSET frames across captures
-python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table from operator-annotated captures</code></pre>
+python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table from operator-annotated captures</code></pre></div>
 <blockquote>
 <p><strong>Decoder gotchas.</strong> Apple&#39;s btsnoop export uses datalink 1001 (no HCI type byte; the type is in the record flags), which decoded to zero frames until handled. With two guns in one trace, streams must be keyed on the <strong>ACL connection handle</strong> or they merge into garbage silently.</p>
 </blockquote>
 <p><strong>Published transcripts</strong> (decoded frames only; raw btsnoop files contain all of a phone&#39;s Bluetooth traffic and are not published)</p>
-<div class="table-wrap"><table><thead><tr><th>File</th><th>Shows</th></tr></thead><tbody><tr><td><code>2026-08-23-ios-callsign-game-start.txt</code></td><td>The full working arm sequence (findings §7e)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="File table, scrollable"><table><thead><tr><th>File</th><th>Shows</th></tr></thead><tbody><tr><td><code>2026-08-23-ios-callsign-game-start.txt</code></td><td>The full working arm sequence (findings §7e)</td></tr>
 <tr><td><code>2026-08-23-ios-callsign-two-tagger-combat.txt</code></td><td><code>$HIR</code>/<code>$HP</code> damage, death, host-driven respawn (findings §7f)</td></tr>
 <tr><td><code>2026-08-23-gset-respawn15.txt</code> / <code>-respawn30.txt</code> / <code>-respawn05.txt</code></td><td>Byte-identical <code>$GSET</code> at three respawn values; <code>respawn15</code> also contains a complete game ending (findings §7n)</td></tr>
 <tr><td><code>2026-08-23-no-headset-disconnects.txt</code></td><td>App ritual completes, zero frames back, hangs up about 1.2 s later (findings §7m)</td></tr></tbody></table></div>

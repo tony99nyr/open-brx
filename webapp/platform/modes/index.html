@@ -5,7 +5,8 @@
 <meta name="description" content="This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/modes/">
 <link rel="alternate" type="text/markdown" href="/platform/modes.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -32,10 +33,10 @@ The stock on-gun and Callsign modes are a separate thing and live on the <a href
 The rest are written and covered by tests, but have never been fired at a person. That gap is real:
 a mode that has never met a gun can still surprise you.</p>
 <p><strong>Played on hardware:</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Mode</th><th>The rule</th><th>Proven by</th></tr></thead><tbody><tr><td>Team Deathmatch</td><td>Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins.</td><td>A two-gun laptop match on 2026-08-25 (frag limit, correct winner) and an outdoor two-phone match on 2026-09-01.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Mode table, scrollable"><table><thead><tr><th>Mode</th><th>The rule</th><th>Proven by</th></tr></thead><tbody><tr><td>Team Deathmatch</td><td>Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins.</td><td>A two-gun laptop match on 2026-08-25 (frag limit, correct winner) and an outdoor two-phone match on 2026-09-01.</td></tr>
 <tr><td>Free-for-all</td><td>No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock.</td><td>A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits.</td></tr></tbody></table></div>
 <p><strong>Written, never played on guns:</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Mode</th><th>The rule</th><th>What is missing</th></tr></thead><tbody><tr><td>Infection</td><td>One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock.</td><td>Rules engine and Mission Control support are both in. No live run.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Mode table, scrollable"><table><thead><tr><th>Mode</th><th>The rule</th><th>What is missing</th></tr></thead><tbody><tr><td>Infection</td><td>One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock.</td><td>Rules engine and Mission Control support are both in. No live run.</td></tr>
 <tr><td>Last Man Standing</td><td>Every player carries a fixed number of lives. Spend them all and you are out. Last player or squad standing wins.</td><td>Rules engine and Mission Control support are both in. No live run.</td></tr>
 <tr><td>Extraction</td><td>Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot.</td><td>The mode is in Mission Control&#39;s list and compiles a gun head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware.</td></tr>
 <tr><td>Counter-Strike (plant and defuse)</td><td>Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out.</td><td>Needs a station to report plant and defuse. Not in the Mission Control mode list.</td></tr>
@@ -48,7 +49,7 @@ exist only in the laptop command-line path, so neither reaches a player carrying
 <h2 id="how-a-game-is-put-together">How a game is put together</h2>
 <p>A game is one config object. Everything the guns are told is derived from it, so a game you like is
 a game you can save and run again.</p>
-<div class="table-wrap"><table><thead><tr><th>Piece</th><th>What it does</th></tr></thead><tbody><tr><td>Mode</td><td>Picks the rules and, with them, sensible defaults for the rest of this table.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Piece table, scrollable"><table><thead><tr><th>Piece</th><th>What it does</th></tr></thead><tbody><tr><td>Mode</td><td>Picks the rules and, with them, sensible defaults for the rest of this table.</td></tr>
 <tr><td>Teams</td><td>Up to 4 native teams. The team id is 2 bits in every shot, which is what makes friendly fire work on the gun itself. Beyond 4, run free-for-all and let Mission Control keep logical teams; there is no on-gun friendly-fire protection in that mode.</td></tr>
 <tr><td>Time limit</td><td>The clock. It is the only ending every player sees, because each phone counts it down locally and stops on its own even with nothing in range.</td></tr>
 <tr><td>Frag or score limit</td><td>An early end. Mission Control decides it from the events it has and tells the phones. Players in range stop; players out of range keep playing until the clock runs out.</td></tr>
@@ -61,7 +62,7 @@ a game you can save and run again.</p>
 unless you assert that every player will stay in range for the whole match.</p>
 <h2 id="loadouts">Loadouts</h2>
 <p>Every player carries three slots.</p>
-<div class="table-wrap"><table><thead><tr><th>Slot</th><th>Holds</th><th>Notes</th></tr></thead><tbody><tr><td>Primary</td><td>Any weapon</td><td>Required. Never empty.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Slot table, scrollable"><table><thead><tr><th>Slot</th><th>Holds</th><th>Notes</th></tr></thead><tbody><tr><td>Primary</td><td>Any weapon</td><td>Required. Never empty.</td></tr>
 <tr><td>Secondary</td><td>Any weapon, including the three pistols</td><td>Optional.</td></tr>
 <tr><td>Perk</td><td>One perk</td><td>Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit.</td></tr></tbody></table></div>
 <p>Five perks are offered: Body Armor (50 extra armor), Extended Mags (double the primary&#39;s magazine
@@ -69,7 +70,7 @@ and reserve), Quick Hands (half the reload time), Quick Switch (half the weapon-
 down to 0.43 s) and Easy Reload (the orange ALT button reloads, for anyone who finds the pump hard
 to work).</p>
 <p>Who picks is set per slot, per game:</p>
-<div class="table-wrap"><table><thead><tr><th>Policy</th><th>Primary</th><th>Secondary</th><th>Perk</th></tr></thead><tbody><tr><td>Open</td><td>player picks, whole catalog</td><td>player picks, whole catalog</td><td>player picks</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Policy table, scrollable"><table><thead><tr><th>Policy</th><th>Primary</th><th>Secondary</th><th>Perk</th></tr></thead><tbody><tr><td>Open</td><td>player picks, whole catalog</td><td>player picks, whole catalog</td><td>player picks</td></tr>
 <tr><td>No heavies</td><td>player picks, heavy weapons excluded</td><td>player picks, heavy weapons excluded</td><td>player picks</td></tr>
 <tr><td>Snipers</td><td>fixed to the Sniper Rifle</td><td>off</td><td>off</td></tr>
 <tr><td>Custom</td><td>whatever you set, slot by slot</td><td></td><td></td></tr></tbody></table></div>

@@ -5,7 +5,8 @@
 <meta name="description" content="Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/fix/">
 <link rel="alternate" type="text/markdown" href="/manual/fix.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -110,7 +111,7 @@ fix</li>
 whether a phone can hold a connection.</p>
 <p>Rainbow means disconnected. Learn to read the headset LEDs. Re-pair when you have to. And learn
 about &quot;screamers&quot;, the after-an-hour failure that ends hosted games.</p>
-<div class="table-wrap"><table><thead><tr><th>Headset shows</th><th>Meaning</th></tr></thead><tbody><tr><td>Slow rainbow blink, or LEDs cycling colours at power-on</td><td>Disconnected or not paired. It is waiting to pair, and the gun will not join a hosted or app game</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Headset shows table, scrollable"><table><thead><tr><th>Headset shows</th><th>Meaning</th></tr></thead><tbody><tr><td>Slow rainbow blink, or LEDs cycling colours at power-on</td><td>Disconnected or not paired. It is waiting to pair, and the gun will not join a hosted or app game</td></tr>
 <tr><td>Solid team colour (red/blue)</td><td>Paired, pre-game only</td></tr>
 <tr><td>Dark</td><td>Normal during play. Not a fault</td></tr></tbody></table></div>
 <h3 id="quot-headset-not-detected-quot-quot-keeps-dropping-quot">&quot;Headset not detected&quot; / &quot;keeps dropping&quot;</h3>
@@ -184,7 +185,7 @@ radio address) is a different field and never changes. This is not a fault. Re-a
 then power-cycle. The advertised name only refreshes at boot.</p>
 </blockquote>
 <h3 id="what-survives-a-bluetooth-drop-vs-a-power-cycle">What survives a Bluetooth drop vs. a power cycle</h3>
-<div class="table-wrap"><table><thead><tr><th>State</th><th>Survives a BLE drop?</th><th>Survives a power cycle?</th></tr></thead><tbody><tr><td>Pushed game config (weapon, health pools, team)</td><td>Yes. Reconnect, re-spawn, reload, and it plays on with the config intact</td><td>No. The gun boots live with nothing loaded, so the whole head must be sent again</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="State table, scrollable"><table><thead><tr><th>State</th><th>Survives a BLE drop?</th><th>Survives a power cycle?</th></tr></thead><tbody><tr><td>Pushed game config (weapon, health pools, team)</td><td>Yes. Reconnect, re-spawn, reload, and it plays on with the config intact</td><td>No. The gun boots live with nothing loaded, so the whole head must be sent again</td></tr>
 <tr><td>Alive/dead status and ammo count</td><td>Yes (the gun keeps counting)</td><td>No</td></tr>
 <tr><td>Indoor/outdoor mode (ALT 3 s)</td><td>Yes</td><td>Yes</td></tr>
 <tr><td>On-gun menu settings (lives, time, respawn, volume)</td><td>Yes</td><td>Yes. They are remembered per game mode</td></tr>
@@ -386,7 +387,7 @@ flaky indoors around solid cover.</li>
 </ul>
 </blockquote>
 <h3 id="3d-printed-parts-what-exists-there-is-no-public-brx-print-library">3D-printed parts: what exists (there is no public BRX print library)</h3>
-<div class="table-wrap"><table><thead><tr><th>Part</th><th>Status</th><th>Where</th></tr></thead><tbody><tr><td>Reload-button handle</td><td>Exists, shared privately</td><td>Owners&#39; group</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Part table, scrollable"><table><thead><tr><th>Part</th><th>Status</th><th>Where</th></tr></thead><tbody><tr><td>Reload-button handle</td><td>Exists, shared privately</td><td>Owners&#39; group</td></tr>
 <tr><td>JEDGE rider mount / clip-on cover</td><td>Exists, part of the JEDGE build docs</td><td>LaserTagMods / owners&#39; group</td></tr>
 <tr><td>Skins / covers (incl. sniper body)</td><td>Private SwapTX work; wanted</td><td>Owners&#39; group</td></tr>
 <tr><td>D-pad replacement buttons</td><td>Wanted, no STL</td><td>Open contribution</td></tr>
@@ -439,13 +440,13 @@ external antenna. LoRa standard mode reached ~1,370 ft with zero loss, but the r
 ~3.5 s.</li>
 </ul>
 <h3 id="headset-variants">Headset variants</h3>
-<div class="table-wrap"><table><thead><tr><th>Headset</th><th>Notes</th></tr></thead><tbody><tr><td>v1</td><td>Slide-out battery compartment</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Headset table, scrollable"><table><thead><tr><th>Headset</th><th>Notes</th></tr></thead><tbody><tr><td>v1</td><td>Slide-out battery compartment</td></tr>
 <tr><td>v2</td><td>Single 18650 cell; same hardware as the Battle Rifle Pro headset, but different firmware; 3 W green hit LEDs on four sides plus WS2812B RGB</td></tr>
 <tr><td>&quot;Gen-3&quot; pairing</td><td>Uses the button-hold + RIGHT-at-boot &quot;PAIRING MODE&quot; steps</td></tr>
 <tr><td>SwapTX headset (mod)</td><td>~$50, 18650, unlocks on-tagger hosting; no IR emitters; dimmer LEDs in sun; beta</td></tr>
 <tr><td>All</td><td>Pairs automatically at power-on (up to 3 min); won&#39;t pair in target mode; goes dark during play; rainbow = disconnected</td></tr></tbody></table></div>
 <h3 id="batteries-amp-chargers">Batteries &amp; chargers</h3>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Gun pack</td><td>7.4 V ~2200 mAh Li-ion, 2-pin connector, reversed polarity vs. convention</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Gun pack</td><td>7.4 V ~2200 mAh Li-ion, 2-pin connector, reversed polarity vs. convention</td></tr>
 <tr><td>Gun charger</td><td>8.4 V two-cell smart charger; LED red while charging, green when full</td></tr>
 <tr><td>Headset</td><td>Single 18650 (v2); any 5 V USB charger</td></tr>
 <tr><td>Runtime</td><td>~8 h play per charge</td></tr>

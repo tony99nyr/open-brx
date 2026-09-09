@@ -5,7 +5,8 @@
 <meta name="description" content="This page names every part of the BRX tagger, headset and grenade. It explains what each button, port and light does, and it lists the specs for anyone building their own gear.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/hardware/">
 <link rel="alternate" type="text/markdown" href="/manual/hardware.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -68,7 +69,7 @@
 <blockquote>
 <p><strong>There is no fire-mode selector.</strong> Fire mode belongs to the weapon you pick, not to a switch on the gun. There are seven: full-auto, single-shot (bolt), 3-round burst, charge with auto-release, hold-to-charge with auto-fire, charge and fire on release, and melee. Each one is stored inside the weapon definition.</p>
 </blockquote>
-<div class="table-wrap"><table><thead><tr><th>Port</th><th>Where</th><th>What it is</th></tr></thead><tbody><tr><td>Charging port</td><td>body</td><td>Where the 8.4 V two-cell smart charger in the box plugs in. Its LED goes red, then green when the pack is full.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Port table, scrollable"><table><thead><tr><th>Port</th><th>Where</th><th>What it is</th></tr></thead><tbody><tr><td>Charging port</td><td>body</td><td>Where the 8.4 V two-cell smart charger in the box plugs in. Its LED goes red, then green when the pack is full.</td></tr>
 <tr><td>micro-USB &quot;Programing Port&quot;</td><td>body</td><td>It does two jobs. On a normal boot it is a USB serial console: the tagger&#39;s Teensy microcontroller shows up as a COM port (&quot;PuTTY into the tagger&quot;). Hold SELECT at power-on and it becomes a USB disk that shows the firmware <code>.BIN</code> and the <code>AUDIO</code> folder.</td></tr>
 <tr><td>Headset jack</td><td>n/a</td><td>There is none. The headset links wirelessly.</td></tr>
 <tr><td>Accessory port</td><td>n/a</td><td>There is none on the Gen2/3 units checked at the connector. Micro-USB is the only port.</td></tr></tbody></table></div>
@@ -83,14 +84,14 @@
 <h2 id="the-ir-emitter-the-sight-and-the-sensors">The IR emitter, the sight, and the sensors</h2>
 <p>The invisible beam that carries every tag: here are the published specs and the bench measurements.</p>
 <p>IR emitter (Class 1 laser, IEC 60825-1), from Battle Company&#39;s Extended User Guide:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Wavelength</td><td>980 nm (many hobby IR parts are 940 nm, so pick 980 nm-capable receivers for anything you build)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Wavelength</td><td>980 nm (many hobby IR parts are 940 nm, so pick 980 nm-capable receivers for anything you build)</td></tr>
 <tr><td>Pulse width</td><td>6.5 µs</td></tr>
 <tr><td>Energy per pulse</td><td>111 nJ</td></tr>
 <tr><td>Pulse repetition (carrier)</td><td>38,000 Hz</td></tr>
 <tr><td>Beam</td><td>&lt; 18 mm at the aperture</td></tr>
 <tr><td>Laser power (factory record, one unit)</td><td>16.9 mW</td></tr></tbody></table></div>
 <p>What a shot looks like on the air, bench-measured:</p>
-<div class="table-wrap"><table><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody><tr><td>Frame</td><td>one ~25-bit word per shot, pulse-width encoded</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Property table, scrollable"><table><thead><tr><th>Property</th><th>Value</th></tr></thead><tbody><tr><td>Frame</td><td>one ~25-bit word per shot, pulse-width encoded</td></tr>
 <tr><td>Sync pulse</td><td>~1,990 µs</td></tr>
 <tr><td>&quot;1&quot; mark / &quot;0&quot; mark</td><td>~990 µs / ~500 µs</td></tr>
 <tr><td>Carried in every shot</td><td>player id (0-63), team, damage, damage type, crit flag</td></tr>
@@ -115,14 +116,14 @@
 <h2 id="lights-and-what-they-mean">Lights and what they mean</h2>
 <p>There are two separate light systems. The gun has a small bank of LEDs on the rifle. The headset has a ring of bright green hit LEDs plus colour-changing RGB LEDs. Each one answers a different question.</p>
 <p>Gun LEDs:</p>
-<div class="table-wrap"><table><thead><tr><th>What you see</th><th>Meaning</th></tr></thead><tbody><tr><td>Colour while in the menu</td><td>The game mode you picked: Free For All white, Death Match red, Generals yellow, Supremacy blue, Commander pink, Survival green, The Swarm orange.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="What you see table, scrollable"><table><thead><tr><th>What you see</th><th>Meaning</th></tr></thead><tbody><tr><td>Colour while in the menu</td><td>The game mode you picked: Free For All white, Death Match red, Generals yellow, Supremacy blue, Commander pink, Survival green, The Swarm orange.</td></tr>
 <tr><td>Colour during a game</td><td>Your team or faction colour (on the bench, team 1 is blue and team 2 is yellow). The colour comes from your team. You cannot set any colour you like.</td></tr>
 <tr><td>Colour palette available</td><td>Nine colours, measured on our own bench with a camera rig on 2026-09-02 (three trials per index, normalised R/G/B signatures): 0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange. Indices 9 and 10 are dark.</td></tr>
 <tr><td>Segments going out</td><td>Your health bar: the three LEDs work like a bar that drains as you take damage.</td></tr>
 <tr><td>Manual&#39;s description</td><td>&quot;LED indicator shows ammo &amp; health.&quot;</td></tr>
 <tr><td>Slow pulse in team colour</td><td>The firmware&#39;s own breathing loop. The firmware owns the gun strip and breathes it until a host sends the <code>$GLED</code> blank, which hands the strip over for the rest of that life.</td></tr></tbody></table></div>
 <p>Headset LEDs:</p>
-<div class="table-wrap"><table><thead><tr><th>Pattern</th><th>Meaning</th></tr></thead><tbody><tr><td>Slow rainbow cycling</td><td>Not connected, not paired to a tagger. You can spot it across a room, so check every headset before a game starts.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Pattern table, scrollable"><table><thead><tr><th>Pattern</th><th>Meaning</th></tr></thead><tbody><tr><td>Slow rainbow cycling</td><td>Not connected, not paired to a tagger. You can spot it across a room, so check every headset before a game starts.</td></tr>
 <tr><td>Solid or pulsing team colour (red, blue...)</td><td>Paired and synced to the tagger. You see this before the game only.</td></tr>
 <tr><td>Dark</td><td>The RGB ring, once the game starts. It drops the team colour at game start, and dark is not a fault. This is what our own units do. Battle Company describes indoor mode as switching the RGB LEDs on, and whether an indoor-mode headset stays lit through play instead is unverified.</td></tr>
 <tr><td>One green flash</td><td>A hit registered on this headset. The flash fires on its own, with no command from a phone or host.</td></tr>
@@ -155,7 +156,7 @@
 <li><strong>PROGRAM pin</strong>: a sunken button. Hold it at power-on to put the headset into USB disk mode for firmware updates.</li>
 </ul>
 <p>Headset facts:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody><tr><td>Link to tagger</td><td>Wireless, and it pairs by itself after power-on. It can take up to 3 minutes with many taggers and BT devices around.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody><tr><td>Link to tagger</td><td>Wireless, and it pairs by itself after power-on. It can take up to 3 minutes with many taggers and BT devices around.</td></tr>
 <tr><td>Anti-cheat lockout</td><td>If the headset drops after game start, the tagger locks until it reconnects. Whether a gun that never had a headset can fire a local game is unresolved (see above).</td></tr>
 <tr><td>Apps need it</td><td>The official phone app quietly disconnects a tagger with no headset linked. A game hosted from outside cannot hold a link to a headset-less gun either.</td></tr>
 <tr><td>Battery</td><td>One 18650 lithium cell in v2 headsets. It charges from any USB 5 V source. The v1 headset has a slide compartment.</td></tr>
@@ -169,7 +170,7 @@
 <h2 id="battery-and-power">Battery and power</h2>
 <p>The tagger runs on a 7.4 V two-cell pack, with one surprise: the connector polarity is backwards.</p>
 <p>Tagger battery:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Chemistry / pack</td><td>7.4 V Li-ion, ~2,200 mAh, two cells</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Chemistry / pack</td><td>7.4 V Li-ion, ~2,200 mAh, two cells</td></tr>
 <tr><td>Connector</td><td>2-pin (aftermarket 3-pin packs fit, because the third pin is a thermistor the BRX ignores)</td></tr>
 <tr><td>Charger</td><td>the supplied 8.4 V two-cell smart charger. Its LED is red while charging and green when full</td></tr>
 <tr><td>Play time</td><td>~8 h</td></tr>
@@ -187,12 +188,12 @@
 <li><strong>Riding electronics</strong>: an add-on may pull under ~300 mA from the tagger, and Battle Company confirmed that is fine. Anything bigger should carry its own power bank.</li>
 </ul>
 <p>Headset power:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody><tr><td>Cell</td><td>one 18650 lithium cell (v2)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody><tr><td>Cell</td><td>one 18650 lithium cell (v2)</td></tr>
 <tr><td>Charging</td><td>any USB 5 V supply</td></tr>
 <tr><td>Voltage readout</td><td>shown in the tagger&#39;s USB console (e.g. &quot;Head: 3.84 V&quot;)</td></tr></tbody></table></div>
 <h2 id="generations-which-brx-do-you-have">Generations: which BRX do you have?</h2>
 <p>Gen1 speaks Bluetooth Classic. Gen2 and Gen3 speak BLE. Here is how to tell in 30 seconds.</p>
-<div class="table-wrap"><table><thead><tr><th>Feature</th><th>Gen1</th><th>Gen2 / Gen3</th></tr></thead><tbody><tr><td>Radio</td><td>Bluetooth Classic (SPP) via an HC-05-class module, 57,600 baud</td><td>Bluetooth Low Energy, Nordic UART Service, 115,200 baud</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Feature table, scrollable"><table><thead><tr><th>Feature</th><th>Gen1</th><th>Gen2 / Gen3</th></tr></thead><tbody><tr><td>Radio</td><td>Bluetooth Classic (SPP) via an HC-05-class module, 57,600 baud</td><td>Bluetooth Low Energy, Nordic UART Service, 115,200 baud</td></tr>
 <tr><td>How it shows up</td><td>Pairs as a classic BT serial device; guide-era name <code>LTP-alpha</code>, pair code <code>0001</code></td><td>Advertises as <code>Tactix-XXXX</code> (XXXX = last two bytes of its address); the UART service is visible in a BLE scan</td></tr>
 <tr><td>Phone support</td><td>v1 app was Android-only</td><td>iOS and Android</td></tr>
 <tr><td>Headset requirement for the radio</td><td>Headset must be connected for Bluetooth to work</td><td>A gun with no headset accepts a link, then drops it within seconds</td></tr>
@@ -226,7 +227,7 @@
 <p>Like the tagger, the grenade keeps no game state and cannot show a winner. It is an IR emitter for objectives and effects. The taggers and headsets play every sound you hear from a grenade event, including the explosion, &quot;control point captured&quot; and the CTF music, all from their own sound banks.</p>
 </blockquote>
 <p>Other accessories:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>What it is</th></tr></thead><tbody><tr><td>Hatchet, shield, sidearm</td><td>Accessories you pair over IR, the same way as a thrown grenade. Each has a PROGRAM button for USB firmware updates.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>What it is</th></tr></thead><tbody><tr><td>Hatchet, shield, sidearm</td><td>Accessories you pair over IR, the same way as a thrown grenade. Each has a PROGRAM button for USB firmware updates.</td></tr>
 <tr><td>Scope</td><td>An optical sight. You zero it with the tagger&#39;s Target Mode. Sight snipers long and shotguns or SMGs short.</td></tr>
 <tr><td>Phone bracket</td><td>Holds a phone for the Callsign app. Owners also use it to carry an ESP32 and a USB power bank rider (JEDGE-style). That needs no permanent modification to the tagger. A 5,000 mAh pack runs such a rider ~15 h.</td></tr>
 <tr><td>Sling mount</td><td>Community drill size for a sling stud: 7/32&quot; (15/64&quot; is too loose).</td></tr>
@@ -242,7 +243,7 @@
 <h2 id="spec-sheet-and-what-39-s-in-the-box">Spec sheet and what&#39;s in the box</h2>
 <p>One page to print. It lists the exact parts, numbers and kit contents for the tagger, the headset and the grenade.</p>
 <p>BRX tagger:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Form factor</td><td>rifle-style, ABS shell, reload handle on the right</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Form factor</td><td>rifle-style, ABS shell, reload handle on the right</td></tr>
 <tr><td>Controls</td><td>trigger, reload handle, ALT (orange), SELECT, LEFT/RIGHT, power slide switch</td></tr>
 <tr><td>Emitter</td><td>Class 1 IR laser, 980 nm, 38 kHz, 6.5 µs pulses, 111 nJ/pulse, &lt; 18 mm beam at aperture</td></tr>
 <tr><td>Range</td><td>up to ~600 ft; best in shade/night</td></tr>
@@ -255,20 +256,20 @@
 <tr><td>Battery</td><td>7.4 V ~2,200 mAh Li-ion (2-cell, reversed polarity) or 6xAA; ~8 h play</td></tr>
 <tr><td>Manufacturer</td><td>Laser Tag Pro / Battle Company, Oak Creek, WI</td></tr></tbody></table></div>
 <p>BRX headset:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Sensors</td><td>IR receiver domes around the band (front/back distinguished on the wire)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Sensors</td><td>IR receiver domes around the band (front/back distinguished on the wire)</td></tr>
 <tr><td>Feedback</td><td>3 W green hit LEDs (4 directions) + WS2812B RGB ring</td></tr>
 <tr><td>Emitter</td><td>front IR emitter (melee gesture, respawn requests)</td></tr>
 <tr><td>Link</td><td>wireless auto-pair to its tagger; up to 3 min in crowded RF</td></tr>
 <tr><td>Battery</td><td>1 x 18650; USB 5 V charging</td></tr>
 <tr><td>Firmware</td><td>USB disk mode via PROGRAM pin</td></tr></tbody></table></div>
 <p>Smart Grenade:</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Controls</td><td>top button, safety clip</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Controls</td><td>top button, safety clip</td></tr>
 <tr><td>IR</td><td>3 emitters + 1 emitter/receiver</td></tr>
 <tr><td>Status</td><td>RGB status LED</td></tr>
 <tr><td>Port</td><td>USB-C (charge only)</td></tr>
 <tr><td>Modes</td><td>Frag, Assault, Hill, Respawn, CTF (5 modes)</td></tr></tbody></table></div>
 <p>What&#39;s in the box (typical retail kit):</p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Notes</th></tr></thead><tbody><tr><td>Tagger</td><td>with reload handle (screws on)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Notes</th></tr></thead><tbody><tr><td>Tagger</td><td>with reload handle (screws on)</td></tr>
 <tr><td>Wireless headset</td><td>pre-paired to its tagger at the factory (the tagger&#39;s record stores the headset&#39;s serial as its pairing PIN)</td></tr>
 <tr><td>8.4 V two-cell smart charger</td><td>goes red, then green when full</td></tr>
 <tr><td>Quick manual (V7)</td><td>Battle Company&#39;s BRX Manual V7 PDF</td></tr>

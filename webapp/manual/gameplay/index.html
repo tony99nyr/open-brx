@@ -5,7 +5,8 @@
 <meta name="description" content="This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Gr">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/gameplay/">
 <link rel="alternate" type="text/markdown" href="/manual/gameplay.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -112,7 +113,7 @@
 <h3 id="melee">Melee</h3>
 <p>Melee, gyro swing with the butt of the gun, 90 dmg, 1.0 s, no ammo, no reload. Two swings kill. The hit comes from the front headset emitter.</p>
 <p>The firmware has seven fire-mode behaviours, all confirmed on the trigger. Every Callsign weapon uses one of them.</p>
-<div class="table-wrap"><table><thead><tr><th>Fire mode</th><th>What the trigger does</th><th>Callsign weapons</th></tr></thead><tbody><tr><td>Full auto</td><td>hold it down to keep firing at the cycle rate</td><td>Assault Rifle, SMG, Suppressor, Energy Rifle, Stinger, Energy Launcher</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Fire mode table, scrollable"><table><thead><tr><th>Fire mode</th><th>What the trigger does</th><th>Callsign weapons</th></tr></thead><tbody><tr><td>Full auto</td><td>hold it down to keep firing at the cycle rate</td><td>Assault Rifle, SMG, Suppressor, Energy Rifle, Stinger, Energy Launcher</td></tr>
 <tr><td>Single shot / bolt</td><td>one round per pull</td><td>AMR, Bolt Rifle, Sniper, Plasma Sniper, Ion Sniper, Rocket Launcher, Shotgun</td></tr>
 <tr><td>3-round burst</td><td>one pull sends three rounds, then a burst gap</td><td>Burst Rifle, Force Rifle</td></tr>
 <tr><td>Charge, auto-release</td><td>starts charging on the pull, then fires by itself (about 1.2 s); a tap also fires</td><td>Rail Gun</td></tr>
@@ -126,7 +127,7 @@
 <p><strong>No stock weapon has an alt-fire.</strong> The secondary-fire fields are empty on all 20 captured frames. The orange ALT button cycles perks and abilities in the modes that have them. Every weapon is also just data: a host can send its own weapon into any of the gun&#39;s 6 slots, with its own damage, rate, clip, reload, burst, overheat and sounds. That is exactly what Open BRX does.</p>
 </blockquote>
 <p>Battle Company&#39;s stock presets below are for phoneless play. The damage scale here is not the Callsign scale above: the printed M-4 says 24, and the app&#39;s Assault Rifle sends 9.</p>
-<div class="table-wrap"><table><thead><tr><th>Weapon</th><th style="text-align:right">Damage</th><th style="text-align:right">Rate of fire</th><th>Accuracy</th><th style="text-align:right">Mag</th><th>Character</th></tr></thead><tbody><tr><td>M-4</td><td style="text-align:right">24</td><td style="text-align:right">545</td><td>96-91</td><td style="text-align:right">30</td><td>full auto, low damage, medium mag</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Weapon table, scrollable"><table><thead><tr><th>Weapon</th><th style="text-align:right">Damage</th><th style="text-align:right">Rate of fire</th><th>Accuracy</th><th style="text-align:right">Mag</th><th>Character</th></tr></thead><tbody><tr><td>M-4</td><td style="text-align:right">24</td><td style="text-align:right">545</td><td>96-91</td><td style="text-align:right">30</td><td>full auto, low damage, medium mag</td></tr>
 <tr><td>SMG-X3</td><td style="text-align:right">25</td><td style="text-align:right">545</td><td>96-88</td><td style="text-align:right">26</td><td>3-round burst</td></tr>
 <tr><td>MG-7</td><td style="text-align:right">38</td><td style="text-align:right">342</td><td>66-45</td><td style="text-align:right">75</td><td>suppressing auto, low accuracy, overheats/jams on sustained fire</td></tr>
 <tr><td>SR-100</td><td style="text-align:right">140</td><td style="text-align:right">44</td><td>100-90</td><td style="text-align:right">4</td><td>bolt, high damage, small mag</td></tr>
@@ -142,7 +143,7 @@
 <li>Health takes the rest. Your headset and gun play the hit tone. The gun reports your new pool to any connected phone.</li>
 <li>At 0 health the gun plays the death alarm, stops firing, and ignores every incoming shot until it respawns.</li>
 </ol>
-<div class="table-wrap"><table><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody><tr><td>Default pool?</td><td>45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health.</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Question table, scrollable"><table><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody><tr><td>Default pool?</td><td>45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health.</td></tr>
 <tr><td>Does armor reduce damage?</td><td>No. It is extra hit points, and it drains first. Armor never makes a hit weaker.</td></tr>
 <tr><td>Do I heal over time?</td><td>No. Armor shot down to 18 stayed at 18 for 30 s. Any healing you see comes from a class ability, a medic, or a host that refills you.</td></tr>
 <tr><td>What is a shield?</td><td>A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR &quot;activate shield&quot; event. A phone cannot just set it.</td></tr>
@@ -159,7 +160,7 @@
 <blockquote>
 <p><strong>A dead gun is deaf, unless a station armed it.</strong> At 0 health a tagger that was never armed to a respawn station takes no IR at all, and a tagger in a host-driven game takes none either. A tagger armed by a station in a native game is the exception: it stays dead, refuses the trigger, says &quot;revive at respawn point&quot;, and comes back the moment the station beacon reaches it.</p>
 </blockquote>
-<div class="table-wrap"><table><thead><tr><th>Setting</th><th>Gun-menu values (V7 manual / Extended Guide)</th><th>Callsign app values</th></tr></thead><tbody><tr><td>Lives</td><td>a count, or unlimited</td><td>a number, or Unlimited</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Setting table, scrollable"><table><thead><tr><th>Setting</th><th>Gun-menu values (V7 manual / Extended Guide)</th><th>Callsign app values</th></tr></thead><tbody><tr><td>Lives</td><td>a count, or unlimited</td><td>a number, or Unlimited</td></tr>
 <tr><td>Respawn time</td><td>Off, 15, 30, 60 s, Ramp 45, Ramp 90 (the penalty grows with each death)</td><td>a number in seconds (e.g. 15)</td></tr>
 <tr><td>Respawn type</td><td>self-respawn on the gun, or at a respawn station (grenade) once armed</td><td>Scanner (respawn at a QR / station) or Auto (timed)</td></tr>
 <tr><td>Game time</td><td>Off, 5, 10, 15, 20, 30 min</td><td>a number in minutes</td></tr></tbody></table></div>
@@ -179,7 +180,7 @@
 <blockquote>
 <p><strong>Why misses still make noise.</strong> Battle Company&#39;s &quot;simulated recoil&quot; accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone&#39;s headset keeps flashing and they are not dying, you are missing. Fire in bursts.</p>
 </blockquote>
-<div class="table-wrap"><table><thead><tr><th>Event</th><th>Victim</th><th>Shooter</th></tr></thead><tbody><tr><td>Hit (non-lethal)</td><td>one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs</td><td>nothing (a plain hit is never confirmed back to the shooter)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Event table, scrollable"><table><thead><tr><th>Event</th><th>Victim</th><th>Shooter</th></tr></thead><tbody><tr><td>Hit (non-lethal)</td><td>one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs</td><td>nothing (a plain hit is never confirmed back to the shooter)</td></tr>
 <tr><td>Kill</td><td>headset sustained green blink (the out state), death alarm, gun stops firing</td><td>green sight flash + &quot;kill&quot; callout; in gun-menu games also &quot;double kill&quot; and other streak lines</td></tr>
 <tr><td>Same team, FF off</td><td>nothing (the gun drops the shot, by the documented rule one bench result contradicts)</td><td>nothing</td></tr>
 <tr><td>Miss (accuracy roll)</td><td>headset lights + zip, 0 damage</td><td>(none)</td></tr></tbody></table></div>
@@ -189,7 +190,7 @@
 <h2 id="native-game-modes-and-their-settings">Native game modes and their settings</h2>
 <p>The gun&#39;s menu gives you seven modes with no phone at all. The Callsign app adds objective play (flags, control points, QR pickups, Battle Royale) plus premium unlocks. Under both, the tagger only fires, gets hit, tracks health and reports. The rules live in the gun menu&#39;s firmware presets or in the app.</p>
 <p>The mode LED colour shows what you picked. Modes marked with a star are Callsign-Live unlocks on the gun.</p>
-<div class="table-wrap"><table><thead><tr><th>Mode</th><th>LED</th><th>Teams</th><th>How it plays</th><th>Weapons / perks</th></tr></thead><tbody><tr><td>Free For All</td><td>white</td><td>none (everyone is one team with friendly fire on)</td><td>most kills wins</td><td>M-4, SMG-X3, MG-7, SR-100, no perks</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Mode table, scrollable"><table><thead><tr><th>Mode</th><th>LED</th><th>Teams</th><th>How it plays</th><th>Weapons / perks</th></tr></thead><tbody><tr><td>Free For All</td><td>white</td><td>none (everyone is one team with friendly fire on)</td><td>most kills wins</td><td>M-4, SMG-X3, MG-7, SR-100, no perks</td></tr>
 <tr><td>Death Match / Team Death Match</td><td>red</td><td>Alpha vs Bravo</td><td>team kills</td><td>M-4, SMG-X3, MG-7, SR-100, TAC-87, the only stock mode with the perk row</td></tr>
 <tr><td>Generals (*)</td><td>yellow</td><td>two teams, each with a General</td><td>the General is your team&#39;s mobile respawn point, so pull the trigger at them to revive; it can be lives-limited for seek-and-destroy</td><td>TDM loadouts + perks</td></tr>
 <tr><td>Supremacy</td><td>blue</td><td>3 factions: Resistance (red), Vanguard (green), Nexus (blue)</td><td>class-based; 9 characters are the loadout</td><td>no weapon picker, because the character is the loadout; abilities on ALT</td></tr>
@@ -208,14 +209,14 @@
 <li>Pull the reload handle to start. Headsets pair on their own after power-on (up to about 3 min with many taggers around).</li>
 </ol>
 <p><strong>Gun-menu settings, every value:</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Lives</td><td>a count, or unlimited</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Lives</td><td>a count, or unlimited</td></tr>
 <tr><td>Game time</td><td>Off, 5, 10, 15, 20, 30 min</td></tr>
 <tr><td>Respawn</td><td>Off, 15, 30, 60 s, Ramp 45, Ramp 90</td></tr>
 <tr><td>Volume</td><td>1-5</td></tr>
 <tr><td>Indoor / outdoor</td><td>hold ALT 3 s (it sticks across power-cycles; indoor dims the green hit LEDs, turns on the RGB LEDs, and shrinks explosion/melee range; bright sun cuts hit radius about 50%)</td></tr>
 <tr><td>Region</td><td>USA / International (the app&#39;s <code>GunLaserRegion</code> setting). This is a factory setting, so leave it alone</td></tr></tbody></table></div>
 <p>The Callsign app&#39;s modes are the complete list found in the app, with what each one is built from. The app screens group them under categories (Team Arena, Battle Royale, Battle Lines, Faction Wars, Infection) and mode tiles (Arena, Team Arena, Team Snipers, Capture the Flag).</p>
-<div class="table-wrap"><table><thead><tr><th>Mode</th><th>Win rule</th><th>Props</th><th>Notes</th></tr></thead><tbody><tr><td>Free For All</td><td>most kills (Slayer)</td><td>(none)</td><td>everyone vs everyone</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Mode table, scrollable"><table><thead><tr><th>Mode</th><th>Win rule</th><th>Props</th><th>Notes</th></tr></thead><tbody><tr><td>Free For All</td><td>most kills (Slayer)</td><td>(none)</td><td>everyone vs everyone</td></tr>
 <tr><td>Team Death Match</td><td>team kills / elimination</td><td>(none)</td><td></td></tr>
 <tr><td>Supremacy</td><td>score / control</td><td>(none)</td><td>3 factions, class-based</td></tr>
 <tr><td>Survival / Infection</td><td>last human</td><td>(none)</td><td>a kill turns a human</td></tr>
@@ -234,7 +235,7 @@
 <p><strong>The app&#39;s &quot;boxes&quot; are paper.</strong> Respawn points, weapon pickups, capture and control points, and supply drops are all printed QR codes you scan or fire at. A weapon pickup simply pushes a new weapon into a slot on your gun. Pickup pool seen in the app: Auto Rifle, Burst Rifle, Sniper Rifle, Shotgun, SMG/SAW, Sticky, Rail Gun, Rocket Launcher, Energy Rifle, War Hammer, Strike Rifle (scoped/unscoped), and &quot;other players&quot;.</p>
 </blockquote>
 <p><strong>Callsign GAME SETTINGS, every field on the screen:</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Primary weapon / Secondary weapon</td><td>pickers from the roster, and you can remove the secondary</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Item table, scrollable"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Primary weapon / Secondary weapon</td><td>pickers from the roster, and you can remove the secondary</td></tr>
 <tr><td>Weapon respawn</td><td>30 sec, 60 sec, 90 sec, 3 min</td></tr>
 <tr><td>Weapon pick-up</td><td>Scan, Player, Both</td></tr>
 <tr><td>Weapon selection</td><td>ON / OFF</td></tr>
@@ -250,7 +251,7 @@
 <h2 id="classes-factions-perks-and-killstreaks">Classes, factions, perks and killstreaks</h2>
 <p>Supremacy swaps the weapon picker for characters. Each one has a fixed gun, a set health/armor/shield build, and an ALT-button ability. Three factions split the roster: Nexus (energy, shields, explode-on-death), Resistance (milsim, explosives) and Vanguard (exotic, long-range).</p>
 <p>These are the 9 manual characters, the exact health builds Battle Company prints. There are two pool shapes here: armor characters and shield characters.</p>
-<div class="table-wrap"><table><thead><tr><th>Character</th><th>Role</th><th style="text-align:right">Mag</th><th style="text-align:right">Damage</th><th style="text-align:right">Health</th><th style="text-align:right">Armor</th><th style="text-align:right">Shield</th><th>Ability (ALT)</th></tr></thead><tbody><tr><td>Soldier</td><td>Offense</td><td style="text-align:right">30</td><td style="text-align:right">22</td><td style="text-align:right">100</td><td style="text-align:right">50</td><td style="text-align:right">-</td><td>secondary shotgun (M4 + shotgun swap)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Character table, scrollable"><table><thead><tr><th>Character</th><th>Role</th><th style="text-align:right">Mag</th><th style="text-align:right">Damage</th><th style="text-align:right">Health</th><th style="text-align:right">Armor</th><th style="text-align:right">Shield</th><th>Ability (ALT)</th></tr></thead><tbody><tr><td>Soldier</td><td>Offense</td><td style="text-align:right">30</td><td style="text-align:right">22</td><td style="text-align:right">100</td><td style="text-align:right">50</td><td style="text-align:right">-</td><td>secondary shotgun (M4 + shotgun swap)</td></tr>
 <tr><td>Medic</td><td>Support</td><td style="text-align:right">30</td><td style="text-align:right">21</td><td style="text-align:right">100</td><td style="text-align:right">40</td><td style="text-align:right">-</td><td>medi-gel heal pulse: heals allies when you shoot them</td></tr>
 <tr><td>Heavy</td><td>Tank</td><td style="text-align:right">75</td><td style="text-align:right">38</td><td style="text-align:right">100</td><td style="text-align:right">75</td><td style="text-align:right">-</td><td>rally: an attack boost for allies</td></tr>
 <tr><td>Guardian</td><td>Support</td><td style="text-align:right">50</td><td style="text-align:right">20-100</td><td style="text-align:right">75</td><td style="text-align:right">-</td><td style="text-align:right">125</td><td>charge-up plasma + shield regenerator</td></tr>
@@ -270,7 +271,7 @@
 <p><strong>Status effects the app defines:</strong> Standard, MedicHeal, ActivateShield, RallyPulse, Radiation (poison), Cryogenic (frost), ArmorPiercing, EMP, Shrapnel, StickyBomb, lethal and non-lethal explosive, ShottyPellets, MeleeDamage, Plasma. Each one has its own hit-sound slot in the app&#39;s sound table (poison hit, cold hit, EMP start/loop/end, incendiary start/loop/stop, and others).</p>
 </blockquote>
 <p>Perks are what ALT cycles in Death Match / Generals. Not all games have perks, and TDM is the only stock mode with the perk row.</p>
-<div class="table-wrap"><table><thead><tr><th>Perk</th><th>Effect</th></tr></thead><tbody><tr><td>Grenade Launcher</td><td>launcher alt-fire</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Perk table, scrollable"><table><thead><tr><th>Perk</th><th>Effect</th></tr></thead><tbody><tr><td>Grenade Launcher</td><td>launcher alt-fire</td></tr>
 <tr><td>Med Kit</td><td>self-heal</td></tr>
 <tr><td>Body Armor</td><td>extra armor (on a General it lowers total health, a known stock quirk)</td></tr>
 <tr><td>Extended Mags</td><td>bigger magazines</td></tr>
@@ -279,7 +280,7 @@
 <tr><td>Foregrip (Extended Guide only)</td><td>less recoil drift</td></tr>
 <tr><td>Focus (Extended Guide only)</td><td>laser designator</td></tr></tbody></table></div>
 <p>Killstreak rewards in the Callsign app, from the app&#39;s config. None of them is a tagger command.</p>
-<div class="table-wrap tall"><table><thead><tr><th>Reward</th><th>Warns the enemy?</th></tr></thead><tbody><tr><td>UAV</td><td>yes</td></tr>
+<div class="table-wrap tall" role="region" tabindex="0" aria-label="Reward table, scrollable"><table><thead><tr><th>Reward</th><th>Warns the enemy?</th></tr></thead><tbody><tr><td>UAV</td><td>yes</td></tr>
 <tr><td>Counter UAV</td><td>no</td></tr>
 <tr><td>Power Weapon</td><td>no</td></tr>
 <tr><td>Body Armor</td><td>no</td></tr>
@@ -320,7 +321,7 @@
 </ul>
 <h2 id="the-smart-grenade-39-s-game-modes">The Smart Grenade&#39;s game modes</h2>
 <p>The BRX Smart Grenade is more than a bomb. Hold its button and it turns into a portable objective: a respawn station, a King-of-the-Hill point, an assault objective, or a CTF flag base. It talks to every gun in range with an IR beacon, and the guns make the sounds. There is no app for this. You set the mode on the device itself, and it stays locked there.</p>
-<div class="table-wrap"><table><thead><tr><th>Colour</th><th>Mode</th><th>How it plays</th><th>Guns can read its state live?</th></tr></thead><tbody><tr><td>Red</td><td>Frag</td><td>a blast grenade; throw it or press it to detonate (it needs pairing to your headset), and it wipes everyone within about 30 ft</td><td>no beacon</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Colour table, scrollable"><table><thead><tr><th>Colour</th><th>Mode</th><th>How it plays</th><th>Guns can read its state live?</th></tr></thead><tbody><tr><td>Red</td><td>Frag</td><td>a blast grenade; throw it or press it to detonate (it needs pairing to your headset), and it wipes everyone within about 30 ft</td><td>no beacon</td></tr>
 <tr><td>Green</td><td>Assault</td><td>shoot it to capture it to your team&#39;s colour; attackers arm, defenders hold</td><td>captures silently (LED only)</td></tr>
 <tr><td>Blue</td><td>Hill (King of the Hill)</td><td>starts neutral (white); shoot it to capture and you hear &quot;control point captured&quot;; each shot adds charge, so the other team must fire at least as much back to retake it; a thrown-grenade blast on the point captures it 100% instantly; the holder gets a rate-of-fire boost</td><td>beacons owner every ~3-5 s</td></tr>
 <tr><td>Yellow</td><td>Respawn</td><td>starts neutral; shoot it to claim it for a team; press the button to respawn everyone of that team nearby, or face it with the front of your headset and pull the trigger (~18-20 ft)</td><td>beacons owner every ~2.5 s</td></tr>
@@ -336,7 +337,7 @@
 <blockquote>
 <p><strong>The Respawn-station catch that earns the grenade its &quot;buggy&quot; reputation.</strong> Setting the grenade to Respawn is not enough. Each tagger must also receive the station&#39;s IR to switch from self-respawn to station-respawn. Either show every gun the station before the game, or press the grenade&#39;s button near each gun after the start (the reliable way). A gun that never got the signal just self-respawns as normal.</p>
 </blockquote>
-<div class="table-wrap"><table><thead><tr><th>You want</th><th>Grenade mode</th><th>Caveat</th></tr></thead><tbody><tr><td>A respawn point per team</td><td>Yellow (Respawn)</td><td>arm every tagger; stations can be overtaken; not always consistent</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="You want table, scrollable"><table><thead><tr><th>You want</th><th>Grenade mode</th><th>Caveat</th></tr></thead><tbody><tr><td>A respawn point per team</td><td>Yellow (Respawn)</td><td>arm every tagger; stations can be overtaken; not always consistent</td></tr>
 <tr><td>King of the Hill / a checkpoint</td><td>Blue (Hill)</td><td>no winner display on the grenade, so someone has to keep score</td></tr>
 <tr><td>Two hills or two respawn points</td><td>two grenades</td><td>each one is its own objective</td></tr>
 <tr><td>A Counter-Strike bomb site</td><td>Blue (Hill) as the site</td><td>the plant/defuse timer runs on a host, not the grenade</td></tr></tbody></table></div>
@@ -345,7 +346,7 @@
 </blockquote>
 <h2 id="beyond-stock-modes-open-brx-adds">Beyond stock: modes Open BRX adds</h2>
 <p>The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode. Open BRX runs those rules on a laptop (Mission Control) and on a small node per player. So the same gear plays modes Battle Company never shipped, and modes that need props scale up through cheap tiers.</p>
-<div class="table-wrap"><table><thead><tr><th>Tier</th><th>What you add</th><th>Modes in the catalog</th></tr></thead><tbody><tr><td>Tier 0: laptop-only with <code>brx-mcp</code> (taggers plus a laptop you own)</td><td>nothing</td><td>FFA, Team Death Match, Survival/Infection, The Swarm, Generals, Commander, Supremacy, Last Man Standing, Syphon (health on kill), Halo-style regenerating health, overshield / medic roles, small-scale Extraction, grenade-site Counter-Strike</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Tier table, scrollable"><table><thead><tr><th>Tier</th><th>What you add</th><th>Modes in the catalog</th></tr></thead><tbody><tr><td>Tier 0: laptop-only with <code>brx-mcp</code> (taggers plus a laptop you own)</td><td>nothing</td><td>FFA, Team Death Match, Survival/Infection, The Swarm, Generals, Commander, Supremacy, Last Man Standing, Syphon (health on kill), Halo-style regenerating health, overshield / medic roles, small-scale Extraction, grenade-site Counter-Strike</td></tr>
 <tr><td>Tier 1: plus props (objective stations, flags, QR codes, or the grenade)</td><td>contested places</td><td>Domination, King of the Hill / Territory, Capture the Flag (standard, one-sided, centre-flag), Assault, Team Arena, VIP escort, Hostage rescue, a real Extraction point</td></tr>
 <tr><td>Tier 2: plus broadcast (a live field-wide downlink; location on each node)</td><td>live global awareness</td><td>Battle Royale, live scoreboards and &quot;flag taken!&quot; callouts on a big no-WiFi field, hidden multi-extracts</td></tr></tbody></table></div>
 <p>Two Tier 0 entries carry a caveat. Syphon (health on kill) and small-scale Extraction exist only in the laptop&#39;s <code>brx-mcp</code> CLI path. Neither has run on hardware, and neither the phone node nor the node/MC bundle knows anything about them, so neither is playable in a real match yet.</p>

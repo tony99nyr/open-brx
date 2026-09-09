@@ -96,7 +96,9 @@ renderer.table = function (token) {
   // Only a genuinely tall table gets a capped, scrolling wrapper: capping every wrapper trapped
   // 14 short tables on a phone, where a wheel over a 2-row table moved the page not at all.
   const tall = token.rows.length > 15 ? ' tall' : '';
-  return `<div class="table-wrap${tall}"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>\n`;
+  // A scrollport is focusable in Chrome, so it needs a name; the first header cell is the honest one.
+  const label = token.header[0] ? String(token.header[0].text || '').replace(/[`*]/g, '').slice(0, 40) : 'Table';
+  return `<div class="table-wrap${tall}" role="region" tabindex="0" aria-label="${esc(label)} table, scrollable"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>\n`;
 };
 renderer.code = function ({ text, lang }) {
   // the one extension: ```data\n<name>\n``` becomes a browser-rendered table (docs/site/FORMAT.md)
@@ -109,7 +111,9 @@ renderer.code = function ({ text, lang }) {
 <div class="table-wrap"><table><thead data-head></thead><tbody data-body></tbody></table></div>
 <p class="dt-note">${esc(d.note)}</p></section>\n`;
   }
-  return `<pre><button class="copy" type="button">Copy</button><code${lang ? ` class="language-${esc(lang)}"` : ''}>${esc(text)}</code></pre>\n`;
+  // The button lives OUTSIDE the <pre>: inside it, selecting a command by hand copied the word
+  // "Copy" as the first line, on a site where select-and-copy is the main action.
+  return `<div class="code"><button class="copy" type="button">Copy</button><pre><code${lang ? ` class="language-${esc(lang)}"` : ''}>${esc(text)}</code></pre></div>\n`;
 };
 
 // A diagnostic ladder is the most useful thing on this site and the plainest in markdown: the
@@ -171,6 +175,7 @@ function shell(page, content) {
 <link rel="canonical" href="${SITE}${page.slug === '/' ? '/' : page.slug + '/'}">
 <link rel="alternate" type="text/markdown" href="${page.slug === '/' ? '/index.md' : page.slug + '.md'}">
 <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="${assetHref('site.css')}">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -215,7 +220,7 @@ for (const p of pages) {
   for (const g of p.source.match(/[✅📖🔍👥🧪📐🚧]/gu) || []) problems.push(`${p.file}: provenance mark ${g}`);
   if (/^src:/m.test(p.source)) problems.push(`${p.file}: src: citation`);
   // A visitor does not care which repo file a fact came from; the footer links the repository.
-  if (/^##+ Sources\s*$/m.test(p.source)) problems.push(`${p.file}: per-page Sources section`);
+  if (/^##+ Sources\b/m.test(p.source)) problems.push(`${p.file}: per-page Sources section`);
   // A page that describes an LED decision must agree with the code that makes it. Prose does not
   // follow a constant when it changes, and on 2026-09-09 two of these changed in one morning.
   if (/^platform-leds\.md$/.test(p.file)) {

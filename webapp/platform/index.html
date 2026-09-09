@@ -5,7 +5,8 @@
 <meta name="description" content="Open BRX is open-source software  for stock Battle Company BRX taggers. It ties the guns you">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/">
 <link rel="alternate" type="text/markdown" href="/platform.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -37,8 +38,8 @@ macOS or Linux).</p>
 death tracking, host-driven respawn, a frag limit, the correct winner, and the Bluetooth link held
 for the whole match. A three-gun synced start is proven on hardware too.</p>
 <p>Install it on the machine with the Bluetooth radio, then run a match:</p>
-<pre><button class="copy" type="button">Copy</button><code>pip install -e ./mcp
-python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt;</code></pre>
+<div class="code"><button class="copy" type="button">Copy</button><pre><code>pip install -e ./mcp
+python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt;</code></pre></div>
 <p>That is the command that ran the match above. With no guns to hand,
 <code>python -m brx_mcp game-sim tdm</code> narrates one in your terminal.</p>
 <p><code>brx-mcp</code> also covers scan, identify and listen, per-tagger diagnostics (firmware, battery, health),
@@ -82,7 +83,7 @@ practice that means you always know you died straight away, but you may not lear
 until you walk back into range. A scoreboard can be late. The final result is not wrong.</li>
 </ol>
 <p>The limits that follow from this, measured on hardware except for the logical-teams row:</p>
-<div class="table-wrap"><table><thead><tr><th>Thing</th><th>Limit</th></tr></thead><tbody><tr><td>Players in one game</td><td>64 (the gun&#39;s player id runs 0-63; the app shows 1-64 and writes the id one lower)</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Thing table, scrollable"><table><thead><tr><th>Thing</th><th>Limit</th></tr></thead><tbody><tr><td>Players in one game</td><td>64 (the gun&#39;s player id runs 0-63; the app shows 1-64 and writes the id one lower)</td></tr>
 <tr><td>Native hardware teams</td><td>4 (the team field in each shot is 2 bits)</td></tr>
 <tr><td>Teams beyond 4</td><td>unlimited logical teams, scored by Mission Control&#39;s roster; no on-gun friendly-fire protection in that mode</td></tr>
 <tr><td>Guns per node</td><td>exactly 1</td></tr>

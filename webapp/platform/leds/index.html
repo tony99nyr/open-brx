@@ -5,7 +5,8 @@
 <meta name="description" content="In an Open BRX game the host takes over the gun body LEDs and the headset ring, so what you see is">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/leds/">
 <link rel="alternate" type="text/markdown" href="/platform/leds.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f46b0e9ca9.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.2b2327e204.css">
+<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
@@ -46,7 +47,7 @@ the strip never sits dark while you are alive.</li>
 <li>Health emptying hands over to nothing. That is death.</li>
 </ul>
 <p>The bar has seven levels, because half steps blink:</p>
-<div class="table-wrap"><table><thead><tr><th>Level</th><th>What you see</th><th>Health hue</th></tr></thead><tbody><tr><td>6</td><td>3 solid</td><td>green</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Level table, scrollable"><table><thead><tr><th>Level</th><th>What you see</th><th>Health hue</th></tr></thead><tbody><tr><td>6</td><td>3 solid</td><td>green</td></tr>
 <tr><td>5</td><td>2 solid, 3rd blinking</td><td>green</td></tr>
 <tr><td>4</td><td>2 solid</td><td>green</td></tr>
 <tr><td>3</td><td>1 solid, 2nd blinking</td><td>yellow</td></tr>
@@ -78,7 +79,7 @@ seconds you see the tagger&#39;s own breathing. The same hands-off rule applies 
 written to the body for 2.5 seconds after you go down.</p>
 <h2 id="the-headset">The headset</h2>
 <p>The ring is what everyone else reads. You cannot see your own head, so nothing on it is for you.</p>
-<div class="table-wrap"><table><thead><tr><th>Moment</th><th>Headset</th></tr></thead><tbody><tr><td>Pregame, in the muster</td><td>your team colour, solid</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Moment table, scrollable"><table><thead><tr><th>Moment</th><th>Headset</th></tr></thead><tbody><tr><td>Pregame, in the muster</td><td>your team colour, solid</td></tr>
 <tr><td>Match start</td><td>white double flash, then the resting state</td></tr>
 <tr><td>In play, resting</td><td>dark (a mode can choose to hold the team colour instead)</td></tr>
 <tr><td>Hit taken</td><td>the tagger&#39;s own flash, which is brighter than anything we can write</td></tr>
@@ -86,7 +87,7 @@ written to the body for 2.5 seconds after you go down.</p>
 <tr><td>Respawn</td><td>white double flash, then the resting state</td></tr></tbody></table></div>
 <p>Some modes hold a role on your head until it ends. The carrier blink and the infected colour are the
 two in play today.</p>
-<div class="table-wrap"><table><thead><tr><th>Role</th><th>Headset</th></tr></thead><tbody><tr><td>Flag, bomb or objective carrier</td><td>white blink, 300 ms on and off</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Role table, scrollable"><table><thead><tr><th>Role</th><th>Headset</th></tr></thead><tbody><tr><td>Flag, bomb or objective carrier</td><td>white blink, 300 ms on and off</td></tr>
 <tr><td>Infected</td><td>solid, in the infected team&#39;s colour</td></tr>
 <tr><td>VIP</td><td>solid white</td></tr>
 <tr><td>Extraction beacon</td><td>orange blink, 300 ms on and off</td></tr>
@@ -94,7 +95,7 @@ two in play today.</p>
 <p>A carrier blinks white and never the flag&#39;s colour: a team colour is an identity, a role is a state.</p>
 <h2 id="colours">Colours</h2>
 <p>Both surfaces share one nine colour palette.</p>
-<div class="table-wrap"><table><thead><tr><th>Index</th><th>Colour</th></tr></thead><tbody><tr><td>0</td><td>red</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Index table, scrollable"><table><thead><tr><th>Index</th><th>Colour</th></tr></thead><tbody><tr><td>0</td><td>red</td></tr>
 <tr><td>1</td><td>blue</td></tr>
 <tr><td>2</td><td>yellow</td></tr>
 <tr><td>3</td><td>green</td></tr>
@@ -104,7 +105,7 @@ two in play today.</p>
 <tr><td>7</td><td>pink</td></tr>
 <tr><td>8</td><td>orange</td></tr></tbody></table></div>
 <p>Index 9 and above are dark, which is how a segment is switched off. Pools read like this:</p>
-<div class="table-wrap"><table><thead><tr><th>Pool</th><th>Colour</th></tr></thead><tbody><tr><td>Shield</td><td>teal at every level</td></tr>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Pool table, scrollable"><table><thead><tr><th>Pool</th><th>Colour</th></tr></thead><tbody><tr><td>Shield</td><td>teal at every level</td></tr>
 <tr><td>Armour</td><td>purple at every level</td></tr>
 <tr><td>Health</td><td>green above two thirds, yellow above one third, red below that</td></tr></tbody></table></div>
 <p>Only health changes hue as it falls. Shield and armour keep one colour and let the bar length carry
