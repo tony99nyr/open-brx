@@ -235,22 +235,27 @@ for (const p of pages) {
     for (const { name, value } of ledFacts(REPO)) {
       const pool = name.startsWith('shield') ? 'Shield' : name.startsWith('armour') ? 'Armour' : null;
       if (!pool) {
-        // The gun body's rest is prose, so scope the check to the paragraph that states it. Asking
-        // whether the word appears ANYWHERE on the page was no check at all: "dark", "purple" and
-        // "orange" are all already on this page for other reasons, so flipping GUN_DEFAULT to any
-        // of them left the build green while the page still said "team".
-        const para = p.source.match(/^\*\*Rest\.\*\*[\s\S]*?(?=\n\n)/m);
-        if (!para) {
-          problems.push(`${p.file}: no "**Rest.**" paragraph to check the gun body rest against`);
+        // The gun body's rest is prose, so check EVERY sentence that talks about resting, not one
+        // paragraph: editing only the "**Rest.**" paragraph while another line still said the old
+        // value left the page self-contradicting and the build green.
+        const MODES = ['team', 'dark', 'health', 'native'];
+        // Prose only. The headset's own table row legitimately reads "In play, resting | dark",
+        // and the gun body's rest is never stated in a table.
+        const sentences = (p.source.split('\n').filter(l => !l.trimStart().startsWith('|')).join('\n')
+          .match(/[^.\n]*\brest(?:s|ing)?\b[^.\n]*/gi) || []);
+        if (!sentences.length) {
+          problems.push(`${p.file}: no sentence about the gun body resting, so ${name} cannot be checked`);
           continue;
         }
-        const said = para[0].toLowerCase();
-        if (!said.includes(value)) {
-          problems.push(`${p.file}: the gun body rests on "${value}" in the source, and the Rest paragraph does not say so`);
+        const says = sentences.filter(x => new RegExp(`\\b${value}\\b`, 'i').test(x));
+        if (!says.length) {
+          problems.push(`${p.file}: the gun body rests on "${value}" in the source, and no sentence says so`);
         }
-        for (const other of ['team', 'dark', 'health'].filter(v => v !== value)) {
-          if (new RegExp(`\\brests?\\b[^.]{0,40}\\b${other}\\b`).test(said)) {
-            problems.push(`${p.file}: the Rest paragraph says the body rests "${other}", but the source says "${value}"`);
+        for (const x of sentences) {
+          for (const other of MODES.filter(v => v !== value)) {
+            if (new RegExp(`\\b${other}\\b`, 'i').test(x)) {
+              problems.push(`${p.file}: "${x.trim().slice(0, 60)}" names "${other}", but the source says "${value}"`);
+            }
           }
         }
         continue;

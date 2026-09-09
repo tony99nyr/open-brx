@@ -153,7 +153,10 @@ h3 {
 h4 { font-size: 1rem; font-weight: 650; margin: 22px 0 4px; color: var(--muted); }
 /* clears the sticky header. It is ~60px on a desktop but ~184px at 390px wide, where the nav
    wraps under the search field, so a flat 72px dropped every in-page jump behind it. */
-h2, h3, h4 { scroll-margin-top: calc(var(--header-h, 72px) + 12px); }
+h2, h3, h4, #main { scroll-margin-top: calc(var(--header-h, 76px) + 12px); }
+/* CSS-only fallback for the widths where the header wraps, so an anchor clears it with JS off */
+@media (max-width: 768px)  { h2, h3, h4, #main { scroll-margin-top: calc(var(--header-h, 176px) + 12px); } }
+@media (max-width: 480px)  { h2, h3, h4, #main { scroll-margin-top: calc(var(--header-h, 196px) + 12px); } }
 h2 + p, h3 + p { margin-top: 6px; }
 p, ul, ol { margin: 14px 0; }
 li { margin: 10px 0; padding-left: 2px; }

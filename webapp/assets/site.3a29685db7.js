@@ -54,7 +54,7 @@
 
     head.innerHTML = `<tr>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>`;
 
-    const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const cell = (v, r, key) => {
       if (v === null || v === undefined || v === '') return 'n/a';
       // an unconfirmed machine transcription is marked, not passed off as a known meaning
@@ -120,7 +120,9 @@
       .then(d => (rows = d.map(r => ({ ...r, lb: flat(r.b || '') }))))
       .catch(err => { rows = []; panel.innerHTML = `<p class="r-none">Search could not load (${esc(err.message)}).</p>`; return rows; }));
 
-    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // must escape the double quote too: these values land in href="..." as well as in text, and
+    // without it an index entry could close the attribute and add an event handler.
+    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     // Offsets must come from a string the SAME LENGTH as the one being sliced. Stripping
     // apostrophes to find the index shifted every highlight left by one character per apostrophe
     // before it, so "the gun's headset" highlighted " headse".
@@ -138,7 +140,7 @@
     const snippet = (r, q) => {
       const body = r.b || '';
       if (!body) return '';
-      const i = soft(body).indexOf(q);
+      const i = soft(body).indexOf(q.replace(/['\u2019]/g, '\u0000'));
       if (i < 0) return `<span class="r-t">${esc(body.slice(0, 110))}</span>`;
       const from = Math.max(0, i - 42);
       const cut = body.slice(from, from + 150);
@@ -189,12 +191,17 @@
       }
       panel.hidden = false;
       input.setAttribute('aria-expanded', 'true');
+      // Only on CHANGE: setting the same text is still a mutation and most screen readers
+      // re-announce it, so typing "shield" said "12 results" five times.
       const live = document.getElementById('find-live');
-      if (live) live.textContent = hits.length ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'No results';
+      const msg = hits.length ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'No results';
+      if (live && live.textContent !== msg) live.textContent = msg;
     };
 
     const close = () => {
       panel.hidden = true; active = -1; items = [];
+      const live = document.getElementById('find-live');
+      if (live) live.textContent = '';   // otherwise it keeps announcing a count for a closed list
       input.setAttribute('aria-expanded', 'false');
       input.removeAttribute('aria-activedescendant');
     };

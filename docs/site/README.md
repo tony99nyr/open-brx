@@ -22,7 +22,7 @@ pages, one per manual file. Nothing is written twice.
 Cloudflare serves `webapp/` exactly as pushed: build before you commit, or you publish a stale site.
 The root `npm run build` and the `[build]` block exist for the move to deploy-time builds, but
 push-to-deploy uses the build command set in the Cloudflare dashboard and that is not set yet
-(FOLLOWUPS B24). `webapp/mc/` and `webapp/download/` are hand-committed and the generator refuses to
+(FOLLOWUPS B24; the command to set is `npm run build:ci`, which drops the dev dependencies). `webapp/mc/` and `webapp/download/` are hand-committed and the generator refuses to
 write into them.
 
 **Editorial rule.** Only confirmed facts are published. There is no per-sentence confidence marking:

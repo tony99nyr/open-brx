@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F61 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F64 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -95,7 +95,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `dev.md` says sixteen ids on the wire with the slot mapping unknown, and its own sample frame carries 16.
   17 declared field names against 16 wire ids is a real gap, not a typo. `capture`.
 - **B24 🟡 Needs Tony** finish the deploy change: set the Cloudflare build command (Workers & Pages -> open-brx ->
-  Settings -> Build -> Build command: `npm run build`), push once, confirm the deploy renders, then stop committing
+  Settings -> Build -> Build command: `npm run build:ci`), push once, confirm the deploy renders, then stop committing
   the generated files in `webapp/`. Until that setting exists, push-to-deploy serves what is committed, so the built
   pages stay in git. `build`.
 - **B11 🟢** "Open BRX connected/disconnected" voice: ids are VA99 / VA9A; back up, convert, USB-load. `build`.
@@ -245,6 +245,32 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   fire from IR either. Decide whether a heal/grant row belongs in the compiled table at all — it may be that
   we simply do not want medic words in a hosted game, in which case say so and mark shield permanently
   node-granted — but today the gap is silent and looks like a bug from the bench. `build`.
+- **F61 🟠 Does `$BUMP` take a NEGATIVE value?** `protocol/brx-protocol.md` documents `$LIFE` and `$BUMP` as
+  "additive, clamped at the pool max, never an absolute set" and **there is no experiment-log citation for either
+  command in either direction** — the claim is spec/APK-derived while `mc/types.py` syphon already depends on it.
+  If `$BUMP,-5,0,0,*` drains 5 HP, host-side damage-over-time (poison, burn, bleed) is buildable: no `$SIR`
+  function is a DoT, so a node applying the tick is the only route. If it clamps, DoT is a HUD fiction and we
+  stop designing it. Read via `$QUERY` (these writes do not self-emit `$HP`); the `+5` control is also our first
+  measurement of the documented behaviour. 5 min, no rig. `trigger` (bench A1).
+- **F62 🟡 `$WEAP` t6 `primaryCritChance` — can we emit crits?** The crit bit reads 0 on every stock weapon,
+  "not dead, just never set", and t6 would be a per-shot firmware roll. Design already written in
+  `bench-weap-tokens-discovery-2026-09-04.md` §t6 (~10 min): t6 0 → 100 → 50 → 0 with `$GSET` t7=100 so a crit
+  exactly doubles; read `$HIR` tok6 and 9-vs-18 damage. Also the cheapest proof that the firmware rolls dice
+  per shot at all, which is what F46 and F63 both assume. `trigger` (bench C2).
+- **F63 🟡 `$WEAP` t7-t11, the secondary-fire block — a per-shot damage type?** `secondaryFireChance`,
+  `secondaryDamageType`, `secondaryPowerType`, `secondaryDamage`, `secondaryCritChance`: **empty on all 20
+  captured stock frames.** If t7 is a per-shot percentage that swaps the emitted `<protocol, subtype>` to the
+  secondary pair, it is the ONLY way to vary a shot's damage type per trigger pull — the host cannot, because
+  the gun emits autonomously on the pull. That unlocks proc weapons (a poison round on 15% of shots) and is the
+  one route to a "miss" token besides F46. Probe on the RIG, counting words by protocol (aim t8/t9 at a free
+  protocol: 4, 5, 7, 12, 14), and check whether `$GSET` t6 `secondaryBluetoothWeapons` gates it. `trigger` (bench C3).
+- **W4a ⬜ Energy Launcher fire sound — bench audition.** `O01` ships; alternates `O05` `O02` `O04` `O06` `O03`,
+  all fitting the 1600 ms cycle. Wanted: an ordnance report, not a music sting. **This row exists because W4a had
+  no definition anywhere in this file** — it was referenced in §9's Ears block while its only definition sat in
+  `archive/followups-closed.md`, which itself said it was "carried as an open ears item". `test_followups_ids_are_
+  defined_exactly_once` cannot catch that: it flags an id defined TWICE, never an id referenced with no definition
+  at all. ⚠ The launcher's zero damage (`$SIR,9,3,,24` is a status row) is the bigger problem and is a decision,
+  not an audition. `ears` (bench B4).
 - **F57 🟠 THE LOW-HEALTH WARNING AND THE PAIN GRUNT FIRE IN THE SAME MILLISECOND.** Bench 2026-09-09, Tony:
   *"the critical sounds are a bit bugged when it was at 1 red"*. Captured on the wire, one `$HP` tick:
   `rx $HP,8,0,0` → `tx $PLAY,,4,6,VA6` (low health) and `tx $PLAY,,4,6,VAG` (pain short, 10 dmg) at the SAME
@@ -416,7 +442,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   but an out-of-range player reads their kills as unconfirmed. Keep, or "ELIMINATION"? One string in `hud.js`. `decision`.
 - **F26 🟡** (was F15) accuracy attribution unverified: `$HIR` shooter field → `player_num` as `scoring.py` assumes?
   Two guns, two phones, ten shots. `trigger`.
-- **F27 🟡** (was F16) reload takeover timing: time `$BUT,2` → `$ALCD` per weapon; correct `weapons.json reload_s`. `trigger` + `ears`.
+- **F27 🟡** (was F16) reload takeover timing: time `$BUT,2` → `$ALCD` per weapon; correct `weapons.json` **`reload_ms`** (there is no `reload_s` field; the old name here sent a bench pass looking for a key that does not exist). `trigger` + `ears`.
 - **F28 🟡** (was field G1) headset sensor 1 (back dome) took zero hits in the 2026-09-01 match and 69 in the nozzle
   test; `outdoorMode`, daylight and uptime are refuted. `field-issues.md` F2-1 / `verify-together.md` V1. `eyes` + `space`.
 - **F29 🟢** (was G3) the low-health alert is now logged when it fires; verify it in a match (V2). `eyes`.
@@ -579,6 +605,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   explained); one 16/16 vs 4/10 registration run under identical geometry (2026-09-02).
 
 ## 9. Needs Tony at the bench (merged from bench-tomorrow.md + unknowns.md, 2026-09-06)
+
+**The running order is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — the same items
+grouped by SETUP BLOCK with the exact command, reading and control per rung, plus the four traps that
+fake a result (`firemode_probe`'s raw-vs-doc token index; `tutorial_frames` shipping one `$SIR` row and
+`$BMAP,0,0` only; and that it disconnects, so it cannot read `$ALCD`). This section stays the register:
+ids live here, order lives there. Items below marked ✅ or superseded are kept only until the next
+session-close strike.
 
 Preflight, every session: power-cycle gun AND headset (screamers after ~a day powered); kill stale `brx_mcp` processes
 at the OS level (a forgotten server holds a gun); `loopback.py COM8 COM7 6` before any IR work; state the shooter TEAM
