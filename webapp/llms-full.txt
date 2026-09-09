@@ -328,7 +328,11 @@ What's in the box (typical retail kit):
 | Quick manual (V7) | Battle Company's BRX Manual V7 PDF |
 | Optional | 6xAA battery holder use, scope, phone bracket, smart grenade |
 
-> **Official documents** (linked, not rehosted): Battle Company's BRX Manual V7 (battlecompany.com, 2021) and the BRX Extended User Guide (Laser Tag Pro, 2018). The PDFs are the manufacturer's own word.
+> **Official documents.** Battle Company's [BRX Manual V7](https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf) (2021) is the manufacturer's
+> own word, and it is linked here rather than rehosted. The BRX Extended User Guide (Laser Tag Pro
+> and Battle Company, 2018) is richer than V7 and is the better document, but it circulates in the
+> owner community and we have no official public address for it, so there is nothing to link. We do
+> not host a copy of either.
 
 
 ---
@@ -1591,7 +1595,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 **Update tagger firmware (Battle Company's procedure, restated)**
 
-1. Download the current firmware package from Battle Company (their official download; this manual never rehosts it).
+1. Get the current firmware package from [Battle Company](https://battlecompany.com/). We do not host a copy, and we have no permanent address for the download itself, so ask them for the current package rather than reusing an old file.
 2. Switch the gun off, plug the USB cable into the Programming Port, then hold SELECT and switch on. There is no startup sound, and a disk appears.
 3. Delete the existing `.BIN` at the root of the disk.
 4. Copy the new `.BIN` to the root. Don't touch `AUDIO` unless the release notes say the audio set changed.
@@ -2125,7 +2129,7 @@ Where BRX owners really solve things, and what each place is good for.
 - **lasertaginfo.org forum + Jay's Google Drive.** Legacy JEDGE documentation and binaries.
 - **SWAPTX-EVOLVER (Facebook).** The sister group for the SwapTX headset mod and Evolver
   cross-play.
-- **Battle Company (battlecompany.com).** Official manual PDFs (link to them, don't rehost), the
+- **[Battle Company](https://battlecompany.com/).** Official manual PDFs (we link them, we do not rehost), the
   firmware updater, replacement parts (speakers, sensor boards, wire bundles, D-pad on request),
   the phone bracket, and mainboard repair.
 - **Open BRX (this project).** MIT-licensed protocol reference, Mission Control, the Companion and
@@ -3574,7 +3578,9 @@ Last verified: 2026-09-09
 ## Credits
 
 - LaserTagMods (JEDGE / JBOX): the original BLE protocol discovery and the tagger-rider concept.
-- Battle Company: the BRX hardware, the V7 quick manual and the 2018 Extended User Guide.
+- Battle Company: the BRX hardware, the [BRX Manual V7](https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf) and the 2018 Extended User
+  Guide. The Extended Guide circulates in the owner community and has no official public address,
+  so we can credit it but not link it.
 - The BRX owner community: repairs, mods, the audio map, field practice.
 - Jay / Extreme Laser Tag And More!: grenade and accessory videos.
 
@@ -3582,7 +3588,8 @@ Last verified: 2026-09-09
 
 Facts come from Battle Company's own documents, from the Callsign app, from the owner community,
 and from testing on our own taggers. Anything unconfirmed, or contradicted between sources, is not
-published. Official PDFs are linked and never rehosted. The working notes behind this manual are
+published. Where an official document has a public address we link it, and we never host a copy.
+The working notes behind this manual are
 public in the repository.
 
 ## Policy

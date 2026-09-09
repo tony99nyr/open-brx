@@ -267,7 +267,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 **Update tagger firmware (Battle Company's procedure, restated)**
 
-1. Download the current firmware package from Battle Company (their official download; this manual never rehosts it).
+1. Get the current firmware package from [Battle Company](https://battlecompany.com/). We do not host a copy, and we have no permanent address for the download itself, so ask them for the current package rather than reusing an old file.
 2. Switch the gun off, plug the USB cable into the Programming Port, then hold SELECT and switch on. There is no startup sound, and a disk appears.
 3. Delete the existing `.BIN` at the root of the disk.
 4. Copy the new `.BIN` to the root. Don't touch `AUDIO` unless the release notes say the audio set changed.

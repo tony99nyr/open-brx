@@ -305,4 +305,8 @@ What's in the box (typical retail kit):
 | Quick manual (V7) | Battle Company's BRX Manual V7 PDF |
 | Optional | 6xAA battery holder use, scope, phone bracket, smart grenade |
 
-> **Official documents** (linked, not rehosted): Battle Company's BRX Manual V7 (battlecompany.com, 2021) and the BRX Extended User Guide (Laser Tag Pro, 2018). The PDFs are the manufacturer's own word.
+> **Official documents.** Battle Company's [BRX Manual V7](https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf) (2021) is the manufacturer's
+> own word, and it is linked here rather than rehosted. The BRX Extended User Guide (Laser Tag Pro
+> and Battle Company, 2018) is richer than V7 and is the better document, but it circulates in the
+> owner community and we have no official public address for it, so there is nothing to link. We do
+> not host a copy of either.

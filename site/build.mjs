@@ -235,6 +235,16 @@ for (const p of pages) {
       }
     }
   }
+  // If a page says an official document is linked, it must actually contain a link. The manual
+  // claimed "Official PDFs are linked and never rehosted" while publishing exactly one external
+  // link, to our own GitHub.
+  // Anchored on "rehost" and "we link it", NOT on the bare word "linked": in this manual "linked"
+  // almost always means a headset linked to a gun, and matching that flagged four innocent pages.
+  if (/\brehost|\bwe link it\b/i.test(p.source)) {
+    const links = p.source.match(/https?:\/\/[^\s)"'<]+/g) || [];
+    const external = links.filter(u => !u.includes('github.com/tony99nyr'));
+    if (!external.length) problems.push(`${p.file}: says an official document is linked, but links none`);
+  }
   // the manual states what is true now, it does not narrate its own corrections
   const hist = p.source.match(/\b(an? earlier (note|draft|reading|version)|we (got|were) (this )?wrong|predates the|this page said|the mistake shipped|until then,|we (previously|used to) (said|say|thought|believed))\b/i);
   if (hist) problems.push(`${p.file}: narrates its own history ("${hist[0]}")`);

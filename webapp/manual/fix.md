@@ -469,7 +469,7 @@ Where BRX owners really solve things, and what each place is good for.
 - **lasertaginfo.org forum + Jay's Google Drive.** Legacy JEDGE documentation and binaries.
 - **SWAPTX-EVOLVER (Facebook).** The sister group for the SwapTX headset mod and Evolver
   cross-play.
-- **Battle Company (battlecompany.com).** Official manual PDFs (link to them, don't rehost), the
+- **[Battle Company](https://battlecompany.com/).** Official manual PDFs (we link them, we do not rehost), the
   firmware updater, replacement parts (speakers, sensor boards, wire bundles, D-pad on request),
   the phone bracket, and mainboard repair.
 - **Open BRX (this project).** MIT-licensed protocol reference, Mission Control, the Companion and

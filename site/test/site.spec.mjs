@@ -93,6 +93,28 @@ it('2 · every internal link resolves', async ({ page, request }) => {
   expect(bad).toEqual([]);
 });
 
+it('2b · the official documents we say we link are actually reachable', async ({ request }) => {
+  // The manual promised "linked, not rehosted" while publishing exactly one external link, to our
+  // own GitHub. A promised link that 404s is the same broken promise one step later. Network is
+  // allowed to be flaky, so a transport error is reported and skipped; only a real 4xx/5xx fails.
+  const dir = path.resolve(WEB, '../docs/manual');
+  const urls = new Set();
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md')) {
+    for (const u of fs.readFileSync(path.join(dir, f), 'utf8').match(/https?:\/\/[^\s)"'<]+/g) || []) {
+      if (!u.includes('github.com/tony99nyr')) urls.add(u);
+    }
+  }
+  expect(urls.size, 'the manual publishes no external link at all').toBeGreaterThan(0);
+  const bad = [];
+  for (const u of urls) {
+    try {
+      const r = await request.get(u, { timeout: 20000, maxRedirects: 5 });
+      if (r.status() >= 400) bad.push(`${u} -> ${r.status()}`);
+    } catch (e) { console.log(`  (could not reach ${u}: ${e.message.split('\n')[0]})`); }
+  }
+  expect(bad, 'published official links that do not resolve').toEqual([]);
+});
+
 it('3 · every markdown twin is byte-for-byte the manual file it came from', async ({ request }) => {
   // The twins and llms-full.txt are what llms.txt exists to serve. Asserting "a file exists and has
   // an H1" let a twin carrying entirely the wrong page pass, so compare the actual bytes.
