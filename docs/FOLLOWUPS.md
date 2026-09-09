@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F57 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F58 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -178,6 +178,20 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   immersion brief and his own "the team color doesn't need to be static bright"), and it costs nothing — brightness
   is already a token on every compiled frame. Alternatives: move team 3 off purple and team 0 off red, or force a
   dark beat before every readout paint. `build`, then one bench look.
+- **F57 🟠 THE LOW-HEALTH WARNING AND THE PAIN GRUNT FIRE IN THE SAME MILLISECOND.** Bench 2026-09-09, Tony:
+  *"the critical sounds are a bit bugged when it was at 1 red"*. Captured on the wire, one `$HP` tick:
+  `rx $HP,8,0,0` → `tx $PLAY,,4,6,VA6` (low health) and `tx $PLAY,,4,6,VAG` (pain short, 10 dmg) at the SAME
+  timestamp, 2244290.79. The gun plays one clip at a time, so they cut each other off. Every earlier hit that
+  life fired the grunt alone, because A17.2 arms `low_health` only under 15 HP — so **the collision happens
+  exactly once per life, at the moment the warning is the whole point.** The LEDs at that instant were right
+  (red, blinking to dark, the critical state); it is only the audio.
+  A17 already owns the concept needed to fix it: the pain gate is "one per 600 ms and never on the lethal
+  hit". This is the same class — two cues competing for one speaker — and wants the same kind of rule.
+  Shape, undecided: either suppress the pain grunt on the hit that crosses the threshold (the low-health line
+  IS the reaction to that hit, and a grunt adds nothing the player does not already know), or sequence the
+  warning after the grunt by the grunt's own length. The first is simpler and matches the never-on-the-lethal-
+  hit precedent. **Owner: the audio lane (A17 is brx-sound's).** Found by the LED lane while walking the bar
+  state by state, so nothing here is an audio judgement — just the capture. `ears`.
 - **F55 🟡** `modes/driver.py:306` raises `RuntimeError: no running event loop` into stderr during test runs.
   `_play_burst`'s `finally` calls `asyncio.current_task()`, which raises once the loop is gone — i.e. when a
   still-pending burst task is garbage-collected after `asyncio.run()` closed the loop. The cleanup is then
