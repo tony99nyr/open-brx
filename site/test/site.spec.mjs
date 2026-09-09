@@ -271,6 +271,24 @@ it('6c · search says so when nothing matches and when the index will not load',
   await expect(page.locator('#results')).toContainText('could not load');
 });
 
+it('6d · a search box renders a query as text, never as markup', async ({ page }) => {
+  // Both search inputs build their "nothing matches" message with innerHTML. The data-table one
+  // interpolated the raw query and put a live <img> from user input into the DOM.
+  const payload = '<img src=x onerror="window.__x=1">';
+  await page.goto('/manual/gameplay/', { waitUntil: 'networkidle' });
+
+  const dt = page.locator('.dt[data-table="weapons"]');
+  await dt.locator('[data-search]').fill(payload);
+  await expect(dt.locator('[data-count]')).toContainText('0 of');
+  expect(await dt.locator('tbody img, tbody script').count(), 'table search injected markup').toBe(0);
+  await expect(dt.locator('tbody')).toContainText('img src=x');
+
+  await page.locator('#q').fill(payload);
+  await page.waitForTimeout(250);
+  expect(await page.locator('#results img, #results script').count(), 'site search injected markup').toBe(0);
+  expect(await page.evaluate(() => !!window.__x), 'an injected handler ran').toBe(false);
+});
+
 it('7 · the theme toggle changes the page and survives navigation', async ({ page }) => {
   await page.goto('/');
   const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

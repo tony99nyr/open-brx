@@ -55,7 +55,7 @@
       const q = search.value.trim().toLowerCase();
       const hits = q ? rows.filter(r => cols.some(c => String(r[c[0]] ?? '').toLowerCase().includes(q))) : rows;
       if (!hits.length) {
-        body.innerHTML = `<tr><td colspan="${cols.length}">Nothing matches ${JSON.stringify(q)}.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="${cols.length}">Nothing matches ${esc(JSON.stringify(q))}.</td></tr>`;
         count.textContent = `0 of ${rows.length} rows`;
         return;
       }
@@ -90,7 +90,7 @@
       .catch(err => {
         // never leave the reader with an empty box and no reason
         count.textContent = 'could not load';
-        body.innerHTML = `<tr><td colspan="${cols.length}">This table could not load (${err.message}). The data file is at <code>/data/${key}.json</code>.</td></tr>`;
+        body.innerHTML = `<tr><td colspan="${cols.length}">This table could not load (${esc(err.message)}). The data file is at <code>/data/${esc(key)}.json</code>.</td></tr>`;
       });
   }
   // ---- search ----
@@ -105,7 +105,7 @@
     const load = () => rows ? Promise.resolve(rows) : fetch('/data/search.json')
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(d => (rows = d.map(r => ({ ...r, lb: flat(r.b || '') }))))
-      .catch(err => { rows = []; panel.innerHTML = `<p class="r-none">Search could not load (${err.message}).</p>`; return rows; });
+      .catch(err => { rows = []; panel.innerHTML = `<p class="r-none">Search could not load (${esc(err.message)}).</p>`; return rows; });
 
     const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const mark = (t, q) => {
