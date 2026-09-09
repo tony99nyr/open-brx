@@ -353,7 +353,8 @@
     });
   }
   // A white shield strip at `lit` segments and an explicit GLOBAL brightness -- the breathe axis.
-  function shieldF(lit, b) { return `$GLED,${[0,1,2].map(i => i < lit ? 6 : 9).join(',')},0,${b},,*`; }
+  // Shield is TEAL (palette 5) since 2026-09-09, matching the shield_up burst.
+  function shieldF(lit, b) { return `$GLED,${[0,1,2].map(i => i < lit ? 5 : 9).join(',')},0,${b},,*`; }
   function T() { return (st && st.readout && st.readout.timings) || {}; }
   function restFrame() { return (st && st.readout && st.readout.rest) || '$GLED,9,9,9,0,10,,*'; }
   // The named stages. `steps` is what the strip is fed; `note` is what a human should be judging.
@@ -398,14 +399,12 @@
         steps: [[S(6), lead], [S(0), gap], [S(5), step], [S(4), step], [S(3), 2000]] },
       { id: 'p-crit',   name: 'PROPOSED · CRITICAL (the only loop)', note: 'Red AND a slow loop, both reserved for the critical band (under 1/3 of the pool — the same threshold A17.2 uses for the low-health line). Because it is the only looping state in the language, blinking means one thing.',
         steps: [[S(2), 700], [S(1), 700], [S(0), 700], [S(1), 700], [S(0), 700], [S(1), 700]] },
-      // ---- SHIELD (Tony, 2026-09-09: "animate in and out like the breathing effect? a slow pulse?")
-      // The gun body has NO native animation -- no token-4 value animates, and the firmware breathing
-      // is the thing our blank switches off. But brightness (token 5) is GLOBAL, which makes it
-      // useless for the bar (it can never dim ONE segment) and ideal for a whole-strip breathe: a
-      // dim<->full pulse is inherently gentler than on<->off, and at ~1.6 s it is well under the
-      // 3-light-ups-per-second ceiling. It costs one BLE write per half-cycle while the shield is up.
-      { id: 's-breathe', name: 'SHIELD · slow breathe (dim<->full)', note: 'Shield up, breathing on the strip\u2019s GLOBAL brightness: dim to full and back. Reads as "charged" rather than "alert" because it never goes dark, and it uses the one axis the level bar cannot use.',
-        steps: [[shieldF(3, 1), 800], [shieldF(3, 10), 800], [shieldF(3, 1), 800], [shieldF(3, 10), 800], [shieldF(3, 1), 800], [shieldF(3, 10), 800]] },
+      // ---- SHIELD -----------------------------------------------------------------------------
+      // A driven breathe was prototyped here and REJECTED by Tony on 2026-09-09: the gun body has no
+      // native animation (no token-4 value animates, and the firmware's own breathing is what our
+      // blank switches off), so a pulse costs one BLE write per half-cycle for the whole time a
+      // shield is up, competing with cues and the readout. Not worth it for one pool. Shield is
+      // TEAL and behaves like the other bars; the SHIELD-BROKEN handover is the signal.
       { id: 's-drain',  name: 'SHIELD · draining', note: 'The shield bar falling: white, same step language as the other pools, so nothing new has to be learned.',
         steps: [[shieldF(3, 10), 500], [shieldF(2, 10), 260], [shieldF(1, 10), 900]] },
       { id: 's-gone',   name: 'SHIELD · broken', note: 'Shield reaches zero: the breathe STOPS and the strip hands over to the pool underneath. The firmware already models this for audio (energyShieldLoop runs while the shield is up and stops at zero, F44), so the stop is the honest signal.',

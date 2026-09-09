@@ -271,13 +271,19 @@ def flash_frame(colour: str) -> str:
 #   readout: {pools, hold_s, reload_glance_s}   the transient pool readout (§3.1/§5, `gun_readout()`
 #                            below) -- always built when LEDs are on, independent of `in_play`; a saved
 #                            game that never set it gets GUN_READOUT_DEFAULT.
-# led-language.md §3.1/§6 finding #5 (2026-09-07 build): DEFAULT changed from "team" to "dark" -- the
-# body rests dark and the transient readout (below) is now the feedback, so a static team paint is no
-# longer the standard rest frame. `in_play: "team"` stays a fully-supported explicit choice (a saved
-# game that set it keeps its own team-coloured body); `"health"` (the old whole-strip health hue) is
-# kept for older nodes but its collapse onto the new shape is "dark rest + readout limited to health"
-# (see `gun_readout()`).
-GUN_DEFAULT = {"in_play": "dark", "pregame": "team"}
+# DEFAULT IS "team" -- Tony, 2026-09-09: "instead of going dark lets put the team color on the gun led".
+# History, because this flipped twice and the reasons are not the same reasons: it was "team" until the
+# 2026-09-07 readout review moved it to "dark" (finding #5) on the argument that the transient pool
+# readout had become the feedback, so a static paint was redundant. What that argument missed is that
+# the readout is TRANSIENT -- it holds ~4 s and reverts -- so "dark rest" means the gun is unlit for
+# almost all of a match, which loses team identity at a glance and reads as a dead gun rather than a
+# quiet one. The readout still owns the strip while it runs and reverts to this frame afterwards.
+# ⚠ Brightness is a SEPARATE axis and is unchanged here: night already dims every compiled $GLED
+# (token 5 = 1), day is full. If a full-brightness team body turns out to be too much indoors, that is
+# a brightness decision, not a reason to go dark again.
+# `"health"` (the old whole-strip health hue) is kept for older nodes; its collapse onto the new shape
+# is "team rest + readout limited to health" (see `gun_readout()`).
+GUN_DEFAULT = {"in_play": "team", "pregame": "team"}
 # Bench 2026-09-04 (GAMMA, Tony watching, stage `raw` ladder): a blank INSIDE the spawn burst does not take -- the
 # firmware's spawn animation re-enables the breathing. Bare $SPAWN then blank + paint at +1.0 s: breathing;
 # +1.5 s: breathing; +2.0 s: SOLID. So the node takes the body 2.5 s after every $SPAWN (margin over 2.0).

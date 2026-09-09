@@ -105,10 +105,14 @@ def display_colour(tid: int | None, overrides: dict[int, int] | None = None) -> 
     return TEAM_DISPLAY_COLOURS.get(tid, DEFAULT_TEAM_COLOUR)
 
 # Pool identity is carried by HUE so the player can tell at a glance WHICH bar they are looking at.
-# F33-adjacent (led-language.md §3.1 readout mapping, 2026-09-07 design review): shield reads WHITE,
-# not teal -- teal was never bench-validated as the shield hue and the reviewed readout table calls
-# for white/purple/health-band on the three pools.
-SHIELD_COLOUR = WHITE
+# SHIELD IS TEAL -- Tony's call, 2026-09-09. It had been WHITE since the 2026-09-07 readout review, on
+# the reasoning that teal was never bench-validated as the shield hue. That reasoning survives as a
+# BENCH item (teal is palette index 5 and green is 3; whether they read as distinct on the body strip
+# at a glance has still never been checked) but it was never a reason to prefer white, and white lost
+# on two counts: the `shield_up` EVENT burst was already TEAL, so gaining a shield flashed teal and
+# then painted a white bar for the same fact, and white is the FFA team colour (Q19) plus the carrier
+# and extracted role states -- the one hue in the palette already carrying three other meanings.
+SHIELD_COLOUR = TEAL
 ARMOUR_COLOUR = PURPLE
 # Health additionally shifts colour as it falls -- the one bar where the level itself is urgent.
 HEALTH_BANDS = ((0.66, GREEN), (0.33, YELLOW), (0.0, RED))
@@ -205,7 +209,7 @@ EVENT_PAINTS = {
     "hit_taken":    (RED,     0.8),   # you were hit: red is the one colour nobody has to learn
     "healed":       (GREEN,   1.5),   # health restored
     "armour_up":    (PURPLE,  1.5),   # matches the armour pool hue
-    "shield_up":    (TEAL,    1.5),   # matches the shield pool hue
+    "shield_up":    (TEAL,    1.5),   # matches SHIELD_COLOUR -- one hue for the fact and the event
     "died":         (RED,     3.0),   # you are out: long, and red so it reads across the field
     "respawned":    (WHITE,   1.2),   # back in: a clean flash before the team colour returns
     "kill_confirm": (ORANGE,  0.6),   # you finished someone

@@ -20,7 +20,7 @@ _run = own_loop()
 # --- the mapping (pure) ------------------------------------------------------ #
 
 def test_a_full_pool_lights_all_three_segments():
-    assert pg.gauge_frame("shield", 70, 70) == f"$GLED,{pg.WHITE},{pg.WHITE},{pg.WHITE},0,10,,*"
+    assert pg.gauge_frame("shield", 70, 70) == f"$GLED,{pg.TEAL},{pg.TEAL},{pg.TEAL},0,10,,*"
 
 
 def test_an_empty_pool_lights_none():
@@ -42,9 +42,14 @@ def test_health_shifts_colour_as_it_falls():
 def test_shield_and_armour_keep_a_constant_hue():
     """Hue identifies WHICH pool; only health encodes urgency in colour.
 
-    led-language.md §3.1 readout mapping (2026-09-07): shield reads WHITE, not teal -- teal was never
+    Shield is TEAL (Tony, 2026-09-09; it was WHITE from the 2026-09-07 review until then). The hue
+    is asserted against SHIELD_COLOUR *and* against the `shield_up` event paint, because the bug that
+    motivated the change was those two disagreeing -- the burst said teal, the bar said white, for one
+    and the same fact. Pinning only the constant would let them drift apart again. Older note: teal was never
     bench-validated as the shield hue."""
-    assert pg.pool_colour("shield", 5, 70) == pg.pool_colour("shield", 70, 70) == pg.WHITE == pg.SHIELD_COLOUR
+    assert pg.pool_colour("shield", 5, 70) == pg.pool_colour("shield", 70, 70) == pg.TEAL == pg.SHIELD_COLOUR
+    assert pg.EVENT_PAINTS["shield_up"][0] == pg.SHIELD_COLOUR, (
+        "the shield_up burst and the shield bar must be the SAME hue: they report one fact")
     assert pg.pool_colour("armor", 5, 70) == pg.pool_colour("armor", 70, 70) == pg.PURPLE
 
 
@@ -65,8 +70,8 @@ def test_headset_tids_are_shared_0_through_7():
 def test_readout_bands_highest_first_with_the_readout_mapping_colours():
     shield = pg.readout_bands("shield")
     assert [thr for thr, _f in shield] == [0.66, 0.33, 0.0]
-    assert shield[0][1] == pg.segment_frame(pg.WHITE, 3) and shield[1][1] == pg.segment_frame(pg.WHITE, 2)
-    assert shield[2][1] == pg.segment_frame(pg.WHITE, 1)
+    assert shield[0][1] == pg.segment_frame(pg.TEAL, 3) and shield[1][1] == pg.segment_frame(pg.TEAL, 2)
+    assert shield[2][1] == pg.segment_frame(pg.TEAL, 1)
     armor = pg.readout_bands("armor")
     assert armor[0][1] == pg.segment_frame(pg.PURPLE, 3)
     health = pg.readout_bands("health")
@@ -111,17 +116,17 @@ def test_readout_levels_partial_levels_blink_whole_levels_do_not():
 def test_readout_levels_blink_frame_drops_only_the_top_segment():
     levels = pg.readout_levels("shield")
     # level 5: 2 solid + 3rd blinking -- solid lights all 3, blink drops just the 3rd
-    assert levels[5][0] == pg.segment_frame(pg.WHITE, 3)
+    assert levels[5][0] == pg.segment_frame(pg.SHIELD_COLOUR, 3)
     assert levels[5][1] == f"$GLED,,,{pg.DARK},0,10,,*"
     # level 3: 1 solid + 2nd blinking
-    assert levels[3][0] == pg.segment_frame(pg.WHITE, 2)
+    assert levels[3][0] == pg.segment_frame(pg.SHIELD_COLOUR, 2)
     assert levels[3][1] == f"$GLED,,{pg.DARK},,0,10,,*"
     # level 1: 1st blinking, down to dark
-    assert levels[1][0] == pg.segment_frame(pg.WHITE, 1)
+    assert levels[1][0] == pg.segment_frame(pg.SHIELD_COLOUR, 1)
     assert levels[1][1] == f"$GLED,{pg.DARK},,,0,10,,*"
     # level 6/0 are the whole full/empty frames, no blink
-    assert levels[6][0] == pg.segment_frame(pg.WHITE, 3) and levels[6][1] is None
-    assert levels[0][0] == pg.segment_frame(pg.WHITE, 0) and levels[0][1] is None
+    assert levels[6][0] == pg.segment_frame(pg.SHIELD_COLOUR, 3) and levels[6][1] is None
+    assert levels[0][0] == pg.segment_frame(pg.SHIELD_COLOUR, 0) and levels[0][1] is None
 
 
 def test_readout_levels_health_hue_shifts_as_the_level_falls():

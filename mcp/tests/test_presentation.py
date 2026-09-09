@@ -396,25 +396,25 @@ def test_headset_death_null_is_rejected_at_merge_not_at_push():
 def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint():
     """A11.7 / S4 (bench 2026-09-04): $GLED,,,,5 after $SPAWN suppresses the firmware breathing; a paint then holds.
 
-    led-language.md §3.1/§6 finding #5 (2026-09-07): the DEFAULT rest changed from "team" to "dark" --
-    the body rests dark and the transient readout is now the standard feedback."""
+    GUN_DEFAULT is "team" (Tony, 2026-09-09: "instead of going dark lets put the team color on the gun
+    led") -- the body rests on the team colour and the transient readout layers on top of that rest."""
     prof = P.resolve({"mode": "tdm"})
-    assert prof["gun"] == {"in_play": "dark", "pregame": "team"} and P.summary(prof)["gun"]["in_play"] == "dark"
+    assert prof["gun"] == {"in_play": "team", "pregame": "team"} and P.summary(prof)["gun"]["in_play"] == "team"
     assert P.gun_pregame(prof, 1, False, True) == ["$GLED,1,1,1,0,10,,*"] and P.gun_pregame(prof, 1, False, False) == []
     assert P.gun_pregame(P.resolve({"presentation": {"gun": {"pregame": "off"}}}), 1, False, True) == []
     native = P.resolve({"presentation": P.merge(None, {"gun": {"in_play": "native"}})})
     assert native["preset"] == "custom"
     assert P.gun_frames(native, 1, False, True) == {} and P.gun_spawn_tail(native, 1, False, True) == []
-    dark = prof   # the default profile now RESTS dark
-    gf = P.gun_frames(dark, 1, False, True)
-    assert gf["in_play"] == "dark" and gf["blank"] == "$GLED,,,,5,,,*" and gf["rest"] == "$GLED,9,9,9,0,10,,*"
-    assert gf["after_spawn_s"] == 2.5 and gf["take"] == ["$GLED,,,,5,,,*", "$GLED,9,9,9,0,10,,*"]
+    team = prof   # the default profile now RESTS on the team colour
+    gf = P.gun_frames(team, 1, False, True)
+    assert gf["in_play"] == "team" and gf["blank"] == "$GLED,,,,5,,,*" and gf["rest"] == "$GLED,1,1,1,0,10,,*"
+    assert gf["after_spawn_s"] == 2.5 and gf["take"] == ["$GLED,,,,5,,,*", "$GLED,1,1,1,0,10,,*"]
     assert "bands" not in gf, "the legacy whole-strip health bands are only built for in_play=='health'"
-    assert P.gun_spawn_tail(dark, 1, False, True) == []          # retired: the node takes the body on a timer
-    assert P.gun_frames(dark, 1, True, True)["rest"] == "$GLED,9,9,9,0,1,,*"        # night dims
-    assert P.gun_frames(dark, 1, False, False) == {}                                  # LEDs off for the game
-    team = P.resolve({"presentation": {"gun": {"in_play": "team"}}})
-    assert P.gun_frames(team, 1, False, True)["rest"] == "$GLED,1,1,1,0,10,,*"    # explicit "team" still fully supported
+    assert P.gun_spawn_tail(team, 1, False, True) == []          # retired: the node takes the body on a timer
+    assert P.gun_frames(team, 1, True, True)["rest"] == "$GLED,1,1,1,0,1,,*"        # night dims
+    assert P.gun_frames(team, 1, False, False) == {}                                  # LEDs off for the game
+    dark = P.resolve({"presentation": {"gun": {"in_play": "dark"}}})
+    assert P.gun_frames(dark, 1, False, True)["rest"] == "$GLED,9,9,9,0,10,,*"    # explicit "dark" still fully supported
     health = P.resolve({"presentation": {"gun": {"in_play": "health"}}})
     hf = P.gun_frames(health, 1, False, True)
     assert hf["take"] == ["$GLED,,,,5,,,*", hf["bands"][0][1]]
@@ -426,8 +426,8 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
     assert [p["pool"] for p in hf["readout"]["pools"]] == ["health"]
     # event bursts end on the gun's resting frame; "extraction_failed" (default RED) stands in for the
     # old hit_taken/died check -- those two carry no default gun burst any more (finding #5).
-    assert P.led_table(dark, 1, False, True)["extraction_failed"][-1][0] == "$GLED,9,9,9,0,10,,*"
     assert P.led_table(team, 1, False, True)["extraction_failed"][-1][0] == "$GLED,1,1,1,0,10,,*"
+    assert P.led_table(dark, 1, False, True)["extraction_failed"][-1][0] == "$GLED,9,9,9,0,10,,*"
     assert P.led_table(native, 1, False, True)["extraction_failed"][-1][0] == pg.team_frame(1, False)
     for bad in ({"gun": {"in_play": "breathe"}}, {"gun": {"colour": 3}}, {"gun": "on"}, {"gun": {"pregame": "blue"}},
                 {"gun": {"readout": {"pools": ["mana"]}}}, {"gun": {"readout": {"hold_s": 0}}}, {"gun": {"readout": "yes"}}):
@@ -502,8 +502,16 @@ def test_no_burst_ever_alternates_a_colour_identical_to_the_rest_frame():
     burst alternates flash-colour and rest-colour, so a burst whose event colour EQUALS the rest colour
     produces zero visible transitions -- `objective_scored` (WHITE) against an FFA/no-team rest (also
     WHITE, Q19) was the concrete instance found, but this walks every preset x team (incl. None and
-    FFA) as the GENERAL guard, not just that one case. Every burst still ends on the TRUE rest frame,
-    and still has exactly three flash->non-flash transitions (the photosensitivity-relevant count)."""
+    FFA) as the GENERAL guard, not just that one case.
+
+    GUN_DEFAULT flipping to "team" (Tony, 2026-09-09) made the collision path reachable through the
+    DEFAULT profile too (e.g. `counter_strike` team 0 = RED resting against `bomb_detonated`'s own RED
+    gun_led), not just an explicit override -- `led_table()` already alternates against DARK instead of
+    the rest colour when they collide (see the comment above `gap = ...` in `led_table()`), which adds
+    ONE extra frame at the very end: the burst still flashes `BURST_FLASHES` times, then hands back to
+    the TRUE rest, and that hand-back frame happens to repeat the immediately-preceding flash colour
+    when the collision fired. So the invariant is not "every adjacent pair differs" any more, it is:
+    every flash is still a real, visible transition, and only the FINAL pair may repeat (the hand-back)."""
     for preset in sorted(P.PRESETS):
         prof = P.resolve({"presentation": {"preset": preset}})
         for team in (0, 1, 2, 3, None):
@@ -515,15 +523,21 @@ def test_no_burst_ever_alternates_a_colour_identical_to_the_rest_frame():
                     gled = [f for f, _h in seq if f.startswith("$GLED,")]
                     if not gled:
                         continue
-                    flash_frame = gled[0]
-                    transitions = sum(1 for f in gled if f == flash_frame)
-                    assert transitions == pg.BURST_FLASHES, (preset, team, ffa, ev, gled)
                     assert gled[-1] == rest, (preset, team, ffa, ev, "must end on the true rest frame")
-                    # the real invariant: no two ADJACENT frames in the burst are identical -- equal
-                    # neighbours is what makes a "flash" invisible, whatever the two colours involved
-                    # (this is finding #3's general form: flash-colour == whatever-comes-next).
-                    for f1, f2 in zip(gled, gled[1:]):
-                        assert f1 != f2, (preset, team, ffa, ev, "two adjacent burst frames are identical: invisible transition")
+                    # no two ADJACENT frames may repeat -- an equal pair is an invisible transition --
+                    # EXCEPT possibly the very last pair, which is the collision guard's hand-back: when
+                    # the event colour equals the rest colour, the final "back" frame legitimately
+                    # repeats the preceding flash so the burst can still end on the true rest.
+                    last_pair = len(gled) - 2
+                    real_transitions = 0
+                    for i, (f1, f2) in enumerate(zip(gled, gled[1:])):
+                        if f1 == f2:
+                            assert i == last_pair, (preset, team, ffa, ev, "duplicate adjacent frame not at the final hand-back", gled)
+                        else:
+                            real_transitions += 1
+                    # every flash must be a real, visible transition -- at least BURST_FLASHES of them,
+                    # whether or not the collision guard added the extra hand-back pair.
+                    assert real_transitions >= pg.BURST_FLASHES, (preset, team, ffa, ev, gled)
 
 
 def test_voice_role_pools_reach_the_bundle_for_multi_take_roles_only():
