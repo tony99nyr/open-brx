@@ -57,6 +57,26 @@ for (const u of urls()) {
   });
 }
 
+it('1b · a page opens with its title, not with a second nav bar', async ({ page }) => {
+  // A sibling-links row above the <h1> read as a second navigation bar under the first, with the
+  // same underline-for-current treatment, so three "you are here" marks sat within 100px and it
+  // competed with the contents box. Where-to-go-next belongs at the END of the article.
+  for (const u of urls()) {
+    await page.goto(u);
+    const first = page.locator('article > *').first();
+    expect(await first.evaluate(e => e.tagName), `${u} does not open with its title`).toBe('H1');
+    // and any section-sibling nav must come after the content
+    const more = page.locator('article > nav.more');
+    if (await more.count()) {
+      const pos = await more.evaluate(e => {
+        const kids = [...e.parentElement.children];
+        return { at: kids.indexOf(e), of: kids.length };
+      });
+      expect(pos.at, `${u}: the "more in this section" block is not at the end`).toBeGreaterThan(pos.of - 3);
+    }
+  }
+});
+
 it('2 · every internal link resolves', async ({ page, request }) => {
   const seen = new Set();
   const bad = [];

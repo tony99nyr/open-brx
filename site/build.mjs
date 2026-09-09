@@ -147,9 +147,15 @@ function shell(page, content) {
     const here = p.slug === page.slug || sectionOf(page.slug) === p.slug;
     return `<a href="${p.slug}/"${here ? ' aria-current="page"' : ''}>${p.nav}</a>`;
   }).join('');
+  // Siblings go at the END of the article, not above the title. "Where else can I go in this
+  // section" is a question a reader has when they have FINISHED, and putting it on top made a
+  // second nav bar that competed with the top one and with the contents box.
   const sec = sectionOf(page.slug);
-  const subnav = sec ? `<nav class="subnav" aria-label="In this section">${SUBNAV[sec]
-    .map(([u, t]) => `<a href="${u}/"${u === page.slug ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>` : '';
+  const siblings = sec ? SUBNAV[sec].filter(([u]) => u !== page.slug) : [];
+  const more = siblings.length
+    ? `<nav class="more" aria-label="More in this section"><p>More in ${SUBNAV[sec][0][1] === 'Overview' ? 'the platform section' : 'this section'}</p><ul>${
+        siblings.map(([u, t]) => `<li><a href="${u}/">${t}</a></li>`).join('')}</ul></nav>`
+    : '';
   const title = page.slug === '/' ? 'Open BRX: the BRX manual' : `${page.title} | Open BRX`;
   const desc = page.body.split('\n').find(l => l.trim() && !l.startsWith('#') && !l.startsWith('|'))
     ?.replace(/[*`\[\]]/g, '').replace(/\(([^)]*)\)/g, '').slice(0, 180) || 'The BRX manual.';
@@ -169,10 +175,10 @@ function shell(page, content) {
 <button class="theme" type="button" aria-label="Switch theme">${SUN}${MOON}<span class="vh">Switch theme</span></button>
 </header>
 <main id="main"><article>
-${subnav}
 <h1>${esc(page.title)}</h1>
 ${page.lastVerified ? `<p class="meta">Last verified <time datetime="${page.lastVerified}">${page.lastVerified}</time></p>` : ''}
 ${content}
+${more}
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="${GITHUB}">Source on GitHub</a></p></footer>
 <script src="${assetHref('site.js')}"></script>
