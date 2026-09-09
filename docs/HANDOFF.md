@@ -37,7 +37,7 @@
 - **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and
   built on the phone side; **MC arming at muster (S5, A13.5) is not built.** Hosted games ignore the
   grenade's IR station words (B23), so hosted respawn stations are node-defined.
-- **Sound bank:** all 2477 on-gun clips are off the gun and classified (`sound_catalog.json`); 148 ids audited by ear. The in-game sound pass is open (S9).
+- **Sound bank:** 2477 on-gun clips off the gun and classified; 148 audited by ear (S9 open).
 - **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for
   shield (`H22`), **health deliberately SILENT** — real damage is where the metal stops and the pain
   grunt starts. Every id picked by acoustic SHAPE was rejected by ear (features separate tonal from
@@ -71,8 +71,8 @@
   went from 528 lines of positioning to a 74-line page; the architecture tables it used to carry moved
   into `docs/architecture-topology.md`, which is internal. Every published `$` command in the developer
   reference survived (checked by set-diff; the 16 that vanished were all in the unpublished backlog).
-  ⚠ Two shipped bugs, both fixed: `platform.md` denied field games that happened (2026-08-30,
-  2026-09-01), and `_redirects` splats swallowed their own pages and looped 7 of 9 live URLs.
+  ⚠ Three shipped bugs, all fixed: platform denied field games that happened, `_redirects` splats looped 7 of 9 live URLs, and the arsenal published rebalanced UI bars as Callsign wire values. Five guards
+  were F40-shaped (read the artefact, never exercised the behaviour) and now fire.
 
 - **Repo hygiene, 2026-09-07: ONE repo, decided on evidence.** Raw Callsign JSONs restated as our own data;
   CONTRIBUTING + code of conduct; apks publish to a GitHub Release. The PDF and ten stale apk blobs are
