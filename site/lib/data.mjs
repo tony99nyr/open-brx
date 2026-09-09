@@ -9,24 +9,27 @@ import path from 'node:path';
 
 // $WEAP token positions, from the bench-proven map in docs/manual/dev.md.
 // The frame is `$WEAP,<t0>,<t1>,...`, so token N sits at split index N+1.
-const TOK = { fireInterval: 14, heat: 24, fireSound: 27 };
+const TOK = { damage: 5, cycle: 14, mag: 16, reserve: 17, reload: 18, heat: 24, sound: 27 };
 const tok = (frame, n) => {
-  if (!frame) return null;
   const v = frame.split(',')[n + 1];
   return v === undefined || v === '' ? null : v;
 };
 
+// The published arsenal is what the Callsign app put ON THE WIRE, read out of each weapon's own
+// captured $WEAP frame. It is deliberately NOT the top-level dmg/rof/rng fields of weapons.json:
+// those are Open BRX's rebalanced 0-100 UI bars, and publishing them under headings like "Damage"
+// stated Assault Rifle 8 where the wire says 9. Weapons with `captured: false` (the Open BRX
+// sidearms) are excluded: they carry a copied frame and were never in Callsign.
 export function buildWeapons(repo) {
   const cat = JSON.parse(fs.readFileSync(path.join(repo, 'mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons;
-  return cat.map(w => {
-    const frame = w.capture?.frame || null;
-    const num = n => { const v = tok(frame, n); return v === null ? null : Number(v); };
+  return cat.filter(w => w.captured && w.capture?.frame).map(w => {
+    const f = w.capture.frame;
+    const num = n => { const v = tok(f, n); return v === null ? null : Number(v); };
     return {
-      id: w.weapon_id, name: w.name, role: w.role, desc: w.desc,
-      dmg: w.dmg, mag: w.mag, reserve: w.reserve, reload_ms: w.reload_ms,
-      rof: w.rof, rng: w.rng, htk: w.htk, ttk_ms: w.ttk_ms,
-      // read off the captured wire frame, never out of manual prose
-      cycle_ms: num(TOK.fireInterval), heat: num(TOK.heat), sound: tok(frame, TOK.fireSound),
+      id: w.weapon_id, name: w.name, role: w.role,
+      dmg: num(TOK.damage), cycle_ms: num(TOK.cycle), mag: num(TOK.mag),
+      reserve: num(TOK.reserve), reload_ms: num(TOK.reload),
+      heat: num(TOK.heat), sound: tok(f, TOK.sound),
     };
   });
 }

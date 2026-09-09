@@ -7,11 +7,13 @@
     "build": "node build.mjs",
     "serve": "node serve.mjs",
     "test": "playwright test",
-    "test:only": "playwright test"
+    "test:only": "playwright test --grep"
   },
   "devDependencies": {
-    "marked": "^18.0.11",
     "playwright": "^1.62.1",
     "@playwright/test": "^1.62.1"
+  },
+  "dependencies": {
+    "marked": "^18.0.11"
   }
 }

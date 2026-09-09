@@ -46,7 +46,8 @@ Rules, all of them:
    markers, no image manifests, no research backlogs, no audience or goal lines.
 4. **`## Sources` is the last section** if the page has one. A plain bulleted list of repo paths.
 5. **`##` headings get anchors and appear in the page's table of contents.** `###` and deeper do
-   not. So `##` is the unit of navigation: one per thing a reader would link to.
+   not. So `##` is the unit of navigation: one per thing a reader would link to. A page with two or
+   fewer `##` headings gets no table of contents at all.
 
 ## The one extension: generated data tables
 
@@ -82,7 +83,7 @@ garbage.
 
 For each file: `<slug>/index.html` and `<slug>.md` (a byte-for-byte copy of the source). Plus
 `sitemap.xml`, `robots.txt`, `llms.txt`, `llms-full.txt`, `data/weapons.json`, `data/sounds.json`,
-`_redirects`, and the hashed CSS/JS. Nothing else.
+`_redirects`, `404.html`, `.site-manifest.json`, and the hashed CSS/JS. Nothing else.
 
 ## Old URLs
 

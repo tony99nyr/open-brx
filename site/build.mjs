@@ -34,7 +34,7 @@ const PROTECTED = new Set(['mc', 'download']);
 
 // The old block DSL, so a half-converted page cannot ship. Anchored to line start and to the
 // names the DSL actually used, because prose legitimately contains bracketed words.
-const BLOCK_MARKER = /^\[(hero|callout|steps|cards|table|data-table|spec-sheet|accordion|faq|image|diagram|code|bit-field|symptom-ladder|compare|stat-row|quote|timeline|pricing-tiers|download|under-construction)\b/m;
+const BLOCK_MARKER = /\[(hero|callout|steps|cards|table|data-table|spec-sheet|accordion|faq|image|diagram|code|bit-field|symptom-ladder|compare|stat-row|quote|timeline|pricing-tiers|download|under-construction|audio-player)(?::[a-z|]+)?(?:\s+[A-Z0-9-]+)?\]/;
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const slugify = s => s.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -139,7 +139,21 @@ write('data/sounds.json', JSON.stringify(sounds));
 
 const problems = [];
 const built = [];
-for (const p of PAGES.map(readPage)) {
+const pages = PAGES.map(readPage);
+// Validate the whole manual before writing a single page. The build used to write everything and
+// then exit 1, so a red build still left the bad page in webapp/ for the next `git commit -a`.
+for (const p of pages) {
+  if (/[—]/.test(p.source)) problems.push(`${p.file}: em dash`);
+  const bm = p.source.match(BLOCK_MARKER);
+  if (bm) problems.push(`${p.file}: leftover block marker ${bm[0]}`);
+  for (const g of p.source.match(/[✅📖🔍👥🧪📐🚧]/gu) || []) problems.push(`${p.file}: provenance mark ${g}`);
+  if (/^src:/m.test(p.source)) problems.push(`${p.file}: src: citation`);
+}
+if (problems.length) {
+  console.error('BUILD PROBLEMS (nothing written):\n' + problems.map(x => '  ' + x).join('\n'));
+  process.exit(1);
+}
+for (const p of pages) {
   headings.length = 0;
   const content = marked.parse(p.body, { renderer, mangle: false, headerIds: false });
   const toc = headings.length > 2
@@ -147,12 +161,6 @@ for (const p of PAGES.map(readPage)) {
     : '';
   write(p.slug === '/' ? 'index.html' : p.slug.slice(1) + '/index.html', shell(p, content, toc));
   write(p.slug === '/' ? 'index.md' : p.slug.slice(1) + '.md', p.source); // the twin IS the source
-  if (/[—]/.test(p.source)) problems.push(`${p.file}: em dash`);
-  // a leftover block marker from the old DSL: only at line start, and only a name the DSL used.
-  // (A loose /\[word\]/ flagged legitimate prose like a CLI's "usb-query [port]".)
-  if (BLOCK_MARKER.test(p.source)) problems.push(`${p.file}: leftover block marker`);
-  for (const g of p.source.match(/[✅📖🔍👥🧪📐🚧]/gu) || []) problems.push(`${p.file}: provenance mark ${g}`);
-  if (/^src:/m.test(p.source)) problems.push(`${p.file}: src: citation`);
   built.push(p);
 }
 
@@ -178,7 +186,10 @@ const sweep = dir => {
 sweep('');
 
 fs.writeFileSync(path.join(OUT, '.site-manifest.json'), JSON.stringify({
-  ok: problems.length === 0, problems, pages: built.length, files: [...written].sort(),
+  ok: problems.length === 0, problems, pages: built.length,
+  // twin URL -> the manual file it must equal byte-for-byte, so the gate can compare the real bytes
+  twins: Object.fromEntries(built.map(p => [p.slug === '/' ? '/index.md' : p.slug + '.md', p.file])),
+  files: [...written].sort(),
 }, null, 1) + '\n');
 
 if (problems.length) { console.error('BUILD PROBLEMS:\n' + problems.map(p => '  ' + p).join('\n')); process.exit(1); }

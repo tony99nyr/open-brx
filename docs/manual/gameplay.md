@@ -25,9 +25,9 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle is milliseconds between shots; for charge weapons it is the charge time. Reserve is your total spare rounds (the app shows it as magazines: mags x clip = reserve). Heat is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table.
+> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is added per shot, and only on weapons that can overheat. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table.
 
-The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. Filter by class, fire mode, overheats or one-shot, and sort by any column.
+The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
 ```data
 weapons
@@ -220,6 +220,8 @@ The mode LED colour shows what you picked. Modes marked with a star are Callsign
 
 (*) = Callsign-Live unlock on the gun.
 
+> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
+
 **Starting a gun-menu game:**
 
 1. Power on (slide switch by the barrel). LEFT/RIGHT cycle the modes, and the trigger selects.
@@ -315,9 +317,9 @@ Perks are what ALT cycles in Death Match / Generals. Not all games have perks, a
 | Body Armor | extra armor (on a General it lowers total health, a known stock quirk) |
 | Extended Mags | bigger magazines |
 | Concussion Grenade | stun grenade |
-| Critical Strike | crit chance |
-| Foregrip | less recoil drift |
-| Focus | laser designator |
+| Critical Strike (Extended Guide only) | crit chance |
+| Foregrip (Extended Guide only) | less recoil drift |
+| Focus (Extended Guide only) | laser designator |
 
 Killstreak rewards in the Callsign app, from the app's config. None of them is a tagger command.
 
@@ -394,6 +396,24 @@ The BRX Smart Grenade is more than a bomb. Hold its button and it turns into a p
 | A Counter-Strike bomb site | Blue (Hill) as the site | the plant/defuse timer runs on a host, not the grenade |
 
 > **Where the grenade sounds come from.** The detonation, the flashbang and gas effects, the CTF music, "control point captured": all of it plays from the gun and headset, triggered by the grenade's IR. The grenade itself only chirps and flashes for status. Swap the tagger's sound files and every grenade "sounds" different, without touching the accessory.
+
+## Beyond stock: modes Open BRX adds
+
+The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode. Open BRX runs those rules on a laptop (Mission Control) and on a small node per player. So the same gear plays modes Battle Company never shipped, and modes that need props scale up through cheap tiers.
+
+| Tier | What you add | Modes in the catalog |
+|---|---|---|
+| Tier 0: laptop-only with `brx-mcp` (taggers plus a laptop you own) | nothing | FFA, Team Death Match, Survival/Infection, The Swarm, Generals, Commander, Supremacy, Last Man Standing, Syphon (health on kill), Halo-style regenerating health, overshield / medic roles, small-scale Extraction, grenade-site Counter-Strike |
+| Tier 1: plus props (objective stations, flags, QR codes, or the grenade) | contested places | Domination, King of the Hill / Territory, Capture the Flag (standard, one-sided, centre-flag), Assault, Team Arena, VIP escort, Hostage rescue, a real Extraction point |
+| Tier 2: plus broadcast (a live field-wide downlink; location on each node) | live global awareness | Battle Royale, live scoreboards and "flag taken!" callouts on a big no-WiFi field, hidden multi-extracts |
+
+Three modes stock BRX does not ship:
+
+- **Extraction**: drop in, loot, then reach an extraction point and channel it. That takes 30 to 60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets, and a rules engine already exists.
+- **Counter-Strike (plant / defuse)**: the grenade or a phone is the bomb. Attackers arm it (by dwell, IR, or an on-screen code) and defenders defuse it (by IR or a puzzle). The round ends on detonate, defuse or elimination.
+- **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are pure host rules on top of the "heals add, never set" write.
+
+> **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier.
 
 ## Sources
 

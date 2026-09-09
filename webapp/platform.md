@@ -35,16 +35,22 @@ Mission Control (the laptop console that writes a game and adds up the results) 
 HUD (the phone app that holds the Bluetooth link to one gun) have run whole matches in the field: a
 300 second free-for-all on 2026-08-30 with two iPhones and a MacBook host, and an outdoor Team
 Deathmatch on 2026-09-01 with two Android phones. They work. They are not finished, and they change
-week to week.
+week to week. Four things have never been run: a dispersed timed start with players out of range
+before T-0, a store-and-forward recovery after real coverage loss, more than two phones, and a
+20-minute soak.
 
 Android debug builds are published for sideloading on the
 [releases page](https://github.com/tony99nyr/open-brx/releases/latest). They are test builds, not
-releases, and a given build can be behind the current game rules.
+releases, and a given build can be behind the current game rules. Two things follow from "debug".
+The build is **debuggable**: anything attached over USB debugging can inspect it and read its data.
+That is fine on your own phone, and it is a reason not to hand the build to a stranger. It is also
+signed with Android's throwaway debug key, so a future release-signed build **will not install over
+it**: uninstall first.
 
 ## What does not exist yet
 
-- BRX Companion: a small ESP32-S3 rider that would take the phone's place on the gun. Specified,
-  not built.
+- BRX Companion: a small ESP32-S3 rider (~$15 in parts) that would take the phone's place on the
+  gun. Specified, not built.
 - Utility Box and objective stations: hill, flag, bomb site, extraction point, respawn. Design
   stage. Our ESP32 rig has put a synthetic IR shot into a stock tagger, so the emit side is real.
 - Effect nodes: smoke, lights, DMX and music listening to the same event stream. No firmware is
@@ -65,12 +71,13 @@ Three facts decide the shape of the whole system.
    practice that means you always know you died straight away, but you may not learn you got a kill
    until you walk back into range. A scoreboard can be late. The final result is not wrong.
 
-The limits that follow from this, all measured on hardware:
+The limits that follow from this, measured on hardware except for the logical-teams row:
 
 | Thing | Limit |
 |---|---|
 | Players in one game | 63 (the gun takes ids 0-63; id 0 is reserved) |
 | Native hardware teams | 4 (the team field in each shot is 2 bits) |
+| Teams beyond 4 | unlimited logical teams, scored by Mission Control's roster; no on-gun friendly-fire protection in that mode |
 | Guns per node | exactly 1 |
 | Guns on one laptop Bluetooth radio | 3 proven for a synced start; the maximum is untested |
 

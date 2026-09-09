@@ -6,9 +6,28 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(process.env.SITE_ROOT || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'webapp'));
 const PORT = Number(process.env.PORT || 4173);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.xml': 'application/xml', '.apk': 'application/vnd.android.package-archive' };
+// Mirror Cloudflare's _redirects so the gate exercises real redirect behaviour, not the file's text.
+// Without this the suite passed while seven live pages sat in an infinite loop in production.
+const redirects = (() => {
+  const f = path.join(ROOT, '_redirects');
+  if (!fs.existsSync(f)) return [];
+  return fs.readFileSync(f, 'utf8').split('\n').map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'))
+    .map(l => { const [from, to, code] = l.split(/\s+/); return { from, to, code: Number(code) || 302 }; });
+})();
+const redirectFor = p => {
+  for (const r of redirects) {
+    if (r.from.endsWith('/*')) { const base = r.from.slice(0, -2); if (p === base || p.startsWith(base + '/')) return r; }
+    else if (r.from === p) return r;
+  }
+  return null;
+};
+
 http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (p.includes('..')) { res.writeHead(400); return res.end(); }
+  const rd = redirectFor(p);
+  if (rd) { res.writeHead(rd.code, { Location: rd.to }); return res.end(); }
   let f = path.join(ROOT, p);
   if (fs.existsSync(f) && fs.statSync(f).isDirectory()) { if (!p.endsWith('/')) { res.writeHead(301, { Location: p + '/' }); return res.end(); } f = path.join(f, 'index.html'); }
   if (!fs.existsSync(f)) { // mirror Cloudflare's not_found_handling = 404-page

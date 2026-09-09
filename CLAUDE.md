@@ -71,9 +71,12 @@ build and publishes it to the `app-v<version>` GitHub Release; the site links th
 pinned asset, so a new cut does not stale a manual page) ·
 `firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
-website (`docs/manual/*.md` → `webapp/`, ~150 lines of `marked` plus one template; `cd site && npm test`
-builds and runs the gate; **a push to `main` deploys the site** (Cloudflare runs the root `npm run build`
-via `wrangler.toml`, so the pages are generated at deploy time and are not committed);
+website (`docs/manual/*.md` → `webapp/`, ~200 lines of `marked` plus one template; `cd site && npm test`
+builds and runs the gate; **a push to `main` deploys the site**. ⚠ **The built pages ARE still committed
+and Cloudflare serves `webapp/` exactly as pushed**, so build before you commit or you publish stale.
+The root `npm run build` and `[build]` in `wrangler.toml` exist for the switch to deploy-time builds,
+but push-to-deploy uses the build command set in the Cloudflare **dashboard**, which is not set yet
+(FOLLOWUPS B24). Do not gitignore `webapp/` until it is, or the next push serves an empty site;
 `webapp/mc/` is the separate MC UI and is never touched by the site build;
 **`webapp/download/`** holds only the `build.json` sidecar: the APK itself is **git-ignored and lives on
 the `app-v<version>` GitHub Release** (a committed APK cost ~5 MB of history per cut). `npm run android:apk`

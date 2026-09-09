@@ -66,33 +66,59 @@ it('2 · every internal link resolves', async ({ page, request }) => {
   expect(bad).toEqual([]);
 });
 
-it('3 · the markdown twin of every page is the source, tables and all', async ({ request }) => {
-  for (const u of urls()) {
-    const twin = u === '/' ? '/index.md' : u.replace(/\/$/, '') + '.md';
+it('3 · every markdown twin is byte-for-byte the manual file it came from', async ({ request }) => {
+  // The twins and llms-full.txt are what llms.txt exists to serve. Asserting "a file exists and has
+  // an H1" let a twin carrying entirely the wrong page pass, so compare the actual bytes.
+  const MANUAL = path.resolve(WEB, '../docs/manual');
+  const map = JSON.parse(fs.readFileSync(path.join(WEB, '.site-manifest.json'), 'utf8')).twins;
+  expect(Object.keys(map).length, 'the build published no twin map').toBe(urls().length);
+  const full = await (await request.get('/llms-full.txt')).text();
+  for (const [twin, file] of Object.entries(map)) {
     const r = await request.get(twin);
     expect(r.ok(), `${twin} missing`).toBe(true);
-    const body = await r.text();
-    expect(body, `${twin} has no H1`).toMatch(/^#\s+\S/m);
-    // the old generator emitted "| col 1 | col 2 |" here, which is what llms.txt was serving
-    expect(body, `${twin} lost its table headers`).not.toMatch(/\|\s*col 1\s*\|/);
+    const served = await r.text();
+    const source = fs.readFileSync(path.join(MANUAL, file), 'utf8');
+    expect(served, `${twin} is not ${file}`).toBe(source);
+    expect(full.includes(source), `llms-full.txt is missing ${file}`).toBe(true);
   }
 });
 
-it('4a · every weapon publishes its wire-derived fire sound, cycle and heat', async ({ request }) => {
-  // These three columns came from a markdown table that the build used to scrape. They now come
-  // off the captured $WEAP frame (t14/t24/t27). A silently empty column is the regression to catch.
+it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI bars', async ({ request }) => {
+  // weapons.json carries two different things: each weapon's captured $WEAP frame (Callsign truth)
+  // and Open BRX's own rebalanced dmg/rof/rng, which are 0-100 UI BARS. Publishing the latter under
+  // a heading like "Damage" stated Assault Rifle 8 where the wire says 9, on a page titled "The
+  // complete Callsign arsenal". Every published number must come off the frame.
+  const src = JSON.parse(fs.readFileSync(path.join(WEB, '../mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons;
   const rows = await (await request.get('/data/weapons.json')).json();
-  expect(rows.length).toBeGreaterThan(15);
-  const noSound = rows.filter(r => !r.sound).map(r => r.name);
-  expect(noSound, 'weapons with no fire sound id').toEqual([]);
-  const noCycle = rows.filter(r => typeof r.cycle_ms !== 'number').map(r => r.name);
-  expect(noCycle, 'weapons with no cycle time').toEqual([]);
-  expect(rows.every(r => Number.isFinite(r.heat)), 'a heat value is NaN').toBe(true);
-  // spot-check three the old published table pinned
+
+  // only weapons Callsign actually shipped: the Open BRX sidearms carry a copied frame
+  expect(rows.length).toBe(src.filter(w => w.captured && w.capture?.frame).length);
+  for (const bad of ['Glock-18', 'USP-S', 'Desert Eagle']) {
+    expect(rows.find(r => r.name === bad), `${bad} is not a Callsign weapon`).toBeUndefined();
+  }
+
+  // every published number equals its token in that weapon's own frame
+  const TOK = { dmg: 5, cycle_ms: 14, mag: 16, reserve: 17, reload_ms: 18, heat: 24, sound: 27 };
+  const drift = [];
+  for (const r of rows) {
+    const f = src.find(w => w.weapon_id === r.id).capture.frame.split(',');
+    for (const [field, n] of Object.entries(TOK)) {
+      const wire = f[n + 1];
+      const got = r[field];
+      const want = field === 'sound' ? wire : Number(wire);
+      if (String(got) !== String(want)) drift.push(`${r.name}.${field}: published ${got}, wire ${wire}`);
+    }
+  }
+  expect(drift, 'published values that do not match the captured wire frame').toEqual([]);
+
+  // and the bar fields must never reach the page
+  for (const f of ['rof', 'rng', 'htk', 'ttk_ms']) {
+    expect(rows.some(r => f in r), `${f} is a rebalanced UI bar and must not be published`).toBe(false);
+  }
+  // three the old published table pinned
   const by = n => rows.find(r => r.name === n);
-  expect(by('Assault Rifle').sound).toBe('R01');
+  expect(by('Assault Rifle')).toMatchObject({ dmg: 9, cycle_ms: 100, mag: 32, sound: 'R01' });
   expect(by('Charge Rifle')).toMatchObject({ sound: 'E03', cycle_ms: 1250, heat: 14 });
-  expect(by('Rail Gun').sound).toBe('C03');
 });
 
 it('4 · the weapons table loads rows and filters', async ({ page }) => {
@@ -181,4 +207,22 @@ it('10 \u00b7 every URL the old site published still resolves, by page or by red
   // no rule may point at another rule's source, which would chain
   const chained = rules.filter(r => rules.some(o => matches(o.from, r.to)));
   expect(chained.map(r => `${r.from} -> ${r.to}`), 'chained redirects').toEqual([]);
+});
+
+it('11 · every old URL really resolves over HTTP, in one hop, with no loop', async ({ request, page }) => {
+  // Step 10 reasons about the _redirects FILE. This one drives the server, which now mirrors
+  // Cloudflare's redirect handling. The loop that reached production passed a file-only check.
+  const old = fs.readFileSync(path.join(HERE, 'old-urls.txt'), 'utf8')
+    .split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const bad = [];
+  for (const u of old) {
+    const r = await request.get(u, { maxRedirects: 5 });
+    if (!r.ok()) bad.push(`${u} -> ${r.status()} ${r.url()}`);
+  }
+  expect(bad, 'old URLs that do not resolve').toEqual([]);
+  // and a live page must never redirect at all
+  for (const u of urls()) {
+    const r = await request.get(u, { maxRedirects: 0 });
+    expect(r.status(), `${u} redirects instead of serving`).toBe(200);
+  }
 });

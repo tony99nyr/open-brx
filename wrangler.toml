@@ -9,9 +9,11 @@ compatibility_date = "2024-11-01"
 directory = "./webapp"
 not_found_handling = "404-page"   # serves webapp/404.html with a 404 status
 
-# The site is GENERATED from docs/manual/*.md. `npm run build` at the repo root renders it into
-# webapp/ before deploy, so the built pages are no longer committed (docs/site/SIMPLIFY-PLAN.md §3.8).
-# For push-to-deploy this command must also be set in the Cloudflare dashboard:
+# The site is GENERATED from docs/manual/*.md by `npm run build` at the repo root.
+# ⚠ TODAY THE BUILT PAGES ARE STILL COMMITTED and Cloudflare serves ./webapp exactly as pushed.
+# This [build] block is only used by `wrangler deploy` from a machine. Push-to-deploy uses the build
+# command set in the Cloudflare DASHBOARD, and that is NOT SET YET:
 #   Workers & Pages -> open-brx -> Settings -> Build -> Build command: npm run build
+# Until it is set, do not stop committing webapp/ (FOLLOWUPS B24). See docs/site/SIMPLIFY-PLAN.md §6.
 [build]
 command = "npm run build"

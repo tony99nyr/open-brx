@@ -3,7 +3,7 @@
   "private": true,
   "description": "Root build entry. Cloudflare Workers Builds runs `npm run build` to render docs/manual/*.md into webapp/ before deploying.",
   "scripts": {
-    "build": "cd site && npm ci --omit=optional --no-audit --no-fund && node build.mjs",
+    "build": "cd site && npm ci --omit=dev --omit=optional --no-audit --no-fund && node build.mjs",
     "test": "cd site && npm test"
   }
 }

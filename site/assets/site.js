@@ -25,9 +25,8 @@
   // ---- generated tables ----
   const COLS = {
     weapons: [
-      ['name', 'Weapon'], ['role', 'Role'], ['dmg', 'Damage'], ['mag', 'Mag'],
-      ['reserve', 'Reserve'], ['rof', 'RoF'], ['rng', 'Range'], ['htk', 'Hits to kill'],
-      ['reload_ms', 'Reload ms'], ['cycle_ms', 'Cycle ms'], ['ttk_ms', 'TTK ms'],
+      ['name', 'Weapon'], ['role', 'Role'], ['dmg', 'Damage'], ['cycle_ms', 'Cycle ms'],
+      ['mag', 'Mag'], ['reserve', 'Reserve'], ['reload_ms', 'Reload ms'],
       ['heat', 'Heat/shot'], ['sound', 'Fire sound'],
     ],
     sounds: [['id', 'Id'], ['family', 'Family'], ['len', 'Seconds'], ['meaning', 'Meaning'], ['play', 'Command']],
@@ -49,19 +48,32 @@
     const render = () => {
       const q = search.value.trim().toLowerCase();
       const hits = q ? rows.filter(r => cols.some(c => String(r[c[0]] ?? '').toLowerCase().includes(q))) : rows;
+      if (!hits.length) {
+        body.innerHTML = `<tr><td colspan="${cols.length}">Nothing matches ${JSON.stringify(q)}.</td></tr>`;
+        count.textContent = `0 of ${rows.length} rows`;
+        return;
+      }
       body.innerHTML = hits.slice(0, shown)
         .map(r => `<tr>${cols.map(c => `<td>${cell(r[c[0]])}</td>`).join('')}</tr>`).join('');
       if (hits.length > shown) {
         body.insertAdjacentHTML('beforeend',
           `<tr><td colspan="${cols.length}"><button type="button" data-more>Show ${Math.min(PAGE, hits.length - shown)} more</button></td></tr>`);
       }
+      // say how many are ON SCREEN, not just how many matched: "Show more" changes the first number
+      const showing = Math.min(shown, hits.length);
       count.textContent = hits.length === rows.length
-        ? `${rows.length} rows`
-        : `${hits.length} of ${rows.length} rows`;
+        ? `showing ${showing} of ${rows.length} rows`
+        : `showing ${showing} of ${hits.length} matches (${rows.length} rows)`;
     };
 
     search.addEventListener('input', () => { shown = PAGE; render(); });
-    body.addEventListener('click', e => { if (e.target.closest('[data-more]')) { shown += PAGE; render(); } });
+    body.addEventListener('click', e => {
+      if (!e.target.closest('[data-more]')) return;
+      shown += PAGE;
+      render();
+      // the button destroys itself on re-render, which dropped focus to <body>
+      body.querySelector('[data-more]')?.focus();
+    });
 
     fetch(`/data/${key}.json`)
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })

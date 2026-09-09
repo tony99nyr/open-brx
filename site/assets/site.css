@@ -53,6 +53,8 @@ a { color: var(--accent); }
   border-radius: 6px; padding: 8px 12px; min-height: 36px; cursor: pointer; font: inherit; font-size: 14px;
 }
 main { max-width: 62rem; margin: 0 auto; padding: 24px 20px 64px; }
+/* tables, code and the ToC keep the full column; running prose gets a readable measure */
+article > p, article > ul, article > ol, article > blockquote { max-width: 44rem; }
 footer {
   border-top: 1px solid var(--line); padding: 20px; color: var(--muted);
   font-size: 14px; max-width: 62rem; margin: 0 auto;
@@ -87,8 +89,10 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
 code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; overflow-wrap: anywhere; }
 p, li, td, th, dd { overflow-wrap: break-word; }
 pre {
+  /* padding-top clears the Copy button, which is absolutely positioned and opaque: at phone width
+     it was sitting on the first line of 9 of the 12 code blocks on /manual/dev/ and hiding it. */
   position: relative; background: var(--code-bg); border: 1px solid var(--line);
-  border-radius: 8px; padding: 14px 16px; overflow-x: auto;
+  border-radius: 8px; padding: 40px 16px 14px; overflow-x: auto;
 }
 pre code { background: none; padding: 0; }
 pre .copy {
@@ -98,7 +102,9 @@ pre .copy {
 }
 
 /* ---- tables ---- */
-.table-wrap { overflow-x: auto; margin: 16px 0; }
+/* the wrapper needs a height for a sticky <th> to have a scrollport; without one the sticky rule
+   was inert and a 39-row table scrolled its header off the top of the page. */
+.table-wrap { overflow: auto; max-height: 80vh; margin: 16px 0; }
 table { border-collapse: collapse; width: 100%; font-size: 15px; }
 th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { background: var(--panel); position: sticky; top: 0; font-weight: 600; }
